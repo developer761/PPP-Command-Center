@@ -6,6 +6,7 @@
  * latest AIA application's status + % complete. Service-role only.
  */
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { pickContractBaseCents } from "@/lib/commercial/aia/constants";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
@@ -66,23 +67,6 @@ function bidMidCents(o: CommercialOpportunity): number {
     return Math.round((o.bid_value_low_cents + o.bid_value_high_cents) / 2);
   }
   return o.bid_value_low_cents ?? o.bid_value_high_cents ?? 0;
-}
-
-/**
- * Fetch EVERY row of a select, paging past PostgREST's 1000-row cap. Without
- * this, a large job count silently truncates the change-order / AIA-app /
- * line-item batches and understates (or drops) projects (2026-07-28 post-audit).
- */
-async function paginateAll<T>(make: () => { range: (a: number, b: number) => PromiseLike<{ data: unknown; error: unknown }> }): Promise<T[]> {
-  const PAGE = 1000;
-  const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data } = await make().range(from, from + PAGE - 1);
-    const rows = (data as T[] | null) ?? [];
-    out.push(...rows);
-    if (rows.length < PAGE) break;
-  }
-  return out;
 }
 
 export async function listProjects(opts: {

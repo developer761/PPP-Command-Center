@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { logUpdate } from "@/lib/commercial/audit-log";
 import { ilikeQuoted } from "@/lib/commercial/search";
 
@@ -262,48 +263,49 @@ export async function listCommercialOpportunities(
   filters: OpportunitiesListFilters = {}
 ): Promise<CommercialOpportunity[]> {
   const sb = commercialDb();
-  // Inner-join the account so a soft-deleted parent's opps drop out of
-  // the pipeline view (audit fix 2026-06-16 — without this, bulk-deleting
-  // an account leaves its bids orphaned on /commercial/opportunities).
-  // `account:commercial_accounts!inner(deleted_at)` is the Supabase
-  // pattern for "must exist + must match the filter below."
-  let q = sb
-    .from("commercial_opportunities")
-    .select("*, account:commercial_accounts!inner(deleted_at)")
-    .is("deleted_at", null)
-    .is("account.deleted_at", null);
+  // Page past the 1000-row cap so a large pipeline doesn't silently truncate.
+  // The thunk rebuilds the filtered query each page so .range() applies cleanly.
+  const data = await paginateAll<CommercialOpportunity & { account: unknown }>(() => {
+    // Inner-join the account so a soft-deleted parent's opps drop out of
+    // the pipeline view (audit fix 2026-06-16 — without this, bulk-deleting
+    // an account leaves its bids orphaned on /commercial/opportunities).
+    // `account:commercial_accounts!inner(deleted_at)` is the Supabase
+    // pattern for "must exist + must match the filter below."
+    let q = sb
+      .from("commercial_opportunities")
+      .select("*, account:commercial_accounts!inner(deleted_at)")
+      .is("deleted_at", null)
+      .is("account.deleted_at", null);
 
-  // Archive filter — mutually exclusive modes:
-  //   onlyArchived=true  → archived_at IS NOT NULL (archived-view page)
-  //   includeArchived=true → no filter (show both)
-  //   default            → archived_at IS NULL (active pipeline)
-  if (filters.onlyArchived) {
-    q = q.not("archived_at", "is", null);
-  } else if (!filters.includeArchived) {
-    q = q.is("archived_at", null);
-  }
+    // Archive filter — mutually exclusive modes:
+    //   onlyArchived=true  → archived_at IS NOT NULL (archived-view page)
+    //   includeArchived=true → no filter (show both)
+    //   default            → archived_at IS NULL (active pipeline)
+    if (filters.onlyArchived) {
+      q = q.not("archived_at", "is", null);
+    } else if (!filters.includeArchived) {
+      q = q.is("archived_at", null);
+    }
 
-  if (filters.search) {
-    // 2026-07-28 re-audit: search matched only the raw `title` column, but the
-    // UI shows derivedOppName (title_override → account/client/street). So a
-    // renamed deal or a search by client/street returned nothing. Match all the
-    // fields that feed the displayed name. ilikeQuoted guards commas/parens.
-    const term = ilikeQuoted(filters.search);
-    q = q.or(
-      `title.ilike.${term},title_override.ilike.${term},client_name.ilike.${term},property_street.ilike.${term}`
-    );
-  }
-  if (filters.status) q = q.eq("status", filters.status);
-  if (filters.accountId) q = q.eq("account_id", filters.accountId);
+    if (filters.search) {
+      // 2026-07-28 re-audit: search matched only the raw `title` column, but the
+      // UI shows derivedOppName (title_override → account/client/street). So a
+      // renamed deal or a search by client/street returned nothing. Match all the
+      // fields that feed the displayed name. ilikeQuoted guards commas/parens.
+      const term = ilikeQuoted(filters.search);
+      q = q.or(
+        `title.ilike.${term},title_override.ilike.${term},client_name.ilike.${term},property_street.ilike.${term}`
+      );
+    }
+    if (filters.status) q = q.eq("status", filters.status);
+    if (filters.accountId) q = q.eq("account_id", filters.accountId);
 
-  const { data, error } = await q.order("updated_at", { ascending: false });
-  if (error) {
-    console.warn("[commercial/opportunities] list failed:", error.message);
-    return [];
-  }
+    return q.order("updated_at", { ascending: false });
+  });
+
   // Strip the join shape — callers want plain CommercialOpportunity[].
-  return (data ?? []).map((r) => {
-    const { account: _unused, ...rest } = r as CommercialOpportunity & { account: unknown };
+  return data.map((r) => {
+    const { account: _unused, ...rest } = r;
     return rest as CommercialOpportunity;
   });
 }

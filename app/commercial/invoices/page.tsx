@@ -20,9 +20,7 @@ import { listCommercialAccounts, getCommercialAccount, getCommercialAccountInclu
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
-import { getAcceptedProposalForOpp } from "@/lib/commercial/proposals/db";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
-import { type ProposalBillingOption } from "@/components/commercial/proposal-billing-fields";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -128,27 +126,11 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
   redirect(`/commercial/invoices?${flash.toString()}#inv-${invoice_id}`);
 }
 
-/** Per-project proposal context for the inline create form: the proposals to
- *  choose from (each carrying remaining-to-bill + a suggested description so
- *  picking one auto-fills the amount + charge line) + the accepted (won)
- *  proposal as the default. Empty/omitted when the project has no proposals. */
-type ProposalCtx = {
-  options: ProposalBillingOption[];
-  acceptedId: string | null;
-  acceptedTotalCents: number | null;
-};
-
 /** Canonical proposal identifier for UI: PROP-#### when sequenced, else the
  *  per-deal revision as "R{n}" (single fallback used everywhere — matches the
  *  chips on the proposals + proposal-detail pages). */
 function proposalDisplayNumber(p: CommercialProposal): string {
   return formatProposalNumber(p.proposal_seq) || `R${p.revision_number}`;
-}
-
-/** Label a proposal for the "bill against proposal" picker. */
-function proposalOptionLabel(p: CommercialProposal): string {
-  const status = p.status.charAt(0).toUpperCase() + p.status.slice(1);
-  return `${proposalDisplayNumber(p)} · ${formatCentsFull(p.total_cents)} · ${status}`;
 }
 
 
@@ -370,60 +352,19 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const accountById = new Map(accounts.map((a) => [a.id, a]));
   const oppById = new Map(allOpps.map((o) => [o.id, o]));
 
-  // Invoice ↔ proposal: for each project that appears in this (account-scoped)
-  // view, load its proposals so the inline create form can offer a "bill
-  // against proposal" picker + show the accepted contract total, and the rows
-  // can chip which proposal each invoice bills. Bounded to the opps on screen
-  // (this branch is account-filtered), so no platform-wide N+1.
+  // Invoice ↔ proposal: harvest each in-view project's proposals so every
+  // invoice row can chip WHICH proposal it bills (id → "PROP-####"). Bounded to
+  // the opps on screen (account-filtered), so no platform-wide N+1. (The old
+  // "bill against proposal" picker context lived here too; that create form was
+  // retired for the deal builder, so only the chip lookup remains — 2026-08.)
   const ctxOppIds = new Set<string>(invoicesRaw.map((i) => i.opportunity_id));
   const addOppIdForCtx = pickFirst(sp.add);
   if (addOppIdForCtx && UUID_RE.test(addOppIdForCtx)) ctxOppIds.add(addOppIdForCtx);
-  const proposalCtxByOpp = new Map<string, ProposalCtx>();
-  // Billed-so-far per proposal = issued (non-draft, non-void) invoices already
-  // linked to it. Drives each option's remaining-to-bill so picking a proposal
-  // auto-fills the amount with what's LEFT, not the full contract twice.
-  const billedByProposal = new Map<string, number>();
-  for (const inv of invoicesRaw) {
-    if (!inv.proposal_id || inv.status === "draft" || inv.status === "void") continue;
-    // Contract math is PRE-TAX: proposal total_cents = Σ qty×unit_price (no tax),
-    // so bill-against-proposal must compare against invoice SUBTOTAL, not the
-    // tax-inclusive total — else a taxed invoice looks like it over-billed the
-    // contract and remaining-to-bill under-reports.
-    billedByProposal.set(inv.proposal_id, (billedByProposal.get(inv.proposal_id) ?? 0) + inv.subtotal_cents);
-  }
+  const proposalNumById = new Map<string, string>();
   await Promise.all(
     [...ctxOppIds].map(async (oppId) => {
-      const [props, accepted] = await Promise.all([
-        listProposalsForOpp(oppId),
-        getAcceptedProposalForOpp(oppId),
-      ]);
-      if (props.length === 0) return;
-      const won = props
-        .filter((p) => p.status === "won")
-        .sort((a, b) => b.total_cents - a.total_cents)[0] ?? null;
-      // Real scope text from the accepted proposal's inclusions → a descriptive
-      // charge line ("Progress payment — Lobby repaint, Stairwell coating")
-      // instead of a bare PROP number. Bounded to ~120 chars.
-      const scope = accepted
-        ? accepted.inclusions.map((i) => i.description?.trim()).filter(Boolean).slice(0, 3).join(", ")
-        : "";
-      proposalCtxByOpp.set(oppId, {
-        options: props.map((p) => {
-          const remaining = Math.max(0, p.total_cents - (billedByProposal.get(p.id) ?? 0));
-          const isAccepted = won != null && p.id === won.id;
-          const desc = isAccepted && scope
-            ? `Progress payment — ${scope.length > 120 ? scope.slice(0, 117) + "…" : scope}`
-            : `Progress payment — ${proposalDisplayNumber(p)}`;
-          return {
-            id: p.id,
-            label: proposalOptionLabel(p),
-            remainingCents: remaining,
-            suggestedDescription: desc,
-          };
-        }),
-        acceptedId: won?.id ?? null,
-        acceptedTotalCents: won?.total_cents ?? null,
-      });
+      const props = await listProposalsForOpp(oppId);
+      for (const p of props) proposalNumById.set(p.id, proposalDisplayNumber(p));
     }),
   );
   const invoicesSearched = search
@@ -1145,7 +1086,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           wonOppsForAccount={wonOpps}
           pickableProducts={pickableProducts}
           taxJurisdictions={taxJurisdictions}
-          proposalCtxByOpp={proposalCtxByOpp}
+          proposalNumById={proposalNumById}
           milestoneInvoiceIds={milestoneInvoiceIds}
         />
       ) : sorted.length === 0 ? (
@@ -1625,7 +1566,7 @@ function FullDetailByOpp({
   wonOppsForAccount,
   pickableProducts,
   taxJurisdictions,
-  proposalCtxByOpp,
+  proposalNumById,
   milestoneInvoiceIds,
 }: {
   invoices: CommercialInvoice[];
@@ -1659,10 +1600,9 @@ function FullDetailByOpp({
     unit: string;
     default_unit_price_cents: number;
   }>;
-  /** Per-opp proposal context for the inline create form's "bill against
-   *  proposal" picker + the row-level PROP chip. Omitted opps have no
-   *  proposals. */
-  proposalCtxByOpp: Map<string, ProposalCtx>;
+  /** proposalId → "PROP-####" for the row-level chip showing which proposal an
+   *  invoice bills. Built once by the caller (bounded to in-view opps). */
+  proposalNumById: Map<string, string>;
   /** Invoice IDs billed in milestones — their inline record-payment is
    *  suppressed (pay per milestone on the invoice instead). */
   milestoneInvoiceIds: Set<string>;
@@ -1672,14 +1612,6 @@ function FullDetailByOpp({
     const arr = groups.get(inv.opportunity_id) ?? [];
     arr.push(inv);
     groups.set(inv.opportunity_id, arr);
-  }
-  // proposalId → short "PROP-000N" chip, harvested from the picker option
-  // labels ("PROP-0001 · $… · Won" → "PROP-0001"). Lets each invoice row show
-  // which proposal it bills, so multiple progress invoices under one proposal
-  // read as a set.
-  const proposalNumById = new Map<string, string>();
-  for (const ctx of proposalCtxByOpp.values()) {
-    for (const o of ctx.options) proposalNumById.set(o.id, o.label.split(" · ")[0]);
   }
   // Karan 2026-07-09 bug fix: when a user clicks "New invoice ▾" on a
   // filtered view for a customer with zero existing invoices, the

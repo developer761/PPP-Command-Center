@@ -8,6 +8,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import {
@@ -219,23 +220,20 @@ export async function listCommercialInvoices(
   filters: ListInvoicesFilters = {}
 ): Promise<CommercialInvoice[]> {
   const sb = commercialDb();
-  let q = sb
-    .from("commercial_invoices")
-    .select("*")
-    .is("deleted_at", null);
-  if (filters.status && filters.status !== "overdue") q = q.eq("status", filters.status);
-  if (filters.accountId) q = q.eq("account_id", filters.accountId);
-  if (filters.opportunityId) q = q.eq("opportunity_id", filters.opportunityId);
-  if (filters.search) {
-    const term = `%${filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
-    q = q.ilike("invoice_number", term);
-  }
-  const { data, error } = await q.order("created_at", { ascending: false });
-  if (error) {
-    console.warn("[commercial/invoices] list failed:", error.message);
-    return [];
-  }
-  const rows = (data ?? []) as CommercialInvoice[];
+  // Page past the 1000-row cap so a high-volume account/book doesn't silently
+  // truncate (esp. the unfiltered book view + AR KPIs). The thunk rebuilds the
+  // filtered query each page so .range() applies cleanly.
+  const rows = await paginateAll<CommercialInvoice>(() => {
+    let q = sb.from("commercial_invoices").select("*").is("deleted_at", null);
+    if (filters.status && filters.status !== "overdue") q = q.eq("status", filters.status);
+    if (filters.accountId) q = q.eq("account_id", filters.accountId);
+    if (filters.opportunityId) q = q.eq("opportunity_id", filters.opportunityId);
+    if (filters.search) {
+      const term = `%${filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+      q = q.ilike("invoice_number", term);
+    }
+    return q.order("created_at", { ascending: false });
+  });
   // Handle the computed "overdue" status filter client-side (DB status column
   // doesn't store overdue; deriveInvoiceStatus returns it based on due_at).
   if (filters.status === "overdue") {

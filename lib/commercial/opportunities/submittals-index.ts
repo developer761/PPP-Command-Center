@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import type { SubmittalStatus } from "./submittal-constants";
 
@@ -33,18 +34,6 @@ export type SubmittalIndexRow = {
 
 /** submitted / under_review = ball is in the GC's court. */
 const AWAITING_SUBMITTAL = new Set<string>(["submitted", "under_review"]);
-
-async function paginateAll<T>(make: () => { range: (a: number, b: number) => PromiseLike<{ data: unknown; error: unknown }> }): Promise<T[]> {
-  const PAGE = 1000;
-  const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data } = await make().range(from, from + PAGE - 1);
-    const rows = (data as T[] | null) ?? [];
-    out.push(...rows);
-    if (rows.length < PAGE) break;
-  }
-  return out;
-}
 
 export async function listAllSubmittals(
   opts: { search?: string; status?: string } = {}
