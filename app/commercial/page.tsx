@@ -37,6 +37,8 @@ import { deriveInvoiceStatus, BILLABLE_INVOICE_STATUSES } from "@/lib/commercial
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { KpiTile } from "@/components/commercial/kpi-tile";
+import TrendChart from "@/components/trend-chart";
+import { GaugeRing, DonutChart } from "@/components/commercial/charts";
 
 export const dynamic = "force-dynamic";
 
@@ -201,6 +203,28 @@ export default async function CommercialDashboardPage() {
     .slice()
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
     .slice(0, 5);
+
+  // ─── Monthly awarded value (last 6 months) for the trend chart ───
+  // Value in $K (TrendChart's currency-k format). Midpoint of the bid range on
+  // each Won deal, bucketed by decided_at month.
+  const awardedMonthly: { label: string; value: number }[] = [];
+  {
+    const base = new Date();
+    for (let m = 5; m >= 0; m--) {
+      const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
+      const start = d.getTime();
+      const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
+      const cents = wonOpps.reduce((acc, o) => {
+        const t = o.decided_at ? new Date(o.decided_at).getTime() : NaN;
+        if (!(t >= start && t < end)) return acc;
+        const lo = o.bid_value_low_cents ?? 0;
+        const hi = o.bid_value_high_cents ?? lo;
+        return acc + Math.round((lo + hi) / 2);
+      }, 0);
+      awardedMonthly.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
+    }
+  }
+  const awardedTrendHasData = awardedMonthly.some((p) => p.value > 0);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -449,6 +473,45 @@ export default async function CommercialDashboardPage() {
         />
       </section>
 
+      {/* ─── Trends: awarded value over time + win-rate gauge ─── */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+              Awarded value
+            </h3>
+            <span className="text-[11px] text-ppp-charcoal-500">last 6 months</span>
+          </div>
+          {awardedTrendHasData ? (
+            <TrendChart data={awardedMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[180px] sm:h-[220px]" />
+          ) : (
+            <div className="h-[180px] sm:h-[220px] flex flex-col items-center justify-center text-center gap-1">
+              <div className="text-[13px] font-semibold text-ppp-charcoal-500">No wins recorded in the last 6 months</div>
+              <div className="text-[11px] text-ppp-charcoal-400">Awarded value appears here as deals are won.</div>
+            </div>
+          )}
+        </div>
+        <Link href="/commercial/reports/win-loss" className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col items-center justify-center text-center transition-all hover:shadow-md hover:border-emerald-300 touch-manipulation">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-3 self-start flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-emerald-500" />
+            Win rate
+          </h3>
+          <GaugeRing pct={winRatePct ?? 0} tone="emerald" value={winRatePct !== null ? `${winRatePct}%` : "—"} label={winRatePct !== null ? "overall" : "no history"} size={124} />
+          <div className="mt-3 flex items-stretch gap-3">
+            <div className="px-3">
+              <div className="font-condensed text-xl font-black text-emerald-700 tabular-nums leading-none">{wonOpps.length}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mt-0.5">Won</div>
+            </div>
+            <div className="border-l border-ppp-charcoal-100" />
+            <div className="px-3">
+              <div className="font-condensed text-xl font-black text-ppp-charcoal-400 tabular-nums leading-none">{lostOpps.length}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mt-0.5">Lost</div>
+            </div>
+          </div>
+        </Link>
+      </section>
+
       {/* ─── UNDER CONTRACT (production) ─── */}
       {/* Only surface once there's at least one job under contract — an all-zero
           production strip is noise before the first Won job (matches the
@@ -466,7 +529,20 @@ export default async function CommercialDashboardPage() {
               All projects →
             </Link>
           </h2>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex items-center justify-center">
+              <DonutChart
+                size={128}
+                segments={[
+                  { label: "Collected", value: production.paidCents, tone: "emerald" },
+                  { label: "Billed · unpaid", value: production.outstandingCents, tone: "amber" },
+                  { label: "Left to bill", value: production.leftToBillCents, tone: "blue" },
+                ]}
+                centerValue={formatCentsCompact(production.contractValueCents)}
+                centerLabel="contract"
+              />
+            </div>
+            <div className="lg:col-span-2 grid grid-cols-2 gap-3">
             <KpiTile
               tone="blue"
               value={formatCentsCompact(production.contractValueCents)}
@@ -503,6 +579,7 @@ export default async function CommercialDashboardPage() {
               href="/commercial/projects"
               icon={<IconChangeOrder />}
             />
+            </div>
           </div>
         </section>
       )}

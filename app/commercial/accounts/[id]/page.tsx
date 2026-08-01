@@ -69,6 +69,7 @@ import { ProgressMeter } from "@/components/commercial/progress-meter";
 import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIdsWithChangeOrderLine, changeOrderLineCentsByInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commercial/invoices/lien-waiver";
+import { DonutChart, GaugeRing } from "@/components/commercial/charts";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
@@ -6858,14 +6859,29 @@ async function AccountKpisTab({
           <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : "past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
         </div>
         {hasInvoicing && (
-          <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-            <ProgressMeter
-              label="Collected"
-              value={rollup.paid_cents}
-              max={rollup.invoiced_cents}
-              tone={paidPct === 100 ? "emerald" : rollup.overdue_count > 0 ? "amber" : "blue"}
-              amounts={{ done: formatCentsFull(rollup.paid_cents), total: formatCentsFull(rollup.invoiced_cents) }}
-            />
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-center">
+              <DonutChart
+                size={120}
+                segments={[
+                  { label: "Paid", value: rollup.paid_cents, tone: "emerald" },
+                  { label: rollup.overdue_count > 0 ? "Balance · overdue" : "Balance", value: Math.max(0, rollup.open_balance_cents), tone: rollup.overdue_count > 0 ? "rose" : "blue" },
+                ]}
+                centerValue={formatCentsCompact(rollup.invoiced_cents)}
+                centerLabel="invoiced"
+              />
+            </div>
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center">
+              <div className="w-full">
+                <ProgressMeter
+                  label="Collected"
+                  value={rollup.paid_cents}
+                  max={rollup.invoiced_cents}
+                  tone={paidPct === 100 ? "emerald" : rollup.overdue_count > 0 ? "amber" : "blue"}
+                  amounts={{ done: formatCentsFull(rollup.paid_cents), total: formatCentsFull(rollup.invoiced_cents) }}
+                />
+              </div>
+            </div>
           </div>
         )}
       </section>
@@ -6897,16 +6913,32 @@ async function AccountKpisTab({
             <RollupTile label="Outstanding" value={formatCentsFull(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO${production.pendingCoCount === 1 ? "" : "s"} pending` : "billed − paid"} tone={production.outstandingCents > 0 ? "warn" : "neutral"} />
           </div>
           {production.contractValueCents > 0 && (
-            <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-              <ProgressMeter
-                label="Billed of contract"
-                value={production.billedContractCents}
-                max={production.contractValueCents}
-                tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"}
-                rightLabel={overBilledCents > 0 ? `${Math.round((production.billedContractCents / production.contractValueCents) * 100)}%` : `${billedOfContractPct}%`}
-                amounts={{ done: formatCentsFull(production.billedContractCents), total: formatCentsFull(production.contractValueCents) }}
-                note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null}
-              />
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-center">
+                <DonutChart
+                  size={120}
+                  segments={[
+                    { label: "Collected", value: production.paidCents, tone: "emerald" },
+                    { label: "Billed · unpaid", value: production.outstandingCents, tone: "amber" },
+                    { label: "Left to bill", value: production.leftToBillCents, tone: "blue" },
+                  ]}
+                  centerValue={formatCentsCompact(production.contractValueCents)}
+                  centerLabel="contract"
+                />
+              </div>
+              <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center">
+                <div className="w-full">
+                  <ProgressMeter
+                    label="Billed of contract"
+                    value={production.billedContractCents}
+                    max={production.contractValueCents}
+                    tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"}
+                    rightLabel={overBilledCents > 0 ? `${Math.round((production.billedContractCents / production.contractValueCents) * 100)}%` : `${billedOfContractPct}%`}
+                    amounts={{ done: formatCentsFull(production.billedContractCents), total: formatCentsFull(production.contractValueCents) }}
+                    note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -6940,13 +6972,20 @@ async function AccountKpisTab({
           />
         </div>
         {decidedCount > 0 && (
-          <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-            <ProgressMeter
-              label="Win rate"
-              pct={winRatePct ?? 0}
-              tone="emerald"
-              note={`${overview?.won_opps_count ?? 0} won · ${overview?.lost_opps_count ?? 0} lost`}
-            />
+          <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center gap-5">
+            <GaugeRing pct={winRatePct ?? 0} tone="emerald" value={`${winRatePct ?? 0}%`} label="win rate" size={104} />
+            <div className="min-w-0">
+              <div className="text-[13px] font-bold text-ppp-charcoal">Win rate</div>
+              <div className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+                <strong className="text-emerald-700 tabular-nums">{overview?.won_opps_count ?? 0}</strong> won
+                <span className="text-ppp-charcoal-300"> · </span>
+                <strong className="text-ppp-charcoal-500 tabular-nums">{overview?.lost_opps_count ?? 0}</strong> lost
+                <span className="text-ppp-charcoal-400"> of {decidedCount} decided</span>
+              </div>
+              {renderWinRateSub(overview!) && (
+                <div className="text-[11px] text-ppp-charcoal-400 mt-1">{renderWinRateSub(overview!)}</div>
+              )}
+            </div>
           </div>
         )}
       </section>
