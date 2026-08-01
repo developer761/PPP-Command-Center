@@ -69,7 +69,9 @@ import { ProgressMeter } from "@/components/commercial/progress-meter";
 import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIdsWithChangeOrderLine, changeOrderLineCentsByInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commercial/invoices/lien-waiver";
-import { DonutChart, GaugeRing, HBars, type ChartTone } from "@/components/commercial/charts";
+import { DonutChart, GaugeRing, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
+import { getProjectFinancials } from "@/lib/commercial/projects/financials";
+import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import TrendChart from "@/components/trend-chart";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
@@ -312,7 +314,7 @@ const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string 
     { key: "home", label: "Summary" },
     { key: "info", label: "Info" },
     { key: "team", label: "Team" },
-    { key: "kpis", label: "KPIs" },
+    { key: "kpis", label: "P&L" },
   ],
   people: [
     { key: "contacts", label: "Contacts" },
@@ -958,7 +960,7 @@ function PipelineDealBlock({ accountId, opp }: { accountId: string; opp: Commerc
 async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = "overview", projectTool: projectToolRaw = "change-orders", sp }: { accountId: string; projectId: string | null; dealTab?: string; projectTool?: string; sp?: SPShape }) {
   // Normalize the deal sub-tab: an unknown ?dt= value falls back to Overview
   // rather than rendering just the header with a blank panel below it.
-  const dealTab = ["overview", "proposals", "invoices", "project", "documents"].includes(dealTabRaw) ? dealTabRaw : "overview";
+  const dealTab = ["overview", "proposals", "invoices", "project", "documents", "pnl"].includes(dealTabRaw) ? dealTabRaw : "overview";
   // Normalize the Project sub-tab tool the same way.
   const projectTool = ["change-orders", "aia", "costs", "submittals", "closeout"].includes(projectToolRaw) ? projectToolRaw : "change-orders";
   // Drill-in: one deal's home, folded under the account. EVERY deal — a bid or
@@ -1150,6 +1152,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           { key: "invoices", label: "Invoices", href: `${base}?tab=projects&project=${p.opp.id}&dt=invoices` },
           { key: "project", label: "Project", href: `${base}?tab=projects&project=${p.opp.id}&dt=project` },
           { key: "documents", label: "Documents", href: `${base}?tab=projects&project=${p.opp.id}&dt=documents` },
+          { key: "pnl", label: "P&L", href: `${base}?tab=projects&project=${p.opp.id}&dt=pnl` },
         ].map((t) => (
           <Link
             key={t.key}
@@ -1462,6 +1465,8 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           <DealDocumentsSection oppId={p.opp.id} documents={documents} />
         </>
       )}
+
+      {dealTab === "pnl" && <DealPnLView oppId={p.opp.id} />}
 
       {/* Per-deal activity feed — on the Overview panel, self-hides when quiet. */}
       {dealTab === "overview" && <RecentActivityCard entries={dealActivity} accountId={accountId} scope="deal" />}
@@ -1962,6 +1967,90 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
         </div>
       </div>
     </section>
+  );
+}
+
+/** Deal P&L tab — ONE deal's complete financial picture, combined from every
+ *  tool (contract = bid + approved COs, billed from invoices/AIA, collected,
+ *  costs from purchases). Same getProjectFinancials the Costs tab + portfolio
+ *  Revenue page use, so a deal's P&L reconciles at every level. Gross = billed,
+ *  Net = billed − costs (Karan's definitions). */
+const PNL_COST_TONE: Record<string, ChartTone> = {
+  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
+};
+async function DealPnLView({ oppId }: { oppId: string }) {
+  const fin = await getProjectFinancials(oppId);
+  const grossRevenueCents = fin.billedPreTaxCents;
+  const costsCents = fin.costs.total;
+  const netProfitCents = grossRevenueCents - costsCents;
+  const marginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
+  const collectedPct = fin.invoicedCents > 0 ? Math.min(100, Math.round((fin.collectedCents / fin.invoicedCents) * 100)) : 0;
+  const costSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
+    label: PURCHASE_CATEGORY_META[c].label,
+    value: fin.costs[c],
+    tone: PNL_COST_TONE[c] ?? "neutral",
+    valueLabel: formatCentsCompact(fin.costs[c]),
+  }));
+  return (
+    <div className="space-y-4 mt-3">
+      <p className="text-[12px] text-ppp-charcoal-500">This deal&rsquo;s whole financial picture, combined from every tool. Gross = billed to date; Net = gross − job costs. Tax is pass-through, not revenue.</p>
+      {/* The P&L chain */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <StatCard label="Contract" value={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"} tone="navy" sub={fin.hasContract ? "bid + approved COs" : "no bid set"} />
+        <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" />
+        <StatCard label="Collected" value={formatCentsCompact(fin.collectedCents)} tone="emerald" sub={fin.invoicedCents > 0 ? `${collectedPct}% of invoiced` : "—"} />
+        <StatCard label="Job costs" value={formatCentsCompact(costsCents)} tone="amber" sub={costsCents === 0 ? "none logged" : "materials · labor · subs"} />
+        <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+        <StatCard label="Margin" value={marginPct === null ? "—" : `${marginPct}%`} tone={marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald"} sub={marginPct === null ? "no revenue yet" : "net ÷ gross"} />
+      </div>
+      {/* Cost mix + margin gauge */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            Where the money goes
+          </h3>
+          {costSegments.length > 0 ? (
+            <DonutChart size={150} segments={costSegments} centerValue={formatCentsCompact(costsCents)} centerLabel="job costs" />
+          ) : (
+            <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No job costs logged yet — add them on the Project → Costs &amp; P&amp;L tab.</p>
+          )}
+        </div>
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 flex items-center gap-5">
+          <GaugeRing pct={marginPct ?? 0} tone={marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald"} value={marginPct === null ? "—" : `${marginPct}%`} label="margin" size={120} />
+          <div className="min-w-0 text-[12.5px] space-y-1.5">
+            <div><span className="text-ppp-charcoal-500">Gross (billed): </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(grossRevenueCents)}</strong></div>
+            <div><span className="text-ppp-charcoal-500">Costs: </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(costsCents)}</strong></div>
+            <div className="pt-1.5 border-t border-ppp-charcoal-100"><span className="text-ppp-charcoal-500">Net profit: </span><strong className={`tabular-nums ${netProfitCents < 0 ? "text-rose-700" : "text-emerald-700"}`}>{netProfitCents < 0 ? "−" : ""}{formatCentsCompact(Math.abs(netProfitCents))}</strong></div>
+          </div>
+        </div>
+      </section>
+      {/* Billing progress */}
+      {fin.invoicedCents > 0 && (
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <ProgressMeter
+            label="Collected of invoiced"
+            value={fin.collectedCents}
+            max={fin.invoicedCents}
+            tone={collectedPct === 100 ? "emerald" : "blue"}
+            rightLabel={`${collectedPct}%`}
+            amounts={{ done: formatCentsFull(fin.collectedCents), total: formatCentsFull(fin.invoicedCents) }}
+          />
+          {fin.hasContract && (
+            <div className="mt-3">
+              <ProgressMeter
+                label="Billed of contract"
+                value={fin.billedPreTaxCents}
+                max={fin.contractCents}
+                tone="blue"
+                rightLabel={`${Math.min(100, Math.round((fin.billedPreTaxCents / fin.contractCents) * 100))}%`}
+                amounts={{ done: formatCentsFull(fin.billedPreTaxCents), total: formatCentsFull(fin.contractCents) }}
+              />
+            </div>
+          )}
+        </section>
+      )}
+    </div>
   );
 }
 
