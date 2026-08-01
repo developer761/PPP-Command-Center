@@ -30,7 +30,7 @@ import {
   createChangeOrder,
   updateChangeOrder,
   decideChangeOrder,
-  billChangeOrder,
+  setChangeOrderInvoiced,
   deleteChangeOrder,
 } from "@/lib/commercial/change-orders/db";
 import { ChangeOrdersPanel } from "@/components/commercial/change-orders-panel";
@@ -39,6 +39,7 @@ import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 export type ChangeOrdersSP = {
   co_ok?: string;
   error?: string;
+  heads_up?: string;
   edit_co?: string;
   co_title?: string;
   co_amt?: string;
@@ -183,14 +184,26 @@ async function billChangeOrderAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const co_id = String(formData.get("co_id") ?? "");
+  const on = String(formData.get("on") ?? "1") === "1";
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(co_id)) redirect("/commercial/accounts");
-  const result = await billChangeOrder(co_id, userId);
+  const result = await setChangeOrderInvoiced(co_id, on, userId);
   if (!result.ok) coRedirect(account_id, opp_id, { error: result.error }, back);
   revalidateChangeOrderSurfaces(account_id, opp_id);
   revalidatePath("/commercial/invoices");
-  const ctx = await getInvoiceContext(result.value.id);
-  if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
-  redirect(`/commercial/invoices/${result.value.id}?co_billed=1&from=${encodeURIComponent(coBase(account_id, opp_id) + (back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : ""))}`);
+  if (result.invoice) {
+    revalidatePath(`/commercial/invoices/${result.invoice.id}`);
+    const ctx = await getInvoiceContext(result.invoice.id);
+    if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
+  }
+  // Stay on the Change Orders tool (so you can tick more than one), showing the
+  // updated chip. A never-reject heads-up (over-credit, credit-on-untick) rides
+  // along as a small note.
+  coRedirect(
+    account_id,
+    opp_id,
+    { co_ok: on ? "billed" : "unbilled", ...(result.warning ? { heads_up: result.warning } : {}) },
+    back
+  );
 }
 
 async function deleteChangeOrderAction(formData: FormData) {
@@ -272,6 +285,7 @@ export async function ChangeOrdersTool({
       deleteAction={deleteChangeOrderAction}
       okFlag={sp.co_ok ?? null}
       errorMessage={sp.error ?? null}
+      headsUp={sp.heads_up ?? null}
       editCoId={sp.edit_co ?? null}
       preserveTitle={sp.co_title ?? null}
       preserveAmount={sp.co_amt ?? null}

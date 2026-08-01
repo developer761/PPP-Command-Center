@@ -220,12 +220,21 @@ export async function addMilestone(
   const name = draft.name.trim();
   if (!name) return { ok: false, error: "Name the milestone." };
   const amount = Math.round(draft.amount_cents);
-  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Enter an amount greater than $0." };
+  // A normal milestone must be > $0. A CHANGE-ORDER milestone may be negative
+  // (a deduct CO shows as a negative milestone) but never exactly $0.
+  if (!Number.isFinite(amount)) return { ok: false, error: "Enter an amount." };
+  if (draft.change_order_id) {
+    if (amount === 0) return { ok: false, error: "A change order can't bill $0." };
+  } else if (amount <= 0) {
+    return { ok: false, error: "Enter an amount greater than $0." };
+  }
 
-  // 1) The paired line item (also recomputes subtotal + status + audit).
+  // 1) The paired line item (also recomputes subtotal + status + audit). Passing
+  //    change_order_id lets the paired line carry the CO tag + go negative for a
+  //    deduct (matches the line-item DB CHECK).
   const li = await addLineItem(
     invoiceId,
-    { description: name.slice(0, 500), quantity: 1, unit_price_cents: amount },
+    { description: name.slice(0, 500), quantity: 1, unit_price_cents: amount, change_order_id: draft.change_order_id ?? null },
     actorUserId
   );
   if (!li.ok) return { ok: false, error: li.error ?? "Could not add the milestone charge." };
@@ -358,63 +367,6 @@ export async function deleteMilestone(id: string, actorUserId: string): Promise<
     value: null,
     warning: paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : undefined,
   };
-}
-
-// ────────────── Change-order → milestone ──────────────
-
-/**
- * Bill a change order as a milestone on the deal's invoice. Adds a milestone
- * (+ paired line item, so the invoice total grows by the CO amount) tagged with
- * the CO, then CLAIMS the CO's `invoiced_invoice_id` so it can't also be billed
- * as its own invoice (the double-bill guard the own-invoice path uses).
- *
- * Guards (edge-cases B + C): the CO must exist, be APPROVED, have a positive
- * amount, and not already be billed anywhere.
- */
-export async function addChangeOrderMilestone(
-  invoiceId: string,
-  changeOrderId: string,
-  actorUserId: string
-): Promise<Result<InvoiceMilestone>> {
-  const sb = commercialDb();
-  const { data: co } = await sb
-    .from("commercial_change_orders")
-    .select("id, title, amount_cents, status, invoiced_invoice_id, opportunity_id, deleted_at")
-    .eq("id", changeOrderId)
-    .maybeSingle();
-  if (!co || (co as { deleted_at: string | null }).deleted_at) return { ok: false, error: "Change order not found." };
-  const c = co as { id: string; title: string; amount_cents: number; status: string; invoiced_invoice_id: string | null; opportunity_id: string };
-  if (c.status !== "approved") return { ok: false, error: "Only an approved change order can be billed." };
-  if (c.amount_cents <= 0) return { ok: false, error: "Only an added-scope (positive) change order bills as a milestone. Credits reduce the contract instead." };
-  if (c.invoiced_invoice_id) return { ok: false, error: "This change order has already been billed." };
-  // Chain-of-trust: the CO and the host invoice must belong to the same deal.
-  const inv = await getCommercialInvoice(invoiceId);
-  if (!inv || inv.opportunity_id !== c.opportunity_id) return { ok: false, error: "That change order belongs to a different deal." };
-
-  const created = await addMilestone(
-    invoiceId,
-    { name: c.title.slice(0, 200), amount_cents: c.amount_cents, change_order_id: c.id },
-    actorUserId
-  );
-  if (!created.ok) return created;
-
-  // Claim the CO so the own-invoice path can't double-bill it. If the claim
-  // loses a race (already set), roll the milestone back.
-  const { error: claimErr } = await sb
-    .from("commercial_change_orders")
-    .update({ invoiced_invoice_id: invoiceId })
-    .eq("id", c.id)
-    .is("invoiced_invoice_id", null);
-  const { data: check } = await sb
-    .from("commercial_change_orders")
-    .select("invoiced_invoice_id")
-    .eq("id", c.id)
-    .maybeSingle();
-  if (claimErr || (check as { invoiced_invoice_id: string | null } | null)?.invoiced_invoice_id !== invoiceId) {
-    await deleteMilestone(created.value.id, actorUserId).catch(() => {});
-    return { ok: false, error: "This change order was billed elsewhere at the same time." };
-  }
-  return created;
 }
 
 // ────────────── Per-milestone lien waiver ──────────────

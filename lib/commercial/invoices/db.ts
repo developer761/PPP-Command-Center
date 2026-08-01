@@ -562,6 +562,11 @@ export async function addLineItem(
      *  The snapshotted unit_price_cents remains the source of truth for the
      *  invoice — this only lets margin/reporting group by SKU later. */
     product_id?: string | null;
+    /** Phase 1A: set when this line bills a change order. Tags the line so it's
+     *  identifiable for untick/re-bill, AND is the ONLY case a negative unit
+     *  price is allowed (a deduct CO shows as a negative line — the DB CHECK
+     *  matches: `unit_price >= 0 OR change_order_id IS NOT NULL`). */
+    change_order_id?: string | null;
   },
   actorUserId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
@@ -570,7 +575,9 @@ export async function addLineItem(
   const sb = commercialDb();
   if (!input.description.trim()) return { ok: false, error: "description_required" };
   if (input.quantity <= 0) return { ok: false, error: "quantity_must_be_positive" };
-  if (input.unit_price_cents < 0) return { ok: false, error: "unit_price_negative" };
+  // A negative price is only valid for a change-order line (deduct CO); a normal
+  // manual line still can't go negative (fat-finger guard, mirrors the DB CHECK).
+  if (input.unit_price_cents < 0 && !input.change_order_id) return { ok: false, error: "unit_price_negative" };
   // Get the current max position + 1000 so new rows land at the end.
   const { data: last } = await sb
     .from("commercial_invoice_line_items")
@@ -590,6 +597,7 @@ export async function addLineItem(
       unit: input.unit ?? null,
       unit_price_cents: input.unit_price_cents,
       product_id: input.product_id ?? null,
+      change_order_id: input.change_order_id ?? null,
     })
     .select("*")
     .maybeSingle();
@@ -658,10 +666,21 @@ export async function recomputeSubtotal(invoice_id: string): Promise<void> {
     .select("subtotal_cents")
     .eq("invoice_id", invoice_id);
   const subtotal = (items ?? []).reduce((acc, r) => acc + (r.subtotal_cents as number ?? 0), 0);
-  await sb
+  // Defense (audit R2): the invoice's `subtotal_cents >= 0` CHECK will REJECT a
+  // negative sum, leaving a stale subtotal + a broken Σ-invariant. A deduct CO
+  // is capped upstream (setChangeOrderInvoiced floors the credit at the invoice
+  // subtotal) so this must never be negative in practice — surface it loudly if
+  // it ever is, rather than corrupting silently.
+  if (subtotal < 0) {
+    console.error(`[commercial/invoices] recomputeSubtotal: invoice ${invoice_id} line items summed to ${subtotal} (<0) — a deduct exceeded the invoice; the tick guard should have prevented this.`);
+  }
+  const { error: subErr } = await sb
     .from("commercial_invoices")
     .update({ subtotal_cents: subtotal, updated_at: new Date().toISOString() })
     .eq("id", invoice_id);
+  if (subErr) {
+    console.error(`[commercial/invoices] recomputeSubtotal: subtotal write failed for ${invoice_id}: ${subErr.message}`);
+  }
   // Re-read the row so we see the GENERATED total_cents post-update,
   // then reconcile status if the change moved the paid/balance line.
   const { data: after } = await sb

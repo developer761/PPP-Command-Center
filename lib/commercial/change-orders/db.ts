@@ -6,12 +6,14 @@
  *  - A CO attaches to the post-sale opportunity (the "Project") + carries a
  *    denormalized account_id, mirroring commercial_invoices.
  *  - amount_cents is SIGNED. Approved COs feed the AIA net-change-orders sum
- *    (Phase H). A CO is billed as its OWN invoice (never folded into the base
- *    contract), linked via invoiced_invoice_id — which is also the double-bill
- *    guard.
- *  - The invoice schema forbids negative totals (unit_price_cents >= 0), so a
- *    deduct (negative) CO cannot be billed separately: it only adjusts the
- *    contract sum. billChangeOrder blocks it with a clear message.
+ *    (Phase H) AND the deal's "contract to date".
+ *  - Phase 1A billing (setChangeOrderInvoiced): ticking an approved CO folds it
+ *    onto the deal's current invoice as a LINE (flat invoice) or MILESTONE
+ *    (milestone invoice) — creating a draft if there's none — linked via
+ *    invoiced_invoice_id (the double-bill guard) + the CO tag on the line/
+ *    milestone. A DEDUCT CO shows as a negative line/milestone (migration 093
+ *    relaxes the >=0 CHECK for CO-tagged rows only), capped so the invoice never
+ *    totals below $0. Untick reverses it.
  */
 
 import { commercialDb } from "@/lib/commercial/db";
@@ -19,8 +21,18 @@ import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import {
   createCommercialInvoice,
   notifyCommercialInvoiceCreated,
+  listCommercialInvoices,
+  getCommercialInvoice,
+  addLineItem,
+  recomputeSubtotal,
   type CommercialInvoice,
 } from "@/lib/commercial/invoices/db";
+import { addMilestone, deleteMilestone, listMilestonesForInvoice } from "@/lib/commercial/invoices/milestones";
+import { TERMINAL_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
+import { getCommercialOpportunity } from "@/lib/commercial/opportunities/db";
+import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
+import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
+import { formatCentsFull } from "@/lib/commercial/invoices/format";
 import { formatChangeOrderNumber, type ChangeOrderStatus } from "./constants";
 
 export type CommercialChangeOrder = {
@@ -110,6 +122,42 @@ export async function liveInvoiceIds(ids: string[]): Promise<Set<string>> {
     if (!row.deleted_at && row.status !== "void") live.add(row.id);
   }
   return live;
+}
+
+/**
+ * Phase 1A — per-CO "where is it billed" chip data for the Change Orders tool.
+ * Given the COs, returns coId → { invoiceNumber, kind } for those billed on a
+ * LIVE invoice (line vs milestone). Two batched queries, no N+1.
+ */
+export async function billedChangeOrderChips(
+  cos: CommercialChangeOrder[]
+): Promise<Map<string, { invoiceId: string; invoiceNumber: string; kind: "line" | "milestone" }>> {
+  const out = new Map<string, { invoiceId: string; invoiceNumber: string; kind: "line" | "milestone" }>();
+  const billed = cos.filter((c) => !!c.invoiced_invoice_id);
+  if (billed.length === 0) return out;
+  const sb = commercialDb();
+  const invIds = [...new Set(billed.map((c) => c.invoiced_invoice_id as string))];
+  const [{ data: invs }, { data: msRows }] = await Promise.all([
+    sb.from("commercial_invoices").select("id, invoice_number, deleted_at, status").in("id", invIds),
+    sb.from("commercial_invoice_milestones").select("change_order_id").in("change_order_id", billed.map((c) => c.id)).is("deleted_at", null),
+  ]);
+  const liveInv = new Map<string, string>();
+  for (const r of (invs ?? []) as { id: string; invoice_number: string; deleted_at: string | null; status: string }[]) {
+    if (!r.deleted_at && r.status !== "void") liveInv.set(r.id, r.invoice_number);
+  }
+  const milestoneCoIds = new Set(
+    ((msRows ?? []) as { change_order_id: string | null }[]).map((r) => r.change_order_id).filter(Boolean) as string[]
+  );
+  for (const c of billed) {
+    const num = liveInv.get(c.invoiced_invoice_id as string);
+    if (!num) continue; // invoice not live → CO reads as un-billed (re-tickable)
+    out.set(c.id, {
+      invoiceId: c.invoiced_invoice_id as string,
+      invoiceNumber: num,
+      kind: milestoneCoIds.has(c.id) ? "milestone" : "line",
+    });
+  }
+  return out;
 }
 
 export type CreateChangeOrderInput = {
@@ -326,107 +374,206 @@ export async function decideChangeOrder(
  * sum but aren't billed — the invoice schema forbids negative totals); must
  * not already have a live invoice.
  */
-export async function billChangeOrder(
-  id: string,
-  userId: string
-): Promise<Result<CommercialInvoice>> {
-  const co = await getChangeOrder(id);
-  if (!co) return { ok: false, error: "not_found" };
-  if (!(await oppIsLive(co.opportunity_id))) return { ok: false, error: DELETED_DEAL_ERROR };
-  if (co.status !== "approved") {
-    return { ok: false, error: "Approve the change order before billing it." };
-  }
-  if (co.amount_cents <= 0) {
-    return {
-      ok: false,
-      error:
-        "Deduct change orders reduce the contract sum and aren't billed separately — the amount is reflected in the AIA net change orders.",
-    };
-  }
-  // `invoiced_invoice_id` is only ever SET, never cleared (the app soft-deletes
-  // / voids invoices, it never hard-deletes, so the FK's ON DELETE SET NULL
-  // doesn't fire). So a CO whose invoice was voided or removed still points at
-  // that dead id. If the linked invoice is still live, it's genuinely billed;
-  // if it's dead, this is a re-bill (e.g. the first invoice was voided to
-  // reissue), which we allow.
-  const priorInvoiceId = co.invoiced_invoice_id;
-  if (priorInvoiceId && (await invoiceIsLive(priorInvoiceId))) {
-    return { ok: false, error: "This change order is already billed." };
-  }
+// ═══════════════════════════════════════════════════════════════════════════
+//  Phase 1A — the change-order billing TICK
+//  Tick a CO on → fold it onto the deal's current invoice as a LINE (flat) or
+//  MILESTONE (milestone invoice); no invoice → auto-create a DRAFT. Tick off →
+//  peel it back off + un-bill. Deducts show as negatives, capped so the invoice
+//  never totals below $0. Replaces the old per-CO-invoice button + the (unwired)
+//  addChangeOrderMilestone.
+// ═══════════════════════════════════════════════════════════════════════════
 
-  const created = await createCommercialInvoice({
-    opportunity_id: co.opportunity_id,
-    account_id: co.account_id,
-    created_by_user_id: userId,
-    notes: `Bills ${formatChangeOrderNumber(co.co_number)} — ${co.title}`,
-    // Auto-issue for consistency with deal invoices (createDealInvoiceAction):
-    // billing an already-APPROVED change order is a real bill, so it counts as
-    // INVOICED the moment it's made — not a phantom draft that under-reports the
-    // account/deal Invoiced KPI. A claim-loser is soft-deleted below (excluded
-    // from every rollup via `.is("deleted_at", null)`, so no double-count).
-    issue: true,
-    // Suppress the create-time notification — we only want the team to hear
-    // about this invoice if it wins the claim below (a loser is soft-deleted).
-    skipCreatedNotification: true,
-    line_items: [
-      {
-        description: `${formatChangeOrderNumber(co.co_number)} — ${co.title}`,
-        quantity: 1,
-        unit_price_cents: co.amount_cents,
-      },
-    ],
-  });
-  if (!created.ok) return { ok: false, error: created.error };
+type TickResult =
+  | { ok: true; invoice: CommercialInvoice | null; createdDraft: boolean; warning?: string }
+  | { ok: false; error: string };
+
+/** The deal's CURRENT billable invoice for a tick: newest DRAFT if one exists,
+ *  else the newest non-terminal (not paid/void) invoice. Null → caller creates
+ *  a draft. (listCommercialInvoices is created_at DESC, deleted_at-null.) */
+async function resolveCurrentDealInvoice(oppId: string): Promise<CommercialInvoice | null> {
+  const invoices = await listCommercialInvoices({ opportunityId: oppId });
+  const draft = invoices.find((i) => i.status === "draft");
+  if (draft) return draft;
+  return invoices.find((i) => !TERMINAL_INVOICE_STATUSES.has(i.status)) ?? null;
+}
+
+/** Tax % for an auto-created draft, from the deal's property ZIP (mirrors the
+ *  deal-invoice create form). 0 when no jurisdiction matches. */
+async function dealTaxPct(oppId: string): Promise<number> {
+  const opp = await getCommercialOpportunity(oppId);
+  const hit = resolveTaxForZip(opp?.property_zip ?? null, await listTaxJurisdictions({ activeOnly: true }));
+  return hit ? thouToPct(hit.jurisdiction.combined_rate_thou) : 0;
+}
+
+/**
+ * Toggle whether an approved change order is billed on the deal's invoice.
+ * `on=true` adds it (as a line or milestone); `on=false` removes it.
+ */
+export async function setChangeOrderInvoiced(
+  coId: string,
+  on: boolean,
+  userId: string
+): Promise<TickResult> {
+  const co = await getChangeOrder(coId);
+  if (!co) return { ok: false, error: "Change order not found." };
+  if (!(await oppIsLive(co.opportunity_id))) return { ok: false, error: DELETED_DEAL_ERROR };
+  return on ? tickChangeOrderOn(co, userId) : tickChangeOrderOff(co, userId);
+}
+
+async function tickChangeOrderOn(co: CommercialChangeOrder, userId: string): Promise<TickResult> {
+  if (co.status !== "approved") return { ok: false, error: "Approve the change order before billing it." };
+  if (co.amount_cents === 0) return { ok: false, error: "A $0 change order has nothing to bill." };
+  // Already on a LIVE invoice → treat as a no-op success (it's a toggle, and a
+  // voided/deleted prior invoice re-opens it for re-billing — invoiceIsLive).
+  if (co.invoiced_invoice_id && (await invoiceIsLive(co.invoiced_invoice_id))) {
+    return { ok: true, invoice: await getCommercialInvoice(co.invoiced_invoice_id), createdDraft: false };
+  }
 
   const sb = commercialDb();
-  // Atomic claim (compare-and-swap): link the new invoice ONLY if the CO's
-  // link column is still exactly what we saw a moment ago — null for a fresh
-  // bill, or the dead invoice id for a re-bill. Either way a concurrent bill
-  // (double-click, second tab, second user, raced resubmit) can only have ONE
-  // request match, so we can't mint two live invoices for one CO. The `.eq`
-  // on status also closes a decline-during-bill race. The loser (and the
-  // link-write-failure path) soft-deletes its just-created draft so no orphan
-  // is left behind and a literal retry can't double-bill.
-  const claim = sb
-    .from("commercial_change_orders")
-    .update({ invoiced_invoice_id: created.invoice.id, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("status", "approved");
-  const { data: claimed, error } = await (
-    priorInvoiceId
-      ? claim.eq("invoiced_invoice_id", priorInvoiceId)
-      : claim.is("invoiced_invoice_id", null)
-  )
-    .select("id")
-    .maybeSingle();
+  const label = `${formatChangeOrderNumber(co.co_number)} — ${co.title}`.slice(0, 200);
 
-  if (error || !claimed) {
-    // Lost the race (0 rows) or the link write errored — void the orphan draft
-    // we just created so it can't be sent, then tell the user it's already
-    // billed. Best-effort: even if this soft-delete fails, the invoice is an
-    // unsent draft and the CO already carries the winning invoice's id.
-    await sb
-      .from("commercial_invoices")
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", created.invoice.id);
-    return {
-      ok: false,
-      error: error
-        ? "Couldn't link the invoice to the change order — please try again."
-        : "This change order was just billed on another invoice — refresh to see it.",
-    };
+  // Target invoice (existing current, else a fresh draft with ZIP tax).
+  let invoiceId: string;
+  let createdDraft = false;
+  const current = await resolveCurrentDealInvoice(co.opportunity_id);
+  if (current) {
+    invoiceId = current.id;
+  } else {
+    const res = await createCommercialInvoice({
+      opportunity_id: co.opportunity_id,
+      account_id: co.account_id,
+      created_by_user_id: userId,
+      notes: `Change order billing`,
+      tax_pct: await dealTaxPct(co.opportunity_id),
+      // DRAFT (Karan's choice): the CO counts as invoiced once you send it.
+      skipCreatedNotification: true,
+    });
+    if (!res.ok) return { ok: false, error: res.error };
+    invoiceId = res.invoice.id;
+    createdDraft = true;
   }
 
-  await logUpdate(
-    "commercial_change_orders",
-    id,
-    { invoiced_invoice_id: co.invoiced_invoice_id },
-    { invoiced_invoice_id: created.invoice.id },
-    userId
-  );
-  // Claim won — NOW tell the team about the invoice (suppressed at create time).
-  void notifyCommercialInvoiceCreated(created.invoice, userId);
-  return { ok: true, value: created.invoice };
+  // Deduct floor: an invoice can never total below $0. Cap a credit at the
+  // current subtotal + surface a heads-up (never-reject).
+  let applied = co.amount_cents;
+  let warning: string | undefined;
+  if (applied < 0) {
+    const inv = await getCommercialInvoice(invoiceId);
+    const subtotal = inv?.subtotal_cents ?? 0;
+    if (subtotal + applied < 0) {
+      warning = `That credit (${formatCentsFull(-applied)}) is larger than this invoice (${formatCentsFull(subtotal)}) — applied ${formatCentsFull(subtotal)}; the remaining ${formatCentsFull(-applied - subtotal)} needs a bigger invoice.`;
+      applied = -subtotal;
+    }
+    if (applied === 0) {
+      // Nothing to apply. If we minted an empty draft for this, retire it.
+      if (createdDraft) await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
+      return { ok: true, invoice: null, createdDraft: false, warning };
+    }
+  }
+
+  // Add as a milestone (milestone invoice) or a line (flat invoice).
+  const hasMilestones = (await listMilestonesForInvoice(invoiceId)).length > 0;
+  const addRes = hasMilestones
+    ? await addMilestone(invoiceId, { name: label, amount_cents: applied, change_order_id: co.id }, userId)
+    : await addLineItem(invoiceId, { description: label, quantity: 1, unit_price_cents: applied, change_order_id: co.id }, userId);
+  if (!("ok" in addRes) || !addRes.ok) {
+    if (createdDraft) await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
+    return { ok: false, error: ("error" in addRes && addRes.error) || "Couldn't add the change order to the invoice." };
+  }
+
+  // Atomic compare-and-swap claim: null (fresh) or the dead prior invoice id
+  // (re-bill). A concurrent tick can only match once, so the CO can't attach
+  // twice (the partial UNIQUE index on the line/milestone is the DB backstop).
+  const prior = co.invoiced_invoice_id;
+  let claim = sb
+    .from("commercial_change_orders")
+    .update({ invoiced_invoice_id: invoiceId, updated_at: new Date().toISOString() })
+    .eq("id", co.id)
+    .eq("status", "approved");
+  claim = prior ? claim.eq("invoiced_invoice_id", prior) : claim.is("invoiced_invoice_id", null);
+  const { data: claimed, error: claimErr } = await claim.select("id").maybeSingle();
+  if (claimErr || !claimed) {
+    // Lost the race — peel the line/milestone back off + drop an auto-draft.
+    await removeTickedChangeOrder(invoiceId, co.id, userId);
+    if (createdDraft) await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
+    return { ok: false, error: "This change order was just billed elsewhere — refresh to see it." };
+  }
+
+  await logUpdate("commercial_change_orders", co.id, { invoiced_invoice_id: prior }, { invoiced_invoice_id: invoiceId }, userId);
+  // Only ping the team about a real (sent) invoice — a fresh draft is silent.
+  const invRow = await getCommercialInvoice(invoiceId);
+  if (invRow && invRow.status !== "draft") {
+    await notifyCommercialInvoiceCreated(invRow, userId).catch(() => {});
+  }
+  return { ok: true, invoice: invRow, createdDraft, warning };
+}
+
+async function tickChangeOrderOff(co: CommercialChangeOrder, userId: string): Promise<TickResult> {
+  if (!co.invoiced_invoice_id) return { ok: true, invoice: null, createdDraft: false }; // already off
+  const sb = commercialDb();
+  // Milestone variant → deleteMilestone already re-tags any payments to
+  // invoice-level, clears the CO's invoiced_invoice_id, and drops the paired
+  // line (never-reject: may leave a credit + warns).
+  const { data: ms } = await sb
+    .from("commercial_invoice_milestones")
+    .select("id")
+    .eq("change_order_id", co.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (ms) {
+    const res = await deleteMilestone((ms as { id: string }).id, userId);
+    if (!res.ok) return { ok: false, error: res.error };
+    return { ok: true, invoice: null, createdDraft: false, warning: res.warning };
+  }
+  // Line variant → drop the tagged line + clear the claim. Flat-invoice CO lines
+  // carry no per-line payment, but removing the charge can leave the invoice
+  // overpaid (invoice-level payment now exceeds the lower total) → credit + warn.
+  const { data: line } = await sb
+    .from("commercial_invoice_line_items")
+    .select("id, invoice_id")
+    .eq("change_order_id", co.id)
+    .maybeSingle();
+  let warning: string | undefined;
+  if (line) {
+    const invoiceId = (line as { invoice_id: string }).invoice_id;
+    await sb.from("commercial_invoice_line_items").delete().eq("id", (line as { id: string }).id);
+    await recomputeSubtotal(invoiceId);
+    const inv = await getCommercialInvoice(invoiceId);
+    if (inv && (inv.balance_cents as number) < 0) warning = "Removing that change order left the invoice showing a credit.";
+  }
+  await sb
+    .from("commercial_change_orders")
+    .update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() })
+    .eq("id", co.id);
+  await logUpdate("commercial_change_orders", co.id, { invoiced_invoice_id: co.invoiced_invoice_id }, { invoiced_invoice_id: null }, userId);
+  return { ok: true, invoice: null, createdDraft: false, warning };
+}
+
+/** Rollback helper: peel a just-added CO line or milestone off an invoice
+ *  (used when the CAS claim loses). Best-effort. */
+async function removeTickedChangeOrder(invoiceId: string, coId: string, userId: string): Promise<void> {
+  const sb = commercialDb();
+  const { data: ms } = await sb
+    .from("commercial_invoice_milestones")
+    .select("id")
+    .eq("change_order_id", coId)
+    .eq("invoice_id", invoiceId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (ms) {
+    await deleteMilestone((ms as { id: string }).id, userId).catch(() => {});
+    return;
+  }
+  const { data: line } = await sb
+    .from("commercial_invoice_line_items")
+    .select("id")
+    .eq("change_order_id", coId)
+    .eq("invoice_id", invoiceId)
+    .maybeSingle();
+  if (line) {
+    await sb.from("commercial_invoice_line_items").delete().eq("id", (line as { id: string }).id);
+    await recomputeSubtotal(invoiceId).catch(() => {});
+  }
 }
 
 /** Soft-delete a CO. A CO billed on a live invoice is blocked. */

@@ -13,6 +13,7 @@ import Link from "next/link";
 import {
   listChangeOrders,
   liveInvoiceIds,
+  billedChangeOrderChips,
 } from "@/lib/commercial/change-orders/db";
 import {
   CHANGE_ORDER_STATUS_META,
@@ -53,6 +54,8 @@ const CO_OK_MESSAGES: Record<string, string> = {
   approved: "Change order approved — it now counts toward the contract sum.",
   declined: "Change order declined — it won't affect the contract sum.",
   deleted: "Change order deleted.",
+  billed: "Change order added to the invoice.",
+  unbilled: "Change order removed from the invoice.",
 };
 
 type ProposalOption = { id: string; label: string; totalCents?: number; hasInvoice?: boolean };
@@ -70,6 +73,7 @@ export async function ChangeOrdersPanel({
   deleteAction,
   okFlag,
   errorMessage,
+  headsUp,
   editCoId,
   preserveTitle,
   preserveAmount,
@@ -97,15 +101,17 @@ export async function ChangeOrdersPanel({
   deleteAction: CoAction;
   okFlag?: string | null;
   errorMessage?: string | null;
+  headsUp?: string | null;
   editCoId?: string | null;
   preserveTitle?: string | null;
   preserveAmount?: string | null;
   preserveDesc?: string | null;
 }) {
   const items = await listChangeOrders(oppId);
-  const liveInvoices = await liveInvoiceIds(
-    items.map((c) => c.invoiced_invoice_id).filter((x): x is string => !!x)
-  );
+  const [liveInvoices, coChips] = await Promise.all([
+    liveInvoiceIds(items.map((c) => c.invoiced_invoice_id).filter((x): x is string => !!x)),
+    billedChangeOrderChips(items),
+  ]);
   const proposalById = new Map(proposals.map((p) => [p.id, p]));
   // Net APPROVED change-order $ per proposal — a CO tied to a proposal moves
   // THAT proposal's effective contract (add for +, deduct for −).
@@ -147,6 +153,12 @@ export async function ChangeOrdersPanel({
         <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-rose-50 border border-rose-200 text-rose-700">
           <span>{errorMessage}</span>
           <Link href={basePath} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
+        </div>
+      ) : null}
+      {headsUp ? (
+        <div className="rounded-lg px-4 py-2.5 text-[12.5px] flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-900">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+          <span>{headsUp}</span>
         </div>
       ) : null}
 
@@ -333,15 +345,30 @@ export async function ChangeOrdersPanel({
                       )}
                       <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                         {billedLive ? (
-                          <Link
-                            href={`/commercial/invoices/${co.invoiced_invoice_id}`}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-100 min-h-[44px]"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
-                            </svg>
-                            View invoice
-                          </Link>
+                          <>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-semibold text-emerald-700">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+                              On {coChips.get(co.id)?.invoiceNumber ?? "invoice"}
+                              {coChips.get(co.id) ? ` · ${coChips.get(co.id)!.kind}` : ""}
+                            </span>
+                            <Link
+                              href={`/commercial/invoices/${co.invoiced_invoice_id}`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px]"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
+                              </svg>
+                              View invoice
+                            </Link>
+                            <form action={billAction}>
+                              <input type="hidden" name="opp_id" value={oppId} />
+                              <input type="hidden" name="account_id" value={accountId} />
+                              <input type="hidden" name="back" value={back} />
+                              <input type="hidden" name="co_id" value={co.id} />
+                              <input type="hidden" name="on" value="0" />
+                              <PendingSubmitButton pendingLabel="Removing…" className="inline-flex items-center px-3 py-1.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[44px]">Remove from invoice</PendingSubmitButton>
+                            </form>
+                          </>
                         ) : (
                           <>
                             {co.status === "pending" && (
@@ -365,24 +392,20 @@ export async function ChangeOrdersPanel({
                                 <Link href={joinUrl(`edit_co=${co.id}`)} className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Edit</Link>
                               </>
                             )}
-                            {co.status === "approved" && co.amount_cents > 0 && (
+                            {co.status === "approved" && (
                               <form action={billAction}>
                                 <input type="hidden" name="opp_id" value={oppId} />
                                 <input type="hidden" name="account_id" value={accountId} />
-                      <input type="hidden" name="back" value={back} />
+                                <input type="hidden" name="back" value={back} />
                                 <input type="hidden" name="co_id" value={co.id} />
-                                <PendingSubmitButton pendingLabel="Creating invoice…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+                                <input type="hidden" name="on" value="1" />
+                                <PendingSubmitButton pendingLabel="Adding…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                    <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                                    <path d="M12 5v14 M5 12h14" />
                                   </svg>
-                                  Bill this change order
+                                  {kind === "deduct" ? "Add credit to invoice" : "Add to invoice"}
                                 </PendingSubmitButton>
                               </form>
-                            )}
-                            {co.status === "approved" && co.amount_cents < 0 && (
-                              <span className="text-[11px] text-ppp-charcoal-500 italic">
-                                Reflected in the contract sum — deduct change orders aren&rsquo;t billed separately.
-                              </span>
                             )}
                             {co.status === "declined" && (
                               <form action={decideAction}>
