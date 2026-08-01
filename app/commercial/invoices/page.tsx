@@ -605,7 +605,26 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <span>{errorFlash}</span>
         </div>
       )}
-      {showFocusBanner && (
+      {/* Normal focused view (a live deal/account) — compact back arrow + name,
+          not a bulky banner (Karan 2026-08: "just make it a back arrow"). */}
+      {showFocusBanner && !(scopedIsOrphan || scopedAccountIsDeleted) && (
+        <div className="flex items-center gap-2 min-w-0">
+          <Link
+            href="/commercial/invoices"
+            aria-label="Back to all invoices"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 touch-manipulation shrink-0 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
+          </Link>
+          <h1 className="text-[15px] font-bold text-ppp-charcoal truncate">{focusTitle}</h1>
+          <span className="text-[10.5px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 rounded px-1.5 py-0.5 shrink-0">
+            {scopedInvoiceCount} invoice{scopedInvoiceCount === 1 ? "" : "s"}
+          </span>
+        </div>
+      )}
+      {/* Deleted-deal / deleted-account cleanup — keep the fuller banner (needs
+          the warning + "Delete all N" affordance). */}
+      {showFocusBanner && (scopedIsOrphan || scopedAccountIsDeleted) && (
         <div className="bg-surface border-l-4 border-amber-400 border-y border-r border-y-ppp-charcoal-100 border-r-ppp-charcoal-100 rounded-xl px-3 sm:px-4 py-3 flex items-center gap-3 flex-wrap">
           {/* Back arrow — LEFT side per Karan's ask */}
           <Link
@@ -1306,8 +1325,11 @@ function GroupedByOpp({
           //
           // Live opps still get the whole-row Link — that path hasn't
           // changed.
-          const rowHref = opp && account
-            ? `/commercial/invoices?account_id=${account.id}#opp-${opp.id}`
+          // Click a deal → its own deal invoices page (header + money summary +
+          // its invoices + New-invoice builder), IN the Invoices section — same
+          // feel as the production tools (Karan 2026-08).
+          const rowHref = opp
+            ? `/commercial/invoices/new?opp=${opp.id}`
             : account
             ? `/commercial/invoices?account_id=${account.id}`
             : "/commercial/invoices";
