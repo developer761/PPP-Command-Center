@@ -177,10 +177,10 @@ export async function listProjects(opts: {
   // pre-tax CO amounts), so left-to-bill / over-billed / %-of-contract MUST
   // compare pre-tax against pre-tax — else an 8.875%-taxed full bill looks
   // "over-billed" (2026-08 money audit #1).
-  const invByOpp = new Map<string, { invoiced: number; billedPreTax: number; paid: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
+  const invByOpp = new Map<string, { invoiced: number; billedPreTax: number; paid: number; openBalance: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
   for (const inv of invData) {
     if (inv.status === "void") continue;
-    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
+    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
     if (inv.status === "draft") {
       e.draftCount += 1;
       e.draftedCents += Number(inv.total_cents);
@@ -188,6 +188,11 @@ export async function listProjects(opts: {
       e.invoiced += Number(inv.total_cents);
       e.billedPreTax += Number(inv.subtotal_cents);
       e.paid += Number(inv.paid_cents);
+      // TRUE open balance = Σ per-invoice max(0, total − paid). Clamping PER
+      // invoice (not netting Σinvoiced − Σpaid) so a credit/overpaid/deduct
+      // invoice can't mask another's real open balance — one "Outstanding"
+      // definition everywhere (matches the account rollup's splitOpenBalance).
+      e.openBalance += Math.max(0, Number(inv.total_cents) - Number(inv.paid_cents));
       e.invoiceCount += 1;
     }
     invByOpp.set(inv.opportunity_id, e);
@@ -321,7 +326,7 @@ export async function listProjects(opts: {
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
     const retainageHeld = latest ? retainageByApp.get(latest.id) ?? 0 : 0;
     const pct = latest && contractToDate > 0 ? Math.round((completed / contractToDate) * 10000) : null;
-    const inv = invByOpp.get(o.id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
+    const inv = invByOpp.get(o.id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
     // Left to bill = contract − PRE-TAX billed (clamped). Over-billed when the
     // pre-tax billed exceeds the (pre-tax) contract — unapproved CO, deduct CO,
     // or a mistake — surfaced, never a negative, and never a phantom over-bill
@@ -356,9 +361,10 @@ export async function listProjects(opts: {
       draftInvoiceCount: inv.draftCount,
       draftedCents: inv.draftedCents,
       leftToBillCents: leftToBill,
-      // Clamp: an overpaid project (paid > invoiced) is a credit, not negative
-      // AR — don't let it drag the account's Outstanding below zero (audit 4C).
-      outstandingCents: Math.max(0, inv.invoiced - inv.paid),
+      // True open receivable = Σ per-invoice max(0, balance) (invByOpp.openBalance)
+      // — one clamped, issued-only "Outstanding" definition everywhere, so a
+      // credit/deduct/overpaid invoice can't understate the deal's real balance.
+      outstandingCents: inv.openBalance,
       overBilled,
       closeoutStatus: closeoutByOpp.get(o.id) ?? null,
       isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",
@@ -423,6 +429,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
   let paidCents = 0;
   let leftToBillCents = 0;
   let costsCents = 0;
+  let outstandingCents = 0;
   for (const r of rows) {
     contractValueCents += r.contractToDateCents;
     completedToDateCents += r.completedToDateCents;
@@ -433,6 +440,9 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     billedContractCents += r.billedContractCents;
     paidCents += r.paidCents;
     costsCents += r.costsCents;
+    // Sum each project's already-per-invoice-clamped outstanding (not
+    // Σinvoiced − Σpaid) so a credit on one deal can't net down another's AR.
+    outstandingCents += r.outstandingCents;
     // Sum per-project left-to-bill (already clamped ≥0 per project), so one
     // over-billed job can't mask another's remaining headroom.
     leftToBillCents += r.leftToBillCents;
@@ -452,7 +462,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     billedContractCents,
     paidCents,
     leftToBillCents,
-    outstandingCents: Math.max(0, invoicedCents - paidCents),
+    outstandingCents,
     costsCents,
     grossMarginCents: contractValueCents - costsCents,
     // remaining now means "left to bill" (contract − invoiced), the number

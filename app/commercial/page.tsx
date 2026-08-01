@@ -101,7 +101,9 @@ export default async function CommercialDashboardPage() {
   // computed "overdue" state; BILLABLE = sent/viewed/partial/overdue.
   const arOutstandingCents = invoices
     .filter((i) => BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)))
-    .reduce((acc, i) => acc + i.balance_cents, 0);
+    // Clamp per invoice so a credit/overpaid invoice can't net down the AR —
+    // one "Outstanding" definition platform-wide (matches the account rollup).
+    .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
   const arOverdueCount = invoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
 
   // ─── Opp buckets ───

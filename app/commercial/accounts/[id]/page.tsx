@@ -1224,7 +1224,9 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           ) : (
             <div>
               <div className="text-[11.5px] font-semibold text-ppp-charcoal">Application No. {p.latestAppNumber}</div>
-              <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 tabular-nums">{formatCentsCompact(p.invoicedCents)} of {formatCentsCompact(p.contractToDateCents)} billed</div>
+              {/* Pre-tax billed vs pre-tax contract (matches the % bar below) —
+                  not with-tax "Invoiced," which would read >100% on a taxed bill. */}
+              <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 tabular-nums">{formatCentsCompact(p.billedContractCents)} of {formatCentsCompact(p.contractToDateCents)} billed</div>
               <ProgressMeter className="mt-1.5" pct={aiaBilledPct} tone="blue" size="sm" />
             </div>
           )}
@@ -6426,10 +6428,12 @@ async function AccountInvoicesTab({
         <div className="space-y-4">
           {dealOrder.map(([oppId, dealInvoices]) => {
             const opp = oppById.get(oppId)!;
-            const nonVoid = dealInvoices.filter((i) => i.status !== "void");
-            const dealInvoiced = nonVoid.filter((i) => i.status !== "draft").reduce((s, i) => s + i.total_cents, 0);
-            const dealPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
-            const dealBalance = dealInvoiced - dealPaid;
+            const issued = dealInvoices.filter((i) => i.status !== "void" && i.status !== "draft");
+            const dealInvoiced = issued.reduce((s, i) => s + i.total_cents, 0);
+            const dealPaid = issued.reduce((s, i) => s + i.paid_cents, 0);
+            // Per-invoice clamped, issued-only — one "Outstanding" definition
+            // everywhere (a credit/deduct invoice can't understate the balance).
+            const dealBalance = issued.reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
             const dealOverdue = dealInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
             const dealPct = dealInvoiced > 0 ? Math.min(100, Math.round((dealPaid / dealInvoiced) * 100)) : 0;
             const barTone = dealPaid >= dealInvoiced && dealInvoiced > 0

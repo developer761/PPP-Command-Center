@@ -462,14 +462,13 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const nextMonthNum = etMonthNum === 12 ? 1 : etMonthNum + 1;
   const nextYearStr = etMonthNum === 12 ? String(parseInt(etYear, 10) + 1) : etYear;
   const monthEndEtIso = `${nextYearStr}-${String(nextMonthNum).padStart(2, "0")}-01T00:00:00${offsetToken.replace("GMT", "")}`;
-  // Karan 2026-07-07: include drafts in Outstanding so it stays
-  // consistent with the opp panel + Account 360 tiles ("all the money
-  // that could be owed once these invoices are sent"). Void is still
-  // excluded (a voided invoice will never be paid).
+  // Karan 2026-08: ONE "Outstanding" definition platform-wide = Σ per-invoice
+  // max(0, balance) over ISSUED invoices (exclude draft + void). A draft isn't
+  // billed to the GC, so it isn't owed yet (drafts show on their own "Drafts"
+  // tile). Per-invoice clamp so a credit/overpaid invoice can't net down the
+  // total. Matches the account rollup (splitOpenBalance) + the dashboard AR.
   const outstandingCents = kpiSource
-    .filter((i) => i.status !== "void")
-    // Clamp per-invoice balance at 0 so an overpaid invoice (balance < 0 after
-    // a line item was removed post-payment) can't silently reduce Outstanding.
+    .filter((i) => i.status !== "void" && i.status !== "draft")
     .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
   const overdueCount = kpiSource.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
   // AR aging buckets (Karan 2026-07-07 Alex-love feature). GCs prioritize
@@ -1269,9 +1268,12 @@ function GroupedByOpp({
           const opp = oppById.get(oppId);
           const account = opp ? accountById.get(opp.account_id) : null;
           const nonVoid = groupInvoices.filter((i) => i.status !== "void");
-          const totalInvoiced = nonVoid.filter((i) => i.status !== "draft").reduce((s, i) => s + i.total_cents, 0);
-          const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
-          const totalBalance = totalInvoiced - totalPaid;
+          const issued = nonVoid.filter((i) => i.status !== "draft");
+          const totalInvoiced = issued.reduce((s, i) => s + i.total_cents, 0);
+          const totalPaid = issued.reduce((s, i) => s + i.paid_cents, 0);
+          // Per-invoice clamped, issued-only — one "Outstanding" definition
+          // everywhere (a credit/deduct invoice can't understate the balance).
+          const totalBalance = issued.reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
           const overduePresent = groupInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
           const draftCount = groupInvoices.filter((i) => i.status === "draft").length;
           const groupPct =
