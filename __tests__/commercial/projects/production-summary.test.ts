@@ -104,10 +104,33 @@ describe("summarizeProduction", () => {
       billedContractCents: 0,
       paidCents: 0,
       leftToBillCents: 0,
+      overBilledCents: 0,
+      overBilledProjects: 0,
       outstandingCents: 0,
       costsCents: 0,
       grossMarginCents: 0,
     });
+  });
+
+  it("sums over-billing PER PROJECT, never netting an under-billed deal against an over-billed one", () => {
+    // Deal A: billed 12M on a 10M contract → 2M over. Deal B: billed 3M on a 5M
+    // contract → 2M under. A naive Σbilled − Σcontract = 0 would HIDE A's overage
+    // (2026-08 money audit #3). Per-project summing must report 2M over on 1 job.
+    const s = summarizeProduction([
+      row({ contractToDateCents: 10_000_000, billedContractCents: 12_000_000, overBilled: true, leftToBillCents: 0 }),
+      row({ contractToDateCents: 5_000_000, billedContractCents: 3_000_000, overBilled: false, leftToBillCents: 2_000_000 }),
+    ]);
+    expect(s.overBilledCents).toBe(2_000_000);
+    expect(s.overBilledProjects).toBe(1);
+    expect(s.leftToBillCents).toBe(2_000_000); // only the under-billed deal's headroom
+  });
+
+  it("reports zero over-billing when no project is individually over-billed", () => {
+    const s = summarizeProduction([
+      row({ contractToDateCents: 10_000_000, billedContractCents: 4_000_000, leftToBillCents: 6_000_000 }),
+    ]);
+    expect(s.overBilledCents).toBe(0);
+    expect(s.overBilledProjects).toBe(0);
   });
 
   it("sums costs and computes portfolio gross margin (contract − costs)", () => {

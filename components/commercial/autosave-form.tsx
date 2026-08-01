@@ -41,6 +41,10 @@ export function AutosaveForm({
     timerRef.current = setTimeout(fireSave, debounceMs);
   }
   function fireSave() {
+    // The debounce timer has now fired — clear the ref so `beforeunload`
+    // doesn't keep seeing a stale truthy id and prompt "Leave site?" forever
+    // (the timer is one-shot; setTimeout never nulls this for us).
+    timerRef.current = null;
     if (disabled || !formRef.current) return;
     if (inFlightRef.current) {
       pendingRef.current = true;
@@ -81,7 +85,18 @@ export function AutosaveForm({
       setStatus("saved");
       setLastSavedAt(new Date());
       window.setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 3000);
-    } catch {
+    } catch (err) {
+      // A server action that calls redirect() throws a NEXT_REDIRECT control
+      // signal — re-throw it so navigation still happens instead of being
+      // swallowed into a phantom "Save failed". (Today's wired action returns
+      // rather than redirects, but future autosave actions may not.)
+      if (
+        err &&
+        typeof (err as { digest?: unknown }).digest === "string" &&
+        (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+      ) {
+        throw err;
+      }
       setStatus("error");
     } finally {
       inFlightRef.current = false;

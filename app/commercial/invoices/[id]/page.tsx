@@ -1539,7 +1539,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                         Remove tuck behind toggles so the card stays clean. */}
                     {!isVoid && !mFullyPaid && (
                       <details className="group/mp mb-2.5">
-                        <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 min-h-[32px] select-none">
+                        <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 min-h-[44px] select-none">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
                           Record payment
                         </summary>
@@ -1593,7 +1593,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                               <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                               <input type="hidden" name="payment_id" value={pp.id} />
-                              <button type="submit" className="text-ppp-charcoal-300 hover:text-rose-600 min-h-[28px] px-1" title="Remove this payment" aria-label="Remove payment">×</button>
+                              <button type="submit" className="text-ppp-charcoal-300 hover:text-rose-600 min-h-[44px] sm:min-h-[28px] px-1" title="Remove this payment" aria-label="Remove payment">×</button>
                             </form>
                           </li>
                         ))}
@@ -1614,7 +1614,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     {!isVoid && (
                       <div className="flex items-center gap-3 mt-2.5">
                         <details className="group/edit flex-1 min-w-0">
-                          <summary className="list-none cursor-pointer inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] select-none">
+                          <summary className="list-none cursor-pointer inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[44px] sm:min-h-[32px] select-none">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
                             Edit
                           </summary>
@@ -1641,7 +1641,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="milestone_id" value={m.id} />
-                          <button type="submit" className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[32px] px-1.5" title="Remove this milestone (also removes its charge from the invoice)">Remove</button>
+                          <button type="submit" className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[32px] px-1.5" title="Remove this milestone (also removes its charge from the invoice)">Remove</button>
                         </form>
                       </div>
                     )}
@@ -1667,7 +1667,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             Also how a flat invoice gets broken into milestones. */}
         {!isVoid && (
           <details className="group mt-3">
-            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[40px]">
+            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px]">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-45"><path d="M12 5v14 M5 12h14" /></svg>
               Add a milestone
             </summary>

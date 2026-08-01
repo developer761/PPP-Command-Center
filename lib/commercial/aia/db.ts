@@ -437,22 +437,26 @@ export async function deleteAiaLineItem(id: string, applicationId: string, actor
 export async function resolveG702(applicationId: string, _depth = 0): Promise<AiaG702 | null> {
   const app = await getAiaApplication(applicationId);
   if (!app) return null;
-  const [lines, netCO] = await Promise.all([
+  const [lines, netCO, ladder] = await Promise.all([
     listAiaLineItems(applicationId),
     netApprovedChangeOrderCents(app.opportunity_id),
+    contractLadderInputs(app.opportunity_id),
   ]);
   const previousCertificatesCents = _depth > 100 ? 0 : await priorCertificateCents(app, _depth);
   // In AIA, the G703 scheduled-value column totals to the contract sum (G702
-  // line 1). When no explicit original contract was captured (e.g. the deal had
-  // no bid value at create time), fall back to the schedule-of-values total so
-  // the certificate never shows a $0 contract against a real schedule. An
-  // explicitly-set original always wins.
+  // line 1). The contract base follows the SAME shared ladder the Projects card
+  // + deal P&L use — won proposal first, else latest proposal, else the AIA
+  // original / SOV total — so the certificate's "Original Contract Sum" can't
+  // diverge from every other surface for the same deal (2026-08 money audit #2:
+  // cards showed $500k while the G702 sent to the GC showed a stale $450k).
   const sovTotalCents = lines.reduce((sum, l) => sum + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
   const effectiveOriginalCents = pickContractBaseCents({
     hasBillingApp: true,
     originalContractCents: app.original_contract_cents,
     sovTotalCents,
-    bidMidCents: 0,
+    acceptedProposalCents: ladder.acceptedProposalCents,
+    latestProposalCents: ladder.latestProposalCents,
+    bidMidCents: ladder.bidMidCents,
   });
   return computeG702({
     originalContractCents: effectiveOriginalCents,
@@ -464,50 +468,35 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
 }
 
 /**
- * The effective contract base for ONE deal, via the shared ladder — so the
- * Change Orders page's "contract to date" reconciles with the AIA G702, the
- * Projects card, and the Account 360 production KPIs. Approved COs add on top.
+ * The proposal-ladder + bid inputs for a deal's contract base — fetched the SAME
+ * way by getEffectiveContractBaseCents (cards / P&L / Change Orders) AND
+ * resolveG702 (the G702 certificate's "Original Contract Sum"), so no surface
+ * can drift from another (2026-08 money audit #2). The signed proposal IS the
+ * contract: WON first, else the LATEST proposal (highest revision), with a
+ * deterministic id order so a max-revision TIE resolves identically everywhere.
  */
-export async function getEffectiveContractBaseCents(opportunity_id: string): Promise<number> {
+async function contractLadderInputs(
+  opportunity_id: string
+): Promise<{ acceptedProposalCents: number; latestProposalCents: number; bidMidCents: number }> {
   const sb = commercialDb();
-  const { data: oppRow } = await sb
-    .from("commercial_opportunities")
-    .select("bid_value_low_cents, bid_value_high_cents")
-    .eq("id", opportunity_id)
-    .maybeSingle();
+  const [{ data: oppRow }, { data: propRows }] = await Promise.all([
+    sb
+      .from("commercial_opportunities")
+      .select("bid_value_low_cents, bid_value_high_cents")
+      .eq("id", opportunity_id)
+      .maybeSingle(),
+    sb
+      .from("commercial_proposals")
+      .select("total_cents, status, revision_number")
+      .eq("opportunity_id", opportunity_id)
+      .is("deleted_at", null)
+      .order("id", { ascending: true }),
+  ]);
   const o = oppRow as { bid_value_low_cents: number | null; bid_value_high_cents: number | null } | null;
   const bidMidCents =
     o?.bid_value_low_cents != null && o?.bid_value_high_cents != null
       ? Math.round((o.bid_value_low_cents + o.bid_value_high_cents) / 2)
       : o?.bid_value_low_cents ?? o?.bid_value_high_cents ?? 0;
-
-  const { data: appRow } = await sb
-    .from("commercial_aia_applications")
-    .select("id, original_contract_cents")
-    .eq("opportunity_id", opportunity_id)
-    .is("deleted_at", null)
-    .order("application_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const app = appRow as { id: string; original_contract_cents: number } | null;
-  let sovTotalCents = 0;
-  if (app) {
-    const lines = await listAiaLineItems(app.id);
-    sovTotalCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
-  }
-  // The signed proposal IS the contract — WON first, else the LATEST proposal
-  // (highest revision). Fetched ALWAYS (even when an AIA app exists) so the
-  // contract follows the won/latest proposal, never a stale AIA original or the
-  // first proposal (Karan 2026-08 smoke-test fix; keeps this in sync with
-  // listProjects.pickContractBaseCents).
-  const { data: propRows } = await sb
-    .from("commercial_proposals")
-    .select("total_cents, status, revision_number")
-    .eq("opportunity_id", opportunity_id)
-    .is("deleted_at", null)
-    // Deterministic id order (audit L5) so a max-revision TIE resolves to the
-    // same row as listProjects' selector — contract can't diverge card↔P&L.
-    .order("id", { ascending: true });
   let acceptedProposalCents = 0;
   let latestProposalCents = 0;
   let latestRev = -1;
@@ -518,13 +507,40 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
       latestProposalCents = Number(r.total_cents);
     }
   }
+  return { acceptedProposalCents, latestProposalCents, bidMidCents };
+}
+
+/**
+ * The effective contract base for ONE deal, via the shared ladder — so the
+ * Change Orders page's "contract to date" reconciles with the AIA G702, the
+ * Projects card, and the Account 360 production KPIs. Approved COs add on top.
+ */
+export async function getEffectiveContractBaseCents(opportunity_id: string): Promise<number> {
+  const sb = commercialDb();
+  const [{ data: appRow }, ladder] = await Promise.all([
+    sb
+      .from("commercial_aia_applications")
+      .select("id, original_contract_cents")
+      .eq("opportunity_id", opportunity_id)
+      .is("deleted_at", null)
+      .order("application_number", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    contractLadderInputs(opportunity_id),
+  ]);
+  const app = appRow as { id: string; original_contract_cents: number } | null;
+  let sovTotalCents = 0;
+  if (app) {
+    const lines = await listAiaLineItems(app.id);
+    sovTotalCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+  }
   return pickContractBaseCents({
     hasBillingApp: !!app,
     originalContractCents: app?.original_contract_cents ?? 0,
     sovTotalCents,
-    acceptedProposalCents,
-    latestProposalCents,
-    bidMidCents,
+    acceptedProposalCents: ladder.acceptedProposalCents,
+    latestProposalCents: ladder.latestProposalCents,
+    bidMidCents: ladder.bidMidCents,
   });
 }
 

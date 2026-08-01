@@ -62,6 +62,7 @@ import {
   type AccountInvoiceRollup,
 } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { monthlyBilledSeries as monthlyBilledSeriesShared } from "@/lib/commercial/invoices/monthly";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
@@ -850,7 +851,7 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
           )}
           {completedProjects.length > 0 && (
             <details className="group" open={!hasUpfront}>
-              <summary className="list-none cursor-pointer flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 min-h-[36px] select-none">
+              <summary className="list-none cursor-pointer flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 min-h-[44px] sm:min-h-[36px] select-none">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
                 Completed · {completedProjects.length}
               </summary>
@@ -861,7 +862,7 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
           )}
           {lostDeals.length > 0 && (
             <details className="group" open={!hasUpfront && completedProjects.length === 0}>
-              <summary className="list-none cursor-pointer flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 min-h-[36px] select-none">
+              <summary className="list-none cursor-pointer flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 min-h-[44px] sm:min-h-[36px] select-none">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
                 Lost / not pursued · {lostDeals.length}
               </summary>
@@ -1001,10 +1002,13 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
     <div className="space-y-4">
       {active.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Active-jobs scope (excludes closed) — deliberately narrower than the
+              Invoices tab's account-wide AR rollup. Each money tile says "active"
+              so the two don't read as the same number (2026-08 money audit #7). */}
           <ProjectStat label="Under contract" value={formatCentsCompact(summary.contractValueCents)} sub={`${active.length} active project${active.length === 1 ? "" : "s"}`} />
-          <ProjectStat label="Invoiced" value={formatCentsCompact(summary.invoicedCents)} tone="emerald" sub={`${formatCentsCompact(summary.paidCents)} paid`} />
-          <ProjectStat label="Left to bill" value={formatCentsCompact(summary.leftToBillCents)} />
-          <ProjectStat label="Outstanding" value={formatCentsCompact(summary.outstandingCents)} sub={summary.pendingCoCount > 0 ? `${summary.pendingCoCount} CO${summary.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={summary.outstandingCents > 0 ? "amber" : undefined} />
+          <ProjectStat label="Invoiced · active" value={formatCentsCompact(summary.invoicedCents)} tone="emerald" sub={`${formatCentsCompact(summary.paidCents)} paid`} />
+          <ProjectStat label="Left to bill" value={formatCentsCompact(summary.leftToBillCents)} sub="active jobs" />
+          <ProjectStat label="Outstanding · active" value={formatCentsCompact(summary.outstandingCents)} sub={summary.pendingCoCount > 0 ? `${summary.pendingCoCount} CO${summary.pendingCoCount === 1 ? "" : "s"} pending` : "open balance"} tone={summary.outstandingCents > 0 ? "amber" : undefined} />
         </div>
       )}
       {active.length > 0 && (
@@ -1016,7 +1020,7 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
       )}
       {completed.length > 0 && (
         <details className="group" open={active.length === 0}>
-          <summary className="list-none cursor-pointer flex items-center gap-2 text-[12px] font-semibold text-ppp-charcoal-600 min-h-[36px] select-none">
+          <summary className="list-none cursor-pointer flex items-center gap-2 text-[12px] font-semibold text-ppp-charcoal-600 min-h-[44px] sm:min-h-[36px] select-none">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
             Completed projects · {completed.length}
           </summary>
@@ -1972,22 +1976,11 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
 }
 
 /** Monthly pre-tax billed revenue ($K) from issued invoices, last 6 months —
- *  the "revenue billed / month" line shared by the deal + account P&L views. */
+ *  the "revenue billed / month" line shared by the deal + account P&L views.
+ *  Delegates to the shared ET-bucketed, pre-tax, issued-only helper so the deal,
+ *  account, and dashboard all bucket identically (2026-08 audit). */
 function monthlyBilledSeries(invoices: { status: string; created_at: string | null; subtotal_cents: number }[]): { label: string; value: number }[] {
-  const out: { label: string; value: number }[] = [];
-  const base = new Date();
-  for (let m = 5; m >= 0; m--) {
-    const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
-    const start = d.getTime();
-    const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
-    const cents = invoices.reduce((acc, inv) => {
-      if (inv.status === "void" || inv.status === "draft") return acc;
-      const t = inv.created_at ? new Date(inv.created_at).getTime() : NaN;
-      return t >= start && t < end ? acc + inv.subtotal_cents : acc;
-    }, 0);
-    out.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
-  }
-  return out;
+  return monthlyBilledSeriesShared(invoices, { months: 6, nowIso: new Date().toISOString() });
 }
 
 /** Deal P&L tab — ONE deal's complete financial picture, combined from every
@@ -2016,9 +2009,21 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
     valueLabel: formatCentsCompact(fin.costs[c]),
   }));
   const overdueCount = dealInvoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
+  // Split the open balance into overdue vs current so the Collections donut
+  // labels only the overdue portion "Overdue" (2026-08 UI/UX audit).
+  const overdueBalanceCents = dealInvoices
+    .filter((i) => deriveInvoiceStatus(i) === "overdue")
+    .reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
+  const currentOpenCents = Math.max(0, fin.openBalanceCents - overdueBalanceCents);
   const isCredit = fin.openBalanceCents === 0 && fin.creditCents > 0;
   const leftToBillCents = fin.hasContract ? Math.max(0, fin.contractCents - fin.billedPreTaxCents) : 0;
+  // Over-billed when pre-tax billed exceeds the (pre-tax) contract — surfaced in
+  // amber, NEVER hidden behind a clean full-green "done" donut (2026-08 money
+  // audit #1: the P&L tab was contradicting the deal's own Overview card).
+  const overBilledCents = fin.hasContract ? Math.max(0, fin.billedPreTaxCents - fin.contractCents) : 0;
+  const billedWithinContractCents = Math.max(0, fin.billedPreTaxCents - overBilledCents);
   const billedOfContractPct = fin.hasContract ? Math.min(100, Math.round((fin.billedPreTaxCents / fin.contractCents) * 100)) : 0;
+  const billedOfContractRawPct = fin.hasContract ? Math.round((fin.billedPreTaxCents / fin.contractCents) * 100) : 0;
   const paidCapped = Math.min(fin.collectedCents, fin.invoicedCents);
   const marginTone: ChartTone = marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald";
 
@@ -2072,7 +2077,12 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
               size={140}
               segments={[
                 { label: "Paid", value: paidCapped, tone: "emerald", valueLabel: formatCentsCompact(paidCapped) },
-                { label: overdueCount > 0 ? "Overdue" : "Open balance", value: Math.max(0, fin.openBalanceCents), tone: overdueCount > 0 ? "rose" : "blue", valueLabel: formatCentsCompact(fin.openBalanceCents) },
+                ...(currentOpenCents > 0
+                  ? [{ label: "Open (current)", value: currentOpenCents, tone: "blue" as ChartTone, valueLabel: formatCentsCompact(currentOpenCents) }]
+                  : []),
+                ...(overdueBalanceCents > 0
+                  ? [{ label: "Overdue", value: overdueBalanceCents, tone: "rose" as ChartTone, valueLabel: formatCentsCompact(overdueBalanceCents) }]
+                  : []),
               ]}
               centerValue={formatCentsCompact(fin.invoicedCents)}
               centerLabel="invoiced"
@@ -2089,16 +2099,23 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
         <h3 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Contract</h3>
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <MiniFig label="Contract" value={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"} tone="navy" sub={fin.hasContract ? "bid + COs" : "not set"} />
-          <MiniFig label="Billed" value={formatCentsCompact(fin.billedPreTaxCents)} tone="emerald" sub={fin.hasContract ? `${billedOfContractPct}%` : "—"} />
-          <MiniFig label="Left to bill" value={fin.hasContract ? formatCentsCompact(leftToBillCents) : "—"} tone="blue" sub="contract − billed" />
+          <MiniFig label="Billed" value={formatCentsCompact(fin.billedPreTaxCents)} tone={overBilledCents > 0 ? "amber" : "emerald"} sub={fin.hasContract ? `${billedOfContractRawPct}%` : "—"} />
+          {overBilledCents > 0 ? (
+            <MiniFig label="Over-billed" value={formatCentsCompact(overBilledCents)} tone="amber" sub="past contract" />
+          ) : (
+            <MiniFig label="Left to bill" value={fin.hasContract ? formatCentsCompact(leftToBillCents) : "—"} tone="blue" sub="contract − billed" />
+          )}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-center">
           <div className="flex items-center justify-center">
             <DonutChart
               size={140}
               segments={[
-                { label: "Billed", value: fin.billedPreTaxCents, tone: "emerald", valueLabel: formatCentsCompact(fin.billedPreTaxCents) },
+                { label: "Billed", value: billedWithinContractCents, tone: "emerald", valueLabel: formatCentsCompact(billedWithinContractCents) },
                 { label: "Left to bill", value: leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(leftToBillCents) },
+                ...(overBilledCents > 0
+                  ? [{ label: "Over-billed", value: overBilledCents, tone: "amber" as ChartTone, valueLabel: formatCentsCompact(overBilledCents) }]
+                  : []),
               ]}
               centerValue={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"}
               centerLabel="contract"
@@ -2106,7 +2123,7 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
           </div>
           <div>
             {fin.hasContract ? (
-              <ProgressMeter label="Billed of contract" value={fin.billedPreTaxCents} max={fin.contractCents} tone={billedOfContractPct === 100 ? "emerald" : "blue"} rightLabel={`${billedOfContractPct}%`} amounts={{ done: formatCentsFull(fin.billedPreTaxCents), total: formatCentsFull(fin.contractCents) }} />
+              <ProgressMeter label="Billed of contract" value={fin.billedPreTaxCents} max={fin.contractCents} tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"} rightLabel={`${billedOfContractRawPct}%`} amounts={{ done: formatCentsFull(fin.billedPreTaxCents), total: formatCentsFull(fin.contractCents) }} note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null} />
             ) : (
               <p className="text-[12px] text-ppp-charcoal-400">Set a bid range or accepted proposal on the deal to fill the contract number.</p>
             )}
@@ -4292,7 +4309,7 @@ function NewDealForm({
         </div>
       </div>
       <details className="group/more">
-        <summary className="list-none cursor-pointer text-[11.5px] font-medium text-cc-brand-700 hover:text-cc-brand-800 min-h-[28px] flex items-center gap-1.5 select-none">
+        <summary className="list-none cursor-pointer text-[11.5px] font-medium text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[28px] flex items-center gap-1.5 select-none">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
             <path d="M9 18l6-6-6-6" />
           </svg>
@@ -5513,7 +5530,7 @@ async function AccountProposalsTab({
                       </ul>
                       {olderRows.length > 0 && (
                         <details className="group/older bg-ppp-charcoal-50/40 border-t border-ppp-charcoal-100">
-                          <summary className="cursor-pointer px-4 py-2 text-[11px] font-semibold text-ppp-charcoal-500 hover:bg-ppp-charcoal-100/40 list-none [&::-webkit-details-marker]:hidden flex items-center justify-between min-h-[36px]">
+                          <summary className="cursor-pointer px-4 py-2 text-[11px] font-semibold text-ppp-charcoal-500 hover:bg-ppp-charcoal-100/40 list-none [&::-webkit-details-marker]:hidden flex items-center justify-between min-h-[44px] sm:min-h-[36px]">
                             <span>
                               Older revisions · {olderRows.length}
                             </span>
@@ -6957,17 +6974,22 @@ async function AccountKpisTab({
   overview: AccountOverview | null;
   rollup: AccountInvoiceRollup;
 }) {
-  // ── Data ── one project fetch (rows for per-project bars + summary totals) +
-  // the account's invoices for a monthly billing trend.
-  const projectRows = await listProjects({ accountId });
-  const production = summarizeProduction(projectRows);
+  // ── Data ── one project fetch (incl. closed jobs) + the account's invoices.
+  // "Under contract" is scoped to ACTIVE jobs; the P&L gross spans ALL deals
+  // incl. closed (a finished job's revenue is still revenue) so a closed deal's
+  // own P&L stays a subset of the account's — deal ⊂ account ⊂ portfolio
+  // (2026-08 money audit #5). Costs (costBreakdownForAccount) are already
+  // account-wide, so gross must be too or the two wouldn't reconcile.
+  const allAccountRows = await listProjects({ accountId, includeClosed: true });
+  const activeRows = allAccountRows.filter((p) => p.opp.status !== "post_sale_closed");
+  const production = summarizeProduction(activeRows);
   const [accountInvoices, accountCosts] = await Promise.all([
     listCommercialInvoices({ accountId }),
     costBreakdownForAccount(accountId),
   ]);
   // ── Account-wide P&L (all this GC's deals combined) — Gross = billed pre-tax,
   // Net = billed − costs. Same definitions as the deal P&L + Revenue page. ──
-  const acctGrossCents = production.billedContractCents;
+  const acctGrossCents = allAccountRows.reduce((acc, p) => acc + p.billedContractCents, 0);
   const acctCostsCents = accountCosts.total;
   const acctNetCents = acctGrossCents - acctCostsCents;
   const acctMarginPct = acctGrossCents > 0 ? Math.round((acctNetCents / acctGrossCents) * 100) : null;
@@ -6990,30 +7012,29 @@ async function AccountKpisTab({
   const hasInvoicing = rollup.invoiced_cents > 0;
   const isCredit = rollup.open_balance_cents === 0 && rollup.credit_cents > 0;
   const hasContract = production.contractValueCents > 0;
-  const overBilledCents = Math.max(0, production.billedContractCents - production.contractValueCents);
+  // Per-project over-billing (never Σbilled − Σcontract, which nets an
+  // under-billed deal against an over-billed one — 2026-08 money audit #3).
+  const overBilledCents = production.overBilledCents;
   const billedOfContractPct = production.contractValueCents > 0 ? Math.min(100, Math.round((production.billedContractCents / production.contractValueCents) * 100)) : 0;
   const openBidCount = overview?.open_opps_count ?? 0;
 
-  // Monthly billing trend ($K) — issued invoices by created month, last 6 months.
-  const billedMonthly: { label: string; value: number }[] = [];
-  {
-    const base = new Date();
-    for (let m = 5; m >= 0; m--) {
-      const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
-      const start = d.getTime();
-      const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
-      const cents = accountInvoices.reduce((acc, inv) => {
-        if (inv.status === "void" || inv.status === "draft") return acc;
-        const t = inv.created_at ? new Date(inv.created_at).getTime() : NaN;
-        return t >= start && t < end ? acc + inv.total_cents : acc;
-      }, 0);
-      billedMonthly.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
-    }
-  }
+  // Overdue vs current split of the open balance, so the Collections donut can
+  // label only the genuinely-overdue portion "Overdue" instead of the whole
+  // open balance (2026-08 UI/UX audit). Per-invoice clamped, issued-only.
+  const overdueBalanceCents = accountInvoices
+    .filter((i) => deriveInvoiceStatus(i) === "overdue")
+    .reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
+  const currentOpenCents = Math.max(0, rollup.open_balance_cents - overdueBalanceCents);
+
+  // Monthly billing trend ($K) — pre-tax, ET-bucketed, issued-only (shared
+  // helper). Same basis as the Profitability trend so a Collections "billed"
+  // chart never disagrees with it over pass-through tax (money audit #6).
+  const billedMonthly = acctRevenueMonthly;
   const billedTrendHasData = billedMonthly.some((p) => p.value > 0);
 
-  // Per-project billing bars (biggest contract first).
-  const projectBars = projectRows
+  // Per-project billing bars (biggest contract first) — active jobs only, to
+  // match the "Under contract" section this renders in.
+  const projectBars = activeRows
     .filter((p) => (p.contractToDateCents ?? 0) > 0)
     .sort((a, b) => (b.contractToDateCents ?? 0) - (a.contractToDateCents ?? 0))
     .slice(0, 6)
@@ -7095,9 +7116,16 @@ async function AccountKpisTab({
               segments={[
                 // Paid capped at invoiced so an overpaid (credit) account can't show
                 // a Paid slice larger than the invoiced center; the credit shows in
-                // the KPI box above.
+                // the KPI box above. Open balance splits into on-time (blue) vs
+                // genuinely overdue (rose) — only the overdue portion is labeled
+                // "Overdue", never the whole balance (2026-08 UI/UX audit).
                 { label: "Paid", value: Math.min(rollup.paid_cents, rollup.invoiced_cents), tone: "emerald", valueLabel: formatCentsCompact(Math.min(rollup.paid_cents, rollup.invoiced_cents)) },
-                { label: rollup.overdue_count > 0 ? "Overdue" : "Open balance", value: Math.max(0, rollup.open_balance_cents), tone: rollup.overdue_count > 0 ? "rose" : "blue", valueLabel: formatCentsCompact(rollup.open_balance_cents) },
+                ...(currentOpenCents > 0
+                  ? [{ label: "Open (current)", value: currentOpenCents, tone: "blue" as ChartTone, valueLabel: formatCentsCompact(currentOpenCents) }]
+                  : []),
+                ...(overdueBalanceCents > 0
+                  ? [{ label: "Overdue", value: overdueBalanceCents, tone: "rose" as ChartTone, valueLabel: formatCentsCompact(overdueBalanceCents) }]
+                  : []),
               ]}
               centerValue={formatCentsCompact(rollup.invoiced_cents)}
               centerLabel="invoiced"
@@ -7143,15 +7171,18 @@ async function AccountKpisTab({
             ) : (
               <MiniFig label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} tone="neutral" sub="contract − billed" />
             )}
-            <MiniFig label="Outstanding" value={formatCentsCompact(production.outstandingCents)} tone={production.outstandingCents > 0 ? "amber" : "neutral"} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "billed − paid"} />
+            <MiniFig label="Outstanding" value={formatCentsCompact(production.outstandingCents)} tone={production.outstandingCents > 0 ? "amber" : "neutral"} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "open balance"} />
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-center mt-4">
             <div className="flex items-center justify-center">
               <DonutChart
                 size={150}
                 segments={[
-                  { label: "Billed", value: production.billedContractCents, tone: "emerald", valueLabel: formatCentsCompact(production.billedContractCents) },
+                  { label: "Billed", value: production.billedContractCents - production.overBilledCents, tone: "emerald", valueLabel: formatCentsCompact(production.billedContractCents - production.overBilledCents) },
                   { label: "Left to bill", value: production.leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(production.leftToBillCents) },
+                  ...(production.overBilledCents > 0
+                    ? [{ label: "Over-billed", value: production.overBilledCents, tone: "amber" as ChartTone, valueLabel: formatCentsCompact(production.overBilledCents) }]
+                    : []),
                 ]}
                 centerValue={formatCentsCompact(production.contractValueCents)}
                 centerLabel="contract"

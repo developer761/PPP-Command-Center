@@ -201,7 +201,7 @@ export default function DebriefFields(props: Props) {
       </div>
 
       <details className="group">
-        <summary className="cursor-pointer text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none min-h-[28px] flex items-center gap-1.5">
+        <summary className="cursor-pointer text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none min-h-[44px] sm:min-h-[28px] flex items-center gap-1.5">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
             <path d="M9 18l6-6-6-6" />
           </svg>

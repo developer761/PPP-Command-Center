@@ -1,24 +1,23 @@
 /**
  * `/commercial` — Commercial Command Center landing.
  *
- * Karan 2026-07-20 rebuild: whole dashboard redesigned around what Alex
- * actually needs to see when he opens the platform in the morning.
+ * Money-first layout (Karan 2026-08), like the residential PPP dashboard —
+ * the revenue headline sits on top, everything else below:
+ *   1. Tomco logo strip
+ *   2. REVENUE & P&L — gross (lifetime pre-tax billed, incl. closed jobs),
+ *      job costs, net, margin + 6-month revenue trend + margin gauge, with a
+ *      collapsible cost-breakdown / revenue-by-project drawer.
+ *   3. AT A GLANCE — compact 6-up KPI strip (pipeline · open · wins · GCs ·
+ *      contract · AR).
+ *   4. NEEDS ATTENTION — only the categories that actually need action.
+ *   5. UNDER CONTRACT — active-job billing (donut + tiles), over-billing
+ *      surfaced in amber, never netted across deals.
+ *   6. Top 5 open + Recent activity · Quick actions · Roadmap.
  *
- * Layout, top-to-bottom:
- *   1. Hero: weighted pipeline $ + wins-this-month card
- *   2. NEEDS ATTENTION strip: overdue proposals, cold RFPs, follow-ups
- *      due, wins awaiting debrief — every card links straight into the
- *      filtered list so Alex triages in one click.
- *   3. KPI strip: open opps · outstanding AR · active GCs · all-time wins
- *   4. Two-column: Top 5 open opportunities (by weighted $) + Recent activity
- *      (last 5 opps by updated_at)
- *   5. Quick actions grid
- *   6. Roadmap (collapsed <details>)
- *
- * Zero-new-query rebuild: reuses the same three list fetches the prior
- * dashboard already ran (opps, accounts, invoices) — everything else is
- * derived JS-side. Preserves KpiTile + QuickAction primitives from the
- * prior version so styling stays consistent with earlier design tokens.
+ * Revenue scope note: the P&L rollup spans the WHOLE portfolio incl. closed
+ * jobs (lifetime billed), while "Under contract" is scoped to active jobs — two
+ * deliberately different scopes, each labeled. Reuses the opps/accounts/
+ * invoices/projects list fetches; everything else is derived JS-side.
  */
 import Link from "next/link";
 import Image from "next/image";
@@ -38,6 +37,7 @@ import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db"
 import { costBreakdownByOpp, emptyCostBreakdown } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
 import TrendChart from "@/components/trend-chart";
 import { GaugeRing, DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 
@@ -48,7 +48,6 @@ const DASH_COST_TONE: Record<string, ChartTone> = {
 export const dynamic = "force-dynamic";
 
 const SHIPPED = "bg-emerald-50 text-emerald-700 border-emerald-200";
-const UP_NEXT = "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200";
 const PHASES = [
   { num: 1, name: "Account Management", status: "Shipped", color: SHIPPED },
   { num: 2, name: "Opportunity Pipeline", status: "Shipped", color: SHIPPED },
@@ -62,7 +61,7 @@ const PHASES = [
   { num: "E", name: "Exclusions Library", status: "Shipped", color: SHIPPED },
   { num: "F", name: "Proposal Builder + PDF export", status: "Shipped", color: SHIPPED },
   { num: "G", name: "Deal IDs + archive + lifecycle dates", status: "Shipped", color: SHIPPED },
-  { num: "H", name: "Project (post-sale) + Won→Project", status: "Up next", color: UP_NEXT },
+  { num: "H", name: "Project (post-sale) + Won→Project", status: "Shipped", color: SHIPPED },
 ];
 
 /** Days between two ISO dates (positive = a before b). Null-safe. */
@@ -127,18 +126,11 @@ export default async function CommercialDashboardPage() {
   const lostOpps = opps.filter((o) => isLost(o));
   const decidedOpps = [...wonOpps, ...lostOpps]; // won + lost (win-rate basis)
   const weightedPipeline = openOpps.reduce((acc, o) => acc + weightedPipelineCents(o), 0);
-  const winRatePct =
-    decidedOpps.length > 0 ? Math.round((wonOpps.length / decidedOpps.length) * 100) : null;
 
   // ─── This month ───
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const wonThisMonth = wonOpps.filter((o) => (o.decided_at ?? "") >= monthStart);
-  const wonThisMonthCents = wonThisMonth.reduce((acc, o) => {
-    const lo = o.bid_value_low_cents ?? 0;
-    const hi = o.bid_value_high_cents ?? lo;
-    return acc + Math.round((lo + hi) / 2);
-  }, 0);
   const totalDecidedForMonth = decidedOpps.filter(
     (o) => (o.decided_at ?? "") >= monthStart
   ).length;
@@ -209,42 +201,41 @@ export default async function CommercialDashboardPage() {
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
     .slice(0, 5);
 
-  // ─── Revenue & P&L (whole Command Center) ───
+  // ─── Revenue & P&L (whole Command Center — LIFETIME, incl. closed jobs) ───
   // Gross = pre-tax billed-to-date; Net = gross − job costs; Margin = net ÷ gross.
-  const activeProjectRows = projectRows.filter((p) => p.opp.status !== "post_sale_closed");
-  const byOpp = await costBreakdownByOpp(activeProjectRows.map((p) => p.opp.id));
+  // Scope spans EVERY project incl. post_sale_closed (a finished job's revenue
+  // is still revenue), so the headline can't drop when a job closes and so the
+  // still-reachable deal P&L (no status filter) stays a subset of this number
+  // — deal ⊂ account ⊂ portfolio (2026-08 money audit #5 / regression #2). This
+  // is a different, wider scope than the active-only "Under contract" strip.
+  const allProjectRows = await listProjects({ includeClosed: true });
+  const allProjectOppIds = new Set(allProjectRows.map((p) => p.opp.id));
+  const byOpp = await costBreakdownByOpp(allProjectRows.map((p) => p.opp.id));
   const costs = emptyCostBreakdown();
   for (const b of byOpp.values()) {
     for (const c of PURCHASE_CATEGORIES) costs[c] += b[c];
     costs.total += b.total;
   }
-  const grossRevenueCents = production.billedContractCents;
+  const grossRevenueCents = allProjectRows.reduce((acc, p) => acc + p.billedContractCents, 0);
   const netProfitCents = grossRevenueCents - costs.total;
   const revMarginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
   const revMarginTone: ChartTone = revMarginPct === null ? "neutral" : revMarginPct < 0 ? "rose" : revMarginPct < 15 ? "amber" : "emerald";
-  // Monthly billed revenue ($K, pre-tax subtotal of issued invoices).
-  const revenueMonthly: { label: string; value: number }[] = [];
-  {
-    const base = new Date();
-    for (let m = 5; m >= 0; m--) {
-      const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
-      const start = d.getTime();
-      const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
-      const cents = invoices.reduce((acc, inv) => {
-        if (inv.status === "void" || inv.status === "draft") return acc;
-        const t = inv.created_at ? new Date(inv.created_at).getTime() : NaN;
-        return t >= start && t < end ? acc + inv.subtotal_cents : acc;
-      }, 0);
-      revenueMonthly.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
-    }
-  }
+  // Monthly billed revenue ($K) — shared ET-bucketed, pre-tax, issued-only
+  // helper scoped to the SAME project opps as the headline, so the trend is
+  // always a subset of gross (never exceeds it) and buckets by ET like the rest
+  // of the app.
+  const revenueMonthly = monthlyBilledSeries(invoices, {
+    months: 6,
+    oppIds: allProjectOppIds,
+    nowIso: new Date().toISOString(),
+  });
   const revCostSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => costs[c] > 0).map((c) => ({
     label: PURCHASE_CATEGORY_META[c].label,
     value: costs[c],
     tone: DASH_COST_TONE[c] ?? "neutral",
     valueLabel: formatCentsCompact(costs[c]),
   }));
-  const revProjectBars = activeProjectRows
+  const revProjectBars = allProjectRows
     .filter((p) => p.billedContractCents > 0)
     .map((p) => {
       const gross = p.billedContractCents;
@@ -293,7 +284,7 @@ export default async function CommercialDashboardPage() {
           <span className="text-[11px] font-medium text-ppp-charcoal-500">— gross = billed · net = billed − costs · tax excluded</span>
         </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
+          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date · all jobs" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
           <StatCard label="Job costs" value={formatCentsCompact(costs.total)} tone="amber" sub={costs.total === 0 ? "none logged" : "materials · labor · subs"} />
           <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
           <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : "net ÷ gross"} />
@@ -313,7 +304,7 @@ export default async function CommercialDashboardPage() {
           </div>
         </div>
         <details className="group/rev mt-3">
-          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[40px] select-none">
+          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] select-none">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/rev:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
             Cost breakdown &amp; revenue by project
           </summary>
@@ -464,11 +455,18 @@ export default async function CommercialDashboardPage() {
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex items-center justify-center">
+              {/* Split the billed bar into within-contract (emerald) + over-contract
+                  (amber) so an over-billed job shows an amber wedge past the
+                  contract ring instead of a clean full-green "done" — the amber +
+                  center=contract makes the overage visible, not hidden. */}
               <DonutChart
                 size={128}
                 segments={[
-                  { label: "Billed", value: production.billedContractCents, tone: "emerald", valueLabel: formatCentsCompact(production.billedContractCents) },
+                  { label: "Billed", value: production.billedContractCents - production.overBilledCents, tone: "emerald", valueLabel: formatCentsCompact(production.billedContractCents - production.overBilledCents) },
                   { label: "Left to bill", value: production.leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(production.leftToBillCents) },
+                  ...(production.overBilledCents > 0
+                    ? [{ label: "Over-billed", value: production.overBilledCents, tone: "amber" as ChartTone, valueLabel: formatCentsCompact(production.overBilledCents) }]
+                    : []),
                 ]}
                 centerValue={formatCentsCompact(production.contractValueCents)}
                 centerLabel="contract"
@@ -476,9 +474,15 @@ export default async function CommercialDashboardPage() {
             </div>
             <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <DashStat label="Contract" value={formatCentsCompact(production.contractValueCents)} sub={completedPctOfContract !== null ? `${completedPctOfContract}% complete` : "incl. COs"} tone="navy" href="/commercial/projects" />
-              <DashStat label="Billed" value={formatCentsCompact(production.billedContractCents)} sub={`${formatCentsCompact(production.paidCents)} paid`} tone="emerald" href="/commercial/projects" />
+              <DashStat
+                label="Billed"
+                value={formatCentsCompact(production.billedContractCents)}
+                sub={production.overBilledCents > 0 ? `${formatCentsCompact(production.overBilledCents)} over on ${production.overBilledProjects} ${production.overBilledProjects === 1 ? "job" : "jobs"}` : `${formatCentsCompact(production.paidCents)} paid`}
+                tone={production.overBilledCents > 0 ? "amber" : "emerald"}
+                href="/commercial/projects"
+              />
               <DashStat label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} sub="contract − billed" tone="blue" href="/commercial/projects" />
-              <DashStat label="Outstanding" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "invoiced − paid"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/projects" />
+              <DashStat label="Active AR" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "open on active jobs"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/projects" />
             </div>
           </div>
         </section>
@@ -871,15 +875,6 @@ function QuickAction({
 
 // ─────────────── Icons ───────────────
 
-function IconTarget() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="6" />
-      <circle cx="12" cy="12" r="2" />
-    </svg>
-  );
-}
 function IconChart() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -895,20 +890,6 @@ function IconBuilding() {
     </svg>
   );
 }
-function IconTrophy() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M8 21h8 M12 17v4 M17 5h3v3a4 4 0 0 1-4 4M7 5H4v3a4 4 0 0 0 4 4 M7 3h10v9a5 5 0 0 1-10 0V3z" />
-    </svg>
-  );
-}
-function IconDollar() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
-  );
-}
 function IconPlus() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -921,20 +902,6 @@ function IconKanban() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <rect x="3" y="3" width="7" height="18" rx="1" />
       <rect x="14" y="3" width="7" height="12" rx="1" />
-    </svg>
-  );
-}
-function IconContract() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h4" />
-    </svg>
-  );
-}
-function IconChangeOrder() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5" />
     </svg>
   );
 }

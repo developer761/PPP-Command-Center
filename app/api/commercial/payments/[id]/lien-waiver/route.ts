@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { attachPaymentLienWaiver, removePaymentLienWaiver } from "@/lib/commercial/invoices/payment-lien-waiver";
+import { verifyFileMagicBytes } from "@/lib/commercial/accounts/documents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!ALLOWED.has(file.type)) return NextResponse.json({ error: "Upload a PDF or image." }, { status: 400 });
 
   const data = new Uint8Array(await file.arrayBuffer());
+  const magic = verifyFileMagicBytes(data, file.type);
+  if (!magic.ok) return NextResponse.json({ error: `This file looks like ${magic.detected}, not a PDF or image.` }, { status: 400 });
   const res = await attachPaymentLienWaiver({
     paymentId: id,
     file_name: file.name || "lien-waiver.pdf",

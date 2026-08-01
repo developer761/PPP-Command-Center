@@ -8,6 +8,7 @@ import {
 import {
   ALLOWED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
+  verifyFileMagicBytes,
 } from "@/lib/commercial/accounts/documents";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
@@ -85,6 +86,15 @@ export async function POST(
     }
 
     const buffer = new Uint8Array(await file.arrayBuffer());
+    // Trust the bytes, not the declared MIME — a renamed file can lie
+    // (2026-08 backend audit #10). Consistent with the documents routes.
+    const magic = verifyFileMagicBytes(buffer, file.type);
+    if (!magic.ok) {
+      return NextResponse.json(
+        { error: "mime_mismatch", detail: `Declared as ${file.type || "(unknown)"} but the file looks like ${magic.detected}.` },
+        { status: 415 }
+      );
+    }
     const result = await uploadOpportunityAttachment({
       opportunity_id,
       file_name: file.name,

@@ -400,6 +400,11 @@ export type ProductionSummary = {
   paidCents: number;
   /** Contract to date − pre-tax billed (clamped ≥ 0). "How much you can still bill." */
   leftToBillCents: number;
+  /** Σ per-project max(0, billed − contract) — real over-billing, NOT netted
+   *  across deals (an under-billed job can't hide an over-billed one). */
+  overBilledCents: number;
+  /** How many projects are individually over-billed. */
+  overBilledProjects: number;
   /** Invoiced − paid. Outstanding AR across these projects. */
   outstandingCents: number;
   // ── Job P&L (Phase 2) ──
@@ -428,6 +433,8 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
   let billedContractCents = 0;
   let paidCents = 0;
   let leftToBillCents = 0;
+  let overBilledCents = 0;
+  let overBilledProjects = 0;
   let costsCents = 0;
   let outstandingCents = 0;
   for (const r of rows) {
@@ -446,6 +453,13 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     // Sum per-project left-to-bill (already clamped ≥0 per project), so one
     // over-billed job can't mask another's remaining headroom.
     leftToBillCents += r.leftToBillCents;
+    // Over-billing summed PER PROJECT (max(0, billed − contract)), never
+    // Σbilled − Σcontract — otherwise an under-billed deal silently cancels an
+    // over-billed one and the portfolio never warns (2026-08 money audit #3).
+    if (r.overBilled) {
+      overBilledCents += Math.max(0, r.billedContractCents - r.contractToDateCents);
+      overBilledProjects += 1;
+    }
     if (r.opp.status === "in_progress" || r.opp.status === "billing") inProductionProjects += 1;
     if (r.opp.status === "billing") billingProjects += 1;
   }
@@ -462,6 +476,8 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     billedContractCents,
     paidCents,
     leftToBillCents,
+    overBilledCents,
+    overBilledProjects,
     outstandingCents,
     costsCents,
     grossMarginCents: contractValueCents - costsCents,

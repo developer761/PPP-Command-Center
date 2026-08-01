@@ -359,7 +359,7 @@ export async function CloseoutTool({
             const meta = CLOSEOUT_STATUS_META[p.status];
             return (
               <Link key={p.id} href={`${base(id, dealId)}&pkg=${p.id}`} aria-current={on ? "page" : undefined}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-semibold min-h-[36px] ${on ? "bg-cc-brand-50 border-cc-brand-300 text-cc-brand-800" : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50"}`}>
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${on ? "bg-cc-brand-50 border-cc-brand-300 text-cc-brand-800" : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50"}`}>
                 Package · {meta.label}
               </Link>
             );
@@ -409,7 +409,7 @@ export async function CloseoutTool({
                   <Ctx />
                   <input type="hidden" name="to" value={to} />
                   <PendingSubmitButton
-                    className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[12px] font-semibold min-h-[40px] ${to === "voided" ? "border border-rose-300 text-rose-700 hover:bg-rose-50" : "bg-cc-brand-600 text-white hover:bg-cc-brand-700"}`}
+                    className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[12px] font-semibold min-h-[44px] ${to === "voided" ? "border border-rose-300 text-rose-700 hover:bg-rose-50" : "bg-cc-brand-600 text-white hover:bg-cc-brand-700"}`}
                     pendingLabel="…"
                   >
                     {to === "sent" ? "Mark sent" : to === "acknowledged" ? "Mark acknowledged" : to === "complete" ? "Mark complete" : "Void"}
@@ -473,7 +473,7 @@ export async function CloseoutTool({
                   {editable && (
                     <form action={deleteItemAction} className="mt-1 text-right">
                       <Ctx /><input type="hidden" name="item_id" value={it.id} />
-                      <ConfirmSubmitButton className="text-[11px] text-ppp-charcoal-400 hover:text-rose-600 min-h-[32px] inline-flex items-center" message="Remove this item?" pendingLabel="…">Remove</ConfirmSubmitButton>
+                      <ConfirmSubmitButton className="text-[11px] text-ppp-charcoal-400 hover:text-rose-600 min-h-[44px] sm:min-h-[32px] inline-flex items-center" message="Remove this item?" pendingLabel="…">Remove</ConfirmSubmitButton>
                     </form>
                   )}
                 </li>
@@ -482,7 +482,7 @@ export async function CloseoutTool({
             </ul>
             {editable && (
               <details className="mt-3 group">
-                <summary className="list-none cursor-pointer text-[12px] font-semibold text-cc-brand-700 min-h-[36px] inline-flex items-center gap-1">+ Add item</summary>
+                <summary className="list-none cursor-pointer text-[12px] font-semibold text-cc-brand-700 min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1">+ Add item</summary>
                 <form action={upsertItemAction} className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
                   <Ctx />
                   <label className="block"><span className={LABEL_CLS}>Kind</span>
@@ -531,14 +531,14 @@ export async function CloseoutTool({
 
           {/* PDF exports */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <a href={`/api/commercial/closeout/${activePkg.id}/transmittal`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800 min-h-[40px]">Transmittal PDF →</a>
-            <a href={`/api/commercial/closeout/${activePkg.id}/warranty`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800 min-h-[40px]">Warranty letter PDF →</a>
+            <a href={`/api/commercial/closeout/${activePkg.id}/transmittal`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800 min-h-[44px]">Transmittal PDF →</a>
+            <a href={`/api/commercial/closeout/${activePkg.id}/warranty`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800 min-h-[44px]">Warranty letter PDF →</a>
           </div>
 
           {activePkg.status === "draft" && (
             <form action={deletePackageAction} className="text-right">
               <Ctx />
-              <ConfirmSubmitButton className="text-[12px] text-ppp-charcoal-400 hover:text-rose-600 min-h-[36px] inline-flex items-center" message="Delete this draft package?" pendingLabel="Deleting…">Delete draft package</ConfirmSubmitButton>
+              <ConfirmSubmitButton className="text-[12px] text-ppp-charcoal-400 hover:text-rose-600 min-h-[44px] sm:min-h-[36px] inline-flex items-center" message="Delete this draft package?" pendingLabel="Deleting…">Delete draft package</ConfirmSubmitButton>
             </form>
           )}
         </div>

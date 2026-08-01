@@ -81,9 +81,14 @@ export default function TrendChart({
   const values = data.map((d) => d.value);
   const max = Math.max(...values);
   const min = Math.min(...values);
+  // All-zero (or all-same-value) series: an empty deal, a brand-new job, a
+  // period with nothing billed. Don't invent headroom off a zero max — that
+  // printed a phantom "$180" ceiling on a flat-$0 line. Pin the domain to a
+  // clean [0, 0] so the axis honestly reads $0 top and bottom.
+  const flat = max === min;
   const range = Math.max(1, max - min);
-  const yMax = max + range * 0.18;
-  const yMin = Math.max(0, min - range * 0.1);
+  const yMax = flat ? (max === 0 ? 0 : max) : max + range * 0.18;
+  const yMin = flat ? (max === 0 ? 0 : Math.max(0, min - range * 0.1)) : Math.max(0, min - range * 0.1);
   const yRange = Math.max(1, yMax - yMin);
 
   const xAt = (i: number) =>

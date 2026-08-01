@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { attachInvoiceFile, removeInvoiceAttachment } from "@/lib/commercial/invoices/attachments";
+import { verifyFileMagicBytes } from "@/lib/commercial/accounts/documents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!ALLOWED.has(file.type)) return NextResponse.json({ error: "Upload a PDF or image." }, { status: 400 });
 
   const data = new Uint8Array(await file.arrayBuffer());
+  // Sniff the real content — a renamed executable can DECLARE application/pdf,
+  // so trust the bytes, not file.type (2026-08 backend audit #10).
+  const magic = verifyFileMagicBytes(data, file.type);
+  if (!magic.ok) return NextResponse.json({ error: `This file looks like ${magic.detected}, not a PDF or image.` }, { status: 400 });
   const res = await attachInvoiceFile({
     invoiceId: id,
     file_name: file.name || "attachment.pdf",

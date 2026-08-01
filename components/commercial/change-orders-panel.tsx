@@ -232,8 +232,8 @@ export async function ChangeOrdersPanel({
                   { label: "Pending", value: pe, tone: "amber", valueLabel: formatCentsCompact(pe) },
                   { label: "Declined", value: de, tone: "neutral", valueLabel: formatCentsCompact(de) },
                 ]}
-                centerValue={String(items.length)}
-                centerLabel={items.length === 1 ? "change order" : "change orders"}
+                centerValue={formatCentsCompact(ap + pe + de)}
+                centerLabel={`${items.length} ${items.length === 1 ? "order" : "orders"}`}
               />
             </div>
           );

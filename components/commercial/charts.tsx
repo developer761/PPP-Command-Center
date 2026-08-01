@@ -147,9 +147,11 @@ export function DonutChart({
               onMouseEnter={() => setHover(i)}
               onMouseLeave={() => setHover(null)}
             >
-              <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: toneVar(seg.tone) }} />
-              <span className="text-ppp-charcoal-600 truncate">{seg.label}</span>
-              <span className="ml-auto font-bold tabular-nums text-ppp-charcoal">{seg.valueLabel ?? `${total > 0 ? Math.round((seg.value / total) * 100) : 0}%`}</span>
+              <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm shrink-0 mt-[3px] self-start" style={{ backgroundColor: toneVar(seg.tone) }} />
+              {/* Wrap long category labels ("Subcontractor", "Materials") to a
+                  second line at 375px instead of truncating to "Subcont…". */}
+              <span className="text-ppp-charcoal-600 whitespace-normal leading-tight min-w-0">{seg.label}</span>
+              <span className="ml-auto font-bold tabular-nums text-ppp-charcoal shrink-0 self-start">{seg.valueLabel ?? `${total > 0 ? Math.round((seg.value / total) * 100) : 0}%`}</span>
             </li>
           ))}
         </ul>
@@ -274,7 +276,7 @@ export function StatCard({
       </div>
       <div className="mt-1 flex items-end justify-between gap-2">
         <div className={`font-condensed text-2xl sm:text-3xl font-black leading-none tracking-tight tabular-nums ${valueCls}`}>{value}</div>
-        {spark && spark.length > 1 && <MiniBars values={spark} tone={tone === "neutral" ? "blue" : tone} labels={sparkLabels} className="h-7 w-16 sm:w-20 shrink-0" />}
+        {spark && spark.length > 1 && <MiniBars values={spark} tone={tone === "neutral" ? "blue" : tone} labels={sparkLabels} className="h-7 w-12 sm:w-20 shrink-0" />}
       </div>
       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
         {sub && <div className="text-[11px] text-ppp-charcoal-500 leading-snug">{sub}</div>}

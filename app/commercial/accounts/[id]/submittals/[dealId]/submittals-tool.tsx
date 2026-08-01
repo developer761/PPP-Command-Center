@@ -136,8 +136,8 @@ export async function SubmittalsTool({
                 { label: "Open / review", value: openCount, tone: "amber", valueLabel: String(openCount) },
                 { label: "Revise / rejected", value: reworkCount, tone: "rose", valueLabel: String(reworkCount) },
               ]}
-              centerValue={approvedCount + openCount + reworkCount > 0 ? `${Math.round((approvedCount / (approvedCount + openCount + reworkCount)) * 100)}%` : "—"}
-              centerLabel="approved"
+              centerValue={String(approvedCount + openCount + reworkCount)}
+              centerLabel={approvedCount + openCount + reworkCount === 1 ? "submittal" : "submittals"}
             />
           </div>
         </div>
