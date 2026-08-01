@@ -459,7 +459,7 @@ export async function ChangeOrdersPanel({
                       {/* Per-CO documents — signed CO PDFs / backup. File into the
                           deal Documents → Change Orders box automatically. */}
                       <details className="mt-2.5 group/codocs">
-                        <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] select-none">
+                        <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[44px] select-none">
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/codocs:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
                           Documents

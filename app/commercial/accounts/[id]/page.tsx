@@ -244,6 +244,7 @@ type SP = Promise<{
   pu_cat?: string;
   pu_vendor?: string;
   pu_amt?: string;
+  pu_hours?: string;
   pu_date?: string;
   pu_desc?: string;
 }>;
@@ -1557,6 +1558,7 @@ async function ProjectToolsPanel({
             pu_cat: sp?.pu_cat,
             pu_vendor: sp?.pu_vendor,
             pu_amt: sp?.pu_amt,
+            pu_hours: sp?.pu_hours,
             pu_date: sp?.pu_date,
             pu_desc: sp?.pu_desc,
           }}
@@ -1878,7 +1880,7 @@ function DealProposalsSection({ accountId, oppId, proposals }: { accountId: stri
 /** The deal Documents "filing cabinet": every one of the 18 doc categories maps
  *  into exactly ONE labeled box, so an uploaded file always has a home and no
  *  category is ever orphaned. Ordered money/delivery-first. */
-const DEAL_DOC_BOXES: { key: string; label: string; categories: string[] }[] = [
+const DEAL_DOC_BOXES: { key: string; label: string; categories: string[]; hint?: string }[] = [
   { key: "receipt", label: "Receipts", categories: ["receipt"] },
   { key: "lien_waiver", label: "Lien Waivers", categories: ["lien_waiver"] },
   { key: "invoice_attachment", label: "Invoice Attachments", categories: ["invoice_attachment"] },
@@ -1887,10 +1889,10 @@ const DEAL_DOC_BOXES: { key: string; label: string; categories: string[] }[] = [
   { key: "submittal", label: "Submittals", categories: ["submittal"] },
   { key: "closeout", label: "Closeout", categories: ["closeout"] },
   { key: "proposal", label: "Proposals", categories: ["proposal"] },
-  { key: "contract", label: "Contracts & Permits", categories: ["contract", "permit", "insurance", "bid_set"] },
+  { key: "contract", label: "Contracts & Permits", categories: ["contract", "permit", "insurance", "bid_set"], hint: "Contracts · permits · insurance · plans & specs" },
   // Catch-all — anything not claimed above (rfi, meeting_minutes, site_photo,
-  // correspondence, other, or an unknown future category) lands here.
-  { key: "other", label: "Other", categories: ["rfi", "meeting_minutes", "site_photo", "correspondence", "other"] },
+  // correspondence, other, or an unknown/future category) lands here.
+  { key: "other", label: "Other", categories: ["rfi", "meeting_minutes", "site_photo", "correspondence", "other"], hint: "RFIs · minutes · site photos · correspondence · anything else" },
 ];
 
 function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: import("@/lib/commercial/documents/db").CommercialDocument[] }) {
@@ -1924,9 +1926,12 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
             const docs = byBox.get(box.key) ?? [];
             return (
               <div key={box.key} className={`rounded-xl border ${docs.length ? "border-ppp-charcoal-200 bg-surface" : "border-dashed border-ppp-charcoal-100 bg-ppp-charcoal-50/30"} overflow-hidden`}>
-                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-ppp-charcoal-100">
-                  <span className="text-[11.5px] font-bold text-ppp-charcoal">{box.label}</span>
-                  <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full ${docs.length ? "bg-ppp-charcoal-100 text-ppp-charcoal-600" : "text-ppp-charcoal-300"}`}>{docs.length}</span>
+                <div className="px-3 py-2 border-b border-ppp-charcoal-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11.5px] font-bold text-ppp-charcoal">{box.label}</span>
+                    <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full ${docs.length ? "bg-ppp-charcoal-100 text-ppp-charcoal-600" : "text-ppp-charcoal-300"}`}>{docs.length}</span>
+                  </div>
+                  {box.hint && <p className="text-[9.5px] text-ppp-charcoal-400 mt-0.5">{box.hint}</p>}
                 </div>
                 {docs.length === 0 ? (
                   <p className="px-3 py-2.5 text-[10.5px] text-ppp-charcoal-400">None yet.</p>
@@ -1940,6 +1945,7 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
                             <span className="min-w-0">
                               <span className="block text-[12px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
                               <span className="block text-[10px] text-ppp-charcoal-500">{commercialDocCategoryLabel(d.category)} · {(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                              {d.notes && <span className="block text-[10px] text-ppp-charcoal-400 italic truncate">{d.notes}</span>}
                             </span>
                           </span>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>

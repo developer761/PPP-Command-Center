@@ -20,15 +20,18 @@ import { uploadDocument, softDeleteDocument, getDocumentsByIds, type CommercialD
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
-async function fetchInvoiceScope(invoiceId: string): Promise<{ opportunity_id: string; invoice_number: string } | null> {
+async function fetchInvoiceScope(invoiceId: string, opts?: { forWrite?: boolean }): Promise<{ opportunity_id: string; invoice_number: string } | null> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_invoices")
-    .select("opportunity_id, invoice_number, deleted_at")
+    .select("opportunity_id, invoice_number, status, deleted_at")
     .eq("id", invoiceId)
     .maybeSingle();
-  const row = data as { opportunity_id: string; invoice_number: string; deleted_at: string | null } | null;
+  const row = data as { opportunity_id: string; invoice_number: string; status: string; deleted_at: string | null } | null;
   if (!row || row.deleted_at) return null;
+  // A void invoice is dead — don't let a direct POST file new attachments on it
+  // (enforces the UI's read-only-on-void server-side). Reads still resolve.
+  if (opts?.forWrite && row.status === "void") return null;
   return { opportunity_id: row.opportunity_id, invoice_number: row.invoice_number };
 }
 
@@ -39,8 +42,8 @@ export async function attachInvoiceFile(input: {
   data: Uint8Array;
   actorUserId: string;
 }): Promise<Result<CommercialDocument>> {
-  const scope = await fetchInvoiceScope(input.invoiceId);
-  if (!scope) return { ok: false, error: "Invoice not found." };
+  const scope = await fetchInvoiceScope(input.invoiceId, { forWrite: true });
+  if (!scope) return { ok: false, error: "This invoice can't take attachments (it may be voided or removed)." };
 
   const uploaded = await uploadDocument({
     parent_type: "opportunity",

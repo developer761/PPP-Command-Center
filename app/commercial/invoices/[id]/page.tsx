@@ -1384,7 +1384,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     covers. The invoice-level slot below is the FINAL waiver. */}
                 {(!isVoid || pw) && (
                   <details className="mt-2 group/pw">
-                    <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11px] font-semibold min-h-[32px] select-none text-ppp-charcoal-500 hover:text-ppp-charcoal">
+                    <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11px] font-semibold min-h-[44px] select-none text-ppp-charcoal-500 hover:text-ppp-charcoal">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/pw:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
                       Partial lien waiver
                       {pw ? <span className="text-emerald-600 font-bold">· on file</span> : <span className="text-amber-600 font-bold">· none</span>}

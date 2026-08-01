@@ -1,7 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
-import { uploadDocument, getDocument, softDeleteDocument } from "@/lib/commercial/documents/db";
+import { uploadDocument, getDocument, getDocumentsByIds, softDeleteDocument } from "@/lib/commercial/documents/db";
 import type { CommercialDocument } from "@/lib/commercial/documents/db";
 
 /**
@@ -48,18 +48,31 @@ export async function waiverCoverageByInvoice(
   const ids = [...new Set(invoices.map((i) => i.id).filter(Boolean))];
   if (ids.length === 0) return out;
   const sb = commercialDb();
+  // Pull the actual waiver DOC ids at the milestone + payment levels...
   const [msRes, payRes] = await Promise.all([
-    sb.from("commercial_invoice_milestones").select("invoice_id").in("invoice_id", ids).not("lien_waiver_document_id", "is", null),
-    sb.from("commercial_invoice_payments").select("invoice_id").in("invoice_id", ids).not("lien_waiver_document_id", "is", null),
+    sb.from("commercial_invoice_milestones").select("invoice_id, lien_waiver_document_id").in("invoice_id", ids).not("lien_waiver_document_id", "is", null),
+    sb.from("commercial_invoice_payments").select("invoice_id, lien_waiver_document_id").in("invoice_id", ids).not("lien_waiver_document_id", "is", null),
   ]);
+  const msRows = (msRes.data ?? []) as { invoice_id: string; lien_waiver_document_id: string }[];
+  const payRows = (payRes.data ?? []) as { invoice_id: string; lien_waiver_document_id: string }[];
+  // ...then keep only LIVE (non-archived) docs. A waiver archived from the Files
+  // tab must read "missing" here, exactly as the invoice detail already shows it
+  // (audit MEDIUM: the chip must not claim compliance a deleted doc can't back).
+  const candidateIds = [
+    ...invoices.map((i) => i.lien_waiver_document_id).filter((x): x is string => !!x),
+    ...msRows.map((r) => r.lien_waiver_document_id),
+    ...payRows.map((r) => r.lien_waiver_document_id),
+  ];
+  const liveDocs = await getDocumentsByIds(candidateIds); // soft-delete-aware
+  const isLive = (docId: string | null | undefined) => !!docId && liveDocs.has(docId);
   const partialSet = new Set<string>();
-  for (const r of ((msRes.data ?? []) as { invoice_id: string }[])) partialSet.add(r.invoice_id);
-  for (const r of ((payRes.data ?? []) as { invoice_id: string }[])) partialSet.add(r.invoice_id);
+  for (const r of msRows) if (isLive(r.lien_waiver_document_id)) partialSet.add(r.invoice_id);
+  for (const r of payRows) if (isLive(r.lien_waiver_document_id)) partialSet.add(r.invoice_id);
   for (const inv of invoices) {
     out.set(
       inv.id,
       deriveWaiverCoverage({
-        invoiceWaiverDocId: inv.lien_waiver_document_id,
+        invoiceWaiverDocId: isLive(inv.lien_waiver_document_id) ? inv.lien_waiver_document_id : null,
         paymentWaiverDocIds: partialSet.has(inv.id) ? ["x"] : [],
       })
     );

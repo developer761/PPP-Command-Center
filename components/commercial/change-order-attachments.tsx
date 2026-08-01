@@ -65,7 +65,7 @@ export function ChangeOrderAttachments({
                     fd.append("remove_document_id", a.id);
                     void send(fd);
                   }}
-                  className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[36px] px-2 shrink-0"
+                  className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] px-2 shrink-0"
                   aria-label={`Remove ${a.file_name || "attachment"}`}
                 >
                   Remove
@@ -89,7 +89,7 @@ export function ChangeOrderAttachments({
             fd.append("file", f);
             void send(fd);
           }}
-          className="block text-[11.5px] text-ppp-charcoal-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[11.5px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[40px] file:touch-manipulation cursor-pointer"
+          className="block text-[11.5px] text-ppp-charcoal-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[11.5px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[44px] file:touch-manipulation cursor-pointer"
         />
       )}
       {attachments.length === 0 && !canEdit && <p className="text-[11px] text-ppp-charcoal-400">No documents attached.</p>}

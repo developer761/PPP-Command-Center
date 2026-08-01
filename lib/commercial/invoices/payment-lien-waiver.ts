@@ -16,7 +16,7 @@ import type { CommercialInvoicePayment } from "./db";
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
-async function fetchPaymentScope(paymentId: string): Promise<{
+async function fetchPaymentScope(paymentId: string, opts?: { forWrite?: boolean }): Promise<{
   opportunity_id: string;
   invoice_number: string;
   reference: string | null;
@@ -33,11 +33,14 @@ async function fetchPaymentScope(paymentId: string): Promise<{
   const p = pay as { invoice_id: string; reference: string | null; paid_at: string; lien_waiver_document_id: string | null };
   const { data: inv } = await sb
     .from("commercial_invoices")
-    .select("opportunity_id, invoice_number")
+    .select("opportunity_id, invoice_number, status")
     .eq("id", p.invoice_id)
     .maybeSingle();
   if (!inv) return null;
-  const i = inv as { opportunity_id: string; invoice_number: string };
+  const i = inv as { opportunity_id: string; invoice_number: string; status: string };
+  // Void invoice = dead; block filing a new partial waiver on its payment
+  // server-side (mirrors the UI's readOnly-on-void). Reads still resolve.
+  if (opts?.forWrite && i.status === "void") return null;
   return {
     opportunity_id: i.opportunity_id,
     invoice_number: i.invoice_number,
@@ -61,8 +64,8 @@ export async function attachPaymentLienWaiver(input: {
   data: Uint8Array;
   actorUserId: string;
 }): Promise<Result<CommercialDocument>> {
-  const scope = await fetchPaymentScope(input.paymentId);
-  if (!scope) return { ok: false, error: "Payment not found." };
+  const scope = await fetchPaymentScope(input.paymentId, { forWrite: true });
+  if (!scope) return { ok: false, error: "This payment can't take a waiver (its invoice may be voided or removed)." };
 
   const uploaded = await uploadDocument({
     parent_type: "opportunity",
