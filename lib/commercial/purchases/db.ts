@@ -208,6 +208,9 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
   const scope = await resolveOppScope(sb, input.opportunity_id);
   if (!scope) return { ok: false, error: DELETED_DEAL_ERROR };
 
+  // Set timestamps in the app so the schema needs no DB defaults (keeps the
+  // migration to short, paste-safe ADD COLUMN lines).
+  const nowIso = new Date().toISOString();
   const { data: inserted, error } = await sb
     .from("commercial_project_purchases")
     .insert({
@@ -216,10 +219,12 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
       category,
       vendor: input.vendor?.trim().slice(0, 200) || null,
       amount_cents: amount,
-      purchased_at: input.purchased_at ?? new Date().toISOString(),
+      purchased_at: input.purchased_at ?? nowIso,
       description: input.description?.trim().slice(0, 2000) || null,
       receipt_document_id: input.receipt_document_id ?? null,
       created_by_user_id: input.created_by_user_id,
+      created_at: nowIso,
+      updated_at: nowIso,
     })
     .select(COLS)
     .maybeSingle();

@@ -60,6 +60,7 @@ export async function attachInvoiceFile(input: {
     invoice_id: input.invoiceId,
     document_id: uploaded.document.id,
     created_by_user_id: input.actorUserId,
+    created_at: new Date().toISOString(),
   });
   if (error) {
     // Link failed → retire the just-uploaded doc so it doesn't float unattached.
