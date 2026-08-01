@@ -24,9 +24,14 @@ export function commercialAccessDenied(profile: Profile | null): boolean {
  * service-role client (they only `select("has_new_platform_access, is_active")`,
  * not the full Profile). Narrows the raw row internally so a route reduces its
  * whole auth check to `if (rawAccessDenied(row)) return 403`. Denied when the
- * New-Platform flag is missing or the account is deactivated. (No admin-email
- * exemption here — an admin is never `is_active=false` in practice, and these
- * rows don't carry email.)
+ * New-Platform flag is missing or the account is deactivated.
+ *
+ * INTENTIONAL asymmetry vs commercialAccessDenied: no admin-email exemption
+ * here (the partial rows don't carry email). If an admin were ever deactivated
+ * they'd be 403'd on these routes while the layout/server-actions still let
+ * them in — that's fail-CLOSED (safer) and a non-scenario in practice (admins
+ * deactivate others, not themselves). Kept deliberately simple over selecting
+ * email in every route just to re-admit a deactivated admin.
  */
 export function rawAccessDenied(row: unknown): boolean {
   const p = row as { has_new_platform_access?: boolean | null; is_active?: boolean | null } | null;

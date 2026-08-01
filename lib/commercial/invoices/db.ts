@@ -699,6 +699,31 @@ export async function recomputeSubtotal(invoice_id: string): Promise<void> {
 
 // ────────────── Payments ──────────────
 
+/**
+ * Sum of payment amounts ordered strictly BEFORE `pid` in a STABLE order
+ * (created_at, then id). This is the tie-break that makes concurrent-payment
+ * trimming deterministic: every racer re-fetches the same payment set and, via
+ * this identical order, agrees on which payments come "before" a given one — so
+ * the earlier payment keeps its full share and only the tail that pushes past
+ * the cap gets trimmed (instead of the old symmetric overshoot math, where two
+ * simultaneous payments could BOTH back out and drop each other). Pure +
+ * exported so the ordering logic is unit-tested independently of the DB.
+ */
+export function sumPaymentsBeforeStable(
+  rows: Array<{ id: string; amount_cents: number; created_at: string }>,
+  pid: string
+): number {
+  const sorted = [...rows].sort((a, b) =>
+    a.created_at === b.created_at ? (a.id < b.id ? -1 : 1) : a.created_at < b.created_at ? -1 : 1
+  );
+  let sum = 0;
+  for (const r of sorted) {
+    if (r.id === pid) break;
+    sum += Number(r.amount_cents) || 0;
+  }
+  return sum;
+}
+
 export async function addPayment(
   invoice_id: string,
   input: {
@@ -754,6 +779,7 @@ export async function addPayment(
   // to it.
   let milestone_id: string | null = null;
   let milestoneCap = Infinity;
+  let milestoneAmountCents = Infinity; // full milestone amount (for the post-insert over-collection re-check)
   if (input.milestone_id) {
     const { data: ms } = await sb
       .from("commercial_invoice_milestones")
@@ -763,12 +789,13 @@ export async function addPayment(
     if (!ms || (ms as { invoice_id: string }).invoice_id !== invoice_id || (ms as { deleted_at: string | null }).deleted_at) {
       return { ok: false, error: "milestone_not_found" };
     }
+    milestoneAmountCents = (ms as { amount_cents: number }).amount_cents;
     const { data: prior } = await sb
       .from("commercial_invoice_payments")
       .select("amount_cents")
       .eq("milestone_id", input.milestone_id);
     const milestonePaid = (prior ?? []).reduce((s, r) => s + ((r.amount_cents as number) ?? 0), 0);
-    milestoneCap = Math.max(0, (ms as { amount_cents: number }).amount_cents - milestonePaid);
+    milestoneCap = Math.max(0, milestoneAmountCents - milestonePaid);
     milestone_id = input.milestone_id;
   }
 
@@ -825,15 +852,32 @@ export async function addPayment(
     .select("status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id")
     .eq("id", invoice_id)
     .maybeSingle();
-  // Concurrency guard (audit #2): if a simultaneous payment overshot the balance
-  // (both read the same balance before either inserted), paid now exceeds total.
-  // Trim THIS payment by the overshoot so paid never exceeds total — the loser's
-  // excess is refused, never persisted as a negative balance / phantom credit.
-  if (after && (after.balance_cents as number) < 0) {
-    const overshoot = -(after.balance_cents as number);
-    appliedAmount = Math.max(0, cappedAmount - overshoot);
-    const pid = (insertedPayment as { id: string } | null)?.id;
-    if (pid) {
+  // Concurrency + over-collection guard (audit re-review 2026-08). After the
+  // insert, recompute what THIS payment may keep using a STABLE order
+  // (created_at, then id) over the invoice's live payments. That order is the
+  // same for every racer, so two simultaneous payments don't BOTH back out (the
+  // old invoice-balance overshoot math was symmetric and could drop both) —
+  // the earlier-ordered payment keeps its share, only the tail that pushes over
+  // trims. Enforced at TWO levels:
+  //   • invoice: Σ payments ≤ total_cents
+  //   • milestone (if tagged): Σ payments tagged to it ≤ its amount — this
+  //     can over-collect one milestone while the invoice balance is still
+  //     positive (other milestones unpaid), which the invoice-level check
+  //     alone would miss (audit Finding 2).
+  const pid = (insertedPayment as { id: string } | null)?.id ?? null;
+  if (pid && after) {
+    const total = after.total_cents as number;
+    const { data: allPays } = await sb
+      .from("commercial_invoice_payments")
+      .select("id, amount_cents, created_at, milestone_id")
+      .eq("invoice_id", invoice_id);
+    const rows = (allPays ?? []) as Array<{ id: string; amount_cents: number; created_at: string; milestone_id: string | null }>;
+    const allowedInvoice = Math.max(0, total - sumPaymentsBeforeStable(rows, pid));
+    const allowedMilestone = milestone_id
+      ? Math.max(0, milestoneAmountCents - sumPaymentsBeforeStable(rows.filter((r) => r.milestone_id === milestone_id), pid))
+      : Infinity;
+    appliedAmount = Math.min(cappedAmount, allowedInvoice, allowedMilestone);
+    if (appliedAmount < cappedAmount) {
       if (appliedAmount <= 0) {
         await sb.from("commercial_invoice_payments").delete().eq("id", pid);
       } else {
@@ -846,17 +890,19 @@ export async function addPayment(
         .maybeSingle();
       after = reAfter;
     }
-    // Never reject (Karan rule): if a concurrent payment already zeroed the
-    // balance there's nothing left to apply, but we don't error — return a
-    // capped success so the UI shows a small "nothing was owed" heads-up
-    // instead of a red failure. Nothing was persisted (the row was deleted).
+    // Never reject (Karan rule): if there was genuinely no room left (a
+    // concurrent payment already filled the invoice/milestone), nothing is
+    // persisted (row deleted) — return a capped success with a small heads-up,
+    // not a red failure.
     if (appliedAmount <= 0) {
       return {
         ok: true,
         applied_cents: 0,
         requested_cents: input.amount_cents,
         capped: true,
-        warning: "This invoice was already fully paid, so nothing was recorded.",
+        warning: milestone_id
+          ? "That milestone is already fully paid, so nothing was recorded."
+          : "This invoice was already fully paid, so nothing was recorded.",
       };
     }
   }

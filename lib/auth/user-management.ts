@@ -227,8 +227,22 @@ export async function createPasswordUser(input: {
   // pre-2026-08 behavior of this function. The Commercial Access page overrides
   // to Commercial-only. This is what enforces "added from the PPP side → PPP
   // only; added from the Commercial side → Commercial only."
-  const commandCenter = input.platforms?.commandCenter ?? true;
-  const commercial = input.platforms?.commercial ?? false;
+  let commandCenter = input.platforms?.commandCenter ?? true;
+  let commercial = input.platforms?.commercial ?? false;
+  // Upgrade-only merge (audit Finding 3): the upsert conflicts on user_id, and
+  // the "linked" branch above fires when an auth user already has a profile that
+  // the email guard didn't catch (e.g. its profile email differs from the auth
+  // email). Never DOWNGRADE a platform the existing account already had — only
+  // grant. A fresh account has no prior flags, so this is a no-op for it.
+  const { data: priorProfile } = await sb
+    .from("profiles")
+    .select("has_command_center_access, has_new_platform_access")
+    .eq("user_id", authUserId)
+    .maybeSingle();
+  if (priorProfile) {
+    commandCenter = commandCenter || priorProfile.has_command_center_access === true;
+    commercial = commercial || priorProfile.has_new_platform_access === true;
+  }
   const { error: profErr } = await sb.from("profiles").upsert(
     {
       user_id: authUserId,

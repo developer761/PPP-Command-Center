@@ -362,11 +362,11 @@ export async function billChangeOrder(
     // Auto-issue for consistency with deal invoices (createDealInvoiceAction):
     // billing an already-APPROVED change order is a real bill, so it counts as
     // INVOICED the moment it's made — not a phantom draft that under-reports the
-    // account/deal Invoiced KPI. A claim-loser is voided below (sent → void is a
-    // clean, history-preserving transition).
+    // account/deal Invoiced KPI. A claim-loser is soft-deleted below (excluded
+    // from every rollup via `.is("deleted_at", null)`, so no double-count).
     issue: true,
     // Suppress the create-time notification — we only want the team to hear
-    // about this invoice if it wins the claim below (a loser gets voided).
+    // about this invoice if it wins the claim below (a loser is soft-deleted).
     skipCreatedNotification: true,
     line_items: [
       {
