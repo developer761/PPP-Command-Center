@@ -766,7 +766,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               const targetAccount = targetOpp ? targetOpp.account_id : accountIdFilter;
               return (
                 <Link
-                  href={`/commercial/accounts/${targetAccount}?tab=projects&project=${singleOppTarget}&dt=invoices#deal-invoices`}
+                  href={`/commercial/invoices/new?opp=${singleOppTarget}`}
                   className="sm:self-end inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2120,19 +2120,19 @@ function FullDetailByOpp({
                 );
               })}
             </ul>
-            {/* "+ New invoice" per opp — links into the deal builder (the one
-                authoritative create surface, with milestones). The old inline
-                create form here was retired in favor of that flow. */}
+            {/* "+ New invoice" per opp — the New-invoice page IN the Invoices
+                section (same builder as the deal tab, with milestones), so you
+                stay in Invoices instead of teleporting to the account. */}
             {opp && isPostSaleProject(opp) && (
               <Link
-                href={`/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=invoices#deal-invoices`}
+                href={`/commercial/invoices/new?opp=${oppId}`}
                 className="flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] border-t border-ppp-charcoal-100 touch-manipulation"
-                title="Open this deal to bill it — flat or broken into milestones"
+                title="New invoice for this deal — flat or broken into milestones"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 5v14 M5 12h14" />
                 </svg>
-                Open deal to bill
+                New invoice for this deal
                 <span aria-hidden className="ml-auto text-ppp-charcoal-400">→</span>
               </Link>
             )}

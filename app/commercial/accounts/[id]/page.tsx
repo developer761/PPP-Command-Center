@@ -1652,7 +1652,7 @@ function parseDueDate(raw: string): string | undefined {
   return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T16:00:00.000Z` : undefined;
 }
 
-async function createDealInvoiceAction(formData: FormData) {
+export async function createDealInvoiceAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1661,7 +1661,13 @@ async function createDealInvoiceAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(account_id) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(opp_id)) redirect("/commercial/accounts");
-  const back = `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}&dt=invoices`;
+  // Return to the surface the builder was opened on — its deal Invoices tab, OR
+  // its own page in the Invoices section — so New-invoice from the Invoices list
+  // stays in Invoices instead of teleporting to the account (Karan 2026-08).
+  // Whitelisted to those two shapes so it can never be an open redirect.
+  const dealTab = `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}&dt=invoices`;
+  const rt = String(formData.get("return_to") ?? "");
+  const back = rt.startsWith("/commercial/invoices") ? rt : dealTab;
   const mode = String(formData.get("mode") ?? "flat") === "milestones" ? "milestones" : "flat";
 
   const taxRaw = String(formData.get("tax_pct") ?? "").trim();
@@ -1764,7 +1770,7 @@ async function createDealInvoiceAction(formData: FormData) {
 
 /** "New invoice for this deal" — flat OR milestone-broken, via the client
  *  builder. Invoices are created under the project (Phase 1, Katie). */
-async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals, invoices }: { accountId: string; oppId: string; propertyZip: string | null; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[]; invoices: CommercialInvoice[] }) {
+export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals, invoices, returnTo }: { accountId: string; oppId: string; propertyZip: string | null; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[]; invoices: CommercialInvoice[]; returnTo?: string }) {
   // Pre-fill the tax rate from the deal's property ZIP (same engine as the
   // global invoices page). Editable on the form + the invoice. A TAX-EXEMPT GC
   // always defaults to 0% — never the ZIP rate (audit 1B: a taxed default on an
@@ -1793,6 +1799,7 @@ async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals, in
       action={createDealInvoiceAction}
       accountId={accountId}
       oppId={oppId}
+      returnTo={returnTo}
       defaultTax={defaultTax}
       taxNote={taxExempt ? "This customer is tax-exempt — tax defaulted to 0%." : taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
       proposals={wonProposals.map((pr) => {

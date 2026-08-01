@@ -41,6 +41,7 @@ export function DealInvoiceBuilder({
   defaultTax,
   taxNote,
   proposals,
+  returnTo,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   accountId: string;
@@ -48,6 +49,10 @@ export function DealInvoiceBuilder({
   defaultTax: string;
   taxNote: string | null;
   proposals: ProposalOpt[];
+  /** Where to land after create (+ on error). Lets the SAME builder live on the
+   *  deal's Invoices tab AND its own page in the Invoices section, each
+   *  returning to its own surface (not teleporting between them). */
+  returnTo?: string;
 }) {
   const [mode, setMode] = useState<"flat" | "milestones">("flat");
   const [flatAmount, setFlatAmount] = useState("");
@@ -94,6 +99,7 @@ export function DealInvoiceBuilder({
         <input type="hidden" name="account_id" value={accountId} />
         <input type="hidden" name="opp_id" value={oppId} />
         <input type="hidden" name="mode" value={mode} />
+        {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
 
         {/* Running invoice total — always visible at the TOP. */}
         <div className="flex items-center justify-between gap-3 rounded-xl border border-ppp-blue-200 bg-surface px-4 py-2.5">
