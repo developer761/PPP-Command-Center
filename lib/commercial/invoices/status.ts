@@ -103,6 +103,9 @@ export async function changeInvoiceStatus(
   if (error) return { ok: false, error: error.message };
   if (!updated) return { ok: false, error: "invoice_status_changed_concurrently" };
 
+  if (input.to_status === "void") {
+    await releaseTickedChangeOrders(input.invoice_id); // D1: re-open any billed COs
+  }
   await logStatusChange(
     input.invoice_id,
     from_status,
@@ -111,6 +114,31 @@ export async function changeInvoiceStatus(
     input.note
   );
   return { ok: true };
+}
+
+/**
+ * Phase 1A (audit D1): when an invoice dies (void or soft-delete), FREE any
+ * change orders billed on it so they can be re-billed cleanly. Without this the
+ * CO's line/milestone tag survives, the partial UNIQUE index (mig 093) holds the
+ * slot, and re-ticking the CO fails forever with no UI escape. We hard-delete
+ * the CO lines (the invoice is dead, and a deduct line can't have its tag nulled
+ * without violating the >=0 CHECK), soft-delete the CO milestones (frees the
+ * `WHERE deleted_at IS NULL` slot), and null the COs' invoiced_invoice_id — but
+ * ONLY for COs still pointing at THIS invoice (never stomps another claim).
+ */
+async function releaseTickedChangeOrders(invoiceId: string): Promise<void> {
+  const sb = commercialDb();
+  const [{ data: lines }, { data: ms }] = await Promise.all([
+    sb.from("commercial_invoice_line_items").select("change_order_id").eq("invoice_id", invoiceId).not("change_order_id", "is", null),
+    sb.from("commercial_invoice_milestones").select("change_order_id").eq("invoice_id", invoiceId).not("change_order_id", "is", null).is("deleted_at", null),
+  ]);
+  const coIds = new Set<string>();
+  for (const l of (lines ?? []) as { change_order_id: string | null }[]) if (l.change_order_id) coIds.add(l.change_order_id);
+  for (const m of (ms ?? []) as { change_order_id: string | null }[]) if (m.change_order_id) coIds.add(m.change_order_id);
+  if (coIds.size === 0) return;
+  await sb.from("commercial_invoice_line_items").delete().eq("invoice_id", invoiceId).not("change_order_id", "is", null);
+  await sb.from("commercial_invoice_milestones").update({ deleted_at: new Date().toISOString() }).eq("invoice_id", invoiceId).not("change_order_id", "is", null).is("deleted_at", null);
+  await sb.from("commercial_change_orders").update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() }).in("id", [...coIds]).eq("invoiced_invoice_id", invoiceId);
 }
 
 /** Soft-delete an invoice. Karan 2026-07-07: opened up to any state so
@@ -139,6 +167,7 @@ export async function softDeleteInvoice(
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
   if (!deleted) return { ok: false, error: "invoice_not_found" };
+  await releaseTickedChangeOrders(invoice_id); // D1: re-open any billed COs
   await logStatusChange(invoice_id, from_status, "void", actor_user_id, "Invoice deleted");
   return { ok: true };
 }

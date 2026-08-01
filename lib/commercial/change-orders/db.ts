@@ -28,7 +28,6 @@ import {
   type CommercialInvoice,
 } from "@/lib/commercial/invoices/db";
 import { addMilestone, deleteMilestone, listMilestonesForInvoice } from "@/lib/commercial/invoices/milestones";
-import { TERMINAL_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
 import { getCommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
@@ -387,14 +386,14 @@ type TickResult =
   | { ok: true; invoice: CommercialInvoice | null; createdDraft: boolean; warning?: string }
   | { ok: false; error: string };
 
-/** The deal's CURRENT billable invoice for a tick: newest DRAFT if one exists,
- *  else the newest non-terminal (not paid/void) invoice. Null → caller creates
- *  a draft. (listCommercialInvoices is created_at DESC, deleted_at-null.) */
+/** The deal's current billable invoice for a tick: the newest DRAFT, or null.
+ *  We deliberately DON'T fold a CO onto a sent/partial invoice the GC already
+ *  received — that would silently reprice a delivered bill (audit D2). No draft
+ *  → the caller mints a fresh draft. (listCommercialInvoices is created_at
+ *  DESC, deleted_at-null.) */
 async function resolveCurrentDealInvoice(oppId: string): Promise<CommercialInvoice | null> {
   const invoices = await listCommercialInvoices({ opportunityId: oppId });
-  const draft = invoices.find((i) => i.status === "draft");
-  if (draft) return draft;
-  return invoices.find((i) => !TERMINAL_INVOICE_STATUSES.has(i.status)) ?? null;
+  return invoices.find((i) => i.status === "draft") ?? null;
 }
 
 /** Tax % for an auto-created draft, from the deal's property ZIP (mirrors the
@@ -481,6 +480,21 @@ async function tickChangeOrderOn(co: CommercialChangeOrder, userId: string): Pro
     return { ok: false, error: ("error" in addRes && addRes.error) || "Couldn't add the change order to the invoice." };
   }
 
+  // Concurrency re-check (audit D4): the deduct cap read the subtotal BEFORE this
+  // insert, so a racing deduct could have consumed the headroom — the summed
+  // subtotal may now be negative, which the invoice CHECK rejects (leaving a
+  // stale subtotal + a broken Σ-invariant). Verify the actual line sum; if it's
+  // negative, roll THIS credit back with a heads-up (never-reject).
+  if (applied < 0) {
+    const { data: lineRows } = await sb.from("commercial_invoice_line_items").select("subtotal_cents").eq("invoice_id", invoiceId);
+    const actualSum = (lineRows ?? []).reduce((s, r) => s + Number((r as { subtotal_cents: number }).subtotal_cents ?? 0), 0);
+    if (actualSum < 0) {
+      await removeTickedChangeOrder(invoiceId, co.id, userId);
+      if (createdDraft) await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
+      return { ok: true, invoice: null, createdDraft: false, warning: "Another credit was applied to this invoice at the same moment — adding this one would take it below $0, so it wasn't added. Put it on a bigger invoice." };
+    }
+  }
+
   // Atomic compare-and-swap claim: null (fresh) or the dead prior invoice id
   // (re-bill). A concurrent tick can only match once, so the CO can't attach
   // twice (the partial UNIQUE index on the line/milestone is the DB backstop).
@@ -561,7 +575,9 @@ async function removeTickedChangeOrder(invoiceId: string, coId: string, userId: 
     .is("deleted_at", null)
     .maybeSingle();
   if (ms) {
-    await deleteMilestone((ms as { id: string }).id, userId).catch(() => {});
+    // Rollback of a LOST claim — we never owned the CO's invoiced_invoice_id, so
+    // don't clear it (would stomp the winner). D5.
+    await deleteMilestone((ms as { id: string }).id, userId, { skipCoClaimClear: true }).catch(() => {});
     return;
   }
   const { data: line } = await sb

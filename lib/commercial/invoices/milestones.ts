@@ -332,7 +332,11 @@ export async function updateMilestone(
 
 /** Soft-delete a milestone + remove its paired charge (which recomputes the
  *  invoice total). The stored lien waiver is retired too. */
-export async function deleteMilestone(id: string, actorUserId: string): Promise<Result<null>> {
+export async function deleteMilestone(
+  id: string,
+  actorUserId: string,
+  opts?: { skipCoClaimClear?: boolean }
+): Promise<Result<null>> {
   const existing = await getMilestone(id);
   if (!existing) return { ok: false, error: "Milestone not found." };
   // Void invoices are immutable — nothing to do (the UI hides these on void).
@@ -348,8 +352,14 @@ export async function deleteMilestone(id: string, actorUserId: string): Promise<
   if (paid > 0) {
     await sb.from("commercial_invoice_payments").update({ milestone_id: null }).eq("milestone_id", id);
   }
-  if (existing.change_order_id) {
-    await sb.from("commercial_change_orders").update({ invoiced_invoice_id: null }).eq("id", existing.change_order_id);
+  // Clear the CO's claim — but scoped to THIS invoice so a lost-race rollback
+  // can't stomp the winner's claim (audit D5). Skippable entirely for that path.
+  if (existing.change_order_id && !opts?.skipCoClaimClear) {
+    await sb
+      .from("commercial_change_orders")
+      .update({ invoiced_invoice_id: null })
+      .eq("id", existing.change_order_id)
+      .eq("invoiced_invoice_id", existing.invoice_id);
   }
   const { error } = await sb
     .from("commercial_invoice_milestones")

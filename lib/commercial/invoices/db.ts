@@ -125,6 +125,9 @@ export type CommercialInvoiceLineItem = {
   unit_price_cents: number;
   subtotal_cents: number;
   created_at: string;
+  /** Phase 1A: set when this line bills a change order (removable only by
+   *  unticking the CO, and the one case a negative amount is allowed). */
+  change_order_id?: string | null;
 };
 
 export type CommercialInvoicePayment = {
@@ -626,6 +629,17 @@ export async function removeLineItem(
     .is("deleted_at", null)
     .maybeSingle();
   if (pairedMs) return { ok: false, error: "milestone_line_item" };
+  // Phase 1A (audit D3): a change-order line can't be removed here — that would
+  // strand the CO as "billed" with no charge (its claim + the deal's Billed tile
+  // still count it). Untick it from the Change Orders tool instead.
+  const { data: coLine } = await sb
+    .from("commercial_invoice_line_items")
+    .select("change_order_id")
+    .eq("id", item_id)
+    .maybeSingle();
+  if (coLine && (coLine as { change_order_id: string | null }).change_order_id) {
+    return { ok: false, error: "change_order_line" };
+  }
   // Capture the row before delete so the audit trail records what was removed.
   const { data: beforeLi } = await sb
     .from("commercial_invoice_line_items")

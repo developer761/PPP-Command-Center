@@ -152,6 +152,8 @@ async function removeLineItemAction(formData: FormData) {
   if (!rm.ok) {
     const msg = rm.error === "milestone_line_item"
       ? "That charge is part of a milestone — remove it from the Milestones section below instead."
+      : rm.error === "change_order_line"
+      ? "That's a change-order charge — untick it from the Change Orders tool to remove it."
       : rm.error ?? "Couldn't remove that line.";
     redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(msg), from));
   }
@@ -1211,20 +1213,32 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 </tr>
               </thead>
               <tbody>
-                {lineItems.map((li) => (
+                {lineItems.map((li) => {
+                  const isCo = !!li.change_order_id;
+                  const isCredit = isCo && li.subtotal_cents < 0;
+                  return (
                   <tr key={li.id} className="border-b border-ppp-charcoal-50 last:border-b-0 hover:bg-ppp-charcoal-50/40">
-                    <td className="py-2.5 pr-3 text-ppp-charcoal align-top">{li.description}</td>
+                    <td className="py-2.5 pr-3 text-ppp-charcoal align-top">
+                      {isCo && (
+                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 mr-1.5 text-[10px] font-bold uppercase tracking-wider border ${isCredit ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"}`}>
+                          {isCredit ? "CO credit" : "Change order"}
+                        </span>
+                      )}
+                      {li.description}
+                    </td>
                     <td className="py-2.5 pr-3 text-right text-ppp-charcoal-700 tabular-nums align-top">
                       {li.quantity.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                     </td>
                     <td className="py-2.5 pr-3 text-ppp-charcoal-600 align-top">{li.unit ? productUnitLabel(li.unit) : "—"}</td>
-                    <td className="py-2.5 pr-3 text-right text-ppp-charcoal-700 tabular-nums align-top">{formatCentsFull(li.unit_price_cents)}</td>
-                    <td className="py-2.5 pr-3 text-right font-semibold text-ppp-charcoal tabular-nums align-top">{formatCentsFull(li.subtotal_cents)}</td>
+                    <td className={`py-2.5 pr-3 text-right tabular-nums align-top ${isCredit ? "text-rose-700" : "text-ppp-charcoal-700"}`}>{formatCentsFull(li.unit_price_cents)}</td>
+                    <td className={`py-2.5 pr-3 text-right font-semibold tabular-nums align-top ${isCredit ? "text-rose-700" : "text-ppp-charcoal"}`}>{formatCentsFull(li.subtotal_cents)}</td>
                     <td className="py-2.5 pl-2 text-right align-top">
                       {/* When milestones drive the charges, they own add/remove —
                           editing a line item directly here would desync the
-                          milestone/charge pairing. Manage via Milestones below. */}
-                      {!isVoid && !hasMilestones && (
+                          milestone/charge pairing. Manage via Milestones below.
+                          A change-order line is managed by unticking the CO, so no
+                          remove button here (server also blocks it — audit D3). */}
+                      {!isVoid && !hasMilestones && !isCo && (
                         <form action={removeLineItemAction} className="inline">
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
@@ -1240,7 +1254,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr>
