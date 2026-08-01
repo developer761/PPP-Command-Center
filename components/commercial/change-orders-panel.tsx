@@ -15,8 +15,8 @@ import {
   liveInvoiceIds,
   billedChangeOrderChips,
 } from "@/lib/commercial/change-orders/db";
-import { listDocumentsForParent } from "@/lib/commercial/documents/db";
-import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
+import { changeOrderAttachmentsByOrder } from "@/lib/commercial/change-orders/attachments";
+import { ChangeOrderAttachments } from "@/components/commercial/change-order-attachments";
 import {
   CHANGE_ORDER_STATUS_META,
   formatChangeOrderNumber,
@@ -110,14 +110,12 @@ export async function ChangeOrdersPanel({
   preserveDesc?: string | null;
 }) {
   const items = await listChangeOrders(oppId);
-  const [liveInvoices, coChips, allDocs] = await Promise.all([
+  const [liveInvoices, coChips, coAttachments] = await Promise.all([
     liveInvoiceIds(items.map((c) => c.invoiced_invoice_id).filter((x): x is string => !!x)),
     billedChangeOrderChips(items),
-    listDocumentsForParent("opportunity", oppId),
+    // Signed CO PDFs / backup, per change order — one batched query.
+    changeOrderAttachmentsByOrder(items.map((c) => c.id)),
   ]);
-  // Signed CO PDFs / backup filed against this deal — they also show in the
-  // deal Documents → Change Orders box (same category).
-  const coDocs = allDocs.filter((d) => d.category === "change_order");
   const proposalById = new Map(proposals.map((p) => [p.id, p]));
   // Net APPROVED change-order $ per proposal — a CO tied to a proposal moves
   // THAT proposal's effective contract (add for +, deduct for −).
@@ -457,39 +455,27 @@ export async function ChangeOrdersPanel({
                           </>
                         )}
                       </div>
+
+                      {/* Per-CO documents — signed CO PDFs / backup. File into the
+                          deal Documents → Change Orders box automatically. */}
+                      <details className="mt-2.5 group/codocs">
+                        <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] select-none">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/codocs:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+                          Documents
+                          {(() => { const n = (coAttachments.get(co.id) ?? []).length; return n > 0 ? <span className="text-ppp-charcoal-400 tabular-nums">· {n}</span> : null; })()}
+                        </summary>
+                        <ChangeOrderAttachments
+                          changeOrderId={co.id}
+                          attachments={(coAttachments.get(co.id) ?? []).map((d) => ({ id: d.id, file_name: d.file_name }))}
+                          canEdit
+                        />
+                      </details>
                     </>
                   )}
                 </li>
               );
             })}
-          </ul>
-        )}
-      </section>
-
-      {/* ── Change-order documents ── signed CO PDFs / backup. Files here go to
-          the deal Documents → Change Orders box (parent = deal, category =
-          change_order), so they're never siloed. */}
-      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-          <h3 className="text-[13px] font-bold text-ppp-charcoal">Change-order documents</h3>
-          <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{coDocs.length}</span>
-        </div>
-        <p className="text-[11px] text-ppp-charcoal-500 mb-3">Attach signed change orders or backup. They file into this deal&rsquo;s Documents → Change Orders box automatically.</p>
-        <CommercialFilesUploadForm parentType="opportunity" parentId={oppId} defaultCategory="change_order" />
-        {coDocs.length > 0 && (
-          <ul className="mt-3 divide-y divide-ppp-charcoal-50">
-            {coDocs.map((d) => (
-              <li key={d.id}>
-                <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-2 py-2 px-1 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] group">
-                  <span className="min-w-0 flex items-center gap-2">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-                    <span className="block text-[12px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
-                  </span>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
-                </a>
-              </li>
-            ))}
           </ul>
         )}
       </section>
