@@ -232,10 +232,14 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
 export async function updatePurchase(
   id: string,
   patch: { category?: string; vendor?: string | null; amount_cents?: number; purchased_at?: string | null; description?: string | null },
-  userId: string
+  userId: string,
+  /** Ownership guard (audit H1): the purchase must belong to this opportunity —
+   *  rejects a forged purchase_id from another deal. */
+  expectedOppId?: string
 ): Promise<Result<CommercialProjectPurchase>> {
   const before = await getPurchase(id);
   if (!before) return { ok: false, error: "Purchase not found." };
+  if (expectedOppId && before.opportunity_id !== expectedOppId) return { ok: false, error: "Purchase not found." };
   if (!(await resolveOppScope(commercialDb(), before.opportunity_id))) {
     return { ok: false, error: DELETED_DEAL_ERROR };
   }
@@ -267,9 +271,11 @@ export async function updatePurchase(
 }
 
 /** Soft-delete a purchase + retire its stored receipt (never strand the doc). */
-export async function deletePurchase(id: string, userId: string): Promise<Result<true>> {
+export async function deletePurchase(id: string, userId: string, expectedOppId?: string): Promise<Result<true>> {
   const before = await getPurchase(id);
   if (!before) return { ok: false, error: "Purchase not found." };
+  // Ownership guard (audit H1): reject a forged purchase_id from another deal.
+  if (expectedOppId && before.opportunity_id !== expectedOppId) return { ok: false, error: "Purchase not found." };
   const sb = commercialDb();
   const { error } = await sb
     .from("commercial_project_purchases")

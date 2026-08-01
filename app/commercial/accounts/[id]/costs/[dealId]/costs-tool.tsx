@@ -64,6 +64,14 @@ function revalidateCostSurfaces(accountId: string, oppId: string) {
   revalidatePath("/commercial");
 }
 
+/** Ownership guard for every cost action (audit H1/M2): the deal must exist +
+ *  belong to the claimed account, else bounce — so a forged opp/account pair
+ *  can't drive a redirect/revalidate for a deal the row doesn't belong to. */
+async function assertDealOwned(opp_id: string, account_id: string) {
+  const opp = await getCommercialOpportunity(opp_id);
+  if (!opp || opp.account_id !== account_id) redirect("/commercial/accounts");
+}
+
 const CATEGORY_LABELS = Object.fromEntries(
   PURCHASE_CATEGORIES.map((c) => [c, PURCHASE_CATEGORY_META[c].label])
 ) as Record<string, string>;
@@ -87,6 +95,7 @@ async function addPurchaseAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  await assertDealOwned(opp_id, account_id);
   const category = String(formData.get("category") ?? "materials");
   const vendor = String(formData.get("vendor") ?? "");
   const rawAmount = String(formData.get("amount") ?? "");
@@ -124,6 +133,7 @@ async function updatePurchaseAction(formData: FormData) {
   const back = String(formData.get("back") ?? "");
   const purchase_id = String(formData.get("purchase_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(purchase_id)) redirect("/commercial/accounts");
+  await assertDealOwned(opp_id, account_id);
   const category = String(formData.get("category") ?? "materials");
   const vendor = String(formData.get("vendor") ?? "");
   const rawAmount = String(formData.get("amount") ?? "");
@@ -143,6 +153,7 @@ async function updatePurchaseAction(formData: FormData) {
       description: description || null,
     },
     userId,
+    opp_id,
   );
   if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, edit_purchase: purchase_id }, back);
   const receipt = await readReceiptFile(formData);
@@ -161,7 +172,8 @@ async function deletePurchaseAction(formData: FormData) {
   const back = String(formData.get("back") ?? "");
   const purchase_id = String(formData.get("purchase_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(purchase_id)) redirect("/commercial/accounts");
-  const res = await deletePurchase(purchase_id, userId);
+  await assertDealOwned(opp_id, account_id);
+  const res = await deletePurchase(purchase_id, userId, opp_id);
   if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error }, back);
   revalidateCostSurfaces(account_id, opp_id);
   costsRedirect(account_id, opp_id, { cost_ok: "deleted" }, back);
@@ -204,7 +216,9 @@ export async function ProjectCostsTool({
   );
 
   const editId = sp.edit_purchase ?? null;
-  const costPctOfContract = fin.hasContract ? Math.min(100, Math.round((fin.costs.total / fin.contractCents) * 100)) : 0;
+  // True % (may exceed 100 when over budget) for the label; bar width clamps.
+  const truePctOfContract = fin.hasContract ? Math.round((fin.costs.total / fin.contractCents) * 100) : 0;
+  const barPctOfContract = Math.min(100, truePctOfContract);
   const mt = marginTone(fin.grossMarginPct);
 
   const panel = (
@@ -241,8 +255,8 @@ export async function ProjectCostsTool({
           <PLTile
             label={fin.grossMarginCents < 0 ? "Margin (loss)" : "Gross margin"}
             value={formatCentsFull(fin.grossMarginCents)}
-            sub={fin.grossMarginPct == null ? undefined : `${fin.grossMarginPct}% · ${mt.label}`}
-            tone={fin.grossMarginPct == null ? "neutral" : fin.grossMarginPct < 0 ? "rose" : fin.grossMarginPct < 15 ? "amber" : "emerald"}
+            sub={fin.grossMarginPct != null ? `${fin.grossMarginPct}% · ${mt.label}` : fin.grossMarginCents < 0 ? "over budget · no contract" : undefined}
+            tone={fin.grossMarginCents < 0 ? "rose" : fin.grossMarginPct == null ? "neutral" : fin.grossMarginPct < 15 ? "amber" : "emerald"}
             emphasize
           />
         </div>
@@ -250,10 +264,10 @@ export async function ProjectCostsTool({
           <div className="mt-3">
             <div className="flex items-center justify-between text-[10.5px] text-ppp-charcoal-500 mb-1">
               <span>Costs vs contract</span>
-              <span className={`font-semibold ${mt.text}`}>{costPctOfContract}% spent</span>
+              <span className={`font-semibold ${mt.text}`}>{truePctOfContract}% spent</span>
             </div>
             <div className="h-2.5 rounded-full bg-ppp-charcoal-100 overflow-hidden">
-              <div className={`h-full rounded-full ${mt.bar}`} style={{ width: `${costPctOfContract}%` }} />
+              <div className={`h-full rounded-full ${mt.bar}`} style={{ width: `${barPctOfContract}%` }} />
             </div>
           </div>
         )}

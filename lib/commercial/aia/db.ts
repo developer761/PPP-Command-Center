@@ -504,7 +504,10 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
     .from("commercial_proposals")
     .select("total_cents, status, revision_number")
     .eq("opportunity_id", opportunity_id)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    // Deterministic id order (audit L5) so a max-revision TIE resolves to the
+    // same row as listProjects' selector — contract can't diverge card↔P&L.
+    .order("id", { ascending: true });
   let acceptedProposalCents = 0;
   let latestProposalCents = 0;
   let latestRev = -1;
