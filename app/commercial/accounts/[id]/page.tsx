@@ -95,6 +95,7 @@ import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/comme
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
 // Inline delivery tools rendered under the deal's Project sub-tab (2026-08).
 import { ChangeOrdersTool } from "./change-orders/[dealId]/change-orders-tool";
+import { ProjectCostsTool } from "./costs/[dealId]/costs-tool";
 import { CloseoutTool } from "./closeout/[dealId]/closeout-tool";
 import { AiaTool } from "./aia/[dealId]/aia-tool";
 import { SubmittalsTool } from "./submittals/[dealId]/submittals-tool";
@@ -236,6 +237,9 @@ type SP = Promise<{
   ok?: string;
   app?: string;
   pkg?: string;
+  /** Phase 2 Costs & P&L tool. */
+  cost_ok?: string;
+  edit_purchase?: string;
 }>;
 /** Resolved (awaited) shape of SP — passed to the inline Project tools. */
 type SPShape = Awaited<SP>;
@@ -1221,6 +1225,22 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           )}
         </ToolMiniCard>
 
+        {/* Costs & Job P&L — total job cost + projected gross margin */}
+        <ToolMiniCard label="Costs & P&L" href={`${base}?tab=projects&project=${p.opp.id}&dt=project&pt=costs`} iconBg="bg-cc-brand-600" icon={<path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />} chip={p.costsCents === 0 ? null : p.grossMarginPct == null ? { label: "no contract", tone: "neutral" } : { label: `${p.grossMarginPct}% margin`, tone: p.grossMarginPct < 0 ? "rose" : p.grossMarginPct < 15 ? "amber" : "emerald" }}>
+          {p.costsCents === 0 ? (
+            <p className="text-[11.5px] text-ppp-charcoal-500">No job costs logged yet — add materials, labor &amp; subs to see margin.</p>
+          ) : (
+            <div>
+              <div className="text-[11.5px] font-semibold text-ppp-charcoal tabular-nums">{formatCentsCompact(p.costsCents)} cost{p.grossMarginPct == null ? "" : ` · ${p.grossMarginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(p.grossMarginCents))} margin`}</div>
+              {p.hasBilling || p.contractToDateCents > 0 ? (
+                <div className={`text-[10.5px] mt-0.5 ${p.grossMarginPct != null && p.grossMarginPct < 0 ? "text-rose-600" : "text-ppp-charcoal-500"}`}>vs {formatCentsCompact(p.contractToDateCents)} contract</div>
+              ) : (
+                <div className="text-[10.5px] text-ppp-charcoal-400 mt-0.5">Set a contract to see margin</div>
+              )}
+            </div>
+          )}
+        </ToolMiniCard>
+
         {/* Submittals — latest submittal + status + how many awaiting GC */}
         <ToolMiniCard label="Submittals" href={`${base}?tab=projects&project=${p.opp.id}&dt=project&pt=submittals`} iconBg="bg-ppp-blue-600" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6 M8 13h5 M8 17h4" /></>} chip={awaitingSubs > 0 ? { label: `${awaitingSubs} awaiting`, tone: "amber" } : latestSub ? { label: "up to date", tone: "emerald" } : null}>
           {latestSub == null ? (
@@ -1438,6 +1458,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
 const PROJECT_TOOLS: { key: string; label: string; docCategory: string; docLabel: string }[] = [
   { key: "change-orders", label: "Change Orders", docCategory: "change_order", docLabel: "Change order" },
   { key: "aia", label: "AIA Billing", docCategory: "aia_billing", docLabel: "AIA billing" },
+  { key: "costs", label: "Costs & P&L", docCategory: "receipt", docLabel: "Receipt" },
   { key: "submittals", label: "Submittals", docCategory: "submittal", docLabel: "Submittal" },
   { key: "closeout", label: "Closeout & Warranty", docCategory: "closeout", docLabel: "Closeout" },
 ];
@@ -1501,6 +1522,14 @@ async function ProjectToolsPanel({
           dealId={dealId}
           variant="inline"
           sp={{ app: sp?.app, error: sp?.error, ok: sp?.ok }}
+        />
+      )}
+      {projectTool === "costs" && (
+        <ProjectCostsTool
+          id={accountId}
+          dealId={dealId}
+          variant="inline"
+          sp={{ cost_ok: sp?.cost_ok, error: sp?.error, edit_purchase: sp?.edit_purchase }}
         />
       )}
       {projectTool === "closeout" && (
@@ -1860,11 +1889,12 @@ function ToolMiniCard({
   href: string;
   iconBg: string;
   icon: React.ReactNode;
-  chip: { label: string; tone: "neutral" | "amber" | "emerald" | "blue" } | null;
+  chip: { label: string; tone: "neutral" | "amber" | "emerald" | "blue" | "rose" } | null;
   children: React.ReactNode;
 }) {
   const chipCls =
-    chip?.tone === "amber" ? "bg-amber-50 text-amber-800 border-amber-200"
+    chip?.tone === "rose" ? "bg-rose-50 text-rose-700 border-rose-200"
+    : chip?.tone === "amber" ? "bg-amber-50 text-amber-800 border-amber-200"
     : chip?.tone === "emerald" ? "bg-emerald-50 text-emerald-700 border-emerald-200"
     : chip?.tone === "blue" ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
     : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";

@@ -15,6 +15,29 @@ import type { CommercialDocument } from "@/lib/commercial/documents/db";
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
+/**
+ * Phase 2 (audit H3): a waiver can now live at THREE levels — invoice ("final"),
+ * milestone, or payment (partial). A chip keyed only off the invoice-level column
+ * would read "no waiver" on an invoice fully covered by per-payment waivers. This
+ * pure helper derives ONE honest coverage state per invoice so every surface
+ * (deal Invoices tab chip, invoice detail) agrees.
+ *   final  → the invoice-level (final) waiver is on file
+ *   partial→ no final yet, but at least one milestone/payment waiver is on file
+ *   none   → nothing on file
+ */
+export type WaiverCoverage = "none" | "partial" | "final";
+
+export function deriveWaiverCoverage(input: {
+  invoiceWaiverDocId?: string | null;
+  milestoneWaiverDocIds?: (string | null | undefined)[];
+  paymentWaiverDocIds?: (string | null | undefined)[];
+}): WaiverCoverage {
+  if (input.invoiceWaiverDocId) return "final";
+  const anyPartial =
+    (input.milestoneWaiverDocIds ?? []).some(Boolean) || (input.paymentWaiverDocIds ?? []).some(Boolean);
+  return anyPartial ? "partial" : "none";
+}
+
 async function fetchInvoiceScope(invoiceId: string): Promise<{ opportunity_id: string; invoice_number: string; lien_waiver_document_id: string | null } | null> {
   const sb = commercialDb();
   const { data } = await sb

@@ -168,6 +168,13 @@ export async function softDeleteInvoice(
   if (error) return { ok: false, error: error.message };
   if (!deleted) return { ok: false, error: "invoice_not_found" };
   await releaseTickedChangeOrders(invoice_id); // D1: re-open any billed COs
+  // Phase 2 (audit H1): per-payment lien waivers + invoice attachments are
+  // deliberately RETAINED on soft-delete — each is parented to the live
+  // opportunity (a valid deal document, never an orphan) and this keeps
+  // restoreInvoice lossless. The only payment-removal path (removePayment)
+  // retires its own waiver. If a HARD invoice delete is ever added, it MUST
+  // iterate payments to retire lien_waiver_document_id + retire attachment docs
+  // (the payments FK is ON DELETE CASCADE and would bypass that teardown).
   await logStatusChange(invoice_id, from_status, "void", actor_user_id, "Invoice deleted");
   return { ok: true };
 }

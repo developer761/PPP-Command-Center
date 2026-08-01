@@ -40,6 +40,10 @@ describe("summarizeProduction", () => {
       isClosedOut: false,
       submittalTotal: 0,
       submittalAwaiting: 0,
+      costsCents: 0,
+      costs: { materials: 0, labor: 0, subcontractor: 0, equipment: 0, permit: 0, other: 0, total: 0, count: 0 },
+      grossMarginCents: 0,
+      grossMarginPct: null,
       ...rest,
     };
   };
@@ -101,6 +105,20 @@ describe("summarizeProduction", () => {
       paidCents: 0,
       leftToBillCents: 0,
       outstandingCents: 0,
+      costsCents: 0,
+      grossMarginCents: 0,
     });
+  });
+
+  it("sums costs and computes portfolio gross margin (contract − costs)", () => {
+    const s = summarizeProduction([
+      row({ contractToDateCents: 10_000_000, costsCents: 6_000_000 }),
+      row({ contractToDateCents: 4_000_000, costsCents: 5_000_000 }), // over budget on this one
+    ]);
+    expect(s.costsCents).toBe(11_000_000);
+    expect(s.contractValueCents).toBe(14_000_000);
+    // Portfolio margin nets: 14M contract − 11M cost = 3M (one job's overrun is
+    // absorbed at the portfolio level, but each project row keeps its own sign).
+    expect(s.grossMarginCents).toBe(3_000_000);
   });
 });

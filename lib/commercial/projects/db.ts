@@ -10,6 +10,7 @@ import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { pickContractBaseCents } from "@/lib/commercial/aia/constants";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
+import { costBreakdownByOpp, emptyCostBreakdown, type CostBreakdown } from "@/lib/commercial/purchases/db";
 import type { CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 
 export type ProjectRow = {
@@ -60,6 +61,15 @@ export type ProjectRow = {
   // ── Submittals (2026-07-30) — so the project card shows all four tool states ──
   submittalTotal: number;
   submittalAwaiting: number;
+  // ── Costs / Job P&L (Phase 2) ──
+  /** Σ live project purchases (materials/labor/subs/equipment/permits). */
+  costsCents: number;
+  /** Per-category cost breakdown for the P&L. */
+  costs: CostBreakdown;
+  /** Contract to date − total costs = projected gross profit (negative = over budget). */
+  grossMarginCents: number;
+  /** grossMargin ÷ contract, whole %, null when contract is 0. */
+  grossMarginPct: number | null;
 };
 
 function bidMidCents(o: CommercialOpportunity): number {
@@ -182,6 +192,10 @@ export async function listProjects(opts: {
     }
     invByOpp.set(inv.opportunity_id, e);
   }
+
+  // ── Batch: project costs per opp (Phase 2). One grouped query; only live
+  // purchases (costBreakdownByOpp filters deleted_at IS NULL — audit C2). ──
+  const costsByOpp = await costBreakdownByOpp(oppIds);
 
   // ── Batch: proposals per opp — the WON one is the signed contract; if none
   // is won, the LATEST (highest revision) proposal drives the contract so a deal
@@ -315,6 +329,11 @@ export async function listProjects(opts: {
     const hasContract = contractToDate > 0;
     const leftToBill = hasContract ? Math.max(0, contractToDate - inv.billedPreTax) : 0;
     const overBilled = hasContract && inv.billedPreTax > contractToDate;
+    // Job P&L (Phase 2): margin vs the SAME contractToDate used everywhere else
+    // (base + net-approved COs), so the card ties out with the deal P&L (audit C1).
+    const costs = costsByOpp.get(o.id) ?? emptyCostBreakdown();
+    const grossMarginCents = contractToDate - costs.total;
+    const grossMarginPct = hasContract ? Math.round((grossMarginCents / contractToDate) * 100) : null;
     return {
       opp: o as CommercialOpportunity,
       accountId: o.account?.id ?? o.account_id,
@@ -345,6 +364,10 @@ export async function listProjects(opts: {
       isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",
       submittalTotal: submittalCounts.get(o.id)?.total ?? 0,
       submittalAwaiting: submittalCounts.get(o.id)?.awaiting_response ?? 0,
+      costsCents: costs.total,
+      costs,
+      grossMarginCents,
+      grossMarginPct,
     };
   });
 }
@@ -373,6 +396,11 @@ export type ProductionSummary = {
   leftToBillCents: number;
   /** Invoiced − paid. Outstanding AR across these projects. */
   outstandingCents: number;
+  // ── Job P&L (Phase 2) ──
+  /** Σ project costs across these projects. */
+  costsCents: number;
+  /** Σ contract − Σ costs = portfolio projected gross profit. */
+  grossMarginCents: number;
 };
 
 /**
@@ -394,6 +422,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
   let billedContractCents = 0;
   let paidCents = 0;
   let leftToBillCents = 0;
+  let costsCents = 0;
   for (const r of rows) {
     contractValueCents += r.contractToDateCents;
     completedToDateCents += r.completedToDateCents;
@@ -403,6 +432,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     invoicedCents += r.invoicedCents;
     billedContractCents += r.billedContractCents;
     paidCents += r.paidCents;
+    costsCents += r.costsCents;
     // Sum per-project left-to-bill (already clamped ≥0 per project), so one
     // over-billed job can't mask another's remaining headroom.
     leftToBillCents += r.leftToBillCents;
@@ -423,6 +453,8 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     paidCents,
     leftToBillCents,
     outstandingCents: Math.max(0, invoicedCents - paidCents),
+    costsCents,
+    grossMarginCents: contractValueCents - costsCents,
     // remaining now means "left to bill" (contract − invoiced), the number
     // operators actually expect when they invoice.
     remainingCents: leftToBillCents,

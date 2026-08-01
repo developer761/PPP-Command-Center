@@ -31,6 +31,9 @@ export const DOCUMENT_CATEGORIES = [
   "submittal",         // transmittals + shop drawings / product data
   "closeout",          // closeout package: as-builts, O&M, waivers, warranty
   "lien_waiver",       // partial/final lien waivers — stored (never generated)
+  // Phase 2 (2026-08): the cost + attachment spine.
+  "receipt",           // material/labor/sub purchase receipts (job cost backup)
+  "invoice_attachment",// arbitrary files attached to a specific invoice
   "other",             // fallback
 ] as const;
 
@@ -52,6 +55,8 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "submittal": return "Submittal";
     case "closeout": return "Closeout";
     case "lien_waiver": return "Lien Waiver";
+    case "receipt": return "Receipt";
+    case "invoice_attachment": return "Invoice Attachment";
     case "other": return "Other";
     default: return cat;
   }

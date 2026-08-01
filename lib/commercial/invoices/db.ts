@@ -10,6 +10,7 @@
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
+import { softDeleteDocument } from "@/lib/commercial/documents/db";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import {
   DEFAULT_INVOICE_PREFIX,
@@ -142,6 +143,9 @@ export type CommercialInvoicePayment = {
   method: string | null;
   reference: string | null;
   notes: string | null;
+  /** Phase 2 (migration 094): stored PARTIAL lien waiver for this payment
+   *  (commercial_documents id, category lien_waiver). Null until uploaded. */
+  lien_waiver_document_id: string | null;
   recorded_by_user_id: string | null;
   created_at: string;
 };
@@ -1105,6 +1109,11 @@ export async function removePayment(
     .eq("invoice_id", invoice_id);
   if (error) return { ok: false, error: error.message };
   if (beforePayment) await logDelete("commercial_invoice_payments", payment_id, beforePayment, actor_user_id);
+  // Phase 2 (audit H1): a payment can carry a stored PARTIAL lien waiver — retire
+  // it so deleting the payment never strands the doc in the deal Documents tab
+  // (same teardown class as the milestone-waiver + CO-line sweeps).
+  const strandedWaiver = (beforePayment as { lien_waiver_document_id?: string | null } | null)?.lien_waiver_document_id;
+  if (strandedWaiver) await softDeleteDocument(strandedWaiver, actor_user_id).catch(() => {});
   const { data: after } = await sb
     .from("commercial_invoices")
     .select("status")
