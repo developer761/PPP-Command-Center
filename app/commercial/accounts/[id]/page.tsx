@@ -5975,7 +5975,7 @@ function AccountOverviewStrip({
         <MoneyTile
           label={invoiceRollup.open_balance_cents === 0 && invoiceRollup.credit_cents > 0 ? "Credit" : "Balance"}
           value={formatCentsCompact(invoiceRollup.open_balance_cents > 0 ? invoiceRollup.open_balance_cents : invoiceRollup.credit_cents)}
-          sub={invoiceRollup.open_balance_cents === 0 && invoiceRollup.credit_cents > 0 ? "overpaid" : balanceCountLabel}
+          sub={invoiceRollup.open_balance_cents === 0 && invoiceRollup.credit_cents > 0 ? "overpaid" : invoiceRollup.credit_cents > 0 ? `${balanceCountLabel} · ${formatCentsCompact(invoiceRollup.credit_cents)} credit` : balanceCountLabel}
           subTone={invoiceRollup.overdue_count > 0 ? "rose" : "muted"}
           href={
             invoiceRollup.overdue_count > 0

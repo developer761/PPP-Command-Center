@@ -261,8 +261,21 @@ export async function addMilestone(
     .maybeSingle();
   if (error || !data) {
     // The charge landed but the milestone row didn't — roll the line item back
-    // so we don't inflate the invoice with an untracked charge.
-    if (lineItemId) await removeLineItem(invoiceId, lineItemId, actorUserId).catch(() => {});
+    // so we don't inflate the invoice with an untracked charge. When this is a
+    // CHANGE-ORDER milestone the paired line carries change_order_id, which
+    // removeLineItem normally blocks (returns {ok:false}, not a throw — the old
+    // .catch() swallowed it, stranding the CO amount + bricking re-bill; same
+    // class as audit F1, sibling path). Allow it here + fall back to a direct
+    // delete if it still fails.
+    if (lineItemId) {
+      const rm = await removeLineItem(invoiceId, lineItemId, actorUserId, {
+        allowChangeOrderLine: !!draft.change_order_id,
+      }).catch(() => ({ ok: false as const }));
+      if (!rm.ok) {
+        await sb.from("commercial_invoice_line_items").delete().eq("id", lineItemId).eq("invoice_id", invoiceId);
+        await recomputeSubtotal(invoiceId);
+      }
+    }
     return { ok: false, error: error?.message ?? "Could not add the milestone." };
   }
   return { ok: true, value: data as InvoiceMilestone };

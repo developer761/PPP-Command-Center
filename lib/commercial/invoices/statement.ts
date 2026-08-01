@@ -98,9 +98,13 @@ export async function getOpenInvoiceStatementForAccount(
     if (balance <= 0) continue;
 
     const opp = oppById.get(inv.opportunity_id);
-    const daysPastDue = inv.due_at ? Math.floor((now - new Date(inv.due_at).getTime()) / DAY_MS) : null;
+    const dueMs = inv.due_at ? new Date(inv.due_at).getTime() : null;
+    const daysPastDue = dueMs != null ? Math.floor((now - dueMs) / DAY_MS) : null;
     const status = deriveInvoiceStatus(inv);
-    const isOverdue = status === "overdue";
+    // Overdue for AGING is computed off the injected `now` (not deriveInvoiceStatus,
+    // which reads wall-clock Date.now()) so the on-screen view + PDF bucket an
+    // invoice identically for the same request. Balance is already > 0 here.
+    const isOverdue = dueMs != null && now > dueMs;
 
     rows.push({
       invoiceId: inv.id,
