@@ -74,7 +74,7 @@ const navSections: NavSection[] = [
     heading: "Reports",
     items: [
       { label: "Win/Loss", href: "/commercial/reports/win-loss", icon: <IconChart /> },
-      { label: "Revenue", href: "/commercial/reports/revenue", phase: 3, disabled: true, icon: <IconChart /> },
+      { label: "Revenue", href: "/commercial/reports/revenue", icon: <IconChart /> },
     ],
   },
   {
