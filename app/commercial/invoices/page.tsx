@@ -17,6 +17,8 @@ import { createClient } from "@/lib/supabase/server";
 import { listCommercialInvoices, addPayment, getInvoiceContext, sumCommercialPaymentsSince, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listMilestonesForInvoices } from "@/lib/commercial/invoices/milestones";
 import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
+import TrendChart from "@/components/trend-chart";
+import { DonutChart } from "@/components/commercial/charts";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
@@ -506,6 +508,27 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   );
   const draftCount = kpiSource.filter((i) => i.status === "draft").length;
 
+  // Charts: monthly billing trend ($K, issued invoices by created month) + an
+  // Outstanding on-time-vs-overdue donut.
+  const billedMonthly: { label: string; value: number }[] = [];
+  {
+    const base = new Date();
+    for (let m = 5; m >= 0; m--) {
+      const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
+      const start = d.getTime();
+      const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
+      const cents = kpiSource.reduce((acc, inv) => {
+        if (inv.status === "void" || inv.status === "draft") return acc;
+        const t = inv.created_at ? new Date(inv.created_at).getTime() : NaN;
+        return t >= start && t < end ? acc + inv.total_cents : acc;
+      }, 0);
+      billedMonthly.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
+    }
+  }
+  const billedTrendHasData = billedMonthly.some((p) => p.value > 0);
+  const overdueTotalCents = agingBuckets.b0_30_cents + agingBuckets.b30_60_cents + agingBuckets.b60_plus_cents;
+  const currentOutstandingCents = Math.max(0, outstandingCents - overdueTotalCents);
+
   const anyFilterActive = !!search || !!statusFilter || sortKey !== "recent" || !!accountIdFilter || !!agingFilter;
 
   const SORT_OPTIONS = [
@@ -969,6 +992,30 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             />
           </div>
         )}
+
+        {/* Charts — monthly billing trend + Outstanding on-time/overdue donut.
+            Always render (flat 0 line, empty ring) so the page never looks blank. */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
+          <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Billed / month · last 6 mo</div>
+              {!billedTrendHasData && <span className="text-[10px] text-ppp-charcoal-400">nothing billed yet</span>}
+            </div>
+            <TrendChart data={billedMonthly} yFormat="currency-k" colorToken="ppp-blue-500" area heightClassName="h-[130px]" />
+          </div>
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-center">
+            <DonutChart
+              size={128}
+              legend={false}
+              segments={[
+                { label: "On time", value: currentOutstandingCents, tone: "blue", valueLabel: formatCentsCompact(currentOutstandingCents) },
+                { label: "Overdue", value: overdueTotalCents, tone: "rose", valueLabel: formatCentsCompact(overdueTotalCents) },
+              ]}
+              centerValue={formatCentsCompact(outstandingCents)}
+              centerLabel="outstanding"
+            />
+          </div>
+        </div>
       </header>
 
       {/* Toolbar */}

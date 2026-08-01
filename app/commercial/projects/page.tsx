@@ -8,10 +8,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
-import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/format";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { KpiTile } from "@/components/commercial/kpi-tile";
 import { ProjectCard } from "@/components/commercial/project-card";
+import { DonutChart, HBars, type ChartTone } from "@/components/commercial/charts";
+import { ProgressMeter } from "@/components/commercial/progress-meter";
 
 type SP = Promise<{ q?: string; closed?: string }>;
 
@@ -30,6 +33,25 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
   // toggle (the toggle only changes what the list below shows).
   const activeSummary = summarizeProduction(projects.filter((p) => p.opp.status !== "post_sale_closed"));
 
+  // Per-project contract bars (biggest first) for the portfolio chart.
+  const activeProjectRows = projects.filter((p) => p.opp.status !== "post_sale_closed" && p.contractToDateCents > 0);
+  const projectBars = activeProjectRows
+    .slice()
+    .sort((a, b) => b.contractToDateCents - a.contractToDateCents)
+    .slice(0, 7)
+    .map((p) => {
+      const pctBilled = p.contractToDateCents > 0 ? Math.min(100, Math.round((p.billedContractCents / p.contractToDateCents) * 100)) : 0;
+      return {
+        label: derivedOppName(p.opp, ""),
+        value: p.contractToDateCents,
+        tone: (pctBilled >= 100 ? "emerald" : "blue") as ChartTone,
+        valueLabel: formatCentsCompact(p.contractToDateCents),
+        sub: `${formatCentsCompact(p.billedContractCents)} billed · ${pctBilled}%`,
+        href: `/commercial/accounts/${p.opp.account_id}?tab=projects&project=${p.opp.id}`,
+      };
+    });
+  const billedOfContractPct = activeSummary.contractValueCents > 0 ? Math.min(100, Math.round((activeSummary.billedContractCents / activeSummary.contractValueCents) * 100)) : 0;
+
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -46,6 +68,51 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
         <KpiTile label="Left to bill" value={formatCentsCompact(activeSummary.leftToBillCents)} sub="contract − billed" tone="neutral" icon={<IconHardHat />} />
         <KpiTile label="Outstanding" value={formatCentsCompact(activeSummary.outstandingCents)} sub={activeSummary.pendingCoCount > 0 ? `${activeSummary.pendingCoCount} CO${activeSummary.pendingCoCount === 1 ? "" : "s"} pending` : "invoiced − paid"} tone={activeSummary.outstandingCents > 0 ? "amber" : "neutral"} icon={<IconChangeOrder />} />
       </div>
+
+      {/* Portfolio — contract-mix donut + per-project bars (shown once there's a
+          job under contract). */}
+      {activeSummary.activeProjects > 0 && (
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <h3 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            Portfolio
+          </h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-center">
+            <div className="flex items-center justify-center">
+              <DonutChart
+                size={158}
+                segments={[
+                  { label: "Collected", value: activeSummary.paidCents, tone: "emerald", valueLabel: formatCentsCompact(activeSummary.paidCents) },
+                  { label: "Billed · unpaid", value: activeSummary.outstandingCents, tone: "amber", valueLabel: formatCentsCompact(activeSummary.outstandingCents) },
+                  { label: "Left to bill", value: activeSummary.leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(activeSummary.leftToBillCents) },
+                ]}
+                centerValue={formatCentsCompact(activeSummary.contractValueCents)}
+                centerLabel="contract"
+              />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">Contract by project</div>
+              {projectBars.length > 0 ? (
+                <HBars items={projectBars} />
+              ) : (
+                <p className="text-[12px] text-ppp-charcoal-400">Set a contract value on a project to see it here.</p>
+              )}
+            </div>
+          </div>
+          {activeSummary.contractValueCents > 0 && (
+            <div className="mt-4">
+              <ProgressMeter
+                label="Billed of contract"
+                value={activeSummary.billedContractCents}
+                max={activeSummary.contractValueCents}
+                tone={billedOfContractPct === 100 ? "emerald" : "blue"}
+                rightLabel={`${billedOfContractPct}%`}
+                amounts={{ done: formatCentsFull(activeSummary.billedContractCents), total: formatCentsFull(activeSummary.contractValueCents) }}
+              />
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Filters */}
       <form className="flex items-center gap-2 flex-wrap" action="/commercial/projects">

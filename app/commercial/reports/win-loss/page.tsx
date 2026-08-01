@@ -17,6 +17,7 @@ import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import DatePicker from "@/components/commercial/date-picker";
 import { KpiTile } from "@/components/commercial/kpi-tile";
+import { GaugeRing, DonutChart } from "@/components/commercial/charts";
 
 type Preset = "this_quarter" | "last_quarter" | "this_year" | "last_year";
 const PRESETS: ReadonlyArray<{ key: Preset; label: string }> = [
@@ -318,6 +319,46 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
         </section>
       ) : (
         <>
+          {/* Win-rate gauge + won-vs-lost $ donut */}
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+            <article className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 flex items-center gap-5">
+              {summary.wonCount + summary.lostCount > 0 ? (
+                <GaugeRing pct={summary.winRatePct} tone="emerald" value={`${summary.winRatePct}%`} label="win rate" size={120} />
+              ) : (
+                <div className="shrink-0 flex flex-col items-center justify-center h-[120px] w-[120px] rounded-full border-[9px] border-ppp-charcoal-100">
+                  <div className="font-condensed text-2xl font-black text-ppp-charcoal-300">—</div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mt-1">win rate</div>
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="text-[13px] font-bold text-ppp-charcoal">Win rate</div>
+                <div className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+                  <strong className="text-emerald-700 tabular-nums">{summary.wonCount}</strong> won
+                  <span className="text-ppp-charcoal-300"> · </span>
+                  <strong className="text-rose-700 tabular-nums">{summary.lostCount}</strong> lost
+                  {summary.noBidCount > 0 && <span className="text-ppp-charcoal-400"> · {summary.noBidCount} no-bid</span>}
+                </div>
+                {summary.wonValueCents + summary.lostValueCents > 0 && (
+                  <div className="text-[11px] text-ppp-charcoal-400 mt-1">
+                    {Math.round((summary.wonValueCents / (summary.wonValueCents + summary.lostValueCents)) * 100)}% of bid dollars won
+                  </div>
+                )}
+              </div>
+            </article>
+            <article className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
+              <h2 className="text-[13px] font-bold text-ppp-charcoal mb-3">Won vs lost value</h2>
+              <DonutChart
+                size={150}
+                segments={[
+                  { label: "Won $", value: summary.wonValueCents, tone: "emerald", valueLabel: formatCents(summary.wonValueCents) },
+                  { label: "Lost $", value: summary.lostValueCents, tone: "rose", valueLabel: formatCents(summary.lostValueCents) },
+                ]}
+                centerValue={formatCents(summary.wonValueCents + summary.lostValueCents)}
+                centerLabel="bid $"
+              />
+            </article>
+          </section>
+
           {/* Competitor leaderboard + Deciding factor — side-by-side on desktop, stacked on mobile */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
             <article className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
