@@ -1,29 +1,27 @@
 -- 095 · Project purchases / job costs (Phase 2)
 --
--- The COST side of a project: money OUT - materials, labor, subs, equipment,
--- permits. Feeds the Job P&L (Contract - Costs = Gross Margin). Kept separate
--- from invoicing - what we charge the customer never changes with cost.
+-- Cost side of a project (materials/labor/subs/equipment/permits). Feeds the Job
+-- P&L (Contract - Costs = Gross Margin). Separate from invoicing.
 --
--- Rewritten as one statement per line (shell + ADD COLUMN IF NOT EXISTS) so a
--- copy-paste can't drop a middle line and break the whole CREATE. Fully
--- idempotent - safe to re-paste any number of times, and self-heals a partial
--- table from an earlier failed paste. CHECK/FK are enforced in the app layer
--- (service-role only), so they're intentionally omitted here for paste safety.
+-- Short single-statement CREATE (every line < 50 chars) so a paste tool that
+-- hard-wraps long lines can't split/drop content. NOT NULL / CHECK / FK are
+-- enforced in the app layer (service-role only), omitted here for paste safety.
 
-CREATE TABLE IF NOT EXISTS public.commercial_project_purchases (id UUID PRIMARY KEY DEFAULT gen_random_uuid());
+CREATE TABLE IF NOT EXISTS public.commercial_project_purchases (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  opportunity_id uuid,
+  account_id uuid,
+  category text DEFAULT 'materials',
+  vendor text,
+  amount_cents bigint,
+  purchased_at timestamptz DEFAULT now(),
+  description text,
+  receipt_document_id uuid,
+  created_by_user_id uuid,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  deleted_at timestamptz
+);
 
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS opportunity_id UUID;
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS account_id UUID;
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'materials';
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS vendor TEXT;
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS amount_cents BIGINT NOT NULL DEFAULT 0;
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS purchased_at TIMESTAMPTZ NOT NULL DEFAULT now();
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS description TEXT;
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS receipt_document_id UUID;
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS created_by_user_id UUID;
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
-ALTER TABLE public.commercial_project_purchases ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-
-CREATE INDEX IF NOT EXISTS idx_cpp_opportunity ON public.commercial_project_purchases(opportunity_id) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_cpp_account ON public.commercial_project_purchases(account_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_cpp_opp ON public.commercial_project_purchases (opportunity_id);
+CREATE INDEX IF NOT EXISTS idx_cpp_acct ON public.commercial_project_purchases (account_id);
