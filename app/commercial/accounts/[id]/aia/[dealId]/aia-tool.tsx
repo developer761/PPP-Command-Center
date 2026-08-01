@@ -36,7 +36,7 @@ import { AiaApplicationDetail } from "@/components/commercial/aia-application-de
 import type { AiaLineSaveResult } from "@/components/commercial/aia-line-row";
 import { AiaSettingsForm } from "@/components/commercial/aia-settings-form";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
-import { DonutChart } from "@/components/commercial/charts";
+import { DonutChart, GaugeRing } from "@/components/commercial/charts";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
@@ -479,6 +479,12 @@ async function AiaApplicationList({
   const contractToDateCents = baseContractCents != null ? baseContractCents + netCO : null;
   const submittedCount = applications.filter((a) => a.status === "submitted").length;
   const paidCount = applications.filter((a) => a.status === "paid").length;
+  // Billed-of-contract: the LATEST application's G702 line-4 "completed & stored
+  // to date" as a % of the contract to date (the running billing progress).
+  const latestApp = applications.length > 0 ? [...applications].sort((a, b) => b.application_number - a.application_number)[0] : null;
+  const latestG702 = latestApp ? await resolveG702(latestApp.id) : null;
+  const completedToDateCents = latestG702?.totalCompletedStoredCents ?? 0;
+  const billedPct = contractToDateCents && contractToDateCents > 0 ? Math.min(100, Math.round((completedToDateCents / contractToDateCents) * 100)) : null;
   const appsHint = applications.length === 0
     ? "None yet"
     : [paidCount > 0 ? `${paidCount} paid` : null, submittedCount > 0 ? `${submittedCount} submitted` : null]
@@ -504,7 +510,7 @@ async function AiaApplicationList({
           <AiaSummaryTile label="Applications" value={String(applications.length)} hint={appsHint} />
         </div>
         {applications.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-ppp-charcoal-100">
+          <div className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
             <DonutChart
               size={116}
               segments={[
@@ -515,6 +521,13 @@ async function AiaApplicationList({
               centerValue={String(applications.length)}
               centerLabel={applications.length === 1 ? "application" : "applications"}
             />
+            <div className="flex items-center gap-4 justify-center">
+              <GaugeRing pct={billedPct ?? 0} tone={billedPct === null ? "neutral" : billedPct >= 100 ? "emerald" : "blue"} value={billedPct === null ? "—" : `${billedPct}%`} label="billed" size={104} />
+              <div className="min-w-0 text-[12px] space-y-1">
+                <div><span className="text-ppp-charcoal-500">Completed to date: </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsFull(completedToDateCents)}</strong></div>
+                <div><span className="text-ppp-charcoal-500">Contract to date: </span><strong className="tabular-nums text-ppp-charcoal">{contractToDateCents != null ? formatCentsFull(contractToDateCents) : "—"}</strong></div>
+              </div>
+            </div>
           </div>
         )}
       </section>
