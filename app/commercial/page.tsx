@@ -484,16 +484,11 @@ export default async function CommercialDashboardPage() {
               </h3>
               <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 pl-8">Total $ of bids marked Won each month</p>
             </div>
-            <span className="text-[11px] text-ppp-charcoal-500 shrink-0">last 6 months</span>
+            <span className="text-[11px] text-ppp-charcoal-500 shrink-0">
+              {awardedTrendHasData ? "last 6 months" : "no wins yet — last 6 mo"}
+            </span>
           </div>
-          {awardedTrendHasData ? (
-            <TrendChart data={awardedMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[180px] sm:h-[220px]" />
-          ) : (
-            <div className="h-[180px] sm:h-[220px] flex flex-col items-center justify-center text-center gap-1">
-              <div className="text-[13px] font-semibold text-ppp-charcoal-500">No jobs won in the last 6 months</div>
-              <div className="text-[11px] text-ppp-charcoal-400">Each month&rsquo;s won-bid value shows here as deals close.</div>
-            </div>
-          )}
+          <TrendChart data={awardedMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[180px] sm:h-[220px]" />
         </div>
         <Link href="/commercial/reports/win-loss" className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col items-center justify-center text-center transition-all hover:shadow-md hover:border-emerald-300 touch-manipulation">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-3 self-start flex items-center gap-2">
