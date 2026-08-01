@@ -130,8 +130,8 @@ export async function liveInvoiceIds(ids: string[]): Promise<Set<string>> {
  */
 export async function billedChangeOrderChips(
   cos: CommercialChangeOrder[]
-): Promise<Map<string, { invoiceId: string; invoiceNumber: string; kind: "line" | "milestone" }>> {
-  const out = new Map<string, { invoiceId: string; invoiceNumber: string; kind: "line" | "milestone" }>();
+): Promise<Map<string, { invoiceId: string; invoiceNumber: string; kind: "line" | "milestone"; isDraft: boolean }>> {
+  const out = new Map<string, { invoiceId: string; invoiceNumber: string; kind: "line" | "milestone"; isDraft: boolean }>();
   const billed = cos.filter((c) => !!c.invoiced_invoice_id);
   if (billed.length === 0) return out;
   const sb = commercialDb();
@@ -140,20 +140,25 @@ export async function billedChangeOrderChips(
     sb.from("commercial_invoices").select("id, invoice_number, deleted_at, status").in("id", invIds),
     sb.from("commercial_invoice_milestones").select("change_order_id").in("change_order_id", billed.map((c) => c.id)).is("deleted_at", null),
   ]);
-  const liveInv = new Map<string, string>();
+  // isDraft distinguishes a CO sitting on an UNSENT draft: per the money model a
+  // CO counts as invoiced only once the invoice is sent, so the "Billed" total
+  // + the green chip must exclude drafts (audit F4) — otherwise the panel
+  // disagrees with the issued-only account/deal figures.
+  const liveInv = new Map<string, { number: string; isDraft: boolean }>();
   for (const r of (invs ?? []) as { id: string; invoice_number: string; deleted_at: string | null; status: string }[]) {
-    if (!r.deleted_at && r.status !== "void") liveInv.set(r.id, r.invoice_number);
+    if (!r.deleted_at && r.status !== "void") liveInv.set(r.id, { number: r.invoice_number, isDraft: r.status === "draft" });
   }
   const milestoneCoIds = new Set(
     ((msRows ?? []) as { change_order_id: string | null }[]).map((r) => r.change_order_id).filter(Boolean) as string[]
   );
   for (const c of billed) {
-    const num = liveInv.get(c.invoiced_invoice_id as string);
-    if (!num) continue; // invoice not live → CO reads as un-billed (re-tickable)
+    const inv = liveInv.get(c.invoiced_invoice_id as string);
+    if (!inv) continue; // invoice not live → CO reads as un-billed (re-tickable)
     out.set(c.id, {
       invoiceId: c.invoiced_invoice_id as string,
-      invoiceNumber: num,
+      invoiceNumber: inv.number,
       kind: milestoneCoIds.has(c.id) ? "milestone" : "line",
+      isDraft: inv.isDraft,
     });
   }
   return out;
@@ -525,9 +530,19 @@ async function tickChangeOrderOn(co: CommercialChangeOrder, userId: string): Pro
 async function tickChangeOrderOff(co: CommercialChangeOrder, userId: string): Promise<TickResult> {
   if (!co.invoiced_invoice_id) return { ok: true, invoice: null, createdDraft: false }; // already off
   const sb = commercialDb();
-  // Milestone variant → deleteMilestone already re-tags any payments to
-  // invoice-level, clears the CO's invoiced_invoice_id, and drops the paired
-  // line (never-reject: may leave a credit + warns).
+  const invoiceId = co.invoiced_invoice_id;
+  // The bill we're peeling this CO off. Removing a charge from an invoice the GC
+  // already RECEIVED (sent/partial/paid) silently reprices a delivered bill — the
+  // tick-ON path refuses to fold onto a non-draft for exactly this reason (D2).
+  // We don't hard-block (never-reject), but the heads-up is escalated below so
+  // the team knows to re-send or issue a credit memo (audit F2).
+  const targetInv = await getCommercialInvoice(invoiceId);
+  const nonDraftBill = !!targetInv && targetInv.status !== "draft" && targetInv.status !== "void";
+
+  let warning: string | undefined;
+  // Milestone variant → deleteMilestone re-tags any payments to invoice-level,
+  // clears the CO's invoiced_invoice_id, and drops the paired line (never-reject:
+  // may leave a credit + warns).
   const { data: ms } = await sb
     .from("commercial_invoice_milestones")
     .select("id")
@@ -537,30 +552,58 @@ async function tickChangeOrderOff(co: CommercialChangeOrder, userId: string): Pr
   if (ms) {
     const res = await deleteMilestone((ms as { id: string }).id, userId);
     if (!res.ok) return { ok: false, error: res.error };
-    return { ok: true, invoice: null, createdDraft: false, warning: res.warning };
+    warning = res.warning;
+  } else {
+    // Line variant → drop the tagged line + clear the claim. Flat-invoice CO
+    // lines carry no per-line payment, but removing the charge can leave the
+    // invoice overpaid (invoice-level payment now exceeds the lower total) →
+    // credit + warn.
+    const { data: line } = await sb
+      .from("commercial_invoice_line_items")
+      .select("id")
+      .eq("change_order_id", co.id)
+      .eq("invoice_id", invoiceId)
+      .maybeSingle();
+    if (line) {
+      await sb.from("commercial_invoice_line_items").delete().eq("id", (line as { id: string }).id);
+      await recomputeSubtotal(invoiceId);
+      const inv = await getCommercialInvoice(invoiceId);
+      if (inv && (inv.balance_cents as number) < 0) warning = "Removing that change order left the invoice showing a credit.";
+    }
+    await sb
+      .from("commercial_change_orders")
+      .update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() })
+      .eq("id", co.id);
+    await logUpdate("commercial_change_orders", co.id, { invoiced_invoice_id: co.invoiced_invoice_id }, { invoiced_invoice_id: null }, userId);
   }
-  // Line variant → drop the tagged line + clear the claim. Flat-invoice CO lines
-  // carry no per-line payment, but removing the charge can leave the invoice
-  // overpaid (invoice-level payment now exceeds the lower total) → credit + warn.
-  const { data: line } = await sb
-    .from("commercial_invoice_line_items")
-    .select("id, invoice_id")
-    .eq("change_order_id", co.id)
-    .maybeSingle();
-  let warning: string | undefined;
-  if (line) {
-    const invoiceId = (line as { invoice_id: string }).invoice_id;
-    await sb.from("commercial_invoice_line_items").delete().eq("id", (line as { id: string }).id);
-    await recomputeSubtotal(invoiceId);
-    const inv = await getCommercialInvoice(invoiceId);
-    if (inv && (inv.balance_cents as number) < 0) warning = "Removing that change order left the invoice showing a credit.";
+
+  // Escalate the heads-up when we just repriced a DELIVERED bill (audit F2).
+  if (nonDraftBill) {
+    const notice = `Heads up: ${targetInv!.invoice_number} was already issued to the customer — removing this change order repriced a bill they may have received. Re-send the invoice or issue a credit as needed.`;
+    warning = warning ? `${notice} ${warning}` : notice;
   }
-  await sb
-    .from("commercial_change_orders")
-    .update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() })
-    .eq("id", co.id);
-  await logUpdate("commercial_change_orders", co.id, { invoiced_invoice_id: co.invoiced_invoice_id }, { invoiced_invoice_id: null }, userId);
+
+  // Retire an auto-created CO-billing draft that this untick just emptied (audit
+  // F7): the tick minted a draft holding only this CO — peeled off, it's a $0
+  // orphan cluttering the deal + global invoice lists.
+  await retireEmptyAutoDraft(sb, invoiceId);
+
   return { ok: true, invoice: null, createdDraft: false, warning };
+}
+
+/** Soft-delete an auto-created CO-billing draft once it's been emptied (audit
+ *  F7). Scoped hard: only a DRAFT we minted for change-order billing (the notes
+ *  marker) with no remaining live line items OR milestones — never a user's real
+ *  invoice, never one with charges left. */
+async function retireEmptyAutoDraft(sb: ReturnType<typeof commercialDb>, invoiceId: string): Promise<void> {
+  const inv = await getCommercialInvoice(invoiceId);
+  if (!inv || inv.status !== "draft" || inv.notes !== "Change order billing") return;
+  const [{ data: lines }, { data: msLeft }] = await Promise.all([
+    sb.from("commercial_invoice_line_items").select("id").eq("invoice_id", invoiceId).limit(1),
+    sb.from("commercial_invoice_milestones").select("id").eq("invoice_id", invoiceId).is("deleted_at", null).limit(1),
+  ]);
+  if ((lines ?? []).length > 0 || (msLeft ?? []).length > 0) return;
+  await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
 }
 
 /** Rollback helper: peel a just-added CO line or milestone off an invoice

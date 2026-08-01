@@ -367,7 +367,24 @@ export async function deleteMilestone(
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
   if (existing.line_item_id) {
-    await removeLineItem(existing.invoice_id, existing.line_item_id, actorUserId).catch(() => {});
+    // Drop the paired charge. A CHANGE-ORDER milestone's line carries
+    // change_order_id, which removeLineItem normally blocks (audit D3) — that
+    // guard returns { ok:false } (NOT a throw), so the old `.catch()` silently
+    // swallowed it and the CO amount stayed on the invoice, stranding money and
+    // bricking re-bill (audit F1). Pass allowChangeOrderLine for this sanctioned
+    // teardown; if it still fails, delete the line directly + recompute so the
+    // charge never outlives its milestone.
+    const rm = await removeLineItem(existing.invoice_id, existing.line_item_id, actorUserId, {
+      allowChangeOrderLine: true,
+    });
+    if (!rm.ok) {
+      await sb
+        .from("commercial_invoice_line_items")
+        .delete()
+        .eq("id", existing.line_item_id)
+        .eq("invoice_id", existing.invoice_id);
+      await recomputeSubtotal(existing.invoice_id);
+    }
   }
   if (existing.lien_waiver_document_id) {
     await softDeleteDocument(existing.lien_waiver_document_id, actorUserId).catch(() => {});

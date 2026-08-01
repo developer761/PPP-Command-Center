@@ -125,10 +125,15 @@ export async function ChangeOrdersPanel({
   const approved = items.filter((c) => c.status === "approved");
   const netApprovedCents = approved.reduce((acc, c) => acc + c.amount_cents, 0);
   const pendingCount = items.filter((c) => c.status === "pending").length;
-  // Billed = approved COs whose linked invoice is still live.
-  const billedCents = approved
-    .filter((c) => c.invoiced_invoice_id && liveInvoices.has(c.invoiced_invoice_id))
-    .reduce((acc, c) => acc + c.amount_cents, 0);
+  // Billed = approved COs on a live, ISSUED invoice. A CO sitting on an unsent
+  // DRAFT isn't billed to the GC yet (matches the issued-only account/deal
+  // "Invoiced" figures), so it's excluded here + counted as "on a draft" below
+  // (audit F4).
+  const billedCents = approved.reduce((acc, c) => {
+    const chip = coChips.get(c.id);
+    return chip && !chip.isDraft ? acc + c.amount_cents : acc;
+  }, 0);
+  const onDraftCount = approved.filter((c) => coChips.get(c.id)?.isDraft).length;
   const contractToDateCents =
     baseContractCents != null ? baseContractCents + netApprovedCents : null;
 
@@ -197,7 +202,13 @@ export async function ChangeOrdersPanel({
             label="Billed"
             value={formatCentsFull(billedCents)}
             tone={billedCents > 0 ? "emerald" : "neutral"}
-            hint={pendingCount > 0 ? `${pendingCount} pending` : undefined}
+            hint={
+              onDraftCount > 0
+                ? `${onDraftCount} on a draft — send to bill`
+                : pendingCount > 0
+                ? `${pendingCount} pending`
+                : undefined
+            }
           />
         </div>
       </section>
@@ -346,11 +357,18 @@ export async function ChangeOrdersPanel({
                       <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                         {billedLive ? (
                           <>
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-semibold text-emerald-700">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
-                              On {coChips.get(co.id)?.invoiceNumber ?? "invoice"}
-                              {coChips.get(co.id) ? ` · ${coChips.get(co.id)!.kind}` : ""}
-                            </span>
+                            {coChips.get(co.id)?.isDraft ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-[12px] font-semibold text-amber-800" title="On a draft invoice — not billed to the customer until you send it">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                                On {coChips.get(co.id)!.invoiceNumber} · draft — send to bill
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-semibold text-emerald-700">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+                                On {coChips.get(co.id)?.invoiceNumber ?? "invoice"}
+                                {coChips.get(co.id) ? ` · ${coChips.get(co.id)!.kind}` : ""}
+                              </span>
+                            )}
                             <Link
                               href={`/commercial/invoices/${co.invoiced_invoice_id}`}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px]"

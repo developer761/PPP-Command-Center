@@ -65,7 +65,7 @@ import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
 import { ProgressMeter } from "@/components/commercial/progress-meter";
-import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIdsWithChangeOrderLine, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIdsWithChangeOrderLine, changeOrderLineCentsByInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
@@ -1357,6 +1357,9 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                   {ms.length > 0 && (
                     <ul className="px-4 pb-2 -mt-0.5 space-y-1">
                       {ms.map((m) => {
+                        // A deduct change order shows as a negative milestone (a
+                        // credit) — no paid/waiver states, rose amount (audit F9).
+                        const mIsCredit = m.amount_cents < 0;
                         const mPaid = milestonePaidByDeal.get(m.id) ?? 0;
                         const mFullyPaid = m.amount_cents > 0 && mPaid >= m.amount_cents;
                         const mPartial = mPaid > 0 && !mFullyPaid;
@@ -1364,20 +1367,22 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                         <li key={m.id} className="flex items-center justify-between gap-2 pl-3 border-l-2 border-ppp-charcoal-100 text-[11px]">
                           <span className="min-w-0 flex items-center gap-1.5">
                             <span className="font-semibold text-ppp-charcoal-700 truncate">{m.name}</span>
-                            {mFullyPaid ? (
+                            {mIsCredit ? (
+                              <span className="text-rose-600 shrink-0 font-semibold uppercase tracking-wide">credit</span>
+                            ) : mFullyPaid ? (
                               <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title="Paid"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>paid</span>
                             ) : mPartial ? (
                               <span className="text-ppp-blue-600 shrink-0 tabular-nums" title="Partially paid">{formatCentsCompact(mPaid)} paid</span>
                             ) : m.due_at ? (
                               <span className="text-ppp-charcoal-400 shrink-0">· due {fmtEtDate(m.due_at)}</span>
                             ) : null}
-                            {m.lien_waiver_document_id ? (
+                            {!mIsCredit && (m.lien_waiver_document_id ? (
                               <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title="Lien waiver on file"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg></span>
                             ) : (
                               <span className="text-amber-600 shrink-0" title="Lien waiver missing">waiver ×</span>
-                            )}
+                            ))}
                           </span>
-                          <span className="tabular-nums font-semibold text-ppp-charcoal-700 shrink-0">{formatCentsFull(m.amount_cents)}</span>
+                          <span className={`tabular-nums font-semibold shrink-0 ${mIsCredit ? "text-rose-700" : "text-ppp-charcoal-700"}`}>{mIsCredit ? `−${formatCentsFull(Math.abs(m.amount_cents))}` : formatCentsFull(m.amount_cents)}</span>
                         </li>
                         );
                       })}
@@ -1727,10 +1732,17 @@ async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals, in
   // Already billed (pre-tax) against each proposal across this deal's ISSUED
   // invoices — drafts excluded so "left to bill" ties out with the issued-only
   // Invoiced figure the rollup shows (audit 1B #4).
+  const billableInvoices = invoices.filter(
+    (inv) => inv.proposal_id && inv.status !== "void" && inv.status !== "draft" && !inv.deleted_at,
+  );
+  // A change-order line rides in an invoice's subtotal but is scope BEYOND the
+  // proposal — counting it as "billed against the proposal" understates what's
+  // left (audit F6). Subtract CO-tagged line cents per invoice.
+  const coLineCentsByInvoice = await changeOrderLineCentsByInvoice(billableInvoices.map((inv) => inv.id));
   const billedByProposal = new Map<string, number>();
-  for (const inv of invoices) {
-    if (!inv.proposal_id || inv.status === "void" || inv.status === "draft" || inv.deleted_at) continue;
-    billedByProposal.set(inv.proposal_id, (billedByProposal.get(inv.proposal_id) ?? 0) + inv.subtotal_cents);
+  for (const inv of billableInvoices) {
+    const proposalScope = inv.subtotal_cents - (coLineCentsByInvoice.get(inv.id) ?? 0);
+    billedByProposal.set(inv.proposal_id!, (billedByProposal.get(inv.proposal_id!) ?? 0) + Math.max(0, proposalScope));
   }
   return (
     <DealInvoiceBuilder
@@ -5961,16 +5973,16 @@ function AccountOverviewStrip({
           tone="emerald"
         />
         <MoneyTile
-          label={invoiceRollup.balance_cents < 0 ? "Credit" : "Balance"}
-          value={formatCentsCompact(Math.abs(invoiceRollup.balance_cents))}
-          sub={invoiceRollup.balance_cents < 0 ? "overpaid" : balanceCountLabel}
+          label={invoiceRollup.open_balance_cents === 0 && invoiceRollup.credit_cents > 0 ? "Credit" : "Balance"}
+          value={formatCentsCompact(invoiceRollup.open_balance_cents > 0 ? invoiceRollup.open_balance_cents : invoiceRollup.credit_cents)}
+          sub={invoiceRollup.open_balance_cents === 0 && invoiceRollup.credit_cents > 0 ? "overpaid" : balanceCountLabel}
           subTone={invoiceRollup.overdue_count > 0 ? "rose" : "muted"}
           href={
             invoiceRollup.overdue_count > 0
               ? `/commercial/invoices?account_id=${accountId}&status=overdue`
               : `/commercial/invoices?account_id=${accountId}&status=sent`
           }
-          tone={invoiceRollup.balance_cents < 0 ? "emerald" : invoiceRollup.balance_cents > 0 ? "blue" : "muted"}
+          tone={invoiceRollup.open_balance_cents > 0 ? "blue" : invoiceRollup.credit_cents > 0 ? "emerald" : "muted"}
         />
       </div>
 
@@ -6297,7 +6309,7 @@ async function AccountInvoicesTab({
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
         <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="emerald" />
-        <RollupTile label={rollup.balance_cents < 0 ? "Credit" : "Balance"} value={formatCentsFull(Math.abs(rollup.balance_cents))} sub={rollup.balance_cents < 0 ? "overpaid" : rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents < 0 ? "emerald" : rollup.balance_cents > 0 ? "warn" : "neutral"} />
+        <RollupTile label={rollup.open_balance_cents === 0 && rollup.credit_cents > 0 ? "Credit" : "Balance"} value={formatCentsFull(rollup.open_balance_cents > 0 ? rollup.open_balance_cents : rollup.credit_cents)} sub={rollup.open_balance_cents > 0 ? (rollup.credit_cents > 0 ? `unpaid · ${formatCentsFull(rollup.credit_cents)} credit` : "unpaid") : rollup.credit_cents > 0 ? "overpaid" : "settled"} tone={rollup.open_balance_cents > 0 ? "warn" : rollup.credit_cents > 0 ? "emerald" : "neutral"} />
         <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : rollup.overdue_count === 1 ? "invoice past due" : "invoices past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
       </section>
 
@@ -6319,8 +6331,10 @@ async function AccountInvoicesTab({
           Full invoicing surface →
         </Link>
         {/* Open-invoice AR statement (Phase 1C) — branded PDF of everything the
-            GC still owes. Only meaningful once there's a balance outstanding. */}
-        {rollup.balance_cents > 0 && (
+            GC still owes. Gate on the TRUE open balance (Σ per-invoice max(0,…)),
+            not the netted balance, so a credit on one invoice can't hide a real
+            open balance on another + wrongly suppress the link (audit F3). */}
+        {rollup.open_balance_cents > 0 && (
           <a
             href={`/api/commercial/accounts/${accountId}/statement`}
             target="_blank"
@@ -6691,9 +6705,10 @@ async function AccountKpisTab({
     ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}`
     : "—";
   const hasInvoicing = rollup.invoiced_cents > 0;
-  // Credit: a negative balance means paid > invoiced (a refund/overpayment).
-  // Show it as a credit rather than a scary negative "unpaid" figure.
-  const isCredit = rollup.balance_cents < 0;
+  // Credit-only: no real open balance anywhere, but an overpayment left a credit.
+  // Uses the per-invoice-clamped open balance so this ties out with the AR
+  // statement + the Invoices-tab tile (audit F3), not the netted balance.
+  const isCredit = rollup.open_balance_cents === 0 && rollup.credit_cents > 0;
   // Account-level over-bill: billed net more than the contract to date. The
   // per-project leftToBill is clamped, so surface the net over-bill here (mirrors
   // the deal header's "Over-billed" flip).
@@ -6715,9 +6730,9 @@ async function AccountKpisTab({
           <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={hasInvoicing ? "collected" : undefined} tone="emerald" />
           <RollupTile
             label={isCredit ? "Credit" : "Balance"}
-            value={formatCentsFull(Math.abs(rollup.balance_cents))}
-            sub={!hasInvoicing ? "not billed yet" : isCredit ? "overpaid" : rollup.balance_cents === 0 ? "settled" : "unpaid"}
-            tone={isCredit ? "emerald" : rollup.balance_cents > 0 ? "warn" : "neutral"}
+            value={formatCentsFull(isCredit ? rollup.credit_cents : rollup.open_balance_cents)}
+            sub={!hasInvoicing ? "not billed yet" : isCredit ? "overpaid" : rollup.open_balance_cents === 0 ? "settled" : rollup.credit_cents > 0 ? `unpaid · ${formatCentsFull(rollup.credit_cents)} credit` : "unpaid"}
+            tone={isCredit ? "emerald" : rollup.open_balance_cents > 0 ? "warn" : "neutral"}
           />
           <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : "past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
         </div>

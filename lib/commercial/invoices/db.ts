@@ -277,6 +277,28 @@ export async function invoiceIdsWithChangeOrderLine(invoiceIds: string[]): Promi
   return out;
 }
 
+/** Phase 1A (audit F6): Σ subtotal_cents of change-order-tagged lines per
+ *  invoice. Proposal "left to bill" subtracts this from an invoice's subtotal so
+ *  a change order — which adds scope BEYOND the proposal — doesn't get counted
+ *  as billed against the proposal (understating what's left). Keyed by
+ *  invoice_id; covers both flat CO lines and the paired lines of CO milestones
+ *  (both carry change_order_id). One query. */
+export async function changeOrderLineCentsByInvoice(invoiceIds: string[]): Promise<Map<string, number>> {
+  const ids = [...new Set(invoiceIds.filter(Boolean))];
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_invoice_line_items")
+    .select("invoice_id, subtotal_cents, change_order_id")
+    .in("invoice_id", ids)
+    .not("change_order_id", "is", null);
+  for (const r of (data ?? []) as { invoice_id: string; subtotal_cents: number }[]) {
+    out.set(r.invoice_id, (out.get(r.invoice_id) ?? 0) + Number(r.subtotal_cents ?? 0));
+  }
+  return out;
+}
+
 export async function listInvoiceLineItems(invoiceId: string): Promise<CommercialInvoiceLineItem[]> {
   const sb = commercialDb();
   const { data, error } = await sb
@@ -630,7 +652,12 @@ export async function addLineItem(
 export async function removeLineItem(
   invoice_id: string,
   item_id: string,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  /** `allowChangeOrderLine` lets the CO-untick teardown (milestone/flat) delete
+   *  its own paired change-order line — the ONLY sanctioned path past the guard
+   *  below. Manual callers never pass it, so a user still can't strand a CO by
+   *  deleting its line directly (audit D3/F1). */
+  opts?: { allowChangeOrderLine?: boolean }
 ): Promise<{ ok: boolean; error?: string }> {
   const gate = await verifyEditable(invoice_id);
   if (!gate.ok) return gate;
@@ -648,14 +675,17 @@ export async function removeLineItem(
   if (pairedMs) return { ok: false, error: "milestone_line_item" };
   // Phase 1A (audit D3): a change-order line can't be removed here — that would
   // strand the CO as "billed" with no charge (its claim + the deal's Billed tile
-  // still count it). Untick it from the Change Orders tool instead.
-  const { data: coLine } = await sb
-    .from("commercial_invoice_line_items")
-    .select("change_order_id")
-    .eq("id", item_id)
-    .maybeSingle();
-  if (coLine && (coLine as { change_order_id: string | null }).change_order_id) {
-    return { ok: false, error: "change_order_line" };
+  // still count it). Untick it from the Change Orders tool instead. The CO-untick
+  // teardown itself passes allowChangeOrderLine to legitimately drop the line.
+  if (!opts?.allowChangeOrderLine) {
+    const { data: coLine } = await sb
+      .from("commercial_invoice_line_items")
+      .select("change_order_id")
+      .eq("id", item_id)
+      .maybeSingle();
+    if (coLine && (coLine as { change_order_id: string | null }).change_order_id) {
+      return { ok: false, error: "change_order_line" };
+    }
   }
   // Capture the row before delete so the audit trail records what was removed.
   const { data: beforeLi } = await sb

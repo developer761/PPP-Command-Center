@@ -51,6 +51,21 @@ const DAY_MS = 86_400_000;
 const emptyBucket = (): ARAgingBucket => ({ cents: 0, count: 0 });
 
 /**
+ * Which aging column an open invoice lands in. `daysPastDue` floors the elapsed
+ * days (null → no due date). `isOverdue` is the derived-status verdict, which
+ * flips the instant `now > due_at` — so an invoice overdue by < 1 day floors to
+ * 0 yet must NOT read as "Current" (it's already red + in overdue_count). Pure +
+ * exported so the boundary is unit-tested (audit F8).
+ */
+export function agingBucketKey(daysPastDue: number | null, isOverdue: boolean): keyof ARAging {
+  if (daysPastDue == null || (daysPastDue <= 0 && !isOverdue)) return "current";
+  if (daysPastDue <= 30) return "d1_30";
+  if (daysPastDue <= 60) return "d31_60";
+  if (daysPastDue <= 90) return "d61_90";
+  return "d90_plus";
+}
+
+/**
  * Build the open-invoice statement for one account. `now` is injectable so the
  * PDF route + the on-screen view render identical aging for the same request.
  */
@@ -84,6 +99,8 @@ export async function getOpenInvoiceStatementForAccount(
 
     const opp = oppById.get(inv.opportunity_id);
     const daysPastDue = inv.due_at ? Math.floor((now - new Date(inv.due_at).getTime()) / DAY_MS) : null;
+    const status = deriveInvoiceStatus(inv);
+    const isOverdue = status === "overdue";
 
     rows.push({
       invoiceId: inv.id,
@@ -94,21 +111,13 @@ export async function getOpenInvoiceStatementForAccount(
       totalCents: inv.total_cents,
       paidCents: inv.paid_cents,
       balanceCents: balance,
-      status: deriveInvoiceStatus(inv),
+      status,
       daysPastDue,
     });
     totalOutstandingCents += balance;
 
-    const bucket =
-      daysPastDue == null || daysPastDue <= 0
-        ? aging.current
-        : daysPastDue <= 30
-        ? aging.d1_30
-        : daysPastDue <= 60
-        ? aging.d31_60
-        : daysPastDue <= 90
-        ? aging.d61_90
-        : aging.d90_plus;
+    // Route by aging bucket — "Current" is strictly not-yet-due (audit F8).
+    const bucket = aging[agingBucketKey(daysPastDue, isOverdue)];
     bucket.cents += balance;
     bucket.count += 1;
   }

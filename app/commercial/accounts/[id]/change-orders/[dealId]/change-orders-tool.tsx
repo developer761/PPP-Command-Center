@@ -195,9 +195,17 @@ async function billChangeOrderAction(formData: FormData) {
     const ctx = await getInvoiceContext(result.invoice.id);
     if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
   }
-  // Stay on the Change Orders tool (so you can tick more than one), showing the
-  // updated chip. A never-reject heads-up (over-credit, credit-on-untick) rides
-  // along as a small note.
+  // A brand-new draft was minted for this CO (the deal had no invoice yet). Land
+  // ON it so the team reviews the terms + SENDS it — otherwise the CO sits on an
+  // unsent draft and never actually bills. `co_billed=1` lights the invoice
+  // page's purpose-built "review & send" nudge, which was previously unreachable
+  // (audit F5).
+  if (on && result.createdDraft && result.invoice) {
+    redirect(`/commercial/invoices/${result.invoice.id}?co_billed=1`);
+  }
+  // Otherwise stay on the Change Orders tool (so you can tick more than one),
+  // showing the updated chip. A never-reject heads-up (over-credit,
+  // credit-on-untick, repriced-sent-bill) rides along as a small note.
   coRedirect(
     account_id,
     opp_id,

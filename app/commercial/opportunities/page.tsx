@@ -3609,7 +3609,7 @@ function CustomerQuickSheet({
               </div>
               <div className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-surface"}`}>
                 <div className={`text-[9.5px] font-medium uppercase tracking-wide ${rollup.overdue_count > 0 ? "text-rose-800" : "text-ppp-charcoal-500"}`}>Balance</div>
-                <div className={`text-sm font-bold mt-0.5 ${rollup.overdue_count > 0 ? "text-rose-900" : "text-ppp-charcoal"}`}>{formatCentsFull(rollup.balance_cents)}</div>
+                <div className={`text-sm font-bold mt-0.5 ${rollup.overdue_count > 0 ? "text-rose-900" : "text-ppp-charcoal"}`}>{formatCentsFull(rollup.open_balance_cents)}</div>
               </div>
             </div>
             {rollup.invoiced_cents > 0 && (

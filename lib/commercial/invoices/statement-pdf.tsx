@@ -98,7 +98,7 @@ function StatementDoc({
           <Text style={{ marginTop: 20, color: "#6b7280" }}>No open invoices — this account has a $0 balance. Thank you.</Text>
         ) : (
           <>
-            <View style={styles.tableHead}>
+            <View style={styles.tableHead} fixed>
               <Text style={[styles.th, styles.cInv]}>Invoice</Text>
               <Text style={[styles.th, styles.cDeal]}>Project</Text>
               <Text style={[styles.th, styles.cDate]}>Issued</Text>
@@ -126,7 +126,7 @@ function StatementDoc({
             </View>
 
             {/* Aging summary */}
-            <View style={styles.agingBox}>
+            <View style={styles.agingBox} wrap={false}>
               <View style={styles.agingHead}>
                 {(["Current", "1–30 days", "31–60 days", "61–90 days", "90+ days"] as const).map((h) => (
                   <View key={h} style={styles.agingCell}>
@@ -145,7 +145,7 @@ function StatementDoc({
           </>
         )}
 
-        <Text style={styles.footer}>
+        <Text style={styles.footer} fixed>
           Statement of account · Please remit the total outstanding. Questions? Reply to this statement or call the number above.
         </Text>
       </Page>
