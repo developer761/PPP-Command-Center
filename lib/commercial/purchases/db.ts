@@ -225,19 +225,28 @@ export async function laborByWorkerForProject(oppId: string): Promise<LaborByWor
     .is("deleted_at", null);
   if (error) return [];
   const map = new Map<string, LaborByWorker>();
+  // Cost from rows that ALSO logged hours — the ONLY numerator that makes $/hr
+  // honest (audit LOW): a $1,000 row with no hours must not inflate the rate of
+  // a $4,000/40hr row into $125/hr.
+  const ratedCostByKey = new Map<string, number>();
   for (const r of (data ?? []) as { vendor: string | null; amount_cents: number; hours: number | null }[]) {
     const worker = (r.vendor ?? "").trim() || "Unassigned";
     const key = worker.toLowerCase();
     const cur = map.get(key) ?? { worker, hours: 0, cost_cents: 0, count: 0, rate_cents_per_hour: null };
-    cur.cost_cents += Number(r.amount_cents ?? 0);
+    const cost = Number(r.amount_cents ?? 0);
+    cur.cost_cents += cost;
     const h = Number(r.hours ?? 0);
-    if (Number.isFinite(h) && h > 0) cur.hours += h;
+    if (Number.isFinite(h) && h > 0) {
+      cur.hours += h;
+      ratedCostByKey.set(key, (ratedCostByKey.get(key) ?? 0) + cost);
+    }
     cur.count += 1;
     map.set(key, cur);
   }
-  const out = [...map.values()].map((w) => ({
+  const out = [...map.entries()].map(([key, w]) => ({
     ...w,
-    rate_cents_per_hour: w.hours > 0 ? Math.round(w.cost_cents / w.hours) : null,
+    // Rate uses only the cost of hours-logged rows over those hours.
+    rate_cents_per_hour: w.hours > 0 ? Math.round((ratedCostByKey.get(key) ?? 0) / w.hours) : null,
   }));
   // Costliest worker first.
   out.sort((a, b) => b.cost_cents - a.cost_cents);

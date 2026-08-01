@@ -185,7 +185,7 @@ export default function PurchaseForm({
       </div>
       <div>
         <label className={LABEL_CLS} htmlFor="pu-receipt">Receipt <span className="font-normal text-ppp-charcoal-400">(optional — PDF or photo)</span></label>
-        <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="block w-full text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-ppp-blue-50 file:text-ppp-blue-700 hover:file:bg-ppp-blue-100" />
+        <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="block w-full text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100" />
         {purchase?.receipt_document_id && <p className="text-[11px] text-emerald-600 mt-1">A receipt is on file — uploading a new one replaces it.</p>}
         <p className="text-[11px] text-ppp-charcoal-500 mt-1">Uploading from Google Drive? Use the raw file, not a Drive link — Drive recompresses PDFs.</p>
       </div>

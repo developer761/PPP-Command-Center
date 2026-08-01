@@ -96,6 +96,8 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
           label={fin.creditCents > 0 && fin.openBalanceCents === 0 ? "Credit" : "Balance"}
           value={formatCentsCompact(fin.openBalanceCents > 0 ? fin.openBalanceCents : fin.creditCents)}
           tone={fin.creditCents > 0 && fin.openBalanceCents === 0 ? "emerald" : fin.openBalanceCents > 0 ? "amber" : "neutral"}
+          sub={fin.openBalanceCents > 0 && fin.creditCents > 0 ? `+${formatCentsCompact(fin.creditCents)} credit` : undefined}
+          subTone="emerald"
         />
         <MoneyTile
           label="Margin"
@@ -162,13 +164,14 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
   );
 }
 
-function MoneyTile({ label, value, sub, tone = "neutral", href }: { label: string; value: string; sub?: string; tone?: "neutral" | "emerald" | "amber" | "rose"; href?: string }) {
+function MoneyTile({ label, value, sub, subTone, tone = "neutral", href }: { label: string; value: string; sub?: string; subTone?: "emerald"; tone?: "neutral" | "emerald" | "amber" | "rose"; href?: string }) {
   const cls = tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : tone === "rose" ? "text-rose-700" : "text-ppp-charcoal";
+  const subCls = subTone === "emerald" ? "text-emerald-700" : cls;
   const inner = (
     <>
       <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
       <div className={`font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 ${cls}`}>{value}</div>
-      {sub ? <div className={`text-[10px] mt-0.5 ${cls}`}>{sub}</div> : null}
+      {sub ? <div className={`text-[10px] mt-0.5 ${subCls}`}>{sub}</div> : null}
     </>
   );
   return href ? (

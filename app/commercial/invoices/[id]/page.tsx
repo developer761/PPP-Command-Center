@@ -1397,6 +1397,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                         fileName={pw?.file_name ?? null}
                         compact
                         title="Partial waiver"
+                        readOnly={isVoid}
                       />
                     </div>
                   </details>
@@ -1604,6 +1605,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       hasWaiver={!!w}
                       downloadHref={w ? `/api/commercial/documents/${w.id}/download` : null}
                       fileName={w?.file_name ?? null}
+                      readOnly={isVoid}
                       compact
                     />
 

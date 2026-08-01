@@ -1925,6 +1925,9 @@ function FullDetailByOpp({
                   }`}>
                     <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{totalCredit > 0 && totalBalance === 0 ? "Credit" : "Balance"}</div>
                     <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance > 0 ? totalBalance : totalCredit)}</div>
+                    {totalBalance > 0 && totalCredit > 0 && (
+                      <div className="text-[9px] font-semibold text-emerald-700 tabular-nums mt-0.5">+{formatCentsCompact(totalCredit)} credit</div>
+                    )}
                   </div>
                 </div>
               )}

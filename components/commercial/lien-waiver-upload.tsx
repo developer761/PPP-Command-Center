@@ -17,6 +17,7 @@ export function LienWaiverUpload({
   fileName,
   compact = false,
   title = "Lien waiver",
+  readOnly = false,
 }: {
   /** Invoice-level waiver (flat invoice, no milestones). */
   invoiceId?: string;
@@ -31,6 +32,8 @@ export function LienWaiverUpload({
   compact?: boolean;
   /** Slot label — e.g. "Final lien waiver" / "Partial waiver". */
   title?: string;
+  /** Download-only (e.g. the invoice is void) — hides upload + remove. */
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -82,39 +85,45 @@ export function LienWaiverUpload({
         </a>
       )}
 
-      {!compact && <p className="text-[11px] text-ppp-charcoal-500 mb-2">Upload the signed waiver (PDF or image). It also lands in this deal&rsquo;s Documents.</p>}
-      <div className="flex items-center gap-2 flex-wrap">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/pdf,image/png,image/jpeg,image/webp"
-          disabled={busy}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            const fd = new FormData();
-            fd.append("file", f);
-            void send(fd);
-          }}
-          className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-ppp-blue-600 file:text-white hover:file:bg-ppp-blue-700 file:min-h-[44px] file:touch-manipulation cursor-pointer"
-        />
-        {hasWaiver && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              const fd = new FormData();
-              fd.append("remove", "1");
-              void send(fd);
-            }}
-            className="text-[11.5px] font-medium text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] px-2"
-          >
-            Remove
-          </button>
-        )}
-      </div>
-      {busy && <p className="text-[11px] text-ppp-charcoal-400 mt-2">Uploading…</p>}
-      {error && <p className="text-[11px] text-rose-700 mt-2">{error}</p>}
+      {readOnly ? (
+        !hasWaiver && <p className="text-[11px] text-ppp-charcoal-400">No waiver on file.</p>
+      ) : (
+        <>
+          {!compact && <p className="text-[11px] text-ppp-charcoal-500 mb-2">Upload the signed waiver (PDF or image). It also lands in this deal&rsquo;s Documents.</p>}
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/pdf,image/png,image/jpeg,image/webp"
+              disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                const fd = new FormData();
+                fd.append("file", f);
+                void send(fd);
+              }}
+              className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-ppp-blue-600 file:text-white hover:file:bg-ppp-blue-700 file:min-h-[44px] file:touch-manipulation cursor-pointer"
+            />
+            {hasWaiver && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  const fd = new FormData();
+                  fd.append("remove", "1");
+                  void send(fd);
+                }}
+                className="text-[11.5px] font-medium text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] px-2"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          {busy && <p className="text-[11px] text-ppp-charcoal-400 mt-2">Uploading…</p>}
+          {error && <p className="text-[11px] text-rose-700 mt-2">{error}</p>}
+        </>
+      )}
     </div>
   );
 }

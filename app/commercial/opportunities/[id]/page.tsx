@@ -2045,6 +2045,7 @@ async function OpportunityInvoicesPanel({
             <MiniStat
               label={totalCreditCents > 0 && totalBalanceCents === 0 ? "Credit" : "Balance"}
               value={formatCentsCompact(totalBalanceCents > 0 ? totalBalanceCents : totalCreditCents)}
+              sub={totalBalanceCents > 0 && totalCreditCents > 0 ? `+${formatCentsCompact(totalCreditCents)} credit` : undefined}
               tone={totalCreditCents > 0 && totalBalanceCents === 0 ? "emerald" : totalBalanceCents > 0 ? "blue" : "neutral"}
             />
             {pctBilled !== null && (
@@ -2547,7 +2548,7 @@ async function OpportunityInvoicesPanel({
   );
 }
 
-function MiniStat({ label, value, tone }: { label: string; value: string; tone: "cc-brand" | "emerald" | "blue" | "amber" | "neutral" }) {
+function MiniStat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "cc-brand" | "emerald" | "blue" | "amber" | "neutral" }) {
   const cls =
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-cc-brand-50/50"
@@ -2566,6 +2567,7 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
       <div className="text-sm sm:text-base font-bold text-ppp-charcoal mt-0.5 tabular-nums">
         {value}
       </div>
+      {sub ? <div className="text-[9px] font-semibold text-emerald-700 tabular-nums mt-0.5">{sub}</div> : null}
     </div>
   );
 }

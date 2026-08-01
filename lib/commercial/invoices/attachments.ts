@@ -104,12 +104,23 @@ export async function removeInvoiceAttachment(
   actorUserId: string
 ): Promise<Result<null>> {
   const sb = commercialDb();
-  const { error } = await sb
+  // Scope the delete to THIS invoice's link, and only retire the doc if the link
+  // actually matched (audit HIGH): commercialDb() is service-role, so a forged
+  // remove_document_id for a doc attached to another invoice (or any lien
+  // waiver / receipt / proposal PDF) must NOT soft-delete that doc. Supabase
+  // returns no error on a 0-row delete — so gate on the returned rows.
+  const { data, error } = await sb
     .from("commercial_invoice_attachments")
     .delete()
     .eq("invoice_id", invoiceId)
-    .eq("document_id", documentId);
+    .eq("document_id", documentId)
+    .select("document_id");
   if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    // Nothing was linked to this invoice under that id — treat as not-found,
+    // never touch the document.
+    return { ok: false, error: "Attachment not found on this invoice." };
+  }
   await softDeleteDocument(documentId, actorUserId).catch(() => {});
   return { ok: true, value: null };
 }
