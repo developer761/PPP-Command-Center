@@ -284,7 +284,7 @@ async function deletePackageAction(formData: FormData) {
   const res = await deleteCloseoutPackage(pkgId, userId);
   if (!res.ok) redirect(`${base(id, dealId)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   revalidateCloseout(id, dealId);
-  redirect(base(id, dealId));
+  redirect(`${base(id, dealId)}${backQ(back)}`);
 }
 
 // ── Tool body (shared by the standalone route + the deal Project sub-tab) ──

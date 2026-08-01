@@ -233,7 +233,7 @@ async function deleteApplicationAction(formData: FormData) {
   const result = await deleteAiaApplication(appId, userId);
   if (!result.ok) redirect(`${base(id, dealId)}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
-  redirect(base(id, dealId));
+  redirect(`${base(id, dealId)}${backQ(back)}`);
 }
 
 async function upsertLineAction(formData: FormData) {

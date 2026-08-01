@@ -161,7 +161,7 @@ export async function SubmittalsTool({
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {submittals.map((s) => (
-              <SubmittalRow key={s.id} submittal={s} oppId={dealId} accountId={id} />
+              <SubmittalRow key={s.id} submittal={s} oppId={dealId} accountId={id} back={sp.back} />
             ))}
           </ul>
         </section>
@@ -180,7 +180,10 @@ function SubmittalStat({ label, value, tone }: { label: string; value: number; t
   );
 }
 
-function SubmittalRow({ submittal, oppId, accountId }: { submittal: OpportunitySubmittalWithItemCount; oppId: string; accountId: string }) {
+function SubmittalRow({ submittal, oppId, accountId, back }: { submittal: OpportunitySubmittalWithItemCount; oppId: string; accountId: string; back?: string }) {
+  // Forward the tool's origin so the detail's Back returns to where the user
+  // actually came from (global submittals index) instead of the account tab.
+  const backHref = back && back.startsWith("/commercial/") ? `?back=${encodeURIComponent(back)}` : "";
   const tone = submittalStatusTone(submittal.status);
   const tonePillCls =
     tone === "emerald" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
@@ -195,7 +198,7 @@ function SubmittalRow({ submittal, oppId, accountId }: { submittal: OpportunityS
   const responseLine = submittal.response_received_at ? ` · Response received ${fmt(submittal.response_received_at)}` : "";
   return (
     <li>
-      <Link href={`/commercial/accounts/${accountId}/submittals/${oppId}/${submittal.id}`} className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px]">
+      <Link href={`/commercial/accounts/${accountId}/submittals/${oppId}/${submittal.id}${backHref}`} className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2 flex-wrap">

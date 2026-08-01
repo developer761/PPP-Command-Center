@@ -75,7 +75,24 @@ import {
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string; dealId: string; sid: string }>;
-type SP = Promise<{ error?: string; saved?: string; picker?: string; preselect?: string }>;
+type SP = Promise<{ error?: string; saved?: string; picker?: string; preselect?: string; back?: string }>;
+
+/** Open-redirect-guarded origin for the Back button. Only honor a relative
+ *  /commercial/ path (the global submittals index passes one when you drill in
+ *  from there); anything else falls back to the account project tab. */
+function safeBack(raw: string | undefined | null): string | null {
+  return raw && raw.startsWith("/commercial/") ? raw : null;
+}
+/** Re-attach the origin to an action redirect so the Back button survives the
+ *  round-trip (adds ? or & as needed). No-op when there's no back context. */
+function withBack(url: string, back: string | null): string {
+  if (!back) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}back=${encodeURIComponent(back)}`;
+}
+/** The guarded origin an action received via its hidden `back` input. */
+function formBack(fd: FormData): string | null {
+  return safeBack(String(fd.get("back") ?? "") || undefined);
+}
 
 // ─────────────────────────────────────────────────────────────────────
 //  Cover form edit action — draft-only (lib enforces)
@@ -130,7 +147,7 @@ async function editCoverAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?saved=1`);
+  redirect(withBack(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?saved=1`, formBack(formData)));
 }
 
 /**
@@ -226,7 +243,7 @@ async function addItemAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`);
+  redirect(withBack(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`, formBack(formData)));
 }
 
 async function editItemAction(formData: FormData) {
@@ -270,7 +287,7 @@ async function editItemAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`);
+  redirect(withBack(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`, formBack(formData)));
 }
 
 async function deleteItemAction(formData: FormData) {
@@ -294,7 +311,7 @@ async function deleteItemAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`);
+  redirect(withBack(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`, formBack(formData)));
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -314,18 +331,22 @@ async function deleteSubmittalAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(submittal_id)) {
     redirect("/commercial/opportunities");
   }
+  const back = safeBack(String(formData.get("back") ?? "") || undefined);
   const result = await deleteOpportunitySubmittal(opportunity_id, submittal_id, user.id);
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
-        encodeURIComponent(result.error)
+      withBack(
+        `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+          encodeURIComponent(result.error),
+        back
+      )
     );
   }
-  // Deleted the draft — land back on the submittal log, which now lives inline
-  // under the deal's Project sub-tab.
+  // Deleted the draft — return to where the user came from (global submittals
+  // index if they drilled in from there), else the deal's Project sub-tab.
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/post-job/submittals");
-  redirect(`/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=project&pt=submittals`);
+  redirect(back ?? `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=project&pt=submittals`);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -358,7 +379,7 @@ async function linkAttachmentAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`);
+  redirect(withBack(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`, formBack(formData)));
 }
 
 async function bulkLinkAttachmentsAction(formData: FormData) {
@@ -410,7 +431,7 @@ async function bulkLinkAttachmentsAction(formData: FormData) {
       : `${failures.length} of ${attachment_ids.length} failed: ${failures[0]}`;
     redirect(errBase + encodeURIComponent(summary));
   }
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?saved=1`);
+  redirect(withBack(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?saved=1`, formBack(formData)));
 }
 
 async function unlinkAttachmentAction(formData: FormData) {
@@ -439,7 +460,7 @@ async function unlinkAttachmentAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`);
+  redirect(withBack(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`, formBack(formData)));
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -647,7 +668,10 @@ async function createRevisionAction(formData: FormData) {
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/opportunities");
   redirect(
-    `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${createRes.submittal.id}?saved=1`
+    withBack(
+      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${createRes.submittal.id}?saved=1`,
+      formBack(formData)
+    )
   );
 }
 
@@ -682,7 +706,9 @@ export default async function SubmittalDetailPage({
   const { submittal, items, statusLog } = loaded;
 
   // The submittal log now lives inline under the deal's Project sub-tab.
-  const submittalsListHref = `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=project&pt=submittals`;
+  const backTo = safeBack(pickFirst(sp.back));
+  const submittalsListHref =
+    backTo ?? `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=project&pt=submittals`;
 
   // Finish-code suggestions for the items editor (autocomplete-friendly).
   // Attachments — linked + unlinked, fetched in parallel for the
@@ -814,6 +840,7 @@ export default async function SubmittalDetailPage({
               <form action={deleteSubmittalAction}>
                 <input type="hidden" name="opportunity_id" value={opportunity_id} />
                 <input type="hidden" name="submittal_id" value={submittal_id} />
+                <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
                 <button
                   type="submit"
@@ -884,6 +911,7 @@ export default async function SubmittalDetailPage({
         status={submittal.status}
         itemCount={items.length}
         hasResponse={!!submittal.response}
+        backTo={backTo}
       />
 
       {/* Cover form */}
@@ -912,6 +940,7 @@ export default async function SubmittalDetailPage({
         <AutosaveProposalForm action={saveCoverAutosaveAction} disabled={!isDraft}>
           <input type="hidden" name="opportunity_id" value={opportunity_id} />
           <input type="hidden" name="submittal_id" value={submittal_id} />
+                <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
 
           {/* To / Attention — 2-col on sm+ */}
@@ -1057,6 +1086,7 @@ export default async function SubmittalDetailPage({
           >
             <input type="hidden" name="opportunity_id" value={opportunity_id} />
             <input type="hidden" name="submittal_id" value={submittal_id} />
+                <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
 
             {/* Description — full width, required */}
@@ -1206,6 +1236,7 @@ export default async function SubmittalDetailPage({
                     <form action={editItemAction} className="mt-3 space-y-3 pl-1">
                       <input type="hidden" name="opportunity_id" value={opportunity_id} />
                       <input type="hidden" name="submittal_id" value={submittal_id} />
+                <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
                       <input type="hidden" name="item_id" value={item.id} />
 
@@ -1279,6 +1310,7 @@ export default async function SubmittalDetailPage({
                     <form action={deleteItemAction} className="mt-2 pl-1">
                       <input type="hidden" name="opportunity_id" value={opportunity_id} />
                       <input type="hidden" name="submittal_id" value={submittal_id} />
+                <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
                       <input type="hidden" name="item_id" value={item.id} />
                       <button
@@ -1415,6 +1447,7 @@ export default async function SubmittalDetailPage({
                       <form action={unlinkAttachmentAction} className="inline">
                         <input type="hidden" name="opportunity_id" value={opportunity_id} />
                         <input type="hidden" name="submittal_id" value={submittal_id} />
+                <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
                         <input type="hidden" name="attachment_id" value={att.id} />
                         <button
@@ -1449,6 +1482,7 @@ export default async function SubmittalDetailPage({
             <form action={bulkLinkAttachmentsAction} className="mt-3 p-3 rounded-lg border border-cc-brand-100 bg-cc-brand-50/30 space-y-3">
               <input type="hidden" name="opportunity_id" value={opportunity_id} />
               <input type="hidden" name="submittal_id" value={submittal_id} />
+                <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
               <p className="text-[11px] text-ppp-charcoal-600">
                 Tick the PDFs that belong to this submittal package. Multi-select supported (up to 25 per batch).
@@ -1594,6 +1628,7 @@ function StatusActionsPanel({
   status,
   itemCount,
   hasResponse,
+  backTo,
 }: {
   accountId: string;
   opportunityId: string;
@@ -1601,6 +1636,8 @@ function StatusActionsPanel({
   status: SubmittalStatus;
   itemCount: number;
   hasResponse: boolean;
+  /** Origin to re-attach so status actions keep the Back button correct. */
+  backTo: string | null;
 }) {
   const allowed = ALLOWED_SUBMITTAL_TRANSITIONS[status] ?? [];
   // Terminal states (closed/voided): no transitions left, but the user
@@ -1638,6 +1675,7 @@ function StatusActionsPanel({
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="opportunity_id" value={opportunityId} />
       <input type="hidden" name="submittal_id" value={submittalId} />
+        <input type="hidden" name="back" value={backTo ?? ""} />
     </>
   );
 
@@ -1722,6 +1760,7 @@ function StatusActionsPanel({
               tone="emerald"
               label="Approved as Submitted"
               defaultResponse="approved"
+              backTo={backTo}
             />
             <ResponseRecorder
               accountId={accountId}
@@ -1731,6 +1770,7 @@ function StatusActionsPanel({
               tone="emerald"
               label="Approved as Noted"
               defaultResponse="approved_as_noted"
+              backTo={backTo}
             />
             <ResponseRecorder
               accountId={accountId}
@@ -1741,6 +1781,7 @@ function StatusActionsPanel({
               label="Revise & Resubmit"
               defaultResponse="returned_for_corrections"
               copiesPlaceholder="copies requested"
+              backTo={backTo}
             />
             <ResponseRecorder
               accountId={accountId}
@@ -1750,6 +1791,7 @@ function StatusActionsPanel({
               tone="rose"
               label="Rejected"
               defaultResponse="returned_for_corrections"
+              backTo={backTo}
             />
           </div>
         </div>
@@ -1922,6 +1964,7 @@ function ResponseRecorder({
   label,
   defaultResponse,
   copiesPlaceholder,
+  backTo,
 }: {
   accountId: string;
   opportunityId: string;
@@ -1931,6 +1974,7 @@ function ResponseRecorder({
   label: string;
   defaultResponse: SubmittalResponse;
   copiesPlaceholder?: string;
+  backTo: string | null;
 }) {
   // Tone differentiation in the COLLAPSED state too — without the dot
   // the 4 cards look identical when closed, defeating the at-a-glance
@@ -1957,6 +2001,7 @@ function ResponseRecorder({
         <input type="hidden" name="account_id" value={accountId} />
         <input type="hidden" name="opportunity_id" value={opportunityId} />
         <input type="hidden" name="submittal_id" value={submittalId} />
+        <input type="hidden" name="back" value={backTo ?? ""} />
         <input type="hidden" name="to_status" value={to_status} />
 
         <div>
