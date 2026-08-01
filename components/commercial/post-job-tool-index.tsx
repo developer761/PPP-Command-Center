@@ -17,13 +17,14 @@ import { derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opport
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import type { ProjectRow } from "@/lib/commercial/projects/db";
 
-export type ToolStatusTone = "neutral" | "amber" | "emerald" | "brand";
+export type ToolStatusTone = "neutral" | "amber" | "emerald" | "brand" | "rose";
 
 const TONE_CLS: Record<ToolStatusTone, string> = {
   neutral: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200",
   amber: "bg-amber-50 text-amber-800 border-amber-200",
   emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
   brand: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200",
+  rose: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
 /** Per-tool accent so the four tool pages read as distinct surfaces instead of

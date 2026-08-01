@@ -66,6 +66,7 @@ const navSections: NavSection[] = [
       { label: "Submittals", href: "/commercial/post-job/submittals", icon: <IconChangeOrder /> },
       { label: "Change Orders", href: "/commercial/post-job/change-orders", icon: <IconRefresh /> },
       { label: "AIA Billing", href: "/commercial/post-job/aia", icon: <IconFileText /> },
+      { label: "Costs & P&L", href: "/commercial/post-job/costs", icon: <IconDollar /> },
       { label: "Closeout & warranty", href: "/commercial/post-job/closeout", icon: <IconCheckSquare /> },
     ],
   },
@@ -113,7 +114,7 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNav
   // lighting up "Accounts" (which prefix-matches and made the tool feel like
   // the account page). Map such a path to the owning tool's index href.
   const toolDetailMatch = pathname.match(
-    /^\/commercial\/accounts\/[^/]+\/(submittals|change-orders|aia|closeout)(?:\/|$)/
+    /^\/commercial\/accounts\/[^/]+\/(submittals|change-orders|aia|costs|closeout)(?:\/|$)/
   );
   const activeToolOverride = toolDetailMatch ? `/commercial/post-job/${toolDetailMatch[1]}` : null;
 

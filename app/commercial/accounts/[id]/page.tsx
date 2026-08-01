@@ -1344,7 +1344,14 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             {recentInvoices.map((inv) => {
               const st = deriveInvoiceStatus(inv);
               const tone = st === "paid" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : st === "overdue" ? "text-rose-700 bg-rose-50 border-rose-200" : st === "draft" ? "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200" : "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-200";
-              const ms = milestonesByInvoice.get(inv.id) ?? [];
+              // Due-date order (earliest first, undated last) so the schedule
+              // reads chronologically here + on the invoice detail (Karan 2026-08).
+              const ms = [...(milestonesByInvoice.get(inv.id) ?? [])].sort((a, b) => {
+                if (a.due_at && b.due_at) return a.due_at.localeCompare(b.due_at);
+                if (a.due_at) return -1;
+                if (b.due_at) return 1;
+                return a.position - b.position;
+              });
               const waived = ms.filter((m) => m.lien_waiver_document_id).length;
               const detailHref = `/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}&dt=invoices`)}`;
               return (

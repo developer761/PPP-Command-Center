@@ -614,6 +614,17 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   // One documents query for all milestones (was a 3N-query loop).
   const milestoneWaivers = await getMilestoneLienWaivers(milestones);
   const hasMilestones = milestones.length > 0;
+  // Order milestones by DUE DATE (earliest first; undated sink to the end, stable
+  // by position within that group) so the schedule bar AND the milestone list
+  // both read chronologically — regardless of the order they were entered or
+  // added later (Karan 2026-08: "make sure the due-date progress bar is oriented
+  // properly"). Sorting the array in place keeps the bar + list consistent.
+  milestones.sort((a, b) => {
+    if (a.due_at && b.due_at) return a.due_at.localeCompare(b.due_at);
+    if (a.due_at) return -1;
+    if (b.due_at) return 1;
+    return a.position - b.position;
+  });
   const milestoneSum = milestones.reduce((s, m) => s + m.amount_cents, 0);
   // Per-milestone paid (Σ payments tagged to each). Invoice paid_cents is
   // unchanged — the trigger sums ALL payments; this is just the milestone slice.
