@@ -116,7 +116,7 @@ export function DealInvoiceBuilder({
               key={m}
               type="button"
               onClick={() => setMode(m)}
-              className={`px-3 py-1.5 rounded-md min-h-[36px] touch-manipulation transition-colors ${mode === m ? "bg-cc-brand-600 text-white" : "text-ppp-charcoal-600 hover:text-ppp-charcoal"}`}
+              className={`px-3 py-1.5 rounded-md min-h-[44px] touch-manipulation transition-colors ${mode === m ? "bg-cc-brand-600 text-white" : "text-ppp-charcoal-600 hover:text-ppp-charcoal"}`}
             >
               {m === "flat" ? "One amount" : "Break into milestones"}
             </button>
@@ -155,7 +155,7 @@ export function DealInvoiceBuilder({
                   {Math.abs(remainingToAllocate) < 0.005 ? "fully allocated" : remainingToAllocate > 0 ? <><strong className="tabular-nums">{fmtUSD(remainingToAllocate)}</strong> left to allocate</> : <><strong className="tabular-nums">{fmtUSD(-remainingToAllocate)}</strong> over</>}
                 </span>
                 {remainingToAllocate > 0.005 && (
-                  <button type="button" onClick={() => addRow(remainingToAllocate)} className="shrink-0 font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1">Fill remaining →</button>
+                  <button type="button" onClick={() => addRow(remainingToAllocate)} className="shrink-0 font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] px-1">Fill remaining →</button>
                 )}
               </div>
             )}
@@ -166,7 +166,7 @@ export function DealInvoiceBuilder({
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="text-[10.5px] font-bold uppercase tracking-wide text-cc-brand-700">Milestone {i + 1}</span>
                     {rows.length > 1 && (
-                      <button type="button" onClick={() => removeRow(i)} className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[32px] px-1.5" aria-label={`Remove milestone ${i + 1}`}>Remove</button>
+                      <button type="button" onClick={() => removeRow(i)} className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] px-1.5" aria-label={`Remove milestone ${i + 1}`}>Remove</button>
                     )}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem] gap-2">

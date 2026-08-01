@@ -65,7 +65,7 @@ import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
 import { ProgressMeter } from "@/components/commercial/progress-meter";
-import { listCommercialInvoices, addPayment, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIdsWithChangeOrderLine, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
@@ -1050,6 +1050,9 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // the list nests them + we can surface the next one due.
   const milestonesByInvoice = await listMilestonesForInvoices(dealInvoices.map((i) => i.id));
   const milestonePaidTagged = await getMilestonePaidMapForInvoices(dealInvoices.map((i) => i.id));
+  // Flat invoices carrying a change-order LINE (a milestone-invoice's CO already
+  // shows as a milestone) — so the list can flag "incl. change order" (1B #3).
+  const coLineInvoiceIds = await invoiceIdsWithChangeOrderLine(dealInvoices.map((i) => i.id));
   // Effective per-milestone paid across the deal (tagged + allocated untagged),
   // so a milestone paid via an invoice-level payment reads as paid everywhere
   // (audit 1A/2A).
@@ -1327,6 +1330,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                         <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800">{inv.invoice_number}</span>
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{invoiceStatusLabel(st)}</span>
                         {ms.length > 0 && <span className="text-[10px] font-semibold text-ppp-navy-600">{ms.length} milestone{ms.length === 1 ? "" : "s"}</span>}
+                        {ms.length === 0 && coLineInvoiceIds.has(inv.id) && <span className="inline-flex items-center px-1.5 py-0.5 rounded border border-cc-brand-200 bg-cc-brand-50 text-[9.5px] font-bold uppercase tracking-wide text-cc-brand-700">incl. change order</span>}
                       </span>
                       {/* Lien-waiver status: per-milestone aggregate, else the flat
                           invoice-level waiver. */}
@@ -1704,6 +1708,8 @@ async function createDealInvoiceAction(formData: FormData) {
 
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial/accounts"); // list AR/tiles (audit 1B #2)
+  revalidatePath("/commercial"); // dashboard AR tiles (audit 1B #2)
   redirect(`${back}&created=1`);
 }
 
@@ -1711,15 +1717,19 @@ async function createDealInvoiceAction(formData: FormData) {
  *  builder. Invoices are created under the project (Phase 1, Katie). */
 async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals, invoices }: { accountId: string; oppId: string; propertyZip: string | null; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[]; invoices: CommercialInvoice[] }) {
   // Pre-fill the tax rate from the deal's property ZIP (same engine as the
-  // global invoices page). Editable on the form + the invoice.
+  // global invoices page). Editable on the form + the invoice. A TAX-EXEMPT GC
+  // always defaults to 0% — never the ZIP rate (audit 1B: a taxed default on an
+  // exempt customer is a silent mis-bill).
+  const taxExempt = (await getCommercialAccount(accountId))?.tax_exempt === true;
   const taxHit = resolveTaxForZip(propertyZip, await listTaxJurisdictions({ activeOnly: true }));
-  const defaultTax = taxHit ? thouToPct(taxHit.jurisdiction.combined_rate_thou).toFixed(3).replace(/\.?0+$/, "") : "";
+  const defaultTax = taxExempt ? "0" : taxHit ? thouToPct(taxHit.jurisdiction.combined_rate_thou).toFixed(3).replace(/\.?0+$/, "") : "";
   const wonProposals = proposals.filter((pr) => pr.status === "won" || pr.status === "sent");
-  // Already billed (pre-tax) against each proposal across this deal's invoices,
-  // so the builder can autofill what's LEFT to bill, not the full total.
+  // Already billed (pre-tax) against each proposal across this deal's ISSUED
+  // invoices — drafts excluded so "left to bill" ties out with the issued-only
+  // Invoiced figure the rollup shows (audit 1B #4).
   const billedByProposal = new Map<string, number>();
   for (const inv of invoices) {
-    if (!inv.proposal_id || inv.status === "void" || inv.deleted_at) continue;
+    if (!inv.proposal_id || inv.status === "void" || inv.status === "draft" || inv.deleted_at) continue;
     billedByProposal.set(inv.proposal_id, (billedByProposal.get(inv.proposal_id) ?? 0) + inv.subtotal_cents);
   }
   return (
@@ -1728,7 +1738,7 @@ async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals, in
       accountId={accountId}
       oppId={oppId}
       defaultTax={defaultTax}
-      taxNote={taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
+      taxNote={taxExempt ? "This customer is tax-exempt — tax defaulted to 0%." : taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
       proposals={wonProposals.map((pr) => {
         const billed = billedByProposal.get(pr.id) ?? 0;
         const remaining = Math.max(0, pr.total_cents - billed);

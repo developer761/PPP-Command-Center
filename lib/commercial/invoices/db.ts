@@ -260,6 +260,23 @@ export async function getCommercialInvoice(id: string): Promise<CommercialInvoic
   return (data as CommercialInvoice | null) ?? null;
 }
 
+/** Phase 1A/1B: invoice ids (from the given set) that carry a FLAT change-order
+ *  line — so the deal Invoices tab can flag "incl. change order" on invoices
+ *  whose CO isn't already visible as a milestone. One query. */
+export async function invoiceIdsWithChangeOrderLine(invoiceIds: string[]): Promise<Set<string>> {
+  const ids = [...new Set(invoiceIds.filter(Boolean))];
+  if (ids.length === 0) return new Set();
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_invoice_line_items")
+    .select("invoice_id, change_order_id")
+    .in("invoice_id", ids)
+    .not("change_order_id", "is", null);
+  const out = new Set<string>();
+  for (const r of (data ?? []) as { invoice_id: string }[]) out.add(r.invoice_id);
+  return out;
+}
+
 export async function listInvoiceLineItems(invoiceId: string): Promise<CommercialInvoiceLineItem[]> {
   const sb = commercialDb();
   const { data, error } = await sb
