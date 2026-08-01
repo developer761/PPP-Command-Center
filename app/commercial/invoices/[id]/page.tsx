@@ -35,6 +35,8 @@ import {
   allowedNextStatuses,
 } from "@/lib/commercial/invoices/status";
 import { getInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
+import { getPaymentLienWaivers } from "@/lib/commercial/invoices/payment-lien-waiver";
+import { listInvoiceAttachments } from "@/lib/commercial/invoices/attachments";
 import {
   listMilestonesForInvoice,
   addMilestone,
@@ -45,6 +47,7 @@ import {
   allocateMilestonePaid,
 } from "@/lib/commercial/invoices/milestones";
 import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
+import { InvoiceAttachments } from "@/components/commercial/invoice-attachments";
 import {
   deriveInvoiceStatus,
   invoiceStatusLabel,
@@ -600,7 +603,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
   const invoice = await getCommercialInvoice(id);
   if (!invoice) notFound();
-  const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver, milestones] = await Promise.all([
+  const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver, milestones, attachments] = await Promise.all([
     listInvoiceLineItems(invoice.id),
     listInvoicePayments(invoice.id),
     listInvoiceStatusLog(invoice.id),
@@ -609,10 +612,13 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
     listCommercialInvoices({ opportunityId: invoice.opportunity_id }),
     getInvoiceLienWaiver(invoice.id),
     listMilestonesForInvoice(invoice.id),
+    listInvoiceAttachments(invoice.id),
   ]);
   // Per-milestone lien-waiver docs (for the ✓/download state on each row).
   // One documents query for all milestones (was a 3N-query loop).
   const milestoneWaivers = await getMilestoneLienWaivers(milestones);
+  // Per-payment PARTIAL waiver docs (one query for every payment on this invoice).
+  const paymentWaivers = await getPaymentLienWaivers(payments);
   const hasMilestones = milestones.length > 0;
   // Order milestones by DUE DATE (earliest first; undated sink to the end, stable
   // by position within that group) so the schedule bar AND the milestone list
@@ -1333,41 +1339,71 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
         {payments.length > 0 && (
           <ul className="divide-y divide-ppp-charcoal-100">
-            {payments.map((p) => (
-              <li key={p.id} className="py-3 flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(p.amount_cents)}</span>
-                    <span className="text-[11px] text-ppp-charcoal-500">· {fmtEtDate(p.paid_at)}</span>
-                    {p.method && (
-                      <span className="inline-flex items-center px-1.5 py-0 rounded bg-ppp-blue-50 text-ppp-blue-700 border border-ppp-blue-200 text-[10px] font-medium">
-                        {PAYMENT_METHODS.find((m) => m.key === p.method)?.label ?? p.method}
-                      </span>
+            {payments.map((p) => {
+              const pw = paymentWaivers.get(p.id) ?? null;
+              return (
+              <li key={p.id} className="py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(p.amount_cents)}</span>
+                      <span className="text-[11px] text-ppp-charcoal-500">· {fmtEtDate(p.paid_at)}</span>
+                      {p.method && (
+                        <span className="inline-flex items-center px-1.5 py-0 rounded bg-ppp-blue-50 text-ppp-blue-700 border border-ppp-blue-200 text-[10px] font-medium">
+                          {PAYMENT_METHODS.find((m) => m.key === p.method)?.label ?? p.method}
+                        </span>
+                      )}
+                      {pw && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9.5px] font-bold uppercase tracking-wide"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Waiver</span>
+                      )}
+                    </div>
+                    {(p.reference || p.notes) && (
+                      <div className="text-[12px] text-ppp-charcoal-600 mt-0.5">
+                        {p.reference && <span>Ref: {p.reference}</span>}
+                        {p.reference && p.notes && <span aria-hidden> · </span>}
+                        {p.notes && <span>{p.notes}</span>}
+                      </div>
                     )}
                   </div>
-                  {(p.reference || p.notes) && (
-                    <div className="text-[12px] text-ppp-charcoal-600 mt-0.5">
-                      {p.reference && <span>Ref: {p.reference}</span>}
-                      {p.reference && p.notes && <span aria-hidden> · </span>}
-                      {p.notes && <span>{p.notes}</span>}
-                    </div>
+                  {!isVoid && (
+                    <form action={removePaymentAction} className="inline">
+                      <input type="hidden" name="invoice_id" value={invoice.id} />
+                            <input type="hidden" name="from" value={fromRaw ?? ""} />
+                      <input type="hidden" name="payment_id" value={p.id} />
+                      <button
+                        type="submit"
+                        className="inline-flex items-center justify-center min-h-[44px] px-3 rounded-lg text-rose-700 text-[11px] font-semibold hover:bg-rose-50 touch-manipulation"
+                      >
+                        Remove
+                      </button>
+                    </form>
                   )}
                 </div>
-                {!isVoid && (
-                  <form action={removePaymentAction} className="inline">
-                    <input type="hidden" name="invoice_id" value={invoice.id} />
-                          <input type="hidden" name="from" value={fromRaw ?? ""} />
-                    <input type="hidden" name="payment_id" value={p.id} />
-                    <button
-                      type="submit"
-                      className="inline-flex items-center justify-center min-h-[44px] px-3 rounded-lg text-rose-700 text-[11px] font-semibold hover:bg-rose-50 touch-manipulation"
-                    >
-                      Remove
-                    </button>
-                  </form>
+                {/* Partial (progress-payment) lien waiver — a signed waiver often
+                    arrives with each progress payment; store it against the one it
+                    covers. The invoice-level slot below is the FINAL waiver. */}
+                {(!isVoid || pw) && (
+                  <details className="mt-2 group/pw">
+                    <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11px] font-semibold min-h-[32px] select-none text-ppp-charcoal-500 hover:text-ppp-charcoal">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/pw:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
+                      Partial lien waiver
+                      {pw ? <span className="text-emerald-600 font-bold">· on file</span> : <span className="text-amber-600 font-bold">· none</span>}
+                    </summary>
+                    <div className="mt-1.5 max-w-md">
+                      <LienWaiverUpload
+                        paymentId={p.id}
+                        hasWaiver={!!pw}
+                        downloadHref={pw ? `/api/commercial/documents/${pw.id}/download` : null}
+                        fileName={pw?.file_name ?? null}
+                        compact
+                        title="Partial waiver"
+                      />
+                    </div>
+                  </details>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 
@@ -1450,7 +1486,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
           <h2 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
             <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-blue-600" />
-            {hasMilestones ? "Milestones & lien waivers" : "Lien waiver"}
+            {hasMilestones ? "Milestones & lien waivers" : "Final lien waiver"}
           </h2>
           {hasMilestones && (
             <span className="text-[11px] font-semibold text-ppp-charcoal-500 tabular-nums">
@@ -1614,12 +1650,13 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </>
         ) : (
           <>
-            <p className="text-[12px] text-ppp-charcoal-500 mb-3">Upload the signed lien waiver the GC sends back — it also lands in this deal&rsquo;s Documents. Or break this invoice into milestones below.</p>
+            <p className="text-[12px] text-ppp-charcoal-500 mb-3">The <strong>final</strong> unconditional waiver — upload it once the invoice is paid in full. Partial waivers for each progress payment attach under <a href="#payments" className="text-ppp-blue-700 underline underline-offset-2">Payments</a> above. It also lands in this deal&rsquo;s Documents.</p>
             <LienWaiverUpload
               invoiceId={invoice.id}
               hasWaiver={!!lienWaiver}
               downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
               fileName={lienWaiver?.file_name ?? null}
+              title="Final lien waiver"
             />
           </>
         )}
@@ -1652,6 +1689,26 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <p className="text-[10.5px] text-ppp-charcoal-400 mt-1.5">Adds a scheduled charge to this invoice (raises the total by the amount). Each milestone then carries its own lien waiver.</p>
           </details>
         )}
+      </section>
+
+      {/* Attachments — arbitrary files for THIS invoice (signed contract copy,
+          photo, spec sheet). They also land in the deal's Documents tab. */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <h2 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-blue-600" />
+            Attachments
+          </h2>
+          {attachments.length > 0 && (
+            <span className="text-[11px] font-semibold text-ppp-charcoal-500 tabular-nums">{attachments.length} file{attachments.length === 1 ? "" : "s"}</span>
+          )}
+        </div>
+        <p className="text-[12px] text-ppp-charcoal-500 mb-3">Files sent with this bill — a signed contract copy, a photo, a spec sheet.</p>
+        <InvoiceAttachments
+          invoiceId={invoice.id}
+          attachments={attachments.map((a) => ({ id: a.id, file_name: a.file_name }))}
+          canEdit={!isVoid}
+        />
       </section>
 
       {/* Notes — a simple internal-notes box that saves on its own (never

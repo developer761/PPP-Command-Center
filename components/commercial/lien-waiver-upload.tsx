@@ -11,26 +11,34 @@ import { useRouter } from "next/navigation";
 export function LienWaiverUpload({
   invoiceId,
   milestoneId,
+  paymentId,
   hasWaiver,
   downloadHref,
   fileName,
   compact = false,
+  title = "Lien waiver",
 }: {
   /** Invoice-level waiver (flat invoice, no milestones). */
   invoiceId?: string;
   /** Milestone-level waiver — wins over invoiceId when set. */
   milestoneId?: string;
+  /** Payment-level PARTIAL waiver — wins over milestoneId/invoiceId when set. */
+  paymentId?: string;
   hasWaiver: boolean;
   downloadHref?: string | null;
   fileName?: string | null;
-  /** Denser layout for inline milestone rows. */
+  /** Denser layout for inline milestone / payment rows. */
   compact?: boolean;
+  /** Slot label — e.g. "Final lien waiver" / "Partial waiver". */
+  title?: string;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const endpoint = milestoneId
+  const endpoint = paymentId
+    ? `/api/commercial/payments/${paymentId}/lien-waiver`
+    : milestoneId
     ? `/api/commercial/milestones/${milestoneId}/lien-waiver`
     : `/api/commercial/invoices/${invoiceId}/lien-waiver`;
 
@@ -56,7 +64,7 @@ export function LienWaiverUpload({
   return (
     <div className={`rounded-lg border border-ppp-charcoal-100 bg-surface ${compact ? "p-2.5" : "p-3.5"}`}>
       <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="text-[12.5px] font-semibold text-ppp-charcoal">Lien waiver</span>
+        <span className="text-[12.5px] font-semibold text-ppp-charcoal">{title}</span>
         {hasWaiver ? (
           <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wide text-emerald-700">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
@@ -70,7 +78,7 @@ export function LienWaiverUpload({
       {hasWaiver && downloadHref && (
         <a href={downloadHref} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-ppp-charcoal-50 min-h-[44px] group mb-1.5">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-          <span className="text-[12px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{fileName || "Download waiver"}</span>
+          <span className="text-[12px] font-medium text-ppp-charcoal truncate group-hover:text-ppp-blue-800">{fileName || "Download waiver"}</span>
         </a>
       )}
 
@@ -88,7 +96,7 @@ export function LienWaiverUpload({
             fd.append("file", f);
             void send(fd);
           }}
-          className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[44px] file:touch-manipulation cursor-pointer"
+          className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-ppp-blue-600 file:text-white hover:file:bg-ppp-blue-700 file:min-h-[44px] file:touch-manipulation cursor-pointer"
         />
         {hasWaiver && (
           <button

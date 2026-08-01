@@ -381,6 +381,15 @@ export async function CloseoutTool({
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Quick overview strip — mirrors the CO/AIA/Submittals tools so every
+              deal tool leads with an at-a-glance summary. */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <CloseoutStat label="Status" value={CLOSEOUT_STATUS_META[activePkg.status].label} />
+            <CloseoutStat label="Checklist" value={progress != null ? `${progress}%` : "—"} sub="collected" tone={progress === 100 ? "emerald" : progress != null && progress > 0 ? "blue" : "neutral"} />
+            <CloseoutStat label="Warranty term" value={`${activePkg.warranty_years} yr${activePkg.warranty_years === 1 ? "" : "s"}`} />
+            <CloseoutStat label="Warranty through" value={warrantyEnd ? fmtEtDate(`${warrantyEnd}T12:00:00Z`) : "—"} tone={warrantyEnd ? "emerald" : "neutral"} />
+          </div>
+
           {/* Status controls */}
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -532,6 +541,27 @@ export async function CloseoutTool({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function CloseoutStat({
+  label,
+  value,
+  sub,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "neutral" | "emerald" | "blue";
+}) {
+  const valueCls = tone === "emerald" ? "text-emerald-700" : tone === "blue" ? "text-ppp-blue-700" : "text-ppp-charcoal";
+  return (
+    <div className="rounded-lg border border-ppp-charcoal-100 bg-surface/70 px-2.5 py-2">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className={`font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 ${valueCls}`}>{value}</div>
+      {sub && <div className="text-[10px] text-ppp-charcoal-400 mt-0.5">{sub}</div>}
     </div>
   );
 }

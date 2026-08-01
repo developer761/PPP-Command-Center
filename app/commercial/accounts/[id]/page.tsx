@@ -68,7 +68,7 @@ import { ProjectCard } from "@/components/commercial/project-card";
 import { ProgressMeter } from "@/components/commercial/progress-meter";
 import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIdsWithChangeOrderLine, changeOrderLineCentsByInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
-import { attachInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
+import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commercial/invoices/lien-waiver";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
@@ -1063,6 +1063,9 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // Flat invoices carrying a change-order LINE (a milestone-invoice's CO already
   // shows as a milestone) — so the list can flag "incl. change order" (1B #3).
   const coLineInvoiceIds = await invoiceIdsWithChangeOrderLine(dealInvoices.map((i) => i.id));
+  // Honest waiver coverage per invoice (none/partial/final) — folds in the
+  // per-PAYMENT partial waivers a milestone/invoice-column check would miss (H3).
+  const waiverCoverage = await waiverCoverageByInvoice(dealInvoices);
   // Effective per-milestone paid across the deal (tagged + allocated untagged),
   // so a milestone paid via an invoice-level payment reads as paid everywhere
   // (audit 1A/2A).
@@ -1376,8 +1379,10 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                           ) : (
                             <span className="text-amber-700">{waived}/{ms.length} lien waivers on file</span>
                           )
-                        ) : inv.lien_waiver_document_id ? (
-                          <span className="inline-flex items-center gap-0.5 text-emerald-700"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Lien waiver on file</span>
+                        ) : (waiverCoverage.get(inv.id) ?? "none") === "final" ? (
+                          <span className="inline-flex items-center gap-0.5 text-emerald-700"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Final lien waiver on file</span>
+                        ) : (waiverCoverage.get(inv.id) ?? "none") === "partial" ? (
+                          <span className="text-ppp-blue-700">Partial waiver on file · final pending</span>
                         ) : (
                           <span className="text-amber-700">Lien waiver missing</span>
                         )}

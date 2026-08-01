@@ -38,6 +38,35 @@ export function deriveWaiverCoverage(input: {
   return anyPartial ? "partial" : "none";
 }
 
+/** Batch: one honest waiver-coverage state per invoice (deal Invoices tab chip).
+ *  Two scoped queries — milestone + payment waivers — folded into the invoice's
+ *  own (final) waiver column. Tolerates unapplied migrations (reads as none). */
+export async function waiverCoverageByInvoice(
+  invoices: { id: string; lien_waiver_document_id?: string | null }[]
+): Promise<Map<string, WaiverCoverage>> {
+  const out = new Map<string, WaiverCoverage>();
+  const ids = [...new Set(invoices.map((i) => i.id).filter(Boolean))];
+  if (ids.length === 0) return out;
+  const sb = commercialDb();
+  const [msRes, payRes] = await Promise.all([
+    sb.from("commercial_invoice_milestones").select("invoice_id").in("invoice_id", ids).not("lien_waiver_document_id", "is", null),
+    sb.from("commercial_invoice_payments").select("invoice_id").in("invoice_id", ids).not("lien_waiver_document_id", "is", null),
+  ]);
+  const partialSet = new Set<string>();
+  for (const r of ((msRes.data ?? []) as { invoice_id: string }[])) partialSet.add(r.invoice_id);
+  for (const r of ((payRes.data ?? []) as { invoice_id: string }[])) partialSet.add(r.invoice_id);
+  for (const inv of invoices) {
+    out.set(
+      inv.id,
+      deriveWaiverCoverage({
+        invoiceWaiverDocId: inv.lien_waiver_document_id,
+        paymentWaiverDocIds: partialSet.has(inv.id) ? ["x"] : [],
+      })
+    );
+  }
+  return out;
+}
+
 async function fetchInvoiceScope(invoiceId: string): Promise<{ opportunity_id: string; invoice_number: string; lien_waiver_document_id: string | null } | null> {
   const sb = commercialDb();
   const { data } = await sb
