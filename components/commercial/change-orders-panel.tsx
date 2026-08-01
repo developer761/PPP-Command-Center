@@ -17,12 +17,13 @@ import {
 } from "@/lib/commercial/change-orders/db";
 import { changeOrderAttachmentsByOrder } from "@/lib/commercial/change-orders/attachments";
 import { ChangeOrderAttachments } from "@/components/commercial/change-order-attachments";
+import { DonutChart } from "@/components/commercial/charts";
 import {
   CHANGE_ORDER_STATUS_META,
   formatChangeOrderNumber,
   changeOrderKind,
 } from "@/lib/commercial/change-orders/constants";
-import { formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
+import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -215,6 +216,28 @@ export async function ChangeOrdersPanel({
             }
           />
         </div>
+        {/* CO status mix — approved / pending / declined $ (absolute). */}
+        {(() => {
+          const abs = (s: string) => items.filter((c) => c.status === s).reduce((a, c) => a + Math.abs(c.amount_cents), 0);
+          const ap = abs("approved");
+          const pe = abs("pending");
+          const de = abs("declined");
+          if (ap + pe + de === 0) return null;
+          return (
+            <div className="mt-4 pt-4 border-t border-cc-brand-100">
+              <DonutChart
+                size={116}
+                segments={[
+                  { label: "Approved", value: ap, tone: "emerald", valueLabel: formatCentsCompact(ap) },
+                  { label: "Pending", value: pe, tone: "amber", valueLabel: formatCentsCompact(pe) },
+                  { label: "Declined", value: de, tone: "neutral", valueLabel: formatCentsCompact(de) },
+                ]}
+                centerValue={String(items.length)}
+                centerLabel={items.length === 1 ? "change order" : "change orders"}
+              />
+            </div>
+          );
+        })()}
       </section>
 
       {/* ── Add + list ── */}

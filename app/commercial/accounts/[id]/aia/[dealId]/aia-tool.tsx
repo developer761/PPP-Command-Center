@@ -36,6 +36,7 @@ import { AiaApplicationDetail } from "@/components/commercial/aia-application-de
 import type { AiaLineSaveResult } from "@/components/commercial/aia-line-row";
 import { AiaSettingsForm } from "@/components/commercial/aia-settings-form";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
+import { DonutChart } from "@/components/commercial/charts";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
@@ -502,6 +503,20 @@ async function AiaApplicationList({
           <AiaSummaryTile label="Contract to date" value={contractToDateCents != null ? formatCentsFull(contractToDateCents) : "—"} emphasize />
           <AiaSummaryTile label="Applications" value={String(applications.length)} hint={appsHint} />
         </div>
+        {applications.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-ppp-charcoal-100">
+            <DonutChart
+              size={116}
+              segments={[
+                { label: "Paid", value: paidCount, tone: "emerald", valueLabel: String(paidCount) },
+                { label: "Submitted", value: submittedCount, tone: "blue", valueLabel: String(submittedCount) },
+                { label: "Draft", value: Math.max(0, applications.length - submittedCount - paidCount), tone: "neutral", valueLabel: String(Math.max(0, applications.length - submittedCount - paidCount)) },
+              ]}
+              centerValue={String(applications.length)}
+              centerLabel={applications.length === 1 ? "application" : "applications"}
+            />
+          </div>
+        )}
       </section>
 
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">

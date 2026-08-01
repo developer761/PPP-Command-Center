@@ -20,6 +20,7 @@ import {
 } from "@/lib/commercial/opportunities/submittals";
 import { submittalStatusLabel, submittalStatusTone } from "@/lib/commercial/opportunities/submittal-constants";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
+import { DonutChart } from "@/components/commercial/charts";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
 type PP = Promise<{ id: string; dealId: string }>;
@@ -120,11 +121,25 @@ export async function SubmittalsTool({
       )}
 
       {submittals.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <SubmittalStat label="Total" value={submittals.length} tone="neutral" />
-          <SubmittalStat label="Open / in review" value={openCount} tone={openCount > 0 ? "amber" : "neutral"} />
-          <SubmittalStat label="Approved" value={approvedCount} tone={approvedCount > 0 ? "emerald" : "neutral"} />
-          <SubmittalStat label="Revise / rejected" value={reworkCount} tone={reworkCount > 0 ? "rose" : "neutral"} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="lg:col-span-2 grid grid-cols-2 gap-2">
+            <SubmittalStat label="Total" value={submittals.length} tone="neutral" />
+            <SubmittalStat label="Open / in review" value={openCount} tone={openCount > 0 ? "amber" : "neutral"} />
+            <SubmittalStat label="Approved" value={approvedCount} tone={approvedCount > 0 ? "emerald" : "neutral"} />
+            <SubmittalStat label="Revise / rejected" value={reworkCount} tone={reworkCount > 0 ? "rose" : "neutral"} />
+          </div>
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 flex items-center justify-center">
+            <DonutChart
+              size={116}
+              segments={[
+                { label: "Approved", value: approvedCount, tone: "emerald", valueLabel: String(approvedCount) },
+                { label: "Open / review", value: openCount, tone: "amber", valueLabel: String(openCount) },
+                { label: "Revise / rejected", value: reworkCount, tone: "rose", valueLabel: String(reworkCount) },
+              ]}
+              centerValue={approvedCount + openCount + reworkCount > 0 ? `${Math.round((approvedCount / (approvedCount + openCount + reworkCount)) * 100)}%` : "—"}
+              centerLabel="approved"
+            />
+          </div>
         </div>
       )}
 
