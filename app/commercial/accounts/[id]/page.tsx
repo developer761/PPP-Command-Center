@@ -1467,7 +1467,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         </>
       )}
 
-      {dealTab === "pnl" && <DealPnLView oppId={p.opp.id} />}
+      {dealTab === "pnl" && <DealPnLView oppId={p.opp.id} accountId={accountId} />}
 
       {/* Per-deal activity feed — on the Overview panel, self-hides when quiet. */}
       {dealTab === "overview" && <RecentActivityCard entries={dealActivity} accountId={accountId} scope="deal" />}
@@ -1998,7 +1998,7 @@ function monthlyBilledSeries(invoices: { status: string; created_at: string | nu
 const PNL_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
 };
-async function DealPnLView({ oppId }: { oppId: string }) {
+async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: string }) {
   const [fin, dealInvoices] = await Promise.all([
     getProjectFinancials(oppId),
     listCommercialInvoices({ opportunityId: oppId }),
@@ -2008,7 +2008,6 @@ async function DealPnLView({ oppId }: { oppId: string }) {
   const netProfitCents = grossRevenueCents - costsCents;
   const marginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
   const collectedPct = fin.invoicedCents > 0 ? Math.min(100, Math.round((fin.collectedCents / fin.invoicedCents) * 100)) : 0;
-  // Monthly billed revenue ($K, pre-tax subtotal of issued invoices).
   const revenueMonthly = monthlyBilledSeries(dealInvoices);
   const costSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
     label: PURCHASE_CATEGORY_META[c].label,
@@ -2016,76 +2015,104 @@ async function DealPnLView({ oppId }: { oppId: string }) {
     tone: PNL_COST_TONE[c] ?? "neutral",
     valueLabel: formatCentsCompact(fin.costs[c]),
   }));
+  const overdueCount = dealInvoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
+  const isCredit = fin.openBalanceCents === 0 && fin.creditCents > 0;
+  const leftToBillCents = fin.hasContract ? Math.max(0, fin.contractCents - fin.billedPreTaxCents) : 0;
+  const billedOfContractPct = fin.hasContract ? Math.min(100, Math.round((fin.billedPreTaxCents / fin.contractCents) * 100)) : 0;
+  const paidCapped = Math.min(fin.collectedCents, fin.invoicedCents);
+  const marginTone: ChartTone = marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald";
+
   return (
     <div className="space-y-4 mt-3">
       <p className="text-[12px] text-ppp-charcoal-500">This deal&rsquo;s whole financial picture, combined from every tool. Gross = billed to date; Net = gross − job costs. Tax is pass-through, not revenue.</p>
-      {/* The P&L chain */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <StatCard label="Contract" value={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"} tone="navy" sub={fin.hasContract ? "bid + approved COs" : "no bid set"} />
-        <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" />
-        <StatCard label="Collected" value={formatCentsCompact(fin.collectedCents)} tone="emerald" sub={fin.invoicedCents > 0 ? `${collectedPct}% of invoiced` : "—"} />
-        <StatCard label="Job costs" value={formatCentsCompact(costsCents)} tone="amber" sub={costsCents === 0 ? "none logged" : "materials · labor · subs"} />
-        <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
-        <StatCard label="Margin" value={marginPct === null ? "—" : `${marginPct}%`} tone={marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald"} sub={marginPct === null ? "no revenue yet" : "net ÷ gross"} />
-      </div>
-      {/* Revenue billed over time */}
+
+      {/* ── Profitability ── */}
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="text-[13px] font-bold text-ppp-charcoal flex items-center gap-2">
-            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-            Revenue billed
-          </h3>
-          <span className="text-[11px] text-ppp-charcoal-500">last 6 months · pre-tax</span>
+          <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Profitability</h3>
+          <span className="text-[11px] text-ppp-charcoal-500">Gross = billed · Net = billed − costs</span>
         </div>
-        <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
-      </section>
-      {/* Cost mix + margin gauge */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-          <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
-            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-            Where the money goes
-          </h3>
-          {costSegments.length > 0 ? (
-            <DonutChart size={150} segments={costSegments} centerValue={formatCentsCompact(costsCents)} centerLabel="job costs" />
-          ) : (
-            <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No job costs logged yet — add them on the Project → Costs &amp; P&amp;L tab.</p>
-          )}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
+          <StatCard label="Job costs" value={formatCentsCompact(costsCents)} tone="amber" sub={costsCents === 0 ? "none logged" : "materials · labor · subs"} />
+          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+          <StatCard label="Margin" value={marginPct === null ? "—" : `${marginPct}%`} tone={marginTone} sub={marginPct === null ? "no revenue yet" : "net ÷ gross"} />
         </div>
-        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 flex items-center gap-5">
-          <GaugeRing pct={marginPct ?? 0} tone={marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald"} value={marginPct === null ? "—" : `${marginPct}%`} label="margin" size={120} />
-          <div className="min-w-0 text-[12.5px] space-y-1.5">
-            <div><span className="text-ppp-charcoal-500">Gross (billed): </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(grossRevenueCents)}</strong></div>
-            <div><span className="text-ppp-charcoal-500">Costs: </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(costsCents)}</strong></div>
-            <div className="pt-1.5 border-t border-ppp-charcoal-100"><span className="text-ppp-charcoal-500">Net profit: </span><strong className={`tabular-nums ${netProfitCents < 0 ? "text-rose-700" : "text-emerald-700"}`}>{netProfitCents < 0 ? "−" : ""}{formatCentsCompact(Math.abs(netProfitCents))}</strong></div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
+          <div className="lg:col-span-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Revenue billed / month · last 6 mo</div>
+            <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[140px]" />
+          </div>
+          <div className="flex items-center gap-4 justify-center">
+            <GaugeRing pct={marginPct ?? 0} tone={marginTone} value={marginPct === null ? "—" : `${marginPct}%`} label="margin" size={104} />
+            {costSegments.length > 0 ? (
+              <DonutChart size={104} legend={false} segments={costSegments} centerValue={formatCentsCompact(costsCents)} centerLabel="costs" />
+            ) : (
+              <div className="text-[11px] text-ppp-charcoal-400 max-w-[100px]">Costs appear here as they&rsquo;re logged.</div>
+            )}
           </div>
         </div>
       </section>
-      {/* Billing progress */}
-      {fin.invoicedCents > 0 && (
-        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-          <ProgressMeter
-            label="Collected of invoiced"
-            value={fin.collectedCents}
-            max={fin.invoicedCents}
-            tone={collectedPct === 100 ? "emerald" : "blue"}
-            rightLabel={`${collectedPct}%`}
-            amounts={{ done: formatCentsFull(fin.collectedCents), total: formatCentsFull(fin.invoicedCents) }}
-          />
-          {fin.hasContract && (
-            <div className="mt-3">
-              <ProgressMeter
-                label="Billed of contract"
-                value={fin.billedPreTaxCents}
-                max={fin.contractCents}
-                tone="blue"
-                rightLabel={`${Math.min(100, Math.round((fin.billedPreTaxCents / fin.contractCents) * 100))}%`}
-                amounts={{ done: formatCentsFull(fin.billedPreTaxCents), total: formatCentsFull(fin.contractCents) }}
-              />
-            </div>
-          )}
-        </section>
-      )}
+
+      {/* ── Collections ── */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Collections</h3>
+          <Link href={`/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=invoices`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Invoices →</Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+          <MiniFig label="Invoiced" value={formatCentsCompact(fin.invoicedCents)} tone="brand" sub={fin.invoicedCents > 0 ? undefined : "none yet"} />
+          <MiniFig label="Paid" value={formatCentsCompact(fin.collectedCents)} tone="emerald" sub={fin.invoicedCents > 0 ? `${collectedPct}% collected` : "—"} />
+          <MiniFig label={isCredit ? "Credit" : "Balance"} value={formatCentsCompact(isCredit ? fin.creditCents : fin.openBalanceCents)} tone={isCredit ? "emerald" : fin.openBalanceCents > 0 ? "blue" : "neutral"} sub={fin.invoicedCents === 0 ? "not billed" : isCredit ? "overpaid" : fin.openBalanceCents === 0 ? "settled" : "unpaid"} />
+          <MiniFig label="Overdue" value={String(overdueCount)} tone={overdueCount > 0 ? "rose" : "neutral"} sub={overdueCount > 0 ? "past due" : "on track"} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-center">
+          <div className="flex items-center justify-center">
+            <DonutChart
+              size={140}
+              segments={[
+                { label: "Paid", value: paidCapped, tone: "emerald", valueLabel: formatCentsCompact(paidCapped) },
+                { label: overdueCount > 0 ? "Overdue" : "Open balance", value: Math.max(0, fin.openBalanceCents), tone: overdueCount > 0 ? "rose" : "blue", valueLabel: formatCentsCompact(fin.openBalanceCents) },
+              ]}
+              centerValue={formatCentsCompact(fin.invoicedCents)}
+              centerLabel="invoiced"
+            />
+          </div>
+          <div>
+            <ProgressMeter label="Collected of invoiced" value={fin.collectedCents} max={fin.invoicedCents} tone={collectedPct === 100 ? "emerald" : overdueCount > 0 ? "amber" : "blue"} rightLabel={fin.invoicedCents > 0 ? `${collectedPct}%` : "—"} amounts={{ done: formatCentsFull(fin.collectedCents), total: formatCentsFull(fin.invoicedCents) }} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Contract ── */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <h3 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Contract</h3>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <MiniFig label="Contract" value={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"} tone="navy" sub={fin.hasContract ? "bid + COs" : "not set"} />
+          <MiniFig label="Billed" value={formatCentsCompact(fin.billedPreTaxCents)} tone="emerald" sub={fin.hasContract ? `${billedOfContractPct}%` : "—"} />
+          <MiniFig label="Left to bill" value={fin.hasContract ? formatCentsCompact(leftToBillCents) : "—"} tone="blue" sub="contract − billed" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-center">
+          <div className="flex items-center justify-center">
+            <DonutChart
+              size={140}
+              segments={[
+                { label: "Billed", value: fin.billedPreTaxCents, tone: "emerald", valueLabel: formatCentsCompact(fin.billedPreTaxCents) },
+                { label: "Left to bill", value: leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(leftToBillCents) },
+              ]}
+              centerValue={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"}
+              centerLabel="contract"
+            />
+          </div>
+          <div>
+            {fin.hasContract ? (
+              <ProgressMeter label="Billed of contract" value={fin.billedPreTaxCents} max={fin.contractCents} tone={billedOfContractPct === 100 ? "emerald" : "blue"} rightLabel={`${billedOfContractPct}%`} amounts={{ done: formatCentsFull(fin.billedPreTaxCents), total: formatCentsFull(fin.contractCents) }} />
+            ) : (
+              <p className="text-[12px] text-ppp-charcoal-400">Set a bid range or accepted proposal on the deal to fill the contract number.</p>
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
