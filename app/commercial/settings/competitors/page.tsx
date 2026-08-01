@@ -536,7 +536,7 @@ function IntelEditor({ competitor }: { competitor: Competitor }) {
   const dollarStr = (cents: number | null): string => (cents === null ? "" : (cents / 100).toFixed(2));
   return (
     <details className="mt-3 group/intel" open={!hasIntel}>
-      <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[28px] select-none">
+      <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] sm:min-h-[28px] select-none">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/intel:rotate-90">
           <path d="M9 18l6-6-6-6" />
         </svg>

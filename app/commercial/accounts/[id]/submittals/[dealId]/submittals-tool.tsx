@@ -105,6 +105,10 @@ export async function SubmittalsTool({
   const openCount = submittals.filter((s) => ["draft", "submitted", "under_review"].includes(s.status)).length;
   const approvedCount = submittals.filter((s) => ["approved", "approved_as_noted"].includes(s.status)).length;
   const reworkCount = submittals.filter((s) => ["revise_and_resubmit", "rejected"].includes(s.status)).length;
+  // Everything else — closed (the normal happy terminal) + voided. Without this
+  // the donut slices + center excluded resolved packages and contradicted the
+  // "Total" stat beside it (2026-08 re-audit).
+  const closedCount = submittals.length - openCount - approvedCount - reworkCount;
 
   return (
     <div className={variant === "inline" ? "space-y-4" : "max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4"}>
@@ -135,9 +139,12 @@ export async function SubmittalsTool({
                 { label: "Approved", value: approvedCount, tone: "emerald", valueLabel: String(approvedCount) },
                 { label: "Open / review", value: openCount, tone: "amber", valueLabel: String(openCount) },
                 { label: "Revise / rejected", value: reworkCount, tone: "rose", valueLabel: String(reworkCount) },
+                ...(closedCount > 0
+                  ? [{ label: "Closed", value: closedCount, tone: "neutral" as const, valueLabel: String(closedCount) }]
+                  : []),
               ]}
-              centerValue={String(approvedCount + openCount + reworkCount)}
-              centerLabel={approvedCount + openCount + reworkCount === 1 ? "submittal" : "submittals"}
+              centerValue={String(submittals.length)}
+              centerLabel={submittals.length === 1 ? "submittal" : "submittals"}
             />
           </div>
         </div>

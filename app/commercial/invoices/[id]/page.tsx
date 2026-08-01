@@ -736,7 +736,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
         <Link
           href="/commercial/invoices"
-          className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[32px] px-1 touch-manipulation"
+          className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
@@ -748,7 +748,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <span aria-hidden className="text-ppp-charcoal-300">/</span>
             <Link
               href={`/commercial/accounts/${account.id}`}
-              className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+              className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
               title={account.company_name}
             >
               {account.company_name}
@@ -760,7 +760,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <span aria-hidden className="text-ppp-charcoal-300">/</span>
             <Link
               href={`/commercial/opportunities/${opp.id}`}
-              className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+              className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
               title={derivedOppName(opp, account?.company_name ?? null)}
             >
               {derivedOppName(opp, account?.company_name ?? null)}
@@ -829,7 +829,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/${prevSibling.id}`}
                 aria-label={`Previous invoice: ${prevSibling.invoice_number}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-blue-50 hover:border-ppp-blue-300 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-blue-50 hover:border-ppp-blue-300 min-h-[44px] sm:min-h-[36px] touch-manipulation"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M15 18l-6-6 6-6" />
@@ -848,7 +848,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/${nextSibling.id}`}
                 aria-label={`Next invoice: ${nextSibling.invoice_number}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-blue-50 hover:border-ppp-blue-300 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-blue-50 hover:border-ppp-blue-300 min-h-[44px] sm:min-h-[36px] touch-manipulation"
               >
                 <span className="font-mono">{nextSibling.invoice_number.replace(/^(PPP-INV|INV)-/, "…")}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1089,7 +1089,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       <input type="hidden" name="back_href" value={backHref} />
                       <button
                         type="submit"
-                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                       >
                         Yes, delete all {siblingsForBulk.length}
                       </button>

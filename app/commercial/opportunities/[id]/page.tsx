@@ -1492,7 +1492,7 @@ export default async function OpportunityDetailPage({
         <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
           <Link
             href="/commercial/opportunities"
-            className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation"
+            className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z" />
@@ -1504,7 +1504,7 @@ export default async function OpportunityDetailPage({
               <span aria-hidden className="text-ppp-charcoal-300">/</span>
               <Link
                 href={`/commercial/accounts/${account.id}?tab=opportunities`}
-                className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+                className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
                 title={account.company_name}
               >
                 {account.company_name}
@@ -2324,7 +2324,7 @@ async function OpportunityInvoicesPanel({
                   {!isVoid && (
                     <Link
                       href={`?tab=invoices&edit_invoice=${inv.id}#inv-${inv.id}`}
-                      className="border-t border-ppp-charcoal-100 flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 rounded-b-lg min-h-[36px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                      className="border-t border-ppp-charcoal-100 flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 rounded-b-lg min-h-[44px] sm:min-h-[36px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                     >
                       <span className="inline-flex items-center gap-1.5">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2528,14 +2528,14 @@ async function OpportunityInvoicesPanel({
               <footer className="border-t border-ppp-charcoal-100 px-5 py-3 flex items-center justify-between gap-2 bg-surface">
                 <Link
                   href={backHref}
-                  className="inline-flex items-center justify-center px-3.5 py-2 rounded-md text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[36px] touch-manipulation"
+                  className="inline-flex items-center justify-center px-3.5 py-2 rounded-md text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                 >
                   Cancel
                 </Link>
                 <button
                   type="submit"
                   form="invoice-edit-sheet-form"
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[36px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
                 >
                   Save details
                 </button>
@@ -2794,7 +2794,7 @@ async function InfoTab({
             <div className="pt-2">
               <Link
                 href={`/commercial/accounts/${account.id}`}
-                className="inline-flex items-center gap-1 text-[13px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 text-[13px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 min-h-[44px] sm:min-h-[36px] touch-manipulation"
               >
                 Open account →
               </Link>

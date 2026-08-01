@@ -1315,7 +1315,7 @@ export default async function SubmittalDetailPage({
                       <input type="hidden" name="item_id" value={item.id} />
                       <button
                         type="submit"
-                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[36px]"
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] sm:min-h-[36px]"
                       >
                         Delete item
                       </button>
@@ -1439,7 +1439,7 @@ export default async function SubmittalDetailPage({
                       href={`/api/commercial/opportunities/${opportunity_id}/attachments/${att.id}/download`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[36px] touch-manipulation"
+                      className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                     >
                       Open
                     </a>
@@ -1453,7 +1453,7 @@ export default async function SubmittalDetailPage({
                         <button
                           type="submit"
                           title="Unlink — file stays on Plans & Specs"
-                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[36px] sm:min-h-[36px] touch-manipulation"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] sm:min-h-[36px] sm:min-h-[36px] touch-manipulation"
                         >
                           Unlink
                         </button>
@@ -1473,7 +1473,7 @@ export default async function SubmittalDetailPage({
             attach all the architect spec PDFs to a fresh draft. */}
         {canLinkAttachments && unlinkedAttachments.length > 0 && (
           <details className="mt-4 group" open={pickerOpen}>
-            <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px] touch-manipulation select-none">
+            <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[36px] touch-manipulation select-none">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
                 <path d="M9 18l6-6-6-6" />
               </svg>

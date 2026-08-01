@@ -1871,7 +1871,7 @@ function CustomerBoardRow({
             GoHighLevel-style sheet with team + invoices + progress. */}
         <Link
           href={sheetHref(account.id)}
-          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-700 min-h-[36px] touch-manipulation transition-colors"
+          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation transition-colors"
           title={`Quick view of ${account.company_name}`}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2794,7 +2794,7 @@ function ActiveFilterChip({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700 text-[11px] font-semibold hover:bg-cc-brand-100 transition-colors min-h-[28px] touch-manipulation"
+      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700 text-[11px] font-semibold hover:bg-cc-brand-100 transition-colors min-h-[44px] sm:min-h-[28px] touch-manipulation"
       title={`Remove filter: ${label}`}
     >
       <span className="truncate max-w-[180px]">{label}</span>
@@ -3122,7 +3122,7 @@ function OpportunityRow({
           {finishCount > 0 && (
             <Link
               href={`/commercial/opportunities/${opportunity.id}?tab=finishes`}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-100 hover:bg-cc-brand-100 transition-colors min-h-[28px] touch-manipulation"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-100 hover:bg-cc-brand-100 transition-colors min-h-[44px] sm:min-h-[28px] touch-manipulation"
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
@@ -3758,7 +3758,7 @@ function CustomerQuickSheet({
                       {isPostSaleProject(d) && (
                         <Link
                           href={`/commercial/accounts/${account.id}/change-orders/${d.id}`}
-                          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px]"
+                          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px]"
                         >
                           Change orders
                           <span aria-hidden>→</span>

@@ -114,7 +114,7 @@ export function AiaApplicationDetail({
       )}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link href={basePath} className="inline-flex items-center gap-1 text-[12px] text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
+        <Link href={basePath} className="inline-flex items-center gap-1 text-[12px] text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[44px] sm:min-h-[36px]">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
           All applications
         </Link>
@@ -161,7 +161,7 @@ export function AiaApplicationDetail({
               <input type="hidden" name="status" value={s} />
               <PendingSubmitButton
                 pendingLabel="…"
-                className={`px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[36px] ${application.status === s ? "bg-cc-brand-600 text-white border-cc-brand-600" : "bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"}`}
+                className={`px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${application.status === s ? "bg-cc-brand-600 text-white border-cc-brand-600" : "bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"}`}
               >
                 {AIA_STATUS_META[s].label}
               </PendingSubmitButton>

@@ -221,7 +221,7 @@ function AddUserForm({
             <button
               type="button"
               onClick={() => setShowPw((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 hover:text-ppp-charcoal-600 p-1 min-h-[36px]"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 hover:text-ppp-charcoal-600 p-1 min-h-[44px] sm:min-h-[36px]"
               aria-label={showPw ? "Hide password" : "Show password"}
             >
               {showPw ? "Hide" : "Show"}
@@ -342,7 +342,7 @@ function UserRow({
               type="button"
               onClick={() => setResetOpen((v) => !v)}
               disabled={busy}
-              className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 disabled:opacity-60 min-h-[36px]"
+              className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 disabled:opacity-60 min-h-[44px] sm:min-h-[36px]"
             >
               Reset password
             </button>

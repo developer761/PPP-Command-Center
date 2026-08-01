@@ -453,7 +453,7 @@ export default async function CommercialAccountDetailPage({
           </span>
           <Link
             href={`/commercial/accounts/${account.id}?tab=documents`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-surface text-cc-brand-700 border border-cc-brand-300 hover:bg-cc-brand-50 min-h-[36px] touch-manipulation shrink-0"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-surface text-cc-brand-700 border border-cc-brand-300 hover:bg-cc-brand-50 min-h-[44px] sm:min-h-[36px] touch-manipulation shrink-0"
             title="Upload Certificate of Insurance (COI) and W-9 tax form"
           >
             Upload Certificate of Insurance / W-9 →
@@ -1136,7 +1136,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link href={`${base}?tab=deals`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
+        <Link href={`${base}?tab=deals`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[44px] sm:min-h-[36px]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M11 5l-7 7 7 7" /></svg>
           All deals
         </Link>
@@ -1856,7 +1856,7 @@ function DealProposalsSection({ accountId, oppId, proposals }: { accountId: stri
         </span>
         <h3 className="text-[13px] font-bold text-ppp-charcoal">Proposals</h3>
         <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{proposals.length}</span>
-        <Link href={`${base}/new`} className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px]">
+        <Link href={`${base}/new`} className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[36px]">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
           New proposal
         </Link>
@@ -2024,7 +2024,12 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
   const billedWithinContractCents = Math.max(0, fin.billedPreTaxCents - overBilledCents);
   const billedOfContractPct = fin.hasContract ? Math.min(100, Math.round((fin.billedPreTaxCents / fin.contractCents) * 100)) : 0;
   const billedOfContractRawPct = fin.hasContract ? Math.round((fin.billedPreTaxCents / fin.contractCents) * 100) : 0;
-  const paidCapped = Math.min(fin.collectedCents, fin.invoicedCents);
+  // Payment APPLIED within invoices (collected − overpayment credit) = Σ per-invoice
+  // min(paid, total). Using this for the Paid donut slice keeps
+  // Paid + currentOpen + overdue == invoiced even when one invoice is overpaid
+  // and another is open (2026-08 re-audit: min(collected,invoiced) let a
+  // per-invoice credit over-draw the ring).
+  const paidCapped = Math.max(0, fin.collectedCents - fin.creditCents);
   const marginTone: ChartTone = marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald";
 
   return (
@@ -2111,7 +2116,11 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
             <DonutChart
               size={140}
               segments={[
-                { label: "Billed", value: billedWithinContractCents, tone: "emerald", valueLabel: formatCentsCompact(billedWithinContractCents) },
+                // Neutral (not emerald) when there's no contract yet — a full
+                // green ring on a no-contract deal reads as "done" (2026-08
+                // re-audit). Emerald once a contract exists; "Within contract"
+                // when over-billed so it doesn't collide with the full "Billed".
+                { label: overBilledCents > 0 ? "Within contract" : "Billed", value: billedWithinContractCents, tone: fin.hasContract ? "emerald" : "neutral", valueLabel: formatCentsCompact(billedWithinContractCents) },
                 { label: "Left to bill", value: leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(leftToBillCents) },
                 ...(overBilledCents > 0
                   ? [{ label: "Over-billed", value: overBilledCents, tone: "amber" as ChartTone, valueLabel: formatCentsCompact(overBilledCents) }]
@@ -3796,7 +3805,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             those with CC access — the server action auto-grants access
             on add). Same role / primary / notes wiring. */}
         <details className="mt-5 border-t border-ppp-charcoal-100 pt-4 group/emailAdd">
-          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] touch-manipulation">
+          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px] touch-manipulation">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/emailAdd:rotate-90">
               <path d="M9 18l6-6-6-6" />
             </svg>
@@ -5270,7 +5279,7 @@ async function AccountProposalsTab({
                     <ConfirmSubmitButton
                       message={`Delete all ${draftCount} draft proposal${draftCount === 1 ? "" : "s"} for ${accountName}? Sent / Won / Lost / Replaced revisions are historical and will be SPARED. This can't be undone.`}
                       pendingLabel="Deleting…"
-                      className="inline-flex items-center px-3 py-1.5 rounded-lg border border-rose-200 bg-surface text-rose-700 text-[11px] font-semibold hover:bg-rose-50 min-h-[32px]"
+                      className="inline-flex items-center px-3 py-1.5 rounded-lg border border-rose-200 bg-surface text-rose-700 text-[11px] font-semibold hover:bg-rose-50 min-h-[44px] sm:min-h-[32px]"
                     >
                       Delete {draftCount} draft{draftCount === 1 ? "" : "s"}
                     </ConfirmSubmitButton>
@@ -6722,7 +6731,7 @@ async function AccountInvoicesTab({
                     </div>
                     <Link
                       href={`/commercial/invoices/new?opp=${opp.id}`}
-                      className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-cc-brand-200 text-[11.5px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[36px] touch-manipulation"
+                      className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-cc-brand-200 text-[11.5px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <path d="M12 5v14 M5 12h14" />
@@ -7114,12 +7123,12 @@ async function AccountKpisTab({
             <DonutChart
               size={150}
               segments={[
-                // Paid capped at invoiced so an overpaid (credit) account can't show
-                // a Paid slice larger than the invoiced center; the credit shows in
-                // the KPI box above. Open balance splits into on-time (blue) vs
-                // genuinely overdue (rose) — only the overdue portion is labeled
-                // "Overdue", never the whole balance (2026-08 UI/UX audit).
-                { label: "Paid", value: Math.min(rollup.paid_cents, rollup.invoiced_cents), tone: "emerald", valueLabel: formatCentsCompact(Math.min(rollup.paid_cents, rollup.invoiced_cents)) },
+                // Paid = payment APPLIED within invoices (paid − credit) so an
+                // overpaid invoice's credit can't over-draw the ring; the credit
+                // shows in the KPI box above. Open balance splits into on-time
+                // (blue) vs genuinely overdue (rose) — only the overdue portion is
+                // labeled "Overdue", never the whole balance (2026-08 audits).
+                { label: "Paid", value: Math.max(0, rollup.paid_cents - rollup.credit_cents), tone: "emerald", valueLabel: formatCentsCompact(Math.max(0, rollup.paid_cents - rollup.credit_cents)) },
                 ...(currentOpenCents > 0
                   ? [{ label: "Open (current)", value: currentOpenCents, tone: "blue" as ChartTone, valueLabel: formatCentsCompact(currentOpenCents) }]
                   : []),
@@ -7178,7 +7187,7 @@ async function AccountKpisTab({
               <DonutChart
                 size={150}
                 segments={[
-                  { label: "Billed", value: production.billedContractCents - production.overBilledCents, tone: "emerald", valueLabel: formatCentsCompact(production.billedContractCents - production.overBilledCents) },
+                  { label: production.overBilledCents > 0 ? "Within contract" : "Billed", value: production.billedContractCents - production.overBilledCents, tone: "emerald", valueLabel: formatCentsCompact(production.billedContractCents - production.overBilledCents) },
                   { label: "Left to bill", value: production.leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(production.leftToBillCents) },
                   ...(production.overBilledCents > 0
                     ? [{ label: "Over-billed", value: production.overBilledCents, tone: "amber" as ChartTone, valueLabel: formatCentsCompact(production.overBilledCents) }]
@@ -7951,7 +7960,7 @@ async function DealEditSheet({
                 Are you sure? This will remove <strong>{deal.title || "this opportunity"}</strong> from the pipeline.
               </p>
               <PendingSubmitButton
-                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation disabled:hover:bg-rose-700"
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation disabled:hover:bg-rose-700"
                 pendingLabel="Deleting…"
               >
                 Yes, delete this deal

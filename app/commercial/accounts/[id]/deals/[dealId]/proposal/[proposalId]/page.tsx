@@ -755,7 +755,7 @@ export default async function ProposalEditorPage({
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
       {/* Breadcrumb + status pill */}
       <nav className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
-        <Link href={listHref} className="hover:text-cc-brand-700 inline-flex items-center gap-1 min-h-[32px]">
+        <Link href={listHref} className="hover:text-cc-brand-700 inline-flex items-center gap-1 min-h-[44px] sm:min-h-[32px]">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M19 12H5" />
             <path d="m12 19-7-7 7-7" />
@@ -846,7 +846,7 @@ export default async function ProposalEditorPage({
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
                 title="Customer proposal — what the GC sees. No internal bid notes or per-line prices."
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -862,7 +862,7 @@ export default async function ProposalEditorPage({
                   href={`/api/commercial/proposals/${proposalId}/pdf?mode=internal`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-navy-200 bg-ppp-navy-50 text-ppp-navy-700 text-[12px] font-semibold hover:bg-ppp-navy-100 min-h-[36px]"
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-navy-200 bg-ppp-navy-50 text-ppp-navy-700 text-[12px] font-semibold hover:bg-ppp-navy-100 min-h-[44px] sm:min-h-[36px]"
                   title="Internal Plan Report — the same proposal PLUS the internal bid notes + per-line prices, for estimator review (Kim's plan read). Never shown to the GC."
                 >
                   Plan report
@@ -876,7 +876,7 @@ export default async function ProposalEditorPage({
               quote after seeing R{n}. Now labeled with what it does. */}
           <Link
             href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${proposalId}`}
-            className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
+            className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
             title={`Start R${proposal.revision_number + 1} as a fresh draft, copying all this revision's fields as a starting point. Use when the customer wants a revised quote.`}
           >
             + New revision (R{proposal.revision_number + 1})
@@ -994,7 +994,7 @@ export default async function ProposalEditorPage({
           </div>
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-[11px] text-ppp-charcoal-500">{proposal.status === "won" ? "Accepted contract" : "Not yet accepted"}</span>
-            <Link href={`/commercial/invoices?account_id=${accountId}#opp-${dealId}`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-0.5 min-h-[36px]">
+            <Link href={`/commercial/invoices?account_id=${accountId}#opp-${dealId}`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-0.5 min-h-[44px] sm:min-h-[36px]">
               View invoices <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
             </Link>
           </div>

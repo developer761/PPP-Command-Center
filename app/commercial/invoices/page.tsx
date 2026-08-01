@@ -33,6 +33,7 @@ import {
   type InvoiceStatus,
 } from "@/lib/commercial/invoices/constants";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { listProducts } from "@/lib/commercial/products/db";
@@ -508,23 +509,12 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   );
   const draftCount = kpiSource.filter((i) => i.status === "draft").length;
 
-  // Charts: monthly billing trend ($K, issued invoices by created month) + an
-  // Outstanding on-time-vs-overdue donut.
-  const billedMonthly: { label: string; value: number }[] = [];
-  {
-    const base = new Date();
-    for (let m = 5; m >= 0; m--) {
-      const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
-      const start = d.getTime();
-      const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
-      const cents = kpiSource.reduce((acc, inv) => {
-        if (inv.status === "void" || inv.status === "draft") return acc;
-        const t = inv.created_at ? new Date(inv.created_at).getTime() : NaN;
-        return t >= start && t < end ? acc + inv.total_cents : acc;
-      }, 0);
-      billedMonthly.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
-    }
-  }
+  // Charts: monthly billing trend ($K) + an Outstanding on-time-vs-overdue
+  // donut. Shared helper → pre-tax subtotal + ET buckets + issued-only, so this
+  // "Billed / month" ties out with the SAME-labeled charts on the account P&L
+  // and dashboard (2026-08 re-audit: this copy was left summing with-tax
+  // total_cents + server-tz months and disagreed by the tax rate + a month).
+  const billedMonthly = monthlyBilledSeries(kpiSource, { months: 6, nowIso: new Date().toISOString() });
   const billedTrendHasData = billedMonthly.some((p) => p.value > 0);
   const overdueTotalCents = agingBuckets.b0_30_cents + agingBuckets.b30_60_cents + agingBuckets.b60_plus_cents;
   const currentOutstandingCents = Math.max(0, outstandingCents - overdueTotalCents);
@@ -682,7 +672,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <div className="flex items-center gap-2 flex-wrap shrink-0">
             {showDeleteAll && deleteAllForm && (
               <details className="relative">
-                <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation shadow-sm shadow-rose-600/25">
+                <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation shadow-sm shadow-rose-600/25">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                   </svg>
@@ -701,7 +691,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                     <input type="hidden" name="confirm" value="yes" />
                     <button
                       type="submit"
-                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                     >
                       Yes, delete all {scopedInvoiceCount}
                     </button>
@@ -764,7 +754,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href={`/commercial/accounts/${accountFilter.id}`}
-              className="text-[12px] font-medium text-ppp-charcoal-600 hover:text-ppp-blue-700 hover:underline inline-flex items-center gap-1 min-h-[36px] px-2 touch-manipulation"
+              className="text-[12px] font-medium text-ppp-charcoal-600 hover:text-ppp-blue-700 hover:underline inline-flex items-center gap-1 min-h-[44px] sm:min-h-[36px] px-2 touch-manipulation"
               title="Open the account detail page in a new context"
             >
               Open account
@@ -1927,7 +1917,7 @@ function FullDetailByOpp({
                     accidentally wipe by opening a stale link. */}
                 {groupInvoices.length > 1 && (
                   <details className="relative group/wipe shrink-0">
-                    <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-rose-200 text-[11.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[36px] touch-manipulation">
+                    <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-rose-200 text-[11.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] sm:min-h-[36px] touch-manipulation">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" />
                       </svg>
@@ -1948,7 +1938,7 @@ function FullDetailByOpp({
                         <input type="hidden" name="return_account_id" value={accountId} />
                         <button
                           type="submit"
-                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12.5px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12.5px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                         >
                           Delete all
                         </button>

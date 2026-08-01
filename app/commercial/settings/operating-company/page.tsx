@@ -78,7 +78,7 @@ export default async function OperatingCompanyPage({
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-5">
       <div>
-        <Link href="/commercial/settings" className="inline-flex items-center gap-1 text-[12px] font-medium text-ppp-charcoal-500 hover:text-cc-brand-700 mb-2 min-h-[36px]">
+        <Link href="/commercial/settings" className="inline-flex items-center gap-1 text-[12px] font-medium text-ppp-charcoal-500 hover:text-cc-brand-700 mb-2 min-h-[44px] sm:min-h-[36px]">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
           Settings
         </Link>
@@ -160,7 +160,7 @@ export default async function OperatingCompanyPage({
             </div>
             <SignaturePad hasSignature={!!c.signature_asset_key} />
             <details className="mt-3">
-              <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px] inline-flex items-center">Or upload a signature image / remove it</summary>
+              <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[36px] inline-flex items-center">Or upload a signature image / remove it</summary>
               <div className="mt-2">
                 <BrandAssetUpload kind="signature" label="Signature image" hint="PNG/JPEG of a scanned signature — used the same way as a drawn one." hasAsset={!!c.signature_asset_key} />
               </div>
