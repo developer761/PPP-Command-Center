@@ -21,6 +21,9 @@ export type CommercialProjectPurchase = {
   category: PurchaseCategory;
   vendor: string | null;
   amount_cents: number;
+  /** Labor hours for this entry (labor category only; null otherwise). Phase 2
+   *  labor form; upgrades to Phase 7 scheduling/attendance later. */
+  hours: number | null;
   purchased_at: string;
   description: string | null;
   receipt_document_id: string | null;
@@ -28,6 +31,17 @@ export type CommercialProjectPurchase = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+};
+
+/** One worker's labor line on a project — powers the per-worker overview under
+ *  the deal's Costs & P&L tab. */
+export type LaborByWorker = {
+  worker: string;
+  hours: number;
+  cost_cents: number;
+  count: number;
+  /** cost / hours, cents-per-hour; null when hours is 0 (no divide-by-zero). */
+  rate_cents_per_hour: number | null;
 };
 
 /** Per-category cost sums for a project (or account). */
@@ -173,6 +187,72 @@ export async function recentVendorsForAccount(accountId: string, limit = 200): P
   return out;
 }
 
+/** Distinct recent WORKER names on an account (labor purchases only) — powers
+ *  the worker suggestions on the labor form. Separate from vendors so the labor
+ *  form doesn't suggest material suppliers. */
+export async function recentWorkersForAccount(accountId: string, limit = 200): Promise<string[]> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_project_purchases")
+    .select("vendor")
+    .eq("account_id", accountId)
+    .eq("category", "labor")
+    .is("deleted_at", null)
+    .not("vendor", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of (data ?? []) as { vendor: string | null }[]) {
+    const v = (r.vendor ?? "").trim();
+    if (v && !seen.has(v.toLowerCase())) {
+      seen.add(v.toLowerCase());
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+/** Per-worker labor rollup for ONE project (labor category only). Groups live
+ *  labor purchases by worker name; unnamed labor rolls up under "Unassigned". */
+export async function laborByWorkerForProject(oppId: string): Promise<LaborByWorker[]> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_project_purchases")
+    .select("vendor, amount_cents, hours")
+    .eq("opportunity_id", oppId)
+    .eq("category", "labor")
+    .is("deleted_at", null);
+  if (error) return [];
+  const map = new Map<string, LaborByWorker>();
+  for (const r of (data ?? []) as { vendor: string | null; amount_cents: number; hours: number | null }[]) {
+    const worker = (r.vendor ?? "").trim() || "Unassigned";
+    const key = worker.toLowerCase();
+    const cur = map.get(key) ?? { worker, hours: 0, cost_cents: 0, count: 0, rate_cents_per_hour: null };
+    cur.cost_cents += Number(r.amount_cents ?? 0);
+    const h = Number(r.hours ?? 0);
+    if (Number.isFinite(h) && h > 0) cur.hours += h;
+    cur.count += 1;
+    map.set(key, cur);
+  }
+  const out = [...map.values()].map((w) => ({
+    ...w,
+    rate_cents_per_hour: w.hours > 0 ? Math.round(w.cost_cents / w.hours) : null,
+  }));
+  // Costliest worker first.
+  out.sort((a, b) => b.cost_cents - a.cost_cents);
+  return out;
+}
+
+/** Clamp an hours input to a sane non-negative number (or null). */
+function sanitizeHours(hours: number | null | undefined): number | null {
+  if (hours === null || hours === undefined) return null;
+  const h = Number(hours);
+  if (!Number.isFinite(h) || h <= 0) return null;
+  // Cap absurd values (a single labor line over 10k hours is a typo) + 2dp.
+  return Math.min(Math.round(h * 100) / 100, 100000);
+}
+
 export async function getPurchase(id: string): Promise<CommercialProjectPurchase | null> {
   const sb = commercialDb();
   const { data } = await sb
@@ -191,6 +271,7 @@ export type AddPurchaseInput = {
   category: string;
   vendor?: string | null;
   amount_cents: number;
+  hours?: number | null;
   purchased_at?: string | null;
   description?: string | null;
   receipt_document_id?: string | null;
@@ -219,6 +300,9 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
       category,
       vendor: input.vendor?.trim().slice(0, 200) || null,
       amount_cents: amount,
+      // Hours only make sense for labor; drop them on any other category so an
+      // edited category can't strand stale hours.
+      hours: category === "labor" ? sanitizeHours(input.hours) : null,
       purchased_at: input.purchased_at ?? nowIso,
       description: input.description?.trim().slice(0, 2000) || null,
       receipt_document_id: input.receipt_document_id ?? null,
@@ -236,7 +320,7 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
 
 export async function updatePurchase(
   id: string,
-  patch: { category?: string; vendor?: string | null; amount_cents?: number; purchased_at?: string | null; description?: string | null },
+  patch: { category?: string; vendor?: string | null; amount_cents?: number; hours?: number | null; purchased_at?: string | null; description?: string | null },
   userId: string,
   /** Ownership guard (audit H1): the purchase must belong to this opportunity —
    *  rejects a forged purchase_id from another deal. */
@@ -259,6 +343,16 @@ export async function updatePurchase(
   }
   if (patch.purchased_at !== undefined) next.purchased_at = patch.purchased_at;
   if (patch.description !== undefined) next.description = patch.description?.trim().slice(0, 2000) || null;
+  // Hours track the EFFECTIVE category (post-patch): a purchase edited off the
+  // labor category loses its hours; edited onto labor can gain them. This
+  // prevents stale hours surviving a category flip.
+  const effectiveCategory = (next.category as string | undefined) ?? before.category;
+  if (effectiveCategory !== "labor") {
+    // Only overwrite when it would actually change — keeps the audit diff clean.
+    if (before.hours !== null) next.hours = null;
+  } else if (patch.hours !== undefined) {
+    next.hours = sanitizeHours(patch.hours);
+  }
 
   const sb = commercialDb();
   const { data, error } = await sb

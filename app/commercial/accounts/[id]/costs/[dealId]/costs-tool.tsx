@@ -22,14 +22,14 @@ import {
   deletePurchase,
   attachPurchaseReceipt,
   recentVendorsForAccount,
-  type CommercialProjectPurchase,
+  recentWorkersForAccount,
+  laborByWorkerForProject,
 } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META, purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
 import { getDocumentsByIds } from "@/lib/commercial/documents/db";
-import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
-import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
+import PurchaseForm from "@/components/commercial/purchase-form";
 import Link from "next/link";
 
 export type CostsSP = {
@@ -42,9 +42,19 @@ export type CostsSP = {
   pu_cat?: string;
   pu_vendor?: string;
   pu_amt?: string;
+  pu_hours?: string;
   pu_date?: string;
   pu_desc?: string;
 };
+
+/** Parse a loose hours string ("40", "37.5") → number or null (server guard;
+ *  the db also clamps). */
+function parseHours(raw: string): number | null {
+  const cleaned = raw.replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 async function requireCommercialUser(): Promise<string> {
   const supabase = await createClient();
@@ -80,9 +90,7 @@ async function assertDealOwned(opp_id: string, account_id: string) {
   if (!opp || opp.account_id !== account_id) redirect("/commercial/accounts");
 }
 
-const CATEGORY_LABELS = Object.fromEntries(
-  PURCHASE_CATEGORIES.map((c) => [c, PURCHASE_CATEGORY_META[c].label])
-) as Record<string, string>;
+const CATEGORY_OPTIONS: [string, string][] = PURCHASE_CATEGORIES.map((c) => [c, PURCHASE_CATEGORY_META[c].label]);
 
 const COST_OK_MESSAGES: Record<string, string> = {
   added: "Purchase logged.",
@@ -114,10 +122,11 @@ async function addPurchaseAction(formData: FormData) {
   const category = String(formData.get("category") ?? "materials");
   const vendor = String(formData.get("vendor") ?? "");
   const rawAmount = String(formData.get("amount") ?? "");
+  const rawHours = String(formData.get("hours") ?? "");
   const rawDate = String(formData.get("purchased_at") ?? "");
   const description = String(formData.get("description") ?? "");
   // Round-trip the typed values on a validation error (audit M3).
-  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000) };
+  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000) };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
     costsRedirect(account_id, opp_id, { error: "Enter a purchase amount greater than $0.", ...preserve }, back);
@@ -129,6 +138,8 @@ async function addPurchaseAction(formData: FormData) {
     category,
     vendor: vendor || null,
     amount_cents: cents!,
+    // Hours only stored for labor (db enforces the same rule).
+    hours: category === "labor" ? parseHours(rawHours) : null,
     purchased_at,
     description: description || null,
     created_by_user_id: userId,
@@ -157,6 +168,7 @@ async function updatePurchaseAction(formData: FormData) {
   const category = String(formData.get("category") ?? "materials");
   const vendor = String(formData.get("vendor") ?? "");
   const rawAmount = String(formData.get("amount") ?? "");
+  const rawHours = String(formData.get("hours") ?? "");
   const rawDate = String(formData.get("purchased_at") ?? "");
   const description = String(formData.get("description") ?? "");
   const cents = parseDollarsToCents(rawAmount);
@@ -169,6 +181,8 @@ async function updatePurchaseAction(formData: FormData) {
       category,
       vendor: vendor || null,
       amount_cents: cents!,
+      // Always send hours so the db can null it on a category flip away from labor.
+      hours: category === "labor" ? parseHours(rawHours) : null,
       purchased_at: rawDate ? new Date(`${rawDate}T16:00:00Z`).toISOString() : undefined,
       description: description || null,
     },
@@ -227,10 +241,12 @@ export async function ProjectCostsTool({
   if (opp.account_id !== id) notFound();
 
   const dealName = derivedOppName(opp, account.company_name);
-  const [fin, purchases, recentVendors] = await Promise.all([
+  const [fin, purchases, recentVendors, recentWorkers, laborByWorker] = await Promise.all([
     getProjectFinancials(dealId),
     listPurchasesForProject(dealId),
     recentVendorsForAccount(id),
+    recentWorkersForAccount(id),
+    laborByWorkerForProject(dealId),
   ]);
   // Receipt docs for the purchases that have one (one batched query).
   const receiptDocs = await getDocumentsByIds(
@@ -242,6 +258,7 @@ export async function ProjectCostsTool({
   const truePctOfContract = fin.hasContract ? Math.round((fin.costs.total / fin.contractCents) * 100) : 0;
   const barPctOfContract = Math.min(100, truePctOfContract);
   const mt = marginTone(fin.grossMarginPct);
+  const laborTotalHours = laborByWorker.reduce((s, w) => s + w.hours, 0);
 
   const panel = (
     <div className="space-y-3">
@@ -313,6 +330,35 @@ export async function ProjectCostsTool({
         )}
       </section>
 
+      {/* ── Labor by worker (deal-scoped overview) ── */}
+      {laborByWorker.length > 0 && (
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <h3 className="text-[13px] font-bold text-ppp-charcoal">Labor by worker</h3>
+            <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
+              {formatCentsFull(fin.costs.labor)} total
+              {laborTotalHours > 0 ? ` · ${laborTotalHours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs` : ""}
+            </span>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {laborByWorker.map((w) => (
+              <li key={w.worker} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{w.worker}</div>
+                  <div className="text-[11px] text-ppp-charcoal-400 tabular-nums">
+                    {w.hours > 0 ? `${w.hours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs` : "hours not logged"}
+                    {w.rate_cents_per_hour != null ? ` · ${formatCentsFull(w.rate_cents_per_hour)}/hr` : ""}
+                    <span className="text-ppp-charcoal-300"> · </span>
+                    {w.count} {w.count === 1 ? "entry" : "entries"}
+                  </div>
+                </div>
+                <div className="text-[13px] font-bold tabular-nums text-ppp-charcoal shrink-0">{formatCentsFull(w.cost_cents)}</div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* ── Add + list ── */}
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         {purchases.length === 0 && (
@@ -323,7 +369,7 @@ export async function ProjectCostsTool({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform"><path d="M12 5v14 M5 12h14" /></svg>
             Log a purchase
           </summary>
-          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} recentVendors={recentVendors} submitLabel="Add purchase" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, date: sp.pu_date, desc: sp.pu_desc }} />
+          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add purchase" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc }} />
         </details>
 
         {purchases.length > 0 && (
@@ -335,7 +381,7 @@ export async function ProjectCostsTool({
               return (
                 <li key={pu.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-3.5">
                   {isEditing ? (
-                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} recentVendors={recentVendors} submitLabel="Save" purchase={pu} cancelHref={costsBase(id, dealId)} />
+                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Save" purchase={pu} cancelHref={costsBase(id, dealId)} />
                   ) : (
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0">
@@ -346,6 +392,12 @@ export async function ProjectCostsTool({
                         {pu.description && <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 break-words whitespace-pre-wrap">{pu.description}</div>}
                         <div className="text-[11px] text-ppp-charcoal-400 mt-1 flex items-center gap-2 flex-wrap">
                           <span>{fmtEtDate(pu.purchased_at)}</span>
+                          {pu.category === "labor" && pu.hours != null && pu.hours > 0 && (
+                            <span className="tabular-nums">
+                              {pu.hours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs
+                              {` · ${formatCentsFull(Math.round(pu.amount_cents / pu.hours))}/hr`}
+                            </span>
+                          )}
                           {receipt && (
                             <a href={`/api/commercial/documents/${receipt.id}/download`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px]">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
@@ -389,79 +441,6 @@ export async function ProjectCostsTool({
       </div>
       {panel}
     </div>
-  );
-}
-
-type CoAction = (formData: FormData) => void | Promise<void>;
-
-function PurchaseForm({
-  action,
-  oppId,
-  accountId,
-  back,
-  recentVendors,
-  submitLabel,
-  purchase,
-  cancelHref,
-  preserve,
-}: {
-  action: CoAction;
-  oppId: string;
-  accountId: string;
-  back: string;
-  recentVendors: string[];
-  submitLabel: string;
-  purchase?: CommercialProjectPurchase;
-  cancelHref?: string;
-  preserve?: { cat?: string; vendor?: string; amt?: string; date?: string; desc?: string };
-}) {
-  const defDate = purchase ? purchase.purchased_at.slice(0, 10) : (preserve?.date ?? "");
-  return (
-    <form action={action} className="px-3.5 pb-3.5 pt-1 space-y-3" encType="multipart/form-data">
-      <input type="hidden" name="opp_id" value={oppId} />
-      <input type="hidden" name="account_id" value={accountId} />
-      <input type="hidden" name="back" value={back} />
-      {purchase && <input type="hidden" name="purchase_id" value={purchase.id} />}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className={LABEL_CLS} htmlFor="pu-category">Category</label>
-          <select id="pu-category" name="category" defaultValue={purchase?.category ?? preserve?.cat ?? "materials"} className={SELECT_CLS} style={SELECT_BG_STYLE}>
-            {PURCHASE_CATEGORIES.map((c) => (<option key={c} value={c}>{CATEGORY_LABELS[c]}</option>))}
-          </select>
-        </div>
-        <div>
-          <label className={LABEL_CLS} htmlFor="pu-amount">Amount</label>
-          <input id="pu-amount" name="amount" required inputMode="decimal" defaultValue={purchase ? (purchase.amount_cents / 100).toFixed(2) : (preserve?.amt ?? "")} className={INPUT_CLS} placeholder="1,250.00" />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className={LABEL_CLS} htmlFor="pu-vendor">Vendor <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-          <input id="pu-vendor" name="vendor" list="pu-vendor-list" maxLength={200} defaultValue={purchase?.vendor ?? preserve?.vendor ?? ""} className={INPUT_CLS} placeholder="Sherwin-Williams" />
-          <datalist id="pu-vendor-list">
-            {recentVendors.map((v) => (<option key={v} value={v} />))}
-          </datalist>
-        </div>
-        <div>
-          <label className={LABEL_CLS} htmlFor="pu-date">Date</label>
-          <input id="pu-date" name="purchased_at" type="date" defaultValue={defDate} className={INPUT_CLS} />
-        </div>
-      </div>
-      <div>
-        <label className={LABEL_CLS} htmlFor="pu-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-        <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={purchase?.description ?? preserve?.desc ?? ""} className={TEXTAREA_CLS} placeholder="What was purchased" />
-      </div>
-      <div>
-        <label className={LABEL_CLS} htmlFor="pu-receipt">Receipt <span className="font-normal text-ppp-charcoal-400">(optional — PDF or photo)</span></label>
-        <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="block w-full text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100" />
-        {purchase?.receipt_document_id && <p className="text-[11px] text-emerald-600 mt-1">A receipt is on file — uploading a new one replaces it.</p>}
-        <p className="text-[11px] text-ppp-charcoal-500 mt-1">Uploading from Google Drive? Use the raw file, not a Drive link — Drive recompresses PDFs.</p>
-      </div>
-      <div className="flex items-center gap-2">
-        <PendingSubmitButton pendingLabel="Saving…" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30">{submitLabel}</PendingSubmitButton>
-        {cancelHref && <Link href={cancelHref} className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] inline-flex items-center">Cancel</Link>}
-      </div>
-    </form>
   );
 }
 
