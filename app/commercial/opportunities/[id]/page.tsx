@@ -49,6 +49,7 @@ import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import {
   allowedNextStatuses,
@@ -1898,7 +1899,9 @@ async function OpportunityInvoicesPanel({
   // "% of contract billed" on any taxed invoice. AR figures below stay with-tax.
   const issuedSubtotalCents = issued.reduce((acc, i) => acc + i.subtotal_cents, 0);
   const totalPaidCents = issued.reduce((acc, i) => acc + i.paid_cents, 0);
-  const totalBalanceCents = totalInvoicedCents - totalPaidCents;
+  // Per-invoice clamped, issued-only — one "Outstanding" definition everywhere
+  // (a credit on one invoice can't net away another's balance). credit shown apart.
+  const { openBalance: totalBalanceCents, credit: totalCreditCents } = splitOpenBalance(issued.map((i) => i.balance_cents));
   const draftInvoices = invoices.filter((i) => i.status === "draft");
   const draftCount = draftInvoices.length;
   const draftTotalCents = draftInvoices.reduce((acc, i) => acc + i.total_cents, 0);
@@ -2040,9 +2043,9 @@ async function OpportunityInvoicesPanel({
             <MiniStat label="Invoiced" value={formatCentsCompact(totalInvoicedCents)} tone="neutral" />
             <MiniStat label="Paid" value={formatCentsCompact(totalPaidCents)} tone="emerald" />
             <MiniStat
-              label={totalBalanceCents < 0 ? "Credit" : "Balance"}
-              value={formatCentsCompact(Math.abs(totalBalanceCents))}
-              tone={totalBalanceCents < 0 ? "emerald" : totalBalanceCents > 0 ? "blue" : "neutral"}
+              label={totalCreditCents > 0 && totalBalanceCents === 0 ? "Credit" : "Balance"}
+              value={formatCentsCompact(totalBalanceCents > 0 ? totalBalanceCents : totalCreditCents)}
+              tone={totalCreditCents > 0 && totalBalanceCents === 0 ? "emerald" : totalBalanceCents > 0 ? "blue" : "neutral"}
             />
             {pctBilled !== null && (
               <MiniStat

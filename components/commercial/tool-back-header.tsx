@@ -20,11 +20,22 @@ export const TOOL_BACK: Record<string, { path: string; label: string }> = {
   "/commercial/post-job/change-orders": { path: "/commercial/post-job/change-orders", label: "Change Orders" },
   "/commercial/post-job/aia": { path: "/commercial/post-job/aia", label: "AIA Billing" },
   "/commercial/post-job/closeout": { path: "/commercial/post-job/closeout", label: "Closeout & Warranty" },
+  "/commercial/post-job/costs": { path: "/commercial/post-job/costs", label: "Costs & P&L" },
 };
+
+/** The deal-scoped Invoices page (`/commercial/invoices/new?opp=<uuid>`) is a
+ *  legitimate back-target when a tool is opened from that page's Margin tile.
+ *  It can't be a static whitelist key (the opp is dynamic), so match the exact
+ *  shape — internal path + a UUID opp — which keeps the open-redirect guard. */
+const INVOICE_DEAL_BACK_RE =
+  /^\/commercial\/invoices\/new\?opp=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Resolve the whitelisted back-target from a raw ?back param (or null). */
 export function resolveToolBack(back: string | undefined): { path: string; label: string } | null {
-  return back ? TOOL_BACK[back] ?? null : null;
+  if (!back) return null;
+  if (TOOL_BACK[back]) return TOOL_BACK[back];
+  if (INVOICE_DEAL_BACK_RE.test(back)) return { path: back, label: "Invoices" };
+  return null;
 }
 
 export function ToolBackHeader({

@@ -16,6 +16,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { listCommercialInvoices, addPayment, getInvoiceContext, sumCommercialPaymentsSince, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listMilestonesForInvoices } from "@/lib/commercial/invoices/milestones";
+import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
@@ -1292,7 +1293,8 @@ function GroupedByOpp({
           const totalPaid = issued.reduce((s, i) => s + i.paid_cents, 0);
           // Per-invoice clamped, issued-only — one "Outstanding" definition
           // everywhere (a credit/deduct invoice can't understate the balance).
-          const totalBalance = issued.reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
+          // credit = Σ max(0, −balance): a genuine overpayment, shown separately.
+          const { openBalance: totalBalance, credit: totalCredit } = splitOpenBalance(issued.map((i) => i.balance_cents));
           const overduePresent = groupInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
           const draftCount = groupInvoices.filter((i) => i.status === "draft").length;
           const groupPct =
@@ -1375,10 +1377,10 @@ function GroupedByOpp({
                       <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
                     </>
                   )}
-                  {totalBalance < 0 && (
+                  {totalCredit > 0 && (
                     <>
                       <span className="text-ppp-charcoal-300"> · </span>
-                      <span className="text-emerald-700 font-medium">{formatCentsFull(-totalBalance)} credit</span>
+                      <span className="text-emerald-700 font-medium">{formatCentsFull(totalCredit)} credit</span>
                     </>
                   )}
                   {totalPaid > 0 && (
@@ -1517,10 +1519,11 @@ function GroupedByOpp({
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {orphanRows.map(([oppId, groupInvoices]) => {
-              const nonVoid = groupInvoices.filter((i) => i.status !== "void");
-              const totalInvoiced = nonVoid.filter((i) => i.status !== "draft").reduce((s, i) => s + i.total_cents, 0);
-              const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
-              const totalBalance = totalInvoiced - totalPaid;
+              const issued = groupInvoices.filter((i) => i.status !== "void" && i.status !== "draft");
+              const totalInvoiced = issued.reduce((s, i) => s + i.total_cents, 0);
+              const totalPaid = issued.reduce((s, i) => s + i.paid_cents, 0);
+              // Per-invoice clamped, issued-only + separate credit (audit).
+              const { openBalance: totalBalance, credit: totalCredit } = splitOpenBalance(issued.map((i) => i.balance_cents));
               return (
                 <li key={oppId} className="px-4 sm:px-5 py-3">
                   <Link
@@ -1545,10 +1548,10 @@ function GroupedByOpp({
                           <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
                         </>
                       )}
-                      {totalBalance < 0 && (
+                      {totalCredit > 0 && (
                         <>
                           <span className="text-ppp-charcoal-300"> · </span>
-                          <span className="text-emerald-700 font-medium">{formatCentsFull(-totalBalance)} credit</span>
+                          <span className="text-emerald-700 font-medium">{formatCentsFull(totalCredit)} credit</span>
                         </>
                       )}
                       {totalPaid > 0 && (
@@ -1784,7 +1787,9 @@ function FullDetailByOpp({
         const issuedInGroup = nonVoid.filter((i) => i.status !== "draft");
         const totalInvoiced = issuedInGroup.reduce((s, i) => s + i.total_cents, 0);
         const totalPaid = issuedInGroup.reduce((s, i) => s + i.paid_cents, 0);
-        const totalBalance = totalInvoiced - totalPaid;
+        // Per-invoice clamped + separate credit (audit — a credit on one invoice
+        // must not net away another's outstanding).
+        const { openBalance: totalBalance, credit: totalCredit } = splitOpenBalance(issuedInGroup.map((i) => i.balance_cents));
         const draftInGroup = groupInvoices.filter((i) => i.status === "draft");
         const draftGroupCount = draftInGroup.length;
         const draftGroupCents = draftInGroup.reduce((s, i) => s + i.total_cents, 0);
@@ -1916,10 +1921,10 @@ function FullDetailByOpp({
                     <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalPaid)}</div>
                   </div>
                   <div className={`border rounded-lg px-2.5 py-1.5 ${
-                    totalBalance > 0 ? "border-cc-brand-200 bg-cc-brand-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
+                    totalBalance > 0 ? "border-cc-brand-200 bg-cc-brand-50/40" : totalCredit > 0 ? "border-emerald-200 bg-emerald-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
                   }`}>
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{totalBalance < 0 ? "Credit" : "Balance"}</div>
-                    <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(Math.abs(totalBalance))}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{totalCredit > 0 && totalBalance === 0 ? "Credit" : "Balance"}</div>
+                    <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance > 0 ? totalBalance : totalCredit)}</div>
                   </div>
                 </div>
               )}

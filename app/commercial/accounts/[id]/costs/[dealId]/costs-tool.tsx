@@ -59,7 +59,9 @@ function costsBase(accountId: string, oppId: string): string {
 }
 function costsRedirect(accountId: string, oppId: string, params: Record<string, string>, back = ""): never {
   const p = { ...params };
-  if (back && back.startsWith("/commercial/post-job/")) p.back = back;
+  // Preserve a valid back-target (the sidebar tool index OR the invoices deal
+  // page) across the redirect so the header arrow survives a form action.
+  if (back && (back.startsWith("/commercial/post-job/") || back.startsWith("/commercial/invoices/new?opp="))) p.back = back;
   const qs = new URLSearchParams(p).toString();
   redirect(qs ? `${costsBase(accountId, oppId)}&${qs}` : costsBase(accountId, oppId));
 }

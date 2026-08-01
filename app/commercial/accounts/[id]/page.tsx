@@ -58,6 +58,7 @@ import {
 } from "@/lib/commercial/accounts/overview";
 import {
   getInvoiceRollupForAccount,
+  splitOpenBalance,
   type AccountInvoiceRollup,
 } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
@@ -6433,7 +6434,8 @@ async function AccountInvoicesTab({
             const dealPaid = issued.reduce((s, i) => s + i.paid_cents, 0);
             // Per-invoice clamped, issued-only — one "Outstanding" definition
             // everywhere (a credit/deduct invoice can't understate the balance).
-            const dealBalance = issued.reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
+            // dealCredit = Σ max(0, −balance): an overpayment, surfaced separately.
+            const { openBalance: dealBalance, credit: dealCredit } = splitOpenBalance(issued.map((i) => i.balance_cents));
             const dealOverdue = dealInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
             const dealPct = dealInvoiced > 0 ? Math.min(100, Math.round((dealPaid / dealInvoiced) * 100)) : 0;
             const barTone = dealPaid >= dealInvoiced && dealInvoiced > 0
@@ -6482,10 +6484,10 @@ async function AccountInvoicesTab({
                             owed
                           </span>
                         )}
-                        {dealBalance < 0 && (
+                        {dealCredit > 0 && (
                           <span className="text-ppp-charcoal-500">
                             {" · "}
-                            <strong className="text-emerald-700">{formatCentsFull(-dealBalance)}</strong>{" "}
+                            <strong className="text-emerald-700">{formatCentsFull(dealCredit)}</strong>{" "}
                             credit
                           </span>
                         )}

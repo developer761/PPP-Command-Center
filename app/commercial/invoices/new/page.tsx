@@ -92,13 +92,17 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
         <MoneyTile label="Contract" value={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"} />
         <MoneyTile label="Invoiced" value={formatCentsCompact(fin.invoicedCents)} />
         <MoneyTile label="Collected" value={formatCentsCompact(fin.collectedCents)} tone="emerald" />
-        <MoneyTile label="Balance" value={formatCentsCompact(fin.openBalanceCents)} tone={fin.openBalanceCents > 0 ? "amber" : "neutral"} />
+        <MoneyTile
+          label={fin.creditCents > 0 && fin.openBalanceCents === 0 ? "Credit" : "Balance"}
+          value={formatCentsCompact(fin.openBalanceCents > 0 ? fin.openBalanceCents : fin.creditCents)}
+          tone={fin.creditCents > 0 && fin.openBalanceCents === 0 ? "emerald" : fin.openBalanceCents > 0 ? "amber" : "neutral"}
+        />
         <MoneyTile
           label="Margin"
           value={fin.costs.total === 0 ? "—" : `${fin.grossMarginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(fin.grossMarginCents))}`}
           sub={fin.grossMarginPct == null || fin.costs.total === 0 ? undefined : `${fin.grossMarginPct}%`}
           tone={fin.costs.total === 0 ? "neutral" : fin.grossMarginPct != null && fin.grossMarginPct < 0 ? "rose" : "emerald"}
-          href={`/commercial/accounts/${opp!.account_id}/costs/${opp!.id}?back=/commercial/invoices/new?opp=${opp!.id}`}
+          href={`/commercial/accounts/${opp!.account_id}/costs/${opp!.id}?back=${encodeURIComponent(returnTo)}`}
         />
       </div>
 

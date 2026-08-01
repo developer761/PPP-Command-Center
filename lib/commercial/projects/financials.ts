@@ -33,6 +33,9 @@ export type ProjectFinancials = {
   /** Σ per-invoice max(0, balance) — the true open receivable (a credit on one
    *  invoice can't mask another). */
   openBalanceCents: number;
+  /** Σ per-invoice max(0, −balance) — overpayment credits, surfaced separately
+   *  so an overpaid deal shows a credit, not a hidden $0 balance. */
+  creditCents: number;
   costs: CostBreakdown;
   /** Contract − total costs = projected gross profit. Negative = over budget. */
   grossMarginCents: number;
@@ -68,6 +71,7 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
   let billedPreTaxCents = 0;
   let collectedCents = 0;
   let openBalanceCents = 0;
+  let creditCents = 0;
   for (const r of (invRes.data ?? []) as InvRow[]) {
     // Issued only — a draft isn't billed; a void doesn't count (mirrors the
     // account rollup + listProjects).
@@ -75,7 +79,9 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     invoicedCents += Number(r.total_cents ?? 0);
     billedPreTaxCents += Number(r.subtotal_cents ?? 0);
     collectedCents += Number(r.paid_cents ?? 0);
-    openBalanceCents += Math.max(0, Number(r.balance_cents ?? 0));
+    const bal = Number(r.balance_cents ?? 0);
+    openBalanceCents += Math.max(0, bal);
+    creditCents += Math.max(0, -bal);
   }
 
   const grossMarginCents = contractCents - costs.total;
@@ -88,6 +94,7 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     billedPreTaxCents,
     collectedCents,
     openBalanceCents,
+    creditCents,
     costs,
     grossMarginCents,
     grossMarginPct,
