@@ -38,7 +38,6 @@ import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db"
 import { costBreakdownByOpp, emptyCostBreakdown } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
-import { KpiTile } from "@/components/commercial/kpi-tile";
 import TrendChart from "@/components/trend-chart";
 import { GaugeRing, DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 
@@ -342,85 +341,15 @@ export default async function CommercialDashboardPage() {
         </details>
       </section>
 
-      {/* Hero — unchanged structure, high-density KPIs at the top. */}
-      <header className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <Link
-          href="/commercial/opportunities"
-          className="group/hero lg:col-span-2 relative bg-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden block transition-all hover:shadow-md hover:border-cc-brand-300 touch-manipulation"
-        >
-          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
-          <span aria-hidden className="pointer-events-none absolute -top-12 -right-12 h-40 w-40 rounded-full bg-cc-brand-100/60 blur-2xl" />
-          <div className="relative pl-2">
-            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
-                Commercial Command Center
-              </div>
-              <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-                <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight tabular-nums">
-                {formatCentsCompact(weightedPipeline)}
-              </div>
-              {newThisWeek > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 19V5 M5 12l7-7 7 7" />
-                  </svg>
-                  {newThisWeek} new this week
-                </span>
-              )}
-              <div className="text-[12px] text-ppp-charcoal-500">
-                weighted pipeline · {openOpps.length} open
-              </div>
-            </div>
-          </div>
-        </Link>
-        <Link
-          href="/commercial/reports/win-loss"
-          className="group/hero relative bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden block transition-all hover:shadow-md hover:border-emerald-300 touch-manipulation"
-        >
-          <span aria-hidden className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-emerald-100/40 blur-2xl" />
-          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400" />
-          <div className="relative">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1.5">
-              Wins this month
-            </div>
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight tabular-nums">
-                {wonThisMonth.length}
-              </div>
-              {monthWinPct !== null && (
-                <div className="text-[12px] text-emerald-700 font-semibold">
-                  {monthWinPct}% win rate
-                </div>
-              )}
-              {winsDelta !== 0 && (
-                <div
-                  className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${
-                    winsDelta > 0 ? "text-emerald-700" : "text-ppp-charcoal-400"
-                  }`}
-                  title={`${wonThisMonth.length} this month vs ${wonLastMonthToDate} by the same point last month`}
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={winsDelta > 0 ? "" : "rotate-180"}>
-                    <path d="M12 19V5 M5 12l7-7 7 7" />
-                  </svg>
-                  {winsDelta > 0 ? "+" : ""}{winsDelta} vs last month
-                </div>
-              )}
-            </div>
-            <div className="mt-1.5 text-[11px] text-ppp-charcoal-500 truncate">
-              {wonThisMonthCents > 0
-                ? `${formatCentsCompact(wonThisMonthCents)} awarded value`
-                : wonThisMonth.length === 0
-                ? "No wins recorded yet this month"
-                : "Awarded value not set on wins"}
-            </div>
-          </div>
-        </Link>
-      </header>
+      {/* ─── At a glance — compact KPI strip (pipeline · wins · GCs · contract · AR) ─── */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="weighted" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
+        <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
+        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href="/commercial/reports/win-loss" delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
+        <DashStat label="Active GCs" value={accounts.length.toLocaleString()} sub="of record" tone="blue" href="/commercial/accounts" />
+        <DashStat label="Under contract" value={production.activeProjects > 0 ? formatCentsCompact(production.contractValueCents) : "—"} sub={production.activeProjects > 0 ? `${production.activeProjects} active` : "no jobs yet"} tone="navy" href="/commercial/projects" />
+        <DashStat label="Outstanding" value={formatCentsCompact(arOutstandingCents)} sub={arOverdueCount > 0 ? `${arOverdueCount} overdue` : "AR"} tone={arOverdueCount > 0 ? "rose" : "blue"} href={arOverdueCount > 0 ? "/commercial/invoices?status=overdue" : "/commercial/invoices"} />
+      </section>
 
       {/* ─── NEEDS ATTENTION strip ─── */}
       {/* Only surface the categories that ACTUALLY need attention — an
@@ -516,56 +445,6 @@ export default async function CommercialDashboardPage() {
         );
       })()}
 
-      {/* ─── KPI strip ─── */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiTile
-          tone="navy"
-          value={openOpps.length.toLocaleString()}
-          label="Open opportunities"
-          sub={`${decidedOpps.length} decided all-time`}
-          href="/commercial/opportunities"
-          icon={<IconTarget />}
-        />
-        <KpiTile
-          tone={arOutstandingCents > 0 && arOverdueCount > 0 ? "rose" : "blue"}
-          value={formatCentsCompact(arOutstandingCents)}
-          label="Outstanding AR"
-          sub={
-            arOutstandingCents === 0
-              ? "Nothing unpaid"
-              : arOverdueCount > 0
-              ? `${arOverdueCount} overdue`
-              : "Unpaid balance"
-          }
-          href={
-            // Overdue present → focus the overdue view; otherwise the full
-            // grouped list (with per-deal balances) is the honest AR picture.
-            // ?status=sent would UNDERCOUNT the headline (which also sums
-            // viewed/partial), so we don't claim a filter that doesn't match.
-            arOverdueCount > 0
-              ? "/commercial/invoices?status=overdue"
-              : "/commercial/invoices"
-          }
-          icon={<IconDollar />}
-        />
-        <KpiTile
-          tone="blue"
-          value={accounts.length.toLocaleString()}
-          label="Active GCs"
-          sub={accounts.length === 1 ? "GC of record" : "GCs of record"}
-          href="/commercial/accounts"
-          icon={<IconBuilding />}
-        />
-        <KpiTile
-          tone="emerald"
-          value={wonOpps.length.toLocaleString()}
-          label="All-time wins"
-          sub={winRatePct !== null ? `${winRatePct}% overall win rate` : "No history yet"}
-          href="/commercial/reports/win-loss"
-          icon={<IconTrophy />}
-        />
-      </section>
-
       {/* ─── UNDER CONTRACT (production) ─── */}
       {/* Only surface once there's at least one job under contract — an all-zero
           production strip is noise before the first Won job (matches the
@@ -595,43 +474,11 @@ export default async function CommercialDashboardPage() {
                 centerLabel="contract"
               />
             </div>
-            <div className="lg:col-span-2 grid grid-cols-2 gap-3">
-            <KpiTile
-              tone="blue"
-              value={formatCentsCompact(production.contractValueCents)}
-              label="Under contract"
-              sub={completedPctOfContract !== null ? `${completedPctOfContract}% work complete` : "Incl. approved COs"}
-              href="/commercial/projects"
-              icon={<IconContract />}
-            />
-            <KpiTile
-              tone="emerald"
-              value={formatCentsCompact(production.billedContractCents)}
-              label="Billed of contract"
-              sub={`${formatCentsCompact(production.paidCents)} paid`}
-              href="/commercial/projects"
-              icon={<IconChart />}
-            />
-            <KpiTile
-              tone="blue"
-              value={formatCentsCompact(production.leftToBillCents)}
-              label="Left to bill"
-              sub="Contract − billed"
-              href="/commercial/projects"
-              icon={<IconDollar />}
-            />
-            <KpiTile
-              tone={production.outstandingCents > 0 ? "amber" : "blue"}
-              value={formatCentsCompact(production.outstandingCents)}
-              label="Outstanding"
-              sub={
-                production.pendingCoCount > 0
-                  ? `${production.pendingCoCount} CO${production.pendingCoCount === 1 ? "" : "s"} pending`
-                  : "Invoiced − paid"
-              }
-              href="/commercial/projects"
-              icon={<IconChangeOrder />}
-            />
+            <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <DashStat label="Contract" value={formatCentsCompact(production.contractValueCents)} sub={completedPctOfContract !== null ? `${completedPctOfContract}% complete` : "incl. COs"} tone="navy" href="/commercial/projects" />
+              <DashStat label="Billed" value={formatCentsCompact(production.billedContractCents)} sub={`${formatCentsCompact(production.paidCents)} paid`} tone="emerald" href="/commercial/projects" />
+              <DashStat label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} sub="contract − billed" tone="blue" href="/commercial/projects" />
+              <DashStat label="Outstanding" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "invoiced − paid"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/projects" />
             </div>
           </div>
         </section>
@@ -711,6 +558,58 @@ export default async function CommercialDashboardPage() {
         </div>
       </details>
     </div>
+  );
+}
+
+// ─────────────── Compact dashboard stat cell ───────────────
+
+function DashStat({
+  label,
+  value,
+  sub,
+  tone = "neutral",
+  href,
+  delta,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "neutral" | "blue" | "emerald" | "amber" | "rose" | "navy";
+  href?: string;
+  delta?: { value: number; suffix?: string } | null;
+}) {
+  const dot =
+    tone === "emerald" ? "bg-emerald-500"
+    : tone === "rose" ? "bg-rose-500"
+    : tone === "amber" ? "bg-amber-500"
+    : tone === "blue" ? "bg-ppp-blue-500"
+    : tone === "navy" ? "bg-ppp-navy-500"
+    : "bg-ppp-charcoal-300";
+  const valueCls =
+    tone === "rose" ? "text-rose-700" : tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : "text-ppp-charcoal";
+  const inner = (
+    <>
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span aria-hidden className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+        <span className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500 truncate">{label}</span>
+      </div>
+      <div className={`font-condensed text-xl sm:text-2xl font-black leading-none tabular-nums mt-1 ${valueCls}`}>{value}</div>
+      <div className="mt-0.5 flex items-center gap-1 flex-wrap">
+        {sub && <span className="text-[10px] text-ppp-charcoal-400 leading-tight">{sub}</span>}
+        {delta && delta.value !== 0 && (
+          <span className={`inline-flex items-center gap-0.5 text-[9.5px] font-bold ${delta.value > 0 ? "text-emerald-700" : "text-ppp-charcoal-400"}`}>
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={delta.value > 0 ? "" : "rotate-180"}><path d="M12 19V5 M5 12l7-7 7 7" /></svg>
+            {delta.value > 0 ? "+" : ""}{delta.value}{delta.suffix ?? ""}
+          </span>
+        )}
+      </div>
+    </>
+  );
+  const cls = "block bg-surface border border-ppp-charcoal-100 rounded-lg px-3 py-2.5 min-h-[44px] transition-all";
+  return href ? (
+    <Link href={href} className={`${cls} hover:border-ppp-charcoal-200 hover:shadow-sm touch-manipulation`}>{inner}</Link>
+  ) : (
+    <div className={cls}>{inner}</div>
   );
 }
 
