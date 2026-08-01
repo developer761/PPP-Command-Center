@@ -210,28 +210,6 @@ export default async function CommercialDashboardPage() {
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
     .slice(0, 5);
 
-  // ─── Monthly awarded value (last 6 months) for the trend chart ───
-  // Value in $K (TrendChart's currency-k format). Midpoint of the bid range on
-  // each Won deal, bucketed by decided_at month.
-  const awardedMonthly: { label: string; value: number }[] = [];
-  {
-    const base = new Date();
-    for (let m = 5; m >= 0; m--) {
-      const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
-      const start = d.getTime();
-      const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
-      const cents = wonOpps.reduce((acc, o) => {
-        const t = o.decided_at ? new Date(o.decided_at).getTime() : NaN;
-        if (!(t >= start && t < end)) return acc;
-        const lo = o.bid_value_low_cents ?? 0;
-        const hi = o.bid_value_high_cents ?? lo;
-        return acc + Math.round((lo + hi) / 2);
-      }, 0);
-      awardedMonthly.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
-    }
-  }
-  const awardedTrendHasData = awardedMonthly.some((p) => p.value > 0);
-
   // ─── Revenue & P&L (whole Command Center) ───
   // Gross = pre-tax billed-to-date; Net = gross − job costs; Margin = net ÷ gross.
   const activeProjectRows = projectRows.filter((p) => p.opp.status !== "post_sale_closed");
@@ -307,6 +285,62 @@ export default async function CommercialDashboardPage() {
           <div className="text-[11px] text-ppp-charcoal-500 leading-tight">Tomco Painting</div>
         </div>
       </div>
+
+      {/* ═══ Revenue & P&L — the money headline, on top (whole Command Center) ═══ */}
+      <section>
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+          Revenue &amp; P&amp;L
+          <span className="text-[11px] font-medium text-ppp-charcoal-500">— gross = billed · net = billed − costs · tax excluded</span>
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
+          <StatCard label="Job costs" value={formatCentsCompact(costs.total)} tone="amber" sub={costs.total === 0 ? "none logged" : "materials · labor · subs"} />
+          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+          <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : "net ÷ gross"} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
+          <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed</h3>
+              <span className="text-[11px] text-ppp-charcoal-500">last 6 months · pre-tax</span>
+            </div>
+            <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
+          </div>
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col items-center justify-center text-center">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-2 self-start flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-emerald-500" />Gross margin</h3>
+            <GaugeRing pct={revMarginPct ?? 0} tone={revMarginTone} value={revMarginPct === null ? "—" : `${revMarginPct}%`} label="net ÷ gross" size={116} />
+            <div className="mt-2 text-[11.5px] text-ppp-charcoal-500 tabular-nums">{formatCentsCompact(grossRevenueCents)} gross · {formatCentsCompact(costs.total)} cost</div>
+          </div>
+        </div>
+        <details className="group/rev mt-3">
+          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[40px] select-none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/rev:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
+            Cost breakdown &amp; revenue by project
+          </summary>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-2">
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3">Where the money goes</h3>
+              {revCostSegments.length > 0 ? (
+                <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(costs.total)} centerLabel="job costs" />
+              ) : (
+                <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No job costs logged yet. Add them on any project&rsquo;s Costs &amp; P&amp;L tab.</p>
+              )}
+            </div>
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue by project</h3>
+                <Link href="/commercial/projects" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Projects →</Link>
+              </div>
+              {revProjectBars.length > 0 ? (
+                <HBars items={revProjectBars} />
+              ) : (
+                <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No billed revenue yet.</p>
+              )}
+            </div>
+          </div>
+        </details>
+      </section>
 
       {/* Hero — unchanged structure, high-density KPIs at the top. */}
       <header className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -530,93 +564,6 @@ export default async function CommercialDashboardPage() {
           href="/commercial/reports/win-loss"
           icon={<IconTrophy />}
         />
-      </section>
-
-      {/* ─── Revenue & P&L (whole Command Center) ─── */}
-      <section>
-        <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
-          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-          Revenue &amp; P&amp;L
-          <span className="text-[11px] font-medium text-ppp-charcoal-500">— gross = billed · net = billed − costs · tax excluded</span>
-        </h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
-          <StatCard label="Job costs" value={formatCentsCompact(costs.total)} tone="amber" sub={costs.total === 0 ? "none logged" : "materials · labor · subs"} />
-          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
-          <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : "net ÷ gross"} />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
-          <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed</h3>
-              <span className="text-[11px] text-ppp-charcoal-500">last 6 months · pre-tax</span>
-            </div>
-            <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
-          </div>
-          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col items-center justify-center text-center">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-2 self-start flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-emerald-500" />Gross margin</h3>
-            <GaugeRing pct={revMarginPct ?? 0} tone={revMarginTone} value={revMarginPct === null ? "—" : `${revMarginPct}%`} label="net ÷ gross" size={116} />
-            <div className="mt-2 text-[11.5px] text-ppp-charcoal-500 tabular-nums">{formatCentsCompact(grossRevenueCents)} gross · {formatCentsCompact(costs.total)} cost</div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
-          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
-            <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3">Where the money goes</h3>
-            {revCostSegments.length > 0 ? (
-              <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(costs.total)} centerLabel="job costs" />
-            ) : (
-              <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No job costs logged yet. Add them on any project&rsquo;s Costs &amp; P&amp;L tab.</p>
-            )}
-          </div>
-          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue by project</h3>
-              <Link href="/commercial/projects" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Projects →</Link>
-            </div>
-            {revProjectBars.length > 0 ? (
-              <HBars items={revProjectBars} />
-            ) : (
-              <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No billed revenue yet.</p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Trends: awarded value over time + win-rate gauge ─── */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div>
-              <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
-                <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-                Value of jobs won
-              </h3>
-              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 pl-8">Total $ of bids marked Won each month</p>
-            </div>
-            <span className="text-[11px] text-ppp-charcoal-500 shrink-0">
-              {awardedTrendHasData ? "last 6 months" : "no wins yet — last 6 mo"}
-            </span>
-          </div>
-          <TrendChart data={awardedMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[180px] sm:h-[220px]" />
-        </div>
-        <Link href="/commercial/reports/win-loss" className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col items-center justify-center text-center transition-all hover:shadow-md hover:border-emerald-300 touch-manipulation">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-3 self-start flex items-center gap-2">
-            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-emerald-500" />
-            Win rate
-          </h3>
-          <GaugeRing pct={winRatePct ?? 0} tone="emerald" value={winRatePct !== null ? `${winRatePct}%` : "—"} label={winRatePct !== null ? "overall" : "no history"} size={124} />
-          <div className="mt-3 flex items-stretch gap-3">
-            <div className="px-3">
-              <div className="font-condensed text-xl font-black text-emerald-700 tabular-nums leading-none">{wonOpps.length}</div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mt-0.5">Won</div>
-            </div>
-            <div className="border-l border-ppp-charcoal-100" />
-            <div className="px-3">
-              <div className="font-condensed text-xl font-black text-ppp-charcoal-400 tabular-nums leading-none">{lostOpps.length}</div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mt-0.5">Lost</div>
-            </div>
-          </div>
-        </Link>
       </section>
 
       {/* ─── UNDER CONTRACT (production) ─── */}
