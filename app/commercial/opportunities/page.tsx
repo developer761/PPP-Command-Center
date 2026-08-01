@@ -85,6 +85,7 @@ import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
+import { HBars } from "@/components/commercial/charts";
 import DatePicker from "@/components/commercial/date-picker";
 import { IconBulb } from "@/components/commercial/inline-icons";
 
@@ -572,6 +573,20 @@ export default async function CommercialOpportunitiesPage({
   const totalPipelineCents = presaleOpenOpps.reduce((acc, o) => acc + weightedPipelineCents(o), 0);
   const totalBidLowCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
   const totalBidHighCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
+  // Pipeline value by stage (weighted $) — a funnel of where open deals sit.
+  const stageBars = PRE_SALE_OPEN_STATUSES
+    .map((st) => {
+      const inStage = presaleOpenOpps.filter((o) => o.status === st);
+      const weighted = inStage.reduce((a, o) => a + weightedPipelineCents(o), 0);
+      return {
+        label: opportunityStatusLabel(st),
+        value: weighted,
+        tone: "blue" as const,
+        valueLabel: formatCentsCompact(weighted),
+        sub: `${inStage.length} deal${inStage.length === 1 ? "" : "s"}`,
+      };
+    })
+    .filter((s) => s.value > 0 || s.sub !== "0 deals");
   // Wins this month — mirrors the /commercial dashboard KPI so the two
   // surfaces agree. Uses UTC-month-start; close enough for exec-review
   // "how'd we do this month" scan.
@@ -845,6 +860,18 @@ export default async function CommercialOpportunitiesPage({
             sub={wonThisMonth === 0 ? "no closes yet" : "and counting"}
           />
         </div>
+
+        {/* Pipeline by stage — weighted $ per stage, a funnel of where open deals
+            sit (only when there are open deals). */}
+        {presaleOpenOpps.length > 0 && stageBars.length > 0 && (
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 mt-3">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal">Pipeline by stage</h3>
+              <span className="text-[10px] text-ppp-charcoal-400 uppercase tracking-wider">weighted $</span>
+            </div>
+            <HBars items={stageBars} />
+          </div>
+        )}
       </header>
 
       {/* ─── Result banners ─── */}

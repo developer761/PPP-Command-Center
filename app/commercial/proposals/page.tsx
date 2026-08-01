@@ -38,6 +38,7 @@ import {
   type ProposalStatus,
 } from "@/lib/commercial/proposals/constants";
 import NewProposalPicker from "@/components/commercial/new-proposal-picker";
+import { DonutChart, type ChartTone } from "@/components/commercial/charts";
 import {
   ProposalsKanbanDnDProvider,
   ProposalDnDColumn,
@@ -286,6 +287,15 @@ export default async function ProposalsIndexPage({
     byStatus.set(r.status, list);
   }
 
+  // Status-mix donut over all current proposals.
+  const PROPOSAL_STATUS_TONE: Record<string, ChartTone> = {
+    draft: "neutral", pending_approval: "amber", sent: "brand", won: "emerald", lost: "rose", expired: "neutral",
+  };
+  const proposalMix = PROPOSAL_STATUSES.filter((s) => s !== "superseded")
+    .map((s) => ({ label: proposalStatusLabel(s), value: byStatus.get(s)?.length ?? 0, tone: PROPOSAL_STATUS_TONE[s] ?? "neutral", valueLabel: String(byStatus.get(s)?.length ?? 0) }))
+    .filter((x) => x.value > 0);
+  const totalProposalCount = currentRows.length;
+
   // Picker data — only Pre-Sale-open opps get "pickable" so Alex
   // can't start a proposal on a lost/no-bid deal. Source list is
   // PROPOSAL_ELIGIBLE_OPP_STATUSES so /commercial/proposals and the
@@ -345,12 +355,24 @@ export default async function ProposalsIndexPage({
         />
       </header>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatTile label="Open" value={openCount.toString()} tone="charcoal" />
-        <StatTile label="Sent · awaiting reply" value={sentCount.toString()} tone="brand" />
-        <StatTile label="Won" value={wonCount.toString()} tone="emerald" />
-        <StatTile label="Outstanding total" value={formatDollarsCompact(outstandingCents)} tone="brand" />
+      {/* KPI strip + status-mix donut */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="lg:col-span-2 grid grid-cols-2 gap-3">
+          <StatTile label="Open" value={openCount.toString()} tone="charcoal" />
+          <StatTile label="Sent · awaiting reply" value={sentCount.toString()} tone="brand" />
+          <StatTile label="Won" value={wonCount.toString()} tone="emerald" />
+          <StatTile label="Outstanding total" value={formatDollarsCompact(outstandingCents)} tone="brand" />
+        </div>
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-center">
+          {proposalMix.length > 0 ? (
+            <DonutChart size={128} segments={proposalMix} centerValue={String(totalProposalCount)} centerLabel="proposals" />
+          ) : (
+            <div className="text-center">
+              <div className="font-condensed text-2xl font-black text-ppp-charcoal-300">0</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mt-1">proposals</div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* View mode + status filter chips — same-URL swap */}
