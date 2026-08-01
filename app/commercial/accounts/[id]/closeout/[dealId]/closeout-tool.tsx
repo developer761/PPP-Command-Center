@@ -45,6 +45,7 @@ import {
 import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
+import { AutosaveForm } from "@/components/commercial/autosave-form";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { CloseoutItemControls } from "@/components/commercial/closeout-item-controls";
@@ -99,19 +100,20 @@ async function createPackageAction(formData: FormData) {
   redirect(`${base(id, dealId)}&pkg=${res.value.id}${backQ(back)}`);
 }
 
-async function updateCoverAction(formData: FormData) {
+/** Autosave-friendly cover save: same write, but RETURNS (no redirect) so the
+ *  AutosaveForm wrapper can show its "Saving…/Saved" pill instead of navigating
+ *  on every debounced keystroke. Throws on a real failure → the pill shows the
+ *  error. (Security/ownership failures throw too — a legit user never hits them.) */
+async function autosaveCoverAction(formData: FormData) {
   "use server";
   const userId = await requireUser();
   const id = String(formData.get("account_id") ?? "");
   const dealId = String(formData.get("opp_id") ?? "");
-  const back = String(formData.get("back") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
-  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
-  if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) throw new Error("Invalid ids");
+  if (!(await pkgBelongs(pkgId, id, dealId))) throw new Error("Package not found");
   const taRaw = String(formData.get("transmitted_as") ?? "").trim();
-  const transmitted_as = (CLOSEOUT_TRANSMITTED_AS as readonly string[]).includes(taRaw)
-    ? (taRaw as CloseoutTransmittedAs)
-    : null;
+  const transmitted_as = (CLOSEOUT_TRANSMITTED_AS as readonly string[]).includes(taRaw) ? (taRaw as CloseoutTransmittedAs) : null;
   const yrsRaw = Number(String(formData.get("warranty_years") ?? "2"));
   const res = await updateCloseoutPackage(
     pkgId,
@@ -127,9 +129,8 @@ async function updateCoverAction(formData: FormData) {
     },
     userId
   );
-  if (!res.ok) redirect(`${base(id, dealId)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) throw new Error(res.error);
   revalidateCloseout(id, dealId);
-  redirect(`${base(id, dealId)}&pkg=${pkgId}&ok=1${backQ(back)}`);
 }
 
 async function changeStatusAction(formData: FormData) {
@@ -499,7 +500,7 @@ export async function CloseoutTool({
 
           {/* Cover / transmittal */}
           {editable ? (
-            <form action={updateCoverAction} className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3">
+            <AutosaveForm action={autosaveCoverAction} formClassName="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3">
               <Ctx />
               <h2 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Transmittal cover + warranty</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -516,10 +517,11 @@ export async function CloseoutTool({
                 <label className="block"><span className={LABEL_CLS}>Warranty (years)</span><input type="text" inputMode="numeric" name="warranty_years" defaultValue={String(activePkg.warranty_years)} className={INPUT_CLS} /></label>
                 <label className="block sm:col-span-2"><span className={LABEL_CLS}>Remarks</span><textarea name="remarks" defaultValue={activePkg.remarks ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="Optional note on the cover." /></label>
               </div>
-              <div className="flex justify-end">
-                <PendingSubmitButton className="px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold min-h-[44px]" pendingLabel="Saving…">Save cover</PendingSubmitButton>
+              <div className="flex items-center justify-end gap-3">
+                <span className="text-[11px] text-ppp-charcoal-400">Saves automatically</span>
+                <PendingSubmitButton className="px-4 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-sm font-semibold min-h-[44px] hover:bg-ppp-charcoal-50" pendingLabel="Saving…">Save now</PendingSubmitButton>
               </div>
-            </form>
+            </AutosaveForm>
           ) : (
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 text-[12px] text-ppp-charcoal-600">
               <div className="font-semibold text-ppp-charcoal mb-1">Transmitted to {activePkg.to_company || account.company_name}{activePkg.to_attention ? ` · Attn ${activePkg.to_attention}` : ""}</div>
