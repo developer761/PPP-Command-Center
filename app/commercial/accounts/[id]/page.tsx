@@ -72,6 +72,7 @@ import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commerci
 import { DonutChart, GaugeRing, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 import { getProjectFinancials } from "@/lib/commercial/projects/financials";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
+import { costBreakdownForAccount } from "@/lib/commercial/purchases/db";
 import TrendChart from "@/components/trend-chart";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
@@ -1970,6 +1971,25 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
   );
 }
 
+/** Monthly pre-tax billed revenue ($K) from issued invoices, last 6 months —
+ *  the "revenue billed / month" line shared by the deal + account P&L views. */
+function monthlyBilledSeries(invoices: { status: string; created_at: string | null; subtotal_cents: number }[]): { label: string; value: number }[] {
+  const out: { label: string; value: number }[] = [];
+  const base = new Date();
+  for (let m = 5; m >= 0; m--) {
+    const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
+    const start = d.getTime();
+    const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
+    const cents = invoices.reduce((acc, inv) => {
+      if (inv.status === "void" || inv.status === "draft") return acc;
+      const t = inv.created_at ? new Date(inv.created_at).getTime() : NaN;
+      return t >= start && t < end ? acc + inv.subtotal_cents : acc;
+    }, 0);
+    out.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
+  }
+  return out;
+}
+
 /** Deal P&L tab — ONE deal's complete financial picture, combined from every
  *  tool (contract = bid + approved COs, billed from invoices/AIA, collected,
  *  costs from purchases). Same getProjectFinancials the Costs tab + portfolio
@@ -1979,12 +1999,17 @@ const PNL_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
 };
 async function DealPnLView({ oppId }: { oppId: string }) {
-  const fin = await getProjectFinancials(oppId);
+  const [fin, dealInvoices] = await Promise.all([
+    getProjectFinancials(oppId),
+    listCommercialInvoices({ opportunityId: oppId }),
+  ]);
   const grossRevenueCents = fin.billedPreTaxCents;
   const costsCents = fin.costs.total;
   const netProfitCents = grossRevenueCents - costsCents;
   const marginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
   const collectedPct = fin.invoicedCents > 0 ? Math.min(100, Math.round((fin.collectedCents / fin.invoicedCents) * 100)) : 0;
+  // Monthly billed revenue ($K, pre-tax subtotal of issued invoices).
+  const revenueMonthly = monthlyBilledSeries(dealInvoices);
   const costSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
     label: PURCHASE_CATEGORY_META[c].label,
     value: fin.costs[c],
@@ -2003,6 +2028,17 @@ async function DealPnLView({ oppId }: { oppId: string }) {
         <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
         <StatCard label="Margin" value={marginPct === null ? "—" : `${marginPct}%`} tone={marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald"} sub={marginPct === null ? "no revenue yet" : "net ÷ gross"} />
       </div>
+      {/* Revenue billed over time */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className="text-[13px] font-bold text-ppp-charcoal flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            Revenue billed
+          </h3>
+          <span className="text-[11px] text-ppp-charcoal-500">last 6 months · pre-tax</span>
+        </div>
+        <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
+      </section>
       {/* Cost mix + margin gauge */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
@@ -6898,7 +6934,23 @@ async function AccountKpisTab({
   // the account's invoices for a monthly billing trend.
   const projectRows = await listProjects({ accountId });
   const production = summarizeProduction(projectRows);
-  const accountInvoices = await listCommercialInvoices({ accountId });
+  const [accountInvoices, accountCosts] = await Promise.all([
+    listCommercialInvoices({ accountId }),
+    costBreakdownForAccount(accountId),
+  ]);
+  // ── Account-wide P&L (all this GC's deals combined) — Gross = billed pre-tax,
+  // Net = billed − costs. Same definitions as the deal P&L + Revenue page. ──
+  const acctGrossCents = production.billedContractCents;
+  const acctCostsCents = accountCosts.total;
+  const acctNetCents = acctGrossCents - acctCostsCents;
+  const acctMarginPct = acctGrossCents > 0 ? Math.round((acctNetCents / acctGrossCents) * 100) : null;
+  const acctRevenueMonthly = monthlyBilledSeries(accountInvoices);
+  const acctCostSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => accountCosts[c] > 0).map((c) => ({
+    label: PURCHASE_CATEGORY_META[c].label,
+    value: accountCosts[c],
+    tone: PNL_COST_TONE[c] ?? "neutral",
+    valueLabel: formatCentsCompact(accountCosts[c]),
+  }));
 
   // winRate() returns a 0..1 decimal — ×100 for display.
   const winRateRaw = overview ? winRate(overview) : null;
@@ -6954,6 +7006,39 @@ async function AccountKpisTab({
 
   return (
     <div className="space-y-4">
+      {/* ── Profitability ── whole-account P&L: Gross (billed) / Costs / Net /
+          Margin across ALL this GC's deals, + revenue line + margin gauge +
+          cost donut. Same definitions as the deal P&L + Revenue page. */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            Profitability
+          </h3>
+          <span className="text-[11px] text-ppp-charcoal-500">all deals · Gross = billed, Net = billed − costs</span>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Gross revenue" value={formatCentsCompact(acctGrossCents)} tone="brand" sub="billed to date" spark={acctRevenueMonthly.map((r) => r.value)} sparkLabels={acctRevenueMonthly.map((r) => r.label)} />
+          <StatCard label="Job costs" value={formatCentsCompact(acctCostsCents)} tone="amber" sub={acctCostsCents === 0 ? "none logged" : "materials · labor · subs"} />
+          <StatCard label="Net profit" value={`${acctNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(acctNetCents))}`} tone={acctNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+          <StatCard label="Margin" value={acctMarginPct === null ? "—" : `${acctMarginPct}%`} tone={acctMarginPct === null ? "neutral" : acctMarginPct < 0 ? "rose" : acctMarginPct < 15 ? "amber" : "emerald"} sub={acctMarginPct === null ? "no revenue yet" : "net ÷ gross"} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
+          <div className="lg:col-span-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Revenue billed / month · last 6 mo</div>
+            <TrendChart data={acctRevenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[140px]" />
+          </div>
+          <div className="flex items-center gap-4 justify-center">
+            <GaugeRing pct={acctMarginPct ?? 0} tone={acctMarginPct === null ? "neutral" : acctMarginPct < 0 ? "rose" : acctMarginPct < 15 ? "amber" : "emerald"} value={acctMarginPct === null ? "—" : `${acctMarginPct}%`} label="margin" size={104} />
+            {acctCostSegments.length > 0 ? (
+              <DonutChart size={104} legend={false} segments={acctCostSegments} centerValue={formatCentsCompact(acctCostsCents)} centerLabel="costs" />
+            ) : (
+              <div className="text-[11px] text-ppp-charcoal-400 max-w-[100px]">Costs appear here as they&rsquo;re logged.</div>
+            )}
+          </div>
+        </div>
+      </section>
+
       {/* ── Collections ── KPI row + Paid/Balance donut + monthly billing trend.
           Always visible: the charts sit at 0 (empty ring, flat line) until there
           are invoices, so the page never looks blank. */}
