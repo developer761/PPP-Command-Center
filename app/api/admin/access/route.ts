@@ -68,12 +68,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
+  // Platform grant. Absent → residential-only (Command Center), preserving the
+  // existing Settings → Access behavior. The Commercial Access page passes
+  // { commandCenter: false, commercial: true } for a Commercial-only login.
+  const rawPlatforms = (body.platforms ?? null) as { commandCenter?: unknown; commercial?: unknown } | null;
+  const platforms = rawPlatforms
+    ? { commandCenter: rawPlatforms.commandCenter === true, commercial: rawPlatforms.commercial === true }
+    : undefined;
+
   const result = await createPasswordUser({
     email: String(body.email ?? ""),
     password: String(body.password ?? ""),
     full_name: body.full_name ? String(body.full_name) : null,
     role: normalizeRole(String(body.role ?? "rep")),
     actor: gate.actor,
+    platforms,
   });
 
   if (!result.ok) {

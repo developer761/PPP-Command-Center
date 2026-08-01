@@ -34,6 +34,9 @@ export type ManagedUser = {
   is_active: boolean;
   last_login_at: string | null;
   created_at: string;
+  /** Platform access flags — the Commercial Access page filters on these. */
+  has_command_center_access: boolean;
+  has_new_platform_access: boolean;
 };
 
 export type ActorMeta = { user_id: string; email: string };
@@ -70,6 +73,10 @@ function mapRow(row: Record<string, unknown>): ManagedUser {
     is_active: row.is_active !== false,
     last_login_at: (row.last_login_at as string | null) ?? null,
     created_at: String(row.created_at ?? ""),
+    // Legacy rows pre-date the ALTER TABLE — default CC true / commercial false
+    // (same defaults platformAccess() applies) so the list never mis-flags.
+    has_command_center_access: row.has_command_center_access !== false,
+    has_new_platform_access: row.has_new_platform_access === true,
   };
 }
 
@@ -79,7 +86,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "user_id,email,full_name,sf_user_name,role,is_admin,auth_provider,is_active,last_login_at,created_at"
+      "user_id,email,full_name,sf_user_name,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
     )
     .order("created_at", { ascending: false });
   if (error) {
@@ -111,7 +118,7 @@ async function getRow(userId: string): Promise<ManagedUser | null> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "user_id,email,full_name,sf_user_name,role,is_admin,auth_provider,is_active,last_login_at,created_at"
+      "user_id,email,full_name,sf_user_name,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -148,6 +155,12 @@ export async function createPasswordUser(input: {
   full_name: string | null;
   role: UserRole;
   actor: ActorMeta;
+  /** Which platforms this account can reach. Defaults to Command Center only
+   *  (residential) so the existing Settings → Access flow is unchanged. The
+   *  Commercial Access page passes {commercial:true, commandCenter:false} to
+   *  provision a Commercial-only login. Someone who needs BOTH is granted
+   *  manually (rare — Karan/Katie/Alex). */
+  platforms?: { commandCenter?: boolean; commercial?: boolean };
 }): Promise<CreateResult> {
   const email = validateEmail(input.email);
   if (!email) return { ok: false, error: "Enter a valid email address." };
@@ -210,6 +223,12 @@ export async function createPasswordUser(input: {
   }
 
   // Upsert the profile row with the role. Mirror is_admin for legacy paths.
+  // Platform access — default residential-only (Command Center), matching the
+  // pre-2026-08 behavior of this function. The Commercial Access page overrides
+  // to Commercial-only. This is what enforces "added from the PPP side → PPP
+  // only; added from the Commercial side → Commercial only."
+  const commandCenter = input.platforms?.commandCenter ?? true;
+  const commercial = input.platforms?.commercial ?? false;
   const { error: profErr } = await sb.from("profiles").upsert(
     {
       user_id: authUserId,
@@ -219,6 +238,8 @@ export async function createPasswordUser(input: {
       is_admin: role === "admin",
       auth_provider: "password",
       is_active: true,
+      has_command_center_access: commandCenter,
+      has_new_platform_access: commercial,
     },
     { onConflict: "user_id" }
   );
@@ -232,7 +253,7 @@ export async function createPasswordUser(input: {
     action: "create_user",
     target_user_id: authUserId,
     target_email: email,
-    detail: { role, full_name },
+    detail: { role, full_name, platforms: { commandCenter, commercial } },
   });
 
   return { ok: true, user_id: authUserId };

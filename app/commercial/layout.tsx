@@ -60,6 +60,9 @@ export default async function CommercialDashboardLayout({
   const fullName = profile?.sf_user_name ?? email.split("@")[0];
   const firstName = fullName.split(" ")[0] ?? null;
   const initial = (firstName ?? email[0] ?? "P").charAt(0).toUpperCase();
+  // Platform admin — gates the admin-only "Access" nav item. The Access page
+  // itself re-checks via normalizeRole (authoritative); this just hides the link.
+  const isAdmin = profile?.is_admin === true || isAdminEmail(user.email);
 
   // Phase I — dark mode. Read the persisted theme so the server renders the
   // right one (no flash on navigation). Scoped to this wrapper, so the
@@ -71,6 +74,7 @@ export default async function CommercialDashboardLayout({
     <CommercialChrome
       user={{ email, fullName, firstName, initial }}
       showSwitcher={access.hasBoth}
+      isAdmin={isAdmin}
     >
       {children}
       {/* Karan 2026-07-11 (signature-moments batch): global undo-toast.

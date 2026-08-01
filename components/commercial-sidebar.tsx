@@ -25,6 +25,8 @@ type NavItem = {
   phase?: number;
   /** When true, render greyed-out + no Link — the route doesn't exist yet. */
   disabled?: boolean;
+  /** Only render for platform admins (e.g. Access — user provisioning). */
+  adminOnly?: boolean;
   icon: React.ReactNode;
 };
 
@@ -82,6 +84,7 @@ const navSections: NavSection[] = [
       { label: "Competitors", href: "/commercial/settings/competitors", icon: <IconUsers /> },
       { label: "Sales tax", href: "/commercial/settings/tax", icon: <IconDollar /> },
       { label: "Archived deals", href: "/commercial/settings/archived", icon: <IconArchive /> },
+      { label: "Access", href: "/commercial/settings/access", adminOnly: true, icon: <IconUsers /> },
     ],
   },
 ];
@@ -90,11 +93,19 @@ type Props = {
   /** Set when the viewer also has Command Center access — only then is the
    *  switcher block at the bottom-left rendered. */
   showSwitcher: boolean;
+  /** Platform admin — gates adminOnly nav items (e.g. Access provisioning). */
+  isAdmin?: boolean;
   onNavigate?: () => void;
 };
 
-export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
+export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNavigate }: Props) {
   const pathname = usePathname();
+  // Drop admin-only rows (Access) for non-admins so a Commercial tester never
+  // sees a link that would just bounce them. The page redirects too (defense).
+  const sections = navSections.map((s) => ({
+    ...s,
+    items: s.items.filter((it) => !it.adminOnly || isAdmin),
+  }));
 
   // 2026-07-29: a post-sale tool detail lives UNDER the account
   // (/commercial/accounts/<id>/<tool>/<dealId>) but should light up its OWN
@@ -144,7 +155,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
       </div>
 
       <nav className="flex-1 px-3 py-3 lg:py-4 overflow-y-auto">
-        {navSections.map((section, sectionIdx) => (
+        {sections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-4 lg:mt-6" : ""}>
             <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-ppp-navy-600 uppercase">
               {section.heading}

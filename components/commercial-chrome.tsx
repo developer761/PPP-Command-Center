@@ -23,9 +23,11 @@ type Props = {
     initial: string;
   };
   showSwitcher: boolean;
+  /** Platform admin — gates admin-only sidebar items (Access). */
+  isAdmin: boolean;
 };
 
-export default function CommercialChrome({ children, user, showSwitcher }: Props) {
+export default function CommercialChrome({ children, user, showSwitcher, isAdmin }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
@@ -49,7 +51,7 @@ export default function CommercialChrome({ children, user, showSwitcher }: Props
   return (
     <div className="flex min-h-screen bg-[var(--color-surface-muted)]">
       <aside className="hidden lg:block shrink-0">
-        <CommercialSidebar showSwitcher={showSwitcher} />
+        <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} />
       </aside>
 
       {mobileOpen && (
@@ -69,7 +71,7 @@ export default function CommercialChrome({ children, user, showSwitcher }: Props
         aria-modal={mobileOpen}
         role={mobileOpen ? "dialog" : undefined}
       >
-        <CommercialSidebar showSwitcher={showSwitcher} onNavigate={() => setMobileOpen(false)} />
+        <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} onNavigate={() => setMobileOpen(false)} />
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
