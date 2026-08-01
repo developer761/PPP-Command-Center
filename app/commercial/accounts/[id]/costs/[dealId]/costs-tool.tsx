@@ -30,7 +30,13 @@ import { getDocumentsByIds } from "@/lib/commercial/documents/db";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import PurchaseForm from "@/components/commercial/purchase-form";
+import { DonutChart, GaugeRing, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import Link from "next/link";
+
+const COST_CATEGORY_TONE: Record<string, ChartTone> = {
+  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
+};
 
 export type CostsSP = {
   cost_ok?: string;
@@ -259,6 +265,15 @@ export async function ProjectCostsTool({
   const barPctOfContract = Math.min(100, truePctOfContract);
   const mt = marginTone(fin.grossMarginPct);
   const laborTotalHours = laborByWorker.reduce((s, w) => s + w.hours, 0);
+  // Revenue framing (Gross = billed, Net = billed − costs) — matches the Revenue page.
+  const netProfitCents = fin.billedPreTaxCents - fin.costs.total;
+  const billedMarginPct = fin.billedPreTaxCents > 0 ? Math.round((netProfitCents / fin.billedPreTaxCents) * 100) : null;
+  const costSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
+    label: PURCHASE_CATEGORY_META[c].label,
+    value: fin.costs[c],
+    tone: COST_CATEGORY_TONE[c] ?? "neutral",
+    valueLabel: formatCentsCompact(fin.costs[c]),
+  }));
 
   const panel = (
     <div className="space-y-3">
@@ -329,6 +344,34 @@ export async function ProjectCostsTool({
           </div>
         )}
       </section>
+
+      {/* ── Revenue & margin ── cost-by-category donut + billed-based margin gauge
+          (Gross = billed, Net = billed − costs — matches the Revenue page). */}
+      {(fin.costs.total > 0 || fin.billedPreTaxCents > 0) && (
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            Revenue &amp; margin
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
+            <div className="flex items-center justify-center">
+              {costSegments.length > 0 ? (
+                <DonutChart size={148} segments={costSegments} centerValue={formatCentsCompact(fin.costs.total)} centerLabel="job costs" />
+              ) : (
+                <p className="text-[12px] text-ppp-charcoal-400 text-center">No costs logged yet — add one below.</p>
+              )}
+            </div>
+            <div className="flex items-center gap-4">
+              <GaugeRing pct={billedMarginPct ?? 0} tone={billedMarginPct === null ? "neutral" : billedMarginPct < 0 ? "rose" : billedMarginPct < 15 ? "amber" : "emerald"} value={billedMarginPct === null ? "—" : `${billedMarginPct}%`} label="margin" size={112} />
+              <div className="min-w-0 text-[12px] space-y-1">
+                <div><span className="text-ppp-charcoal-500">Gross (billed): </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(fin.billedPreTaxCents)}</strong></div>
+                <div><span className="text-ppp-charcoal-500">Costs: </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(fin.costs.total)}</strong></div>
+                <div className="pt-1 border-t border-ppp-charcoal-100"><span className="text-ppp-charcoal-500">Net profit: </span><strong className={`tabular-nums ${netProfitCents < 0 ? "text-rose-700" : "text-emerald-700"}`}>{netProfitCents < 0 ? "−" : ""}{formatCentsCompact(Math.abs(netProfitCents))}</strong></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── Labor by worker (deal-scoped overview) ── */}
       {laborByWorker.length > 0 && (
