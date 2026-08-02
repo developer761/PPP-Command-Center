@@ -1,8 +1,8 @@
 # Commercial Command Center — Phase 3 Plan
 
-_Created 2026-08 after the 4-persona UX walk (Alex / estimator / PM / Katie). Supersedes the old `PHASE_3_INVOICING_PLAN.md` (that "Phase 3 = Invoicing" shipped as Phase 1)._
+_Created 2026-08 after TWO UX rounds — 4-persona walk (Alex / estimator / PM / Katie) + a 5-lens walk (field foreman / first-run / accessibility / edge-cases / flow). Supersedes the old `PHASE_3_INVOICING_PLAN.md` (that "Phase 3 = Invoicing" shipped as Phase 1)._
 
-Phase 2 (Costs / Job P&L / charts / revenue) is **shipped, audited, and closed**. Phase 3 is the next build block. Ordering is roughly by user-pain and dependency.
+Phase 2 (Costs / Job P&L / charts / revenue) is **shipped, audited, and closed**. Every clear-win from both UX rounds is **already shipped**; this doc is the remaining Phase-3-sized build block. Ordering is roughly by user-pain and dependency — greenlit items first.
 
 ---
 
@@ -35,6 +35,22 @@ Phase 2 (Costs / Job P&L / charts / revenue) is **shipped, audited, and closed**
 Most inputs already compute on the page (`pendingCoCount`, `latestAppStatus`, `awaitingSubs`, `overdueInvCount`, `retainageHeldCents`) — the work is aggregation + aging + one clean strip component (mirror the dashboard "Needs attention" pattern). Hidden when nothing's due.
 
 **Est:** 3–4h. Render-only over existing data + one aging query.
+
+---
+
+## 3A+ — Universal Search  _(Karan 2026-08 — "find invoice X for account Y, interactively")_
+
+**Idea:** one always-visible, interactive search bar in the topbar that finds anything — an account, an opportunity, an **invoice** (incl. by-number / PO / amount), a proposal, a change order, a document — and lets you **scope + filter** (e.g. "invoices for _Turner_", "overdue invoices", "AIA apps on _40 Wall_"). Today there's a ⌘K command palette that jump-searches accounts/opportunities/invoices; this promotes it into a first-class, filterable search experience.
+
+**Build:**
+- Persistent search input in the commercial topbar (opens the same overlay as ⌘K, but always visible + tappable on mobile). Type-ahead, keyboard-navigable, grouped results.
+- **Entity-type filter chips** — All · Accounts · Opportunities · **Invoices** · Proposals · Documents — to narrow the result set.
+- **Scoping**: pick an account (or start typing one) → results narrow to _that account's_ invoices / opportunities / docs. From an account/opportunity page the bar defaults its scope to that record ("search within Turner").
+- **Money-aware invoice filters**: status (overdue / unpaid / paid / draft), amount range, date range — so "which overdue invoices does Turner have" is one query. Each result deep-links to the right surface (invoice → detail, opportunity → drill-in, document → download).
+- **Backend**: extend the existing `/api/commercial/palette-search` route into a fuller search API (entity param + account scope + status/amount/date filters), reusing the pre-computed AR status. **Subsumes 3A's document search** — documents become one searchable entity here — and reuses the a11y focus-restore already added to the palette.
+- Recent searches + "jump to" for speed.
+
+**Est:** 5–7h. Read-only search + one richer API + the topbar UI. Do it alongside/instead of 3A so document search and universal search are one surface, not two.
 
 ---
 
