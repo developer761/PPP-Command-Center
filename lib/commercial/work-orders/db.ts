@@ -85,10 +85,23 @@ export async function createWorkOrder(input: {
     })
     .select(WO_COLS)
     .maybeSingle();
-  if (error || !inserted) return { ok: false, error: error?.message ?? "insert_failed" };
+  if (error || !inserted) {
+    // Race with the partial-unique index (one live WO per opp): a concurrent
+    // create won. Re-fetch and return the existing one instead of surfacing a
+    // raw 23505 to the user.
+    const raced = await getWorkOrderForOpp(input.opportunity_id);
+    if (raced) return { ok: true, value: raced };
+    return { ok: false, error: "Couldn't create the work order — please reload and try again." };
+  }
   const wo = inserted as WorkOrder;
   await logInsert("commercial_work_orders", wo.id, wo, input.created_by_user_id);
   return { ok: true, value: wo };
+}
+
+/** Point a sent Work Order at its frozen PDF document (best-effort, no audit). */
+export async function setWorkOrderSnapshot(id: string, snapshot_document_id: string): Promise<void> {
+  const sb = commercialDb();
+  await sb.from("commercial_work_orders").update({ snapshot_document_id }).eq("id", id);
 }
 
 export async function updateWorkOrder(
@@ -102,8 +115,9 @@ export async function updateWorkOrder(
   if (before.status !== "draft") return { ok: false, error: "Only a draft work order can be edited." };
 
   const row: Record<string, unknown> = { updated_at: new Date().toISOString(), updated_by_user_id: actorUserId };
-  if (patch.work_notes !== undefined) row.work_notes = patch.work_notes?.trim() || null;
-  if (patch.assigned_to !== undefined) row.assigned_to = patch.assigned_to?.trim() || null;
+  // Cap lengths so a long unbroken string can't degrade the PDF layout.
+  if (patch.work_notes !== undefined) row.work_notes = patch.work_notes?.trim().slice(0, 2000) || null;
+  if (patch.assigned_to !== undefined) row.assigned_to = patch.assigned_to?.trim().slice(0, 200) || null;
   if (patch.scheduled_start_date !== undefined) row.scheduled_start_date = patch.scheduled_start_date || null;
 
   const { data, error } = await sb
@@ -131,7 +145,10 @@ export async function changeWorkOrderStatus(
   const before = await getWorkOrder(id);
   if (!before) return { ok: false, error: "not_found" };
   const allowed = ALLOWED_WORK_ORDER_TRANSITIONS[before.status] ?? [];
-  if (before.status !== to && !allowed.includes(to)) {
+  // Reject same-status no-ops too (the allowed sets never include the current
+  // status). Without this, a stale-tab "Send to crew" on an already-sent WO
+  // would pass the guard and re-file a duplicate PDF + re-stamp sent_at.
+  if (!allowed.includes(to)) {
     return { ok: false, error: `Cannot move a work order from ${before.status} to ${to}.` };
   }
 
@@ -276,10 +293,14 @@ export async function buildWorkOrderContent(opportunity_id: string): Promise<Wor
   // Resolve library exclusions (ordered) + append per-proposal custom lines.
   const allEx = await listExclusions({ activeOnly: false }).catch(() => []);
   const byId = new Map(allEx.map((e) => [e.id, e.text] as const));
+  // Cap each exclusion at 500 chars (mirrors the proposal PDF) so a pathological
+  // direct-DB write can't blow the WO PDF layout.
+  const cap = (t: string) => (t.length > 500 ? t.slice(0, 500) + "…" : t);
   const libraryTexts = (proposal.exclusion_ids ?? [])
     .map((id) => byId.get(id))
-    .filter((t): t is string => Boolean(t && t.trim()));
-  const customTexts = (proposal.custom_exclusions ?? []).filter((t) => t && t.trim());
+    .filter((t): t is string => Boolean(t && t.trim()))
+    .map(cap);
+  const customTexts = (proposal.custom_exclusions ?? []).filter((t) => t && t.trim()).map(cap);
   const exclusions = [...libraryTexts, ...customTexts];
 
   return {

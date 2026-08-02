@@ -30,6 +30,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const wo = await getWorkOrder(id);
   if (!wo || wo.voided_at) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
+  // A sent WO serves the FROZEN copy filed at send time — not a live re-render,
+  // which could diverge from what the crew actually received if the proposal or
+  // finishes changed afterward. Redirect to the snapshot document.
+  if (wo.status === "sent" && wo.snapshot_document_id) {
+    return NextResponse.redirect(new URL(`/api/commercial/documents/${wo.snapshot_document_id}/download`, _req.url));
+  }
+
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
     .select("title, title_override, client_name, property_street, property_city, property_state, account_id, status, sub_status")

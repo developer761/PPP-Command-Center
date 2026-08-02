@@ -21,6 +21,7 @@ import {
   createWorkOrder,
   updateWorkOrder,
   changeWorkOrderStatus,
+  setWorkOrderSnapshot,
   buildWorkOrderContent,
 } from "@/lib/commercial/work-orders/db";
 import {
@@ -29,7 +30,7 @@ import {
   isWorkOrderEditable,
   type WorkOrderStatus,
 } from "@/lib/commercial/work-orders/constants";
-import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
+import { safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { AutosaveForm } from "@/components/commercial/autosave-form";
@@ -143,15 +144,23 @@ async function autoFileWorkOrder(accountId: string, dealId: string, woId: string
       logo,
       signature,
     });
-    await autoFileOpportunityDocument({
-      opportunityId: dealId,
+    // File the frozen PDF directly (not via the void-returning auto-file helper)
+    // so we get the document id back and can pin snapshot_document_id — the sent
+    // WO then serves this exact copy instead of re-rendering the live proposal.
+    const { uploadDocument } = await import("@/lib/commercial/documents/db");
+    const up = await uploadDocument({
+      parent_type: "opportunity",
+      parent_id: dealId,
       category: "work_order",
-      fileName: safeDocName("Work_Order", dealName) + ".pdf",
-      mimeType: "application/pdf",
-      data: new Uint8Array(pdf),
+      file_name: safeDocName("Work_Order", dealName) + ".pdf",
+      size_bytes: pdf.length,
+      mime_type: "application/pdf",
       notes: sentStampNote("Work order sent to crew"),
-      actorUserId: userId,
+      data: new Uint8Array(pdf),
+      uploaded_by_user_id: userId,
     });
+    if (up.ok) await setWorkOrderSnapshot(woId, up.document.id);
+    else console.warn("[auto-file work order] upload skipped:", up.error);
   } catch (err) {
     console.warn("[auto-file work order] failed:", err);
   }
@@ -274,12 +283,18 @@ export async function WorkOrderTool({
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">
               <a
-                href={`/api/commercial/work-order/${wo.id}/pdf`}
+                href={
+                  // A sent WO serves its FROZEN copy (what the crew received);
+                  // a draft renders live so edits show in the preview.
+                  wo.status === "sent" && wo.snapshot_document_id
+                    ? `/api/commercial/documents/${wo.snapshot_document_id}/download`
+                    : `/api/commercial/work-order/${wo.id}/pdf`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
               >
-                Preview PDF
+                {wo.status === "sent" ? "View sent PDF" : "Preview PDF"}
               </a>
               {ALLOWED_WORK_ORDER_TRANSITIONS[wo.status].map((to) => (
                 <form key={to} action={changeStatusAction}>
