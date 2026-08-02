@@ -150,7 +150,8 @@ export default async function CommercialNotificationSettingsPage({
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div>
+      <Link href="/commercial/settings" className="inline-flex items-center gap-1 text-[12px] font-medium text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[44px] sm:min-h-[36px]"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>Settings</Link>
+            <div>
         <h1 className="text-xl font-bold tracking-tight text-ppp-charcoal">Notification alerts</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">
           Notifications always appear in the bell and on the{" "}

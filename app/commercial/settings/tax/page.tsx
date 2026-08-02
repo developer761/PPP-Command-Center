@@ -141,7 +141,8 @@ export default async function TaxJurisdictionsAdminPage({
 
   return (
     <div className="space-y-5">
-      <header>
+      <Link href="/commercial/settings" className="inline-flex items-center gap-1 text-[12px] font-medium text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[44px] sm:min-h-[36px]"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>Settings</Link>
+            <header>
         <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">Sales tax by ZIP</h1>
