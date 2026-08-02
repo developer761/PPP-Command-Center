@@ -583,10 +583,10 @@ export default async function CommercialOpportunitiesPage({
         value: weighted,
         tone: "blue" as const,
         valueLabel: formatCentsCompact(weighted),
-        sub: `${inStage.length} deal${inStage.length === 1 ? "" : "s"}`,
+        sub: `${inStage.length} opportunit${inStage.length === 1 ? "y" : "ies"}`,
       };
     })
-    .filter((s) => s.value > 0 || s.sub !== "0 deals");
+    .filter((s) => s.value > 0 || s.sub !== "0 opportunities");
   // Wins this month — mirrors the /commercial dashboard KPI so the two
   // surfaces agree. Uses UTC-month-start; close enough for exec-review
   // "how'd we do this month" scan.
@@ -851,7 +851,7 @@ export default async function CommercialOpportunitiesPage({
                 ? "—"
                 : `${formatCentsCompact(totalBidLowCents)}–${formatCentsCompact(totalBidHighCents)}`
             }
-            sub="low + high across open deals"
+            sub="low + high across open opportunities"
           />
           <KpiCard
             tone="emerald"
@@ -970,7 +970,7 @@ export default async function CommercialOpportunitiesPage({
                   ? "bg-cc-brand-50 text-cc-brand-700"
                   : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
               }`}
-              title="By customer — one card per account with all their deals + money summary"
+              title="By customer — one card per account with all their opportunities + money summary"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M3 21h18 M6 21V7l6-4 6 4v14 M10 9h4 M10 13h4 M10 17h4" />
@@ -984,7 +984,7 @@ export default async function CommercialOpportunitiesPage({
                   ? "bg-cc-brand-50 text-cc-brand-700"
                   : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
               }`}
-              title="Kanban — drag deals through the pipeline"
+              title="Kanban — drag opportunities through the pipeline"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <rect x="3" y="3" width="7" height="18" rx="1" />
@@ -1052,7 +1052,7 @@ export default async function CommercialOpportunitiesPage({
                         ? `Include archived (${archivedCount})`
                         : "Include archived"
                     }
-                    description="Archived deals are hidden from the active pipeline. Toggle to include them, marked with a small chip."
+                    description="Archived opportunities are hidden from the active pipeline. Toggle to include them, marked with a small chip."
                   />
                 </div>
               </div>
@@ -1067,7 +1067,7 @@ export default async function CommercialOpportunitiesPage({
                       href={toggleSourceHref(s)}
                       active={sourceSet.has(s)}
                       label={opportunitySourceLabel(s)}
-                      description="How this deal came in."
+                      description="How this opportunity came in."
                     />
                   ))}
                 </div>
@@ -1211,7 +1211,7 @@ export default async function CommercialOpportunitiesPage({
           <p className="mt-1 text-sm text-ppp-charcoal-500">
             {anyFilterActive
               ? "Try clearing a filter or use search to find a specific bid."
-              : "Log the first commercial deal to get started."}
+              : "Log the first commercial opportunity to get started."}
           </p>
           {!anyFilterActive ? (
             <Link
@@ -1279,10 +1279,10 @@ export default async function CommercialOpportunitiesPage({
               <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold text-ppp-charcoal">
-                    {opps.length} deal{opps.length === 1 ? "" : "s"} · {groups.length} customer{groups.length === 1 ? "" : "s"}
+                    {opps.length} opportunit{opps.length === 1 ? "y" : "ies"} · {groups.length} customer{groups.length === 1 ? "" : "s"}
                   </h2>
                   <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-                    Sorted by {currentSortLabel.toLowerCase()}. Same-customer deals are grouped.
+                    Sorted by {currentSortLabel.toLowerCase()}. Same-customer opportunities are grouped.
                   </p>
                 </div>
               </div>
@@ -1361,7 +1361,7 @@ export default async function CommercialOpportunitiesPage({
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-surface border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
-                            {g.opps.length} deal{g.opps.length === 1 ? "" : "s"}
+                            {g.opps.length} opportunit{g.opps.length === 1 ? "y" : "ies"}
                           </span>
                           <svg
                             width="14"
@@ -1952,7 +1952,7 @@ function CustomerBoardRow({
                 <Link
                   href={`/commercial/accounts/${account.id}`}
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-surface text-ppp-charcoal-500 text-[11px] font-medium hover:bg-ppp-charcoal-50"
-                  title={`See all ${closed.length} closed deals`}
+                  title={`See all ${closed.length} closed opportunities`}
                 >
                   +{closed.length - 3} more closed
                 </Link>
@@ -2263,7 +2263,7 @@ function KanbanBoard({
                   </span>
                 )}
                 <div className="text-[11px] text-ppp-charcoal-500 tabular-nums">
-                  {totalDeals} deal{totalDeals === 1 ? "" : "s"}
+                  {totalDeals} opportunit{totalDeals === 1 ? "y" : "ies"}
                   {acct.openCount > 0 && <> · {acct.openCount} open</>}
                   {closedCount > 0 && <> · {closedCount} closed</>}
                   {acct.weightedCents > 0 && (
@@ -2419,7 +2419,7 @@ function KanbanBoard({
                         <ul className="p-1.5 space-y-1.5 overflow-y-auto max-h-[70vh] min-h-[64px]">
                           {colOpps.length === 0 ? (
                             <li className="text-[10px] text-ppp-charcoal-400 italic text-center py-3 leading-tight">
-                              {status === "won" ? "Drop a winning deal" : status === "lost" ? "Drop a lost deal" : "Drop a no-bid deal"}
+                              {status === "won" ? "Drop a winning opportunity" : status === "lost" ? "Drop a lost opportunity" : "Drop a no-bid opportunity"}
                             </li>
                           ) : (
                             colOpps.map((opp) => (
@@ -2461,7 +2461,7 @@ function KanbanBoard({
         {globalOverflow.length > 0 && (
           <details className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
             <summary className="px-4 py-2.5 cursor-pointer text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
-              <span>Older decided deals · {globalOverflow.length}</span>
+              <span>Older decided opportunities · {globalOverflow.length}</span>
               <span aria-hidden className="text-ppp-charcoal-400">▾</span>
             </summary>
             <ul className="divide-y divide-ppp-charcoal-100 px-3 py-2">
@@ -2960,7 +2960,7 @@ function OpportunityRow({
                 stacked on top of every list row. Cards now use ONE
                 compact chip: "Status · sub_status" (e.g. "Proposal ·
                 Proposal Sent" or the display label like "Won" on
-                decided deals). Clean, one-line, scannable at 50+
+                decided opportunities). Clean, one-line, scannable at 50+
                 deals per screen. Full DealJourneyStrip lives on the
                 opp detail page. */}
             <div className="flex items-center gap-2 flex-wrap">

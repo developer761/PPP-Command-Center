@@ -197,7 +197,7 @@ type SP = Promise<{
   applied?: string;
   /** Small non-blocking heads-up after a payment (never-reject flow). */
   heads_up?: string;
-  /** Karan 2026-07-08: inline "+ New deal" collapsible state. Set from
+  /** Karan 2026-07-08: inline "+ New opportunity" collapsible state. Set from
    *  the retired /commercial/opportunities/new redirect (auto-opens the
    *  form) OR from a redirect after error. `created=1` + `created_title`
    *  fire the success toast. */
@@ -307,7 +307,7 @@ const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
   // Proposals / Invoices / Projects / Activity moved onto the deal (their routes
   // still resolve for bookmarks/bells — just unlinked here).
   { key: "overview", label: "Overview" },
-  { key: "deals", label: "Deals" },
+  { key: "deals", label: "Opportunities" },
   { key: "documents", label: "Documents" },
 ];
 type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "proposals" | "projects" | "documents">;
@@ -374,7 +374,7 @@ export default async function CommercialAccountDetailPage({
   void resolvedSub;
   const tab: SubTab | "activity" | "invoices" | "proposals" | "projects" =
     // ?tab=opportunities stays a reachable (unlinked) create/manage surface so
-    // the "New deal" flow keeps working after the nav slimmed to 3 tabs.
+    // the "New opportunity" flow keeps working after the nav slimmed to 3 tabs.
     rawTab === "opportunities" ? "opportunities"
     : primaryTab === "overview" ? "kpis"
     : primaryTab === "deals" ? "home"
@@ -500,7 +500,7 @@ export default async function CommercialAccountDetailPage({
           from the Financial Snapshot chip into the pill row where it
           belongs (only when the account isn't already flagged Key
           Relationship — avoids the "two stars" audit finding). Primary
-          CTA is "+ New deal" for direct action; Edit is a quieter
+          CTA is "+ New opportunity" for direct action; Edit is a quieter
           secondary link. Everything wraps cleanly on mobile. */}
       {/* Karan 2026-07-08 polish: hero wrapped in a subtle gradient card
           so the account name has a distinct visual home. Same treatment
@@ -591,7 +591,7 @@ export default async function CommercialAccountDetailPage({
               </div>
             )}
           </div>
-          {/* Primary CTA cluster — "+ New deal" is the visually loud
+          {/* Primary CTA cluster — "+ New opportunity" is the visually loud
               action Alex will reach for most often (add another bid
               for this customer). Edit is a subtle ghost link — always
               reachable but doesn't compete for attention. Hidden inside a
@@ -822,14 +822,14 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
-          New deal
+          New opportunity
         </Link>
       </div>
 
       {totalDeals === 0 ? (
         <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
-          <p className="text-sm font-semibold text-ppp-charcoal">No deals yet</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Add a deal to this account and it&rsquo;ll show here as its own block — with its proposals, invoices, change orders, and documents inside.</p>
+          <p className="text-sm font-semibold text-ppp-charcoal">No opportunities yet</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Add an opportunity to this account and it&rsquo;ll show here as its own block — with its proposals, invoices, change orders, and documents inside.</p>
         </div>
       ) : (
         <>
@@ -989,7 +989,7 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 18h20 M4 18v-3a8 8 0 0 1 16 0v3 M10 6.3V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2.3" /></svg>
         </span>
         <p className="text-sm font-semibold text-ppp-charcoal">No projects yet</p>
-        <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">A deal becomes a project once it&rsquo;s Won. Win one from the Opportunities tab and it&rsquo;ll show here with its change orders, AIA billing, submittals, and closeout.</p>
+        <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">An opportunity becomes a project once it&rsquo;s Won. Win one from the Opportunities tab and it&rsquo;ll show here with its change orders, AIA billing, submittals, and closeout.</p>
         <Link href={`/commercial/accounts/${accountId}?tab=opportunities`} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
           Go to Opportunities
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
@@ -1871,7 +1871,7 @@ function DealProposalsSection({ accountId, oppId, proposals }: { accountId: stri
         </Link>
       </div>
       {sorted.length === 0 ? (
-        <p className="px-4 py-3 text-[12px] text-ppp-charcoal-500">No proposals yet — build one from the button above (a deal doesn&rsquo;t need to be Won to propose).</p>
+        <p className="px-4 py-3 text-[12px] text-ppp-charcoal-500">No proposals yet — build one from the button above (an opportunity doesn&rsquo;t need to be Won to propose).</p>
       ) : (
         <ul className="divide-y divide-ppp-charcoal-50">
           {sorted.map((pr) => {
@@ -1939,7 +1939,7 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
       </div>
       <div className="p-4 space-y-4">
         <CommercialFilesUploadForm parentType="opportunity" parentId={oppId} />
-        <p className="text-[11px] text-ppp-charcoal-500">Everything filed against this deal — receipts from Costs &amp; P&amp;L, lien waivers, invoice attachments, and the PDFs the tools generate — sorts into its box below. Pick a category above to file a new one.</p>
+        <p className="text-[11px] text-ppp-charcoal-500">Everything filed against this opportunity — receipts from Costs &amp; P&amp;L, lien waivers, invoice attachments, and the PDFs the tools generate — sorts into its box below. Pick a category above to file a new one.</p>
 
         {/* Filing cabinet — boxes that HOLD documents render in the grid; empty
             categories fold into a compact "not filed yet" strip so a fresh deal
@@ -2068,7 +2068,7 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
 
   return (
     <div className="space-y-4 mt-3">
-      <p className="text-[12px] text-ppp-charcoal-500">This deal&rsquo;s whole financial picture, combined from every tool. Gross = billed to date; Net = gross − job costs. Tax is pass-through, not revenue.</p>
+      <p className="text-[12px] text-ppp-charcoal-500">This opportunity&rsquo;s whole financial picture, combined from every tool. Gross = billed to date; Net = gross − job costs. Tax is pass-through, not revenue.</p>
 
       {/* ── Profitability ── */}
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
@@ -2168,7 +2168,7 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
             {fin.hasContract ? (
               <ProgressMeter label="Billed of contract" value={fin.billedPreTaxCents} max={fin.contractCents} tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"} rightLabel={`${billedOfContractRawPct}%`} amounts={{ done: formatCentsFull(fin.billedPreTaxCents), total: formatCentsFull(fin.contractCents) }} note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null} />
             ) : (
-              <p className="text-[12px] text-ppp-charcoal-400">Set a bid range or accepted proposal on the deal to fill the contract number.</p>
+              <p className="text-[12px] text-ppp-charcoal-400">Set a bid range or accepted proposal on the opportunity to fill the contract number.</p>
             )}
           </div>
         </div>
@@ -2428,7 +2428,7 @@ async function quickFlipFromAccountAction(formData: FormData) {
   redirect(`/commercial/accounts/${account_id}?tab=projects&project=${opp_id}`);
 }
 
-/** Karan 2026-07-08 — inline "+ New deal" server action for the Account
+/** Karan 2026-07-08 — inline "+ New opportunity" server action for the Account
  *  Pipeline sub-tab. Retires the full-page /commercial/opportunities/new
  *  form in favor of a collapsible-based inline flow (mirrors the invoice
  *  inline create pattern). Title + status + source + bid range + due date
@@ -4096,7 +4096,7 @@ async function restoreDocumentAction(formData: FormData) {
  * Empty state surfaces a + New Opportunity CTA deep-linked to the new
  * form with the account pre-selected (`?account=<uuid>`).
  */
-/** Inline "+ New deal" form — Karan 2026-07-08. Shared between the
+/** Inline "+ New opportunity" form — Karan 2026-07-08. Shared between the
  *  empty state (renders bare) and the header collapsible (renders inside
  *  a <details>). Two required rows visible immediately (title, status)
  *  plus optional bid/due/source. Property + description behind a
@@ -4542,7 +4542,7 @@ async function OpportunitiesTab({
   return (
     <div className="space-y-5">
       {/* Karan 2026-07-08: header-strip "+ New opportunity" Link →
-          inline "+ New deal" collapsible. Same activity summary; the
+          inline "+ New opportunity" collapsible. Same activity summary; the
           CTA is now a native <details> that expands the form right
           here instead of jumping to a full-page form. Auto-opens when
           the URL has ?new_deal=1 (set by the retired
@@ -4617,8 +4617,8 @@ async function OpportunitiesTab({
           </Link>
         </div>
       )}
-      {/* Karan 2026-07-08 rewrite: primary "+ New deal" CTA is now a
-          proper red-accent card (matches the pipeline "New deal" +
+      {/* Karan 2026-07-08 rewrite: primary "+ New opportunity" CTA is now a
+          proper red-accent card (matches the pipeline "New opportunity" +
           "New account" CTAs on the list pages). Reads as the primary
           action, not a nested collapsible chevron. When open exists the
           card stays collapsed; when it's the customer's only next move
@@ -5329,7 +5329,7 @@ async function AccountProposalsTab({
                 ) : (
                   <span
                     className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-400 text-[11px] font-semibold"
-                    title="Add an open deal in the Pipeline tab to start a proposal."
+                    title="Add an open opportunity in the Pipeline tab to start a proposal."
                   >
                     Add a deal first
                   </span>
@@ -5538,7 +5538,7 @@ async function AccountProposalsTab({
                               <Link
                                 href={`/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=invoices#deal-invoices`}
                                 className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 border-r border-ppp-charcoal-100 touch-manipulation"
-                                title="Create an invoice for this deal"
+                                title="Create an invoice for this opportunity"
                                 aria-label={`Bill this deal from revision ${r.revision_number}`}
                               >
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -7106,7 +7106,7 @@ async function AccountKpisTab({
             <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
             Profitability
           </h3>
-          <span className="text-[11px] text-ppp-charcoal-500">all deals · Gross = billed, Net = billed − costs</span>
+          <span className="text-[11px] text-ppp-charcoal-500">all opportunities · Gross = billed, Net = billed − costs</span>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Gross revenue" value={formatCentsCompact(acctGrossCents)} tone="brand" sub="billed to date" spark={acctRevenueMonthly.map((r) => r.value)} sparkLabels={acctRevenueMonthly.map((r) => r.label)} />
@@ -7236,7 +7236,7 @@ async function AccountKpisTab({
               {projectBars.length > 0 ? (
                 <HBars items={projectBars} />
               ) : (
-                <p className="text-[12px] text-ppp-charcoal-400">Set a bid range or accepted proposal on the deal to fill the contract number — then each project shows here.</p>
+                <p className="text-[12px] text-ppp-charcoal-400">Set a bid range or accepted proposal on the opportunity to fill the contract number — then each project shows here.</p>
               )}
             </div>
           </div>
@@ -7412,7 +7412,7 @@ async function DealEditSheet({
       {/* Backdrop — full-viewport link closes the sheet by dropping ?edit. */}
       <Link
         href={closeHref}
-        aria-label="Close deal editor"
+        aria-label="Close opportunity editor"
         className="absolute inset-0 bg-ppp-charcoal/40 backdrop-blur-[1px]"
       />
       {/* Sheet — right-aligned slide-out. Karan 2026-07-10: bumped

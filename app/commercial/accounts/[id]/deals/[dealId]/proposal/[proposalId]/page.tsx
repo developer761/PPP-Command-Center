@@ -1131,7 +1131,7 @@ export default async function ProposalEditorPage({
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">
-                    Project — the opportunity / job site
+                    Opportunity — the job site
                   </div>
                   <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
                     The specific customer + site this covers. Prints as &ldquo;PROJECT: {"{"}Name{"}"}, {"{"}Address{"}"}&rdquo;.

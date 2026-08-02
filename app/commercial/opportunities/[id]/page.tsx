@@ -1623,7 +1623,7 @@ export default async function OpportunityDetailPage({
             {/* Reopen — only surfaces for closed deals (won/lost/no_bid).
                 Replaces the ChangeStatusCard on terminal opps since the
                 only allowed next is reopened anyway; one focused action
-                in the header beats a whole "Move this deal forward" card
+                in the header beats a whole "Move this opportunity forward" card
                 with a dropdown of one option. */}
             {(isTerminalOpportunityStatus(opp.status)) && (
               <form action={reopenOpportunityAction} className="contents">
@@ -2023,7 +2023,7 @@ async function OpportunityInvoicesPanel({
           <p className="mt-1 text-[12px] text-ppp-charcoal-500">
             {isDealDeleted
               ? "This deleted deal has no invoices on file. Nothing to manage here."
-              : "Bill this Won opp when you're ready to collect. Multiple invoices are allowed for progress billing."}
+              : "Bill this Won opportunity when you're ready to collect. Multiple invoices are allowed for progress billing."}
           </p>
           {!isDealDeleted && (
             <Link
@@ -2839,7 +2839,7 @@ async function InfoTab({
                 type="submit"
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cc-brand-200 text-cc-brand-800 text-[12px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
-                ↺ Unarchive deal
+                ↺ Unarchive opportunity
               </button>
             </form>
           </div>
@@ -2881,7 +2881,7 @@ async function InfoTab({
               href={`/commercial/opportunities/${opp.id}?tab=info&confirm_delete=1#danger-zone`}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
             >
-              Delete deal
+              Delete opportunity
             </Link>
           </div>
         ) : (
@@ -2947,7 +2947,7 @@ function ChangeStatusCard({
         <div>
           <h2 className="text-base font-bold text-ppp-charcoal flex items-center gap-2">
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[14px]" aria-hidden>→</span>
-            Move this deal forward
+            Move this opportunity forward
           </h2>
           <p className="text-[12px] text-ppp-charcoal-600 mt-1">
             Currently <strong className="text-ppp-charcoal">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>. Pick the next state — closed states (Won / Lost / No-bid) need a short note.
