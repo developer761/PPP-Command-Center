@@ -4985,7 +4985,7 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
     solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
     rfp: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
     estimating: "bg-amber-100 text-amber-900 border-amber-300",
-    proposal_pending_approval: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
+    proposal_pending_approval: "bg-ppp-navy-100 text-ppp-navy-700 border-ppp-navy-200",
     proposal_sent: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
     follow_up: "bg-amber-100 text-amber-900 border-amber-300",
     won: "bg-emerald-100 text-emerald-800 border-emerald-300",

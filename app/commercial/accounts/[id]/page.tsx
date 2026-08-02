@@ -1914,7 +1914,7 @@ function DealProposalsSection({ accountId, oppId, proposals }: { accountId: stri
           {sorted.map((pr) => {
             const num = formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`;
             const status = proposalStatusLabel(pr.status);
-            const tone = pr.status === "won" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : pr.status === "lost" ? "text-rose-700 bg-rose-50 border-rose-200" : pr.status === "sent" ? "text-cc-brand-800 bg-cc-brand-50 border-cc-brand-200" : pr.status === "approved" ? "text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100" : pr.status === "pending_approval" ? "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-200" : "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200";
+            const tone = pr.status === "won" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : pr.status === "lost" ? "text-rose-700 bg-rose-50 border-rose-200" : pr.status === "sent" ? "text-cc-brand-800 bg-cc-brand-50 border-cc-brand-200" : pr.status === "approved" ? "text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100" : pr.status === "pending_approval" ? "text-ppp-navy-700 bg-ppp-navy-50 border-ppp-navy-200" : "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200";
             return (
               <li key={pr.id}>
                 <Link href={`${base}/${pr.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
@@ -5146,7 +5146,7 @@ function statusPillTone(
   // v1.1 legacy fallbacks (shouldn't hit post-migration but defensive).
   if (status === "follow_up") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
   if (status === "proposal_sent") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
-  if (status === "proposal_pending_approval") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
+  if (status === "proposal_pending_approval") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
   if (status === "rfp") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
   return { cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100" };
 }
@@ -5265,7 +5265,7 @@ async function AccountProposalsTab({
       case "expired":
         return "bg-rose-50 text-rose-700 border-transparent";
       case "pending_approval":
-        return "bg-ppp-blue-50 text-ppp-blue-700 border-transparent";
+        return "bg-ppp-navy-50 text-ppp-navy-700 border-transparent";
       case "approved":
         return "bg-ppp-green-50 text-ppp-green-700 border-transparent";
       case "superseded":

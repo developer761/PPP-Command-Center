@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS = [
@@ -87,21 +88,57 @@ export function DateField({
   const [view, setView] = useState<{ y: number; m: number }>({ y: start.y, m: start.m });
   const hiddenRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  // The popover renders in a PORTAL (position: fixed) so it can never be clipped
+  // by an overflow-hidden card (e.g. the proposal editor's sections). Position
+  // is computed from the trigger's viewport rect + re-computed on scroll/resize.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
+
+  const POP_W = 268;
+  const POP_H = 360; // approx calendar height, for the flip-up decision only
+  function reposition() {
+    const b = btnRef.current;
+    if (!b || typeof window === "undefined") return;
+    const r = b.getBoundingClientRect();
+    const winH = window.innerHeight;
+    const winW = window.innerWidth;
+    const left = Math.min(Math.max(8, r.left), Math.max(8, winW - POP_W - 8));
+    const roomBelow = winH - r.bottom;
+    // Flip above the field only if there's not enough room below AND more room above.
+    const openUp = roomBelow < POP_H && r.top > roomBelow;
+    setPos(openUp ? { bottom: winH - r.top + 4, left } : { top: r.bottom + 4, left });
+  }
 
   useEffect(() => {
     if (!open) return;
+    reposition();
     function onDoc(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return; // clicks on the trigger
+      if (popRef.current?.contains(t)) return; // clicks inside the portaled calendar
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
+    function onReflow() {
+      reposition();
+    }
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onReflow);
+    // capture:true so a scroll in ANY ancestor container repositions the popover.
+    window.addEventListener("scroll", onReflow, true);
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("scroll", onReflow, true);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   function commit(next: string) {
@@ -162,6 +199,7 @@ export function DateField({
           : null
         : <input ref={hiddenRef} type="hidden" name={name} defaultValue={defaultValue} required={required} />}
       <button
+        ref={btnRef}
         type="button"
         id={id}
         disabled={disabled}
@@ -200,17 +238,19 @@ export function DateField({
         )}
       </button>
 
-      {open && (
+      {open && mounted && pos && createPortal(
         <div
+          ref={popRef}
           role="dialog"
-          className="absolute z-40 mt-1 w-[268px] rounded-xl border border-ppp-charcoal-200 bg-surface shadow-xl p-3"
+          style={{ position: "fixed", top: pos.top, bottom: pos.bottom, left: pos.left, width: POP_W }}
+          className="z-[60] rounded-xl border border-ppp-charcoal-200 bg-surface shadow-xl p-3"
         >
           <div className="flex items-center justify-between mb-2">
-            <button type="button" onClick={() => shiftMonth(-1)} aria-label="Previous month" className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-50">
+            <button type="button" onClick={() => shiftMonth(-1)} aria-label="Previous month" className="h-11 w-11 sm:h-9 sm:w-9 inline-flex items-center justify-center rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
             </button>
             <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{MONTHS[view.m - 1]} {view.y}</div>
-            <button type="button" onClick={() => shiftMonth(1)} aria-label="Next month" className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-50">
+            <button type="button" onClick={() => shiftMonth(1)} aria-label="Next month" className="h-11 w-11 sm:h-9 sm:w-9 inline-flex items-center justify-center rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
             </button>
           </div>
@@ -231,7 +271,7 @@ export function DateField({
                   type="button"
                   disabled={isDisabled}
                   onClick={() => commit(toYmd(view.y, view.m, d))}
-                  className={`h-9 rounded-lg text-[12.5px] font-semibold tabular-nums transition-colors ${
+                  className={`h-11 sm:h-9 rounded-lg text-[12.5px] font-semibold tabular-nums transition-colors touch-manipulation ${
                     isSel
                       ? "bg-cc-brand-600 text-white"
                       : isDisabled
@@ -253,17 +293,18 @@ export function DateField({
                 const t = todayParts();
                 if (!beforeMin(t.y, t.m, t.d)) commit(toYmd(t.y, t.m, t.d));
               }}
-              className="text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 px-1 py-1"
+              className="text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 px-2 min-h-[44px] sm:min-h-0 inline-flex items-center"
             >
               Today
             </button>
             {value && (
-              <button type="button" onClick={() => commit("")} className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 px-1 py-1">
+              <button type="button" onClick={() => commit("")} className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 px-2 min-h-[44px] sm:min-h-0 inline-flex items-center">
                 Clear
               </button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

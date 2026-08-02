@@ -94,9 +94,68 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 - [ ] Time-entry state machine (draft→submitted→approved→locked; questioned→foreman)
 - [ ] Payroll CSV export
 - [ ] Receipts + labor-out + clock-in/out (reconcile w/ residential receipts)
+- [ ] **★ Connect the Work Order INTO the scheduler (Karan 2026-08).** The WO
+      already carries the schedule seed — `scheduled_start_date`,
+      `scheduled_end_date`, `assigned_to` (crew/foreman) — added in RUX-4. One way
+      to schedule a job should be straight from its Work Order: sending a WO to the
+      crew is an OPTION to also place/sync it as a scheduled job on the Week Grid /
+      Calendar / Job Board (crew + window + scope come from the WO), two-way in
+      sync, and the scheduler surfaces "WOs sent but not yet scheduled." Model a
+      scheduled job so it can be BACKED BY a Work Order (nullable work_order_id) —
+      the scheduler is NOT a silo. Build to `project_tomco_scheduling_spec_2026_08`.
 - [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
 
 ---
+
+## ⭐ Structure & conventions to REUSE in every future phase (Karan's liked patterns)
+_Locked 2026-08 after the RUX overhaul. Build new surfaces to THESE._
+- **Per-tool dual/triple surface:** account-nested detail route
+  `/commercial/accounts/[id]/<tool>/[dealId]` with `variant: "route" | "inline"`
+  (standalone AND inline as a deal tab) + a cross-account **sidebar index**
+  `/commercial/post-job/<tool>` (status queue + KPIs) + an **account rollup**.
+  Reflect everywhere instantly (opp ↔ account ↔ global).
+- **ToolBackHeader + `?back=` whitelist** for context-aware back-nav.
+- **Hub pattern** for crowded settings/admin (one sidebar item → card grid, see
+  `/commercial/settings`). **Collapsible sidebar group** when a section > ~6 rows.
+- **Shared primitives** `components/commercial/ui.tsx` + **`DateField`** for ALL
+  dates (never native) + **`AutosaveForm`** + **tap-to-sign** + **docs-per-tool
+  auto-file** to the deal Documents (category per tool) → account rollup.
+- **Palette:** brand **blue** (`cc-brand`), **green** = success, **rose** = danger
+  ONLY. No red/purple/teal/yellow on status chrome. ⚠ `cc-brand` === `ppp-blue`
+  hex — use `ppp-navy`/`emerald`/`ppp-green` when two states must look distinct.
+- **Notifications:** `dispatchCommercialNotification` (bell + opt-in email) + per-
+  user opt-in toggles on Settings → Access (Approver + Receiver pattern).
+- **Money/KPI:** mini-KPIs + progress bars lead; single source per object; pre-tax
+  subtotal = the contract number; never hard-reject money (cap/allow/credit +
+  small heads-up). **Never a dead-end** (every empty state links out).
+- **Migration-gated deploy** (hand Karan the SQL, hold the push). **Mobile-perfect**
+  (44px targets — the CEO reads it on his phone).
+
+## ⬜ Katie's notes + Tomco-doc backlog folded into future phases
+_From `project_katie_notes_remaining_2026_08`, `project_katie_general_notes_2026_07_21`,
+`project_commercial_master_plan_2026_07_24`, and the Tomco PDFs
+(`reference_tomco_doc_formats_verified`, `project_tomco_proposal_format`)._
+- [ ] **Kim: build + SEND proposals via Resend** — email the proposal PDF straight
+      to the GC from the platform (outbound Resend), tracked. Ties to R1 approval.
+- [ ] **CO lines ON the invoice** — a change order billable as an invoice line /
+      milestone (partly shipped as "incl. change order"; verify it fully matches
+      how Tomco bills COs). (Katie item G.)
+- [ ] **AIA templated Excel** — the G702/G703 Excel export must match Tomco's BLANK
+      template cell-for-cell (Katie item H; contractor label already = Tomco).
+- [ ] **Lien-waiver STORE** — a library of waiver templates to pick from per
+      payment (beyond today's per-payment upload).
+- [ ] **Slack integration (master-plan Block 2)** — pipe Commercial notifications
+      into Slack alongside the bell + email.
+- [ ] **Custom notification rules across BOTH platforms + one shared daily cron**
+      (Block 3) — user-defined alert rules (Katie item L).
+- [ ] **Reports** (Katie item K, ⛔ needs Katie's report list) — see R4.
+- [ ] **Field Ops / Scheduling** (Katie item J) — see R10 + the scheduling spec.
+- [ ] **Doc-fidelity guardrail:** every generator (proposal · transmittal ·
+      12-month VP warranty · AIA G702+G703 · work-order = room-finish-schedule ·
+      timesheet grid · price list 63 rows) must stay true to the VERIFIED Tomco
+      samples in `reference_tomco_doc_formats_verified`. Re-check on any template edit.
+- [ ] *(Parked / blocked)* Letter-of-Transmittal S-Docs e-sign integration
+      (LoT + S-Sign ⛔) — revisit when Katie confirms the S-Docs path.
 
 ## ⬜ ★ ENDGAME — full platform audit (do NOT declare done until all checked)
 - [ ] Money / KPI / backend audit — every finding fixed

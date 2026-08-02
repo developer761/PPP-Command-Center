@@ -119,12 +119,13 @@ function toneForStatus(status: ProposalStatus): ColumnTone {
         accentBar: "bg-ppp-charcoal-400",
       };
     case "pending_approval":
-      // Sky blue "in review" — blue/green-forward palette (Karan 2026-08: no
-      // yellow). Distinct from Sent's brand blue by using the lighter ppp-blue.
+      // Navy "awaiting sign-off". Blue/green-forward (no yellow) — and it CAN'T
+      // reuse ppp-blue because cc-brand===ppp-blue hex, so pending would clash
+      // with Sent's brand blue. Navy is the distinct deep-blue "in review".
       return {
         ...shared,
-        count: "bg-ppp-blue-50 text-ppp-blue-700 border border-ppp-blue-100",
-        accentBar: "bg-ppp-blue-500",
+        count: "bg-ppp-navy-50 text-ppp-navy-700 border border-ppp-navy-100",
+        accentBar: "bg-ppp-navy-500",
       };
     case "approved":
       // Bright green "cleared to send" (ppp-green) — distinct from Won's deeper
@@ -299,7 +300,7 @@ export default async function ProposalsIndexPage({
 
   // Status-mix donut over all current proposals.
   const PROPOSAL_STATUS_TONE: Record<string, ChartTone> = {
-    draft: "neutral", pending_approval: "blue", approved: "emerald", sent: "brand", won: "emerald", lost: "rose", expired: "neutral",
+    draft: "neutral", pending_approval: "navy", approved: "emerald", sent: "brand", won: "emerald", lost: "rose", expired: "neutral",
   };
   const proposalMix = PROPOSAL_STATUSES.filter((s) => s !== "superseded")
     .map((s) => ({ label: proposalStatusLabel(s), value: byStatus.get(s)?.length ?? 0, tone: PROPOSAL_STATUS_TONE[s] ?? "neutral", valueLabel: String(byStatus.get(s)?.length ?? 0) }))
@@ -1174,7 +1175,7 @@ function DealMiniKanban({
 
 const LIST_STATUS_PILL: Record<string, string> = {
   draft: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-  pending_approval: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200",
+  pending_approval: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200",
   approved: "bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100",
   sent: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200",
   won: "bg-emerald-50 text-emerald-800 border-emerald-200",
