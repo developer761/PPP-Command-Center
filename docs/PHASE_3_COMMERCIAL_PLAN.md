@@ -10,9 +10,10 @@ Accounts (+ A/B/C rating) · Opportunities pipeline · Proposals + Builder + PDF
 Legend: **[BUILD]** = new feature · **[VERIFY]** = likely done, confirm/finish · **[FIX]** = small correction · **[PARKED]** = do opportunistically · **[CLEANUP]** = tech-debt.
 
 ## How every phase is built (Karan's standing bar — applies to ALL phases below)
-- **Edge-cased properly + precisely** — a parallel adversarial edge-case agent runs BEFORE and AFTER every batch and after every push; every finding fixed, nothing deferred. Extreme/empty/null/concurrent/timezone/overflow states all handled.
-- **Clear + concise UI/UX** — mini-KPIs + progress bars lead each surface; no gray boxes; dividers separate blocks; progressive disclosure (don't clutter); aggressive autofill; one-click / tap-to-sign; mobile-perfect 44px; searchable dropdowns >10 items; "can this be simpler?" on every screen.
-- **Verified green** — tsc + tests + build before every push; single source of truth per opportunity; every action reflects everywhere it should (opp ↔ account ↔ global) instantly.
+- **Think like Karan FIRST — build it right the first time.** Before starting a phase, anticipate what "complete" looks like to Karan AND what he'd ask to change, then just build THAT from the start — don't ship a first draft he has to correct. His known bar: everything for an opportunity lives under that ONE opportunity (single source of truth, nothing scattered); every action reflects everywhere instantly (opp ↔ account ↔ global); mini-KPIs + progress bars lead each surface; aggressive autofill + one-click / tap-to-sign; generated docs match Tomco's real formats; never hard-reject a reasonable money action (cap/allow/credit + a small heads-up, not a wall); the SIMPLEST robust version; no gray boxes; mobile-perfect.
+- **Edge-case + bug-test EVERYTHING, before AND after every phase.** A parallel adversarial agent runs before AND after each batch and after every push — testing not just UI edges (extreme / empty / null / concurrent / timezone / overflow) but the actual **flow and logic end-to-end** (click every path, trace every state, verify every cross-surface reflection). Every finding fixed, nothing deferred.
+- **Clear + concise UI/UX** — dividers separate blocks; progressive disclosure (don't clutter); mobile-perfect 44px; searchable dropdowns >10 items; test buttons after any layout change; "can this be simpler?" on every screen.
+- **Verified green** — tsc + tests + build before every push; log billable time conservatively; push on every clean commit.
 
 ---
 
