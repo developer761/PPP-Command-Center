@@ -47,6 +47,7 @@ import {
   allocateMilestonePaid,
 } from "@/lib/commercial/invoices/milestones";
 import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
+import { DateField } from "@/components/commercial/date-field";
 import { InvoiceAttachments } from "@/components/commercial/invoice-attachments";
 import {
   deriveInvoiceStatus,
@@ -66,7 +67,6 @@ import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import DueDatePickerWithPresets from "@/components/commercial/due-date-picker-with-presets";
-import DatePicker from "@/components/commercial/date-picker";
 import CopyInvoiceLinkButton from "@/components/commercial/copy-invoice-link";
 
 export const dynamic = "force-dynamic";
@@ -1426,7 +1426,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="pmt-date" className={LABEL_CLS}>Paid on</label>
-              <DatePicker id="pmt-date" name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Payment date" ariaLabel="Payment date" />
+              <DateField id="pmt-date" name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Payment date" ariaLabel="Payment date" />
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="pmt-method" className={LABEL_CLS}>Method</label>
@@ -1553,8 +1553,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                               <input id={`mp-amt-${m.id}`} name="amount" required inputMode="decimal" defaultValue={(mDue / 100).toFixed(2)} className={INPUT_CLS} />
                             </div>
                             <div>
-                              <label className={LABEL_CLS} htmlFor={`mp-date-${m.id}`}>Paid on</label>
-                              <input id={`mp-date-${m.id}`} name="paid_at" type="date" className={INPUT_CLS} />
+                              <span className={LABEL_CLS}>Paid on</span>
+                              <DateField name="paid_at" placeholder="Pick a date" className="mt-1" />
                             </div>
                             <div>
                               <label className={LABEL_CLS} htmlFor={`mp-method-${m.id}`}>Method</label>
@@ -1631,8 +1631,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                               <input id={`m-amt-${m.id}`} name="amount" defaultValue={(m.amount_cents / 100).toFixed(2)} inputMode="decimal" className={INPUT_CLS} />
                             </div>
                             <div>
-                              <label className={LABEL_CLS} htmlFor={`m-due-${m.id}`}>Due date</label>
-                              <input id={`m-due-${m.id}`} name="due_at" type="date" defaultValue={m.due_at ? m.due_at.slice(0, 10) : ""} className={INPUT_CLS} />
+                              <span className={LABEL_CLS}>Due date</span>
+                              <DateField name="due_at" defaultValue={m.due_at ? m.due_at.slice(0, 10) : ""} placeholder="Pick a date" className="mt-1" />
                             </div>
                             <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">Save</button>
                           </form>
@@ -1683,8 +1683,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 <input id="am-amt" name="amount" required inputMode="decimal" placeholder="0.00" className={INPUT_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS} htmlFor="am-due">Due date</label>
-                <input id="am-due" name="due_at" type="date" className={INPUT_CLS} />
+                <span className={LABEL_CLS}>Due date</span>
+                <DateField name="due_at" placeholder="Pick a date" className="mt-1" />
               </div>
               <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-ppp-blue-600 text-white text-[12px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation">Add</button>
             </form>

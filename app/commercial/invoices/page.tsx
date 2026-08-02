@@ -19,6 +19,7 @@ import { listMilestonesForInvoices } from "@/lib/commercial/invoices/milestones"
 import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
 import TrendChart from "@/components/trend-chart";
 import { DonutChart } from "@/components/commercial/charts";
+import { DateField } from "@/components/commercial/date-field";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
@@ -2128,15 +2129,10 @@ function FullDetailByOpp({
                               className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
                             />
                           </label>
-                          <label className="block">
+                          <div>
                             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Paid on</span>
-                            <input
-                              type="date"
-                              name="paid_at"
-                              defaultValue={todayEtIso}
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
-                            />
-                          </label>
+                            <DateField name="paid_at" defaultValue={todayEtIso} placeholder="Pick a date" />
+                          </div>
                           <label className="block">
                             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Method</span>
                             <select

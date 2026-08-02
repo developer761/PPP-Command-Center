@@ -36,6 +36,7 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from 
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { ProjectToolbar } from "@/components/commercial/project-toolbar";
+import { DateField } from "@/components/commercial/date-field";
 import {
   isTerminalOpportunityStatus,
   PRE_SALE_OPEN_STATUSES,
@@ -2260,12 +2261,7 @@ async function OpportunityInvoicesPanel({
                           <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
                             Paid on
                           </span>
-                          <input
-                            type="date"
-                            name="paid_at"
-                            defaultValue={todayEtIso}
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                          />
+                          <DateField name="paid_at" defaultValue={todayEtIso} placeholder="Pick a date" className="mt-0.5" />
                         </label>
                         <label className="block">
                           <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
@@ -2425,12 +2421,7 @@ async function OpportunityInvoicesPanel({
                   </div>
                   <label className="block">
                     <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Due date</span>
-                    <input
-                      type="date"
-                      name="due_at"
-                      defaultValue={dueDefault}
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                    />
+                    <DateField name="due_at" defaultValue={dueDefault} placeholder="Pick a date" className="mt-1" />
                   </label>
                   <label className="block">
                     <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Payment terms</span>
@@ -3493,12 +3484,7 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
               <label htmlFor="task_due" className={LABEL_CLS}>
                 Due date
               </label>
-              <input
-                id="task_due"
-                name="due_at"
-                type="date"
-                className={INPUT_CLS}
-              />
+              <DateField name="due_at" placeholder="Pick a date" className="mt-1" />
             </div>
             <div>
               <label htmlFor="task_assignee" className={LABEL_CLS}>

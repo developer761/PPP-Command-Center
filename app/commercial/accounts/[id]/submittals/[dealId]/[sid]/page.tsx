@@ -3,6 +3,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import SubmittalDirectUpload from "@/components/commercial/submittal-direct-upload";
+import { DateField } from "@/components/commercial/date-field";
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
 
 import { createClient } from "@/lib/supabase/server";
@@ -1127,9 +1128,10 @@ export default async function SubmittalDetailPage({
                     pattern + saves Alex blank-fielding every row. Round 2
                     audit caught the inconsistency. ET-correct via
                     Intl format → re-pack as YYYY-MM-DD. */}
-                <input
+                <DateField
                   name="item_date"
-                  type="date"
+                  placeholder="Pick a date"
+                  className="mt-1"
                   defaultValue={(() => {
                     const parts = new Intl.DateTimeFormat("en-CA", {
                       timeZone: "America/New_York",
@@ -1139,7 +1141,6 @@ export default async function SubmittalDetailPage({
                     }).format(new Date());
                     return parts; // en-CA already gives YYYY-MM-DD
                   })()}
-                  className={INPUT_CLS}
                 />
               </div>
               <div>
@@ -1267,12 +1268,7 @@ export default async function SubmittalDetailPage({
                         </div>
                         <div>
                           <label className={LABEL_CLS}>Date</label>
-                          <input
-                            name="item_date"
-                            type="date"
-                            defaultValue={item.item_date ?? ""}
-                            className={INPUT_CLS}
-                          />
+                          <DateField name="item_date" defaultValue={item.item_date ?? ""} placeholder="Pick a date" className="mt-1" />
                         </div>
                         <div>
                           <label className={LABEL_CLS}>Ref #</label>
@@ -2034,21 +2030,17 @@ function ResponseRecorder({
           </div>
           <div>
             <label className={LABEL_CLS}>Response date</label>
-            <input
+            {/* ET-correct today via en-CA formatter (returns YYYY-MM-DD). */}
+            <DateField
               name="response_received_at"
-              type="date"
-              // ET-correct today via en-CA formatter (returns YYYY-MM-DD).
-              // Was toISOString().slice(0,10) which is UTC — between
-              // 8pm and midnight ET, the picker defaulted to tomorrow's
-              // date and Alex would stamp the wrong response date on GC
-              // approvals. Audit Round 4, 2026-07-01.
+              placeholder="Pick a date"
+              className="mt-1"
               defaultValue={new Intl.DateTimeFormat("en-CA", {
                 timeZone: "America/New_York",
                 year: "numeric",
                 month: "2-digit",
                 day: "2-digit",
               }).format(new Date())}
-              className={INPUT_CLS}
             />
           </div>
         </div>

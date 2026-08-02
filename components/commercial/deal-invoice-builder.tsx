@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
@@ -140,8 +141,8 @@ export function DealInvoiceBuilder({
               <input id="dni-amount" name="amount" required inputMode="decimal" value={flatAmount} onChange={(e) => setFlatAmount(e.target.value)} placeholder="0.00" className={INPUT_CLS} />
             </div>
             <div>
-              <label htmlFor="dni-due" className={LABEL_CLS}>Due date</label>
-              <input id="dni-due" name="due_at" type="date" className={INPUT_CLS} />
+              <span className={LABEL_CLS}>Due date</span>
+              <DateField name="due_at" placeholder="Pick a date" className="mt-1" />
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="dni-waiver" className={LABEL_CLS}>Signed lien waiver (optional)</label>
@@ -178,7 +179,7 @@ export function DealInvoiceBuilder({
                   <div className="grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem] gap-2">
                     <input name={`ms_name_${i}`} value={r.name} onChange={(e) => setRow(i, { name: e.target.value })} maxLength={200} placeholder={`e.g. ${["Deposit", "Rough-in", "Final", "Retainage"][i] ?? "Milestone"}`} className={INPUT_CLS} />
                     <input name={`ms_amount_${i}`} value={r.amount} onChange={(e) => setRow(i, { amount: e.target.value })} inputMode="decimal" placeholder="0.00" aria-label={`Milestone ${i + 1} amount`} className={INPUT_CLS} />
-                    <input name={`ms_due_${i}`} value={r.due} onChange={(e) => setRow(i, { due: e.target.value })} type="date" aria-label={`Milestone ${i + 1} due date`} className={INPUT_CLS} />
+                    <DateField name={`ms_due_${i}`} value={r.due} onValueChange={(v) => setRow(i, { due: v })} placeholder="Due date" />
                   </div>
                   <div className="mt-1.5">
                     <label htmlFor={`ms-waiver-${i}`} className="text-[10px] font-semibold text-ppp-charcoal-500">Signed lien waiver (optional)</label>

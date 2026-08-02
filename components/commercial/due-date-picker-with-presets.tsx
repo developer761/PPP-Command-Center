@@ -17,6 +17,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { DateField } from "@/components/commercial/date-field";
 
 const PRESETS: Array<{ key: string; label: string; days: number }> = [
   { key: "today", label: "Today", days: 0 },
@@ -38,12 +39,12 @@ function endOfMonthIso(): string {
 }
 
 export default function DueDatePickerWithPresets({
-  id,
   name,
   defaultValue,
   disabled,
 }: {
-  id: string;
+  /** Accepted for call-site compatibility; the inner control manages its own. */
+  id?: string;
   name: string;
   defaultValue: string;
   disabled?: boolean;
@@ -92,15 +93,10 @@ export default function DueDatePickerWithPresets({
           EOM
         </button>
       </div>
-      <input
-        id={id}
-        name={name}
-        type="date"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        disabled={disabled}
-        className="w-full px-3 py-2 border border-ppp-charcoal-200 rounded-lg text-base sm:text-sm min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 disabled:bg-ppp-charcoal-50 disabled:text-ppp-charcoal-500"
-      />
+      {/* Parent owns the value (presets set it) → controlled DateField + our
+          own hidden input for form submission. */}
+      <input type="hidden" name={name} value={value} readOnly />
+      <DateField value={value} onValueChange={setValue} placeholder="Pick a due date" disabled={disabled} />
     </div>
   );
 }

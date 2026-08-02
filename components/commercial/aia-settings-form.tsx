@@ -8,6 +8,7 @@
  * action (handled by the caller). Mirrors AiaLineRow's hardening.
  */
 import { useEffect, useRef, useState, useTransition } from "react";
+import { DateField } from "@/components/commercial/date-field";
 
 const MONEY_RE = /^\d+(\.\d{1,2})?$/;
 
@@ -108,11 +109,11 @@ export function AiaSettingsForm({
     <div ref={rootRef} onBlur={onBlurCapture} className="px-4 pb-4 pt-1 grid sm:grid-cols-2 gap-3">
       <label className="block">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period from</span>
-        <input type="date" value={vals.period_from} onChange={(e) => set("period_from", e.target.value)} className={`${INPUT} ${ok}`} />
+        <DateField value={vals.period_from} onValueChange={(v) => set("period_from", v)} placeholder="Pick a date" />
       </label>
       <label className="block">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
-        <input type="date" value={vals.period_to} onChange={(e) => set("period_to", e.target.value)} className={`${INPUT} ${ok}`} />
+        <DateField value={vals.period_to} onValueChange={(v) => set("period_to", v)} placeholder="Pick a date" />
       </label>
       <label className="block">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Original contract ($)</span>

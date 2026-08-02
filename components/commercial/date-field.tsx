@@ -49,22 +49,41 @@ function todayParts(): YMD {
 export function DateField({
   name,
   defaultValue = "",
+  value: controlledValue,
+  onValueChange,
   min,
+  max,
   placeholder = "Select a date",
   disabled = false,
+  required = false,
+  ariaLabel,
+  id,
   className = "",
 }: {
-  name: string;
+  /** Form field name. Omit in controlled mode when the parent renders its own
+   *  hidden input. */
+  name?: string;
   defaultValue?: string;
+  /** Controlled value (yyyy-mm-dd). When set, the parent owns the value + must
+   *  render its own hidden input for form submission. */
+  value?: string;
+  onValueChange?: (next: string) => void;
   /** yyyy-mm-dd — days before this are disabled. */
   min?: string;
+  /** yyyy-mm-dd — days after this are disabled. */
+  max?: string;
   placeholder?: string;
   disabled?: boolean;
+  required?: boolean;
+  ariaLabel?: string;
+  id?: string;
   className?: string;
 }) {
-  const [value, setValue] = useState(defaultValue);
+  const controlled = controlledValue !== undefined;
+  const [internal, setInternal] = useState(defaultValue);
+  const value = controlled ? controlledValue : internal;
   const [open, setOpen] = useState(false);
-  const start = parseYmd(defaultValue) ?? parseYmd(min ?? "") ?? todayParts();
+  const start = parseYmd(value) ?? parseYmd(min ?? "") ?? todayParts();
   const [view, setView] = useState<{ y: number; m: number }>({ y: start.y, m: start.m });
   const hiddenRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -86,20 +105,31 @@ export function DateField({
   }, [open]);
 
   function commit(next: string) {
-    setValue(next);
-    const el = hiddenRef.current;
-    if (el) {
-      el.value = next;
-      // Bubbling change so the enclosing form (+ AutosaveForm listener) reacts
-      // exactly like a native input edit.
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+    if (controlled) {
+      onValueChange?.(next);
+    } else {
+      setInternal(next);
+      const el = hiddenRef.current;
+      if (el) {
+        el.value = next;
+        // Bubbling change so the enclosing form (+ AutosaveForm listener) reacts
+        // exactly like a native input edit.
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     }
+    // Keep the calendar viewing the month it just picked into.
+    const p = parseYmd(next);
+    if (p) setView({ y: p.y, m: p.m });
     setOpen(false);
   }
 
   const minP = parseYmd(min ?? "");
+  const maxP = parseYmd(max ?? "");
   function beforeMin(y: number, m: number, d: number): boolean {
-    return minP ? toYmd(y, m, d) < toYmd(minP.y, minP.m, minP.d) : false;
+    const iso = toYmd(y, m, d);
+    if (minP && iso < toYmd(minP.y, minP.m, minP.d)) return true;
+    if (maxP && iso > toYmd(maxP.y, maxP.m, maxP.d)) return true;
+    return false;
   }
 
   const selP = parseYmd(value);
@@ -122,13 +152,23 @@ export function DateField({
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
-      <input ref={hiddenRef} type="hidden" name={name} defaultValue={defaultValue} />
+      {/* Form value. Uncontrolled → ref-updated + change-dispatched on commit.
+          Controlled WITH a name → a React-controlled hidden input so it still
+          submits (parent owns the value). Controlled WITHOUT a name → parent
+          renders its own hidden input (e.g. the preset picker). */}
+      {controlled
+        ? name
+          ? <input type="hidden" name={name} value={value} readOnly required={required} />
+          : null
+        : <input ref={hiddenRef} type="hidden" name={name} defaultValue={defaultValue} required={required} />}
       <button
         type="button"
+        id={id}
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label={ariaLabel}
         className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2 min-h-[44px] text-left text-[13.5px] transition-colors ${
           disabled
             ? "border-ppp-charcoal-100 bg-ppp-charcoal-50 text-ppp-charcoal-400 cursor-not-allowed"

@@ -15,6 +15,7 @@
  */
 
 import { useState } from "react";
+import { DateField } from "@/components/commercial/date-field";
 import Link from "next/link";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
@@ -160,8 +161,8 @@ export default function PurchaseForm({
           </div>
         ) : (
           <div>
-            <label className={LABEL_CLS} htmlFor="pu-date">Date</label>
-            <input id="pu-date" name="purchased_at" type="date" defaultValue={defDate} className={INPUT_CLS} />
+            <span className={LABEL_CLS}>Date</span>
+            <DateField name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
           </div>
         )}
       </div>
@@ -169,8 +170,8 @@ export default function PurchaseForm({
       {/* Labor keeps its own Date row (the grid above swapped Date for Hours). */}
       {isLabor && (
         <div className="sm:max-w-[calc(50%-0.375rem)]">
-          <label className={LABEL_CLS} htmlFor="pu-date-labor">Date</label>
-          <input id="pu-date-labor" name="purchased_at" type="date" defaultValue={defDate} className={INPUT_CLS} />
+          <span className={LABEL_CLS}>Date</span>
+          <DateField name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
         </div>
       )}
 

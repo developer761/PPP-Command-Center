@@ -24,6 +24,7 @@ import {
 } from "@/lib/commercial/products/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { DateField } from "@/components/commercial/date-field";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
@@ -752,11 +753,7 @@ export default async function ProductDetailPage({
                 <span className="block text-[11.5px] font-semibold text-ppp-charcoal-700 mb-1">
                   Effective from
                 </span>
-                <input
-                  type="date"
-                  name="effective_from"
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
-                />
+                <DateField name="effective_from" placeholder="Pick a date" />
                 <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                   Leave blank for &ldquo;always.&rdquo;
                 </span>

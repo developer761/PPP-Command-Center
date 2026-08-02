@@ -18,6 +18,7 @@
  * shouldn't start already-decided.
  */
 import { useState } from "react";
+import { DateField } from "@/components/commercial/date-field";
 import {
   OPPORTUNITY_STATUSES,
   SUB_STATUSES_BY_STATUS,
@@ -225,11 +226,11 @@ export function StatusSubStatusPicker({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-cc-brand-50/40 border border-cc-brand-100 rounded-lg p-3">
           <label className="block">
             <span className={LABEL_CLS}>Follow up on</span>
-            <input
-              type="date"
+            <DateField
               name={`${namePrefix}follow_up_at`}
               defaultValue={initialFollowUpAt ?? ""}
-              className={INPUT_CLS}
+              placeholder="Pick a date"
+              className="mt-1"
             />
             <p className={HINT_CLS}>Shows up on the opportunity row until you touch it again.</p>
           </label>

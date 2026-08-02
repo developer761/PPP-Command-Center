@@ -86,7 +86,7 @@ import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
 import { HBars } from "@/components/commercial/charts";
-import DatePicker from "@/components/commercial/date-picker";
+import { DateField } from "@/components/commercial/date-field";
 import { IconBulb } from "@/components/commercial/inline-icons";
 
 const MS_PER_DAY = 86_400_000;
@@ -1564,7 +1564,7 @@ function NewDealSlideOut({
 
           <div>
             <label htmlFor="new-deal-due" className={LABEL_CLS}>Proposal due</label>
-            <DatePicker
+            <DateField
               id="new-deal-due"
               name="proposal_due_at"
               placeholder="Pick a due date"

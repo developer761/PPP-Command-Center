@@ -40,8 +40,8 @@ import {
 } from "@/lib/commercial/accounts/documents";
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
+import { DateField } from "@/components/commercial/date-field";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
-import DatePicker from "@/components/commercial/date-picker";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
@@ -4249,7 +4249,7 @@ function NewDealForm({
         </label>
         <div>
           <span className={labelCls}>Proposal due</span>
-          <DatePicker name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
+          <DateField name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
         </div>
       </div>
       {/* Katie 2026-07-20: RFP Received on its own row so the two
@@ -4259,7 +4259,7 @@ function NewDealForm({
           left a dead half-column on tablet. */}
       <div>
         <span className={labelCls}>RFP received</span>
-        <DatePicker name="rfp_received_at" placeholder="When the RFP / bid request arrived" ariaLabel="RFP received date" />
+        <DateField name="rfp_received_at" placeholder="When the RFP / bid request arrived" ariaLabel="RFP received date" />
         <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the opportunity card.</span>
       </div>
       {/* Phase B (Plan v1.1) — CEO structural fields. All optional at
@@ -4412,11 +4412,11 @@ function NewDealForm({
             </label>
             <div>
               <span className={labelCls}>Proposed start</span>
-              <DatePicker name="proposed_start_at" placeholder="Pick a start date" ariaLabel="Proposed start date" />
+              <DateField name="proposed_start_at" placeholder="Pick a start date" ariaLabel="Proposed start date" />
             </div>
             <div>
               <span className={labelCls}>Proposed end</span>
-              <DatePicker name="proposed_end_at" placeholder="Pick an end date" ariaLabel="Proposed end date" />
+              <DateField name="proposed_end_at" placeholder="Pick an end date" ariaLabel="Proposed end date" />
             </div>
           </div>
           <label className="block">
@@ -6956,12 +6956,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
                     <span className="text-[12px] font-semibold text-ppp-charcoal-700">Date</span>
-                    <input
-                      type="date"
-                      name="paid_at"
-                      defaultValue={new Date().toISOString().slice(0, 10)}
-                      className="w-full mt-0.5 px-2 py-1.5 text-[13px] border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                    />
+                    <DateField name="paid_at" defaultValue={new Date().toISOString().slice(0, 10)} placeholder="Pick a date" className="mt-0.5" />
                   </label>
                   <label className="block">
                     <span className="text-[12px] font-semibold text-ppp-charcoal-700">Method</span>
@@ -7793,22 +7788,22 @@ async function DealEditSheet({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor="edit-rfp" className={labelCls}>RFP received</label>
-                <DatePicker id="edit-rfp" name="rfp_received_at" defaultValue={rfpDateDefault} placeholder="When the bid request arrived" ariaLabel="RFP received date" />
+                <DateField id="edit-rfp" name="rfp_received_at" defaultValue={rfpDateDefault} placeholder="When the bid request arrived" ariaLabel="RFP received date" />
                 <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">Powers time-to-proposal and time-to-sale metrics.</span>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="edit-due" className={labelCls}>Proposal due</label>
-                <DatePicker id="edit-due" name="proposal_due_at" defaultValue={dueDateDefault} placeholder="Pick a due date" ariaLabel="Proposal due date" />
+                <DateField id="edit-due" name="proposal_due_at" defaultValue={dueDateDefault} placeholder="Pick a due date" ariaLabel="Proposal due date" />
               </div>
               <div>
                 <label htmlFor="edit-start" className={labelCls}>Proposed start</label>
-                <DatePicker id="edit-start" name="proposed_start_at" defaultValue={startDateDefault} placeholder="Pick a start date" ariaLabel="Proposed start date" />
+                <DateField id="edit-start" name="proposed_start_at" defaultValue={startDateDefault} placeholder="Pick a start date" ariaLabel="Proposed start date" />
               </div>
               <div>
                 <label htmlFor="edit-end" className={labelCls}>Proposed end</label>
-                <DatePicker id="edit-end" name="proposed_end_at" defaultValue={endDateDefault} placeholder="Pick an end date" ariaLabel="Proposed end date" />
+                <DateField id="edit-end" name="proposed_end_at" defaultValue={endDateDefault} placeholder="Pick an end date" ariaLabel="Proposed end date" />
               </div>
             </div>
           </SheetSection>

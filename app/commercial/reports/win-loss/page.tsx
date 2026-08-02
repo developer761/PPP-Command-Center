@@ -15,7 +15,7 @@ import {
 } from "@/lib/commercial/win-loss/reports";
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
-import DatePicker from "@/components/commercial/date-picker";
+import { DateField } from "@/components/commercial/date-field";
 import { KpiTile } from "@/components/commercial/kpi-tile";
 import { GaugeRing, DonutChart } from "@/components/commercial/charts";
 
@@ -210,7 +210,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
             className="inline-flex flex-wrap items-center gap-2"
           >
             <div className="w-[168px]">
-              <DatePicker
+              <DateField
                 id="rng_from"
                 name="from"
                 defaultValue={range.fromYmd}
@@ -220,7 +220,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
             </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
             <div className="w-[168px]">
-              <DatePicker
+              <DateField
                 id="rng_to"
                 name="to"
                 defaultValue={range.toYmd}
