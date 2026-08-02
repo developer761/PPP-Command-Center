@@ -93,10 +93,11 @@ export const PROPOSAL_ALLOWED_TRANSITIONS: Record<
   // parent deal from pre_sale_closed back to Proposal · Sent.
   won: ["sent"],
   lost: ["sent"],
-  // Not-quite-terminal: expired means the customer took too long. Alex
-  // can extend the deadline + re-send the SAME revision instead of
-  // bumping, which is faster.
-  expired: ["sent"],
+  // Not-quite-terminal: expired means the customer took too long. Reopen it
+  // to DRAFT to tweak + re-approve + re-send (the send path requires approval,
+  // so a bare expired→sent was a dead-end — you'd never get past Send).
+  // Replacing it with a newer revision is the other option.
+  expired: ["draft", "superseded"],
   superseded: [],
 };
 

@@ -40,6 +40,7 @@ export default function CommercialAccessManager({
   const [approverEmails, setApproverEmails] = useState<string[]>(
     initialApproverEmails.map((e) => e.trim().toLowerCase())
   );
+  const [togglingApprover, setTogglingApprover] = useState(false);
   const [flash, setFlash] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
 
   const refresh = async () => {
@@ -54,10 +55,13 @@ export default function CommercialAccessManager({
     if (tone === "ok") window.setTimeout(() => setFlash(null), 6000);
   };
 
-  // R1d: toggle a user as a proposal approver. Admins are always approvers and
-  // never toggle here. Optimistic — reverts + flashes on failure.
+  // R1d: toggle a user as a proposal approver — an explicit on/off flag,
+  // independent of admin. Optimistic — reverts + flashes on failure. Serialized
+  // (togglingApprover) so two quick toggles on different rows can't paint a
+  // stale list from out-of-order responses (the server write itself is atomic).
   const toggleApprover = async (email: string, make: boolean, label: string) => {
     const norm = email.trim().toLowerCase();
+    setTogglingApprover(true);
     setApproverEmails((prev) =>
       make ? [...new Set([...prev, norm])] : prev.filter((e) => e !== norm)
     );
@@ -92,6 +96,8 @@ export default function CommercialAccessManager({
         make ? prev.filter((e) => e !== norm) : [...new Set([...prev, norm])]
       );
       note("err", "Network error — try again.");
+    } finally {
+      setTogglingApprover(false);
     }
   };
 
@@ -148,6 +154,7 @@ export default function CommercialAccessManager({
                 isSelf={u.user_id === currentUserId}
                 isApprover={approverEmails.includes((u.email ?? "").trim().toLowerCase())}
                 onToggleApprover={toggleApprover}
+                toggleLocked={togglingApprover}
                 onChanged={async (msg) => {
                   note("ok", msg);
                   await refresh();
@@ -325,6 +332,7 @@ function UserRow({
   isSelf,
   isApprover,
   onToggleApprover,
+  toggleLocked,
   onChanged,
   onError,
 }: {
@@ -332,6 +340,7 @@ function UserRow({
   isSelf: boolean;
   isApprover: boolean;
   onToggleApprover: (email: string, make: boolean, label: string) => Promise<void>;
+  toggleLocked: boolean;
   onChanged: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -427,7 +436,7 @@ function UserRow({
           <button
             type="button"
             onClick={doToggleApprover}
-            disabled={approverBusy || !user.is_active}
+            disabled={approverBusy || toggleLocked || !user.is_active}
             title={
               !user.is_active
                 ? "Reactivate this user before making them an approver."

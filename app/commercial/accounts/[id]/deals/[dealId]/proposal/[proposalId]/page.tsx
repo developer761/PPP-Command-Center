@@ -616,6 +616,29 @@ async function unlockAction(formData: FormData) {
   redirect(proposalHref(accountId, dealId, proposalId, "?approval=unlocked"));
 }
 
+/** Reopen an EXPIRED proposal back to draft so it can be tweaked, re-approved,
+ *  and re-sent (send requires approval, so expired can't go straight to sent). */
+async function reopenExpiredAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
+  const { updateProposalStatus } = await import("@/lib/commercial/proposals/db");
+  const current = await getProposal(proposalId);
+  if (!current || current.status !== "expired") {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("Only an expired proposal can be reopened here.")}`));
+  }
+  const result = await updateProposalStatus({ id: proposalId, to_status: "draft", acting_user_id: userId });
+  if (!result.ok) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+  }
+  revalidatePath(proposalHref(accountId, dealId, proposalId));
+  revalidatePath(`/commercial/accounts/${accountId}`);
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=withdrawn"));
+}
+
 /** Sender withdraws their own pending request back to draft (any editor). */
 async function withdrawAction(formData: FormData) {
   "use server";
@@ -1134,6 +1157,23 @@ export default async function ProposalEditorPage({
                   <path d="M3 2v6h6 M3.5 8a9 9 0 1 0 2.3-3.3L3 8" />
                 </svg>
                 Reopen
+              </ConfirmSubmitButton>
+            </form>
+          )}
+          {/* Expired: reopen to draft so it can be re-priced, re-approved, and
+              re-sent (send requires approval — expired can't go straight out). */}
+          {proposal.status === "expired" && (
+            <form action={reopenExpiredAction} className="inline-flex">
+              {hiddenIds}
+              <ConfirmSubmitButton
+                message={`Reopen R${proposal.revision_number} to edit? It goes back to draft so you can tweak it, get it approved again, and re-send. (Or use "+ New revision" to start fresh.)`}
+                pendingLabel="Reopening…"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-surface text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M3 2v6h6 M3.5 8a9 9 0 1 0 2.3-3.3L3 8" />
+                </svg>
+                Reopen to edit
               </ConfirmSubmitButton>
             </form>
           )}

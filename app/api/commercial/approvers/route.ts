@@ -64,10 +64,39 @@ export async function POST(request: Request) {
   const make = body.make === true;
 
   const oc = await getOperatingCompany();
-  const current = new Set((oc.approver_emails ?? []).map((e) => normalizeEmail(e)));
+  const beforeList = (oc.approver_emails ?? []).map((e) => normalizeEmail(e));
+
+  // Atomic path (migration 105): the RPC mutates the array in a single UPDATE
+  // based on the CURRENT db state, so two admins toggling different emails at
+  // once can't drop each other's change (the read-modify-write below could).
+  // Falls back to the read-modify-write if the RPC isn't applied yet, so this
+  // route works before AND after the migration is pasted.
+  const { data: rpcData, error: rpcErr } = await sb.rpc(
+    "commercial_set_proposal_approver",
+    { p_email: targetEmail, p_make: make }
+  );
+  if (!rpcErr && Array.isArray(rpcData)) {
+    const newList = rpcData as string[];
+    try {
+      const { logUpdate } = await import("@/lib/commercial/audit-log");
+      await logUpdate(
+        "commercial_operating_company",
+        "singleton",
+        { approver_emails: beforeList },
+        { approver_emails: newList },
+        auth.user.id
+      );
+    } catch {
+      /* audit is best-effort — the write already committed */
+    }
+    return NextResponse.json({ ok: true, approver_emails: newList });
+  }
+
+  // Fallback — RPC not present yet. Read-modify-write via updateOperatingCompany
+  // (also audited). Small race window, but self-heals on the next toggle.
+  const current = new Set(beforeList);
   if (make) current.add(targetEmail);
   else current.delete(targetEmail);
-
   const res = await updateOperatingCompany(
     { approver_emails: Array.from(current) },
     auth.user.id
