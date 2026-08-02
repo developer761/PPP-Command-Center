@@ -409,7 +409,18 @@ export async function changeOpportunityStatus(
         return { demoteFrom: ["draft", "sent", "won", "lost"], to: "pending_approval" };
       }
       if (s === "proposal") {
-        return { demoteFrom: ["draft", "pending_approval", "won", "lost"], to: "sent" };
+        // R1d HARD GATE (Karan 2026-08): the deal-axis cascade must NOT
+        // promote a pre-send proposal (draft / pending_approval / approved)
+        // to `sent`. `sent` has side effects — approval enforcement, the
+        // frozen PDF snapshot, the team/exclusion notifications — that only
+        // `sendProposal` performs; a bare status flip here would mark a
+        // proposal "sent" with no PDF and nobody notified, AND skip the
+        // approval gate entirely (drag the DEAL to Proposal·Sent → unapproved
+        // proposal silently becomes sent). So we only demote a CLOSED
+        // proposal (won/lost) back to sent when the deal moves back; a
+        // pre-send proposal is left untouched (reconcile will pull the deal
+        // back into Estimating until the real Send happens).
+        return { demoteFrom: ["won", "lost"], to: "sent" };
       }
       // Karan 2026-07-16 (round 2): Won and Lost pull the CURRENT
       // proposal to Won/Lost from ANY state (draft/pending/sent/lost/won).
@@ -435,8 +446,13 @@ export async function changeOpportunityStatus(
       // demotes a Draft/Pending/Won/Lost proposal to Sent on that
       // transition, matching Karan's canonical map.
       if (s === "pre_construction" || s === "in_progress" || s === "billing") {
+        // Same R1d gate as the `proposal` case above: never promote a
+        // pre-send proposal to `sent` via the deal cascade (that would skip
+        // approval + the PDF snapshot + notifications). Only re-align a
+        // closed proposal (won/lost) to sent when the deal is moved into
+        // delivery from a closed state.
         return {
-          demoteFrom: ["draft", "pending_approval", "won", "lost"],
+          demoteFrom: ["won", "lost"],
           to: "sent",
         };
       }

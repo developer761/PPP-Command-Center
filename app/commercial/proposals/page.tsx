@@ -75,7 +75,7 @@ type ProposalRow = {
 
 // Two active-lane columns + Won + a compact "Closed" cluster on the
 // right. Mirrors the shape of /commercial/opportunities Kanban.
-const ACTIVE_COLUMNS: ProposalStatus[] = ["draft", "pending_approval", "sent"];
+const ACTIVE_COLUMNS: ProposalStatus[] = ["draft", "pending_approval", "approved", "sent"];
 // Karan 2026-07-16: dropped "superseded" (Replaced by newer) — we only
 // render the CURRENT (highest-revision) proposal per deal on this page,
 // so superseded rows never surface here. Keeping the column would
@@ -123,6 +123,14 @@ function toneForStatus(status: ProposalStatus): ColumnTone {
         ...shared,
         count: "bg-amber-50 text-amber-800 border border-amber-100",
         accentBar: "bg-amber-400",
+      };
+    case "approved":
+      // Teal "go" state — approved internally, cleared to send. Distinct from
+      // Won's emerald (that column is the trophy lane) and Sent's brand blue.
+      return {
+        ...shared,
+        count: "bg-teal-50 text-teal-800 border border-teal-100",
+        accentBar: "bg-teal-500",
       };
     case "sent":
       return {
@@ -289,7 +297,7 @@ export default async function ProposalsIndexPage({
 
   // Status-mix donut over all current proposals.
   const PROPOSAL_STATUS_TONE: Record<string, ChartTone> = {
-    draft: "neutral", pending_approval: "amber", sent: "brand", won: "emerald", lost: "rose", expired: "neutral",
+    draft: "neutral", pending_approval: "amber", approved: "blue", sent: "brand", won: "emerald", lost: "rose", expired: "neutral",
   };
   const proposalMix = PROPOSAL_STATUSES.filter((s) => s !== "superseded")
     .map((s) => ({ label: proposalStatusLabel(s), value: byStatus.get(s)?.length ?? 0, tone: PROPOSAL_STATUS_TONE[s] ?? "neutral", valueLabel: String(byStatus.get(s)?.length ?? 0) }))
@@ -322,7 +330,7 @@ export default async function ProposalsIndexPage({
   const sentCount = currentRows.filter((r) => r.status === "sent").length;
   const wonCount = currentRows.filter((r) => r.status === "won").length;
   const outstandingCents = currentRows
-    .filter((r) => r.status === "sent" || r.status === "pending_approval")
+    .filter((r) => r.status === "sent" || r.status === "pending_approval" || r.status === "approved")
     .reduce((sum, r) => sum + r.total_cents, 0);
 
   return (
@@ -927,7 +935,7 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
       deal.openCount = 1;
       acct.openCount += 1;
     }
-    if (current.status === "sent" || current.status === "pending_approval") {
+    if (current.status === "sent" || current.status === "pending_approval" || current.status === "approved") {
       deal.outstandingCents = current.total_cents;
       acct.outstandingCents += current.total_cents;
     }
@@ -1165,6 +1173,7 @@ function DealMiniKanban({
 const LIST_STATUS_PILL: Record<string, string> = {
   draft: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
   pending_approval: "bg-amber-50 text-amber-800 border-amber-200",
+  approved: "bg-teal-50 text-teal-800 border-teal-200",
   sent: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200",
   won: "bg-emerald-50 text-emerald-800 border-emerald-200",
   lost: "bg-rose-50 text-rose-800 border-rose-200",
@@ -1196,7 +1205,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
       };
       byAccount.set(acctId, bucket);
     }
-    if (r.status === "sent" || r.status === "pending_approval") {
+    if (r.status === "sent" || r.status === "pending_approval" || r.status === "approved") {
       bucket.outstandingCents += r.total_cents;
     }
     if (r.status === "won") bucket.wonCents += r.total_cents;

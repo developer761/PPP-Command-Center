@@ -29,6 +29,9 @@ const KIND_META: Record<string, KindMeta> = {
   commercial_invoice_dunning: { label: "Past-due reminder", category: "warning" },
   // Commercial — proposals
   commercial_proposal_sent: { label: "Proposal sent", category: "info" },
+  commercial_proposal_approval_requested: { label: "Approval requested", category: "warning" },
+  commercial_proposal_approved: { label: "Proposal approved", category: "success" },
+  commercial_proposal_changes_requested: { label: "Changes requested", category: "warning" },
   // Commercial — custom alert rules (Block 3B)
   commercial_custom_rule: { label: "Custom alert", category: "warning" },
 };

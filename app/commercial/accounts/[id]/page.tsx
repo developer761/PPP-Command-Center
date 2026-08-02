@@ -1876,8 +1876,8 @@ function DealProposalsSection({ accountId, oppId, proposals }: { accountId: stri
         <ul className="divide-y divide-ppp-charcoal-50">
           {sorted.map((pr) => {
             const num = formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`;
-            const status = pr.status.charAt(0).toUpperCase() + pr.status.slice(1);
-            const tone = pr.status === "won" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : pr.status === "lost" ? "text-rose-700 bg-rose-50 border-rose-200" : pr.status === "sent" ? "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-200" : "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200";
+            const status = proposalStatusLabel(pr.status);
+            const tone = pr.status === "won" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : pr.status === "lost" ? "text-rose-700 bg-rose-50 border-rose-200" : pr.status === "sent" ? "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-200" : pr.status === "approved" ? "text-teal-700 bg-teal-50 border-teal-200" : pr.status === "pending_approval" ? "text-amber-700 bg-amber-50 border-amber-200" : "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200";
             return (
               <li key={pr.id}>
                 <Link href={`${base}/${pr.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
@@ -5229,6 +5229,8 @@ async function AccountProposalsTab({
         return "bg-rose-50 text-rose-700 border-transparent";
       case "pending_approval":
         return "bg-amber-50 text-amber-800 border-transparent";
+      case "approved":
+        return "bg-teal-50 text-teal-800 border-transparent";
       case "superseded":
         return "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-transparent";
       default:
@@ -5271,7 +5273,7 @@ async function AccountProposalsTab({
         const sentCount = proposals.filter((p) => p.status === "sent").length;
         const wonCount = proposals.filter((p) => p.status === "won").length;
         const outstandingCents = proposals
-          .filter((p) => p.status === "sent" || p.status === "pending_approval")
+          .filter((p) => p.status === "sent" || p.status === "pending_approval" || p.status === "approved")
           .reduce((s, p) => s + p.total_cents, 0);
         return (
           <div className="relative bg-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
@@ -5403,7 +5405,7 @@ async function AccountProposalsTab({
                   // proposal for this deal. Renders expanded up top
                   // with a "Current" pill; older revs collapse into
                   // a <details> below to cut clutter.
-                  const NON_TERMINAL = new Set(["draft", "pending_approval", "sent"]);
+                  const NON_TERMINAL = new Set(["draft", "pending_approval", "approved", "sent"]);
                   const rows = bucket.rows; // already sorted revision desc
                   const currentIdx = rows.findIndex((r) => NON_TERMINAL.has(r.status));
                   const currentRow = currentIdx >= 0 ? rows[currentIdx]! : rows[0]!;

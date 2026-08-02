@@ -40,6 +40,12 @@ import {
   deleteLineItem,
   getLineItem,
   sendProposal,
+  isProposalApprover,
+  requestProposalApproval,
+  approveProposal,
+  requestProposalChanges,
+  unlockApprovedProposal,
+  withdrawApprovalRequest,
   type CommercialProposalLineItem,
 } from "@/lib/commercial/proposals/db";
 import {
@@ -60,6 +66,8 @@ import { EditableProductChip } from "@/components/commercial/editable-product-ch
 import { AutosaveProposalName } from "@/components/commercial/autosave-proposal-name";
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
 import { FillProjectFromDeal } from "@/components/commercial/fill-project-from-deal";
+import ProposalMarkupUpload from "@/components/commercial/proposal-markup-upload";
+import { listDocumentsForParent } from "@/lib/commercial/documents/db";
 import {
   INPUT_CLS,
   TEXTAREA_CLS,
@@ -538,6 +546,92 @@ async function sendProposalAction(formData: FormData) {
   );
 }
 
+// ── R1d approval workflow actions ──────────────────────────────────────
+function proposalHref(accountId: string, dealId: string, proposalId: string, suffix = "") {
+  return `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}${suffix}`;
+}
+
+/** Any editor asks for approval: draft → pending_approval + notify approvers. */
+async function requestApprovalAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
+  const result = await requestProposalApproval({ proposal_id: proposalId, actor_user_id: userId });
+  if (!result.ok) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+  }
+  revalidatePath(proposalHref(accountId, dealId, proposalId));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=requested"));
+}
+
+/** Approver approves: pending_approval → approved. Rejects non-approvers. */
+async function approveAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
+  const result = await approveProposal({ proposal_id: proposalId, actor_user_id: userId });
+  if (!result.ok) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+  }
+  revalidatePath(proposalHref(accountId, dealId, proposalId));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=approved"));
+}
+
+/** Approver kicks it back with a note: pending_approval | approved → draft. */
+async function requestChangesAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  const note = String(formData.get("changes_note") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
+  const result = await requestProposalChanges({ proposal_id: proposalId, actor_user_id: userId, note });
+  if (!result.ok) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+  }
+  revalidatePath(proposalHref(accountId, dealId, proposalId));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=changes"));
+}
+
+/** Any editor unlocks an approved proposal to edit: approved → draft (approval invalidated). */
+async function unlockAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
+  const result = await unlockApprovedProposal({ proposal_id: proposalId, actor_user_id: userId });
+  if (!result.ok) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+  }
+  revalidatePath(proposalHref(accountId, dealId, proposalId));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=unlocked"));
+}
+
+/** Sender withdraws their own pending request back to draft (any editor). */
+async function withdrawAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
+  const result = await withdrawApprovalRequest({ proposal_id: proposalId, actor_user_id: userId });
+  if (!result.ok) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+  }
+  revalidatePath(proposalHref(accountId, dealId, proposalId));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=withdrawn"));
+}
+
 async function deleteProposalAction(formData: FormData) {
   "use server";
   const userId = await requireAuthed();
@@ -640,7 +734,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string }>;
+  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -651,7 +745,10 @@ export default async function ProposalEditorPage({
   ) {
     notFound();
   }
-  await requireAuthed();
+  const viewerId = await requireAuthed();
+  // R1d: only an approver (Brendan / Stephanie / admin) sees the Approve +
+  // Request-changes controls. Everyone else builds, edits, and sends-for-approval.
+  const viewerIsApprover = await isProposalApprover(viewerId);
 
   const [account, opp, proposal] = await Promise.all([
     getCommercialAccount(accountId),
@@ -675,10 +772,13 @@ export default async function ProposalEditorPage({
   // contract, show how much of it has been billed. Contract = proposal total +
   // net APPROVED change orders tied to THIS proposal; billed = issued invoices
   // linked to it. Deducts can't push the contract below $0.
-  const [proposalInvoices, dealChangeOrders] = await Promise.all([
+  const [proposalInvoices, dealChangeOrders, dealDocuments] = await Promise.all([
     listCommercialInvoices({ opportunityId: dealId }),
     listChangeOrders(dealId),
+    listDocumentsForParent("opportunity", dealId),
   ]);
+  // R1c: marked-up plan sets / bid docs the estimator attached to this deal.
+  const bidSetDocs = dealDocuments.filter((d) => d.category === "bid_set");
   const issuedForProposal = proposalInvoices.filter(
     (inv) => inv.proposal_id === proposalId && inv.status !== "draft" && inv.status !== "void",
   );
@@ -873,13 +973,15 @@ export default async function ProposalEditorPage({
                 </svg>
                 Customer PDF
               </a>
-              {proposal.status === "draft" && (
+              {(proposal.status === "draft" ||
+                proposal.status === "pending_approval" ||
+                proposal.status === "approved") && (
                 <a
                   href={`/api/commercial/proposals/${proposalId}/pdf?mode=internal`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-navy-200 bg-ppp-navy-50 text-ppp-navy-700 text-[12px] font-semibold hover:bg-ppp-navy-100 min-h-[44px] sm:min-h-[36px]"
-                  title="Internal Plan Report — the same proposal PLUS the internal bid notes + per-line prices, for estimator review (Kim's plan read). Never shown to the GC."
+                  title="Internal Plan Report — the same proposal PLUS the internal bid notes + per-line prices, for estimator + approver review. Never shown to the GC."
                 >
                   Plan report
                 </a>
@@ -897,21 +999,124 @@ export default async function ProposalEditorPage({
           >
             + New revision (R{proposal.revision_number + 1})
           </Link>
+          {/* R1d HARD GATE: draft → request approval (not direct send). */}
           {proposal.status === "draft" && hasPdfBody && (
-            <form action={sendProposalAction} className="inline-flex">
+            <form action={requestApprovalAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the GC"}? This saves the sent PDF into Files as an official copy (prior drafts remain), flips the opportunity to Proposal · Sent, and notifies the team. You can still start R${proposal.revision_number + 1} after.`}
-                pendingLabel="Sending…"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px] disabled:opacity-50"
+                message={`Send R${proposal.revision_number} for approval? An approver (Brendan, Stephanie, or an admin) must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
+                pendingLabel="Requesting…"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 shadow-sm min-h-[40px] disabled:opacity-50"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M9 12l2 2 4-4" />
+                  <circle cx="12" cy="12" r="9" />
                 </svg>
-                Send proposal
+                Send for approval
               </ConfirmSubmitButton>
             </form>
+          )}
+          {/* Pending approval — anyone can withdraw their request back to draft. */}
+          {proposal.status === "pending_approval" && (
+            <form action={withdrawAction} className="inline-flex">
+              {hiddenIds}
+              <ConfirmSubmitButton
+                message={`Withdraw R${proposal.revision_number} from approval? It goes back to draft so you can edit it. You'll need to send it for approval again afterward.`}
+                pendingLabel="Withdrawing…"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-300 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M3 2v6h6 M3.5 8a9 9 0 1 0 2.3-3.3L3 8" />
+                </svg>
+                Withdraw
+              </ConfirmSubmitButton>
+            </form>
+          )}
+          {/* Pending approval — approver-only Approve + Request changes. */}
+          {proposal.status === "pending_approval" && viewerIsApprover && (
+            <>
+              <form action={approveAction} className="inline-flex">
+                {hiddenIds}
+                <ConfirmSubmitButton
+                  message={`Approve R${proposal.revision_number}? This clears it to send to ${proposal.header_json.gc_company ?? "the GC"}. Whoever requested approval will be notified.`}
+                  pendingLabel="Approving…"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm min-h-[40px] disabled:opacity-50"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Approve
+                </ConfirmSubmitButton>
+              </form>
+              <details className="inline-flex relative group">
+                <summary className="list-none inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-amber-300 bg-surface text-amber-800 text-[13px] font-semibold hover:bg-amber-50 min-h-[40px] cursor-pointer select-none">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z" />
+                  </svg>
+                  Request changes
+                </summary>
+                <form
+                  action={requestChangesAction}
+                  className="absolute right-0 top-full mt-2 z-30 w-72 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 space-y-2"
+                >
+                  {hiddenIds}
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
+                    What needs to change?
+                  </label>
+                  <textarea
+                    name="changes_note"
+                    required
+                    rows={3}
+                    maxLength={2000}
+                    placeholder="e.g. Bump the markup on the labor lines, and add the parking exclusion."
+                    className={TEXTAREA_CLS}
+                  />
+                  <button
+                    type="submit"
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 min-h-[40px]"
+                  >
+                    Send back for changes
+                  </button>
+                  <p className="text-[10.5px] text-ppp-charcoal-400 leading-snug">
+                    Returns R{proposal.revision_number} to draft and notifies whoever requested approval.
+                  </p>
+                </form>
+              </details>
+            </>
+          )}
+          {/* Approved — the real Send + Unlock-to-edit. */}
+          {proposal.status === "approved" && hasPdfBody && (
+            <>
+              <form action={sendProposalAction} className="inline-flex">
+                {hiddenIds}
+                <ConfirmSubmitButton
+                  message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the GC"}? This saves the sent PDF into Files as an official copy (prior drafts remain), flips the opportunity to Proposal · Sent, and notifies the team. You can still start R${proposal.revision_number + 1} after.`}
+                  pendingLabel="Sending…"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px] disabled:opacity-50"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                  Send proposal
+                </ConfirmSubmitButton>
+              </form>
+              <form action={unlockAction} className="inline-flex">
+                {hiddenIds}
+                <ConfirmSubmitButton
+                  message={`Unlock R${proposal.revision_number} to edit? This invalidates the approval — it'll go back to draft and need a fresh approval before it can be sent.`}
+                  pendingLabel="Unlocking…"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-300 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <rect x="3" y="11" width="18" height="11" rx="2" />
+                    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                  </svg>
+                  Unlock to edit
+                </ConfirmSubmitButton>
+              </form>
+            </>
           )}
           {/* Karan 2026-07-15: Reopen button on Won/Lost proposals.
               Undo path for accidental closes. Reverses both the
@@ -1064,13 +1269,69 @@ export default async function ProposalEditorPage({
           {decodeURIComponent(sp.error)}
         </div>
       )}
+      {/* R1d approval flash banners */}
+      {sp.approval === "requested" && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900" role="status">
+          <strong>Sent for approval.</strong> An approver (Brendan, Stephanie, or an admin) was notified. This proposal can&rsquo;t be sent to the GC until it&rsquo;s approved.
+        </div>
+      )}
+      {sp.approval === "approved" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900" role="status">
+          <strong>Approved.</strong> This proposal is cleared to send. Use <em>Send proposal</em> above when you&rsquo;re ready.
+        </div>
+      )}
+      {sp.approval === "changes" && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900" role="status">
+          <strong>Changes requested.</strong> This proposal is back to draft and whoever requested approval was notified. Make the edits, then send for approval again.
+        </div>
+      )}
+      {sp.approval === "unlocked" && (
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-900" role="status">
+          <strong>Unlocked for editing.</strong> The prior approval was cleared — you&rsquo;ll need a fresh approval before this can be sent.
+        </div>
+      )}
+      {sp.approval === "withdrawn" && (
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-900" role="status">
+          <strong>Withdrawn.</strong> This proposal is back to draft. Make your changes, then send it for approval again.
+        </div>
+      )}
 
-      {/* Sent/Won/Lost proposals are frozen — the GC already has a
-          PDF copy, editing would break the audit trail + updateProposal
-          rejects the write anyway. Show a clear amber banner instead
-          of an autosaving form that would flash "Save failed" every
-          800ms. Alex needs to bump a new revision to make changes. */}
-      {proposal.status !== "draft" && (
+      {/* R1d: a draft that was kicked back carries the approver's note so the
+          estimator knows exactly what to fix. Only while still in draft. */}
+      {proposal.status === "draft" && proposal.changes_requested_note && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 border-t border-r border-b border-amber-200 rounded-lg px-4 py-3 text-[13px] text-amber-900" role="status">
+          <div className="font-semibold mb-0.5">Changes requested by the approver:</div>
+          <p className="text-[12.5px] text-amber-800 whitespace-pre-wrap break-words">{proposal.changes_requested_note}</p>
+        </div>
+      )}
+
+      {/* Locked states. pending_approval + approved are internal locks (NOT yet
+          sent to the GC); sent/won/lost/expired/superseded are the frozen
+          "GC already has it" states. Copy differs so we never tell someone the
+          GC has a copy that hasn't gone out. */}
+      {proposal.status === "pending_approval" && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-[13px] text-amber-900" role="status">
+          <div className="font-semibold mb-0.5">Awaiting approval — locked for editing.</div>
+          <div className="text-[12.5px] text-amber-800">
+            {viewerIsApprover
+              ? "You can Approve or Request changes above. Nothing on the proposal can be edited while it's under review."
+              : "An approver (Brendan, Stephanie, or an admin) must approve it — or send it back with changes — before it can be sent. It's locked from editing until then. Need to tweak it yourself? Use Withdraw above to pull it back to draft."}
+          </div>
+        </div>
+      )}
+      {proposal.status === "approved" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-[13px] text-emerald-900" role="status">
+          <div className="font-semibold mb-0.5">Approved — ready to send.</div>
+          <div className="text-[12.5px] text-emerald-800">
+            Locked from editing so the approved version is what goes out. Use <em>Send proposal</em> above, or <em>Unlock to edit</em> (which clears the approval and needs a fresh one).
+          </div>
+        </div>
+      )}
+      {(proposal.status === "sent" ||
+        proposal.status === "won" ||
+        proposal.status === "lost" ||
+        proposal.status === "expired" ||
+        proposal.status === "superseded") && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-[13px] text-amber-900" role="status">
           <div className="font-semibold mb-0.5">
             This proposal is {proposalStatusLabel(proposal.status).toLowerCase()} — read-only.
@@ -1249,6 +1510,41 @@ export default async function ProposalEditorPage({
           }
         >
           <textarea name="bid_notes" defaultValue={proposal.bid_notes ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="e.g. Called Michael on Tuesday to confirm scope. Assumes existing HM doors are still on-site." />
+
+          {/* R1c: marked-up plan set / bid-doc attach. Files to the DEAL's
+              documents (bid_set), so it survives revision bumps and shows in
+              the deal's Documents. Internal only — never on the customer PDF. */}
+          <div className="mt-4 pt-4 border-t border-ppp-charcoal-100">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+              <div className="min-w-0">
+                <div className="text-[12px] font-bold text-ppp-charcoal">Marked-up plans / bid set</div>
+                <div className="text-[11px] text-ppp-charcoal-500 leading-snug">Attach a marked-up plan set or the GC&rsquo;s bid document. Filed to this deal — internal only.</div>
+              </div>
+              <ProposalMarkupUpload opportunityId={dealId} />
+            </div>
+            {bidSetDocs.length > 0 ? (
+              <ul className="space-y-1">
+                {bidSetDocs.map((d) => (
+                  <li key={d.id}>
+                    <a
+                      href={`/api/commercial/documents/${d.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[12.5px] text-cc-brand-700 hover:text-cc-brand-800 hover:underline min-h-[36px]"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      <span className="truncate max-w-[240px]">{d.file_name}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11.5px] text-ppp-charcoal-400 italic">No marked-up docs attached yet.</p>
+            )}
+          </div>
         </EditorSection>
 
         {/* Estimator sign-off */}

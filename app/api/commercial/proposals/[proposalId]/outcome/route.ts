@@ -9,6 +9,10 @@ import {
   reopenProposal,
   updateProposalStatus,
   getProposal,
+  requestProposalApproval,
+  approveProposal,
+  unlockApprovedProposal,
+  withdrawApprovalRequest,
 } from "@/lib/commercial/proposals/db";
 import {
   PROPOSAL_STATUSES,
@@ -150,6 +154,100 @@ export async function POST(
       },
       { status: 400 }
     );
+  }
+
+  // ── R1d approval gate (Karan 2026-08) ───────────────────────────────
+  // The approval transitions MUST route through their enforced helpers, not
+  // the bare updateProposalStatus flip below — otherwise a free kanban drag
+  // (or a hand-crafted POST) could approve a proposal without being an
+  // approver, or flip to pending_approval without pinging the approvers.
+  //
+  //   → pending_approval : requestProposalApproval (stamps requester + fans
+  //                        out to approvers). Any editor may do this.
+  //   → approved         : approveProposal — APPROVER-ONLY (the hard gate).
+  //   → draft (from approved)          : unlockApprovedProposal (invalidates
+  //                        the approval so it must be re-approved before send).
+  //   → draft (from pending_approval)  : that's "request changes", which needs
+  //                        a note — force it into the editor, not a drag.
+  if (to === "pending_approval") {
+    const res = await requestProposalApproval({
+      proposal_id: proposalId,
+      actor_user_id: auth.user.id,
+    });
+    if (!res.ok) {
+      return NextResponse.json({ error: "request_failed", detail: res.error }, { status: 400 });
+    }
+    return NextResponse.json({
+      ok: true,
+      proposal_id: res.proposal.id,
+      opportunity_id: currentProposal.opportunity_id,
+      account_id: null,
+      to,
+      redirect_url: null,
+    });
+  }
+  if (to === "approved") {
+    const res = await approveProposal({
+      proposal_id: proposalId,
+      actor_user_id: auth.user.id,
+    });
+    if (!res.ok) {
+      // Approver gate rejections surface as 403 so the client shows the
+      // "only an approver can approve" message rather than a generic fail.
+      const isGate = res.error.startsWith("Only an approver");
+      return NextResponse.json(
+        { error: isGate ? "forbidden" : "approve_failed", detail: res.error },
+        { status: isGate ? 403 : 400 }
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      proposal_id: res.proposal.id,
+      opportunity_id: currentProposal.opportunity_id,
+      account_id: null,
+      to,
+      redirect_url: null,
+    });
+  }
+  if (to === "draft") {
+    if (currentStatus === "approved") {
+      const res = await unlockApprovedProposal({
+        proposal_id: proposalId,
+        actor_user_id: auth.user.id,
+      });
+      if (!res.ok) {
+        return NextResponse.json({ error: "unlock_failed", detail: res.error }, { status: 400 });
+      }
+      return NextResponse.json({
+        ok: true,
+        proposal_id: res.proposal.id,
+        opportunity_id: currentProposal.opportunity_id,
+        account_id: null,
+        to,
+        redirect_url: null,
+      });
+    }
+    if (currentStatus === "pending_approval") {
+      // pending_approval → draft on the kanban = WITHDRAW the request (any
+      // editor). Approver "request changes" (with a required note) stays in
+      // the editor; a note-less drag is treated as a self-withdraw so the
+      // sender isn't stuck waiting.
+      const res = await withdrawApprovalRequest({
+        proposal_id: proposalId,
+        actor_user_id: auth.user.id,
+      });
+      if (!res.ok) {
+        return NextResponse.json({ error: "withdraw_failed", detail: res.error }, { status: 400 });
+      }
+      return NextResponse.json({
+        ok: true,
+        proposal_id: res.proposal.id,
+        opportunity_id: currentProposal.opportunity_id,
+        account_id: null,
+        to,
+        redirect_url: null,
+      });
+    }
   }
 
   // Enforce the status DAG server-side (Karan 2026-07-27 audit) — the editor

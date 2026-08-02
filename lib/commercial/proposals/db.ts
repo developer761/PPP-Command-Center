@@ -524,6 +524,13 @@ export async function updateProposalStatus(input: {
             dealStatus = "estimating";
             dealSub = "proposal_pending_approval";
             break;
+          case "approved":
+            // R1d: internal approval — the customer hasn't seen anything yet,
+            // so keep the deal in Estimating (proposal awaiting the send). Same
+            // tuple as pending_approval; the deal only advances on Send.
+            dealStatus = "estimating";
+            dealSub = "proposal_pending_approval";
+            break;
           case "sent":
             dealStatus = "proposal";
             dealSub = "sent";
@@ -806,6 +813,452 @@ export async function reopenProposal(input: {
     deal_reopened: dealReopened,
     deal_current_status: currentDealStatus,
   };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// R1d — in-app proposal approval workflow (HARD GATE, Karan 2026-08)
+//
+// A proposal can no longer go straight from draft → sent. It must pass:
+//    draft → (request approval) → pending_approval
+//          → (APPROVER clicks Approve) → approved
+//          → (Send) → sent
+// Only an *approver* can flip pending_approval → approved or kick it back
+// to draft (request changes / unlock). Everyone else can do everything
+// else. The gate is enforced HERE (server), not just in the UI — the
+// outcome route + kanban route every "approve"/"kick-back" move through
+// these helpers so a hand-crafted POST or a free drag can't defeat it.
+// ════════════════════════════════════════════════════════════════════
+
+/** Is this user allowed to APPROVE proposals? True when they are:
+ *   - an env/bootstrap admin (isAdminEmail), OR
+ *   - a Commercial "admin" role holder, OR
+ *   - explicitly listed in the operating company's approver_emails
+ *     (Brendan / Stephanie).
+ *  Everyone else can build + edit + send-for-approval, but cannot approve. */
+export async function isProposalApprover(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const sb = commercialDb();
+  const { data: prof } = await sb
+    .from("profiles")
+    .select("email, is_active, has_new_platform_access")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const p = prof as
+    | { email?: string | null; is_active?: boolean | null; has_new_platform_access?: boolean | null }
+    | null;
+  // A deactivated / access-revoked user can't approve — keeps the "who can
+  // approve" set in lock-step with listProposalApproverUserIds (the fanout
+  // target), so we never let someone approve who'd never be notified to.
+  if (p?.is_active === false || p?.has_new_platform_access === false) return false;
+  const email = p?.email ?? null;
+
+  const { isAdminEmail, normalizeEmail } = await import("@/lib/auth/admin");
+  if (email && isAdminEmail(email)) return true;
+
+  try {
+    const { getCommercialRoles } = await import("@/lib/commercial/rbac");
+    const roles = await getCommercialRoles(userId);
+    if (roles.hasAdminRole) return true;
+  } catch {
+    // rbac lookup is best-effort — fall through to the approver-email check.
+  }
+
+  if (email) {
+    const { getOperatingCompany } = await import(
+      "@/lib/commercial/operating-company/db"
+    );
+    const oc = await getOperatingCompany();
+    const norm = normalizeEmail(email);
+    if (oc.approver_emails.some((e) => normalizeEmail(e) === norm)) return true;
+  }
+  return false;
+}
+
+/** Resolve the set of user IDs allowed to approve proposals — the fanout
+ *  target for a "please approve" notification. Union of admin-email users,
+ *  Commercial admin-role users, and operating-company approver_emails,
+ *  restricted to ACTIVE profiles that still have Commercial access. */
+export async function listProposalApproverUserIds(): Promise<string[]> {
+  const sb = commercialDb();
+  const { data: profs } = await sb
+    .from("profiles")
+    .select("user_id, email, is_active, has_new_platform_access");
+  const rows = (profs ?? []) as Array<{
+    user_id: string;
+    email: string | null;
+    is_active: boolean | null;
+    has_new_platform_access: boolean | null;
+  }>;
+
+  const { getOperatingCompany } = await import(
+    "@/lib/commercial/operating-company/db"
+  );
+  const oc = await getOperatingCompany();
+  const { isAdminEmail, normalizeEmail } = await import("@/lib/auth/admin");
+  const approverEmails = new Set(oc.approver_emails.map((e) => normalizeEmail(e)));
+
+  const { data: adminRoleRows } = await sb
+    .from("commercial_user_roles")
+    .select("user_id")
+    .eq("role", "admin");
+  const adminRoleIds = new Set(
+    (adminRoleRows ?? []).map((r) => (r as { user_id: string }).user_id)
+  );
+
+  const out = new Set<string>();
+  for (const r of rows) {
+    // Must have live Commercial access — a revoked/inactive approver
+    // shouldn't be pinged (mirrors the notification recipient guards).
+    if (r.is_active === false) continue;
+    if (r.has_new_platform_access === false) continue;
+    const email = r.email ?? null;
+    const norm = normalizeEmail(email);
+    if (
+      (email && isAdminEmail(email)) ||
+      adminRoleIds.has(r.user_id) ||
+      (norm && approverEmails.has(norm))
+    ) {
+      out.add(r.user_id);
+    }
+  }
+  return Array.from(out);
+}
+
+/** Resolve a user's display name for notification copy (sf_user_name →
+ *  email → generic). Mirrors sendProposal's inline lookup. */
+async function resolveActorName(userId: string): Promise<string> {
+  const sb = commercialDb();
+  const { data: prof } = await sb
+    .from("profiles")
+    .select("sf_user_name, email")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const p = prof as { sf_user_name?: string | null; email?: string | null } | null;
+  return p?.sf_user_name || p?.email || "A teammate";
+}
+
+/** Small patch helper — writes approval-tracking columns directly (the
+ *  status flip goes through updateProposalStatus for cascade + audit).
+ *  Mirrors reopenProposal's approved_at clear. Best-effort: a failure to
+ *  stamp the metadata doesn't roll back the status flip, but is logged. */
+async function patchApprovalFields(
+  proposalId: string,
+  fields: Record<string, unknown>
+): Promise<void> {
+  const sb = commercialDb();
+  const { error } = await sb
+    .from("commercial_proposals")
+    .update(fields)
+    .eq("id", proposalId);
+  if (error) {
+    console.warn(
+      `[proposals] approval-field patch failed for ${proposalId}: ${error.message}`
+    );
+  }
+}
+
+/** Step 1 — anyone with edit rights asks for approval. draft → pending_approval.
+ *  Guards: proposal is a live draft + has ≥1 inclusion (nothing to approve on an
+ *  empty bid). Stamps the requester + clears any stale changes-requested note.
+ *  Fires the "please approve" bell/email to every approver. */
+export async function requestProposalApproval(input: {
+  proposal_id: string;
+  actor_user_id: string;
+  actor_name?: string;
+}): Promise<
+  | { ok: true; proposal: CommercialProposal }
+  | { ok: false; error: string }
+> {
+  const proposal = await getProposal(input.proposal_id);
+  if (!proposal) return { ok: false, error: "Proposal not found." };
+  if (proposal.status !== "draft") {
+    return {
+      ok: false,
+      error: `Only a draft can be sent for approval (this one is ${proposalReadableStatus(proposal.status)}).`,
+    };
+  }
+  const lineItems = await listLineItemsForProposal(input.proposal_id);
+  if (lineItems.filter((i) => !i.is_alternate).length === 0) {
+    return { ok: false, error: "Add at least one inclusion before requesting approval." };
+  }
+
+  const flip = await updateProposalStatus({
+    id: input.proposal_id,
+    to_status: "pending_approval",
+    acting_user_id: input.actor_user_id,
+  });
+  if (!flip.ok) return { ok: false, error: flip.error };
+
+  const nowIso = new Date().toISOString();
+  await patchApprovalFields(input.proposal_id, {
+    approval_requested_by_user_id: input.actor_user_id,
+    approval_requested_at: nowIso,
+    // Clear a prior kick-back note so the approver sees a clean request.
+    changes_requested_note: null,
+    changes_requested_at: null,
+  });
+
+  // Notify approvers (fire-and-forget; a bell hiccup never blocks the flip).
+  try {
+    const actorName = input.actor_name ?? (await resolveActorName(input.actor_user_id));
+    const { insertCommercialProposalApprovalRequestedNotifications } =
+      await import("@/lib/notifications/commercial-events");
+    void insertCommercialProposalApprovalRequestedNotifications({
+      proposalId: proposal.id,
+      revisionNumber: proposal.revision_number,
+      totalCents: flip.proposal.total_cents,
+      opportunityId: proposal.opportunity_id,
+      gcCompany: proposal.header_json.gc_company?.trim() ?? null,
+      actingUserId: input.actor_user_id,
+      actorName,
+    }).catch((err) => {
+      console.warn("[requestProposalApproval] approver fanout failed (async):", err);
+    });
+  } catch (err) {
+    console.warn("[requestProposalApproval] approver fanout failed:", err);
+  }
+
+  return { ok: true, proposal: flip.proposal };
+}
+
+/** Step 2 — an APPROVER approves. pending_approval → approved. APPROVER-ONLY:
+ *  the actor must pass isProposalApprover or this rejects (the hard gate).
+ *  Stamps approver + approval timestamp. Notifies the original requester. */
+export async function approveProposal(input: {
+  proposal_id: string;
+  actor_user_id: string;
+  actor_name?: string;
+}): Promise<
+  | { ok: true; proposal: CommercialProposal }
+  | { ok: false; error: string }
+> {
+  if (!(await isProposalApprover(input.actor_user_id))) {
+    return {
+      ok: false,
+      error: "Only an approver (Brendan, Stephanie, or an admin) can approve a proposal.",
+    };
+  }
+  const proposal = await getProposal(input.proposal_id);
+  if (!proposal) return { ok: false, error: "Proposal not found." };
+  if (proposal.status !== "pending_approval") {
+    return {
+      ok: false,
+      error: `Only a proposal awaiting approval can be approved (this one is ${proposalReadableStatus(proposal.status)}).`,
+    };
+  }
+
+  const flip = await updateProposalStatus({
+    id: input.proposal_id,
+    to_status: "approved",
+    acting_user_id: input.actor_user_id,
+  });
+  if (!flip.ok) return { ok: false, error: flip.error };
+
+  const nowIso = new Date().toISOString();
+  await patchApprovalFields(input.proposal_id, {
+    approved_by_user_id: input.actor_user_id,
+    approval_approved_at: nowIso,
+    // An approval clears any prior kick-back note (it's resolved now).
+    changes_requested_note: null,
+    changes_requested_at: null,
+  });
+
+  // Notify the requester (if any, and not the approver themselves).
+  if (
+    proposal.approval_requested_by_user_id &&
+    proposal.approval_requested_by_user_id !== input.actor_user_id
+  ) {
+    try {
+      const actorName = input.actor_name ?? (await resolveActorName(input.actor_user_id));
+      const { insertCommercialProposalApprovalDecidedNotification } =
+        await import("@/lib/notifications/commercial-events");
+      void insertCommercialProposalApprovalDecidedNotification({
+        decision: "approved",
+        proposalId: proposal.id,
+        revisionNumber: proposal.revision_number,
+        opportunityId: proposal.opportunity_id,
+        gcCompany: proposal.header_json.gc_company?.trim() ?? null,
+        recipientUserId: proposal.approval_requested_by_user_id,
+        actingUserId: input.actor_user_id,
+        actorName,
+        note: null,
+      }).catch((err) => {
+        console.warn("[approveProposal] requester notify failed (async):", err);
+      });
+    } catch (err) {
+      console.warn("[approveProposal] requester notify failed:", err);
+    }
+  }
+
+  return { ok: true, proposal: flip.proposal };
+}
+
+/** Step 2b — an APPROVER kicks it back for edits. pending_approval | approved
+ *  → draft, with a reason. APPROVER-ONLY. Clears the approval stamp (approval
+ *  is invalidated) + records the changes-requested note. Notifies the requester. */
+export async function requestProposalChanges(input: {
+  proposal_id: string;
+  actor_user_id: string;
+  note: string;
+  actor_name?: string;
+}): Promise<
+  | { ok: true; proposal: CommercialProposal }
+  | { ok: false; error: string }
+> {
+  if (!(await isProposalApprover(input.actor_user_id))) {
+    return {
+      ok: false,
+      error: "Only an approver can request changes.",
+    };
+  }
+  const note = (input.note ?? "").trim();
+  if (!note) return { ok: false, error: "Add a note so the estimator knows what to change." };
+  const cappedNote = note.length > 2000 ? note.slice(0, 2000) : note;
+
+  const proposal = await getProposal(input.proposal_id);
+  if (!proposal) return { ok: false, error: "Proposal not found." };
+  if (proposal.status !== "pending_approval" && proposal.status !== "approved") {
+    return {
+      ok: false,
+      error: `Only a proposal awaiting approval (or already approved) can be sent back (this one is ${proposalReadableStatus(proposal.status)}).`,
+    };
+  }
+
+  const flip = await updateProposalStatus({
+    id: input.proposal_id,
+    to_status: "draft",
+    acting_user_id: input.actor_user_id,
+  });
+  if (!flip.ok) return { ok: false, error: flip.error };
+
+  const nowIso = new Date().toISOString();
+  await patchApprovalFields(input.proposal_id, {
+    changes_requested_note: cappedNote,
+    changes_requested_at: nowIso,
+    // Approval (if it existed) is invalidated by a kick-back.
+    approved_by_user_id: null,
+    approval_approved_at: null,
+  });
+
+  if (
+    proposal.approval_requested_by_user_id &&
+    proposal.approval_requested_by_user_id !== input.actor_user_id
+  ) {
+    try {
+      const actorName = input.actor_name ?? (await resolveActorName(input.actor_user_id));
+      const { insertCommercialProposalApprovalDecidedNotification } =
+        await import("@/lib/notifications/commercial-events");
+      void insertCommercialProposalApprovalDecidedNotification({
+        decision: "changes_requested",
+        proposalId: proposal.id,
+        revisionNumber: proposal.revision_number,
+        opportunityId: proposal.opportunity_id,
+        gcCompany: proposal.header_json.gc_company?.trim() ?? null,
+        recipientUserId: proposal.approval_requested_by_user_id,
+        actingUserId: input.actor_user_id,
+        actorName,
+        note: cappedNote,
+      }).catch((err) => {
+        console.warn("[requestProposalChanges] requester notify failed (async):", err);
+      });
+    } catch (err) {
+      console.warn("[requestProposalChanges] requester notify failed:", err);
+    }
+  }
+
+  return { ok: true, proposal: flip.proposal };
+}
+
+/** Unlock an already-approved proposal back to draft so it can be edited.
+ *  approved → draft. Any editor may do this (it's not an approval action —
+ *  it INVALIDATES the approval and forces a fresh approval before send).
+ *  No approver check; the re-approval is the gate. */
+export async function unlockApprovedProposal(input: {
+  proposal_id: string;
+  actor_user_id: string;
+}): Promise<
+  | { ok: true; proposal: CommercialProposal }
+  | { ok: false; error: string }
+> {
+  const proposal = await getProposal(input.proposal_id);
+  if (!proposal) return { ok: false, error: "Proposal not found." };
+  if (proposal.status !== "approved") {
+    return {
+      ok: false,
+      error: `Only an approved proposal can be unlocked (this one is ${proposalReadableStatus(proposal.status)}).`,
+    };
+  }
+
+  const flip = await updateProposalStatus({
+    id: input.proposal_id,
+    to_status: "draft",
+    acting_user_id: input.actor_user_id,
+  });
+  if (!flip.ok) return { ok: false, error: flip.error };
+
+  await patchApprovalFields(input.proposal_id, {
+    // Editing invalidates the approval — clear it so the row must be
+    // re-approved before it can be sent again.
+    approved_by_user_id: null,
+    approval_approved_at: null,
+    // Also clear the prior request stamp so the next request is clean.
+    approval_requested_by_user_id: null,
+    approval_requested_at: null,
+  });
+
+  return { ok: true, proposal: flip.proposal };
+}
+
+/** Withdraw a pending approval request back to draft. Unlike requestChanges
+ *  (approver-only, needs a note), ANY editor can withdraw — it's the sender's
+ *  "actually, let me change something first" escape hatch. Not a gate bypass:
+ *  it lands back in draft and must be re-approved before it can be sent. */
+export async function withdrawApprovalRequest(input: {
+  proposal_id: string;
+  actor_user_id: string;
+}): Promise<
+  | { ok: true; proposal: CommercialProposal }
+  | { ok: false; error: string }
+> {
+  const proposal = await getProposal(input.proposal_id);
+  if (!proposal) return { ok: false, error: "Proposal not found." };
+  if (proposal.status !== "pending_approval") {
+    return {
+      ok: false,
+      error: `Only a proposal awaiting approval can be withdrawn (this one is ${proposalReadableStatus(proposal.status)}).`,
+    };
+  }
+
+  const flip = await updateProposalStatus({
+    id: input.proposal_id,
+    to_status: "draft",
+    acting_user_id: input.actor_user_id,
+  });
+  if (!flip.ok) return { ok: false, error: flip.error };
+
+  await patchApprovalFields(input.proposal_id, {
+    // Clear the request stamp so the next request starts clean. No
+    // changes_requested_note — this is a self-withdraw, not a rejection.
+    approval_requested_by_user_id: null,
+    approval_requested_at: null,
+  });
+
+  return { ok: true, proposal: flip.proposal };
+}
+
+/** Human label for a proposal status in error strings. */
+function proposalReadableStatus(s: string): string {
+  const map: Record<string, string> = {
+    draft: "a draft",
+    pending_approval: "awaiting approval",
+    approved: "approved",
+    sent: "already sent",
+    won: "won",
+    lost: "lost",
+    expired: "expired",
+    superseded: "replaced by a newer revision",
+  };
+  return map[s] ?? s;
 }
 
 /** Karan 2026-07-15: bulk delete every DRAFT proposal under an account
@@ -1397,8 +1850,19 @@ export async function sendProposal(input: {
   // there's a single choke-point.
   const proposal = await getProposal(input.proposal_id);
   if (!proposal) return { ok: false, error: "Proposal not found." };
-  if (proposal.status !== "draft") {
-    return { ok: false, error: "Only draft proposals can be sent." };
+  // HARD GATE (R1d, Karan 2026-08): a proposal must be APPROVED before it can
+  // be sent. draft/pending_approval can no longer send — they route through
+  // the approval flow first.
+  if (proposal.status !== "approved") {
+    return {
+      ok: false,
+      error:
+        proposal.status === "pending_approval"
+          ? "This proposal is awaiting approval. An approver must approve it before it can be sent."
+          : proposal.status === "draft"
+          ? "Send for approval first — a proposal must be approved before it goes out."
+          : "Only an approved proposal can be sent.",
+    };
   }
   const lineItems = await listLineItemsForProposal(input.proposal_id);
   const inclusionCount = lineItems.filter((i) => !i.is_alternate).length;
@@ -1505,7 +1969,7 @@ export async function sendProposal(input: {
     .eq("id", input.proposal_id)
     .maybeSingle();
   const nowIso = new Date().toISOString();
-  // Post-audit race guard: also filter on status='draft' so two tabs
+  // Post-audit race guard: also filter on status='approved' so two tabs
   // racing on Send can't both overwrite each other's snapshot_document_id.
   // If a concurrent tab already flipped it to 'sent', this UPDATE returns
   // zero rows → maybeSingle returns null → we short-circuit with a
@@ -1519,7 +1983,7 @@ export async function sendProposal(input: {
       updated_by_user_id: input.actor_user_id,
     })
     .eq("id", input.proposal_id)
-    .eq("status", "draft")
+    .eq("status", "approved")
     // Post-round-2 audit: also guard on deleted_at so a soft-delete
     // race between the pre-flight fetch and this UPDATE surfaces as a
     // 0-row result instead of writing to a soft-deleted row.
@@ -1692,7 +2156,7 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     .from("commercial_proposals")
     .select("id, status, opportunity_id, revision_number, updated_at")
     .is("deleted_at", null)
-    .in("status", ["draft", "pending_approval", "sent", "won", "lost"])
+    .in("status", ["draft", "pending_approval", "approved", "sent", "won", "lost"])
     .order("revision_number", { ascending: false });
   const proposals =
     (propRows as {
@@ -1747,6 +2211,10 @@ export async function reconcileDealStatesFromProposals(): Promise<{
       case "draft":
         return { status: "estimating", sub: "estimating" };
       case "pending_approval":
+        return { status: "estimating", sub: "proposal_pending_approval" };
+      case "approved":
+        // R1d: internally approved but not yet sent — still Estimating (no
+        // customer has seen it). Deal only advances to Proposal · Sent on Send.
         return { status: "estimating", sub: "proposal_pending_approval" };
       case "sent":
         return { status: "proposal", sub: "sent" };

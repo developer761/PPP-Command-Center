@@ -69,6 +69,14 @@ export type CommercialNotificationKind =
   // cares about — the team + estimator want to know it went out so they
   // can watch for the customer response.
   | "commercial_proposal_sent"
+  // R1d (Karan 2026-08): in-app approval hard gate. A proposal must be
+  // approved before it can be sent. Three events drive the loop:
+  //   - approval_requested → pinged to every approver (Brendan/Stephanie/admins)
+  //   - approved           → back to the requester (green light to send)
+  //   - changes_requested  → back to the requester with the approver's note
+  | "commercial_proposal_approval_requested"
+  | "commercial_proposal_approved"
+  | "commercial_proposal_changes_requested"
   // Block 3B (Karan 2026-07-25): user-defined custom alert rules fire this
   // kind; the title/body carry the specifics.
   | "commercial_custom_rule"
@@ -1291,6 +1299,196 @@ export async function insertCommercialProposalSentNotifications(input: {
     })
   );
   return { fanout };
+}
+
+/** Resolve the account_id + title for a proposal's parent opportunity so
+ *  the approval notifications can build the editor deep-link. */
+async function resolveOppAccountAndTitle(
+  opportunityId: string
+): Promise<{ accountId: string | null; oppTitle: string }> {
+  const sb = adminClient();
+  const { data } = await sb
+    .from("commercial_opportunities")
+    .select("account_id, title")
+    .eq("id", opportunityId)
+    .maybeSingle();
+  const row = data as { account_id: string | null; title: string | null } | null;
+  return { accountId: row?.account_id ?? null, oppTitle: row?.title ?? "a deal" };
+}
+
+/**
+ * R1d — proposal sent FOR APPROVAL. Fans out to every approver (Brendan,
+ * Stephanie, admins) so someone can green-light it. The proposal is BLOCKED
+ * from sending until one of them approves. Skips the requester themselves.
+ */
+export async function insertCommercialProposalApprovalRequestedNotifications(input: {
+  proposalId: string;
+  revisionNumber: number;
+  totalCents: number;
+  opportunityId: string;
+  gcCompany: string | null;
+  actingUserId: string | null;
+  actorName: string;
+}): Promise<{ fanout: number }> {
+  // Lazy import to avoid a server-only cycle (db.ts ↔ this file both import
+  // each other's helpers).
+  const { listProposalApproverUserIds } = await import(
+    "@/lib/commercial/proposals/db"
+  );
+  const approverIds = (await listProposalApproverUserIds()).filter(
+    (uid) => !(input.actingUserId && uid === input.actingUserId)
+  );
+  if (approverIds.length === 0) return { fanout: 0 };
+
+  const { accountId, oppTitle } = await resolveOppAccountAndTitle(input.opportunityId);
+  if (!accountId) {
+    reportWarn({
+      key: "proposal_approval_requested_no_account",
+      message: "Approval-requested notification skipped — opp has no account; approvers NOT notified",
+      platform: "commercial_cc",
+      context: {
+        opp_id_short: input.opportunityId.slice(0, 8),
+        proposal_id_short: input.proposalId.slice(0, 8),
+      },
+    });
+    return { fanout: 0 };
+  }
+
+  const relativeLink = `/commercial/accounts/${accountId}/deals/${input.opportunityId}/proposal/${input.proposalId}`;
+  const emailLink = appendBase(relativeLink);
+  const shortOppTitle = truncatePreview(oppTitle, BELL_TITLE_OPP_CAP);
+  const money = formatMoneyCents(input.totalCents);
+  const revLabel = `R${input.revisionNumber}`;
+  const gcSuffix = input.gcCompany ? ` (${input.gcCompany})` : "";
+  const requester = input.actorName || "Someone";
+  const title = `Approval needed: ${revLabel} · ${money}`;
+  const body = `${requester} is requesting approval on ${revLabel}${gcSuffix} · ${shortOppTitle}.`;
+
+  const subject = `Approval needed — proposal ${revLabel} · ${money} · ${oppTitle}`;
+  const text = [
+    `Hi,`,
+    ``,
+    `${requester} sent proposal ${revLabel}${gcSuffix} on ${oppTitle} for your approval:`,
+    `  Total: ${money}`,
+    ``,
+    `It can't be sent to the customer until you approve it.`,
+    `Review + approve: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(requester)}</strong> sent proposal <strong>${escape(revLabel)}</strong>${input.gcCompany ? ` (<strong>${escape(input.gcCompany)}</strong>)` : ""} on <strong>${escape(oppTitle)}</strong> for your approval:</p>
+  <p style="margin:16px 0;padding:12px 16px;background:#f6f7f8;border-radius:8px;"><span style="color:#666;">Total:</span> <strong>${escape(money)}</strong></p>
+  <p style="color:#92400e;">It can't be sent to the customer until you approve it.</p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b45309;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Review + approve →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  let fanout = 0;
+  await Promise.allSettled(
+    approverIds.map(async (uid) => {
+      const r = await dispatchCommercialNotification({
+        kind: "commercial_proposal_approval_requested",
+        recipientUserId: uid,
+        actingUserId: input.actingUserId,
+        sourceId: input.proposalId,
+        title,
+        body,
+        link: relativeLink,
+        email: { subject, text, html },
+      });
+      if (r.ok && r.written) fanout += 1;
+    })
+  );
+  return { fanout };
+}
+
+/**
+ * R1d — approval DECIDED. One recipient: the estimator who requested it.
+ * `decision` picks the kind + copy: "approved" (green light to send) or
+ * "changes_requested" (kicked back with the approver's note).
+ */
+export async function insertCommercialProposalApprovalDecidedNotification(input: {
+  decision: "approved" | "changes_requested";
+  proposalId: string;
+  revisionNumber: number;
+  opportunityId: string;
+  gcCompany: string | null;
+  recipientUserId: string;
+  actingUserId: string | null;
+  actorName: string;
+  note: string | null;
+}): Promise<{ ok: boolean; written: boolean }> {
+  const { accountId, oppTitle } = await resolveOppAccountAndTitle(input.opportunityId);
+  if (!accountId) {
+    reportWarn({
+      key: "proposal_approval_decided_no_account",
+      message: "Approval-decided notification skipped — opp has no account; requester NOT notified",
+      platform: "commercial_cc",
+      context: {
+        opp_id_short: input.opportunityId.slice(0, 8),
+        proposal_id_short: input.proposalId.slice(0, 8),
+        decision: input.decision,
+      },
+    });
+    return { ok: false, written: false };
+  }
+
+  const relativeLink = `/commercial/accounts/${accountId}/deals/${input.opportunityId}/proposal/${input.proposalId}`;
+  const emailLink = appendBase(relativeLink);
+  const shortOppTitle = truncatePreview(oppTitle, BELL_TITLE_OPP_CAP);
+  const revLabel = `R${input.revisionNumber}`;
+  const approver = input.actorName || "An approver";
+  const isApproved = input.decision === "approved";
+  const noteForBell = input.note ? ` Note: ${truncatePreview(input.note, BELL_NOTE_CAP)}` : "";
+
+  const title = isApproved
+    ? `Approved: ${revLabel} — ready to send`
+    : `Changes requested: ${revLabel}`;
+  const body = isApproved
+    ? `${approver} approved ${revLabel} · ${shortOppTitle}. You can send it now.`
+    : `${approver} sent ${revLabel} back on ${shortOppTitle}.${noteForBell}`;
+
+  const subject = isApproved
+    ? `Proposal ${revLabel} approved — ready to send · ${oppTitle}`
+    : `Changes requested on proposal ${revLabel} · ${oppTitle}`;
+  const text = [
+    `Hi,`,
+    ``,
+    isApproved
+      ? `${approver} approved proposal ${revLabel} on ${oppTitle}. It's cleared to send to the customer.`
+      : `${approver} requested changes on proposal ${revLabel} on ${oppTitle} — it's back in draft.`,
+    input.note ? `  Note: ${input.note}` : "",
+    ``,
+    isApproved ? `Send it: ${emailLink}` : `Make the edits: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const accent = isApproved ? "#047857" : "#b45309";
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(approver)}</strong> ${isApproved ? "approved" : "requested changes on"} proposal <strong>${escape(revLabel)}</strong> on <strong>${escape(oppTitle)}</strong>${isApproved ? ". It's cleared to send to the customer." : " — it's back in draft."}</p>
+  ${input.note ? `<p style="margin:8px 0;padding:12px 16px;background:#fffbeb;border-left:4px solid #d97706;border-radius:8px;color:#444;word-break:break-word;"><em>${escape(input.note)}</em></p>` : ""}
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:${accent};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">${isApproved ? "Send it →" : "Make the edits →"}</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  const r = await dispatchCommercialNotification({
+    kind: isApproved
+      ? "commercial_proposal_approved"
+      : "commercial_proposal_changes_requested",
+    recipientUserId: input.recipientUserId,
+    actingUserId: input.actingUserId,
+    sourceId: input.proposalId,
+    title,
+    body,
+    link: relativeLink,
+    email: { subject, text, html },
+  });
+  return { ok: r.ok, written: r.ok ? (r as { written: boolean }).written : false };
 }
 
 /**

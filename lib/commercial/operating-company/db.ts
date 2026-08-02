@@ -23,10 +23,12 @@ export type OperatingCompany = {
   website: string | null;
   logo_asset_key: string | null;
   signature_asset_key: string | null;
+  /** R1d: emails allowed to approve proposals (in addition to any admin). */
+  approver_emails: string[];
 };
 
 const COLS =
-  "name, legal_name, address_line1, address_line2, city, state, zip, phone, fax, email, website, logo_asset_key, signature_asset_key";
+  "name, legal_name, address_line1, address_line2, city, state, zip, phone, fax, email, website, logo_asset_key, signature_asset_key, approver_emails";
 
 /** Fallback used when the migration hasn't been applied yet (graceful — every
  *  generator keeps working). Matches the seed row. */
@@ -44,6 +46,7 @@ const DEFAULTS: OperatingCompany = {
   website: "www.tomcopainting.com",
   logo_asset_key: null,
   signature_asset_key: null,
+  approver_emails: [],
 };
 
 /** The one operating-company row (cheap singleton read; falls back to DEFAULTS
@@ -88,6 +91,9 @@ export async function updateOperatingCompany(
     ...(patch.website !== undefined ? { website: clean(patch.website) } : {}),
     ...(patch.logo_asset_key !== undefined ? { logo_asset_key: patch.logo_asset_key } : {}),
     ...(patch.signature_asset_key !== undefined ? { signature_asset_key: patch.signature_asset_key } : {}),
+    ...(patch.approver_emails !== undefined
+      ? { approver_emails: Array.from(new Set(patch.approver_emails.map((e) => e.trim().toLowerCase()).filter(Boolean))) }
+      : {}),
     updated_at: new Date().toISOString(),
     updated_by_user_id: actorUserId,
   };
