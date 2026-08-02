@@ -30,17 +30,24 @@ export default function CommercialAccessManager({
   initialUsers,
   currentUserId,
   initialApproverEmails = [],
+  initialReceiverEmails = [],
 }: {
   initialUsers: ManagedUser[];
   currentUserId: string;
   /** R1d: emails flagged as proposal approvers (admins are always approvers). */
   initialApproverEmails?: string[];
+  /** RUX-6: emails flagged to get pinged on proposal approve / changes-requested. */
+  initialReceiverEmails?: string[];
 }) {
   const [users, setUsers] = useState<ManagedUser[]>(initialUsers);
   const [approverEmails, setApproverEmails] = useState<string[]>(
     initialApproverEmails.map((e) => e.trim().toLowerCase())
   );
+  const [receiverEmails, setReceiverEmails] = useState<string[]>(
+    initialReceiverEmails.map((e) => e.trim().toLowerCase())
+  );
   const [togglingApprover, setTogglingApprover] = useState(false);
+  const [togglingReceiver, setTogglingReceiver] = useState(false);
   const [flash, setFlash] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
 
   const refresh = async () => {
@@ -101,6 +108,50 @@ export default function CommercialAccessManager({
     }
   };
 
+  // RUX-6: toggle a user as a proposal-decision receiver — mirrors the approver
+  // toggle. Optimistic, serialized, atomic server write.
+  const toggleReceiver = async (email: string, make: boolean, label: string) => {
+    const norm = email.trim().toLowerCase();
+    setTogglingReceiver(true);
+    setReceiverEmails((prev) =>
+      make ? [...new Set([...prev, norm])] : prev.filter((e) => e !== norm)
+    );
+    try {
+      const res = await fetch("/api/commercial/receivers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: norm, make }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        receiver_emails?: string[];
+      };
+      if (!res.ok) {
+        setReceiverEmails((prev) =>
+          make ? prev.filter((e) => e !== norm) : [...new Set([...prev, norm])]
+        );
+        note("err", json.error ?? "Couldn't update receivers.");
+        return;
+      }
+      if (json.receiver_emails) {
+        setReceiverEmails(json.receiver_emails.map((e) => e.trim().toLowerCase()));
+      }
+      note(
+        "ok",
+        make
+          ? `${label} will now be notified when a proposal is approved or sent back.`
+          : `${label} will no longer be notified about proposal decisions.`
+      );
+    } catch {
+      setReceiverEmails((prev) =>
+        make ? prev.filter((e) => e !== norm) : [...new Set([...prev, norm])]
+      );
+      note("err", "Network error — try again.");
+    } finally {
+      setTogglingReceiver(false);
+    }
+  };
+
   const approverCount = users.filter((u) =>
     approverEmails.includes((u.email ?? "").trim().toLowerCase())
   ).length;
@@ -155,6 +206,9 @@ export default function CommercialAccessManager({
                 isApprover={approverEmails.includes((u.email ?? "").trim().toLowerCase())}
                 onToggleApprover={toggleApprover}
                 toggleLocked={togglingApprover}
+                isReceiver={receiverEmails.includes((u.email ?? "").trim().toLowerCase())}
+                onToggleReceiver={toggleReceiver}
+                receiverToggleLocked={togglingReceiver}
                 onChanged={async (msg) => {
                   note("ok", msg);
                   await refresh();
@@ -333,6 +387,9 @@ function UserRow({
   isApprover,
   onToggleApprover,
   toggleLocked,
+  isReceiver,
+  onToggleReceiver,
+  receiverToggleLocked,
   onChanged,
   onError,
 }: {
@@ -341,6 +398,9 @@ function UserRow({
   isApprover: boolean;
   onToggleApprover: (email: string, make: boolean, label: string) => Promise<void>;
   toggleLocked: boolean;
+  isReceiver: boolean;
+  onToggleReceiver: (email: string, make: boolean, label: string) => Promise<void>;
+  receiverToggleLocked: boolean;
   onChanged: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -348,6 +408,7 @@ function UserRow({
   const [resetOpen, setResetOpen] = useState(false);
   const [newPw, setNewPw] = useState("");
   const [approverBusy, setApproverBusy] = useState(false);
+  const [receiverBusy, setReceiverBusy] = useState(false);
   const label = user.full_name || user.email;
 
   const doToggleApprover = async () => {
@@ -357,6 +418,16 @@ function UserRow({
       await onToggleApprover(user.email, !isApprover, label);
     } finally {
       setApproverBusy(false);
+    }
+  };
+
+  const doToggleReceiver = async () => {
+    if (receiverBusy) return;
+    setReceiverBusy(true);
+    try {
+      await onToggleReceiver(user.email, !isReceiver, label);
+    } finally {
+      setReceiverBusy(false);
     }
   };
 
@@ -422,6 +493,14 @@ function UserRow({
                 Approver
               </span>
             )}
+            {isReceiver && (
+              <span
+                className="rounded border border-ppp-blue-200 bg-ppp-blue-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ppp-blue-700"
+                title="Gets notified when a proposal is approved or sent back with changes."
+              >
+                Receiver
+              </span>
+            )}
           </div>
           <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 truncate">{user.email}</div>
           <div className="text-[11px] text-ppp-charcoal-400 mt-0.5">
@@ -456,6 +535,28 @@ function UserRow({
               : isApprover
               ? "✓ Approver"
               : "Make approver"}
+          </button>
+          {/* RUX-6: proposal-decision receiver toggle — who gets pinged on
+              approve / changes-requested. Independent of approver + admin. */}
+          <button
+            type="button"
+            onClick={doToggleReceiver}
+            disabled={receiverBusy || receiverToggleLocked || !user.is_active}
+            title={
+              !user.is_active
+                ? "Reactivate this user before making them a receiver."
+                : isReceiver
+                ? "Turn off — they'll no longer be notified about proposal decisions."
+                : "Turn on — they'll be pinged when a proposal is approved or sent back."
+            }
+            aria-pressed={isReceiver}
+            className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[44px] sm:min-h-[36px] ${
+              isReceiver
+                ? "border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 hover:bg-ppp-blue-100"
+                : "border border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+            }`}
+          >
+            {receiverBusy ? "…" : isReceiver ? "✓ Receiver" : "Make receiver"}
           </button>
           {!isSelf && (
             <>

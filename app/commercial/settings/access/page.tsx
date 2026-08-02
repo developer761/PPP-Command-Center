@@ -46,6 +46,7 @@ export default async function CommercialAccessPage() {
   // the operating-company singleton; toggled per-user below.
   const oc = await getOperatingCompany();
   const approverEmails = (oc.approver_emails ?? []).map((e) => normalizeEmail(e));
+  const receiverEmails = (oc.receiver_emails ?? []).map((e) => normalizeEmail(e));
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 animate-fade-up">
@@ -65,13 +66,15 @@ export default async function CommercialAccessPage() {
           Give someone a Commercial login — email + password, no Google needed.
           Accounts made here can reach the Commercial Command Center only, not PPP
           Command Center. Anyone who needs both is set up separately. Flag anyone as
-          a <strong>proposal approver</strong> to let them sign off proposals before they go to a GC.
+          a <strong>proposal approver</strong> to let them sign off proposals before they go to a GC,
+          or a <strong>receiver</strong> to get pinged whenever a proposal is approved or sent back with changes.
         </p>
       </header>
       <CommercialAccessManager
         initialUsers={users}
         currentUserId={user.id}
         initialApproverEmails={approverEmails}
+        initialReceiverEmails={receiverEmails}
       />
     </div>
   );

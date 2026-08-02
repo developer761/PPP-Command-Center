@@ -25,10 +25,12 @@ export type OperatingCompany = {
   signature_asset_key: string | null;
   /** R1d: emails allowed to approve proposals (in addition to any admin). */
   approver_emails: string[];
+  /** RUX-6: emails pinged when a proposal is approved / sent back with changes. */
+  receiver_emails: string[];
 };
 
 const COLS =
-  "name, legal_name, address_line1, address_line2, city, state, zip, phone, fax, email, website, logo_asset_key, signature_asset_key, approver_emails";
+  "name, legal_name, address_line1, address_line2, city, state, zip, phone, fax, email, website, logo_asset_key, signature_asset_key, approver_emails, receiver_emails";
 
 /** Fallback used when the migration hasn't been applied yet (graceful — every
  *  generator keeps working). Matches the seed row. */
@@ -47,6 +49,7 @@ const DEFAULTS: OperatingCompany = {
   logo_asset_key: null,
   signature_asset_key: null,
   approver_emails: [],
+  receiver_emails: [],
 };
 
 /** The one operating-company row (cheap singleton read; falls back to DEFAULTS
@@ -93,6 +96,9 @@ export async function updateOperatingCompany(
     ...(patch.signature_asset_key !== undefined ? { signature_asset_key: patch.signature_asset_key } : {}),
     ...(patch.approver_emails !== undefined
       ? { approver_emails: Array.from(new Set(patch.approver_emails.map((e) => e.trim().toLowerCase()).filter(Boolean))) }
+      : {}),
+    ...(patch.receiver_emails !== undefined
+      ? { receiver_emails: Array.from(new Set(patch.receiver_emails.map((e) => e.trim().toLowerCase()).filter(Boolean))) }
       : {}),
     updated_at: new Date().toISOString(),
     updated_by_user_id: actorUserId,

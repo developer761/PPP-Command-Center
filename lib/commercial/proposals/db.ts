@@ -895,6 +895,75 @@ export async function listProposalApproverUserIds(): Promise<string[]> {
   return Array.from(out);
 }
 
+/** RUX-6: the user IDs to CC on a proposal decision (approved / changes-
+ *  requested) — the "receivers" toggled on Settings → Access. Same active +
+ *  has-access filter as the approver list. Independent of approver/admin. */
+export async function listProposalReceiverUserIds(): Promise<string[]> {
+  const sb = commercialDb();
+  const { getOperatingCompany } = await import(
+    "@/lib/commercial/operating-company/db"
+  );
+  const oc = await getOperatingCompany();
+  const { normalizeEmail } = await import("@/lib/auth/admin");
+  const receiverEmails = new Set((oc.receiver_emails ?? []).map((e) => normalizeEmail(e)));
+  if (receiverEmails.size === 0) return [];
+
+  const { data: profs } = await sb
+    .from("profiles")
+    .select("user_id, email, is_active, has_new_platform_access");
+  const rows = (profs ?? []) as Array<{
+    user_id: string;
+    email: string | null;
+    is_active: boolean | null;
+    has_new_platform_access: boolean | null;
+  }>;
+  const out = new Set<string>();
+  for (const r of rows) {
+    if (r.is_active === false) continue;
+    if (r.has_new_platform_access === false) continue;
+    const norm = normalizeEmail(r.email);
+    if (norm && receiverEmails.has(norm)) out.add(r.user_id);
+  }
+  return Array.from(out);
+}
+
+/** Fan a proposal-decision notification out to the receivers (Settings →
+ *  Access), skipping anyone already notified (the actor + the requester).
+ *  Best-effort — a failure never blocks the decision. */
+async function notifyProposalReceivers(input: {
+  decision: "approved" | "changes_requested";
+  proposal: { id: string; revision_number: number; opportunity_id: string; header_json: { gc_company?: string | null } };
+  actorUserId: string;
+  requesterUserId: string | null;
+  actorName: string;
+  note: string | null;
+}): Promise<void> {
+  try {
+    const receiverIds = await listProposalReceiverUserIds();
+    if (receiverIds.length === 0) return;
+    const already = new Set([input.actorUserId, input.requesterUserId].filter(Boolean) as string[]);
+    const { insertCommercialProposalApprovalDecidedNotification } = await import(
+      "@/lib/notifications/commercial-events"
+    );
+    for (const uid of receiverIds) {
+      if (already.has(uid)) continue;
+      void insertCommercialProposalApprovalDecidedNotification({
+        decision: input.decision,
+        proposalId: input.proposal.id,
+        revisionNumber: input.proposal.revision_number,
+        opportunityId: input.proposal.opportunity_id,
+        gcCompany: input.proposal.header_json.gc_company?.trim() ?? null,
+        recipientUserId: uid,
+        actingUserId: input.actorUserId,
+        actorName: input.actorName,
+        note: input.note,
+      }).catch((err) => console.warn("[notifyProposalReceivers] one recipient failed:", err));
+    }
+  } catch (err) {
+    console.warn("[notifyProposalReceivers] failed:", err);
+  }
+}
+
 /** Resolve a user's display name for notification copy (sf_user_name →
  *  email → generic). Mirrors sendProposal's inline lookup. */
 async function resolveActorName(userId: string): Promise<string> {
@@ -1061,6 +1130,16 @@ export async function approveProposal(input: {
     }
   }
 
+  // RUX-6: also ping the receivers (Settings → Access), minus the actor + requester.
+  await notifyProposalReceivers({
+    decision: "approved",
+    proposal,
+    actorUserId: input.actor_user_id,
+    requesterUserId: proposal.approval_requested_by_user_id,
+    actorName: input.actor_name ?? (await resolveActorName(input.actor_user_id)),
+    note: null,
+  });
+
   return { ok: true, proposal: flip.proposal };
 }
 
@@ -1136,6 +1215,16 @@ export async function requestProposalChanges(input: {
       console.warn("[requestProposalChanges] requester notify failed:", err);
     }
   }
+
+  // RUX-6: also ping the receivers (Settings → Access), minus the actor + requester.
+  await notifyProposalReceivers({
+    decision: "changes_requested",
+    proposal,
+    actorUserId: input.actor_user_id,
+    requesterUserId: proposal.approval_requested_by_user_id,
+    actorName: input.actor_name ?? (await resolveActorName(input.actor_user_id)),
+    note: cappedNote,
+  });
 
   return { ok: true, proposal: flip.proposal };
 }
