@@ -71,7 +71,7 @@ async function requireCommercialUser(): Promise<string> {
 }
 
 function costsBase(accountId: string, oppId: string): string {
-  return `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=project&pt=costs`;
+  return `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=costs`;
 }
 function costsRedirect(accountId: string, oppId: string, params: Record<string, string>, back = ""): never {
   const p = { ...params };

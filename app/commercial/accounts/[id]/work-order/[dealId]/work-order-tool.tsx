@@ -50,7 +50,7 @@ function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
 }
 function base(id: string, dealId: string) {
-  return `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=project&pt=work-order`;
+  return `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=work-order`;
 }
 function revalidateWO(id: string, dealId: string) {
   revalidatePath(`/commercial/accounts/${id}/work-order/${dealId}`);
@@ -223,6 +223,10 @@ export async function WorkOrderTool({
   const content = await buildWorkOrderContent(dealId);
   const editable = wo ? isWorkOrderEditable(wo.status) : false;
   const scopeCount = content.inclusions.length + content.alternates.length;
+  // Quick-links so the empty/partial hints aren't dead-ends (RUX-4): finishes
+  // live on the opportunity's Finishes tab; proposals on the deal's Proposals tab.
+  const finishesHref = `/commercial/opportunities/${dealId}?tab=finishes`;
+  const proposalHref = `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=proposals`;
 
   const Ctx = () => (
     <>
@@ -364,7 +368,10 @@ export async function WorkOrderTool({
             )}
             {content.finishes.length > 0 ? (
               <div>
-                <div className="text-[12px] font-bold text-ppp-charcoal mb-1">Room finish schedule</div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="text-[12px] font-bold text-ppp-charcoal">Paint colors &amp; finishes</div>
+                  <Link href={finishesHref} className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px] inline-flex items-center">Edit finishes →</Link>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-[12px]">
                     <thead>
@@ -389,12 +396,18 @@ export async function WorkOrderTool({
                 </div>
               </div>
             ) : (
-              <div className="text-[12px] text-ppp-charcoal-400 italic">
-                No room-finish schedule on this job — add finishes on the opportunity's Finishes tab and they'll appear here.
+              // No dead-end: link straight to where finishes are added.
+              <div className="text-[12px] text-ppp-charcoal-500">
+                No paint colors &amp; finishes on this job yet.{" "}
+                <Link href={finishesHref} className="font-semibold text-cc-brand-700 hover:text-cc-brand-800">Add finishes →</Link>{" "}
+                <span className="text-ppp-charcoal-400">— they print here + on the crew PDF.</span>
               </div>
             )}
             {scopeCount === 0 && content.finishes.length === 0 && (
-              <div className="text-[12px] text-amber-700">Nothing to print yet — add a proposal and/or a finish schedule.</div>
+              // No dead-end: point at both sources that fill the sheet.
+              <div className="text-[12px] text-amber-700">
+                Nothing to print yet — <Link href={proposalHref} className="font-semibold underline hover:no-underline">add a proposal</Link> and/or <Link href={finishesHref} className="font-semibold underline hover:no-underline">a finish schedule</Link>.
+              </div>
             )}
           </div>
 

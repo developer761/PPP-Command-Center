@@ -67,7 +67,7 @@ function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
 }
 function base(id: string, dealId: string) {
-  return `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=project&pt=closeout`;
+  return `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=closeout`;
 }
 function revalidateCloseout(id: string, dealId: string) {
   revalidatePath(`/commercial/accounts/${id}/closeout/${dealId}`);

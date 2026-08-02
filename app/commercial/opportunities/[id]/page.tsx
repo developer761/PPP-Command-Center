@@ -1212,7 +1212,7 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, {
   ],
   docs: [
     { key: "plans", label: "Plans & Specs" },
-    { key: "finishes", label: "Finishes" },
+    { key: "finishes", label: "Colors & Finishes" },
     { key: "files", label: "Files" },
   ],
   activity: [
@@ -4185,7 +4185,7 @@ async function FinishesTab({
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-bold text-ppp-charcoal">
-              Finish Schedule · {finishes.length}{" "}
+              Paint colors &amp; finishes · {finishes.length}{" "}
               {finishes.length === 1 ? "finish" : "finishes"}
             </h2>
           </div>

@@ -219,7 +219,7 @@ function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPd
 
         {finishes.length > 0 ? (
           <View>
-            <Text style={styles.h2}>Room Finish Schedule</Text>
+            <Text style={styles.h2}>Paint Colors &amp; Finishes</Text>
             <FinishGrid rows={finishes} />
           </View>
         ) : null}

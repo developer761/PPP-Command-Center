@@ -39,7 +39,7 @@ async function createSubmittalAction(formData: FormData) {
   const backQfirst = back && back.startsWith("/commercial/post-job/") ? `?back=${encodeURIComponent(back)}` : "";
   if (!UUID_RE.test(account_id) || !UUID_RE.test(opportunity_id)) redirect("/commercial/accounts");
   // Canonical home = the deal's Project sub-tab (carries a query already).
-  const base = `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=project&pt=submittals`;
+  const base = `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`;
 
   const sb = commercialDb();
   const { data: acctRow } = await sb
