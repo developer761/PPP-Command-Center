@@ -170,6 +170,7 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         reopened?: boolean;
         deal_reopened?: boolean;
         deal_current_status?: string;
+        skipped_approval?: boolean;
       };
       if (json.redirect_url) {
         // Keep optimistic-hidden state until nav lands so the card
@@ -183,7 +184,9 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       // update or just the proposal?").
       if (targetStatus === "won") {
         flashSuccess(
-          "Marked won. Parent opportunity flipped to Pre-Sale Closed · Won."
+          json.skipped_approval
+            ? "Marked won — heads up: this proposal was never approved, so an un-vetted price is now the contract. Open it to review."
+            : "Marked won. Parent opportunity flipped to Pre-Sale Closed · Won."
         );
       } else if (targetStatus === "lost") {
         // Stash debrief link in state so the toast can render as a

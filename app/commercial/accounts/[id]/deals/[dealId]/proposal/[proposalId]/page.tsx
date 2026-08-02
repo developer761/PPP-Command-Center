@@ -1342,6 +1342,21 @@ export default async function ProposalEditorPage({
         </div>
       )}
 
+      {/* R1d "warn, don't block": a Won proposal that never went through
+          approval (never approved AND never sent) — its un-vetted price is now
+          the billed contract. Persistent heads-up so it's caught no matter how
+          it was closed (kanban drag, deal drag, etc.). */}
+      {proposal.status === "won" &&
+        !proposal.approved_by_user_id &&
+        !proposal.snapshot_document_id && (
+          <div className="bg-amber-50 border-l-4 border-amber-500 border-t border-r border-b border-amber-200 rounded-lg px-4 py-3 text-[13px] text-amber-900" role="alert">
+            <div className="font-semibold mb-0.5">Won without approval.</div>
+            <div className="text-[12.5px] text-amber-800">
+              This proposal became the accepted contract without going through the approval step, so its price was never signed off. If that&rsquo;s intentional (a verbal yes), you&rsquo;re all set — otherwise double-check the total, since AIA billing and invoices pull from it.
+            </div>
+          </div>
+        )}
+
       {/* MAIN AUTOSAVE FORM — wraps every editable section EXCEPT line
           items. Karan 2026-07-20: no manual Save button, every field
           change debounces (800ms) → server action fires. Only wired on

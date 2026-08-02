@@ -118,6 +118,14 @@ export async function POST(
 
   // Outcome path (won/lost) — cascades parent deal
   if (isOutcomeFlow) {
+    // R1d "warn, don't block" (Karan 2026-08): a proposal can be dragged to Won
+    // even if it never went through approval (the deliberate "verbal yes"
+    // shortcut). Detect that BEFORE the flip so the client can warn — a Won
+    // that skipped approval means an un-vetted price became the billed contract.
+    const skippedApproval =
+      to === "won" &&
+      !currentProposal.approved_by_user_id &&
+      !currentProposal.snapshot_document_id;
     const result = await markProposalOutcome({
       proposal_id: proposalId,
       outcome: to as "won" | "lost",
@@ -138,6 +146,7 @@ export async function POST(
       to,
       redirect_url: null,
       debrief_url,
+      skipped_approval: skippedApproval,
     });
   }
 
