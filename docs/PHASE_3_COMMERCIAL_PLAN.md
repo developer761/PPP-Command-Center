@@ -28,13 +28,13 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 
 ---
 
-## 🔄 Phase R1 — Proposal & estimating (Kim; client-facing bits used by anyone)
+## ✅ Phase R1 — Proposal & estimating (Kim; client-facing bits used by anyone)
 - [x] Per-line **"show price" checkbox** (client PDF prints/hides the line total)
 - [x] **Adjustable final price** (override the summed total) — flows into `total_cents` (the one contract number)
 - [x] **Bid Set date** on the proposal
 - [x] **Internal bid notes** (never on client PDF) + **attach Kim's marked-up plan/spec doc** (files to the deal's `bid_set` docs; survives revision bumps)
 - [x] **Approval loop — IN-APP, HARD GATE** (Karan 2026-08): "Send for approval" → `Pending approval` → approver **Approve / Request-changes (with note)** → `Approved` → **Send** (draft can no longer send). Approvers = any admin PLUS editable `approver_emails` (Settings → Operating Company, admin-gated). **Server-enforced** in `db.ts` (`approveProposal`/`requestProposalChanges` reject non-approvers) AND the kanban outcome route routes drag-to-approve through the same gate. Bell + email on all three events. New `Approved` kanban column. Audit-logged via `updateProposalStatus`.
-- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed  ← *tsc + 141 tests + build GREEN; adversarial audit running, then push*
+- [x] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed — *adversarial audit caught a CRITICAL deal-axis gate bypass (deal-drag → unapproved proposal 'sent'); fixed + re-verified. tsc + 141 tests + build GREEN. Pushed @ 7e13f8f.*
 
 ## ⬜ Phase R2 — Document generators & doc fidelity
 - [ ] **Work Order for the crew** — tool card on the opportunity's Project tab; autofills Inclusions/Alternates/Exclusions from the proposal + Room Finish Schedule from finish-schedule data; Generate → Tomco-letterhead PDF + tap-to-sign → files to deal Documents → rolls up to account
