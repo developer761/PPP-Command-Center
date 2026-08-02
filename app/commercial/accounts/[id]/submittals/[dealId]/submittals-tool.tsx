@@ -157,16 +157,19 @@ export async function SubmittalsTool({
         </div>
       )}
 
-      <section className="bg-ppp-blue-50 border border-ppp-blue-200 rounded-xl p-4">
+      {/* RUX-3: brand accent (cc-brand) to match the other five delivery tools —
+          was the lone ppp-blue CTA. The per-status "sky" tone below stays blue
+          (that's a submittal-status color, not the tool accent). */}
+      <section className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl p-4">
         <form action={createSubmittalAction} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="text-sm text-ppp-blue-900">
+          <div className="text-sm text-cc-brand-900">
             <strong className="font-semibold">New submittal package</strong>
-            <p className="text-[12px] text-ppp-blue-800/80 mt-0.5">Creates a draft Letter of Transmittal. Fill cover + items on the next page, attach spec PDFs, then send.</p>
+            <p className="text-[12px] text-cc-brand-800/80 mt-0.5">Creates a draft Letter of Transmittal. Fill cover + items on the next page, attach spec PDFs, then send.</p>
           </div>
           <input type="hidden" name="account_id" value={id} />
           <input type="hidden" name="opportunity_id" value={dealId} />
           <input type="hidden" name="back" value={sp.back ?? ""} />
-          <button type="submit" className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 transition-colors shadow-sm min-h-[44px] touch-manipulation shrink-0">
+          <button type="submit" className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm min-h-[44px] touch-manipulation shrink-0">
             + New submittal
           </button>
         </form>
