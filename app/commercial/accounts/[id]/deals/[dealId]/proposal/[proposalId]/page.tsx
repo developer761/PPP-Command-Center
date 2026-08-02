@@ -1599,7 +1599,7 @@ export default async function ProposalEditorPage({
             <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
               <div className="min-w-0">
                 <div className="text-[12px] font-bold text-ppp-charcoal">Marked-up plans / bid set</div>
-                <div className="text-[11px] text-ppp-charcoal-500 leading-snug">Attach a marked-up plan set or the GC&rsquo;s bid document. Filed to this deal — internal only.</div>
+                <div className="text-[11px] text-ppp-charcoal-500 leading-snug">Attach a marked-up plan set or the GC&rsquo;s bid document. Filed to this opportunity — internal only.</div>
               </div>
               <ProposalMarkupUpload opportunityId={dealId} />
             </div>

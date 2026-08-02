@@ -115,7 +115,9 @@ export async function createCloseoutPackage(input: {
       // Warranty starts at substantial completion; default to the deal's
       // proposed end date if we have one (the operator can adjust).
       substantial_completion_date: opp.substantial_completion_date ?? null,
-      warranty_years: typeof input.warranty_years === "number" && input.warranty_years >= 0 ? input.warranty_years : 2,
+      // Tomco's standard warranty is 12 months (Brendan Dwyer VP block) — default
+      // to 1 year; the operator can bump it per job.
+      warranty_years: typeof input.warranty_years === "number" && input.warranty_years >= 0 ? input.warranty_years : 1,
       created_by_user_id: input.created_by_user_id,
     })
     .select(PKG_COLS)

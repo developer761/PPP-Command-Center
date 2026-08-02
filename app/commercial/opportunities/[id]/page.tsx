@@ -2697,7 +2697,7 @@ async function InfoTab({
         <Field
           label="RFP received"
           value={lifecycle.rfp_received_at?.slice(0, 10) ?? "—"}
-          tooltip="Date the bid request arrived from the GC. Set on the deal edit sheet. Starts the time-to-proposal clock."
+          tooltip="Date the bid request arrived from the GC. Set on the opportunity edit sheet. Starts the time-to-proposal clock."
         />
         <Field
           label="Proposal submitted"
@@ -2837,7 +2837,7 @@ async function InfoTab({
         ) : (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-[12px] text-ppp-charcoal-500">
-              Done with this deal but want to keep the record? Archive it — hides from pipeline, dependents stay.
+              Done with this opportunity but want to keep the record? Archive it — hides from pipeline, dependents stay.
             </div>
             <form action={archiveOpportunityAction}>
               <input type="hidden" name="opp_id" value={opp.id} />
@@ -2866,7 +2866,7 @@ async function InfoTab({
         {!confirmDelete ? (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-[12px] text-ppp-charcoal-500">
-              Wrong account? Duplicate? Delete this deal.
+              Wrong account? Duplicate? Delete this opportunity.
             </div>
             <Link
               href={`/commercial/opportunities/${opp.id}?tab=info&confirm_delete=1#danger-zone`}
@@ -3377,7 +3377,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
       {/* Current team */}
       {team.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-          No team assigned yet. Add the sales rep, estimator, PM, and anyone else from PPP working this deal.
+          No team assigned yet. Add the sales rep, estimator, PM, and anyone else from PPP working this opportunity.
         </div>
       ) : (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">

@@ -47,24 +47,6 @@ const DASH_COST_TONE: Record<string, ChartTone> = {
 
 export const dynamic = "force-dynamic";
 
-const SHIPPED = "bg-emerald-50 text-emerald-700 border-emerald-200";
-// Plain-English, what-you-can-DO names — this shows on the CEO's dashboard, so
-// no internal/dev jargon (2026-08 CEO UX walk).
-const PHASES = [
-  { num: 1, name: "Manage customers", status: "Shipped", color: SHIPPED },
-  { num: 2, name: "Track the bid pipeline", status: "Shipped", color: SHIPPED },
-  { num: "2.5", name: "Submittals & finish schedules", status: "Shipped", color: SHIPPED },
-  { num: 3, name: "Invoicing & revenue", status: "Shipped", color: SHIPPED },
-  { num: "3+", name: "Win / loss debriefs", status: "Shipped", color: SHIPPED },
-  { num: "A", name: "Sales vs. delivery split", status: "Shipped", color: SHIPPED },
-  { num: "B", name: "Estimator & job details", status: "Shipped", color: SHIPPED },
-  { num: "C", name: "Document storage", status: "Shipped", color: SHIPPED },
-  { num: "D", name: "Product & price library", status: "Shipped", color: SHIPPED },
-  { num: "E", name: "Standard exclusions", status: "Shipped", color: SHIPPED },
-  { num: "F", name: "Build & send proposals", status: "Shipped", color: SHIPPED },
-  { num: "G", name: "Job IDs & archiving", status: "Shipped", color: SHIPPED },
-  { num: "H", name: "Run won jobs", status: "Shipped", color: SHIPPED },
-];
 
 /** Days between two ISO dates (positive = a before b). Null-safe. */
 function daysBetween(fromIso: string | null | undefined, toIso: string): number | null {
@@ -560,38 +542,6 @@ export default async function CommercialDashboardPage() {
         </div>
       </section>
 
-      {/* Roadmap */}
-      <details className="group/roadmap bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-3 min-h-[44px] hover:bg-ppp-charcoal-50/60 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30">
-          <span className="inline-flex items-center gap-2">
-            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-            <span className="text-sm font-bold text-ppp-charcoal">Build roadmap</span>
-            <span className="text-[11px] text-ppp-charcoal-500">
-              — {PHASES.filter((p) => p.status === "Shipped").length}/{PHASES.length} phases live
-            </span>
-          </span>
-          <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-400 transition-transform group-open/roadmap:rotate-180">
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </summary>
-        <div className="p-4 border-t border-ppp-charcoal-100">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-            {PHASES.map((p) => (
-              <div key={String(p.num)} className="rounded-lg border border-ppp-charcoal-100 bg-surface px-3 py-2.5">
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-ppp-charcoal text-surface text-[10px] font-bold">
-                    {p.num}
-                  </span>
-                  <span className={`text-[9px] font-bold tracking-widest uppercase border px-1.5 py-0.5 rounded ${p.color}`}>
-                    {p.status}
-                  </span>
-                </div>
-                <div className="text-[12px] font-semibold text-ppp-charcoal leading-snug">{p.name}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </details>
     </div>
   );
 }

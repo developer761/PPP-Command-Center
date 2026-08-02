@@ -115,7 +115,7 @@ async function autosaveCoverAction(formData: FormData) {
   if (!(await pkgBelongs(pkgId, id, dealId))) throw new Error("Package not found");
   const taRaw = String(formData.get("transmitted_as") ?? "").trim();
   const transmitted_as = (CLOSEOUT_TRANSMITTED_AS as readonly string[]).includes(taRaw) ? (taRaw as CloseoutTransmittedAs) : null;
-  const yrsRaw = Number(String(formData.get("warranty_years") ?? "2"));
+  const yrsRaw = Number(String(formData.get("warranty_years") ?? "1"));
   const res = await updateCloseoutPackage(
     pkgId,
     {
@@ -126,7 +126,7 @@ async function autosaveCoverAction(formData: FormData) {
       transmitted_as,
       remarks: String(formData.get("remarks") ?? "").trim() || null,
       substantial_completion_date: ymd(String(formData.get("substantial_completion_date") ?? "")),
-      warranty_years: Number.isFinite(yrsRaw) && yrsRaw >= 0 && yrsRaw <= 20 ? Math.round(yrsRaw) : 2,
+      warranty_years: Number.isFinite(yrsRaw) && yrsRaw >= 0 && yrsRaw <= 20 ? Math.round(yrsRaw) : 1,
     },
     userId
   );
