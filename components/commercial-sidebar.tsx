@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PlatformSwitcher from "@/components/platform-switcher";
 
 /**
@@ -133,6 +133,13 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNav
   // Manual expand/collapse overrides for the collapsible groups, keyed by group
   // label. Undefined = follow the auto rule (open when a child is active).
   const [groupOverride, setGroupOverride] = useState<Record<string, boolean>>({});
+  // Reset manual overrides on navigation so an explicit nav to a child always
+  // wins over a stale collapse — a manual collapse only lasts for the current
+  // page (edge-audit MED: a sticky collapse could otherwise hide the active
+  // tool after cross-navigation).
+  useEffect(() => {
+    setGroupOverride((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+  }, [pathname]);
 
   // Drop admin-only rows (Access) for non-admins so a Commercial tester never
   // sees a link that would just bounce them. The page redirects too (defense).
