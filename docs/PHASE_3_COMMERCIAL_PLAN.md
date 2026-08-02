@@ -36,12 +36,12 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 - [x] **Approval loop — IN-APP, HARD GATE** (Karan 2026-08): "Send for approval" → `Pending approval` → approver **Approve / Request-changes (with note)** → `Approved` → **Send** (draft can no longer send). Approvers = any admin PLUS a per-user **Approver** toggle on **Settings → Access** (admin-gated; writes `approver_emails`). **Server-enforced** in `db.ts` (`approveProposal`/`requestProposalChanges` reject non-approvers) AND the kanban outcome route routes drag-to-approve through the same gate. Bell + email on all three events. New `Approved` kanban column. Audit-logged via `updateProposalStatus`.
 - [x] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed — *adversarial audit caught a CRITICAL deal-axis gate bypass (deal-drag → unapproved proposal 'sent'); fixed + re-verified. tsc + 141 tests + build GREEN. Pushed @ 7e13f8f.*
 
-## ⬜ Phase R2 — Document generators & doc fidelity
-- [ ] **Work Order for the crew** — tool card on the opportunity's Project tab; autofills Inclusions/Alternates/Exclusions from the proposal + Room Finish Schedule from finish-schedule data; Generate → Tomco-letterhead PDF + tap-to-sign → files to deal Documents → rolls up to account
-- [ ] **Work Orders sidebar index** (Post-Contract group) — cross-account status queue (⚪ not created · 🟡 draft · 🟢 sent to crew), row → the opportunity's Work Order tool
+## 🔄 Phase R2 — Document generators & doc fidelity
+- [x] **Work Order for the crew** — tool card on the Project tab (create / edit crew fields / preview / send-to-crew / re-open / void); autofills Inclusions/Alternates/Exclusions from the accepted proposal (fallback: latest) + Room Finish Schedule; Tomco-letterhead PDF + tap-to-sign → files to deal Documents (category `work_order`) → account rollup. Migration 106.
+- [x] **Work Orders sidebar index** (Post-Contract) — cross-account status queue (not created · draft · sent to crew) + KPIs, row → the Work Order tool.
 - [ ] AIA `contractorLabel` → operating company (Tomco); verify Excel matches Tomco's blank template
 - [ ] Verify closeout **LoT excludes COI** + Warranty defaults to **12 months** (Brendan Dwyer VP block) with tap-to-sign
-- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+- [x] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed — *adversarial audit found the sent-WO-renders-live divergence + a same-status double-file; both fixed (snapshot pinned, DAG tightened) + 2 LOWs. tsc · 141 tests · build green. Pushed @ a5a9884.*
 
 ## ⬜ Phase R3 — Search & navigation
 - [ ] **Universal Search** — topbar bar for any account / opportunity / invoice (#/PO/amount) / proposal / document, with entity filter chips + account scoping ("invoices for Turner", "overdue")
