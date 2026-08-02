@@ -1,109 +1,71 @@
-# Commercial Command Center — Phase 3 Plan
+# Commercial Command Center — Remaining Build Plan (start → finish)
 
-_Created 2026-08 after TWO UX rounds — 4-persona walk (Alex / estimator / PM / Katie) + a 5-lens walk (field foreman / first-run / accessibility / edge-cases / flow). Supersedes the old `PHASE_3_INVOICING_PLAN.md` (that "Phase 3 = Invoicing" shipped as Phase 1)._
-
-Phase 2 (Costs / Job P&L / charts / revenue) is **shipped, audited, and closed**. Every clear-win from both UX rounds is **already shipped**; this doc is the remaining Phase-3-sized build block. Ordering is roughly by user-pain and dependency — greenlit items first.
+_Rewritten 2026-08 after reconciling the UX walks against the ORIGINAL master plan ([[commercial-master-plan-2026-07-24]]) + Katie's remaining notes ([[project_katie_notes_remaining_2026_08]]) + the scheduling spec ([[project_tomco_scheduling_spec_2026_08]]). The earlier draft was built from the UX walks only and under-counted the feature backlog — this is the corrected, comprehensive list to FULLY finish the platform._
 
 ---
 
-## 3A — Global Document Search  _(greenlit from UX walk — Katie's #1)_
+## ✅ Already shipped (do NOT rebuild — verified in code)
+Accounts (+ A/B/C rating) · Opportunities pipeline · Proposals + Builder + PDF · Documents (per-tool + deal filing cabinet) · **Change Orders** (incl. CO-as-invoice-line "incl. change order" tick model) · **AIA G702/G703** + Excel export · Submittals · **Closeout** (Letter of Transmittal + Warranty generators, tap-to-sign) · Invoicing + AR statement · Costs & Job P&L · Revenue analytics/charts · Dashboards · **Notifications** (inbox both platforms + custom rules + email opt-in + daily cron) · Estimator role + RBAC · Operating-company identity + brand + tap-to-sign · 2 full correctness-audit rounds + 2 UX-polish rounds.
 
-**Problem:** the filing cabinet is per-opportunity only; there is no `/commercial/documents` route. To pull one COI Katie must remember the account → open it → find the opportunity → scroll the cabinet.
-
-**Build:**
-- New route `/commercial/documents` (sidebar item, admin/office visible).
-- Cross-account finder over `commercial_documents` (service-role, joins to opportunity + account for context). Filters: filename (ilike), category, customer/GC, opportunity, date range. Paginated (reuse `paginateAll`).
-- Result rows: filename · category · customer · opportunity · size · uploaded date → download link.
-- **Bulk download** — "Download all" (zip) scoped to a filter/box, priority for the **Closeout** and **Lien Waivers** categories (assembling a GC package). Server route streams a zip; respects the archive-only rule (never surfaces `deleted_at` rows).
-- Doc rows everywhere gain **uploaded date + uploader** (Katie #8) — small schema read, render-only if the columns exist; else a light migration to stamp `uploaded_by_user_id`.
-
-**Est:** 4–6h. No new money logic; read + zip.
+Legend: **[BUILD]** = new feature · **[VERIFY]** = likely done, confirm/finish · **[FIX]** = small correction · **[PARKED]** = do opportunistically · **[CLEANUP]** = tech-debt.
 
 ---
 
-## 3B — Job "What's Due" strip  _(greenlit from UX walk — PM's net-new #6)_
+## Phase R1 — Proposal & estimating completion (Kim the estimator)
+- **[BUILD]** Per-line **"show price" checkbox** — checked prints the line total on the client PDF, unchecked hides it.
+- **[BUILD]** **Adjustable final price** (override the summed total) on the client proposal.
+- **[BUILD]** **Bid Set date** shown on the proposal.
+- **[BUILD]** **Internal bid notes** (never on client PDF) + **attach Kim's marked-up plan/spec doc** to the internal side.
+- **[BUILD]** **Approval loop** (Resend): Kim clicks **"Get approval"** → emails Brendan → approve/reject → returns to Kim as approved/rejected. (Resend already connected; loop not wired.)
 
-**Problem:** the opportunity Overview shows financial status + five tool cards, but nothing aggregates the **actionable** items, and nothing shows **aging**.
+## Phase R2 — Document generators & doc fidelity
+- **[BUILD]** **Work Order for the crew** — header (date/project/location/subject) + Inclusions / Add-Alternate / Exclusions bullets + **Room Finish Schedule** table (mirrors Tomco's Panera format; reuses proposal + finish-schedule data).
+- **[FIX]** AIA `contractorLabel` hardcoded "Precision Painting Plus" → drive from the **operating company (Tomco)**; verify the Excel export matches Tomco's blank G702/G703 template.
+- **[VERIFY]** Closeout **Letter of Transmittal must exclude COI**; Warranty defaults to **12 months** ("Form of Warranty", Brendan Dwyer VP block) with tap-to-sign.
 
-**Build:** a compact "Needs attention" strip at the top of an opportunity's Overview, surfacing only what's actionable, each linking into the tool:
-- COs pending approval (`pendingCoCount`)
-- AIA app ready to submit (latest app `draft` with completed value) / not-yet-billed period
-- Submittals awaiting GC response, with **days waiting** (`submittalAwaiting` + oldest `updated_at`)
-- Overdue invoices on this job (count + $)
-- Retainage sitting unreleased at closeout
+## Phase R3 — Search & navigation
+- **[BUILD]** **Universal Search** — one interactive topbar bar to find any account / opportunity / **invoice** (by #/PO/amount) / proposal / document, with **entity filter chips** + **account scoping** ("invoices for Turner", "overdue invoices"). Extends the ⌘K palette; subsumes a standalone document-search page. ~5–7h.
+- **[BUILD]** **Job "What's Due" strip** on an opportunity's Overview — COs pending, AIA ready to submit, submittals aging (days waiting), overdue invoices ($), unreleased retainage. ~3–4h.
+- **[BUILD]** **Navigation restructure** — one home per production tool (kills the save-ejects-you-to-a-different-surface bug), collapse the P&L surfaces into one "Costs & P&L" tab, flatten the deal's 3–4 tab levels, unify "open an opportunity" to the canonical drill-in.
 
-Most inputs already compute on the page (`pendingCoCount`, `latestAppStatus`, `awaitingSubs`, `overdueInvCount`, `retainageHeldCents`) — the work is aggregation + aging + one clean strip component (mirror the dashboard "Needs attention" pattern). Hidden when nothing's due.
+## Phase R4 — Reports (K)
+- **[BUILD]** Reusable **Reports framework** — each report a tab; starter set **Pipeline · Sales · AR aging**; include **Kim's Plan Report**; "export = the filtered set."
+- **[BUILD]** **AR export / statement (CSV/print)** — aging-by-customer for collections calls (was parked → folds here).
 
-**Est:** 3–4h. Render-only over existing data + one aging query.
+## Phase R5 — Project rollups & billing completeness
+- **[VERIFY/FINISH]** Project rollups: total hours worked · payments received · balance owed (project amount − payments, across multiple invoices) · purchases · labor payments out — surfaced on the project header.
+- **[BUILD]** **Billing signpost** — cross-link Invoices ↔ AIA so a PM knows on day one how a GC gets billed.
 
----
+## Phase R6 — Intake & uploads
+- **[BUILD]** **Chunked PDF upload** (TUS resumable via Supabase Storage) — plans/specs run 20–100 MB and currently time out; add a progress bar + resume-on-disconnect.
+- **[BUILD]** **Online public bid form** `/c/bid-submit` (no-auth, Turnstile/hCaptcha) → lands as a new opportunity in `inquiry` + creates the account if new + bells the owner.
+- **[PARKED]** Archive project docs to **Google Drive / Dropbox** + restore.
 
-## 3A+ — Universal Search  _(Karan 2026-08 — "find invoice X for account Y, interactively")_
+## Phase R7 — Onboarding & pipeline speed
+- **[BUILD]** **Getting-started checklist** on the dashboard (Add GC → opportunity → proposal → Won → invoice), lights up as data appears, auto-hides once active.
+- **[BUILD]** **Field-ops purchase/hours form redesign** — photo-first (receipt tile on top), "My jobs today", big Log-hours/Snap-receipt, worker auto-filled to the logged-in user, date = today.
+- **[BUILD]** **Faster pipeline actions** — inline "create new GC" in the pickers (partly shipped as links), proposal-builder entry on the opportunity detail, one-click stage-advance (auto-submit + undo toast), "Move to…" filtered to legal next stages everywhere.
+- **[BUILD]** Account header **open-opportunity count + balance**; **alphabetical-by-customer sort** on the pipeline.
 
-**Idea:** one always-visible, interactive search bar in the topbar that finds anything — an account, an opportunity, an **invoice** (incl. by-number / PO / amount), a proposal, a change order, a document — and lets you **scope + filter** (e.g. "invoices for _Turner_", "overdue invoices", "AIA apps on _40 Wall_"). Today there's a ⌘K command palette that jump-searches accounts/opportunities/invoices; this promotes it into a first-class, filterable search experience.
+## Phase R8 — Hardening
+- **[BUILD]** **Accessibility** — focus-trap/inert wrapper for the 3 slide-out sheets; finish the `charcoal-400 → 500` contrast sweep beyond the dashboard; remaining focus-visible rings.
+- **[BUILD]** **Security** — DOMPurify-grade email-HTML sanitizer before any archived email is ever customer-facing; route the remaining raw date formatters through `fmtEtDate`.
+- **[BUILD]** **View-only access role** — least-privilege commercial login (today any login can void invoices + see every P&L). Pairs with the scheduler-role work in R10.
+- **[CLEANUP]** Remove orphan `TeamTab`/`NotesTab`; consolidate the near-duplicate tile components (`SummaryTile`/`AiaSummaryTile`/`CloseoutStat`/`ProjectStat`/`SubmittalStat`) into one shared tile; grouped-invoice sort + stray `new Date(field)` formatters through the null-safe path.
 
-**Build:**
-- Persistent search input in the commercial topbar (opens the same overlay as ⌘K, but always visible + tappable on mobile). Type-ahead, keyboard-navigable, grouped results.
-- **Entity-type filter chips** — All · Accounts · Opportunities · **Invoices** · Proposals · Documents — to narrow the result set.
-- **Scoping**: pick an account (or start typing one) → results narrow to _that account's_ invoices / opportunities / docs. From an account/opportunity page the bar defaults its scope to that record ("search within Turner").
-- **Money-aware invoice filters**: status (overdue / unpaid / paid / draft), amount range, date range — so "which overdue invoices does Turner have" is one query. Each result deep-links to the right surface (invoice → detail, opportunity → drill-in, document → download).
-- **Backend**: extend the existing `/api/commercial/palette-search` route into a fuller search API (entity param + account scope + status/amount/date filters), reusing the pre-computed AR status. **Subsumes 3A's document search** — documents become one searchable entity here — and reuses the a11y focus-restore already added to the palette.
-- Recent searches + "jump to" for speed.
+## Phase R9 — Dark mode finish (over completed surfaces)
+- **[FINISH]** Dark-mode **foundation already shipped**; finish the contrast pass + navy accent across every page now that surfaces are stable.
 
-**Est:** 5–7h. Read-only search + one richer API + the topbar UI. Do it alongside/instead of 3A so document search and universal search are one surface, not two.
-
----
-
-## 3C — Katie's remaining operational notes
-
-Pull from memory `project_katie_notes_remaining_2026_08`. Master "what's left" list (CO-lines-on-invoice, AIA templated-Excel polish, invoices-under-project, lien-STORE, Kim proposal-build + Resend, rollups + Work Order). Triage into this phase vs. later at kickoff.
-
----
-
-## 3D — Field Ops / Scheduling  _(the big one — build LAST)_
-
-Full spec in memory `project_tomco_scheduling_spec_2026_08` (v1.0): data model + 6 views (Week Grid, Calendar, Job Board, mobile Daily Log, Approvals, Admin) + payroll CSV + per-job phases. **This is where the deferred `scheduler` role lands** — add the role WITH this module (it has no consumer until then).
-
----
-
-## Parked (not dropped) — from the UX walk, revisit after 3A–3D
-
-- **AR export / statement (CSV/print)** — aging-by-customer for collections calls (Katie #3).
-- **View-only access role** — least-privilege commercial login; today any login can void invoices + see every P&L (Katie #7). Pairs naturally with 3D's role work.
-- **Faster pipeline actions** — inline "create new GC" in the new-bid picker; proposal-builder entry point on the opportunity detail; one-click stage-advance (auto-submit + undo toast); "Move to…" list/sheet filtered to legal next stages like the kanban already does (estimator #3/#4/#17).
-- **Billing signpost** — cross-link Invoices ↔ AIA so a PM knows on day one how a GC gets billed (PM #3).
-- Account header open-bid count + balance; consolidate the 3-level deal tab nesting; alphabetical-by-customer sort.
-
-## From the 2nd UX round (field / first-run / a11y / edge / flow — 5 lenses)
-
-The clear wins from this round are **already shipped** (HEIC receipts + camera, readable field labels, un-buried "Log a purchase", first-run picker "add a GC" links + calm empty dashboard, payment-date crash guard, `formatCentsCompact` finite+B tier, lead-label, deal-link repoints, dashboard `<h1>` + contrast + Banner `role=alert` + command-palette focus restore + mobile-drawer `inert` + dropped misleading `aria-modal`). The following are the **Phase-3-sized** items surfaced:
-
-### 3E — Getting-started onboarding _(first-run walk)_
-A dismissible dashboard "Getting started" card lighting up steps as data appears: Add first GC → log first opportunity → build a proposal → mark Won → send first invoice. Drive "done" from data already on the dashboard (`accounts.length`, `openOpps`, `wonOpps`, `invoices`); auto-hide once the workspace is active. Centralizes the ordering the app currently teaches only piecemeal.
-
-### 3F — Field-ops form redesign _(field walk — pairs with 3D)_
-Photo-first purchase/hours form: receipt tile at the TOP, "My jobs today" field landing, big "Log hours" / "Snap receipt" buttons, worker auto-filled to the logged-in user, date = today. Feeds the Phase-3 receipts-extraction automation (prefill amount/vendor from the photo).
-
-### 3G — Accessibility hardening _(a11y walk)_
-A small client wrapper for the three RSC slide-out sheets (opportunities customer sheet, invoice-edit, deal-edit): move focus in on open, trap Tab, `inert` the background, Esc → navigate to `closeHref`, return focus on close. (Interim already shipped: dropped the misleading `aria-modal`.) Also: finish the `charcoal-400 → 500` meaningful-text contrast sweep beyond the dashboard, and add `focus-visible:ring` to the remaining background-only-focus row links.
-
-### 3H — Navigation restructure _(flow walk — the systemic one)_
-- **Pick ONE home per production tool** — the standalone route `…/<tool>/[dealId]` OR the inline `?…&pt=<tool>` panel, not both. Two URLs for the same body is the root of the "save ejects you to a different surface + loses ← Back to <Tool>" problem (hits CO/AIA/Costs/Submittals/Closeout).
-- **Collapse the P&L surfaces**: merge deal `dt=pnl` + `pt=costs` into one "Costs & P&L" tab; keep account Overview P&L as the roll-up + sidebar as the cross-account index.
-- **Flatten the deal's 3–4 tab levels** (`dt=project` → `pt=` double sub-bar).
-- **Unify "open an opportunity"** so list-row, bare `/opportunities/[id]`, palette, and ProjectCards all resolve to the canonical `?tab=projects&project=` home.
-- Win/Loss report deal link → project drill-in (needs `account_id` added to the lessons query).
-
-### 3I — Security hardening _(edge walk)_
-Replace the regex email-HTML sanitizer with a DOMPurify-grade sanitizer **before** any archived email is ever shown to a customer (today it's internal-only + risk-accepted). Route the remaining raw `new Date(field).toLocaleDateString` formatters through the null-safe `fmtEtDate`.
+## Phase R10 — Field Ops / Scheduling  🐘 (the giant — build LAST)
+- **[BUILD]** Full spec in [[project_tomco_scheduling_spec_2026_08]]: data model + **6 views** (Week Grid, Calendar, Job Board, mobile Daily Log, Approvals, Admin) + time-entry state machine (draft→submitted→approved→locked) + **payroll CSV** + per-job phases + receipts/labor-out/clock-in-out. **The `scheduler` role lands here.** Multi-day — realistically half the remaining effort on its own.
 
 ---
 
-## FINAL bonus phase (after the platform is fully built + operational) — Spanish / i18n
-Per Karan: do this **last, as a bonus**, once everything else is done and live. Most Tomco field crew are Hispanic / low tech-comfort. Highest-value surfaces first: login + the log-a-purchase/hours field form (Category options, Store/vendor, Receipt, Hours), then a full locale pass + a UI language toggle carried through the field surfaces.
+## ★ Endgame (do NOT declare the platform done before these)
+1. **[BONUS]** **Parse RFP email → auto-populate the Opportunity** (sender→account, subject→title, body→notes, attachments→docs) — the "Future State" force-multiplier.
+2. **[FINAL] Full platform audit** — money/KPIs, backend/security, UI/UX + flow, mobile, accessibility (the same multi-agent adversarial pass we've been running), fix every finding.
+3. **[FINAL] Start-to-finish smoke-test script** — a written click-through covering the whole lifecycle: new GC → opportunity → proposal → approval → Won → project → change order → AIA app → submittal → invoice → payment → lien waiver → closeout (LoT + warranty) → reports, on desktop AND mobile, with expected result at each step.
+4. **[FINAL] Joint walkthrough with Karan** — do the smoke test together; only then is the platform "done."
 
-## Known small cleanups (noted, low-risk, do opportunistically)
-
-- Orphaned `TeamTab` / `NotesTab` components in `accounts/[id]/page.tsx` (defined, never dispatched) — remove in a dedicated cleanup pass; `?tab=team/notes` currently redirects to Documents (renders account info, so not a hard dead-end).
-- Consolidate the near-duplicate tile components (`SummaryTile` / `AiaSummaryTile` / `CloseoutStat` / `ProjectStat` / `SubmittalStat`) into one shared tile so the five tools stay visually identical.
-- Latent date-safety: grouped-invoice sort + a few `new Date(field)` formatters are on NOT-NULL columns today; route through `fmtEtDate` when touched.
+## ★★ Final bonus phase — Spanish / i18n
+Per Karan: **last, after everything above is built + operational.** Login + the field forms first, then a full locale pass + a UI language toggle carried through the field surfaces.
