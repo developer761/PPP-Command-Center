@@ -5,6 +5,8 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { normalizeRole } from "@/lib/auth/roles";
 import { listManagedUsers } from "@/lib/auth/user-management";
+import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
+import { normalizeEmail } from "@/lib/auth/admin";
 import CommercialAccessManager from "@/components/commercial/commercial-access-manager";
 
 /**
@@ -40,6 +42,10 @@ export default async function CommercialAccessPage() {
   // (managed on the PPP Access page) are shown too so the list is honest about
   // who can reach Commercial.
   const users = (await listManagedUsers()).filter((u) => u.has_new_platform_access);
+  // R1d: who can approve proposals (besides admins, who always can). Stored on
+  // the operating-company singleton; toggled per-user below.
+  const oc = await getOperatingCompany();
+  const approverEmails = (oc.approver_emails ?? []).map((e) => normalizeEmail(e));
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 animate-fade-up">
@@ -58,10 +64,15 @@ export default async function CommercialAccessPage() {
         <p className="text-[13px] text-ppp-charcoal-500 mt-1 max-w-2xl">
           Give someone a Commercial login — email + password, no Google needed.
           Accounts made here can reach the Commercial Command Center only, not PPP
-          Command Center. Anyone who needs both is set up separately.
+          Command Center. Anyone who needs both is set up separately. Flag anyone as
+          a <strong>proposal approver</strong> to let them sign off proposals before they go to a GC.
         </p>
       </header>
-      <CommercialAccessManager initialUsers={users} currentUserId={user.id} />
+      <CommercialAccessManager
+        initialUsers={users}
+        currentUserId={user.id}
+        initialApproverEmails={approverEmails}
+      />
     </div>
   );
 }

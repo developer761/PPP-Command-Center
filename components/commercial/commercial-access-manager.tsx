@@ -29,11 +29,17 @@ function genPassword(): string {
 export default function CommercialAccessManager({
   initialUsers,
   currentUserId,
+  initialApproverEmails = [],
 }: {
   initialUsers: ManagedUser[];
   currentUserId: string;
+  /** R1d: emails flagged as proposal approvers (admins are always approvers). */
+  initialApproverEmails?: string[];
 }) {
   const [users, setUsers] = useState<ManagedUser[]>(initialUsers);
+  const [approverEmails, setApproverEmails] = useState<string[]>(
+    initialApproverEmails.map((e) => e.trim().toLowerCase())
+  );
   const [flash, setFlash] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
 
   const refresh = async () => {
@@ -46,6 +52,47 @@ export default function CommercialAccessManager({
   const note = (tone: "ok" | "err", msg: string) => {
     setFlash({ tone, msg });
     if (tone === "ok") window.setTimeout(() => setFlash(null), 6000);
+  };
+
+  // R1d: toggle a user as a proposal approver. Admins are always approvers and
+  // never toggle here. Optimistic — reverts + flashes on failure.
+  const toggleApprover = async (email: string, make: boolean, label: string) => {
+    const norm = email.trim().toLowerCase();
+    setApproverEmails((prev) =>
+      make ? [...new Set([...prev, norm])] : prev.filter((e) => e !== norm)
+    );
+    try {
+      const res = await fetch("/api/commercial/approvers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: norm, make }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        approver_emails?: string[];
+      };
+      if (!res.ok) {
+        setApproverEmails((prev) =>
+          make ? prev.filter((e) => e !== norm) : [...new Set([...prev, norm])]
+        );
+        note("err", json.error ?? "Couldn't update approvers.");
+        return;
+      }
+      if (json.approver_emails) {
+        setApproverEmails(json.approver_emails.map((e) => e.trim().toLowerCase()));
+      }
+      note(
+        "ok",
+        make
+          ? `${label} can now approve proposals.`
+          : `${label} can no longer approve proposals.`
+      );
+    } catch {
+      setApproverEmails((prev) =>
+        make ? prev.filter((e) => e !== norm) : [...new Set([...prev, norm])]
+      );
+      note("err", "Network error — try again.");
+    }
   };
 
   return (
@@ -87,6 +134,11 @@ export default function CommercialAccessManager({
                 key={u.user_id}
                 user={u}
                 isSelf={u.user_id === currentUserId}
+                isApprover={
+                  u.role === "admin" ||
+                  approverEmails.includes((u.email ?? "").trim().toLowerCase())
+                }
+                onToggleApprover={toggleApprover}
                 onChanged={async (msg) => {
                   note("ok", msg);
                   await refresh();
@@ -262,18 +314,24 @@ function AddUserForm({
 function UserRow({
   user,
   isSelf,
+  isApprover,
+  onToggleApprover,
   onChanged,
   onError,
 }: {
   user: ManagedUser;
   isSelf: boolean;
+  isApprover: boolean;
+  onToggleApprover: (email: string, make: boolean, label: string) => Promise<void>;
   onChanged: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [newPw, setNewPw] = useState("");
+  const [approverBusy, setApproverBusy] = useState(false);
   const label = user.full_name || user.email;
+  const isAdmin = user.role === "admin";
 
   const patch = async (body: Record<string, unknown>, okMsg: string) => {
     if (busy) return;
@@ -329,6 +387,18 @@ function UserRow({
                 Also PPP
               </span>
             )}
+            {isApprover && (
+              <span
+                className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-700"
+                title={
+                  isAdmin
+                    ? "Admins can always approve proposals."
+                    : "Can approve proposals before they're sent to a GC."
+                }
+              >
+                {isAdmin ? "Approver · admin" : "Approver"}
+              </span>
+            )}
           </div>
           <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 truncate">{user.email}</div>
           <div className="text-[11px] text-ppp-charcoal-400 mt-0.5">
@@ -337,7 +407,36 @@ function UserRow({
           </div>
         </div>
         {!isSelf && (
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            {/* R1d: approver toggle. Admins are always approvers (no toggle —
+                the badge says so); everyone else can be flagged on/off. */}
+            {!isAdmin && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (approverBusy) return;
+                  setApproverBusy(true);
+                  try {
+                    await onToggleApprover(user.email, !isApprover, label);
+                  } finally {
+                    setApproverBusy(false);
+                  }
+                }}
+                disabled={approverBusy}
+                title={
+                  isApprover
+                    ? "Stop this person from approving proposals."
+                    : "Let this person approve proposals before they're sent to a GC."
+                }
+                className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[44px] sm:min-h-[36px] ${
+                  isApprover
+                    ? "border border-teal-200 text-teal-700 hover:bg-teal-50"
+                    : "border border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                }`}
+              >
+                {approverBusy ? "…" : isApprover ? "Remove approver" : "Make approver"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setResetOpen((v) => !v)}
