@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { commercialDb } from "@/lib/commercial/db";
 import { rawAccessDenied } from "@/lib/commercial/auth";
 import { isAdminEmail, normalizeEmail } from "@/lib/auth/admin";
 import { normalizeRole } from "@/lib/auth/roles";
@@ -27,8 +28,15 @@ export async function POST(request: Request) {
   // access, and on Commercial everyone with access is an admin). Admin =
   // profile role/is_admin resolves to "admin" (env-admin email counts too).
   // Also require live Commercial access, like every other commercial route.
+  //
+  // IMPORTANT: read the profile with the SERVICE client (commercialDb), NOT the
+  // user-scoped SSR client — RLS on `profiles` restricts what a self-read
+  // returns (role/is_admin can come back null), which would make this gate
+  // wrongly 403 a real admin. Every other commercial API route reads the
+  // profile this way for the same reason.
   const email = auth.user.email ?? null;
-  const { data: prof } = await supabase
+  const sb = commercialDb();
+  const { data: prof } = await sb
     .from("profiles")
     .select("role, is_admin, has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
