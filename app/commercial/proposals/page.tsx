@@ -588,7 +588,7 @@ function ProposalCard({
   const customName = row.header_json?.project_name?.trim() ?? "";
   const acctId = row.opportunity?.account_id ?? "";
   const dealId = row.opportunity?.id ?? row.opportunity_id;
-  const editorHref = `/commercial/accounts/${acctId}/deals/${dealId}/proposal/${row.id}`;
+  const editorHref = `/commercial/accounts/${acctId}/deals/${dealId}/proposal/${row.id}?back=/commercial/proposals`;
 
   return (
     <li className="group bg-surface border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
@@ -1341,7 +1341,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                     </div>
                     <ul className="divide-y divide-ppp-charcoal-100">
                       {dealBucket.rows.map((r) => {
-                        const editorHref = `/commercial/accounts/${acct.account_id}/deals/${dealBucket.deal!.id}/proposal/${r.id}`;
+                        const editorHref = `/commercial/accounts/${acct.account_id}/deals/${dealBucket.deal!.id}/proposal/${r.id}?back=/commercial/proposals`;
                         const customName = r.header_json?.project_name?.trim();
                         return (
                           <li

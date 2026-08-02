@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import PlatformSwitcher from "@/components/platform-switcher";
 
 /**
@@ -30,7 +31,26 @@ type NavItem = {
   icon: React.ReactNode;
 };
 
-type NavSection = { heading: string; items: NavItem[] };
+/** A collapsible parent that nests leaf items (e.g. "Delivery Tools" wraps the
+ *  six post-contract production tools so Post-Contract reads as 3 rows, not 9). */
+type NavGroup = {
+  group: string;
+  icon: React.ReactNode;
+  items: NavItem[];
+};
+
+type NavEntry = NavItem | NavGroup;
+
+function isGroup(e: NavEntry): e is NavGroup {
+  return (e as NavGroup).group !== undefined;
+}
+
+type NavSection = { heading: string; items: NavEntry[] };
+
+// Shared row geometry for every nav row (leaf, group header, disabled). min-h
+// clears the 44px mobile tap-target floor; desktop keeps its tighter rhythm.
+const NAV_ROW =
+  "flex items-center gap-3 px-3 py-2 lg:py-2.5 min-h-[44px] lg:min-h-0 rounded-lg text-sm font-medium transition-colors touch-manipulation";
 
 const navSections: NavSection[] = [
   {
@@ -58,17 +78,26 @@ const navSections: NavSection[] = [
   {
     heading: "Post-Contract",
     items: [
-      // Karan 2026-07-29: Projects is the hub, Invoices second, then the four
-      // production tools each get their own tab. Change Orders + AIA Billing
-      // are added here once their index pages land (Phase 1).
+      // Karan 2026-07-29: Projects is the hub, Invoices second. RUX-1 (2026-08):
+      // the six production tools were 6 flat rows crowding this section (8 total)
+      // — collapsed under a "Delivery Tools" group so Post-Contract reads as 3
+      // rows. The group auto-opens when one of its tools (or a tool detail page)
+      // is active. Canonical tool order: Work Order → Submittals → Change Orders
+      // → AIA → Costs → Closeout (production sequence).
       { label: "Projects", href: "/commercial/projects", icon: <IconHardHat /> },
       { label: "Invoices", href: "/commercial/invoices", icon: <IconDollar /> },
-      { label: "Submittals", href: "/commercial/post-job/submittals", icon: <IconChangeOrder /> },
-      { label: "Change Orders", href: "/commercial/post-job/change-orders", icon: <IconRefresh /> },
-      { label: "AIA Billing", href: "/commercial/post-job/aia", icon: <IconFileText /> },
-      { label: "Costs & P&L", href: "/commercial/post-job/costs", icon: <IconDollar /> },
-      { label: "Work Orders", href: "/commercial/post-job/work-orders", icon: <IconCheckSquare /> },
-      { label: "Closeout & warranty", href: "/commercial/post-job/closeout", icon: <IconCheckSquare /> },
+      {
+        group: "Delivery Tools",
+        icon: <IconTools />,
+        items: [
+          { label: "Work Orders", href: "/commercial/post-job/work-orders", icon: <IconClipboard /> },
+          { label: "Submittals", href: "/commercial/post-job/submittals", icon: <IconChangeOrder /> },
+          { label: "Change Orders", href: "/commercial/post-job/change-orders", icon: <IconRefresh /> },
+          { label: "AIA Billing", href: "/commercial/post-job/aia", icon: <IconFileText /> },
+          { label: "Costs & P&L", href: "/commercial/post-job/costs", icon: <IconTrendingUp /> },
+          { label: "Closeout & Warranty", href: "/commercial/post-job/closeout", icon: <IconCheckSquare /> },
+        ],
+      },
     ],
   },
   {
@@ -101,11 +130,25 @@ type Props = {
 
 export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNavigate }: Props) {
   const pathname = usePathname();
+  // Manual expand/collapse overrides for the collapsible groups, keyed by group
+  // label. Undefined = follow the auto rule (open when a child is active).
+  const [groupOverride, setGroupOverride] = useState<Record<string, boolean>>({});
+
   // Drop admin-only rows (Access) for non-admins so a Commercial tester never
   // sees a link that would just bounce them. The page redirects too (defense).
+  // Recurse into collapsible groups so an admin-only leaf inside a group is
+  // filtered the same way as a top-level one.
   const sections = navSections.map((s) => ({
     ...s,
-    items: s.items.filter((it) => !it.adminOnly || isAdmin),
+    items: s.items
+      .map((entry) =>
+        isGroup(entry)
+          ? { ...entry, items: entry.items.filter((it) => !it.adminOnly || isAdmin) }
+          : entry
+      )
+      .filter((entry) =>
+        isGroup(entry) ? entry.items.length > 0 : !entry.adminOnly || isAdmin
+      ),
   }));
 
   // 2026-07-29: a post-sale tool detail lives UNDER the account
@@ -118,9 +161,63 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNav
   );
   // The Work Order account route is `work-order` (singular); its sidebar index
   // is `work-orders` (plural) — map it so the nav still highlights.
-  const activeToolOverride = toolDetailMatch
+  const toolOverride = toolDetailMatch
     ? `/commercial/post-job/${toolDetailMatch[1] === "work-order" ? "work-orders" : toolDetailMatch[1]}`
     : null;
+
+  // A proposal detail/builder lives UNDER the deal
+  // (/commercial/accounts/<id>/deals/<dealId>/proposal/...) but is reached from
+  // the Proposals index — so it should light up "Proposals", not "Accounts"
+  // (which prefix-matches and makes it feel like the account page). Same fix
+  // pattern as the tool-detail override above.
+  const proposalDetail =
+    /^\/commercial\/accounts\/[^/]+\/deals\/[^/]+\/proposal(?:\/|$)/.test(pathname);
+  const activeOverride = toolOverride ?? (proposalDetail ? "/commercial/proposals" : null);
+
+  const isActive = (href: string): boolean => {
+    if (activeOverride) return href === activeOverride;
+    if (href === "/commercial") return pathname === "/commercial";
+    return pathname.startsWith(href);
+  };
+
+  const renderLeaf = (item: NavItem) => {
+    const active = isActive(item.href);
+    if (item.disabled) {
+      return (
+        <li key={item.href}>
+          <div className={`${NAV_ROW} text-ppp-charcoal-400 cursor-not-allowed select-none`} title={item.phase ? `Coming in Phase ${item.phase}` : "Coming soon"}>
+            <span className="text-ppp-charcoal-300">{item.icon}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.phase != null && (
+              <span className="shrink-0 text-[9px] font-bold tracking-wider uppercase text-ppp-charcoal-500 bg-ppp-charcoal-50 border border-ppp-charcoal-100 px-1.5 py-0.5 rounded">
+                Phase {item.phase}
+              </span>
+            )}
+          </div>
+        </li>
+      );
+    }
+    return (
+      <li key={item.href}>
+        <Link
+          href={item.href}
+          onClick={onNavigate}
+          aria-current={active ? "page" : undefined}
+          className={[
+            NAV_ROW,
+            active
+              ? "bg-cc-brand-50 text-cc-brand-700"
+              : "text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-50",
+          ].join(" ")}
+        >
+          <span className={active ? "text-cc-brand-700" : "text-ppp-charcoal-500"}>
+            {item.icon}
+          </span>
+          <span className="flex-1">{item.label}</span>
+        </Link>
+      </li>
+    );
+  };
 
   return (
     // Same white/clean shape as the PPP CC sidebar. Red is the ACCENT
@@ -166,51 +263,46 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNav
               {section.heading}
             </div>
             <ul className="space-y-0.5">
-              {section.items.map((item) => {
-                const active = activeToolOverride
-                  ? item.href === activeToolOverride
-                  : item.href === "/commercial"
-                    ? pathname === "/commercial"
-                    : pathname.startsWith(item.href);
-                // min-h-[44px] so the mobile drawer rows clear the tap-target
-                // floor (py-2 alone was ~36px); desktop keeps its tighter rhythm.
-                const baseClasses = "flex items-center gap-3 px-3 py-2 lg:py-2.5 min-h-[44px] lg:min-h-0 rounded-lg text-sm font-medium transition-colors touch-manipulation";
-
-                if (item.disabled) {
+              {section.items.map((entry) => {
+                if (isGroup(entry)) {
+                  const childActive = entry.items.some((it) => isActive(it.href));
+                  const open = groupOverride[entry.group] ?? childActive;
                   return (
-                    <li key={item.href}>
-                      <div className={`${baseClasses} text-ppp-charcoal-400 cursor-not-allowed select-none`} title={item.phase ? `Coming in Phase ${item.phase}` : "Coming soon"}>
-                        <span className="text-ppp-charcoal-300">{item.icon}</span>
-                        <span className="flex-1">{item.label}</span>
-                        {item.phase != null && (
-                          <span className="shrink-0 text-[9px] font-bold tracking-wider uppercase text-ppp-charcoal-500 bg-ppp-charcoal-50 border border-ppp-charcoal-100 px-1.5 py-0.5 rounded">
-                            Phase {item.phase}
-                          </span>
-                        )}
-                      </div>
+                    <li key={entry.group}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setGroupOverride((prev) => ({ ...prev, [entry.group]: !open }))
+                        }
+                        aria-expanded={open}
+                        className={[
+                          NAV_ROW,
+                          "w-full",
+                          childActive && !open
+                            ? "text-cc-brand-700"
+                            : "text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-50",
+                        ].join(" ")}
+                      >
+                        <span className={childActive && !open ? "text-cc-brand-700" : "text-ppp-charcoal-500"}>
+                          {entry.icon}
+                        </span>
+                        <span className="flex-1 text-left">{entry.group}</span>
+                        <span
+                          aria-hidden
+                          className={`shrink-0 text-ppp-charcoal-400 transition-transform ${open ? "rotate-180" : ""}`}
+                        >
+                          <IconChevronDown />
+                        </span>
+                      </button>
+                      {open && (
+                        <ul className="mt-0.5 ml-3 pl-3 border-l border-ppp-charcoal-100 space-y-0.5">
+                          {entry.items.map((it) => renderLeaf(it))}
+                        </ul>
+                      )}
                     </li>
                   );
                 }
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={onNavigate}
-                      aria-current={active ? "page" : undefined}
-                      className={[
-                        baseClasses,
-                        active
-                          ? "bg-cc-brand-50 text-cc-brand-700"
-                          : "text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-50",
-                      ].join(" ")}
-                    >
-                      <span className={active ? "text-cc-brand-700" : "text-ppp-charcoal-500"}>
-                        {item.icon}
-                      </span>
-                      <span className="flex-1">{item.label}</span>
-                    </Link>
-                  </li>
-                );
+                return renderLeaf(entry);
               })}
             </ul>
           </div>
@@ -229,14 +321,14 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNav
         )}
       </nav>
 
-      {/* Version footer hidden on mobile so the drawer's nav can fully fit on
-         a 568px viewport. Desktop keeps the phase-tag for at-a-glance
-         "what's the platform on right now" context. */}
+      {/* Footer — hidden on mobile so the drawer's nav fully fits a 568px
+         viewport. A calm "live" tag; no stale phase label (RUX-1). */}
       <div className="hidden lg:block px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
-        <div className="font-semibold text-ppp-charcoal">Phase B · Structural fields</div>
-        <div className="mt-0.5 flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-cc-brand-500 animate-pulse" aria-hidden />
-          Pre-Contract / Post-Contract
+        <div className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-ppp-green" aria-hidden />
+          <span className="font-condensed font-semibold tracking-[0.14em] uppercase text-ppp-navy-600">
+            Commercial Command Center
+          </span>
         </div>
       </div>
     </aside>
@@ -348,6 +440,44 @@ function IconHeart() {
   );
 }
 
+function IconTools() {
+  // Wrench + screwdriver crossed — the "Delivery Tools" group parent. Reads as
+  // "a set of tools" distinct from any single tool's icon.
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14.7 6.3a4 4 0 0 0 5 5l-9 9a2.83 2.83 0 0 1-4-4z" />
+      <path d="M14.5 9.5 4 20" />
+      <path d="m17 3 4 4-2 2-4-4z" />
+    </svg>
+  );
+}
+function IconClipboard() {
+  // Clipboard-with-check — the crew Work Order (a checklist handed to the field).
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="m9 14 2 2 4-4" />
+    </svg>
+  );
+}
+function IconTrendingUp() {
+  // Rising line — Costs & P&L (margin/profit trend), distinct from the $ glyph
+  // that Invoices already uses.
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </svg>
+  );
+}
+function IconChevronDown() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
 function IconArchive() {
   // Box-with-lid — matches the archive semantics used on the deal chips
   // ("📁 Include archived (N)"). Visually distinct from IconBuilding.

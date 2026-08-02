@@ -757,7 +757,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
+  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; back?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -878,6 +878,11 @@ export default async function ProposalEditorPage({
   // 2026-08 restructure: proposals live on the DEAL now — back goes to the
   // deal view's proposals section, not the (removed) account Proposals tab.
   const listHref = `/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=proposals#deal-proposals`;
+  // RUX-1: when opened from the Proposals index (sidebar), offer "Back to
+  // Proposals" so the editor reads as part of that queue — not a dead-end into
+  // the account. Whitelisted (only the exact index path) so ?back can't be an
+  // open-redirect; the deal breadcrumb stays as the secondary link.
+  const fromProposalsIndex = sp.back === "/commercial/proposals";
 
   // Hidden fields shared by every server action on this page.
   const hiddenIds = (
@@ -894,15 +899,33 @@ export default async function ProposalEditorPage({
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
       {/* Breadcrumb + status pill */}
       <nav className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
-        <Link href={listHref} className="hover:text-cc-brand-700 inline-flex items-center gap-1 min-h-[44px] sm:min-h-[32px]">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M19 12H5" />
-            <path d="m12 19-7-7 7-7" />
-          </svg>
-          <span>Back to {account.company_name} proposals</span>
-        </Link>
-        <span aria-hidden className="text-ppp-charcoal-300">·</span>
-        <span className="text-ppp-charcoal-900 font-medium">{oppName}</span>
+        {fromProposalsIndex ? (
+          <>
+            <Link href="/commercial/proposals" className="inline-flex items-center gap-1.5 font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M19 12H5" />
+                <path d="m12 19-7-7 7-7" />
+              </svg>
+              Back to Proposals
+            </Link>
+            <span aria-hidden className="text-ppp-charcoal-300">·</span>
+            <Link href={listHref} className="truncate hover:text-cc-brand-700 min-h-[44px] sm:min-h-[32px] inline-flex items-center">
+              {account.company_name} · {oppName}
+            </Link>
+          </>
+        ) : (
+          <>
+            <Link href={listHref} className="hover:text-cc-brand-700 inline-flex items-center gap-1 min-h-[44px] sm:min-h-[32px]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M19 12H5" />
+                <path d="m12 19-7-7 7-7" />
+              </svg>
+              <span>Back to {account.company_name} proposals</span>
+            </Link>
+            <span aria-hidden className="text-ppp-charcoal-300">·</span>
+            <span className="text-ppp-charcoal-900 font-medium">{oppName}</span>
+          </>
+        )}
       </nav>
 
       {/* 2026-07-21: sticky toolbar (desktop only) so the identity, TOTAL,
