@@ -1,79 +1,127 @@
-# Commercial Command Center — Remaining Build Plan (start → finish)
+# Commercial Command Center — Build Checklist (start → finish)
 
-_Rewritten 2026-08 after reconciling the UX walks against the ORIGINAL master plan ([[commercial-master-plan-2026-07-24]]) + Katie's remaining notes ([[project_katie_notes_remaining_2026_08]]) + the scheduling spec ([[project_tomco_scheduling_spec_2026_08]]). The earlier draft was built from the UX walks only and under-counted the feature backlog — this is the corrected, comprehensive list to FULLY finish the platform._
+_**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full checklist (done + remaining) is relayed to Karan after each completion. Same checklist format for the end-stage edge-case + smoke-test sweeps. Reconciled against the master plan + Katie's notes + the scheduling spec — this is the true finish line._
 
----
-
-## ✅ Already shipped (do NOT rebuild — verified in code)
-Accounts (+ A/B/C rating) · Opportunities pipeline · Proposals + Builder + PDF · Documents (per-tool + deal filing cabinet) · **Change Orders** (incl. CO-as-invoice-line "incl. change order" tick model) · **AIA G702/G703** + Excel export · Submittals · **Closeout** (Letter of Transmittal + Warranty generators, tap-to-sign) · Invoicing + AR statement · Costs & Job P&L · Revenue analytics/charts · Dashboards · **Notifications** (inbox both platforms + custom rules + email opt-in + daily cron) · Estimator role + RBAC · Operating-company identity + brand + tap-to-sign · 2 full correctness-audit rounds + 2 UX-polish rounds.
-
-Legend: **[BUILD]** = new feature · **[VERIFY]** = likely done, confirm/finish · **[FIX]** = small correction · **[PARKED]** = do opportunistically · **[CLEANUP]** = tech-debt.
-
-## How every phase is built (Karan's standing bar — applies to ALL phases below)
-- **Think like Karan FIRST — build it right the first time.** Before starting a phase, anticipate what "complete" looks like to Karan AND what he'd ask to change, then just build THAT from the start — don't ship a first draft he has to correct. His known bar: everything for an opportunity lives under that ONE opportunity (single source of truth, nothing scattered); every action reflects everywhere instantly (opp ↔ account ↔ global); mini-KPIs + progress bars lead each surface; aggressive autofill + one-click / tap-to-sign; generated docs match Tomco's real formats; never hard-reject a reasonable money action (cap/allow/credit + a small heads-up, not a wall); the SIMPLEST robust version; no gray boxes; mobile-perfect.
-- **Edge-case + bug-test EVERYTHING, before AND after every phase.** A parallel adversarial agent runs before AND after each batch and after every push — testing not just UI edges (extreme / empty / null / concurrent / timezone / overflow) but the actual **flow and logic end-to-end** (click every path, trace every state, verify every cross-surface reflection). Every finding fixed, nothing deferred.
-- **Clear + concise UI/UX** — dividers separate blocks; progressive disclosure (don't clutter); mobile-perfect 44px; searchable dropdowns >10 items; test buttons after any layout change; "can this be simpler?" on every screen.
-- **Verified green** — tsc + tests + build before every push; log billable time conservatively; push on every clean commit.
+## How every phase is built (standing bar — every phase)
+- [ ] **Think like Karan FIRST — build it right the first time.** Anticipate what "done" looks like to him AND what he'd send back, then build THAT from the start. Single source of truth per opportunity; every action reflects everywhere instantly (opp ↔ account ↔ global); mini-KPIs + progress bars lead; aggressive autofill + tap-to-sign; docs match Tomco formats; never hard-reject money (cap/allow/credit + small heads-up); simplest robust version; no gray boxes; mobile-perfect. Proactively propose the dual-surface pattern (sidebar queue + opportunity home + account rollup) on every tool.
+- [ ] **Edge-case + bug-test EVERYTHING, before AND after every phase** — parallel adversarial agent on UI edges (extreme/empty/null/concurrent/timezone/overflow) AND flow/logic end-to-end. Fix all, defer none.
+- [ ] **Verified green** — tsc + tests + build before every push.
 
 ---
 
-## Phase R1 — Proposal & estimating completion (Kim the estimator)
-_Client-facing bits are used by anyone building a proposal (no role-gating); Kim is just the primary user._
-- **[BUILD]** Per-line **"show price" checkbox** — checked prints the line total on the client PDF, unchecked hides it. _Edge: all-hidden proposal still shows a total; toggling recomputes the printed subtotal; hidden lines still count toward the total._
-- **[BUILD]** **Adjustable final price** (override the summed total) on the client proposal. _Edge: override < 0 rejected; override vs line-sum delta shown internally; clears cleanly back to auto; flows to the contract/AIA base + invoicing consistently._
-- **[BUILD]** **Bid Set date** field, shown on the proposal.
-- **[BUILD]** **Internal bid notes** (never on the client PDF) + **attach Kim's marked-up plan/spec doc** to the internal side. _Edge: large plan uploads (see R6 chunked upload); internal-only never leaks to the client render._
-- **[BUILD]** **Approval loop** (Resend): Kim clicks **"Get approval"** → emails Brendan → he approves/rejects → returns to Kim as approved/rejected, audit-logged. _Edge: re-request after edit; approve/reject race; Brendan email missing; status reflected on the proposal + pipeline._
-
-## Phase R2 — Document generators & doc fidelity
-- **[BUILD]** **Work Order for the crew.** **Home:** a new **"Work Order" tool card on the won opportunity's Project tab** (next to CO / AIA / Submittals / Costs / Closeout) — reached account → Opportunities → open opportunity → Project → Work Order, i.e. created IN the accounts area, under that ONE opportunity. **Auto-built:** autofills Inclusions / Add-Alternates / Exclusions from the accepted **proposal** + the **Room Finish Schedule** from the finish-schedule/submittals data + header from the opportunity — the user reviews/tweaks crew notes, not retypes. **Generate** → PDF on Tomco letterhead (operating company) + tap-to-sign if needed → **auto-files into the deal Documents → rolls up to the account Documents tab** (same pattern as CO/AIA/closeout PDFs). Mirrors Tomco's Panera Work Order format. _Edge: no accepted proposal yet (start blank + let them fill); finish schedule empty; regenerate replaces prior; long inclusion lists paginate._
-  - **[BUILD]** **Sidebar "Work Orders" index** (in the Post-Contract group, matching Change Orders / AIA / Costs / Submittals / Closeout) — a cross-account **status queue**, NOT a flat PDF dump: each job's Work Order state (⚪ not created · 🟡 draft · 🟢 sent to crew, brand progress-bar tones), row → jumps into that opportunity's Work Order tool. Quick "which won jobs still need a Work Order" glance. Global quick-access; the opportunity stays the home where it's created + filed.
-- **[FIX]** AIA `contractorLabel` hardcoded "Precision Painting Plus" → drive from the **operating company (Tomco)**; verify the Excel export matches Tomco's blank G702/G703 template.
-- **[VERIFY]** Closeout **Letter of Transmittal must exclude COI**; Warranty defaults to **12 months** ("Form of Warranty", Brendan Dwyer VP block) with tap-to-sign.
-
-## Phase R3 — Search & navigation
-- **[BUILD]** **Universal Search** — one interactive topbar bar to find any account / opportunity / **invoice** (by #/PO/amount) / proposal / document, with **entity filter chips** + **account scoping** ("invoices for Turner", "overdue invoices"). Extends the ⌘K palette; subsumes a standalone document-search page. ~5–7h.
-- **[BUILD]** **Job "What's Due" strip** on an opportunity's Overview — COs pending, AIA ready to submit, submittals aging (days waiting), overdue invoices ($), unreleased retainage. ~3–4h.
-- **[BUILD]** **Navigation restructure** — one home per production tool (kills the save-ejects-you-to-a-different-surface bug), collapse the P&L surfaces into one "Costs & P&L" tab, flatten the deal's 3–4 tab levels, unify "open an opportunity" to the canonical drill-in.
-
-## Phase R4 — Reports (K)
-- **[BUILD]** Reusable **Reports framework** — each report a tab; starter set **Pipeline · Sales · AR aging**; include **Kim's Plan Report**; "export = the filtered set."
-- **[BUILD]** **AR export / statement (CSV/print)** — aging-by-customer for collections calls (was parked → folds here).
-
-## Phase R5 — Project rollups & billing completeness
-- **[VERIFY/FINISH]** Project rollups: total hours worked · payments received · balance owed (project amount − payments, across multiple invoices) · purchases · labor payments out — surfaced on the project header.
-- **[BUILD]** **Billing signpost** — cross-link Invoices ↔ AIA so a PM knows on day one how a GC gets billed.
-
-## Phase R6 — Intake & uploads
-- **[BUILD]** **Chunked PDF upload** (TUS resumable via Supabase Storage) — plans/specs run 20–100 MB and currently time out; add a progress bar + resume-on-disconnect.
-- **[BUILD]** **Online public bid form** `/c/bid-submit` (no-auth, Turnstile/hCaptcha) → lands as a new opportunity in `inquiry` + creates the account if new + bells the owner.
-- **[PARKED]** Archive project docs to **Google Drive / Dropbox** + restore.
-
-## Phase R7 — Onboarding & pipeline speed
-- **[BUILD]** **Getting-started checklist** on the dashboard (Add GC → opportunity → proposal → Won → invoice), lights up as data appears, auto-hides once active.
-- **[BUILD]** **Field-ops purchase/hours form redesign** — photo-first (receipt tile on top), "My jobs today", big Log-hours/Snap-receipt, worker auto-filled to the logged-in user, date = today.
-- **[BUILD]** **Faster pipeline actions** — inline "create new GC" in the pickers (partly shipped as links), proposal-builder entry on the opportunity detail, one-click stage-advance (auto-submit + undo toast), "Move to…" filtered to legal next stages everywhere.
-- **[BUILD]** Account header **open-opportunity count + balance**; **alphabetical-by-customer sort** on the pipeline.
-
-## Phase R8 — Hardening
-- **[BUILD]** **Accessibility** — focus-trap/inert wrapper for the 3 slide-out sheets; finish the `charcoal-400 → 500` contrast sweep beyond the dashboard; remaining focus-visible rings.
-- **[BUILD]** **Security** — DOMPurify-grade email-HTML sanitizer before any archived email is ever customer-facing; route the remaining raw date formatters through `fmtEtDate`.
-- **[BUILD]** **View-only access role** — least-privilege commercial login (today any login can void invoices + see every P&L). Pairs with the scheduler-role work in R10.
-- **[CLEANUP]** Remove orphan `TeamTab`/`NotesTab`; consolidate the near-duplicate tile components (`SummaryTile`/`AiaSummaryTile`/`CloseoutStat`/`ProjectStat`/`SubmittalStat`) into one shared tile; grouped-invoice sort + stray `new Date(field)` formatters through the null-safe path.
-
-## Phase R9 — Dark mode finish (over completed surfaces)
-- **[FINISH]** Dark-mode **foundation already shipped**; finish the contrast pass + navy accent across every page now that surfaces are stable.
-
-## Phase R10 — Field Ops / Scheduling  🐘 (the giant — build LAST)
-- **[BUILD]** Full spec in [[project_tomco_scheduling_spec_2026_08]]: data model + **6 views** (Week Grid, Calendar, Job Board, mobile Daily Log, Approvals, Admin) + time-entry state machine (draft→submitted→approved→locked) + **payroll CSV** + per-job phases + receipts/labor-out/clock-in-out. **The `scheduler` role lands here.** Multi-day — realistically half the remaining effort on its own.
+## ✅ Shipped foundation (Phases 0–2 + G + H + audits/UX)
+- [x] Accounts (+ A/B/C rating)
+- [x] Opportunities pipeline
+- [x] Proposals + Builder + PDF
+- [x] Documents (per-tool + deal filing cabinet)
+- [x] Change Orders (incl. CO-as-invoice-line "incl. change order")
+- [x] AIA G702/G703 + Excel export
+- [x] Submittals & finish schedule
+- [x] Closeout (Letter of Transmittal + Warranty generators + tap-to-sign)
+- [x] Invoicing + open-invoice AR statement
+- [x] Costs & Job P&L
+- [x] Revenue analytics / charts
+- [x] Dashboards
+- [x] Notifications (inbox both platforms + custom rules + email opt-in + daily cron)
+- [x] Estimator role + RBAC + operating-company identity + brand + tap-to-sign
+- [x] 2 correctness-audit rounds + 2 UX-polish rounds
 
 ---
 
-## ★ Endgame (do NOT declare the platform done before these)
-1. **[BONUS]** **Parse RFP email → auto-populate the Opportunity** (sender→account, subject→title, body→notes, attachments→docs) — the "Future State" force-multiplier.
-2. **[FINAL] Full platform audit** — money/KPIs, backend/security, UI/UX + flow, mobile, accessibility (the same multi-agent adversarial pass we've been running), fix every finding.
-3. **[FINAL] Start-to-finish smoke-test script** — a written click-through covering the whole lifecycle: new GC → opportunity → proposal → approval → Won → project → change order → AIA app → submittal → invoice → payment → lien waiver → closeout (LoT + warranty) → reports, on desktop AND mobile, with expected result at each step.
-4. **[FINAL] Joint walkthrough with Karan** — do the smoke test together; only then is the platform "done."
+## ⬜ Phase R1 — Proposal & estimating (Kim; client-facing bits used by anyone)
+- [ ] Per-line **"show price" checkbox** (client PDF prints/hides the line total)
+- [ ] **Adjustable final price** (override the summed total)
+- [ ] **Bid Set date** on the proposal
+- [ ] **Internal bid notes** (never on client PDF) + **attach Kim's marked-up plan/spec doc**
+- [ ] **Approval loop** (Resend): Kim "Get approval" → Brendan approve/reject → back to Kim, audit-logged
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
 
-## ★★ Final bonus phase — Spanish / i18n
-Per Karan: **last, after everything above is built + operational.** Login + the field forms first, then a full locale pass + a UI language toggle carried through the field surfaces.
+## ⬜ Phase R2 — Document generators & doc fidelity
+- [ ] **Work Order for the crew** — tool card on the opportunity's Project tab; autofills Inclusions/Alternates/Exclusions from the proposal + Room Finish Schedule from finish-schedule data; Generate → Tomco-letterhead PDF + tap-to-sign → files to deal Documents → rolls up to account
+- [ ] **Work Orders sidebar index** (Post-Contract group) — cross-account status queue (⚪ not created · 🟡 draft · 🟢 sent to crew), row → the opportunity's Work Order tool
+- [ ] AIA `contractorLabel` → operating company (Tomco); verify Excel matches Tomco's blank template
+- [ ] Verify closeout **LoT excludes COI** + Warranty defaults to **12 months** (Brendan Dwyer VP block) with tap-to-sign
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+## ⬜ Phase R3 — Search & navigation
+- [ ] **Universal Search** — topbar bar for any account / opportunity / invoice (#/PO/amount) / proposal / document, with entity filter chips + account scoping ("invoices for Turner", "overdue")
+- [ ] **Job "What's Due" strip** on the opportunity Overview (COs pending · AIA ready · submittals aging · overdue $ · unreleased retainage)
+- [ ] **Navigation restructure** — one home per tool (kill the save-ejects bug), collapse P&L surfaces into one tab, flatten the deal's 3–4 tab levels, unify "open an opportunity"
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+## ⬜ Phase R4 — Reports
+- [ ] Reusable **Reports framework** — each report a tab; starter Pipeline · Sales · AR aging; **Kim's Plan Report**; export = the filtered set
+- [ ] **AR export / statement (CSV / print)** — aging-by-customer
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+## ⬜ Phase R5 — Project rollups & billing completeness
+- [ ] Project rollups on the project header: total hours · payments received · balance owed (across multiple invoices) · purchases · labor payments out
+- [ ] **Billing signpost** — cross-link Invoices ↔ AIA (how this GC gets billed)
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+## ⬜ Phase R6 — Intake & uploads
+- [ ] **Chunked PDF upload** (TUS resumable; 20–100 MB plans/specs; progress bar + resume)
+- [ ] **Online public bid form** `/c/bid-submit` (no-auth + Turnstile) → new opportunity + account-if-new + bell
+- [ ] *(Parked)* Archive project docs to Google Drive / Dropbox + restore
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+## ⬜ Phase R7 — Onboarding & pipeline speed
+- [ ] **Getting-started checklist** on the dashboard (lights up as data appears, auto-hides)
+- [ ] **Field-ops purchase/hours form redesign** (photo-first, receipt on top, worker auto-filled, date=today)
+- [ ] **Faster pipeline actions** — inline "create GC", proposal entry on opportunity, one-click stage-advance + undo, "Move to…" legal-only everywhere
+- [ ] Account header open-opportunity count + balance · alphabetical-by-customer sort
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+## ⬜ Phase R8 — Hardening
+- [ ] **Accessibility** — focus-trap/inert for the 3 slide-out sheets + finish contrast sweep + remaining focus rings
+- [ ] **Security** — DOMPurify-grade email-HTML sanitizer; raw date formatters → `fmtEtDate`
+- [ ] **View-only access role** (least-privilege commercial login)
+- [ ] **Cleanups** — remove orphan TeamTab/NotesTab; consolidate duplicate tile components; latent date-safety
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+## ⬜ Phase R9 — Dark mode finish
+- [ ] Contrast pass + navy accent across every page (foundation shipped; finish over stable surfaces)
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+## ⬜ Phase R10 — Field Ops / Scheduling  🐘 (the giant — LAST)
+- [ ] Data model + per-job phases + **scheduler role**
+- [ ] Week Grid view
+- [ ] Calendar view
+- [ ] Job Board view
+- [ ] Mobile Daily Log view
+- [ ] Approvals view
+- [ ] Admin view
+- [ ] Time-entry state machine (draft→submitted→approved→locked; questioned→foreman)
+- [ ] Payroll CSV export
+- [ ] Receipts + labor-out + clock-in/out (reconcile w/ residential receipts)
+- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+
+---
+
+## ⬜ ★ ENDGAME — full platform audit (do NOT declare done until all checked)
+- [ ] Money / KPI / backend audit — every finding fixed
+- [ ] UI/UX + flow audit — every finding fixed
+- [ ] Mobile audit — every finding fixed
+- [ ] Accessibility audit — every finding fixed
+- [ ] Security audit — every finding fixed
+
+## ⬜ ★ ENDGAME — start-to-finish SMOKE TEST (desktop AND mobile, expected result each step)
+- [ ] Add a new GC (account)
+- [ ] Log a new opportunity under it
+- [ ] Build a proposal (show/hide prices, adjustable total)
+- [ ] Get approval (Kim → Brendan)
+- [ ] Mark Won → auto-becomes a project
+- [ ] Generate the crew Work Order
+- [ ] Raise a change order → approve → bill onto an invoice
+- [ ] Create an AIA application → G702/G703 → Excel export
+- [ ] Send a submittal → Letter of Transmittal
+- [ ] Create an invoice → send
+- [ ] Record a payment → attach the lien waiver
+- [ ] Close out (LoT + Warranty, tap-to-sign)
+- [ ] Run the Reports + Universal Search
+- [ ] Verify every step reflected on the account + dashboard + notifications
+- [ ] **Joint walkthrough with Karan** — we do it together; only then is the platform DONE
+
+## ⬜ ★★ BONUS (after platform is done + operational)
+- [ ] Parse RFP email → auto-populate the Opportunity
+- [ ] Spanish / i18n (login + field forms first, then full locale + toggle)
