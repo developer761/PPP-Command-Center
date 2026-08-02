@@ -67,6 +67,7 @@ const navSections: NavSection[] = [
       { label: "Change Orders", href: "/commercial/post-job/change-orders", icon: <IconRefresh /> },
       { label: "AIA Billing", href: "/commercial/post-job/aia", icon: <IconFileText /> },
       { label: "Costs & P&L", href: "/commercial/post-job/costs", icon: <IconDollar /> },
+      { label: "Work Orders", href: "/commercial/post-job/work-orders", icon: <IconCheckSquare /> },
       { label: "Closeout & warranty", href: "/commercial/post-job/closeout", icon: <IconCheckSquare /> },
     ],
   },
@@ -113,9 +114,13 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNav
   // lighting up "Accounts" (which prefix-matches and made the tool feel like
   // the account page). Map such a path to the owning tool's index href.
   const toolDetailMatch = pathname.match(
-    /^\/commercial\/accounts\/[^/]+\/(submittals|change-orders|aia|costs|closeout)(?:\/|$)/
+    /^\/commercial\/accounts\/[^/]+\/(submittals|change-orders|aia|costs|closeout|work-order)(?:\/|$)/
   );
-  const activeToolOverride = toolDetailMatch ? `/commercial/post-job/${toolDetailMatch[1]}` : null;
+  // The Work Order account route is `work-order` (singular); its sidebar index
+  // is `work-orders` (plural) — map it so the nav still highlights.
+  const activeToolOverride = toolDetailMatch
+    ? `/commercial/post-job/${toolDetailMatch[1] === "work-order" ? "work-orders" : toolDetailMatch[1]}`
+    : null;
 
   return (
     // Same white/clean shape as the PPP CC sidebar. Red is the ACCENT

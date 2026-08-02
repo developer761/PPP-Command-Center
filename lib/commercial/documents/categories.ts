@@ -30,6 +30,7 @@ export const DOCUMENT_CATEGORIES = [
   "aia_billing",       // G702/G703 applications + exports
   "submittal",         // transmittals + shop drawings / product data
   "closeout",          // closeout package: as-builts, O&M, waivers, warranty
+  "work_order",        // R2: crew work order (scope + room-finish schedule PDF)
   "lien_waiver",       // partial/final lien waivers — stored (never generated)
   // Phase 2 (2026-08): the cost + attachment spine.
   "receipt",           // material/labor/sub purchase receipts (job cost backup)
@@ -54,6 +55,7 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "aia_billing": return "AIA Billing";
     case "submittal": return "Submittal";
     case "closeout": return "Closeout";
+    case "work_order": return "Work Order";
     case "lien_waiver": return "Lien Waiver";
     case "receipt": return "Receipt";
     case "invoice_attachment": return "Invoice Attachment";

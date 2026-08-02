@@ -104,6 +104,7 @@ import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-
 import { ChangeOrdersTool } from "./change-orders/[dealId]/change-orders-tool";
 import { ProjectCostsTool } from "./costs/[dealId]/costs-tool";
 import { CloseoutTool } from "./closeout/[dealId]/closeout-tool";
+import { WorkOrderTool } from "./work-order/[dealId]/work-order-tool";
 import { AiaTool } from "./aia/[dealId]/aia-tool";
 import { SubmittalsTool } from "./submittals/[dealId]/submittals-tool";
 import { revalidatePath } from "next/cache";
@@ -119,6 +120,7 @@ import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachm
 import { listSubmittalCountByOpp, listOpportunitySubmittals } from "@/lib/commercial/opportunities/submittals";
 import { submittalStatusLabel } from "@/lib/commercial/opportunities/submittal-constants";
 import { listCloseoutPackages, listCloseoutItems } from "@/lib/commercial/closeout/db";
+import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
 import { closeoutProgressPct } from "@/lib/commercial/closeout/constants";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
@@ -964,7 +966,7 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
   // rather than rendering just the header with a blank panel below it.
   const dealTab = ["overview", "proposals", "invoices", "project", "documents", "pnl"].includes(dealTabRaw) ? dealTabRaw : "overview";
   // Normalize the Project sub-tab tool the same way.
-  const projectTool = ["change-orders", "aia", "costs", "submittals", "closeout"].includes(projectToolRaw) ? projectToolRaw : "change-orders";
+  const projectTool = ["change-orders", "aia", "costs", "submittals", "closeout", "work-order"].includes(projectToolRaw) ? projectToolRaw : "change-orders";
   // Drill-in: one deal's home, folded under the account. EVERY deal — a bid or
   // a Won job — opens the same full project view (allDeals:true), so the tools
   // + invoicing are never gated on Won. Nothing is locked.
@@ -1053,7 +1055,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // Mini-updates: real per-tool state (the notes on each change order, which
   // submittal + status, which AIA application + draft state, closeout progress)
   // so the project reads at a glance without opening each tool.
-  const [changeOrders, submittals, closeoutPkgs, documents, dealInvoices] = await Promise.all([
+  const [changeOrders, submittals, closeoutPkgs, documents, dealInvoices, latestWo] = await Promise.all([
     listChangeOrders(p.opp.id),
     listOpportunitySubmittals(p.opp.id),
     listCloseoutPackages(p.opp.id),
@@ -1062,6 +1064,8 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
     listDocumentsForParent("opportunity", p.opp.id),
     // Per-deal invoices (R2, Katie 2026-08): invoices live under the deal.
     listCommercialInvoices({ opportunityId: p.opp.id }),
+    // R2 Work Order: the one live WO for the mini-card chip.
+    getWorkOrderForOpp(p.opp.id),
   ]);
   const dealProposals = await listProposalsForOpp(p.opp.id);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
@@ -1299,6 +1303,15 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             </div>
           )}
         </ToolMiniCard>
+
+        {/* Work Order — the crew's sheet, autofilled from the proposal + finish schedule */}
+        <ToolMiniCard label="Work Order" href={`${base}?tab=projects&project=${p.opp.id}&dt=project&pt=work-order`} iconBg="bg-ppp-navy-600" icon={<path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />} chip={latestWo == null ? null : { label: latestWo.status === "sent" ? "sent to crew" : latestWo.status, tone: latestWo.status === "sent" ? "emerald" : "neutral" }}>
+          {latestWo == null ? (
+            <p className="text-[11.5px] text-ppp-charcoal-500">Not created — the crew's marching-orders sheet (scope + room-finish schedule).</p>
+          ) : (
+            <p className="text-[11.5px] font-semibold text-ppp-charcoal">{latestWo.status === "sent" ? "Sent to crew" : "Draft — add crew notes, then send"}</p>
+          )}
+        </ToolMiniCard>
       </div>
       )}
 
@@ -1503,6 +1516,7 @@ const PROJECT_TOOLS: { key: string; label: string; docCategory: string; docLabel
   { key: "costs", label: "Costs & P&L", docCategory: "receipt", docLabel: "Receipt" },
   { key: "submittals", label: "Submittals", docCategory: "submittal", docLabel: "Submittal" },
   { key: "closeout", label: "Closeout & Warranty", docCategory: "closeout", docLabel: "Closeout" },
+  { key: "work-order", label: "Work Order", docCategory: "work_order", docLabel: "Work order" },
 ];
 
 async function ProjectToolsPanel({
@@ -1599,6 +1613,14 @@ async function ProjectToolsPanel({
           dealId={dealId}
           variant="inline"
           sp={{ error: sp?.error }}
+        />
+      )}
+      {projectTool === "work-order" && (
+        <WorkOrderTool
+          id={accountId}
+          dealId={dealId}
+          variant="inline"
+          sp={{ error: sp?.error, ok: sp?.ok }}
         />
       )}
 
