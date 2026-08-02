@@ -138,7 +138,9 @@ export async function GET(request: Request) {
       id: o.id,
       label: derived,
       hint,
-      href: `/commercial/opportunities/${o.id}`,
+      // Land on the full opportunity drill-in (the canonical home), not the
+      // bare redirect shell that bounces to the account list (2026-08 flow walk).
+      href: `/commercial/accounts/${o.account_id}?tab=projects&project=${o.id}`,
     });
   }
 

@@ -3514,7 +3514,7 @@ function CustomerQuickSheet({
       ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))
       : 0;
   return (
-    <div id="customer-sheet" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="customer-sheet-title">
+    <div id="customer-sheet" className="fixed inset-0 z-40" role="dialog" aria-labelledby="customer-sheet-title">
       {/* Backdrop — full-viewport link that closes the sheet. */}
       <Link
         href={closeHref}

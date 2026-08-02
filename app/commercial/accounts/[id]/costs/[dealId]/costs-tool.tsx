@@ -407,10 +407,14 @@ export async function ProjectCostsTool({
         {purchases.length === 0 && (
           <p className="text-[12px] text-ppp-charcoal-500 mb-3">No costs logged yet. Add materials, labor, subs, equipment or permits below to see this job&rsquo;s margin.</p>
         )}
-        <details className="group mb-3 border border-cc-brand-200 rounded-lg" open={!!sp.error && !editId || purchases.length === 0}>
-          <summary className="cursor-pointer list-none px-3.5 py-2.5 min-h-[44px] flex items-center gap-2 text-[12px] font-semibold text-cc-brand-700 select-none">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform"><path d="M12 5v14 M5 12h14" /></svg>
-            Log a purchase
+        <details className="group mb-3 rounded-lg" open={!!sp.error && !editId || purchases.length === 0}>
+          {/* Filled primary button (not a faint text row) — logging a cost/
+              receipt is the whole reason a field crew is on this page, so it
+              reads unmistakably as THE button to tap (2026-08 field walk). */}
+          <summary className="cursor-pointer list-none px-4 py-3 min-h-[48px] flex items-center justify-center gap-2 text-[14px] font-bold text-white bg-cc-brand-600 hover:bg-cc-brand-700 rounded-lg select-none touch-manipulation shadow-sm shadow-cc-brand-600/30">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform"><path d="M12 5v14 M5 12h14" /></svg>
+            <span className="group-open:hidden">Log a purchase / receipt</span>
+            <span className="hidden group-open:inline">Close</span>
           </summary>
           <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add purchase" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc }} />
         </details>
@@ -506,10 +510,10 @@ function PLTile({
     tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : tone === "amber" ? "text-amber-700" : "text-ppp-charcoal";
   return (
     <div className={`rounded-lg border px-2.5 py-2 ${emphasize ? "border-cc-brand-300 bg-surface" : "border-ppp-charcoal-100 bg-surface/70"}`}>
-      <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500">{label}</div>
       <div className={`font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 ${valueCls}`}>{value}</div>
-      {sub && <div className={`text-[10px] mt-0.5 ${valueCls}`}>{sub}</div>}
-      {hint && <div className="text-[10px] text-ppp-charcoal-400 mt-0.5">{hint}</div>}
+      {sub && <div className={`text-[11px] mt-0.5 ${valueCls}`}>{sub}</div>}
+      {hint && <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{hint}</div>}
     </div>
   );
 }

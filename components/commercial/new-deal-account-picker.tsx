@@ -118,7 +118,13 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
       )}
       {open && matches.length === 0 && q && (
         <div className="absolute z-50 mt-1 left-0 right-0 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl px-3 py-3 text-[13px] text-ppp-charcoal-500">
-          No customer matches “{name}”.
+          <p className="mb-2">No general contractor matches “{name}”.</p>
+          {/* Don't dead-end a first-time / new-GC user — send them straight to
+              create the GC, with the typed name prefilled (2026-08 first-run walk). */}
+          <a href={`/commercial/accounts/new?typed_name=${encodeURIComponent(name)}`} className="inline-flex items-center gap-1.5 font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px]">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
+            Add “{name}” as a new general contractor →
+          </a>
         </div>
       )}
       {name && !selectedId && !open && (

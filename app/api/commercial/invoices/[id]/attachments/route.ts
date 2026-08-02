@@ -15,6 +15,8 @@ const ALLOWED = new Set([
   "image/jpeg",
   "image/jpg",
   "image/webp",
+  "image/heic",
+  "image/heif",
 ]);
 
 /** Attach a file to (or remove one from) an invoice. */

@@ -124,7 +124,7 @@ export default function PurchaseForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className={LABEL_CLS} htmlFor="pu-vendor">
-            {isLabor ? "Worker / crew" : "Vendor"} <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+            {isLabor ? "Worker / crew" : "Store / vendor"} <span className="font-normal text-ppp-charcoal-400">(optional)</span>
           </label>
           <input
             id="pu-vendor"
@@ -141,11 +141,6 @@ export default function PurchaseForm({
           <datalist id="pu-worker-list">
             {recentWorkers.map((v) => (<option key={v} value={v} />))}
           </datalist>
-          {isLabor && (
-            <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-              Free-text for now — this links to the scheduling &amp; attendance crew list later.
-            </p>
-          )}
         </div>
         {isLabor ? (
           <div>
@@ -184,10 +179,12 @@ export default function PurchaseForm({
         <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={purchase?.description ?? preserve?.desc ?? ""} className={TEXTAREA_CLS} placeholder={isLabor ? "Scope of work / notes" : "What was purchased"} />
       </div>
       <div>
-        <label className={LABEL_CLS} htmlFor="pu-receipt">Receipt <span className="font-normal text-ppp-charcoal-400">(optional — PDF or photo)</span></label>
-        <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="block w-full text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100" />
+        <label className={LABEL_CLS} htmlFor="pu-receipt">Receipt photo <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
+        {/* capture="environment" opens the camera straight away on a phone so a
+            field crew member can snap the receipt in one tap (2026-08 field
+            walk). HEIC/HEIF accepted so iPhone photos aren't greyed out. */}
+        <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif" capture="environment" className="block w-full text-[13px] text-ppp-charcoal-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-[13px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:min-h-[44px]" />
         {purchase?.receipt_document_id && <p className="text-[11px] text-emerald-600 mt-1">A receipt is on file — uploading a new one replaces it.</p>}
-        <p className="text-[11px] text-ppp-charcoal-500 mt-1">Uploading from Google Drive? Use the raw file, not a Drive link — Drive recompresses PDFs.</p>
       </div>
       <div className="flex items-center gap-2">
         <PendingSubmitButton pendingLabel="Saving…" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30">{submitLabel}</PendingSubmitButton>

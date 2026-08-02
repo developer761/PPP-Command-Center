@@ -185,7 +185,7 @@ async function addPaymentAction(formData: FormData) {
   // YYYY-MM-DD; `new Date(...)` interprets as UTC midnight which
   // renders one calendar day earlier in ET. Anchor at 16:00 UTC (noon
   // ET) so the payment displays on the day the recorder actually typed.
-  const paid_at_iso = paid_at ? (anchorDateOnlyIso(paid_at) ?? new Date(paid_at).toISOString()) : undefined;
+  const paid_at_iso = paid_at ? (anchorDateOnlyIso(paid_at) ?? new Date().toISOString()) : undefined;
   const result = await addPayment(invoice_id, {
     amount_cents: amount!,
     paid_at: paid_at_iso,
@@ -326,7 +326,7 @@ async function recordMilestonePaymentAction(formData: FormData) {
   if (amount === null || amount <= 0) {
     redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a positive dollar amount for the milestone payment."), from));
   }
-  const paid_at_iso = paid_at ? (anchorDateOnlyIso(paid_at) ?? new Date(paid_at).toISOString()) : undefined;
+  const paid_at_iso = paid_at ? (anchorDateOnlyIso(paid_at) ?? new Date().toISOString()) : undefined;
   const result = await addPayment(invoice_id, {
     amount_cents: amount!,
     paid_at: paid_at_iso,
@@ -759,7 +759,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <>
             <span aria-hidden className="text-ppp-charcoal-300">/</span>
             <Link
-              href={`/commercial/opportunities/${opp.id}`}
+              href={`/commercial/accounts/${opp.account_id}?tab=projects&project=${opp.id}`}
               className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
               title={derivedOppName(opp, account?.company_name ?? null)}
             >

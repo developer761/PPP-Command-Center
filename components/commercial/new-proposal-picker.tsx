@@ -19,7 +19,7 @@
  *   pre-selected + hidden; only shows the deal list.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export type PickerAccount = {
@@ -61,6 +61,14 @@ export default function NewProposalPicker({
   const [dealQuery, setDealQuery] = useState("");
   const [pending, setPending] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+
+  // Esc closes the popover, consistent with every other picker (2026-08 a11y walk).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const accountsById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a] as const)),
@@ -180,8 +188,9 @@ export default function NewProposalPicker({
                 />
                 <ul className="max-h-64 overflow-y-auto divide-y divide-ppp-charcoal-100 border border-ppp-charcoal-100 rounded-lg">
                   {filteredAccounts.length === 0 ? (
-                    <li className="px-3 py-3 text-[12px] text-ppp-charcoal-500 italic text-center">
-                      No customers match.
+                    <li className="px-3 py-3 text-[12px] text-ppp-charcoal-500 text-center">
+                      No general contractor matches.
+                      <a href={`/commercial/accounts/new${accountQuery ? `?typed_name=${encodeURIComponent(accountQuery)}` : ""}`} className="block mt-1.5 font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] inline-flex items-center justify-center">+ Add a new general contractor →</a>
                     </li>
                   ) : (
                     filteredAccounts.map((a) => {

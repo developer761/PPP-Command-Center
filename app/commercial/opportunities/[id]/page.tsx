@@ -950,7 +950,7 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   // and stays on the intended calendar day when displayed in ET). Same
   // approach used for due_at on the invoice detail page.
   const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
-  const paid_at = paid_at_raw ? (anchorDateOnlyIso(paid_at_raw) ?? new Date(paid_at_raw).toISOString()) : undefined;
+  const paid_at = paid_at_raw ? (anchorDateOnlyIso(paid_at_raw) ?? new Date().toISOString()) : undefined;
   const method = String(formData.get("method") ?? "").trim() || null;
   const reference = String(formData.get("reference") ?? "").trim() || null;
 
@@ -2365,7 +2365,7 @@ async function OpportunityInvoicesPanel({
           : "";
         const backHref = `?tab=invoices#inv-${editing.id}`;
         return (
-          <div className="fixed inset-0 z-50 flex justify-end" aria-modal="true" role="dialog" aria-labelledby="invoice-edit-sheet-title">
+          <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-labelledby="invoice-edit-sheet-title">
             <Link
               href={backHref}
               aria-label="Close edit panel"

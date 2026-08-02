@@ -286,8 +286,8 @@ export default async function CommercialDashboardPage() {
           />
         </span>
         <div className="min-w-0 border-l border-ppp-charcoal-100 pl-3 sm:pl-4">
-          <div className="text-sm font-semibold text-ppp-charcoal leading-tight">Welcome back</div>
-          <div className="text-[11px] text-ppp-charcoal-500 leading-tight">Tomco Painting</div>
+          <h1 className="text-sm font-semibold text-ppp-charcoal leading-tight">Welcome back</h1>
+          <div className="text-[11px] text-ppp-charcoal-500 leading-tight">Tomco Painting · Command Center</div>
         </div>
       </div>
 
@@ -298,6 +298,11 @@ export default async function CommercialDashboardPage() {
           Are we making money?
           <span className="text-[11px] font-medium text-ppp-charcoal-500">— across every job</span>
         </h2>
+        {/* Calm zero-state on a brand-new workspace — one line, not four "$0"
+            tiles + a flat chart that read as "is this broken?" (2026-08 first-run
+            walk). */}
+        {(grossRevenueCents > 0 || allProjectRows.length > 0 || costs.total > 0) ? (
+        <>
         {/* Lead with the "are we making money" answer: Net profit + Margin
             first & biggest; Gross (only-goes-up) demoted; Job costs last. Plain
             subs, no formulas (2026-08 CEO UX walk). */}
@@ -333,7 +338,7 @@ export default async function CommercialDashboardPage() {
               {revCostSegments.length > 0 ? (
                 <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(costs.total)} centerLabel="job costs" />
               ) : (
-                <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No job costs logged yet. Add them on any project&rsquo;s Costs &amp; P&amp;L tab.</p>
+                <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">No job costs logged yet. Add them on any project&rsquo;s Costs &amp; P&amp;L tab.</p>
               )}
             </div>
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
@@ -344,11 +349,18 @@ export default async function CommercialDashboardPage() {
               {revProjectBars.length > 0 ? (
                 <HBars items={revProjectBars} />
               ) : (
-                <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No billed revenue yet.</p>
+                <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">No billed revenue yet.</p>
               )}
             </div>
           </div>
         </details>
+        </>
+        ) : (
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 text-center shadow-sm">
+            <p className="text-[13px] text-ppp-charcoal-500">No revenue yet — win and bill your first job to see profit &amp; margin here.</p>
+            <Link href="/commercial/opportunities" className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px]">Go to the pipeline →</Link>
+          </div>
+        )}
       </section>
 
       {/* ─── At a glance — compact KPI strip (pipeline · wins · GCs · contract · AR) ─── */}
@@ -618,9 +630,9 @@ function DashStat({
       </div>
       <div className={`font-condensed text-xl sm:text-2xl font-black leading-none tabular-nums mt-1 ${valueCls}`}>{value}</div>
       <div className="mt-0.5 flex items-center gap-1 flex-wrap">
-        {sub && <span className="text-[10px] text-ppp-charcoal-400 leading-tight">{sub}</span>}
+        {sub && <span className="text-[10px] text-ppp-charcoal-500 leading-tight">{sub}</span>}
         {delta && delta.value !== 0 && (
-          <span className={`inline-flex items-center gap-0.5 text-[9.5px] font-bold ${delta.value > 0 ? "text-emerald-700" : "text-ppp-charcoal-400"}`}>
+          <span className={`inline-flex items-center gap-0.5 text-[9.5px] font-bold ${delta.value > 0 ? "text-emerald-700" : "text-ppp-charcoal-500"}`}>
             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={delta.value > 0 ? "" : "rotate-180"}><path d="M12 19V5 M5 12l7-7 7 7" /></svg>
             {delta.value > 0 ? "+" : ""}{delta.value}{delta.suffix ?? ""}
           </span>
@@ -732,7 +744,7 @@ function TopOpenDealsCard({
         </Link>
       </header>
       {opps.length === 0 ? (
-        <div className="p-6 text-center text-[12.5px] text-ppp-charcoal-400">
+        <div className="p-6 text-center text-[12.5px] text-ppp-charcoal-500">
           Nothing open. Log your next bid to see it here.
         </div>
       ) : (
@@ -771,7 +783,7 @@ function TopOpenDealsCard({
                     <div className="text-[12.5px] font-bold text-ppp-charcoal tabular-nums">
                       {formatCentsCompact(weighted)}
                     </div>
-                    <div className="text-[9.5px] text-ppp-charcoal-400 uppercase tracking-wider">
+                    <div className="text-[9.5px] text-ppp-charcoal-500 uppercase tracking-wider">
                       weighted
                     </div>
                   </div>
@@ -809,7 +821,7 @@ function RecentActivityCard({
         </Link>
       </header>
       {opps.length === 0 ? (
-        <div className="p-6 text-center text-[12.5px] text-ppp-charcoal-400">
+        <div className="p-6 text-center text-[12.5px] text-ppp-charcoal-500">
           No opportunities yet. Start your first bid to see activity here.
         </div>
       ) : (

@@ -98,7 +98,7 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
     redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}`);
   }
   const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
-  const paid_at = paid_at_raw ? (anchorDateOnlyIso(paid_at_raw) ?? new Date(paid_at_raw).toISOString()) : undefined;
+  const paid_at = paid_at_raw ? (anchorDateOnlyIso(paid_at_raw) ?? new Date().toISOString()) : undefined;
   const method = String(formData.get("method") ?? "").trim() || null;
   const reference = String(formData.get("reference") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
@@ -1312,7 +1312,7 @@ function GroupedByOpp({
           <div key={accountId} className={acctIdx > 0 ? "border-t border-ppp-charcoal-200" : ""}>
             <Link
               href={`/commercial/invoices?account_id=${accountId}`}
-              className="group/acct block px-4 sm:px-5 py-2.5 bg-gradient-to-b from-ppp-charcoal-50 to-surface border-b border-ppp-charcoal-100 hover:bg-ppp-blue-50/40 focus:outline-none focus:bg-ppp-blue-50/40 transition-colors touch-manipulation"
+              className="group/acct block px-4 sm:px-5 py-2.5 bg-gradient-to-b from-ppp-charcoal-50 to-surface border-b border-ppp-charcoal-100 hover:bg-ppp-blue-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cc-brand-600/50 focus:bg-ppp-blue-50/40 transition-colors touch-manipulation"
               title={`View ${acct?.company_name ?? "this customer"}'s invoices`}
             >
               <div className="flex items-center justify-between gap-2">

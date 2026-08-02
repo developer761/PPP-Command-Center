@@ -128,9 +128,13 @@ export function Banner({
   className?: string;
 }) {
   const s = VARIANT_STYLES[variant];
+  // Errors/warnings are assertive (announced promptly); info/success stay polite
+  // (2026-08 a11y walk).
+  const isUrgent = variant === "danger" || variant === "warn";
   return (
     <div
-      role="status"
+      role={isUrgent ? "alert" : "status"}
+      aria-live={isUrgent ? "assertive" : "polite"}
       className={`relative overflow-hidden rounded-xl border border-ppp-charcoal-100 shadow-sm ${s.tint} ${className ?? ""}`}
     >
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${s.stripe}`} />

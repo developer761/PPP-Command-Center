@@ -4851,7 +4851,10 @@ function AccountOpportunityRow({
   // First name from "Sarah Connor" → "Sarah". Falls back to the local
   // part of the email when no full name is set.
   const leadLabel = primaryLead
-    ? (primaryLead.user_full_name?.split(" ")[0] ?? primaryLead.user_email.split("@")[0])
+    // `||` not `??`: a Salesforce name can be an EMPTY string (not null), which
+    // ?? wouldn't catch → a blank chip. Fall through to the email local-part,
+    // and stay null-safe if the email is somehow missing (2026-08 edge audit).
+    ? ((primaryLead.user_full_name?.trim().split(" ")[0] || primaryLead.user_email?.split("@")[0]) ?? "—")
     : null;
   // DAG-filtered next statuses for inline quick-flip. Empty list →
   // dropdown hides (terminal states have no forward motion; reopened
@@ -7408,7 +7411,7 @@ async function DealEditSheet({
   const selectCls = `${inputCls} appearance-none bg-surface bg-no-repeat pr-9`;
   const labelCls = "block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5";
   return (
-    <div id="deal-edit-sheet" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="deal-edit-title">
+    <div id="deal-edit-sheet" className="fixed inset-0 z-40" role="dialog" aria-labelledby="deal-edit-title">
       {/* Backdrop — full-viewport link closes the sheet by dropping ?edit. */}
       <Link
         href={closeHref}

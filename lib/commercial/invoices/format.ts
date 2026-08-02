@@ -10,13 +10,20 @@
  *  matches the true value; drop the decimal above $100k where it
  *  reads as noise ($123.4k instead of $123k on a small tile). */
 export function formatCentsCompact(cents: number): string {
-  if (cents === 0) return "$0";
+  // Non-finite guard — a NaN/Infinity slipping in from a bad upstream value
+  // should render "$0", never "$NaN"/"$InfinityM" on a KPI tile (2026-08 edge
+  // audit).
+  if (!Number.isFinite(cents) || cents === 0) return "$0";
   // Hoist the sign so negatives read "-$500", not "$-500" (matches
   // formatCentsFull). Balances can go negative on overpayment/credit.
   const neg = cents < 0;
   const dollars = Math.abs(cents) / 100;
   const body =
-    dollars >= 1_000_000
+    // Billions tier so a $9.9B value reads "$9.9B", not "$9999.9M" overflowing
+    // the tile.
+    dollars >= 1_000_000_000
+      ? `$${(dollars / 1_000_000_000).toFixed(1)}B`
+      : dollars >= 1_000_000
       ? `$${(dollars / 1_000_000).toFixed(1)}M`
       : dollars >= 100_000
       ? `$${Math.round(dollars / 1_000)}k`

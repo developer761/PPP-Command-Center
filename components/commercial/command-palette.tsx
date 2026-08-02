@@ -81,12 +81,19 @@ export function CommandPalette() {
   }, [open]);
 
   // Focus + reset on open.
+  const prevFocusRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (open) {
+      // Remember where focus was so we can return it on close — keyboard users
+      // otherwise get dumped on <body> after Esc (2026-08 a11y walk).
+      prevFocusRef.current = document.activeElement as HTMLElement | null;
       setQuery("");
       setResults([]);
       setHighlight(0);
       setTimeout(() => inputRef.current?.focus(), 10);
+    } else if (prevFocusRef.current) {
+      prevFocusRef.current.focus?.();
+      prevFocusRef.current = null;
     }
   }, [open]);
 

@@ -53,8 +53,9 @@ export default function EmailPasswordSignIn({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-3 w-full text-center text-xs sm:text-sm font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal-700 transition-colors min-h-[44px]"
+        className="mt-3 w-full inline-flex items-center justify-center gap-2 text-sm font-semibold text-ppp-charcoal-700 hover:text-ppp-charcoal border border-ppp-charcoal-200 hover:border-ppp-charcoal-300 rounded-lg px-4 py-2.5 min-h-[48px] transition-colors touch-manipulation"
       >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></svg>
         Sign in with email &amp; password
       </button>
     );

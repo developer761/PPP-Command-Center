@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX = 50 * 1024 * 1024; // 50 MB — a scanned/emailed waiver PDF
-const ALLOWED = new Set(["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"]);
+const ALLOWED = new Set(["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp", "image/heic", "image/heif"]);
 
 /** Upload (or remove) the lien waiver for one milestone. */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {

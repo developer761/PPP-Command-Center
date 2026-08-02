@@ -70,6 +70,10 @@ export default function CommercialChrome({ children, user, showSwitcher, isAdmin
         aria-hidden={!mobileOpen}
         aria-modal={mobileOpen}
         role={mobileOpen ? "dialog" : undefined}
+        // inert when closed so the off-screen nav links drop out of the tab
+        // order too (aria-hidden alone leaves them keyboard-focusable — 2026-08
+        // a11y walk).
+        inert={!mobileOpen}
       >
         <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} onNavigate={() => setMobileOpen(false)} />
       </aside>

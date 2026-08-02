@@ -58,7 +58,36 @@ Full spec in memory `project_tomco_scheduling_spec_2026_08` (v1.0): data model +
 - **Billing signpost** — cross-link Invoices ↔ AIA so a PM knows on day one how a GC gets billed (PM #3).
 - Account header open-bid count + balance; consolidate the 3-level deal tab nesting; alphabetical-by-customer sort.
 
+## From the 2nd UX round (field / first-run / a11y / edge / flow — 5 lenses)
+
+The clear wins from this round are **already shipped** (HEIC receipts + camera, readable field labels, un-buried "Log a purchase", first-run picker "add a GC" links + calm empty dashboard, payment-date crash guard, `formatCentsCompact` finite+B tier, lead-label, deal-link repoints, dashboard `<h1>` + contrast + Banner `role=alert` + command-palette focus restore + mobile-drawer `inert` + dropped misleading `aria-modal`). The following are the **Phase-3-sized** items surfaced:
+
+### 3E — Getting-started onboarding _(first-run walk)_
+A dismissible dashboard "Getting started" card lighting up steps as data appears: Add first GC → log first opportunity → build a proposal → mark Won → send first invoice. Drive "done" from data already on the dashboard (`accounts.length`, `openOpps`, `wonOpps`, `invoices`); auto-hide once the workspace is active. Centralizes the ordering the app currently teaches only piecemeal.
+
+### 3F — Field-ops form redesign _(field walk — pairs with 3D)_
+Photo-first purchase/hours form: receipt tile at the TOP, "My jobs today" field landing, big "Log hours" / "Snap receipt" buttons, worker auto-filled to the logged-in user, date = today. Feeds the Phase-3 receipts-extraction automation (prefill amount/vendor from the photo).
+
+### 3G — Accessibility hardening _(a11y walk)_
+A small client wrapper for the three RSC slide-out sheets (opportunities customer sheet, invoice-edit, deal-edit): move focus in on open, trap Tab, `inert` the background, Esc → navigate to `closeHref`, return focus on close. (Interim already shipped: dropped the misleading `aria-modal`.) Also: finish the `charcoal-400 → 500` meaningful-text contrast sweep beyond the dashboard, and add `focus-visible:ring` to the remaining background-only-focus row links.
+
+### 3H — Navigation restructure _(flow walk — the systemic one)_
+- **Pick ONE home per production tool** — the standalone route `…/<tool>/[dealId]` OR the inline `?…&pt=<tool>` panel, not both. Two URLs for the same body is the root of the "save ejects you to a different surface + loses ← Back to <Tool>" problem (hits CO/AIA/Costs/Submittals/Closeout).
+- **Collapse the P&L surfaces**: merge deal `dt=pnl` + `pt=costs` into one "Costs & P&L" tab; keep account Overview P&L as the roll-up + sidebar as the cross-account index.
+- **Flatten the deal's 3–4 tab levels** (`dt=project` → `pt=` double sub-bar).
+- **Unify "open an opportunity"** so list-row, bare `/opportunities/[id]`, palette, and ProjectCards all resolve to the canonical `?tab=projects&project=` home.
+- Win/Loss report deal link → project drill-in (needs `account_id` added to the lessons query).
+
+### 3I — Security hardening _(edge walk)_
+Replace the regex email-HTML sanitizer with a DOMPurify-grade sanitizer **before** any archived email is ever shown to a customer (today it's internal-only + risk-accepted). Route the remaining raw `new Date(field).toLocaleDateString` formatters through the null-safe `fmtEtDate`.
+
+---
+
+## FINAL bonus phase (after the platform is fully built + operational) — Spanish / i18n
+Per Karan: do this **last, as a bonus**, once everything else is done and live. Most Tomco field crew are Hispanic / low tech-comfort. Highest-value surfaces first: login + the log-a-purchase/hours field form (Category options, Store/vendor, Receipt, Hours), then a full locale pass + a UI language toggle carried through the field surfaces.
+
 ## Known small cleanups (noted, low-risk, do opportunistically)
 
 - Orphaned `TeamTab` / `NotesTab` components in `accounts/[id]/page.tsx` (defined, never dispatched) — remove in a dedicated cleanup pass; `?tab=team/notes` currently redirects to Documents (renders account info, so not a hard dead-end).
 - Consolidate the near-duplicate tile components (`SummaryTile` / `AiaSummaryTile` / `CloseoutStat` / `ProjectStat` / `SubmittalStat`) into one shared tile so the five tools stay visually identical.
+- Latent date-safety: grouped-invoice sort + a few `new Date(field)` formatters are on NOT-NULL columns today; route through `fmtEtDate` when touched.
