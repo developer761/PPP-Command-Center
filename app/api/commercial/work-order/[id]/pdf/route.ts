@@ -69,6 +69,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         projectAddress: addr || null,
         assignedTo: wo.assigned_to,
         scheduledStartDate: wo.scheduled_start_date,
+        scheduledEndDate: wo.scheduled_end_date,
         workNotes: wo.work_notes,
         dateIso: wo.sent_at ?? wo.created_at,
       },

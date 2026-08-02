@@ -49,6 +49,7 @@ export type WorkOrderPdfInput = {
     projectAddress: string | null;
     assignedTo: string | null;
     scheduledStartDate: string | null;
+    scheduledEndDate?: string | null;
     workNotes: string | null;
     dateIso: string;
   };
@@ -177,6 +178,12 @@ function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPd
               <>
                 <Text style={[styles.label, { marginTop: 8 }]}>Start</Text>
                 <Text>{fmtDate(header.scheduledStartDate)}</Text>
+              </>
+            ) : null}
+            {header.scheduledEndDate ? (
+              <>
+                <Text style={[styles.label, { marginTop: 8 }]}>Target finish</Text>
+                <Text>{fmtDate(header.scheduledEndDate)}</Text>
               </>
             ) : null}
           </View>

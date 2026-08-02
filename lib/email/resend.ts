@@ -29,6 +29,12 @@ type ResendSendInput = {
   /** Useful for grouping in Resend dashboard + future webhooks. */
   tags?: Array<{ name: string; value: string }>;
   /**
+   * File attachments. `content` is the raw bytes; we base64-encode for the
+   * Resend API. Used e.g. to send the crew the Work Order PDF. Keep total size
+   * modest (Resend caps at ~40MB/message) — a WO/proposal PDF is well under.
+   */
+  attachments?: Array<{ filename: string; content: Uint8Array | Buffer }>;
+  /**
    * Sender channel — picks the API key + default From address pair.
    *
    * - "customer" (default): customer-facing transactional email
@@ -119,6 +125,14 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
       : {}),
     ...(input.cc ? { cc: Array.isArray(input.cc) ? input.cc : [input.cc] } : {}),
     ...(input.bcc ? { bcc: Array.isArray(input.bcc) ? input.bcc : [input.bcc] } : {}),
+    ...(input.attachments && input.attachments.length > 0
+      ? {
+          attachments: input.attachments.map((a) => ({
+            filename: a.filename,
+            content: Buffer.from(a.content).toString("base64"),
+          })),
+        }
+      : {}),
     tags: finalTags,
   };
 

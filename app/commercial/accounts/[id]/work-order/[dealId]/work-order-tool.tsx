@@ -22,6 +22,7 @@ import {
   updateWorkOrder,
   changeWorkOrderStatus,
   setWorkOrderSnapshot,
+  markWorkOrderEmailed,
   buildWorkOrderContent,
 } from "@/lib/commercial/work-orders/db";
 import {
@@ -37,7 +38,7 @@ import { AutosaveForm } from "@/components/commercial/autosave-form";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
-export type WorkOrderSP = { error?: string; ok?: string; back?: string };
+export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; back?: string };
 
 async function requireUser(): Promise<string> {
   const supabase = await createClient();
@@ -93,7 +94,9 @@ async function autosaveWorkOrderAction(formData: FormData) {
     woId,
     {
       assigned_to: String(formData.get("assigned_to") ?? "").trim() || null,
+      crew_email: String(formData.get("crew_email") ?? "").trim() || null,
       scheduled_start_date: ymd(String(formData.get("scheduled_start_date") ?? "")),
+      scheduled_end_date: ymd(String(formData.get("scheduled_end_date") ?? "")),
       work_notes: String(formData.get("work_notes") ?? "").trim() || null,
     },
     userId
@@ -114,24 +117,70 @@ async function changeStatusAction(formData: FormData) {
   if (!(await woBelongs(woId, id, dealId))) redirect("/commercial/accounts");
   const res = await changeWorkOrderStatus(woId, to, userId);
   if (!res.ok) redirect(`${base(id, dealId)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
-  // File the frozen PDF into Documents when the WO is sent to the crew.
-  if (to === "sent") await autoFileWorkOrder(id, dealId, woId, userId);
+  // File the frozen PDF into Documents when the WO is sent to the crew — and, if
+  // a crew email is on file, email them that exact PDF.
+  let emailFlag = "";
+  if (to === "sent") {
+    const filed = await autoFileWorkOrder(id, dealId, woId, userId);
+    if (filed && res.value.crew_email) {
+      const sent = await emailWorkOrderToCrew(res.value.crew_email, filed.dealName, filed.pdf);
+      if (sent) {
+        await markWorkOrderEmailed(woId);
+        emailFlag = "&emailed=1";
+      } else {
+        emailFlag = "&emailfail=1";
+      }
+    }
+  }
   revalidateWO(id, dealId);
-  redirect(`${base(id, dealId)}&ok=1${backQ(back)}`);
+  redirect(`${base(id, dealId)}&ok=1${emailFlag}${backQ(back)}`);
+}
+
+/** Email the crew the Work Order PDF (commercial channel). Best-effort — a
+ *  failure never blocks the send (the PDF is already filed to Documents). */
+async function emailWorkOrderToCrew(to: string, dealName: string, pdf: Buffer): Promise<boolean> {
+  try {
+    const { sendEmail } = await import("@/lib/email/resend");
+    const oc = await getOperatingCompany();
+    const r = await sendEmail({
+      channel: "commercial",
+      to,
+      subject: `Work Order — ${dealName}`,
+      text: [
+        `Attached is the Work Order for ${dealName}.`,
+        "",
+        "Scope of work, paint colors & finishes, and any crew notes are on the sheet.",
+        "",
+        `— ${oc.name}`,
+      ].join("\n"),
+      attachments: [{ filename: safeDocName("Work_Order", dealName) + ".pdf", content: pdf }],
+      tags: [{ name: "kind", value: "work_order_crew" }],
+    });
+    return r.ok;
+  } catch (err) {
+    console.warn("[work-order] crew email failed:", err);
+    return false;
+  }
 }
 
 /** Render + file the Work Order PDF as a deal document (category work_order).
- *  Best-effort — never blocks the status change. */
-async function autoFileWorkOrder(accountId: string, dealId: string, woId: string, userId: string) {
+ *  Best-effort — never blocks the status change. Returns the rendered PDF +
+ *  deal name so the caller can also email it to the crew without re-rendering. */
+async function autoFileWorkOrder(
+  accountId: string,
+  dealId: string,
+  woId: string,
+  userId: string
+): Promise<{ pdf: Buffer; dealName: string } | null> {
   try {
     const wo = await getWorkOrder(woId);
-    if (!wo) return;
+    if (!wo) return null;
     const [opp, account, content] = await Promise.all([
       getCommercialOpportunity(dealId),
       getCommercialAccount(accountId),
       buildWorkOrderContent(dealId),
     ]);
-    if (!opp || !account) return;
+    if (!opp || !account) return null;
     const dealName = derivedOppName(opp, account.company_name);
     const oc = await getOperatingCompany();
     const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
@@ -161,15 +210,17 @@ async function autoFileWorkOrder(accountId: string, dealId: string, woId: string
     });
     if (up.ok) await setWorkOrderSnapshot(woId, up.document.id);
     else console.warn("[auto-file work order] upload skipped:", up.error);
+    return { pdf, dealName };
   } catch (err) {
     console.warn("[auto-file work order] failed:", err);
+    return null;
   }
 }
 
 /** Compose the PDF header block from the WO + deal. Exported so the download
  *  route reuses the exact same header. */
 export function workOrderHeader(
-  wo: { work_notes: string | null; assigned_to: string | null; scheduled_start_date: string | null; sent_at: string | null; created_at: string },
+  wo: { work_notes: string | null; assigned_to: string | null; scheduled_start_date: string | null; scheduled_end_date: string | null; sent_at: string | null; created_at: string },
   opp: { title: string | null; client_name: string | null; property_street: string | null; property_city: string | null; property_state: string | null },
   account: { company_name: string },
   dealName: string
@@ -183,6 +234,7 @@ export function workOrderHeader(
     projectAddress: addr || null,
     assignedTo: wo.assigned_to,
     scheduledStartDate: wo.scheduled_start_date,
+    scheduledEndDate: wo.scheduled_end_date,
     workNotes: wo.work_notes,
     dateIso: wo.sent_at ?? wo.created_at,
   };
@@ -250,7 +302,17 @@ export async function WorkOrderTool({
       )}
 
       {spv.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700" role="alert">{decodeURIComponent(spv.error)}</div>}
-      {spv.ok && <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800" role="status">Work order sent to crew — the PDF was filed to this job's Documents.</div>}
+      {spv.ok && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800" role="status">
+          Work order sent to crew — the PDF was filed to this job's Documents
+          {spv.emailed ? " and emailed to the crew." : "."}
+        </div>
+      )}
+      {spv.emailfail && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-[13px] text-amber-800" role="status">
+          Sent + filed, but the crew email didn't go through — check the crew email address, or download the PDF above and send it manually.
+        </div>
+      )}
 
       {!wo ? (
         <div className="text-center py-12 px-4 bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl">
@@ -333,8 +395,16 @@ export async function WorkOrderTool({
                   <input type="text" name="assigned_to" defaultValue={wo.assigned_to ?? ""} placeholder="e.g. Miguel's crew" className={INPUT_CLS} />
                 </label>
                 <label className="block">
+                  <span className={LABEL_CLS}>Crew email <span className="text-ppp-charcoal-400 font-normal">· gets the PDF on send</span></span>
+                  <input type="email" name="crew_email" defaultValue={wo.crew_email ?? ""} placeholder="foreman@…" className={INPUT_CLS} />
+                </label>
+                <label className="block">
                   <span className={LABEL_CLS}>Scheduled start</span>
                   <input type="date" name="scheduled_start_date" defaultValue={wo.scheduled_start_date ?? ""} className={INPUT_CLS} />
+                </label>
+                <label className="block">
+                  <span className={LABEL_CLS}>Target finish</span>
+                  <input type="date" name="scheduled_end_date" defaultValue={wo.scheduled_end_date ?? ""} min={wo.scheduled_start_date ?? undefined} className={INPUT_CLS} />
                 </label>
               </div>
               <label className="block">
@@ -343,8 +413,28 @@ export async function WorkOrderTool({
               </label>
             </AutosaveForm>
           ) : (
-            <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-2.5 text-[12px] text-ppp-charcoal-600">
-              This work order is <strong>{WORK_ORDER_STATUS_META[wo.status].label.toLowerCase()}</strong> — the crew has this copy on file. <em>Re-open to edit</em> to change it (that files a fresh copy on the next send).
+            <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-2.5 text-[12px] text-ppp-charcoal-600 space-y-1.5">
+              <div>
+                This work order is <strong>{WORK_ORDER_STATUS_META[wo.status].label.toLowerCase()}</strong> — the crew has this copy on file. <em>Re-open to edit</em> to change it (that files a fresh copy on the next send).
+              </div>
+              {(wo.assigned_to || wo.scheduled_start_date || wo.scheduled_end_date || wo.crew_email) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-ppp-charcoal-500 pt-0.5">
+                  {wo.assigned_to && <span><span className="font-semibold text-ppp-charcoal-600">Crew:</span> {wo.assigned_to}</span>}
+                  {(wo.scheduled_start_date || wo.scheduled_end_date) && (
+                    <span>
+                      <span className="font-semibold text-ppp-charcoal-600">Schedule:</span>{" "}
+                      {wo.scheduled_start_date ? fmtEtDate(wo.scheduled_start_date) : "—"}
+                      {wo.scheduled_end_date ? ` → ${fmtEtDate(wo.scheduled_end_date)}` : ""}
+                    </span>
+                  )}
+                  {wo.crew_email && (
+                    <span>
+                      <span className="font-semibold text-ppp-charcoal-600">Emailed:</span>{" "}
+                      {wo.crew_emailed_at ? `${wo.crew_email} · ${fmtEtDate(wo.crew_emailed_at)}` : `${wo.crew_email} (not yet)`}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

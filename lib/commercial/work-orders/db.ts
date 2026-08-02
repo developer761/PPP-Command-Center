@@ -16,8 +16,11 @@ export type WorkOrder = {
   status: WorkOrderStatus;
   work_notes: string | null;
   assigned_to: string | null;
+  crew_email: string | null;
   scheduled_start_date: string | null;
+  scheduled_end_date: string | null;
   sent_at: string | null;
+  crew_emailed_at: string | null;
   voided_at: string | null;
   snapshot_document_id: string | null;
   created_at: string;
@@ -25,7 +28,7 @@ export type WorkOrder = {
 };
 
 const WO_COLS =
-  "id, opportunity_id, account_id, status, work_notes, assigned_to, scheduled_start_date, sent_at, voided_at, snapshot_document_id, created_at, updated_at";
+  "id, opportunity_id, account_id, status, work_notes, assigned_to, crew_email, scheduled_start_date, scheduled_end_date, sent_at, crew_emailed_at, voided_at, snapshot_document_id, created_at, updated_at";
 
 /** Load a deal's account context, or null if the deal is missing/deleted. No
  *  Won-gate (like closeout — a Work Order can be started on any live deal; the
@@ -104,9 +107,21 @@ export async function setWorkOrderSnapshot(id: string, snapshot_document_id: str
   await sb.from("commercial_work_orders").update({ snapshot_document_id }).eq("id", id);
 }
 
+/** Stamp when the crew was last emailed the PDF (best-effort, no audit). */
+export async function markWorkOrderEmailed(id: string): Promise<void> {
+  const sb = commercialDb();
+  await sb.from("commercial_work_orders").update({ crew_emailed_at: new Date().toISOString() }).eq("id", id);
+}
+
 export async function updateWorkOrder(
   id: string,
-  patch: { work_notes?: string | null; assigned_to?: string | null; scheduled_start_date?: string | null },
+  patch: {
+    work_notes?: string | null;
+    assigned_to?: string | null;
+    crew_email?: string | null;
+    scheduled_start_date?: string | null;
+    scheduled_end_date?: string | null;
+  },
   actorUserId: string
 ): Promise<Result<WorkOrder>> {
   const sb = commercialDb();
@@ -118,7 +133,14 @@ export async function updateWorkOrder(
   // Cap lengths so a long unbroken string can't degrade the PDF layout.
   if (patch.work_notes !== undefined) row.work_notes = patch.work_notes?.trim().slice(0, 2000) || null;
   if (patch.assigned_to !== undefined) row.assigned_to = patch.assigned_to?.trim().slice(0, 200) || null;
+  // Basic email shape guard — a malformed value is dropped to null rather than
+  // stored (it would just bounce on send). Lowercased + capped.
+  if (patch.crew_email !== undefined) {
+    const e = patch.crew_email?.trim().toLowerCase() ?? "";
+    row.crew_email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e.slice(0, 200) : null;
+  }
   if (patch.scheduled_start_date !== undefined) row.scheduled_start_date = patch.scheduled_start_date || null;
+  if (patch.scheduled_end_date !== undefined) row.scheduled_end_date = patch.scheduled_end_date || null;
 
   const { data, error } = await sb
     .from("commercial_work_orders")
