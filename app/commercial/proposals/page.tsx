@@ -119,18 +119,20 @@ function toneForStatus(status: ProposalStatus): ColumnTone {
         accentBar: "bg-ppp-charcoal-400",
       };
     case "pending_approval":
+      // Sky blue "in review" — blue/green-forward palette (Karan 2026-08: no
+      // yellow). Distinct from Sent's brand blue by using the lighter ppp-blue.
       return {
         ...shared,
-        count: "bg-amber-50 text-amber-800 border border-amber-100",
-        accentBar: "bg-amber-400",
+        count: "bg-ppp-blue-50 text-ppp-blue-700 border border-ppp-blue-100",
+        accentBar: "bg-ppp-blue-500",
       };
     case "approved":
-      // Teal "go" state — approved internally, cleared to send. Distinct from
-      // Won's emerald (that column is the trophy lane) and Sent's brand blue.
+      // Bright green "cleared to send" (ppp-green) — distinct from Won's deeper
+      // emerald and Sent's brand blue. Replaces the old teal (read as purple).
       return {
         ...shared,
-        count: "bg-teal-50 text-teal-800 border border-teal-100",
-        accentBar: "bg-teal-500",
+        count: "bg-ppp-green-50 text-ppp-green-700 border border-ppp-green-100",
+        accentBar: "bg-ppp-green-500",
       };
     case "sent":
       return {
@@ -297,7 +299,7 @@ export default async function ProposalsIndexPage({
 
   // Status-mix donut over all current proposals.
   const PROPOSAL_STATUS_TONE: Record<string, ChartTone> = {
-    draft: "neutral", pending_approval: "amber", approved: "blue", sent: "brand", won: "emerald", lost: "rose", expired: "neutral",
+    draft: "neutral", pending_approval: "blue", approved: "emerald", sent: "brand", won: "emerald", lost: "rose", expired: "neutral",
   };
   const proposalMix = PROPOSAL_STATUSES.filter((s) => s !== "superseded")
     .map((s) => ({ label: proposalStatusLabel(s), value: byStatus.get(s)?.length ?? 0, tone: PROPOSAL_STATUS_TONE[s] ?? "neutral", valueLabel: String(byStatus.get(s)?.length ?? 0) }))
@@ -1172,8 +1174,8 @@ function DealMiniKanban({
 
 const LIST_STATUS_PILL: Record<string, string> = {
   draft: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-  pending_approval: "bg-amber-50 text-amber-800 border-amber-200",
-  approved: "bg-teal-50 text-teal-800 border-teal-200",
+  pending_approval: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200",
+  approved: "bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100",
   sent: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200",
   won: "bg-emerald-50 text-emerald-800 border-emerald-200",
   lost: "bg-rose-50 text-rose-800 border-rose-200",

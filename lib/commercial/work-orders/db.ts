@@ -133,11 +133,17 @@ export async function updateWorkOrder(
   // Cap lengths so a long unbroken string can't degrade the PDF layout.
   if (patch.work_notes !== undefined) row.work_notes = patch.work_notes?.trim().slice(0, 2000) || null;
   if (patch.assigned_to !== undefined) row.assigned_to = patch.assigned_to?.trim().slice(0, 200) || null;
-  // Basic email shape guard — a malformed value is dropped to null rather than
-  // stored (it would just bounce on send). Lowercased + capped.
+  // One OR MORE crew emails (comma/semicolon/whitespace-separated) — each
+  // shape-guarded; invalid tokens are dropped (they'd just bounce on send).
+  // Stored as a clean comma-joined list; the send action splits it back out.
   if (patch.crew_email !== undefined) {
-    const e = patch.crew_email?.trim().toLowerCase() ?? "";
-    row.crew_email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e.slice(0, 200) : null;
+    const valid = (patch.crew_email ?? "")
+      .split(/[\s,;]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+    // De-dup, keep order, cap the joined string.
+    const uniq = [...new Set(valid)];
+    row.crew_email = uniq.length > 0 ? uniq.join(", ").slice(0, 500) : null;
   }
   if (patch.scheduled_start_date !== undefined) row.scheduled_start_date = patch.scheduled_start_date || null;
   if (patch.scheduled_end_date !== undefined) row.scheduled_end_date = patch.scheduled_end_date || null;

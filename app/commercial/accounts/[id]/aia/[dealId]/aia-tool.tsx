@@ -36,6 +36,7 @@ import { AiaApplicationDetail } from "@/components/commercial/aia-application-de
 import type { AiaLineSaveResult } from "@/components/commercial/aia-line-row";
 import { AiaSettingsForm } from "@/components/commercial/aia-settings-form";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
+import { DateField } from "@/components/commercial/date-field";
 import { DonutChart, GaugeRing } from "@/components/commercial/charts";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -567,10 +568,10 @@ async function AiaApplicationList({
           <input type="hidden" name="account_id" value={id} />
           <input type="hidden" name="opp_id" value={dealId} />
           <input type="hidden" name="back" value={back} />
-          <label className="block">
+          <div>
             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
-            <input type="date" name="period_to" className={INPUT} />
-          </label>
+            <DateField name="period_to" placeholder="Pick a date" />
+          </div>
           <label className="block">
             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Retainage (%)</span>
             <input name="retainage_pct" inputMode="decimal" defaultValue={String(DEFAULT_RETAINAGE_PCT)} className={INPUT} />

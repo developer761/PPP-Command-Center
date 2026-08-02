@@ -67,6 +67,7 @@ import { AutosaveProposalName } from "@/components/commercial/autosave-proposal-
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
 import { FillProjectFromDeal } from "@/components/commercial/fill-project-from-deal";
 import ProposalMarkupUpload from "@/components/commercial/proposal-markup-upload";
+import { DateField } from "@/components/commercial/date-field";
 import { listDocumentsForParent } from "@/lib/commercial/documents/db";
 import {
   INPUT_CLS,
@@ -932,8 +933,8 @@ export default async function ProposalEditorPage({
           and Send/PDF actions stay reachable while scrolling the long form.
           NOT sticky on mobile — the buttons wrap into a tall block that
           would eat a 375px viewport if pinned. */}
-      <header className="sm:sticky sm:top-2 z-20 bg-surface/95 backdrop-blur-sm border border-ppp-charcoal-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap shadow-md shadow-ppp-charcoal-900/5">
-        <div className="min-w-0 flex-1">
+      <header className="sm:sticky sm:top-2 z-20 bg-surface/95 backdrop-blur-sm border border-ppp-charcoal-200 rounded-xl p-4 flex flex-col gap-3 shadow-md shadow-ppp-charcoal-900/5">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="text-[11px] font-bold text-ppp-charcoal-500 uppercase tracking-widest tabular-nums">
               R{proposal.revision_number}
@@ -977,7 +978,9 @@ export default async function ProposalEditorPage({
             />
           </form>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Action bar — its own full-width row below the identity (RUX-5) so the
+            buttons breathe instead of cramming beside the R#/PROP/TOTAL block. */}
+        <div className="flex items-center gap-2 flex-wrap border-t border-ppp-charcoal-100 pt-3">
           {!hasPdfBody ? (
             <span
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-400 text-[13px] font-semibold min-h-[36px]"
@@ -1458,14 +1461,14 @@ export default async function ProposalEditorPage({
                   <span className={LABEL_CLS}>GC name</span>
                   <input type="text" name="gc_company" defaultValue={proposal.header_json.gc_company ?? ""} className={INPUT_CLS} placeholder="e.g. Alta Construction East Inc." />
                 </label>
-                <label className="block">
+                <div>
                   <span className={LABEL_CLS}>Proposal date</span>
-                  <input type="date" name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} className={INPUT_CLS} />
-                </label>
-                <label className="block">
+                  <DateField name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} placeholder="Pick a date" className="mt-1" />
+                </div>
+                <div>
                   <span className={LABEL_CLS}>Bid Set date <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
-                  <input type="date" name="bid_set_date" defaultValue={proposal.bid_set_date ?? ""} className={INPUT_CLS} />
-                </label>
+                  <DateField name="bid_set_date" defaultValue={proposal.bid_set_date ?? ""} placeholder="Pick a date" className="mt-1" />
+                </div>
                 <label className="block sm:col-span-2">
                   <span className={LABEL_CLS}>GC address (one line per row)</span>
                   <textarea name="gc_address_lines" defaultValue={gcAddrText} rows={2} className={TEXTAREA_CLS} placeholder="143 West 29th Street, Fl 12&#10;New York, NY 10001" />

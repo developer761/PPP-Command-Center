@@ -416,7 +416,7 @@ function UserRow({
             )}
             {isApprover && (
               <span
-                className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-700"
+                className="rounded border border-ppp-green-100 bg-ppp-green-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ppp-green-700"
                 title="Can approve proposals before they're sent to a GC."
               >
                 Approver
@@ -447,7 +447,7 @@ function UserRow({
             aria-pressed={isApprover}
             className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[44px] sm:min-h-[36px] ${
               isApprover
-                ? "border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100"
+                ? "border border-ppp-green-100 bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100"
                 : "border border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
             }`}
           >

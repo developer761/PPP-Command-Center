@@ -35,6 +35,7 @@ import { safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { AutosaveForm } from "@/components/commercial/autosave-form";
+import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
@@ -140,11 +141,14 @@ async function changeStatusAction(formData: FormData) {
  *  failure never blocks the send (the PDF is already filed to Documents). */
 async function emailWorkOrderToCrew(to: string, dealName: string, pdf: Buffer): Promise<boolean> {
   try {
+    // `to` is a comma-joined list (one or more foreman/crew emails).
+    const recipients = to.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
+    if (recipients.length === 0) return false;
     const { sendEmail } = await import("@/lib/email/resend");
     const oc = await getOperatingCompany();
     const r = await sendEmail({
       channel: "commercial",
-      to,
+      to: recipients,
       subject: `Work Order — ${dealName}`,
       text: [
         `Attached is the Work Order for ${dealName}.`,
@@ -395,17 +399,17 @@ export async function WorkOrderTool({
                   <input type="text" name="assigned_to" defaultValue={wo.assigned_to ?? ""} placeholder="e.g. Miguel's crew" className={INPUT_CLS} />
                 </label>
                 <label className="block">
-                  <span className={LABEL_CLS}>Crew email <span className="text-ppp-charcoal-400 font-normal">· gets the PDF on send</span></span>
-                  <input type="email" name="crew_email" defaultValue={wo.crew_email ?? ""} placeholder="foreman@…" className={INPUT_CLS} />
+                  <span className={LABEL_CLS}>Crew email(s) <span className="text-ppp-charcoal-400 font-normal">· gets the PDF on send · comma-separate for more than one</span></span>
+                  <input type="text" name="crew_email" defaultValue={wo.crew_email ?? ""} placeholder="foreman@…, super@…" className={INPUT_CLS} />
                 </label>
-                <label className="block">
+                <div>
                   <span className={LABEL_CLS}>Scheduled start</span>
-                  <input type="date" name="scheduled_start_date" defaultValue={wo.scheduled_start_date ?? ""} className={INPUT_CLS} />
-                </label>
-                <label className="block">
+                  <DateField name="scheduled_start_date" defaultValue={wo.scheduled_start_date ?? ""} placeholder="Pick a start date" className="mt-1" />
+                </div>
+                <div>
                   <span className={LABEL_CLS}>Target finish</span>
-                  <input type="date" name="scheduled_end_date" defaultValue={wo.scheduled_end_date ?? ""} min={wo.scheduled_start_date ?? undefined} className={INPUT_CLS} />
-                </label>
+                  <DateField name="scheduled_end_date" defaultValue={wo.scheduled_end_date ?? ""} min={wo.scheduled_start_date ?? undefined} placeholder="Pick a finish date" className="mt-1" />
+                </div>
               </div>
               <label className="block">
                 <span className={LABEL_CLS}>Crew notes <span className="text-ppp-charcoal-400 font-normal">· prints under the scope</span></span>
