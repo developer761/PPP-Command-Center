@@ -378,6 +378,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           if (inv.invoice_number.toLowerCase().includes(q)) return true;
           const opp = oppById.get(inv.opportunity_id);
           if (opp && opp.title.toLowerCase().includes(q)) return true;
+          // Match the customer / GC name too — Katie thinks in customer names,
+          // not deal titles (2026-08 AR UX walk).
+          const acctId = inv.account_id ?? opp?.account_id;
+          const acct = acctId ? accountById.get(acctId) : null;
+          if (acct && acct.company_name.toLowerCase().includes(q)) return true;
           return false;
         });
       })()
@@ -937,8 +942,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <KpiCard
             tone={overdueCount > 0 ? "rose" : "neutral"}
             label="Overdue"
-            value={overdueCount.toLocaleString()}
-            sub={overdueCount === 0 ? "nothing past due" : overdueCount === 1 ? "invoice past due" : "invoices past due"}
+            value={formatCentsCompact(overdueTotalCents)}
+            sub={overdueCount === 0 ? "nothing past due" : `across ${overdueCount} invoice${overdueCount === 1 ? "" : "s"}`}
+            href={overdueCount > 0 ? setStatusHref("overdue") : undefined}
           />
           <KpiCard
             tone="blue"
@@ -951,6 +957,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             label="Drafts"
             value={draftCount.toLocaleString()}
             sub={draftCount === 0 ? "no unsent drafts" : "waiting to be sent"}
+            href={draftCount > 0 ? setStatusHref("draft") : undefined}
           />
         </div>
 
@@ -1025,7 +1032,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               name="q"
               type="search"
               defaultValue={search ?? ""}
-              placeholder="Search by invoice # or opportunity title…"
+              placeholder="Search by invoice #, customer, or opportunity…"
               className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600 min-h-[44px]"
             />
           </div>
@@ -2346,11 +2353,14 @@ function KpiCard({
   label,
   value,
   sub,
+  href,
 }: {
   tone: "ppp-blue" | "blue" | "rose" | "neutral";
   label: string;
   value: string;
   sub: string;
+  /** When set, the whole tile is a filter link (Katie's overdue/drafts drill). */
+  href?: string;
 }) {
   const ring =
     tone === "ppp-blue"
@@ -2364,8 +2374,8 @@ function KpiCard({
   // Tailwind blue). Value type = Roboto Condensed black, also per dashboard.
   const stripe =
     tone === "ppp-blue" ? "bg-ppp-blue-600" : tone === "blue" ? "bg-ppp-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
-  return (
-    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
+  const inner = (
+    <>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
       <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
@@ -2374,7 +2384,13 @@ function KpiCard({
         {value}
       </div>
       <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>
-    </div>
+    </>
+  );
+  const cls = `relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`;
+  return href ? (
+    <Link href={href} className={`${cls} block transition-all hover:shadow-md hover:-translate-y-0.5 touch-manipulation`}>{inner}</Link>
+  ) : (
+    <div className={cls}>{inner}</div>
   );
 }
 

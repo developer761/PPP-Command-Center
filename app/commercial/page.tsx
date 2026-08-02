@@ -39,7 +39,7 @@ import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/pu
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
 import TrendChart from "@/components/trend-chart";
-import { GaugeRing, DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
+import { DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
@@ -48,20 +48,22 @@ const DASH_COST_TONE: Record<string, ChartTone> = {
 export const dynamic = "force-dynamic";
 
 const SHIPPED = "bg-emerald-50 text-emerald-700 border-emerald-200";
+// Plain-English, what-you-can-DO names — this shows on the CEO's dashboard, so
+// no internal/dev jargon (2026-08 CEO UX walk).
 const PHASES = [
-  { num: 1, name: "Account Management", status: "Shipped", color: SHIPPED },
-  { num: 2, name: "Opportunity Pipeline", status: "Shipped", color: SHIPPED },
-  { num: "2.5", name: "Submittals & Finish Schedule", status: "Shipped", color: SHIPPED },
-  { num: 3, name: "Invoicing & Revenue", status: "Shipped", color: SHIPPED },
-  { num: "3+", name: "Win/Loss Debrief", status: "Shipped", color: SHIPPED },
-  { num: "A", name: "Sidebar split + Deal→Opp rename", status: "Shipped", color: SHIPPED },
-  { num: "B", name: "Structural fields + estimator", status: "Shipped", color: SHIPPED },
-  { num: "C", name: "Documents (polymorphic + versions)", status: "Shipped", color: SHIPPED },
-  { num: "D", name: "Product Library + Tomco prices", status: "Shipped", color: SHIPPED },
-  { num: "E", name: "Exclusions Library", status: "Shipped", color: SHIPPED },
-  { num: "F", name: "Proposal Builder + PDF export", status: "Shipped", color: SHIPPED },
-  { num: "G", name: "Deal IDs + archive + lifecycle dates", status: "Shipped", color: SHIPPED },
-  { num: "H", name: "Project (post-sale) + Won→Project", status: "Shipped", color: SHIPPED },
+  { num: 1, name: "Manage customers", status: "Shipped", color: SHIPPED },
+  { num: 2, name: "Track the bid pipeline", status: "Shipped", color: SHIPPED },
+  { num: "2.5", name: "Submittals & finish schedules", status: "Shipped", color: SHIPPED },
+  { num: 3, name: "Invoicing & revenue", status: "Shipped", color: SHIPPED },
+  { num: "3+", name: "Win / loss debriefs", status: "Shipped", color: SHIPPED },
+  { num: "A", name: "Sales vs. delivery split", status: "Shipped", color: SHIPPED },
+  { num: "B", name: "Estimator & job details", status: "Shipped", color: SHIPPED },
+  { num: "C", name: "Document storage", status: "Shipped", color: SHIPPED },
+  { num: "D", name: "Product & price library", status: "Shipped", color: SHIPPED },
+  { num: "E", name: "Standard exclusions", status: "Shipped", color: SHIPPED },
+  { num: "F", name: "Build & send proposals", status: "Shipped", color: SHIPPED },
+  { num: "G", name: "Job IDs & archiving", status: "Shipped", color: SHIPPED },
+  { num: "H", name: "Run won jobs", status: "Shipped", color: SHIPPED },
 ];
 
 /** Days between two ISO dates (positive = a before b). Null-safe. */
@@ -110,7 +112,11 @@ export default async function CommercialDashboardPage() {
     // Clamp per invoice so a credit/overpaid invoice can't net down the AR —
     // one "Outstanding" definition platform-wide (matches the account rollup).
     .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
-  const arOverdueCount = invoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
+  const overdueInvoices = invoices.filter((i) => deriveInvoiceStatus(i) === "overdue");
+  const arOverdueCount = overdueInvoices.length;
+  // The DOLLARS overdue (per-invoice clamped) — the number a CEO actually fears,
+  // shown on the tile instead of a bare count (2026-08 CEO/AR UX walk).
+  const arOverdueCents = overdueInvoices.reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
 
   // ─── Opp buckets ───
   // "Open" = the PRE-SALE pipeline only (deals still being sold). Post-sale
@@ -229,6 +235,15 @@ export default async function CommercialDashboardPage() {
     oppIds: allProjectOppIds,
     nowIso: new Date().toISOString(),
   });
+  // This month vs last (billed, pre-tax) — the "how are we doing lately"
+  // answer a CEO opens the app for. Values come straight off the trend's last
+  // two buckets (which are $K), so they always agree with the chart.
+  const thisMonthBilledCents = Math.round((revenueMonthly.at(-1)?.value ?? 0) * 100000);
+  const lastMonthBilledCents = Math.round((revenueMonthly.at(-2)?.value ?? 0) * 100000);
+  const momBilledDeltaPct =
+    lastMonthBilledCents > 0
+      ? Math.round(((thisMonthBilledCents - lastMonthBilledCents) / lastMonthBilledCents) * 100)
+      : null;
   const revCostSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => costs[c] > 0).map((c) => ({
     label: PURCHASE_CATEGORY_META[c].label,
     value: costs[c],
@@ -280,28 +295,32 @@ export default async function CommercialDashboardPage() {
       <section>
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-          Revenue &amp; P&amp;L
-          <span className="text-[11px] font-medium text-ppp-charcoal-500">— gross = billed · net = billed − costs · tax excluded</span>
+          Are we making money?
+          <span className="text-[11px] font-medium text-ppp-charcoal-500">— across every job</span>
         </h2>
+        {/* Lead with the "are we making money" answer: Net profit + Margin
+            first & biggest; Gross (only-goes-up) demoted; Job costs last. Plain
+            subs, no formulas (2026-08 CEO UX walk). */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date · all jobs" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
+          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="after job costs" />
+          <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : revMarginPct < 0 ? "losing money" : revMarginPct < 15 ? "thin" : "healthy"} />
+          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
           <StatCard label="Job costs" value={formatCentsCompact(costs.total)} tone="amber" sub={costs.total === 0 ? "none logged" : "materials · labor · subs"} />
-          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
-          <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : "net ÷ gross"} />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
-          <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed</h3>
-              <span className="text-[11px] text-ppp-charcoal-500">last 6 months · pre-tax</span>
+        <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
+          <div className="flex items-baseline justify-between gap-2 mb-2 flex-wrap">
+            <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed</h3>
+            <div className="flex items-baseline gap-2 text-[11.5px] tabular-nums">
+              <span className="text-ppp-charcoal-500">This month <span className="font-bold text-ppp-charcoal">{formatCentsCompact(thisMonthBilledCents)}</span></span>
+              {momBilledDeltaPct !== null && momBilledDeltaPct !== 0 && (
+                <span className={`inline-flex items-center gap-0.5 font-bold ${momBilledDeltaPct > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={momBilledDeltaPct > 0 ? "" : "rotate-180"}><path d="M12 19V5 M5 12l7-7 7 7" /></svg>
+                  {Math.abs(momBilledDeltaPct)}% vs last
+                </span>
+              )}
             </div>
-            <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
           </div>
-          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col items-center justify-center text-center">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-2 self-start flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-emerald-500" />Gross margin</h3>
-            <GaugeRing pct={revMarginPct ?? 0} tone={revMarginTone} value={revMarginPct === null ? "—" : `${revMarginPct}%`} label="net ÷ gross" size={116} />
-            <div className="mt-2 text-[11.5px] text-ppp-charcoal-500 tabular-nums">{formatCentsCompact(grossRevenueCents)} gross · {formatCentsCompact(costs.total)} cost</div>
-          </div>
+          <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
         </div>
         <details className="group/rev mt-3">
           <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] select-none">
@@ -334,12 +353,12 @@ export default async function CommercialDashboardPage() {
 
       {/* ─── At a glance — compact KPI strip (pipeline · wins · GCs · contract · AR) ─── */}
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="weighted" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
+        <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
         <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
         <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href="/commercial/reports/win-loss" delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
-        <DashStat label="Active GCs" value={accounts.length.toLocaleString()} sub="of record" tone="blue" href="/commercial/accounts" />
+        <DashStat label="Active GCs" value={accounts.length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
         <DashStat label="Under contract" value={production.activeProjects > 0 ? formatCentsCompact(production.contractValueCents) : "—"} sub={production.activeProjects > 0 ? `${production.activeProjects} active` : "no jobs yet"} tone="navy" href="/commercial/projects" />
-        <DashStat label="Outstanding" value={formatCentsCompact(arOutstandingCents)} sub={arOverdueCount > 0 ? `${arOverdueCount} overdue` : "AR"} tone={arOverdueCount > 0 ? "rose" : "blue"} href={arOverdueCount > 0 ? "/commercial/invoices?status=overdue" : "/commercial/invoices"} />
+        <DashStat label="Owed to us" value={formatCentsCompact(arOutstandingCents)} sub={arOverdueCount > 0 ? `${formatCentsCompact(arOverdueCents)} overdue` : "all current"} tone={arOverdueCount > 0 ? "rose" : "blue"} href={arOverdueCount > 0 ? "/commercial/invoices?status=overdue" : "/commercial/invoices"} />
       </section>
 
       {/* ─── NEEDS ATTENTION strip ─── */}
@@ -482,7 +501,7 @@ export default async function CommercialDashboardPage() {
                 href="/commercial/projects"
               />
               <DashStat label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} sub="contract − billed" tone="blue" href="/commercial/projects" />
-              <DashStat label="Active AR" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "open on active jobs"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/projects" />
+              <DashStat label="Outstanding" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "open on active jobs"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/projects" />
             </div>
           </div>
         </section>
@@ -503,14 +522,14 @@ export default async function CommercialDashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <QuickAction
             primary
-            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the GC (account) first — deals live under the GC.")}`}
+            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the general contractor first — opportunities live under the GC.")}`}
             title="Start a bid"
-            sub="Pick a GC to log the deal under."
+            sub="Pick a GC to log the opportunity under."
             icon={<IconPlus />}
           />
           <QuickAction
             href="/commercial/accounts/new"
-            title="Add GC (account)"
+            title="Add general contractor"
             sub="Create a new commercial GC account."
             icon={<IconBuilding />}
           />

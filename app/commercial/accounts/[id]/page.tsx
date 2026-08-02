@@ -1202,8 +1202,17 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           <ProjectStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={hasContract ? formatCentsCompact(p.overBilled ? p.billedContractCents - p.contractToDateCents : p.leftToBillCents) : "—"} tone={p.overBilled ? "amber" : undefined} />
           <ProjectStat label="Outstanding" value={formatCentsCompact(p.outstandingCents)} sub={p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={p.outstandingCents > 0 ? "amber" : undefined} />
         </div>
+        {/* Retainage held by the GC — real money owed back at closeout, the
+            number a PM chases hardest. Only shows once an AIA app withholds it
+            (2026-08 PM UX walk). */}
+        {p.retainageHeldCents > 0 && (
+          <div className="mt-2 text-[11.5px] text-ppp-charcoal-600 flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+            <span><span className="font-bold tabular-nums text-ppp-charcoal">{formatCentsCompact(p.retainageHeldCents)}</span> retainage held by the GC — released at closeout</span>
+          </div>
+        )}
         {hasContract && pct != null && (
-          <ProgressMeter className="mt-3" label="Complete" pct={pct} tone="emerald" />
+          <ProgressMeter className="mt-3" label="Work completed" pct={pct} tone="emerald" />
         )}
       </div>
 
@@ -1932,44 +1941,69 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
         <CommercialFilesUploadForm parentType="opportunity" parentId={oppId} />
         <p className="text-[11px] text-ppp-charcoal-500">Everything filed against this deal — receipts from Costs &amp; P&amp;L, lien waivers, invoice attachments, and the PDFs the tools generate — sorts into its box below. Pick a category above to file a new one.</p>
 
-        {/* Filing cabinet — one labeled box per document type. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {DEAL_DOC_BOXES.map((box) => {
-            const docs = byBox.get(box.key) ?? [];
-            return (
-              <div key={box.key} className={`rounded-xl border ${docs.length ? "border-ppp-charcoal-200 bg-surface" : "border-dashed border-ppp-charcoal-100 bg-ppp-charcoal-50/30"} overflow-hidden`}>
-                <div className="px-3 py-2 border-b border-ppp-charcoal-100">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11.5px] font-bold text-ppp-charcoal">{box.label}</span>
-                    <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full ${docs.length ? "bg-ppp-charcoal-100 text-ppp-charcoal-600" : "text-ppp-charcoal-300"}`}>{docs.length}</span>
-                  </div>
-                  {box.hint && <p className="text-[9.5px] text-ppp-charcoal-400 mt-0.5">{box.hint}</p>}
+        {/* Filing cabinet — boxes that HOLD documents render in the grid; empty
+            categories fold into a compact "not filed yet" strip so a fresh deal
+            isn't a wall of empty boxes, while every type still has a visible home
+            the moment it gets a file (2026-08 UX walk — collapse empties). */}
+        {(() => {
+          const filled = DEAL_DOC_BOXES.filter((box) => (byBox.get(box.key) ?? []).length > 0);
+          const empty = DEAL_DOC_BOXES.filter((box) => (byBox.get(box.key) ?? []).length === 0);
+          return (
+            <>
+              {filled.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {filled.map((box) => {
+                    const docs = byBox.get(box.key) ?? [];
+                    return (
+                      <div key={box.key} className="rounded-xl border border-ppp-charcoal-200 bg-surface overflow-hidden">
+                        <div className="px-3 py-2 border-b border-ppp-charcoal-100">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11.5px] font-bold text-ppp-charcoal">{box.label}</span>
+                            <span className="text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-600">{docs.length}</span>
+                          </div>
+                          {box.hint && <p className="text-[9.5px] text-ppp-charcoal-400 mt-0.5">{box.hint}</p>}
+                        </div>
+                        <ul className="divide-y divide-ppp-charcoal-50">
+                          {docs.map((d) => (
+                            <li key={d.id}>
+                              <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-ppp-charcoal-50 min-h-[44px] group">
+                                <span className="min-w-0 flex items-center gap-2">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+                                  <span className="min-w-0">
+                                    <span className="block text-[12px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
+                                    <span className="block text-[10px] text-ppp-charcoal-500">{commercialDocCategoryLabel(d.category)} · {(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                                    {d.notes && <span className="block text-[10px] text-ppp-charcoal-400 italic truncate">{d.notes}</span>}
+                                  </span>
+                                </span>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
                 </div>
-                {docs.length === 0 ? (
-                  <p className="px-3 py-2.5 text-[10.5px] text-ppp-charcoal-400">None yet.</p>
-                ) : (
-                  <ul className="divide-y divide-ppp-charcoal-50">
-                    {docs.map((d) => (
-                      <li key={d.id}>
-                        <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-ppp-charcoal-50 min-h-[44px] group">
-                          <span className="min-w-0 flex items-center gap-2">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-                            <span className="min-w-0">
-                              <span className="block text-[12px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
-                              <span className="block text-[10px] text-ppp-charcoal-500">{commercialDocCategoryLabel(d.category)} · {(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
-                              {d.notes && <span className="block text-[10px] text-ppp-charcoal-400 italic truncate">{d.notes}</span>}
-                            </span>
-                          </span>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
-                        </a>
-                      </li>
+              )}
+              {empty.length > 0 && (
+                <div className="rounded-xl border border-dashed border-ppp-charcoal-100 bg-ppp-charcoal-50/30 px-3 py-2.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1.5">Not filed yet</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {empty.map((box) => (
+                      <span key={box.key} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface border border-ppp-charcoal-200 text-[10.5px] font-medium text-ppp-charcoal-500">
+                        {box.label}
+                      </span>
                     ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  </div>
+                  <p className="text-[9.5px] text-ppp-charcoal-400 mt-1.5">Each fills its own box automatically once a file is added (upload above, or the tools file their PDFs here).</p>
+                </div>
+              )}
+              {filled.length === 0 && empty.length === DEAL_DOC_BOXES.length && (
+                <p className="text-[11px] text-ppp-charcoal-400">No documents filed yet. Upload one above — it&rsquo;ll sort into its labeled box.</p>
+              )}
+            </>
+          );
+        })()}
       </div>
     </section>
   );
@@ -2073,7 +2107,7 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           <MiniFig label="Invoiced" value={formatCentsCompact(fin.invoicedCents)} tone="brand" sub={fin.invoicedCents > 0 ? undefined : "none yet"} />
           <MiniFig label="Paid" value={formatCentsCompact(fin.collectedCents)} tone="emerald" sub={fin.invoicedCents > 0 ? `${collectedPct}% collected` : "—"} />
-          <MiniFig label={isCredit ? "Credit" : "Balance"} value={formatCentsCompact(isCredit ? fin.creditCents : fin.openBalanceCents)} tone={isCredit ? "emerald" : fin.openBalanceCents > 0 ? "blue" : "neutral"} sub={fin.invoicedCents === 0 ? "not billed" : isCredit ? "overpaid" : fin.openBalanceCents === 0 ? "settled" : "unpaid"} />
+          <MiniFig label={isCredit ? "Credit" : "Outstanding"} value={formatCentsCompact(isCredit ? fin.creditCents : fin.openBalanceCents)} tone={isCredit ? "emerald" : fin.openBalanceCents > 0 ? "blue" : "neutral"} sub={fin.invoicedCents === 0 ? "not billed" : isCredit ? "overpaid" : fin.openBalanceCents === 0 ? "settled" : "unpaid"} />
           <MiniFig label="Overdue" value={String(overdueCount)} tone={overdueCount > 0 ? "rose" : "neutral"} sub={overdueCount > 0 ? "past due" : "on track"} />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-center">
@@ -7111,7 +7145,7 @@ async function AccountKpisTab({
           <MiniFig label="Invoiced" value={formatCentsCompact(rollup.invoiced_cents)} tone="brand" sub={rollup.invoice_count > 0 ? `${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}` : "none yet"} />
           <MiniFig label="Paid" value={formatCentsCompact(rollup.paid_cents)} tone="emerald" sub={hasInvoicing ? `${paidPct}% collected` : "—"} />
           <MiniFig
-            label={isCredit ? "Credit" : "Balance"}
+            label={isCredit ? "Credit" : "Outstanding"}
             value={formatCentsCompact(isCredit ? rollup.credit_cents : rollup.open_balance_cents)}
             tone={isCredit ? "emerald" : rollup.open_balance_cents > 0 ? "blue" : "neutral"}
             sub={!hasInvoicing ? "not billed" : isCredit ? "overpaid" : rollup.open_balance_cents === 0 ? "settled" : "unpaid"}
