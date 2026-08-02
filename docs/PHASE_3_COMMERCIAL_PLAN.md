@@ -33,7 +33,7 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 - [ ] **Adjustable final price** (override the summed total)
 - [ ] **Bid Set date** on the proposal
 - [ ] **Internal bid notes** (never on client PDF) + **attach Kim's marked-up plan/spec doc**
-- [ ] **Approval loop — IN-APP** (both Kim + Brendan are platform users, so NO email round-trip): Kim "Send for approval" → status `Pending approval`, routed to the approver → Brendan sees it in his in-app **approvals queue** (bell + "Needs your approval" filter) → Approve / Request changes (with note), audit-logged → status flips, Kim notified → approved can go to client. Email is an OPTIONAL heads-up via the existing notification email opt-in, never the approve mechanism. Approver = configurable "can approve proposals" flag (built with the R8 role work).
+- [ ] **Approval loop — IN-APP, HARD GATE** (Karan 2026-08): Kim (or anyone) clicks **"Send for approval"** → status `Pending approval`; **a proposal CANNOT be sent to the client until approved.** Only the **designated approvers — Brendan + Stephanie** (editable approvers list in settings; matched by their login email, **server-enforced**) see & can click **Approve / Request changes** (with note); everyone else can do everything else, just not the Approve button or send-unapproved. Audit-logged. **Notifications (reuse existing system):** send-for-approval → bell + email to the approvers; approved/changes-requested → bell + email back to the sender. Approver designation coordinates with the R8 role work.
 - [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
 
 ## ⬜ Phase R2 — Document generators & doc fidelity
