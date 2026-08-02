@@ -9,14 +9,20 @@ Accounts (+ A/B/C rating) · Opportunities pipeline · Proposals + Builder + PDF
 
 Legend: **[BUILD]** = new feature · **[VERIFY]** = likely done, confirm/finish · **[FIX]** = small correction · **[PARKED]** = do opportunistically · **[CLEANUP]** = tech-debt.
 
+## How every phase is built (Karan's standing bar — applies to ALL phases below)
+- **Edge-cased properly + precisely** — a parallel adversarial edge-case agent runs BEFORE and AFTER every batch and after every push; every finding fixed, nothing deferred. Extreme/empty/null/concurrent/timezone/overflow states all handled.
+- **Clear + concise UI/UX** — mini-KPIs + progress bars lead each surface; no gray boxes; dividers separate blocks; progressive disclosure (don't clutter); aggressive autofill; one-click / tap-to-sign; mobile-perfect 44px; searchable dropdowns >10 items; "can this be simpler?" on every screen.
+- **Verified green** — tsc + tests + build before every push; single source of truth per opportunity; every action reflects everywhere it should (opp ↔ account ↔ global) instantly.
+
 ---
 
 ## Phase R1 — Proposal & estimating completion (Kim the estimator)
-- **[BUILD]** Per-line **"show price" checkbox** — checked prints the line total on the client PDF, unchecked hides it.
-- **[BUILD]** **Adjustable final price** (override the summed total) on the client proposal.
-- **[BUILD]** **Bid Set date** shown on the proposal.
-- **[BUILD]** **Internal bid notes** (never on client PDF) + **attach Kim's marked-up plan/spec doc** to the internal side.
-- **[BUILD]** **Approval loop** (Resend): Kim clicks **"Get approval"** → emails Brendan → approve/reject → returns to Kim as approved/rejected. (Resend already connected; loop not wired.)
+_Client-facing bits are used by anyone building a proposal (no role-gating); Kim is just the primary user._
+- **[BUILD]** Per-line **"show price" checkbox** — checked prints the line total on the client PDF, unchecked hides it. _Edge: all-hidden proposal still shows a total; toggling recomputes the printed subtotal; hidden lines still count toward the total._
+- **[BUILD]** **Adjustable final price** (override the summed total) on the client proposal. _Edge: override < 0 rejected; override vs line-sum delta shown internally; clears cleanly back to auto; flows to the contract/AIA base + invoicing consistently._
+- **[BUILD]** **Bid Set date** field, shown on the proposal.
+- **[BUILD]** **Internal bid notes** (never on the client PDF) + **attach Kim's marked-up plan/spec doc** to the internal side. _Edge: large plan uploads (see R6 chunked upload); internal-only never leaks to the client render._
+- **[BUILD]** **Approval loop** (Resend): Kim clicks **"Get approval"** → emails Brendan → he approves/rejects → returns to Kim as approved/rejected, audit-logged. _Edge: re-request after edit; approve/reject race; Brendan email missing; status reflected on the proposal + pipeline._
 
 ## Phase R2 — Document generators & doc fidelity
 - **[BUILD]** **Work Order for the crew** — header (date/project/location/subject) + Inclusions / Add-Alternate / Exclusions bullets + **Room Finish Schedule** table (mirrors Tomco's Panera format; reuses proposal + finish-schedule data).
