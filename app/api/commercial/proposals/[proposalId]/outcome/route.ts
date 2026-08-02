@@ -194,7 +194,7 @@ export async function POST(
     if (!res.ok) {
       // Approver gate rejections surface as 403 so the client shows the
       // "only an approver can approve" message rather than a generic fail.
-      const isGate = res.error.startsWith("Only an approver");
+      const isGate = res.error.startsWith("Only a designated approver");
       return NextResponse.json(
         { error: isGate ? "forbidden" : "approve_failed", detail: res.error },
         { status: isGate ? 403 : 400 }

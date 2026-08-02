@@ -95,6 +95,10 @@ export default function CommercialAccessManager({
     }
   };
 
+  const approverCount = users.filter((u) =>
+    approverEmails.includes((u.email ?? "").trim().toLowerCase())
+  ).length;
+
   return (
     <div className="space-y-5">
       {flash && (
@@ -106,6 +110,14 @@ export default function CommercialAccessManager({
           }`}
         >
           {flash.msg}
+        </div>
+      )}
+
+      {/* R1d: hard-gate safety net. With zero approvers, no proposal can be
+          approved → none can be sent to a GC. Warn loudly so nobody's stuck. */}
+      {approverCount === 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          <strong>No proposal approvers yet.</strong> A proposal must be approved before it can be sent to a GC — until you flag at least one approver below, proposals can&rsquo;t go out. Turn on <em>Approver</em> for whoever should sign off (e.g. Brendan, Stephanie).
         </div>
       )}
 
@@ -134,10 +146,7 @@ export default function CommercialAccessManager({
                 key={u.user_id}
                 user={u}
                 isSelf={u.user_id === currentUserId}
-                isApprover={
-                  u.role === "admin" ||
-                  approverEmails.includes((u.email ?? "").trim().toLowerCase())
-                }
+                isApprover={approverEmails.includes((u.email ?? "").trim().toLowerCase())}
                 onToggleApprover={toggleApprover}
                 onChanged={async (msg) => {
                   note("ok", msg);
@@ -331,7 +340,16 @@ function UserRow({
   const [newPw, setNewPw] = useState("");
   const [approverBusy, setApproverBusy] = useState(false);
   const label = user.full_name || user.email;
-  const isAdmin = user.role === "admin";
+
+  const doToggleApprover = async () => {
+    if (approverBusy) return;
+    setApproverBusy(true);
+    try {
+      await onToggleApprover(user.email, !isApprover, label);
+    } finally {
+      setApproverBusy(false);
+    }
+  };
 
   const patch = async (body: Record<string, unknown>, okMsg: string) => {
     if (busy) return;
@@ -390,13 +408,9 @@ function UserRow({
             {isApprover && (
               <span
                 className="rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-700"
-                title={
-                  isAdmin
-                    ? "Admins can always approve proposals."
-                    : "Can approve proposals before they're sent to a GC."
-                }
+                title="Can approve proposals before they're sent to a GC."
               >
-                {isAdmin ? "Approver · admin" : "Approver"}
+                Approver
               </span>
             )}
           </div>
@@ -406,59 +420,59 @@ function UserRow({
             {user.last_login_at ? " · signed in before" : " · never signed in"}
           </div>
         </div>
-        {!isSelf && (
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            {/* R1d: approver toggle. Admins are always approvers (no toggle —
-                the badge says so); everyone else can be flagged on/off. */}
-            {!isAdmin && (
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {/* R1d: proposal-approval toggle — an explicit on/off flag,
+              independent of admin. Shown on EVERY row (including yourself)
+              so you can pick exactly who signs off proposals. */}
+          <button
+            type="button"
+            onClick={doToggleApprover}
+            disabled={approverBusy || !user.is_active}
+            title={
+              !user.is_active
+                ? "Reactivate this user before making them an approver."
+                : isApprover
+                ? "Turn off — they can no longer approve proposals."
+                : "Turn on — they can approve proposals before they go to a GC."
+            }
+            aria-pressed={isApprover}
+            className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[44px] sm:min-h-[36px] ${
+              isApprover
+                ? "border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100"
+                : "border border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+            }`}
+          >
+            {approverBusy
+              ? "…"
+              : isApprover
+              ? "✓ Approver"
+              : "Make approver"}
+          </button>
+          {!isSelf && (
+            <>
               <button
                 type="button"
-                onClick={async () => {
-                  if (approverBusy) return;
-                  setApproverBusy(true);
-                  try {
-                    await onToggleApprover(user.email, !isApprover, label);
-                  } finally {
-                    setApproverBusy(false);
-                  }
-                }}
-                disabled={approverBusy}
-                title={
-                  isApprover
-                    ? "Stop this person from approving proposals."
-                    : "Let this person approve proposals before they're sent to a GC."
-                }
-                className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[44px] sm:min-h-[36px] ${
-                  isApprover
-                    ? "border border-teal-200 text-teal-700 hover:bg-teal-50"
-                    : "border border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                onClick={() => setResetOpen((v) => !v)}
+                disabled={busy}
+                className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 disabled:opacity-60 min-h-[44px] sm:min-h-[36px]"
+              >
+                Reset password
+              </button>
+              <button
+                type="button"
+                onClick={toggleActive}
+                disabled={busy}
+                className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[36px] ${
+                  user.is_active
+                    ? "border border-rose-200 text-rose-700 hover:bg-rose-50"
+                    : "border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                 }`}
               >
-                {approverBusy ? "…" : isApprover ? "Remove approver" : "Make approver"}
+                {user.is_active ? "Deactivate" : "Reactivate"}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setResetOpen((v) => !v)}
-              disabled={busy}
-              className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 disabled:opacity-60 min-h-[44px] sm:min-h-[36px]"
-            >
-              Reset password
-            </button>
-            <button
-              type="button"
-              onClick={toggleActive}
-              disabled={busy}
-              className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[36px] ${
-                user.is_active
-                  ? "border border-rose-200 text-rose-700 hover:bg-rose-50"
-                  : "border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-              }`}
-            >
-              {user.is_active ? "Deactivate" : "Reactivate"}
-            </button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
       {resetOpen && !isSelf && (
         <div className="mt-3 flex flex-wrap items-center gap-2">

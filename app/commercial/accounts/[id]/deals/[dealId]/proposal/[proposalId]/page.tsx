@@ -746,7 +746,7 @@ export default async function ProposalEditorPage({
     notFound();
   }
   const viewerId = await requireAuthed();
-  // R1d: only an approver (Brendan / Stephanie / admin) sees the Approve +
+  // R1d: only a flagged approver (Settings → Access) sees the Approve +
   // Request-changes controls. Everyone else builds, edits, and sends-for-approval.
   const viewerIsApprover = await isProposalApprover(viewerId);
 
@@ -1004,7 +1004,7 @@ export default async function ProposalEditorPage({
             <form action={requestApprovalAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Send R${proposal.revision_number} for approval? An approver (Brendan, Stephanie, or an admin) must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
+                message={`Send R${proposal.revision_number} for approval? A designated approver must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
                 pendingLabel="Requesting…"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 shadow-sm min-h-[40px] disabled:opacity-50"
               >
@@ -1272,7 +1272,7 @@ export default async function ProposalEditorPage({
       {/* R1d approval flash banners */}
       {sp.approval === "requested" && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900" role="status">
-          <strong>Sent for approval.</strong> An approver (Brendan, Stephanie, or an admin) was notified. This proposal can&rsquo;t be sent to the GC until it&rsquo;s approved.
+          <strong>Sent for approval.</strong> The designated approvers were notified. This proposal can&rsquo;t be sent to the GC until it&rsquo;s approved.
         </div>
       )}
       {sp.approval === "approved" && (
@@ -1315,7 +1315,7 @@ export default async function ProposalEditorPage({
           <div className="text-[12.5px] text-amber-800">
             {viewerIsApprover
               ? "You can Approve or Request changes above. Nothing on the proposal can be edited while it's under review."
-              : "An approver (Brendan, Stephanie, or an admin) must approve it — or send it back with changes — before it can be sent. It's locked from editing until then. Need to tweak it yourself? Use Withdraw above to pull it back to draft."}
+              : "A designated approver must approve it — or send it back with changes — before it can be sent. It's locked from editing until then. Need to tweak it yourself? Use Withdraw above to pull it back to draft."}
           </div>
         </div>
       )}

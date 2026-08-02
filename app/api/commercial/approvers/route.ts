@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rawAccessDenied } from "@/lib/commercial/auth";
 import { isAdminEmail, normalizeEmail } from "@/lib/auth/admin";
-import { getCommercialRoles } from "@/lib/commercial/rbac";
+import { normalizeRole } from "@/lib/auth/roles";
 import {
   getOperatingCompany,
   updateOperatingCompany,
@@ -23,24 +23,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // Admin gate — same signal as the approver check itself: env/bootstrap admin
-  // OR the Commercial "admin" role. Non-admins can't change who approves.
+  // Admin gate — MATCHES the Settings → Access page gate (an admin manages
+  // access, and on Commercial everyone with access is an admin). Admin =
+  // profile role/is_admin resolves to "admin" (env-admin email counts too).
+  // Also require live Commercial access, like every other commercial route.
   const email = auth.user.email ?? null;
-  let isAdmin = !!(email && isAdminEmail(email));
-  if (!isAdmin) {
-    try {
-      const roles = await getCommercialRoles(auth.user.id);
-      isAdmin = roles.hasAdminRole;
-    } catch {
-      /* fall through — treated as non-admin */
-    }
-  }
-  // Also require live Commercial access (mirrors every other commercial route).
   const { data: prof } = await supabase
     .from("profiles")
-    .select("has_new_platform_access, is_active")
+    .select("role, is_admin, has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
     .maybeSingle();
+  const p = prof as
+    | { role?: string | null; is_admin?: boolean | null }
+    | null;
+  const isAdmin =
+    normalizeRole(p?.role ?? null, p?.is_admin === true || isAdminEmail(email)) ===
+    "admin";
   if (rawAccessDenied(prof) || !isAdmin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

@@ -829,12 +829,13 @@ export async function reopenProposal(input: {
 // these helpers so a hand-crafted POST or a free drag can't defeat it.
 // ════════════════════════════════════════════════════════════════════
 
-/** Is this user allowed to APPROVE proposals? True when they are:
- *   - an env/bootstrap admin (isAdminEmail), OR
- *   - a Commercial "admin" role holder, OR
- *   - explicitly listed in the operating company's approver_emails
- *     (Brendan / Stephanie).
- *  Everyone else can build + edit + send-for-approval, but cannot approve. */
+/** Is this user allowed to APPROVE proposals? APPROVAL IS AN EXPLICIT PER-USER
+ *  FLAG — independent of admin status (on Commercial, everyone with access is an
+ *  admin, so admin can't imply approver or the gate would be meaningless). A
+ *  user can approve ONLY if their email is in the operating company's
+ *  `approver_emails` list, toggled on Settings → Access. Everyone else can build
+ *  + edit + send-for-approval, but cannot approve. Deactivated / access-revoked
+ *  users can't approve even if still listed. */
 export async function isProposalApprover(userId: string): Promise<boolean> {
   if (!userId) return false;
   const sb = commercialDb();
@@ -846,40 +847,34 @@ export async function isProposalApprover(userId: string): Promise<boolean> {
   const p = prof as
     | { email?: string | null; is_active?: boolean | null; has_new_platform_access?: boolean | null }
     | null;
-  // A deactivated / access-revoked user can't approve — keeps the "who can
-  // approve" set in lock-step with listProposalApproverUserIds (the fanout
-  // target), so we never let someone approve who'd never be notified to.
-  if (p?.is_active === false || p?.has_new_platform_access === false) return false;
-  const email = p?.email ?? null;
+  if (!p) return false;
+  if (p.is_active === false || p.has_new_platform_access === false) return false;
+  const email = p.email ?? null;
+  if (!email) return false;
 
-  const { isAdminEmail, normalizeEmail } = await import("@/lib/auth/admin");
-  if (email && isAdminEmail(email)) return true;
-
-  try {
-    const { getCommercialRoles } = await import("@/lib/commercial/rbac");
-    const roles = await getCommercialRoles(userId);
-    if (roles.hasAdminRole) return true;
-  } catch {
-    // rbac lookup is best-effort — fall through to the approver-email check.
-  }
-
-  if (email) {
-    const { getOperatingCompany } = await import(
-      "@/lib/commercial/operating-company/db"
-    );
-    const oc = await getOperatingCompany();
-    const norm = normalizeEmail(email);
-    if (oc.approver_emails.some((e) => normalizeEmail(e) === norm)) return true;
-  }
-  return false;
+  const { normalizeEmail } = await import("@/lib/auth/admin");
+  const { getOperatingCompany } = await import(
+    "@/lib/commercial/operating-company/db"
+  );
+  const oc = await getOperatingCompany();
+  const norm = normalizeEmail(email);
+  return oc.approver_emails.some((e) => normalizeEmail(e) === norm);
 }
 
-/** Resolve the set of user IDs allowed to approve proposals — the fanout
- *  target for a "please approve" notification. Union of admin-email users,
- *  Commercial admin-role users, and operating-company approver_emails,
- *  restricted to ACTIVE profiles that still have Commercial access. */
+/** Resolve the set of user IDs allowed to approve proposals — the fanout target
+ *  for a "please approve" notification. Exactly the users whose email is in
+ *  `approver_emails` (the explicit toggle list), restricted to ACTIVE profiles
+ *  that still have Commercial access. Independent of admin status. */
 export async function listProposalApproverUserIds(): Promise<string[]> {
   const sb = commercialDb();
+  const { getOperatingCompany } = await import(
+    "@/lib/commercial/operating-company/db"
+  );
+  const oc = await getOperatingCompany();
+  const { normalizeEmail } = await import("@/lib/auth/admin");
+  const approverEmails = new Set(oc.approver_emails.map((e) => normalizeEmail(e)));
+  if (approverEmails.size === 0) return [];
+
   const { data: profs } = await sb
     .from("profiles")
     .select("user_id, email, is_active, has_new_platform_access");
@@ -890,36 +885,12 @@ export async function listProposalApproverUserIds(): Promise<string[]> {
     has_new_platform_access: boolean | null;
   }>;
 
-  const { getOperatingCompany } = await import(
-    "@/lib/commercial/operating-company/db"
-  );
-  const oc = await getOperatingCompany();
-  const { isAdminEmail, normalizeEmail } = await import("@/lib/auth/admin");
-  const approverEmails = new Set(oc.approver_emails.map((e) => normalizeEmail(e)));
-
-  const { data: adminRoleRows } = await sb
-    .from("commercial_user_roles")
-    .select("user_id")
-    .eq("role", "admin");
-  const adminRoleIds = new Set(
-    (adminRoleRows ?? []).map((r) => (r as { user_id: string }).user_id)
-  );
-
   const out = new Set<string>();
   for (const r of rows) {
-    // Must have live Commercial access — a revoked/inactive approver
-    // shouldn't be pinged (mirrors the notification recipient guards).
     if (r.is_active === false) continue;
     if (r.has_new_platform_access === false) continue;
-    const email = r.email ?? null;
-    const norm = normalizeEmail(email);
-    if (
-      (email && isAdminEmail(email)) ||
-      adminRoleIds.has(r.user_id) ||
-      (norm && approverEmails.has(norm))
-    ) {
-      out.add(r.user_id);
-    }
+    const norm = normalizeEmail(r.email);
+    if (norm && approverEmails.has(norm)) out.add(r.user_id);
   }
   return Array.from(out);
 }
@@ -1035,7 +1006,7 @@ export async function approveProposal(input: {
   if (!(await isProposalApprover(input.actor_user_id))) {
     return {
       ok: false,
-      error: "Only an approver (Brendan, Stephanie, or an admin) can approve a proposal.",
+      error: "Only a designated approver can approve a proposal. Ask an admin to flag you as an approver in Settings → Access.",
     };
   }
   const proposal = await getProposal(input.proposal_id);
@@ -1108,7 +1079,7 @@ export async function requestProposalChanges(input: {
   if (!(await isProposalApprover(input.actor_user_id))) {
     return {
       ok: false,
-      error: "Only an approver can request changes.",
+      error: "Only a designated approver can request changes.",
     };
   }
   const note = (input.note ?? "").trim();
