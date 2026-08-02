@@ -932,8 +932,12 @@ function LiRow({
       </Text>
       <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
       <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
-      <Text style={[styles.liCell, styles.liCellPrice]}>{formatDollars(it.unit_price_cents)}</Text>
-      <Text style={[styles.liCell, styles.liCellLine]}>{formatDollars(lineTotalCents(it))}</Text>
+      {/* R1a: hide this line's price when show_price is explicitly false. The
+          row still counts toward the total (subtotals use lineTotalCents for
+          every row). `=== false` (not `!show_price`) so undefined/true → show,
+          which is correct for the deploy window before migration 100. */}
+      <Text style={[styles.liCell, styles.liCellPrice]}>{it.show_price === false ? "—" : formatDollars(it.unit_price_cents)}</Text>
+      <Text style={[styles.liCell, styles.liCellLine]}>{it.show_price === false ? "—" : formatDollars(lineTotalCents(it))}</Text>
     </View>
   );
 }
@@ -1126,11 +1130,16 @@ function LaborSection({ items }: { items: CommercialProposalLineItem[] }) {
     const subtotal = Math.round(Number(it.quantity) * it.unit_price_cents);
     const hrs = Number(it.quantity);
     const rate = it.unit_price_cents / 100;
+    // R1a: a hidden-price labor row keeps its description + hours but drops the
+    // "@ rate = subtotal" tail so its rate doesn't leak on the client PDF.
+    const priceTail = it.show_price === false
+      ? ""
+      : ` @ $${rate.toFixed(2)}/hr = $${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     return (
       <View key={it.id} style={styles.bulletSubRow}>
         <View style={styles.bulletSubDot} />
         <Text style={styles.bulletSubBody}>
-          {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"} @ ${rate.toFixed(2)}/hr = ${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"}{priceTail}
         </Text>
       </View>
     );
@@ -1248,6 +1257,13 @@ export function ProposalPdfDocument({
         />
         <SubmittedToBlock h={proposal.header_json} />
         <ProjectBlock h={proposal.header_json} />
+        {/* R1c: Bid Set date — customer-facing, suppressed when unset. */}
+        {proposal.bid_set_date && (
+          <Text style={{ fontSize: 10, color: CHARCOAL, marginTop: 4 }}>
+            <Text style={{ fontFamily: "Times-Bold" }}>Bid Set Date: </Text>
+            {formatDateLong(proposal.bid_set_date)}
+          </Text>
+        )}
         <Text style={styles.intro}>{intro}</Text>
 
         {showLineTable ? (

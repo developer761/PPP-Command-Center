@@ -197,6 +197,12 @@ async function saveProposalAction(formData: FormData) {
   const altNotes = String(formData.get("alternate_notes") ?? "").trim();
   const bidNotes = String(formData.get("bid_notes") ?? "").trim();
   const pdfShowPrices = formData.get("pdf_show_line_prices") === "on";
+  // R1c: Bid Set date (empty → null). R1b: final price override — blank field
+  // means "clear back to the line-item sum" (null), NOT $0; a typed value
+  // overrides the total (dollarsInputToCents clamps ≥0).
+  const bidSetDate = String(formData.get("bid_set_date") ?? "").trim() || null;
+  const finalPriceRaw = String(formData.get("final_price_override") ?? "").trim();
+  const finalPriceOverride = finalPriceRaw === "" ? null : dollarsInputToCents(finalPriceRaw);
 
   let exclusionIds: string[] = existing.exclusion_ids;
   const rawIds = String(formData.get("exclusion_ids") ?? "").trim();
@@ -258,6 +264,8 @@ async function saveProposalAction(formData: FormData) {
     exclusion_ids: exclusionIds,
     custom_exclusions: customExclusions,
     pdf_show_line_prices: pdfShowPrices,
+    final_price_override_cents: finalPriceOverride,
+    bid_set_date: bidSetDate,
     updated_by_user_id: userId,
   });
   if (!result.ok) {
@@ -381,6 +389,8 @@ async function addLineItemAction(formData: FormData) {
       is_alternate,
       phase,
       is_labor: is_labor && !is_alternate,
+      // R1a: checkbox defaults checked; unchecked → absent → false (hide price).
+      show_price: formData.get("show_price") === "on",
     },
     userId
   );
@@ -453,6 +463,7 @@ async function updateLineItemAction(formData: FormData) {
       unit: String(formData.get("unit") ?? "each"),
       unit_price_cents: dollarsInputToCents(String(formData.get("unit_price") ?? "0")),
       is_alternate: formData.get("is_alternate") === "on",
+      show_price: formData.get("show_price") === "on",
       phase,
     },
     userId
@@ -723,6 +734,11 @@ export default async function ProposalEditorPage({
   const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
+  // R1b: raw non-alternate line-item sum — what the total is when there's no
+  // final-price override (shown as the "leave blank to use" hint).
+  const lineItemSumCents = lineItems
+    .filter((i) => !i.is_alternate)
+    .reduce((a, i) => a + Math.round(Number(i.quantity) * i.unit_price_cents), 0);
   // 2026-07-21 audit: the PDF has a real body (and a non-zero TOTAL) when
   // there are inclusions OR labor rows — a labor-only bid is valid. Gate
   // Preview/Send on this, not on inclusions alone.
@@ -1107,6 +1123,10 @@ export default async function ProposalEditorPage({
                   <span className={LABEL_CLS}>Proposal date</span>
                   <input type="date" name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} className={INPUT_CLS} />
                 </label>
+                <label className="block">
+                  <span className={LABEL_CLS}>Bid Set date <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
+                  <input type="date" name="bid_set_date" defaultValue={proposal.bid_set_date ?? ""} className={INPUT_CLS} />
+                </label>
                 <label className="block sm:col-span-2">
                   <span className={LABEL_CLS}>GC address (one line per row)</span>
                   <textarea name="gc_address_lines" defaultValue={gcAddrText} rows={2} className={TEXTAREA_CLS} placeholder="143 West 29th Street, Fl 12&#10;New York, NY 10001" />
@@ -1278,6 +1298,25 @@ export default async function ProposalEditorPage({
               Show per-line prices on the customer PDF (Tomco default hides them — customer sees only the TOTAL)
             </span>
           </label>
+          {/* R1b: adjustable final price. Blank = the line-item sum; a value here
+              becomes the proposal TOTAL AND the contract number (AIA + invoicing). */}
+          <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
+            <span className="text-[12.5px] font-semibold text-ppp-charcoal-700">Final price override <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
+            <div className="flex items-center gap-1.5 mt-1 max-w-[240px]">
+              <span className="text-ppp-charcoal-500 text-[13px]">$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                name="final_price_override"
+                defaultValue={proposal.final_price_override_cents != null ? centsToDollarInput(proposal.final_price_override_cents) : ""}
+                placeholder="Auto (from line items)"
+                className={`${INPUT_CLS} tabular-nums`}
+              />
+            </div>
+            <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+              Leave blank to use the line-item total ({formatDollars(lineItemSumCents)}). A value here becomes the TOTAL the customer sees — and the contract number used for AIA billing + invoicing.
+            </p>
+          </div>
         </EditorSection>
 
         {/* Karan 2026-07-20: killed the manual "Save proposal" button.
@@ -1512,6 +1551,19 @@ function LineItemsTable({
               </label>
             </div>
 
+            {/* R1a: per-line price visibility. Alternates always print their price
+                (a priceless alternate is meaningless to a GC) — preserve their
+                value via a hidden field so a save doesn't flip them off. Only
+                affects the client PDF when "Show per-line prices" is on. */}
+            {r.is_alternate ? (
+              <input type="hidden" name="show_price" value={r.show_price === false ? "" : "on"} />
+            ) : (
+              <label className="inline-flex items-center gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none">
+                <input type="checkbox" name="show_price" defaultChecked={r.show_price !== false} className="w-4 h-4 accent-cc-brand-600" />
+                Show this line&rsquo;s price on the client PDF
+              </label>
+            )}
+
             <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-ppp-charcoal-100">
               <span className="text-[12.5px] text-ppp-charcoal-600 tabular-nums pt-2">
                 Row total{" "}
@@ -1645,6 +1697,16 @@ function AddLineItemForm({
           <input type="text" id={`${prefix}-price`} inputMode="decimal" name="unit_price" defaultValue="0.00" className={`${INPUT_CLS} tabular-nums`} />
         </label>
       </div>
+
+      {/* R1a: alternates always print their price; inclusions/labor can hide it. */}
+      {isAlternate ? (
+        <input type="hidden" name="show_price" value="on" />
+      ) : (
+        <label className="inline-flex items-center gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none">
+          <input type="checkbox" name="show_price" defaultChecked className="w-4 h-4 accent-cc-brand-600" />
+          Show this line&rsquo;s price on the client PDF
+        </label>
+      )}
 
       <div className="flex justify-end">
         <button type="submit" className="inline-flex items-center gap-1.5 px-4 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 touch-manipulation">

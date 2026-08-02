@@ -20,6 +20,7 @@ import {
   getProposal,
   listLineItemsForProposal,
   createLineItem,
+  updateProposal,
 } from "@/lib/commercial/proposals/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
@@ -58,6 +59,9 @@ export default async function CreateProposalRoute({
   let exclusionIds = ctx.standardExclusionIds;
   let customExclusions: string[] = [];
   let pdfShowLinePrices = false;
+  // R1b/R1c: carry the pricing decisions forward on a revision bump.
+  let bidSetDate: string | null = null;
+  let finalPriceOverride: number | null = null;
 
   if (sp.bump && UUID_RE.test(sp.bump)) {
     const parent = await getProposal(sp.bump);
@@ -69,6 +73,8 @@ export default async function CreateProposalRoute({
       exclusionIds = parent.exclusion_ids;
       customExclusions = parent.custom_exclusions ?? [];
       pdfShowLinePrices = parent.pdf_show_line_prices;
+      bidSetDate = parent.bid_set_date;
+      finalPriceOverride = parent.final_price_override_cents;
     }
   }
 
@@ -117,12 +123,26 @@ export default async function CreateProposalRoute({
           is_labor: item.is_labor,
           phase: item.phase,
           position: item.position,
+          // R1a: carry per-line price visibility forward too (else it resets to
+          // shown on every revision).
+          show_price: item.show_price,
         },
         user.id
       );
       if (!copyResult.ok) {
         failed.push(item.description);
       }
+    }
+    // R1b/R1c: carry the final-price override + bid-set date forward. Done AFTER
+    // the line copy so recomputeProposalTotal (inside updateProposal) pins
+    // total_cents to the override once the line items exist.
+    if (bidSetDate != null || finalPriceOverride != null) {
+      await updateProposal({
+        id: result.proposal.id,
+        bid_set_date: bidSetDate,
+        final_price_override_cents: finalPriceOverride,
+        updated_by_user_id: user.id,
+      });
     }
     if (failed.length > 0) {
       // Land on the editor with a warning + preserve query state so
