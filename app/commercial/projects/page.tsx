@@ -135,7 +135,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 20h20 M4 20V8l8-5 8 5v12 M9 20v-6h6v6" /></svg>
           </span>
           <p className="text-sm font-semibold text-ppp-charcoal">{search ? "No projects match your search" : "No active projects yet"}</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">A deal becomes a project once it&rsquo;s Won. Change orders + AIA billing live on each project here.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">An opportunity becomes a project once it&rsquo;s Won. Change orders + AIA billing live on each project here.</p>
         </div>
       ) : (
         <ul className="space-y-2.5">

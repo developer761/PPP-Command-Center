@@ -35,7 +35,7 @@ export default async function CostsIndexPage() {
       subtitle="What each job actually costs — materials, labor, subs — vs its contract, so you see the margin."
       icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}
       projects={projects}
-      emptyHint="Job costs live on a project (a Won deal). Win a deal and log its costs to see margin here."
+      emptyHint="Job costs live on a project (a Won opportunity). Win an opportunity and log its costs to see margin here."
       status={(p): { label: string; tone: ToolStatusTone } => {
         if (p.costsCents === 0) return { label: "No costs", tone: "neutral" };
         if (p.grossMarginPct == null) return { label: `${formatCentsCompact(p.costsCents)} cost`, tone: "neutral" };

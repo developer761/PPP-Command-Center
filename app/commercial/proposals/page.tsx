@@ -312,7 +312,7 @@ export default async function ProposalsIndexPage({
       account_id: o.account_id,
       display_name:
         derivedOppName(o, accountsById.get(o.account_id)?.company_name ?? null) ||
-        "(untitled deal)",
+        "(untitled opportunity)",
       status: o.status,
     }));
 
@@ -567,7 +567,7 @@ function ProposalCard({
     row.opportunity?.title?.trim() ||
     row.opportunity?.client_name?.trim() ||
     row.header_json?.project_name?.trim() ||
-    "(untitled deal)";
+    "(untitled opportunity)";
   const gc =
     row.header_json?.gc_company?.trim() ||
     row.opportunity?.account?.company_name ||
@@ -894,7 +894,7 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
       current.opportunity?.title?.trim() ||
       current.opportunity?.client_name?.trim() ||
       current.header_json?.project_name?.trim() ||
-      "(untitled deal)";
+      "(untitled opportunity)";
     let acct = byAccount.get(acctId);
     if (!acct) {
       acct = {
@@ -1306,7 +1306,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                   dealBucket.deal.title?.trim() ||
                   dealBucket.deal.client_name?.trim() ||
                   dealBucket.deal.property_street?.trim() ||
-                  "(untitled deal)";
+                  "(untitled opportunity)";
                 const dealHue = hueForAccountId(dealBucket.deal.id);
                 const dealBorderStyle = {
                   borderLeftColor: `hsl(${dealHue}, var(--cust-border-sat, 55%), var(--cust-border-l, 55%))`,

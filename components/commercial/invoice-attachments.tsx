@@ -95,7 +95,7 @@ export function InvoiceAttachments({
             }}
             className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-ppp-blue-600 file:text-white hover:file:bg-ppp-blue-700 file:min-h-[44px] file:touch-manipulation cursor-pointer"
           />
-          <p className="text-[11px] text-ppp-charcoal-500 mt-1.5">PDF or image. Attachments also land in this deal&rsquo;s Documents.</p>
+          <p className="text-[11px] text-ppp-charcoal-500 mt-1.5">PDF or image. Attachments also land in this opportunity&rsquo;s Documents.</p>
         </>
       )}
       {busy && <p className="text-[11px] text-ppp-charcoal-400 mt-2">Uploading…</p>}

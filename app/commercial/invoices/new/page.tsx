@@ -5,7 +5,7 @@
  * Click a deal on the Invoices list → land HERE: the deal's own page with the
  * same header shape as the production tools (deal · OPP · status), a connected
  * Money summary (Contract → Invoiced → Collected → Balance → Margin), the deal's
- * existing invoices, and a "New invoice for this deal" builder inline (flat OR
+ * existing invoices, and a "New invoice for this opportunity" builder inline (flat OR
  * milestones — the SAME builder the deal tab uses). Create stays on this page.
  * No teleport to the account, no bare form.
  */
@@ -39,11 +39,11 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
   const sp = await searchParams;
   const opp_id = pickFirst(sp.opp);
   if (!opp_id || !UUID_RE.test(opp_id)) {
-    redirect("/commercial/invoices?status_error=" + encodeURIComponent("Pick a deal first"));
+    redirect("/commercial/invoices?status_error=" + encodeURIComponent("Pick an opportunity first"));
   }
   const opp = await getCommercialOpportunity(opp_id!);
   if (!opp) {
-    redirect("/commercial/invoices?status_error=" + encodeURIComponent("Deal not found"));
+    redirect("/commercial/invoices?status_error=" + encodeURIComponent("Opportunity not found"));
   }
   const billable =
     isWon(opp!) ||
@@ -52,7 +52,7 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
     opp!.status === "billing" ||
     opp!.status === "post_sale_closed";
   if (!billable) {
-    redirect("/commercial/invoices?error=" + encodeURIComponent("Only Won deals can be invoiced"));
+    redirect("/commercial/invoices?error=" + encodeURIComponent("Only Won opportunities can be invoiced"));
   }
 
   const account = await getCommercialAccount(opp!.account_id);
@@ -118,7 +118,7 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
         <div className="rounded-lg px-4 py-3 text-sm bg-rose-50 border border-rose-200 text-rose-700">{sp.error}</div>
       ) : null}
 
-      {/* New invoice for this deal — the shared builder, inline */}
+      {/* New invoice for this opportunity — the shared builder, inline */}
       <DealNewInvoiceForm
         accountId={opp!.account_id}
         oppId={opp!.id}
@@ -135,7 +135,7 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
           <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{shown.length}</span>
         </div>
         {shown.length === 0 ? (
-          <p className="px-4 py-4 text-[12px] text-ppp-charcoal-500">No invoices yet — use “New invoice for this deal” above.</p>
+          <p className="px-4 py-4 text-[12px] text-ppp-charcoal-500">No invoices yet — use “New invoice for this opportunity” above.</p>
         ) : (
           <ul className="divide-y divide-ppp-charcoal-100">
             {shown.map((inv) => {

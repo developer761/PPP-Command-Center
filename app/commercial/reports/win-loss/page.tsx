@@ -259,8 +259,8 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
         <span
           tabIndex={0}
           role="img"
-          aria-label="These numbers come from completed Win/Loss debriefs in the selected period — not raw deal status. A deal that was won or lost but never debriefed won't appear here; complete its debrief and it will."
-          title="These numbers come from completed Win/Loss debriefs in the selected period — not raw deal status. A deal that was won or lost but never debriefed won't appear here; complete its debrief and it will."
+          aria-label="These numbers come from completed Win/Loss debriefs in the selected period — not raw opportunity status. An opportunity that was won or lost but never debriefed won't appear here; complete its debrief and it will."
+          title="These numbers come from completed Win/Loss debriefs in the selected period — not raw opportunity status. An opportunity that was won or lost but never debriefed won't appear here; complete its debrief and it will."
           className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-ppp-charcoal-300 text-ppp-charcoal-500 text-[9px] font-bold cursor-help focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
         >
           ?
@@ -291,19 +291,19 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           tone="emerald"
           label="Won $"
           value={formatCents(summary.wonValueCents)}
-          sub={summary.wonCount === 1 ? "1 deal" : `${summary.wonCount} deals`}
+          sub={summary.wonCount === 1 ? "1 opportunity" : `${summary.wonCount} opportunities`}
         />
         <KpiTile
           tone="rose"
           label="Lost $"
           value={formatCents(summary.lostValueCents)}
-          sub={summary.lostCount === 1 ? "1 deal" : `${summary.lostCount} deals`}
+          sub={summary.lostCount === 1 ? "1 opportunity" : `${summary.lostCount} opportunities`}
         />
         <KpiTile
           tone="neutral"
           label="No-bid"
           value={String(summary.noBidCount)}
-          sub={summary.noBidCount === 1 ? "deal we passed on" : "deals we passed on"}
+          sub={summary.noBidCount === 1 ? "opportunity we passed on" : "opportunities we passed on"}
         />
       </section>
 

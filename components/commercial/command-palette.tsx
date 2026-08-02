@@ -188,7 +188,7 @@ export function CommandPalette() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Jump to an account, deal, or invoice…"
+            placeholder="Jump to an account, opportunity, or invoice…"
             className="flex-1 outline-none text-base text-ppp-charcoal placeholder:text-ppp-charcoal-400 bg-transparent"
             autoComplete="off"
             spellCheck={false}

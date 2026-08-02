@@ -584,11 +584,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const showDeleteAll = !!(scopedIsOrphan || scopedAccountIsDeleted) && scopedInvoiceCount > 0;
   // Copy varies by scope + deletion state.
   const focusTitle = scopedIsOrphan
-    ? "Deleted deal — invoices still on file"
+    ? "Deleted opportunity — invoices still on file"
     : scopedAccountIsDeleted
     ? "Deleted account — invoices still on file"
     : opportunityIdFilter
-    ? "Focused on a single deal"
+    ? "Focused on a single opportunity"
     : accountFilter
     ? `Focused on ${accountFilter.company_name}`
     : "Focused view";
@@ -718,7 +718,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             {invoiceErrorsFlash > 0 && (
               <> {invoiceErrorsFlash} row{invoiceErrorsFlash === 1 ? "" : "s"} skipped due to input errors.</>
             )}
-            {" Shown grouped by deal below."}
+            {" Shown grouped by opportunity below."}
           </span>
           <Link
             href="/commercial/invoices"
@@ -891,7 +891,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                           <div className="flex items-center gap-2 px-2 pt-1 pb-1.5">
                             <AccountAvatar accountId={accountId} name={acct?.company_name ?? "—"} size="xs" />
                             <span className="text-[12.5px] font-bold text-ppp-charcoal truncate">{acct?.company_name ?? "—"}</span>
-                            <span className="ml-auto shrink-0 text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums">{deals.length} deal{deals.length === 1 ? "" : "s"}</span>
+                            <span className="ml-auto shrink-0 text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums">{deals.length} opportunit{deals.length === 1 ? "y" : "ies"}</span>
                           </div>
                           <div className="space-y-0.5">
                             {deals.map((o) => {
@@ -1396,7 +1396,7 @@ function GroupedByOpp({
                           <path d="M12 9v4M12 17h.01" />
                           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                         </svg>
-                        <span className="italic">Deleted deal — invoices still on file</span>
+                        <span className="italic">Deleted opportunity — invoices still on file</span>
                       </span>
                     )}
                   </span>
@@ -1480,7 +1480,7 @@ function GroupedByOpp({
                   <Link
                     href={`/commercial/invoices?opportunity_id=${oppId}`}
                     className="group/orphanHead block px-4 sm:px-5 py-3.5 hover:bg-amber-50 focus:outline-none focus:bg-amber-50 transition-colors touch-manipulation"
-                    title="Focus just this deleted deal's invoices"
+                    title="Focus just this deleted opportunity's invoices"
                   >
                     {headerBody}
                   </Link>
@@ -1892,7 +1892,7 @@ function FullDetailByOpp({
                           <path d="M12 9v4M12 17h.01" />
                           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                         </svg>
-                        <span className="text-ppp-charcoal-500 italic">Deleted deal — invoices still on file</span>
+                        <span className="text-ppp-charcoal-500 italic">Deleted opportunity — invoices still on file</span>
                       </span>
                     )}
                     {groupInvoices.length === 0 ? (
@@ -2203,7 +2203,7 @@ function FullDetailByOpp({
               <Link
                 href={`/commercial/invoices/new?opp=${oppId}`}
                 className="flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50/40 min-h-[44px] border-t border-ppp-charcoal-100 touch-manipulation"
-                title="New invoice for this deal — flat or broken into milestones"
+                title="New invoice for this opportunity — flat or broken into milestones"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 5v14 M5 12h14" />

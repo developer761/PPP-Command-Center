@@ -183,7 +183,7 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       // update or just the proposal?").
       if (targetStatus === "won") {
         flashSuccess(
-          "Marked won. Parent deal flipped to Pre-Sale Closed · Won."
+          "Marked won. Parent opportunity flipped to Pre-Sale Closed · Won."
         );
       } else if (targetStatus === "lost") {
         // Stash debrief link in state so the toast can render as a
@@ -191,14 +191,14 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         // MUST set AFTER flashSuccess: flashSuccess() clears lostDebriefUrl
         // on every new toast, so setting it first would be wiped in the same
         // render tick and the debrief link would never appear (2026-07-28 audit).
-        flashSuccess("Marked lost. Parent deal flipped to Pre-Sale Closed · Lost.");
+        flashSuccess("Marked lost. Parent opportunity flipped to Pre-Sale Closed · Lost.");
         setLostDebriefUrl(json.debrief_url ?? null);
       } else if (targetStatus === "sent" && json.reopened) {
         // Reopen path (Won/Lost → Sent) — has its own toast because
         // the parent-deal cascade may or may not have fired.
         flashSuccess(
           json.deal_reopened
-            ? "Reopened. Proposal back to Sent, parent deal back to Proposal · Sent."
+            ? "Reopened. Proposal back to Sent, parent opportunity back to Proposal · Sent."
             : `Reopened proposal only. Parent deal already moved to ${json.deal_current_status ?? "a later stage"}, left as-is.`
         );
       } else {
@@ -400,7 +400,7 @@ export function ProposalDnDCard({
   // Karan as "the kanban is glitching out." Now: pick up any card,
   // drop it anywhere.
   const draggable = true;
-  const title = "Drag onto any column to move — parent deal follows automatically.";
+  const title = "Drag onto any column to move — parent opportunity follows automatically.";
   return (
     <div
       draggable={draggable}

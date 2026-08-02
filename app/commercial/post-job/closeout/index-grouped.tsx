@@ -34,7 +34,7 @@ export async function CloseoutGroupedIndex() {
       subtitle="The close-out package you hand the GC when a job wraps — transmittal + checklist + warranty letter."
       icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>}
       projects={projects}
-      emptyHint="A close-out package is created on a project (a Won deal). Win a deal and it'll show here."
+      emptyHint="A close-out package is created on a project (a Won opportunity). Win an opportunity and it'll show here."
       status={(p: ProjectRow): { label: string; tone: ToolStatusTone } => {
         const pkg = latestByOpp.get(p.opp.id);
         if (!pkg) return { label: "Not started", tone: "neutral" };

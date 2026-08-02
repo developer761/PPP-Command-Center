@@ -543,7 +543,7 @@ async function bulkDeleteInvoicesFromDetailAction(formData: FormData) {
   if (scope === "opp") {
     const { data: row } = await sb.from("commercial_opportunities").select("id, deleted_at").eq("id", parent_id).maybeSingle();
     if (!row || !(row as { deleted_at: string | null }).deleted_at) {
-      redirect(`${back_href}${back_href.includes("?") ? "&" : "?"}error=${encodeURIComponent("Bulk delete only allowed on deleted deals.")}`);
+      redirect(`${back_href}${back_href.includes("?") ? "&" : "?"}error=${encodeURIComponent("Bulk delete only allowed on deleted opportunities.")}`);
     }
   } else {
     const { data: row } = await sb.from("commercial_accounts").select("id, deleted_at").eq("id", parent_id).maybeSingle();
@@ -782,9 +782,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <div className="min-w-0 flex-1">
             <div className="text-[12.5px] font-bold text-amber-900">
               {!opp && !account
-                ? "Parent deal and account were deleted"
+                ? "Parent opportunity and account were deleted"
                 : !opp
-                ? "Parent deal was deleted"
+                ? "Parent opportunity was deleted"
                 : "Parent account was deleted"}
             </div>
             <div className="text-[11.5px] text-amber-800 mt-0.5 leading-snug">
@@ -1652,7 +1652,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </>
         ) : (
           <>
-            <p className="text-[12px] text-ppp-charcoal-500 mb-3">The <strong>final</strong> unconditional waiver — upload it once the invoice is paid in full. Partial waivers for each progress payment attach under <a href="#payments" className="text-ppp-blue-700 underline underline-offset-2">Payments</a> above. It also lands in this deal&rsquo;s Documents.</p>
+            <p className="text-[12px] text-ppp-charcoal-500 mb-3">The <strong>final</strong> unconditional waiver — upload it once the invoice is paid in full. Partial waivers for each progress payment attach under <a href="#payments" className="text-ppp-blue-700 underline underline-offset-2">Payments</a> above. It also lands in this opportunity&rsquo;s Documents.</p>
             <LienWaiverUpload
               invoiceId={invoice.id}
               hasWaiver={!!lienWaiver}
@@ -1720,7 +1720,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-blue-500" />
           Notes
         </h2>
-        <p className="text-[12px] text-ppp-charcoal-500 mb-3">Internal only — never shown to the GC. Saved to this invoice (which lives under the deal).</p>
+        <p className="text-[12px] text-ppp-charcoal-500 mb-3">Internal only — never shown to the GC. Saved to this invoice (which lives under the opportunity).</p>
         <form action={saveInvoiceNotesAction} className="space-y-2">
           <input type="hidden" name="invoice_id" value={invoice.id} />
           <input type="hidden" name="from" value={fromRaw ?? ""} />

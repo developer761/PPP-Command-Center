@@ -188,7 +188,7 @@ export function StatusSubStatusPicker({
               ? "Substantial Completion = walkthrough done. Completed and Invoiced = final invoice out."
               : status === "post_sale_closed"
               ? "Completed / Close-Out Docs = O&M / warranty / attic stock pending. Closed = fully done."
-              : "Where this deal sits inside the lane."}
+              : "Where this opportunity sits inside the lane."}
           </p>
         </label>
       </div>

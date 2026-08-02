@@ -534,7 +534,7 @@ async function cloneOpportunityAction(formData: FormData) {
     .is("deleted_at", null)
     .maybeSingle();
   if (!source) {
-    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent("Source deal not found.")}`);
+    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent("Source opportunity not found.")}`);
   }
   const src = source as CommercialOpportunity;
 
@@ -1450,10 +1450,10 @@ export default async function OpportunityDetailPage({
           </svg>
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-bold text-amber-900">
-              This deal was deleted{opp.deleted_at ? ` on ${fmtEtDate(opp.deleted_at) ?? "an earlier date"}` : ""}
+              This opportunity was deleted{opp.deleted_at ? ` on ${fmtEtDate(opp.deleted_at) ?? "an earlier date"}` : ""}
             </div>
             <div className="text-[12px] text-amber-800 mt-0.5 leading-snug">
-              You&apos;re seeing this drill-in so you can manage the invoices that remain on file. Record payments, void, or delete individual invoices below. The rest of the deal&apos;s editing surfaces are locked.
+              You&apos;re seeing this drill-in so you can manage the invoices that remain on file. Record payments, void, or delete individual invoices below. The rest of the opportunity&apos;s editing surfaces are locked.
             </div>
           </div>
         </div>
@@ -1468,7 +1468,7 @@ export default async function OpportunityDetailPage({
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>
-            Cloned from another deal. Edit the title + bid range now, then
+            Cloned from another opportunity. Edit the title + bid range now, then
             update the rest as the bid progresses.
           </span>
         </div>
@@ -1478,7 +1478,7 @@ export default async function OpportunityDetailPage({
           bar below) when a debrief is pending — a full-width banner
           repeating the same message is redundant noise. The tab dot +
           the "Won"/"Lost" status pill in the header are enough. Same
-          reasoning for the previous "This deal is Won" blue banner —
+          reasoning for the previous "This opportunity is Won" blue banner —
           the Invoices tab in the tab bar + the "Won" status pill
           already signal the state. */}
       <header>
@@ -1612,12 +1612,12 @@ export default async function OpportunityDetailPage({
               <Link
                 href={`/commercial/accounts/${account.id}?tab=projects&project=${opp.id}&dt=invoices#deal-invoices`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
-                title={`Open ${account.company_name}'s invoicing surface with a fresh draft ready for this deal.`}
+                title={`Open ${account.company_name}'s invoicing surface with a fresh draft ready for this opportunity.`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                 </svg>
-                Bill this deal
+                Bill this opportunity
               </Link>
             )}
             {/* Reopen — only surfaces for closed deals (won/lost/no_bid).
@@ -1651,7 +1651,7 @@ export default async function OpportunityDetailPage({
         <KpiTile
           label="Bid"
           value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
-          tooltip="Low–high range for this deal. Pulled from the bid range fields you set on the new-deal or edit form."
+          tooltip="Low–high range for this opportunity. Pulled from the bid range fields you set on the new-opportunity or edit form."
         />
         <KpiTile
           label="Probability"
@@ -2000,7 +2000,7 @@ async function OpportunityInvoicesPanel({
           <div>
             <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Invoices</h2>
             <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
-              Progress billing — bill this deal in as many installments as you need.
+              Progress billing — bill this opportunity in as many installments as you need.
             </p>
           </div>
         </div>
@@ -2022,7 +2022,7 @@ async function OpportunityInvoicesPanel({
           <div className="text-[13px] font-semibold text-ppp-charcoal">No invoices yet</div>
           <p className="mt-1 text-[12px] text-ppp-charcoal-500">
             {isDealDeleted
-              ? "This deleted deal has no invoices on file. Nothing to manage here."
+              ? "This deleted opportunity has no invoices on file. Nothing to manage here."
               : "Bill this Won opportunity when you're ready to collect. Multiple invoices are allowed for progress billing."}
           </p>
           {!isDealDeleted && (
@@ -2038,7 +2038,7 @@ async function OpportunityInvoicesPanel({
         <>
           {/* Roll-up strip — 3 tiles by default, 4 when the opp has a
               bid range (so % billed vs contract shows). Alex-love feature
-              per audit: at-a-glance "am I under/over billed for this deal?" */}
+              per audit: at-a-glance "am I under/over billed for this opportunity?" */}
           <div className={`grid ${pctBilled !== null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2 mb-3`}>
             <MiniStat label="Invoiced" value={formatCentsCompact(totalInvoicedCents)} tone="neutral" />
             <MiniStat label="Paid" value={formatCentsCompact(totalPaidCents)} tone="emerald" />
@@ -2659,7 +2659,7 @@ async function InfoTab({
           className="lg:col-span-2"
         />
       )}
-      {/* Karan 2026-07-07: "This deal is Won — ready to bill" banner
+      {/* Karan 2026-07-07: "This opportunity is Won — ready to bill" banner
           deleted. The Won status pill in the page header + the
           Invoices tab in the tab bar already signal what needs doing.
           A banner repeating the same message is noise. */}
@@ -2679,7 +2679,7 @@ async function InfoTab({
         <Field
           label="Source"
           value={opp.source ? opportunitySourceLabel(opp.source) : "—"}
-          tooltip="How this deal came in — phone, email, web form, plans room, repeat customer, referral, or other. Set once at create time."
+          tooltip="How this opportunity came in — phone, email, web form, plans room, repeat customer, referral, or other. Set once at create time."
         />
         <Field
           label="Probability"
@@ -2716,12 +2716,12 @@ async function InfoTab({
         <Field
           label="Due date"
           value={opp.proposal_due_at?.slice(0, 10) ?? "—"}
-          tooltip="When the customer is expecting our proposal. Drives Hot-deals + the Decision countdown on the KPI strip."
+          tooltip="When the customer is expecting our proposal. Drives Hot opportunities + the Decision countdown on the KPI strip."
         />
         <Field
           label="Close date"
           value={opp.decided_at?.slice(0, 10) ?? "—"}
-          tooltip="Date the deal closed — set automatically when status flips to Won, Lost, or No-bid."
+          tooltip="Date the opportunity closed — set automatically when status flips to Won, Lost, or No-bid."
         />
         <Field
           label="Time to proposal"

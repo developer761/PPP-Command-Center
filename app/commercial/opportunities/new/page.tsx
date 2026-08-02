@@ -12,7 +12,7 @@
  *     `/commercial/accounts/<uuid>?tab=opportunities&new_deal=1`
  *     which auto-opens the collapsible.
  *   - No account → redirects to `/commercial/accounts` where the user
- *     picks a customer first, then the "+ New deal" collapsible on the
+ *     picks a customer first, then the "+ New opportunity" collapsible on the
  *     Pipeline tab.
  *
  * No form, no jump — you land where the deal actually lives, with the
@@ -36,11 +36,11 @@ export default async function NewOpportunityRedirect({ searchParams }: { searchP
     redirect(`/commercial/accounts/${account}?${q.toString()}#new-deal`);
   }
   // No account context → send them to the accounts list. Users pick
-  // the customer first, then hit the inline "+ New deal" collapsible
+  // the customer first, then hit the inline "+ New opportunity" collapsible
   // on the Pipeline sub-tab. The status_error param renders as a
   // rose banner on the accounts list.
   redirect(
     "/commercial/accounts?status_error=" +
-      encodeURIComponent("Pick the customer first — deals live under their account.")
+      encodeURIComponent("Pick the customer first — opportunities live under their account.")
   );
 }

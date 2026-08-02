@@ -117,9 +117,9 @@ export default async function ArchivedDealsPage({
 
   const errorLabel =
     errorRaw === "none_selected"
-      ? "Select at least one deal to unarchive."
+      ? "Select at least one opportunity to unarchive."
       : errorRaw === "invalid_id"
-      ? "That deal id was malformed. Refresh and try again."
+      ? "That opportunity id was malformed. Refresh and try again."
       : errorRaw ?? null;
 
   return (

@@ -1039,7 +1039,7 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
  * A single project's HOME, folded under the account (?tab=projects&project=…).
  * Read-only overview — status + contract KPIs — plus one card per production
  * tool (Change Orders / AIA Billing / Submittals / Closeout). Editing the
- * deal's details is an explicit "Edit deal details" button, so navigating here
+ * deal's details is an explicit "Edit opportunity details" button, so navigating here
  * never auto-pops the edit form (that was the 2026-07-29 bug).
  */
 async function AccountProjectHome({ p, accountId, dealTab = "overview", projectTool = "change-orders", sp }: { p: ProjectRow; accountId: string; dealTab?: string; projectTool?: string; sp?: SPShape }) {
@@ -1142,7 +1142,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         </Link>
         <Link href={`${base}?tab=opportunities&edit=${p.opp.id}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[40px]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
-          Edit deal details
+          Edit opportunity details
         </Link>
       </div>
 
@@ -1633,7 +1633,7 @@ async function ProjectToolDocuments({ dealId, category, label }: { dealId: strin
       <div className="p-4 space-y-3">
         <CommercialFilesUploadForm parentType="opportunity" parentId={dealId} defaultCategory={category} />
         {docs.length === 0 ? (
-          <p className="text-[11.5px] text-ppp-charcoal-500">No {label.toLowerCase()} documents yet — upload signed copies, PDFs + backup here. They also show on the deal&rsquo;s Documents tab.</p>
+          <p className="text-[11.5px] text-ppp-charcoal-500">No {label.toLowerCase()} documents yet — upload signed copies, PDFs + backup here. They also show on the opportunity&rsquo;s Documents tab.</p>
         ) : (
           <ul className="divide-y divide-ppp-charcoal-50">
             {docs.map((d) => (
@@ -1806,7 +1806,7 @@ export async function createDealInvoiceAction(formData: FormData) {
   redirect(`${back}&created=1`);
 }
 
-/** "New invoice for this deal" — flat OR milestone-broken, via the client
+/** "New invoice for this opportunity" — flat OR milestone-broken, via the client
  *  builder. Invoices are created under the project (Phase 1, Katie). */
 export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals, invoices, returnTo }: { accountId: string; oppId: string; propertyZip: string | null; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[]; invoices: CommercialInvoice[]; returnTo?: string }) {
   // Pre-fill the tax rate from the deal's property ZIP (same engine as the
@@ -2396,7 +2396,7 @@ async function quickFlipFromAccountAction(formData: FormData) {
   const ownershipCheck = await getCommercialOpportunity(opp_id);
   if (!ownershipCheck || ownershipCheck.account_id !== account_id) {
     redirect(
-      `/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent("That deal doesn't belong to this customer.")}`
+      `/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent("That opportunity doesn't belong to this customer.")}`
     );
   }
   // Lost / No-bid need loss_reason capture — bounce to detail page.
@@ -2718,7 +2718,7 @@ async function editDealFromAccountAction(formData: FormData) {
   // form-posted account_id. If not, someone posted a smuggled opp_id
   // from a different customer's page — bounce with a generic error.
   if (result.opportunity.account_id !== account_id) {
-    redirect(`/commercial/accounts?error=${encodeURIComponent("Deal moved. Refresh the page.")}`);
+    redirect(`/commercial/accounts?error=${encodeURIComponent("Opportunity moved. Refresh the page.")}`);
   }
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/opportunities");
@@ -2992,7 +2992,7 @@ function RecentActivityCard({
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ppp-charcoal">Recent activity</h2>
         <span className="text-[11px] text-ppp-charcoal-500">
-          {scope === "deal" ? "This deal" : "Across this account's deals"}
+          {scope === "deal" ? "This opportunity" : "Across this account's opportunities"}
         </span>
       </div>
       <ol className="divide-y divide-ppp-charcoal-100">
@@ -4669,8 +4669,8 @@ async function OpportunitiesTab({
             aria-pressed={includeArchived}
             title={
               includeArchived
-                ? "Currently showing archived deals — click to hide"
-                : "Archived deals are hidden by default. Click to include them in the list."
+                ? "Currently showing archived opportunities — click to hide"
+                : "Archived opportunities are hidden by default. Click to include them in the list."
             }
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -5210,7 +5210,7 @@ async function AccountProposalsTab({
     .map((o) => ({
       id: o.id,
       account_id: o.account_id,
-      display_name: derivedOppName(o, accountName) || "(untitled deal)",
+      display_name: derivedOppName(o, accountName) || "(untitled opportunity)",
       status: o.status,
     }));
 
@@ -5350,8 +5350,8 @@ async function AccountProposalsTab({
           </p>
           <p className="text-[13px] text-ppp-charcoal-500 max-w-md mx-auto">
             {pickerDeals.length > 0
-              ? "Click + Start proposal above to build the first revision on an open deal."
-              : "Add an open deal in the Pipeline tab, then start a proposal on it."}
+              ? "Click + Start proposal above to build the first revision on an open opportunity."
+              : "Add an open opportunity in the Pipeline tab, then start a proposal on it."}
           </p>
         </div>
       ) : (
@@ -5362,7 +5362,7 @@ async function AccountProposalsTab({
               bucket.deal.title?.trim() ||
               bucket.deal.client_name?.trim() ||
               bucket.deal.property_street?.trim() ||
-              "(untitled deal)";
+              "(untitled opportunity)";
             // Karan 2026-07-17: killed the deal-hue border + tinted
             // header per meeting feedback ("looks really tacky"). Clean
             // neutral card now: white bg, single subtle border, standard
@@ -5534,7 +5534,7 @@ async function AccountProposalsTab({
                               </Link>
                             )}
                             {/* Won proposal → hand off to invoicing so there's
-                                a "bill this deal" path right where the win is
+                                a "bill this opportunity" path right where the win is
                                 (audit fix — no more leaving for the Invoices
                                 tab with no link). */}
                             {r.status === "won" && (
@@ -7785,7 +7785,7 @@ async function DealEditSheet({
                 are set. ─── */}
           <SheetSection
             title="Details"
-            hint="Client name, site location, and estimator are required before this deal can move to Estimating."
+            hint="Client name, site location, and estimator are required before this opportunity can move to Estimating."
           >
             {/* Karan 2026-07-20 (was 3-col): Client + Estimator side-by-side
                 after Site location was killed as a duplicate write to

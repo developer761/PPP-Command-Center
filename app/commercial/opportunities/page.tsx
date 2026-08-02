@@ -1731,7 +1731,7 @@ function CustomerBoard({
             {rows.length} customer{rows.length === 1 ? "" : "s"} on this list
           </h2>
           <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-            Grouped by account, biggest weighted pipeline first. Click a customer to open their account, or a deal to drill in.
+            Grouped by account, biggest weighted pipeline first. Click a customer to open their account, or an opportunity to drill in.
           </p>
         </div>
       </div>
@@ -3728,7 +3728,7 @@ function CustomerQuickSheet({
           {openDeals.length > 0 && (
             <section>
               <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2">
-                Active deals ({openDeals.length})
+                Active opportunities ({openDeals.length})
               </div>
               <ul className="space-y-2">
                 {openDeals.map((d) => {

@@ -89,7 +89,7 @@ export function LienWaiverUpload({
         !hasWaiver && <p className="text-[11px] text-ppp-charcoal-400">No waiver on file.</p>
       ) : (
         <>
-          {!compact && <p className="text-[11px] text-ppp-charcoal-500 mb-2">Upload the signed waiver (PDF or image). It also lands in this deal&rsquo;s Documents.</p>}
+          {!compact && <p className="text-[11px] text-ppp-charcoal-500 mb-2">Upload the signed waiver (PDF or image). It also lands in this opportunity&rsquo;s Documents.</p>}
           <div className="flex items-center gap-2 flex-wrap">
             <input
               ref={fileRef}

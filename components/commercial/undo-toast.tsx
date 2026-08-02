@@ -35,8 +35,10 @@ const RESTORE_ROUTE_BY_KIND: Record<UndoKind, (id: string) => string> = {
   invoice: (id) => `/api/commercial/invoices/${id}/restore`,
 };
 
+// Value = the user-facing noun shown in the toast; the KEY stays "deal" to
+// match the backend `undo_kind` param + restore-route map above.
 const KIND_LABEL: Record<UndoKind, string> = {
-  deal: "deal",
+  deal: "opportunity",
   note: "note",
   invoice: "invoice",
 };

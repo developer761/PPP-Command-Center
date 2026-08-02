@@ -31,7 +31,7 @@ export default async function ChangeOrdersIndexPage() {
       subtitle="Scope added or deducted mid-job — approved change orders adjust the contract sum."
       icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" /></svg>}
       projects={projects}
-      emptyHint="Change orders live on a project (a Won deal). Win a deal and it'll show here."
+      emptyHint="Change orders live on a project (a Won opportunity). Win an opportunity and it'll show here."
       status={(p): { label: string; tone: ToolStatusTone } => {
         if (p.pendingCoCount > 0) return { label: `${p.pendingCoCount} pending`, tone: "amber" };
         if (p.netApprovedCoCents !== 0) return { label: `${p.netApprovedCoCents < 0 ? "−" : "+"}${formatCentsCompact(Math.abs(p.netApprovedCoCents))}`, tone: "emerald" };
