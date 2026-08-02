@@ -57,24 +57,23 @@
   --color-ppp-pale-green: #e9f4d4;
   --color-ppp-warm-beige: #f0e8dd;
 
-  /* ─── Commercial CC brand red ───
-     Bold, saturated red used as the CC brand color: sidebar chrome +
-     accent tint on the landing header. Warmer than Tailwind rose;
-     distinct from PPP orange. Semantic destructive stays rose-* so
-     users don't mistake a primary brand button for a delete action.
-     Karan 2026-07-01: "make it pop, more visible." Bumped saturation
-     across the whole scale — 700 (sidebar) now reads unmistakably
-     as vibrant crimson, not brown. */
-  --color-cc-brand-50:  #fef2f2;
-  --color-cc-brand-100: #fee2e2;
-  --color-cc-brand-200: #fecaca;
-  --color-cc-brand-300: #fca5a5;
-  --color-cc-brand-400: #f87171;
-  --color-cc-brand-500: #ef4444;
-  --color-cc-brand-600: #dc2626;
-  --color-cc-brand-700: #b91c1c;
-  --color-cc-brand-800: #991b1b;
-  --color-cc-brand-900: #7f1d1d;
+  /* ─── Commercial CC brand accent — BLUE ───
+     RUX-0 (Karan 2026-08): recolored red → the PPP brand blue. The red
+     read as "scary/warning" on form chrome (section headers, dividers,
+     primary buttons), so the whole accent is now the brand blue in both
+     themes; GREEN (ppp-green) carries success/go states; RED (rose-*)
+     is reserved strictly for destructive actions (delete/void). Tracks
+     the ppp-blue ramp so blue stays consistent across the platform. */
+  --color-cc-brand-50:  #e9f6fc;
+  --color-cc-brand-100: #c4e7f7;
+  --color-cc-brand-200: #9bd6f0;
+  --color-cc-brand-300: #6ec3e8;
+  --color-cc-brand-400: #47b3e4;
+  --color-cc-brand-500: #2baae1;
+  --color-cc-brand-600: #1e8fbf;
+  --color-cc-brand-700: #15749c;
+  --color-cc-brand-800: #0f5978;
+  --color-cc-brand-900: #0a3d52;
 
   /* Karan 2026-07-09 Phase A: navy accent added per post-meeting rewrite.
      Not replacing cc-brand red; used sparingly for structural elements —
@@ -238,18 +237,18 @@ body {
   --color-rose-800: #d9b5ba;
   --color-rose-900: #e8d3d5;
 
-  /* cc-brand → deep, bold INDIGO in dark (primary action; NO red). Deeper +
-     more saturated than before so buttons/accents read rich, not highlighter.
-     -700 kept light enough for the active-nav label (text-cc-brand-700 on the
-     dark -50 tint); button hover on -700 stays legible for bold white text. */
-  --color-cc-brand-50:  #181a30;
-  --color-cc-brand-100: #202249;
-  --color-cc-brand-200: #2b2e60;
-  --color-cc-brand-400: #6068c6;
-  --color-cc-brand-500: #454eb2;
-  --color-cc-brand-600: #3a43a6;   /* button rest — deep + bold */
-  --color-cc-brand-700: #7580d4;   /* active-nav text + button hover */
-  --color-cc-brand-800: #9aa3e4;
+  /* cc-brand → BLUE in dark (RUX-0, Karan 2026-08). Was indigo; now tracks the
+     dark ppp-blue ramp so the accent is a consistent blue, never purple. -700
+     stays light enough for the active-nav label (text-cc-brand-700 on the dark
+     -50 tint) and legible button-hover. */
+  --color-cc-brand-50:  #122430;
+  --color-cc-brand-100: #16323f;
+  --color-cc-brand-200: #1e4658;
+  --color-cc-brand-400: #3f88b0;
+  --color-cc-brand-500: #2f7ba8;
+  --color-cc-brand-600: #286a92;   /* button rest */
+  --color-cc-brand-700: #74aecb;   /* active-nav text + button hover */
+  --color-cc-brand-800: #9dc6db;
 
   /* Per-customer color (opportunities/proposals group + kanban). Curated
      platform-harmonious hues (see NICE_HUES) at a MODERATE saturation — present
