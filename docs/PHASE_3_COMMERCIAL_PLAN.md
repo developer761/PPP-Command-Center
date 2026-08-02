@@ -33,7 +33,7 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 - [ ] **Adjustable final price** (override the summed total)
 - [ ] **Bid Set date** on the proposal
 - [ ] **Internal bid notes** (never on client PDF) + **attach Kim's marked-up plan/spec doc**
-- [ ] **Approval loop** (Resend): Kim "Get approval" → Brendan approve/reject → back to Kim, audit-logged
+- [ ] **Approval loop — IN-APP** (both Kim + Brendan are platform users, so NO email round-trip): Kim "Send for approval" → status `Pending approval`, routed to the approver → Brendan sees it in his in-app **approvals queue** (bell + "Needs your approval" filter) → Approve / Request changes (with note), audit-logged → status flips, Kim notified → approved can go to client. Email is an OPTIONAL heads-up via the existing notification email opt-in, never the approve mechanism. Approver = configurable "can approve proposals" flag (built with the R8 role work).
 - [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
 
 ## ⬜ Phase R2 — Document generators & doc fidelity
