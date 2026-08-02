@@ -11,6 +11,7 @@
 export const PROPOSAL_STATUSES = [
   "draft",
   "pending_approval",
+  "approved",
   "sent",
   "won",
   "lost",
@@ -50,6 +51,7 @@ export function isProposalEligibleOpp(opp: {
 const STATUS_LABELS: Record<ProposalStatus, string> = {
   draft: "Draft",
   pending_approval: "Pending Approval",
+  approved: "Approved",
   sent: "Sent",
   won: "Won",
   lost: "Lost",
@@ -75,8 +77,14 @@ export const PROPOSAL_ALLOWED_TRANSITIONS: Record<
   ProposalStatus,
   readonly ProposalStatus[]
 > = {
-  draft: ["pending_approval", "sent", "superseded"],
-  pending_approval: ["draft", "sent", "superseded"],
+  // HARD GATE (Karan 2026-08): draft can NO LONGER go straight to sent — it must
+  // pass through pending_approval → approved first. Send is blocked until approved.
+  draft: ["pending_approval", "superseded"],
+  // pending_approval → approved is APPROVER-ONLY (enforced in db.ts approveProposal
+  // + outcome route); → draft is "request changes" (also approver-only).
+  pending_approval: ["approved", "draft", "superseded"],
+  // approved → sent is the real send; → draft is "unlock to edit" (invalidates approval).
+  approved: ["sent", "draft", "superseded"],
   sent: ["won", "lost", "expired", "superseded"],
   // Karan 2026-07-15: won/lost are NO LONGER terminal — if Alex
   // accidentally marks a proposal Won (or the GC changes their mind

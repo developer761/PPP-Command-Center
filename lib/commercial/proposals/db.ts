@@ -62,12 +62,24 @@ export type CommercialProposal = {
    *  PDF, in the order Alex added them. */
   custom_exclusions: string[];
   total_cents: number;
+  /** R1b: adjustable final price. NULL = use the line-item sum; a value overrides
+   *  the total. Flows INTO total_cents (the contract number) via recompute. */
+  final_price_override_cents: number | null;
+  /** R1c: Bid Set date shown on the client proposal (null = hidden). */
+  bid_set_date: string | null;
   pdf_show_line_prices: boolean;
   estimator_snapshot_json: ProposalEstimatorSnapshot;
   status: ProposalStatus;
   sent_at: string | null;
   approved_at: string | null;
   expired_at: string | null;
+  // R1d — in-app approval (approved_at above is the WON/LOST stamp, NOT approval).
+  approval_requested_by_user_id: string | null;
+  approval_requested_at: string | null;
+  approved_by_user_id: string | null;
+  approval_approved_at: string | null;
+  changes_requested_note: string | null;
+  changes_requested_at: string | null;
   snapshot_document_id: string | null;
   created_at: string;
   updated_at: string;
@@ -112,6 +124,9 @@ export type CommercialProposalLineItem = {
   // roll into TOTAL like inclusions but render under a "Labor:" section
   // on the customer PDF.
   is_labor: boolean;
+  /** R1a: print this line's price on the client PDF (default true). Hidden lines
+   *  still count toward the proposal total. */
+  show_price: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -313,6 +328,10 @@ export type UpdateProposalInput = {
   exclusion_ids?: string[];
   custom_exclusions?: string[];
   pdf_show_line_prices?: boolean;
+  /** R1b: null clears back to the line-item sum; a value (cents, ≥0) overrides. */
+  final_price_override_cents?: number | null;
+  /** R1c: Bid Set date (YYYY-MM-DD) or null. */
+  bid_set_date?: string | null;
   estimator_snapshot_json?: ProposalEstimatorSnapshot;
   updated_by_user_id?: string | null;
 };
@@ -336,6 +355,14 @@ export async function updateProposal(
   if (input.custom_exclusions !== undefined) patch.custom_exclusions = input.custom_exclusions;
   if (input.pdf_show_line_prices !== undefined)
     patch.pdf_show_line_prices = input.pdf_show_line_prices;
+  if (input.final_price_override_cents !== undefined) {
+    const v = input.final_price_override_cents;
+    if (v != null && (!Number.isFinite(v) || v < 0)) {
+      return { ok: false, error: "Final price can't be negative." };
+    }
+    patch.final_price_override_cents = v == null ? null : Math.round(v);
+  }
+  if (input.bid_set_date !== undefined) patch.bid_set_date = input.bid_set_date || null;
   if (input.estimator_snapshot_json !== undefined)
     patch.estimator_snapshot_json = input.estimator_snapshot_json;
 
@@ -368,6 +395,13 @@ export async function updateProposal(
     .single();
   if (error) return { ok: false, error: error.message };
   const proposal = after as CommercialProposal;
+  // R1b: the override drives total_cents (the contract number) — recompute when
+  // it's set/cleared so AIA/invoicing/KPIs use the right number.
+  if (input.final_price_override_cents !== undefined) {
+    await recomputeProposalTotal(proposal.id, input.updated_by_user_id ?? null);
+    const ov = input.final_price_override_cents;
+    proposal.total_cents = ov != null ? Math.round(ov) : await proposalLineItemSumCents(proposal.id);
+  }
   await logUpdate(
     "commercial_proposals",
     proposal.id,
@@ -906,6 +940,9 @@ export type CreateLineItemInput = {
    *  renders in the "Labor:" PDF section. Cannot be true + is_alternate
    *  simultaneously (rejected at the action layer). */
   is_labor?: boolean;
+  /** R1a (migration 100): print this line's price on the client PDF. Default
+   *  true. Hidden lines still count toward the total. */
+  show_price?: boolean;
 };
 
 /** Migration 071 deploy-safety helpers. `product_name` is a brand-new
@@ -1023,6 +1060,9 @@ export async function createLineItem(
       phase: phaseNormalized,
       // Migration 063: labor flag. Cannot coexist with is_alternate.
       is_labor: input.is_labor ?? false,
+      // R1a (migration 100): default true. On an un-migrated DB the generic
+      // missing-column retry below drops it (defaults to true server-side).
+      show_price: input.show_price ?? true,
     }, input.product_name))
     .select("*")
     .single();
@@ -1073,6 +1113,8 @@ export type UpdateLineItemInput = {
   position?: number;
   /** F.6: phase label. Pass empty string or null to clear. */
   phase?: string | null;
+  /** R1a: toggle per-line price visibility on the client PDF. */
+  show_price?: boolean;
 };
 
 export async function updateLineItem(
@@ -1128,6 +1170,7 @@ export async function updateLineItem(
     patch.unit_price_cents = input.unit_price_cents;
   }
   if (input.is_alternate !== undefined) patch.is_alternate = input.is_alternate;
+  if (input.show_price !== undefined) patch.show_price = input.show_price;
   if (input.position !== undefined) patch.position = input.position;
   if (input.phase !== undefined) {
     // F.6 audit fix: strip newlines + zero-width chars so a paste-in
@@ -1259,29 +1302,39 @@ export async function getLineItem(
   return row;
 }
 
-/** Sum non-alternate line items (quantity × unit_price_cents) and
- *  write the result to `commercial_proposals.total_cents`. Called
- *  after any line-item mutation. No-op on missing proposal. */
-export async function recomputeProposalTotal(
-  proposalId: string,
-  actorUserId: string | null
-): Promise<void> {
+/** The raw line-item sum (non-alternate rows, qty × unit_price). This is the
+ *  number BEFORE any final-price override — used for the internal "override vs
+ *  line items" delta. Hidden-price rows (show_price=false) still count. */
+export async function proposalLineItemSumCents(proposalId: string): Promise<number> {
   const sb = commercialDb();
   const { data: items } = await sb
     .from("commercial_proposal_line_items")
     .select("quantity, unit_price_cents, is_alternate")
     .eq("proposal_id", proposalId);
-  const rows = (items as Array<{
-    quantity: number;
-    unit_price_cents: number;
-    is_alternate: boolean;
-  }> | null) ?? [];
-  const total = rows.reduce((acc, r) => {
-    if (r.is_alternate) return acc;
-    // Cents math via Math.round to avoid float drift on fractional
-    // quantities (e.g. 3.5 gallons × $4623).
-    return acc + Math.round(Number(r.quantity) * Number(r.unit_price_cents));
-  }, 0);
+  const rows = (items as Array<{ quantity: number; unit_price_cents: number; is_alternate: boolean }> | null) ?? [];
+  return rows.reduce((acc, r) => (r.is_alternate ? acc : acc + Math.round(Number(r.quantity) * Number(r.unit_price_cents))), 0);
+}
+
+/** Recompute `commercial_proposals.total_cents` = the FINAL PRICE OVERRIDE when
+ *  set (R1b), else the non-alternate line-item sum. total_cents is the single
+ *  contract number the AIA ladder + invoicing + KPIs consume, so the override
+ *  MUST land here or those surfaces diverge (2026-08 money-audit #2). Called
+ *  after any line-item mutation AND after the override is set/cleared. */
+export async function recomputeProposalTotal(
+  proposalId: string,
+  actorUserId: string | null
+): Promise<void> {
+  const sb = commercialDb();
+  const [rawSum, { data: prop }] = await Promise.all([
+    proposalLineItemSumCents(proposalId),
+    sb
+      .from("commercial_proposals")
+      .select("final_price_override_cents")
+      .eq("id", proposalId)
+      .maybeSingle(),
+  ]);
+  const override = (prop as { final_price_override_cents: number | null } | null)?.final_price_override_cents ?? null;
+  const total = override != null ? Number(override) : rawSum;
   await sb
     .from("commercial_proposals")
     .update({
