@@ -95,12 +95,13 @@ export default async function CommercialDashboardLayout({
           CommandPalette via a custom event so both live in the same
           layer. */}
       <KeyboardShortcuts />
-      {/* R7 — one-time onboarding walkthrough. Only mounts when the user has
-          never seen it (NULL flag), so every current user sees it once then
-          it's stamped. Self-hides after finish/skip. */}
-      {profile?.commercial_onboarding_seen_at == null && (
-        <OnboardingWalkthrough firstName={firstName} />
-      )}
+      {/* R7 — onboarding guided tour. Always mounted so a "Take the tour" button
+          can replay it any time; it AUTO-shows only for first-timers (NULL flag),
+          then stamps itself so it never auto-opens again. */}
+      <OnboardingWalkthrough
+        firstName={firstName}
+        autoStart={profile?.commercial_onboarding_seen_at == null}
+      />
     </CommercialChrome>
     </div>
   );

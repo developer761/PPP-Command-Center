@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { normalizeRole } from "@/lib/auth/roles";
 import { isAdminEmail } from "@/lib/auth/admin";
+import { StartTourButton } from "@/components/commercial/start-tour-button";
 
 /**
  * Commercial Settings hub (RUX-7) — one landing for every admin/config surface
@@ -118,6 +119,7 @@ export default async function CommercialSettingsHubPage() {
           </Link>
         ))}
       </div>
+      <StartTourButton />
     </div>
   );
 }

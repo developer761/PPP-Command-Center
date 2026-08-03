@@ -8,9 +8,12 @@
  * as they go. Works because the tour is mounted in the commercial LAYOUT, which
  * persists across client-side navigation — so tour state survives router.push().
  *
- * Shown ONCE per user: the server only mounts this when
- * `profiles.commercial_onboarding_seen_at` is NULL. Finish/Skip stamps it (+ a
+ * Shown ONCE automatically (autoStart=true when the server sees a NULL
+ * `profiles.commercial_onboarding_seen_at`). Finish/Skip stamps it (+ a
  * localStorage guard so a failed write can't re-nag on this device).
+ *
+ * ALWAYS mounted, though — so a "Take the tour" button anywhere can replay it on
+ * demand by dispatching a `cc:start-tour` window event (ignores the seen guards).
  *
  * Robust by design: if a step's target isn't visible (e.g. the sidebar is
  * collapsed into a drawer on mobile), that step falls back to a centered card —
@@ -97,22 +100,27 @@ function findVisibleTarget(sel: string): HTMLElement | null {
   return null;
 }
 
-export function OnboardingWalkthrough({ firstName }: { firstName?: string | null }) {
+export function OnboardingWalkthrough({
+  firstName,
+  autoStart = false,
+}: {
+  firstName?: string | null;
+  autoStart?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
-  const [dismissed, setDismissed] = useState(false);
+  const [active, setActive] = useState(false);
   const [i, setI] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const targetElRef = useRef<HTMLElement | null>(null);
 
-  // localStorage guard (a prior failed mark-seen shouldn't re-nag this device)
-  // + resume the step if a full reload happened mid-tour.
+  // Auto-start for first-timers (unless the localStorage guard says a prior
+  // dismissal's mark-seen may have failed) + resume the step after a mid-tour
+  // reload. Manual replay (the window event below) ignores all of this.
   useEffect(() => {
+    if (!autoStart) return;
     try {
-      if (localStorage.getItem(LS_KEY)) {
-        setDismissed(true);
-        return;
-      }
+      if (localStorage.getItem(LS_KEY)) return; // already seen on this device
       const saved = sessionStorage.getItem(SS_STEP);
       if (saved) {
         const n = parseInt(saved, 10);
@@ -121,10 +129,22 @@ export function OnboardingWalkthrough({ firstName }: { firstName?: string | null
     } catch {
       /* private mode — DB flag still governs */
     }
+    setActive(true);
+  }, [autoStart]);
+
+  // Replay on demand — a "Take the tour" button dispatches this.
+  useEffect(() => {
+    const start = () => {
+      setI(0);
+      setRect(null);
+      setActive(true);
+    };
+    window.addEventListener("cc:start-tour", start);
+    return () => window.removeEventListener("cc:start-tour", start);
   }, []);
 
   const finish = useCallback(() => {
-    setDismissed(true);
+    setActive(false);
     try {
       localStorage.setItem(LS_KEY, "1");
       sessionStorage.removeItem(SS_STEP);
@@ -138,7 +158,7 @@ export function OnboardingWalkthrough({ firstName }: { firstName?: string | null
   // Re-runs when pathname settles after a push, so the element is found once the
   // destination has rendered.
   useEffect(() => {
-    if (dismissed) return;
+    if (!active) return;
     const step = STEPS[i];
     try {
       sessionStorage.setItem(SS_STEP, String(i));
@@ -175,11 +195,11 @@ export function OnboardingWalkthrough({ firstName }: { firstName?: string | null
     };
     poll();
     return () => cancelAnimationFrame(raf);
-  }, [i, dismissed, pathname, router]);
+  }, [i, active, pathname, router]);
 
   // Keep the spotlight glued to its element on scroll/resize.
   useEffect(() => {
-    if (dismissed) return;
+    if (!active) return;
     const recompute = () => {
       if (targetElRef.current) setRect(targetElRef.current.getBoundingClientRect());
     };
@@ -189,7 +209,7 @@ export function OnboardingWalkthrough({ firstName }: { firstName?: string | null
       window.removeEventListener("scroll", recompute, true);
       window.removeEventListener("resize", recompute);
     };
-  }, [dismissed]);
+  }, [active]);
 
   const go = useCallback(
     (dir: 1 | -1) => setI((n) => Math.max(0, Math.min(STEPS.length - 1, n + dir))),
@@ -197,7 +217,7 @@ export function OnboardingWalkthrough({ firstName }: { firstName?: string | null
   );
 
   useEffect(() => {
-    if (dismissed) return;
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") finish();
       else if (e.key === "ArrowRight") go(1);
@@ -205,9 +225,9 @@ export function OnboardingWalkthrough({ firstName }: { firstName?: string | null
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dismissed, finish, go]);
+  }, [active, finish, go]);
 
-  if (dismissed) return null;
+  if (!active) return null;
 
   const step = STEPS[i];
   const isLast = i === STEPS.length - 1;
