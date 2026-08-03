@@ -33,6 +33,10 @@ export type Profile = {
   has_command_center_access?: boolean;
   has_new_platform_access?: boolean;
   last_login_at: string | null;
+  /** R7 (migration 110) — when the user first dismissed/finished the Commercial
+   *  onboarding walkthrough. NULL = never seen (show it once). Optional at the
+   *  type level so rows read before the migration ran don't break. */
+  commercial_onboarding_seen_at?: string | null;
   created_at: string;
   updated_at: string;
 };

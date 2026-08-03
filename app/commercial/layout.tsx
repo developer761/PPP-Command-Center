@@ -7,6 +7,7 @@ import CommercialChrome from "@/components/commercial-chrome";
 import { UndoToast } from "@/components/commercial/undo-toast";
 import { CommandPalette } from "@/components/commercial/command-palette";
 import { KeyboardShortcuts } from "@/components/commercial/keyboard-shortcuts";
+import { OnboardingWalkthrough } from "@/components/commercial/onboarding-walkthrough";
 import { Suspense } from "react";
 
 /**
@@ -94,6 +95,12 @@ export default async function CommercialDashboardLayout({
           CommandPalette via a custom event so both live in the same
           layer. */}
       <KeyboardShortcuts />
+      {/* R7 — one-time onboarding walkthrough. Only mounts when the user has
+          never seen it (NULL flag), so every current user sees it once then
+          it's stamped. Self-hides after finish/skip. */}
+      {profile?.commercial_onboarding_seen_at == null && (
+        <OnboardingWalkthrough firstName={firstName} />
+      )}
     </CommercialChrome>
     </div>
   );
