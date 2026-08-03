@@ -25,12 +25,22 @@ import { formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 const MAX_PER_KIND = 8;
 
 type PaletteResult = {
-  kind: "account" | "opportunity" | "invoice";
+  kind: "account" | "opportunity" | "proposal" | "invoice" | "document";
   id: string;
   label: string;
   hint: string;
   href: string;
 };
+
+/** Parse a money-looking query ("$12,500", "12500.00", "5000") → whole cents,
+ *  or null. Lets Universal Search find an invoice by its exact amount. */
+function parseAmountCents(q: string): number | null {
+  const cleaned = q.replace(/[$,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0 || n > 1e9) return null;
+  return Math.round(n * 100);
+}
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -71,8 +81,19 @@ export async function GET(request: Request) {
     acctSeqNum !== null && Number.isFinite(acctSeqNum)
       ? `company_name.ilike.${pattern},account_seq.eq.${acctSeqNum}`
       : `company_name.ilike.${pattern}`;
+  // proposal_seq is INT (PROP-#### stripped to the number); match it when the
+  // query is numeric, plus the cached header project name.
+  const propOr =
+    acctSeqNum !== null
+      ? `proposal_seq.eq.${acctSeqNum},header_json->>project_name.ilike.${pattern}`
+      : `header_json->>project_name.ilike.${pattern}`;
+  // Invoice by exact amount ("$12,500") on top of #/PO.
+  const amountCents = parseAmountCents(rawQ);
+  const invoiceOr =
+    `invoice_number.ilike.${idPattern},po_number.ilike.${pattern}` +
+    (amountCents !== null ? `,total_cents.eq.${amountCents}` : "");
 
-  const [accountsRes, oppsRes, invoicesRes] = await Promise.all([
+  const [accountsRes, oppsRes, proposalsRes, invoicesRes, documentsRes] = await Promise.all([
     sb
       .from("commercial_accounts")
       .select("id, company_name, city, state, account_seq")
@@ -90,11 +111,25 @@ export async function GET(request: Request) {
       .order("updated_at", { ascending: false })
       .limit(MAX_PER_KIND),
     sb
+      .from("commercial_proposals")
+      .select("id, proposal_seq, revision_number, status, opportunity_id, header_json, commercial_opportunities(account_id, client_name, title)")
+      .is("deleted_at", null)
+      .or(propOr)
+      .order("updated_at", { ascending: false })
+      .limit(MAX_PER_KIND),
+    sb
       .from("commercial_invoices")
       .select("id, invoice_number, po_number, account_id, opportunity_id, total_cents, status")
       .is("deleted_at", null)
-      .or(`invoice_number.ilike.${idPattern},po_number.ilike.${pattern}`)
+      .or(invoiceOr)
       .order("issued_at", { ascending: false })
+      .limit(MAX_PER_KIND),
+    sb
+      .from("commercial_documents")
+      .select("id, file_name, category, parent_type, parent_id")
+      .is("deleted_at", null)
+      .ilike("file_name", `%${safe}%`)
+      .order("created_at", { ascending: false })
       .limit(MAX_PER_KIND),
   ]);
 
@@ -144,6 +179,38 @@ export async function GET(request: Request) {
     });
   }
 
+  type OppEmbed = { account_id: string; client_name: string | null; title: string | null };
+  for (const pr of (proposalsRes.data ?? []) as unknown as {
+    id: string;
+    proposal_seq: number | null;
+    revision_number: number;
+    status: string;
+    opportunity_id: string;
+    header_json: { project_name?: string | null } | null;
+    // PostgREST embeds a to-one parent as an object at runtime, but the JS types
+    // widen it to an array — accept both.
+    commercial_opportunities: OppEmbed | OppEmbed[] | null;
+  }[]) {
+    const opp = Array.isArray(pr.commercial_opportunities)
+      ? pr.commercial_opportunities[0] ?? null
+      : pr.commercial_opportunities;
+    const acctId = opp?.account_id;
+    if (!acctId) continue; // can't build a link without the account
+    const propNo = pr.proposal_seq != null ? `PROP-${String(pr.proposal_seq).padStart(4, "0")}` : null;
+    const label =
+      pr.header_json?.project_name?.trim() ||
+      [opp?.client_name, opp?.title].filter(Boolean).join(" — ") ||
+      propNo ||
+      "Proposal";
+    results.push({
+      kind: "proposal",
+      id: pr.id,
+      label,
+      hint: [propNo, `R${pr.revision_number}`, pr.status].filter(Boolean).join(" · "),
+      href: `/commercial/accounts/${acctId}/deals/${pr.opportunity_id}/proposal/${pr.id}?back=/commercial/proposals`,
+    });
+  }
+
   for (const i of (invoicesRes.data ?? []) as {
     id: string;
     invoice_number: string;
@@ -164,6 +231,22 @@ export async function GET(request: Request) {
       label: i.invoice_number,
       hint,
       href: `/commercial/invoices/${i.id}`,
+    });
+  }
+
+  for (const d of (documentsRes.data ?? []) as {
+    id: string;
+    file_name: string;
+    category: string | null;
+    parent_type: string;
+  }[]) {
+    results.push({
+      kind: "document",
+      id: d.id,
+      label: d.file_name,
+      hint: [d.category ? String(d.category).replace(/_/g, " ") : null, "document"].filter(Boolean).join(" · "),
+      // Documents open the file directly (new tab, handled by the palette).
+      href: `/api/commercial/documents/${d.id}/download`,
     });
   }
 

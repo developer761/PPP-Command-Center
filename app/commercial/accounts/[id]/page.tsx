@@ -1260,6 +1260,51 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           state (notes, which draft, form progress) at a glance on Overview.
           Click jumps into that tool inline under the Project sub-tab. ── */}
       {dealTab === "overview" && (
+      <>
+      {/* What's Due strip (R3) — the job's open action items in one glance, each
+          chip jumps to the tool that clears it. Self-hides when nothing's due. */}
+      {(() => {
+        const dl = `${base}?tab=projects&project=${p.opp.id}`;
+        const overdueBalCents = dealInvoices
+          .filter((i) => deriveInvoiceStatus(i) === "overdue")
+          .reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
+        const raw = [
+          overdueBalCents > 0 && { label: "overdue", value: formatCentsCompact(overdueBalCents), tone: "rose", href: `${dl}&dt=invoices` },
+          p.pendingCoCount > 0 && { label: p.pendingCoCount === 1 ? "CO pending" : "COs pending", value: String(p.pendingCoCount), tone: "amber", href: `${dl}&dt=change-orders` },
+          awaitingSubs > 0 && { label: awaitingSubs === 1 ? "submittal out" : "submittals out", value: String(awaitingSubs), tone: "amber", href: `${dl}&dt=submittals` },
+          p.latestAppStatus === "draft" && { label: "AIA draft ready to send", value: p.latestAppNumber != null ? `App ${p.latestAppNumber}` : "ready", tone: "blue", href: `${dl}&dt=aia` },
+          p.overBilled && { label: "over-billed — review", value: "!", tone: "amber", href: `${dl}&dt=pnl` },
+          p.retainageHeldCents > 0 && { label: "retainage held", value: formatCentsCompact(p.retainageHeldCents), tone: "navy", href: `${dl}&dt=aia` },
+        ];
+        const items = raw.filter(Boolean) as { label: string; value: string; tone: string; href: string }[];
+        if (items.length === 0) return null;
+        const toneCls: Record<string, string> = {
+          rose: "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100",
+          amber: "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100",
+          blue: "border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 hover:bg-ppp-blue-100",
+          navy: "border-ppp-navy-200 bg-ppp-navy-50 text-ppp-navy-700 hover:bg-ppp-navy-100",
+        };
+        return (
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-amber-100 text-amber-700 shrink-0">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01" /></svg>
+              </span>
+              <h3 className="text-[13px] font-bold text-ppp-charcoal">What&rsquo;s due</h3>
+              <span className="text-[11px] text-ppp-charcoal-400">{items.length} item{items.length === 1 ? "" : "s"} need attention</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {items.map((it) => (
+                <Link key={it.label} href={it.href} className={`inline-flex items-center gap-1.5 px-2.5 rounded-lg border text-[12px] min-h-[44px] sm:min-h-[36px] transition-colors ${toneCls[it.tone]}`}>
+                  <span className="font-black tabular-nums">{it.value}</span>
+                  <span className="font-medium">{it.label}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="opacity-60"><path d="M9 18l6-6-6-6" /></svg>
+                </Link>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Change Orders — the notes typed on each CO */}
         <ToolMiniCard label="Change Orders" href={`${base}?tab=projects&project=${p.opp.id}&dt=change-orders`} iconBg="bg-cc-brand-600" icon={<path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" />} chip={changeOrders.length === 0 ? null : { label: p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : "all decided", tone: p.pendingCoCount > 0 ? "amber" : "emerald" }}>
@@ -1349,6 +1394,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           )}
         </ToolMiniCard>
       </div>
+      </>
       )}
 
       {dealTab === "proposals" && (

@@ -24,27 +24,36 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconBuilding, IconTarget, IconReceipt } from "./inline-icons";
+import { IconBuilding, IconTarget, IconReceipt, IconFileDoc } from "./inline-icons";
+
+type PaletteKind = "account" | "opportunity" | "proposal" | "invoice" | "document";
 
 type PaletteResult = {
-  kind: "account" | "opportunity" | "invoice";
+  kind: PaletteKind;
   id: string;
   label: string;
   hint: string;
   href: string;
 };
 
-const KIND_LABEL: Record<PaletteResult["kind"], string> = {
+const KIND_LABEL: Record<PaletteKind, string> = {
   account: "Accounts",
   opportunity: "Opportunities",
+  proposal: "Proposals",
   invoice: "Invoices",
+  document: "Documents",
 };
 
-const KIND_ICON: Record<PaletteResult["kind"], typeof IconBuilding> = {
+const KIND_ICON: Record<PaletteKind, typeof IconBuilding> = {
   account: IconBuilding,
   opportunity: IconTarget,
+  proposal: IconFileDoc,
   invoice: IconReceipt,
+  document: IconFileDoc,
 };
+
+// Order the entity filter chips + result groups.
+const KIND_ORDER: PaletteKind[] = ["account", "opportunity", "proposal", "invoice", "document"];
 
 export function CommandPalette() {
   const router = useRouter();
@@ -53,6 +62,7 @@ export function CommandPalette() {
   const [results, setResults] = useState<PaletteResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [filter, setFilter] = useState<"all" | PaletteKind>("all");
   const inputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -90,6 +100,7 @@ export function CommandPalette() {
       setQuery("");
       setResults([]);
       setHighlight(0);
+      setFilter("all");
       setTimeout(() => inputRef.current?.focus(), 10);
     } else if (prevFocusRef.current) {
       prevFocusRef.current.focus?.();
@@ -135,14 +146,27 @@ export function CommandPalette() {
     return () => clearTimeout(t);
   }, [query, open]);
 
-  const groupedResults: Array<[PaletteResult["kind"], PaletteResult[]]> = [
-    ["account", results.filter((r) => r.kind === "account")],
-    ["opportunity", results.filter((r) => r.kind === "opportunity")],
-    ["invoice", results.filter((r) => r.kind === "invoice")],
-  ].filter(([, arr]) => arr.length > 0) as Array<[PaletteResult["kind"], PaletteResult[]]>;
+  // Entity filter chips ("All · Accounts · Opportunities · Proposals · Invoices ·
+  // Documents"). "all" shows every kind grouped; a specific kind narrows to it.
+  // Which kinds actually have results (to render only useful chips).
+  const availableKinds = KIND_ORDER.filter((k) => results.some((r) => r.kind === k));
+  // If the query changed so the active filter's kind is gone, fall back to "all"
+  // rather than showing a blank list under a stale chip.
+  const effectiveFilter: "all" | PaletteKind =
+    filter !== "all" && !availableKinds.includes(filter) ? "all" : filter;
+  const shown = effectiveFilter === "all" ? results : results.filter((r) => r.kind === effectiveFilter);
+  const groupedResults: Array<[PaletteKind, PaletteResult[]]> = KIND_ORDER
+    .map((k) => [k, shown.filter((r) => r.kind === k)] as [PaletteKind, PaletteResult[]])
+    .filter(([, arr]) => arr.length > 0);
   const flat: PaletteResult[] = groupedResults.flatMap(([, arr]) => arr);
 
   const commit = (r: PaletteResult) => {
+    if (r.kind === "document") {
+      // Documents open the file itself — new tab, keep context.
+      window.open(r.href, "_blank", "noopener,noreferrer");
+      setOpen(false);
+      return;
+    }
     setOpen(false);
     router.push(r.href);
   };
@@ -188,7 +212,7 @@ export function CommandPalette() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Jump to an account, opportunity, or invoice…"
+            placeholder="Search accounts, opportunities, proposals, invoices, documents…"
             className="flex-1 outline-none text-base text-ppp-charcoal placeholder:text-ppp-charcoal-400 bg-transparent"
             autoComplete="off"
             spellCheck={false}
@@ -204,10 +228,38 @@ export function CommandPalette() {
             Esc
           </span>
         </div>
+        {/* Entity filter chips — narrow the results to one kind. */}
+        {availableKinds.length > 0 && (
+          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-ppp-charcoal-100 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {(["all", ...availableKinds] as ("all" | PaletteKind)[]).map((k) => {
+              const active = effectiveFilter === k;
+              const n = k === "all" ? results.length : results.filter((r) => r.kind === k).length;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => {
+                    setFilter(k);
+                    setHighlight(0);
+                  }}
+                  aria-pressed={active}
+                  className={`shrink-0 inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-full text-[11.5px] font-semibold border transition-colors touch-manipulation ${
+                    active
+                      ? "bg-cc-brand-600 text-white border-cc-brand-600"
+                      : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+                  }`}
+                >
+                  {k === "all" ? "All" : KIND_LABEL[k]}
+                  <span className={`tabular-nums ${active ? "text-white/80" : "text-ppp-charcoal-400"}`}>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="max-h-[60vh] overflow-y-auto" role="listbox" id="palette-results">
           {query.trim().length < 2 ? (
             <div className="px-4 py-8 text-center text-[13px] text-ppp-charcoal-500">
-              Type 2+ characters to search accounts, deals, and invoices.
+              Type 2+ characters — search accounts, opportunities, proposals, invoices &amp; documents. Try a name, PROP-/INV-/PO #, or a dollar amount.
             </div>
           ) : loading && results.length === 0 ? (
             <div className="px-4 py-8 text-center text-[13px] text-ppp-charcoal-500">

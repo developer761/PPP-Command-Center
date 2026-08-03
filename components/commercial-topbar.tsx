@@ -57,7 +57,7 @@ export default function CommercialTopbar({
             touch users can jump to any account / deal / invoice. */}
         <button
           type="button"
-          aria-label="Search — jump to an account, deal, or invoice"
+          aria-label="Search — accounts, opportunities, proposals, invoices, documents"
           title="Search (⌘K)"
           onClick={() => window.dispatchEvent(new CustomEvent("commercial-palette-open"))}
           className="flex items-center justify-center h-11 w-11 sm:h-9 sm:w-auto sm:px-3 sm:gap-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-cc-brand-50 hover:border-cc-brand-200 hover:text-ppp-charcoal active:bg-cc-brand-100 transition-colors touch-manipulation"
