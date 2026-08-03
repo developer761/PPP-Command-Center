@@ -10,6 +10,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const REPORTS: { href: string; label: string }[] = [
+  { href: "/commercial/reports/pipeline", label: "Pipeline" },
   { href: "/commercial/reports/ar-aging", label: "AR Aging" },
   { href: "/commercial/reports/win-loss", label: "Win / Loss" },
 ];
