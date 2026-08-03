@@ -46,9 +46,11 @@ export function accountColorTone(accountId: string | null | undefined): AccountT
   for (let i = 0; i < key.length; i++) {
     h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
   }
-  let hue = h % 300;
-  // Skip blue band 200-260° by shifting into red/orange band instead.
-  if (hue >= 200) hue = (hue + 60) % 360;
+  // Karan 2026-08: accounts now live in a BLUE↔GREEN range ONLY — no yellow, no
+  // purple/magenta (the old rule spanned the whole wheel MINUS blue, which is the
+  // opposite of the current palette). 150°(green) → 219°(blue-cyan); the hash
+  // spreads accounts across that band so "Bob is teal, Tomco is blue" still holds.
+  const hue = 150 + (h % 70);
   return {
     border: { borderLeftColor: `hsl(${hue}, 62%, 55%)` },
     headerBg: { backgroundColor: `hsl(${hue}, 62%, 96%)` },

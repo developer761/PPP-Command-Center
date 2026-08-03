@@ -150,10 +150,10 @@ function accountColorTone(accountId: string | null): AccountTone {
   for (let i = 0; i < key.length; i++) {
     h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
   }
-  // Curated hues that harmonize with the platform (blues / teals / violets /
-  // green / amber) — no harsh reds or limes, which read "off-brand". The old
-  // full-spectrum hash mapped some accounts (e.g. "Karan") to a clashing red.
-  const NICE_HUES = [212, 246, 276, 308, 188, 158, 130, 40, 24];
+  // Karan 2026-08: BLUE↔GREEN account hues only — no purple/magenta/yellow (the
+  // old set had 246/276=purple, 308=magenta, 40/24=orange-yellow). Kept in sync
+  // with app/commercial/proposals/page.tsx + lib/commercial/account-tone.ts.
+  const NICE_HUES = [220, 205, 192, 178, 165, 150, 138];
   const hue = NICE_HUES[h % NICE_HUES.length];
   // Lightness is driven by CSS vars so the per-customer tint flips in dark mode
   // (the inline HSL can't follow a token otherwise — it was a bright pastel

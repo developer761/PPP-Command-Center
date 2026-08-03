@@ -800,9 +800,10 @@ function hueForAccountId(accountId: string | null): number {
   for (let i = 0; i < key.length; i++) {
     h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
   }
-  // Curated, platform-harmonious hues (no harsh red/lime) — matches the
-  // opportunities board's account colors.
-  const NICE_HUES = [212, 246, 276, 308, 188, 158, 130, 40, 24];
+  // Karan 2026-08: BLUE↔GREEN account hues only — no purple/magenta/yellow (the
+  // old set had 246/276=purple, 308=magenta, 40/24=orange-yellow). Blue → teal →
+  // green, spread so accounts stay distinguishable.
+  const NICE_HUES = [220, 205, 192, 178, 165, 150, 138];
   return NICE_HUES[h % NICE_HUES.length];
 }
 
