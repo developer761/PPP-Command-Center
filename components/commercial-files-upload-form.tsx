@@ -3,12 +3,19 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { directUploadDocument } from "@/lib/commercial/uploads/direct-upload-client";
 
 /** Mirror of MAX_UPLOAD_BYTES in lib/commercial/documents/db.ts (100 MB).
  *  Duplicated because importing a server-only lib into a client component
  *  errors at build time. Keep in sync — if either changes, also audit the
  *  bucket setting in the Supabase console. */
 const CLIENT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+/** Files at/above this size can't go through the multipart API route —
+ *  Vercel caps serverless request bodies at ~4.5 MB. Above the threshold we
+ *  upload DIRECTLY to Supabase Storage via a signed URL (R6b). Set well under
+ *  4.5 MB for headroom (multipart boundary + fields add overhead). */
+const DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024;
 
 /** Mirror of DOCUMENT_CATEGORIES + labels from lib/commercial/documents/
  *  categories.ts. Duplicated for the same server-only-import reason. */
@@ -72,11 +79,14 @@ export function CommercialFilesUploadForm({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const directHandleRef = useRef<{ cancel: () => void } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [category, setCategory] = useState<string>(defaultCategory);
   const [notes, setNotes] = useState<string>("");
+  // Non-null only during a large (direct-to-Storage) upload — drives the % bar.
+  const [progress, setProgress] = useState<number | null>(null);
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
@@ -89,7 +99,17 @@ export function CommercialFilesUploadForm({
 
   const handleCancel = () => {
     abortRef.current?.abort();
+    directHandleRef.current?.cancel();
     setBusy(false);
+    setProgress(null);
+  };
+
+  const resetAfterUpload = () => {
+    formRef.current?.reset();
+    setSelectedFile(null);
+    setNotes("");
+    setCategory("other");
+    router.refresh();
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -105,6 +125,35 @@ export function CommercialFilesUploadForm({
     }
     if (selectedFile.size > CLIENT_MAX_UPLOAD_BYTES) {
       setError(`File too big (${Math.round(selectedFile.size / 1024 / 1024)} MB). Max 100 MB.`);
+      return;
+    }
+
+    // Large files can't fit through Vercel's ~4.5 MB serverless body cap — send
+    // them straight to Supabase Storage via a signed URL (R6b), with a live %.
+    if (selectedFile.size > DIRECT_UPLOAD_THRESHOLD) {
+      setBusy(true);
+      setProgress(0);
+      const handle = directUploadDocument({
+        parentType,
+        parentId,
+        file: selectedFile,
+        category,
+        notes: notes.trim() || null,
+        onProgress: (f) => setProgress(f),
+      });
+      directHandleRef.current = handle;
+      try {
+        const result = await handle.promise;
+        if (result.ok) {
+          resetAfterUpload();
+        } else {
+          setError(result.canceled ? "Cancelled." : result.error);
+        }
+      } finally {
+        setBusy(false);
+        setProgress(null);
+        directHandleRef.current = null;
+      }
       return;
     }
 
@@ -131,11 +180,7 @@ export function CommercialFilesUploadForm({
         throw new Error(body.error || `Upload failed (${res.status}).`);
       }
       // Reset + refresh so the new row shows up in the list below.
-      formRef.current?.reset();
-      setSelectedFile(null);
-      setNotes("");
-      setCategory("other");
-      router.refresh();
+      resetAfterUpload();
     } catch (err) {
       if ((err as Error).name === "AbortError") {
         setError("Cancelled.");
@@ -232,13 +277,26 @@ export function CommercialFilesUploadForm({
         </div>
       )}
 
+      {progress !== null && (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-ppp-charcoal-100">
+          <div
+            className="h-full rounded-full bg-cc-brand-500 transition-[width] duration-150"
+            style={{ width: `${Math.max(4, Math.round(progress * 100))}%` }}
+          />
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <button
           type="submit"
           disabled={busy || !selectedFile}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {busy ? "Uploading…" : "Upload"}
+          {busy
+            ? progress !== null
+              ? `Uploading… ${Math.round(progress * 100)}%`
+              : "Uploading…"
+            : "Upload"}
         </button>
         {busy && (
           <button
