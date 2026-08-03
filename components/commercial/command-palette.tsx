@@ -258,8 +258,26 @@ export function CommandPalette() {
         )}
         <div className="max-h-[60vh] overflow-y-auto" role="listbox" id="palette-results">
           {query.trim().length < 2 ? (
-            <div className="px-4 py-8 text-center text-[13px] text-ppp-charcoal-500">
-              Type 2+ characters — search accounts, opportunities, proposals, invoices &amp; documents. Try a name, PROP-/INV-/PO #, or a dollar amount.
+            <div className="px-6 py-9 text-center">
+              <div className="mx-auto mb-3 inline-flex items-center justify-center h-11 w-11 rounded-full bg-cc-brand-50 text-cc-brand-600">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+                </svg>
+              </div>
+              <p className="text-[13.5px] font-semibold text-ppp-charcoal">Search everything</p>
+              <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+                Accounts · Opportunities · Proposals · Invoices · Documents
+              </p>
+              <div className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5">
+                {["a name", "PROP-0045", "INV-113", "PO #", "$12,500"].map((ex) => (
+                  <span
+                    key={ex}
+                    className="inline-flex items-center rounded-full border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-2.5 py-1 text-[11px] font-medium text-ppp-charcoal-500"
+                  >
+                    {ex}
+                  </span>
+                ))}
+              </div>
             </div>
           ) : loading && results.length === 0 ? (
             <div className="px-4 py-8 text-center text-[13px] text-ppp-charcoal-500">
