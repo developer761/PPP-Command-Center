@@ -103,7 +103,9 @@ const navSections: NavSection[] = [
   {
     heading: "Reports",
     items: [
-      { label: "Win/Loss", href: "/commercial/reports/win-loss", icon: <IconChart /> },
+      // R4: a Reports framework — one entry, a tab bar inside switches reports
+      // (AR Aging · Win/Loss · …). Highlights on every /commercial/reports/* page.
+      { label: "Reports", href: "/commercial/reports", icon: <IconChart /> },
     ],
   },
   {
