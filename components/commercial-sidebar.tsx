@@ -210,6 +210,7 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNav
         <Link
           href={item.href}
           onClick={onNavigate}
+          data-tour={item.href}
           aria-current={active ? "page" : undefined}
           className={[
             NAV_ROW,
