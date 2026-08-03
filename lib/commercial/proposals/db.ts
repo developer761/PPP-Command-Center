@@ -957,6 +957,7 @@ async function notifyProposalReceivers(input: {
         actingUserId: input.actorUserId,
         actorName: input.actorName,
         note: input.note,
+        forReceiver: true,
       }).catch((err) => console.warn("[notifyProposalReceivers] one recipient failed:", err));
     }
   } catch (err) {

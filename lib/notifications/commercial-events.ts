@@ -1419,6 +1419,10 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
   actingUserId: string | null;
   actorName: string;
   note: string | null;
+  /** RUX-6: this recipient is a "receiver" (CC'd on the decision), not the
+   *  estimator who owns the next step — so drop the "you send it / you edit it"
+   *  action wording; they just get the heads-up + a View link. */
+  forReceiver?: boolean;
 }): Promise<{ ok: boolean; written: boolean }> {
   const { accountId, oppTitle } = await resolveOppAccountAndTitle(input.opportunityId);
   if (!accountId) {
@@ -1447,7 +1451,7 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
     ? `Approved: ${revLabel} — ready to send`
     : `Changes requested: ${revLabel}`;
   const body = isApproved
-    ? `${approver} approved ${revLabel} · ${shortOppTitle}. You can send it now.`
+    ? `${approver} approved ${revLabel} · ${shortOppTitle}.${input.forReceiver ? "" : " You can send it now."}`
     : `${approver} sent ${revLabel} back on ${shortOppTitle}.${noteForBell}`;
 
   const subject = isApproved
@@ -1461,7 +1465,7 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
       : `${approver} requested changes on proposal ${revLabel} on ${oppTitle} — it's back in draft.`,
     input.note ? `  Note: ${input.note}` : "",
     ``,
-    isApproved ? `Send it: ${emailLink}` : `Make the edits: ${emailLink}`,
+    input.forReceiver ? `View it: ${emailLink}` : isApproved ? `Send it: ${emailLink}` : `Make the edits: ${emailLink}`,
     ``,
     `— PPP Commercial Command Center`,
   ]
@@ -1472,7 +1476,7 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
   <p>Hi,</p>
   <p><strong>${escape(approver)}</strong> ${isApproved ? "approved" : "requested changes on"} proposal <strong>${escape(revLabel)}</strong> on <strong>${escape(oppTitle)}</strong>${isApproved ? ". It's cleared to send to the customer." : " — it's back in draft."}</p>
   ${input.note ? `<p style="margin:8px 0;padding:12px 16px;background:#fffbeb;border-left:4px solid #d97706;border-radius:8px;color:#444;word-break:break-word;"><em>${escape(input.note)}</em></p>` : ""}
-  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:${accent};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">${isApproved ? "Send it →" : "Make the edits →"}</a></p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:${accent};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">${input.forReceiver ? "View →" : isApproved ? "Send it →" : "Make the edits →"}</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
 
