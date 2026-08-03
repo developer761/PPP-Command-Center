@@ -85,7 +85,10 @@ export type CommercialNotificationKind =
   | "commercial_debrief_overdue"
   // Karan 2026-07-27: internal marker + bell when the 15-day past-due client
   // reminder email is sent (or couldn't be, for lack of a contact email).
-  | "commercial_invoice_dunning";
+  | "commercial_invoice_dunning"
+  // R6 (Karan 2026-08): a GC submitted a bid through the public online bid form.
+  // Fans out to the whole commercial team so nobody misses a fresh lead.
+  | "commercial_bid_submitted";
 
 function adminClient() {
   return createSupabaseAdminClient(
@@ -1321,6 +1324,70 @@ async function resolveOppAccountAndTitle(
  * Stephanie, admins) so someone can green-light it. The proposal is BLOCKED
  * from sending until one of them approves. Skips the requester themselves.
  */
+/**
+ * R6 — a GC submitted a bid through the public online form. Fan a bell + email
+ * out to the whole active commercial team so a fresh lead never gets missed.
+ */
+export async function insertCommercialBidSubmittedNotifications(input: {
+  opportunityId: string;
+  accountId: string;
+  accountName: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  oppTitle: string;
+}): Promise<{ fanout: number }> {
+  const { listManagedUsers } = await import("@/lib/auth/user-management");
+  const users = (await listManagedUsers()).filter((u) => u.has_new_platform_access && u.is_active);
+  if (users.length === 0) return { fanout: 0 };
+
+  const relativeLink = `/commercial/accounts/${input.accountId}?tab=projects&project=${input.opportunityId}`;
+  const emailLink = appendBase(relativeLink);
+  const who = input.contactName?.trim() || input.accountName;
+  const shortTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
+  const title = `New bid request: ${truncatePreview(input.accountName, BELL_TITLE_OPP_CAP)}`;
+  const body = `${who} submitted a bid request through the website — ${shortTitle}.`;
+  const subject = `New bid request — ${input.accountName}`;
+  const contactLine = input.contactEmail ? `Reply to: ${input.contactEmail}` : "";
+  const text = [
+    `Hi,`,
+    ``,
+    `${who} just submitted a bid request through the website.`,
+    `Project: ${input.oppTitle}`,
+    contactLine,
+    ``,
+    `Open it: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(who)}</strong> just submitted a bid request through the website.</p>
+  <p style="margin:8px 0;padding:12px 16px;background:#f0f9ff;border-left:4px solid #2baae1;border-radius:8px;color:#444;">
+    <strong>Project:</strong> ${escape(input.oppTitle)}${input.contactEmail ? `<br/><strong>Reply to:</strong> ${escape(input.contactEmail)}` : ""}
+  </p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#1e8fbf;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the opportunity →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  let fanout = 0;
+  for (const u of users) {
+    const r = await dispatchCommercialNotification({
+      kind: "commercial_bid_submitted",
+      recipientUserId: u.user_id,
+      actingUserId: null,
+      sourceId: input.opportunityId,
+      title,
+      body,
+      link: relativeLink,
+      email: { subject, text, html },
+    });
+    if (r.ok) fanout++;
+  }
+  return { fanout };
+}
+
 export async function insertCommercialProposalApprovalRequestedNotifications(input: {
   proposalId: string;
   revisionNumber: number;
