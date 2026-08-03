@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -38,6 +39,13 @@ export default async function PipelineReportPage() {
         <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No open pipeline</p>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Nothing is in Qualifying, Estimating, or Proposal right now. New opportunities show up here as you log them.</p>
+          <Link
+            href="/commercial/opportunities"
+            className="inline-flex items-center gap-1.5 mt-4 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12.5px] font-semibold text-cc-brand-700 hover:bg-ppp-charcoal-50 min-h-[44px]"
+          >
+            Go to opportunities
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </Link>
         </div>
       ) : (
         <>

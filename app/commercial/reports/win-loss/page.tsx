@@ -431,7 +431,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                             </span>
                           </div>
                           <div className="mt-1 h-1.5 bg-ppp-charcoal-50 rounded-full overflow-hidden">
-                            <div className="h-full bg-amber-500" style={{ width: `${pct}%` }} aria-hidden />
+                            <div className="h-full bg-rose-400" style={{ width: `${pct}%` }} aria-hidden />
                           </div>
                         </div>
                       </li>
