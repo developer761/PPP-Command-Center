@@ -378,6 +378,21 @@ export async function AiaTool({
         <div className="rounded-lg px-4 py-3 text-sm bg-rose-50 border border-rose-200 text-rose-700">{sp.error}</div>
       )}
 
+      {/* R5 billing signpost — the AIA application certifies work completed; the
+          actual money requests are Invoices. Cross-link back. */}
+      <Link
+        href={`/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=invoices`}
+        className="flex items-center gap-2.5 rounded-xl border border-cc-brand-200 bg-cc-brand-50/50 px-4 py-2.5 hover:bg-cc-brand-50 transition-colors"
+      >
+        <span aria-hidden className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-cc-brand-600 text-white shrink-0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+        </span>
+        <span className="min-w-0 text-[12px] text-ppp-charcoal-600 flex-1">
+          <span className="font-semibold text-ppp-charcoal">This certifies completed work.</span> The actual money requests are Invoices — record payments there.
+        </span>
+        <span className="shrink-0 text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-0.5">Invoices<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg></span>
+      </Link>
+
       {selectedAppId ? (
         await (async () => {
           const application = await getAiaApplication(selectedAppId);

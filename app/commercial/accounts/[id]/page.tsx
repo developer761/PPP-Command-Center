@@ -72,6 +72,7 @@ import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesF
 import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commercial/invoices/lien-waiver";
 import { DonutChart, GaugeRing, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 import { getProjectFinancials } from "@/lib/commercial/projects/financials";
+import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { costBreakdownForAccount } from "@/lib/commercial/purchases/db";
 import TrendChart from "@/components/trend-chart";
@@ -1067,7 +1068,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // Mini-updates: real per-tool state (the notes on each change order, which
   // submittal + status, which AIA application + draft state, closeout progress)
   // so the project reads at a glance without opening each tool.
-  const [changeOrders, submittals, closeoutPkgs, documents, dealInvoices, latestWo] = await Promise.all([
+  const [changeOrders, submittals, closeoutPkgs, documents, dealInvoices, latestWo, dealFin, laborRows] = await Promise.all([
     listChangeOrders(p.opp.id),
     listOpportunitySubmittals(p.opp.id),
     listCloseoutPackages(p.opp.id),
@@ -1078,7 +1079,17 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
     listCommercialInvoices({ opportunityId: p.opp.id }),
     // R2 Work Order: the one live WO for the mini-card chip.
     getWorkOrderForOpp(p.opp.id),
+    // R5 rollup: the cost/production side for the deal-header strip.
+    getProjectFinancials(p.opp.id),
+    laborByWorkerForProject(p.opp.id),
   ]);
+  // R5 project rollup — the "money out" half of the job at a glance.
+  const dealTotalHours = laborRows.reduce((s, w) => s + w.hours, 0);
+  const dealMaterialsCents = dealFin.costs.materials;
+  const dealLaborOutCents = dealFin.costs.labor;
+  const dealCostsTotalCents = dealFin.costs.total;
+  const dealNetCents = dealFin.billedPreTaxCents - dealCostsTotalCents;
+  const dealHasRollup = dealCostsTotalCents > 0 || dealTotalHours > 0;
   const dealProposals = await listProposalsForOpp(p.opp.id);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
   // Milestones (2026-08): an invoice can be broken into a schedule of milestones
@@ -1242,6 +1253,20 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           <ProjectStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={hasContract ? formatCentsCompact(p.overBilled ? p.billedContractCents - p.contractToDateCents : p.leftToBillCents) : "—"} tone={p.overBilled ? "amber" : undefined} />
           <ProjectStat label="Outstanding" value={formatCentsCompact(p.outstandingCents)} sub={p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={p.outstandingCents > 0 ? "amber" : undefined} />
         </div>
+        {/* R5 project rollup — the COST/production side (money out) right under the
+            billing KPIs, so the deal header reads as the whole job at a glance.
+            Self-hides until costs or hours exist. Full detail on the Costs & P&L tab. */}
+        {dealHasRollup && (
+          <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-400 mb-2">Job costs</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <ProjectStat label="Hours" value={`${Number.isInteger(dealTotalHours) ? dealTotalHours : dealTotalHours.toFixed(1)}h`} sub="logged" />
+              <ProjectStat label="Materials" value={formatCentsCompact(dealMaterialsCents)} sub="purchases" />
+              <ProjectStat label="Labor out" value={formatCentsCompact(dealLaborOutCents)} sub="paid to workers" />
+              <ProjectStat label="Net" value={`${dealNetCents < 0 ? "−" : "+"}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="billed − costs" />
+            </div>
+          </div>
+        )}
         {/* Retainage held by the GC — real money owed back at closeout, the
             number a PM chases hardest. Only shows once an AIA app withholds it
             (2026-08 PM UX walk). */}
@@ -1425,6 +1450,21 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         ]}
         bar={hasContract ? { label: "Billed of contract", pct: aiaBilledPct, tone: p.overBilled ? "amber" : "blue" } : undefined}
       />
+      {/* R5 billing signpost — invoices are the actual bills; many GCs also
+          require an AIA G702/G703 application to release payment. Cross-link so
+          nobody wonders "where do I bill this GC?". */}
+      <Link
+        href={`${base}?tab=projects&project=${p.opp.id}&dt=aia`}
+        className="flex items-center gap-2.5 rounded-xl border border-ppp-blue-200 bg-ppp-blue-50/50 px-4 py-2.5 hover:bg-ppp-blue-50 transition-colors"
+      >
+        <span aria-hidden className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-ppp-blue-600 text-white shrink-0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" /></svg>
+        </span>
+        <span className="min-w-0 text-[12px] text-ppp-charcoal-600 flex-1">
+          <span className="font-semibold text-ppp-charcoal">Billing this GC through AIA?</span> Invoices are the actual bills — many GCs also need a G702/G703 application to release payment.
+        </span>
+        <span className="shrink-0 text-[12px] font-semibold text-ppp-blue-700 inline-flex items-center gap-0.5">AIA Billing<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg></span>
+      </Link>
       {sp?.created === "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Invoice created.</div>
       )}
@@ -2300,8 +2340,8 @@ function ToolMiniCard({
 
 /** Compact summary tile for the account Projects tab (local KpiTile has a
  *  different placeholder-oriented API, so this keeps the collision-free). */
-function ProjectStat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" }) {
-  const valueCls = tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : "text-ppp-charcoal";
+function ProjectStat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" | "rose" }) {
+  const valueCls = tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : tone === "rose" ? "text-rose-700" : "text-ppp-charcoal";
   return (
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-3.5 py-3 shadow-sm">
       <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
