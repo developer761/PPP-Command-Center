@@ -203,6 +203,13 @@ export async function changeWorkOrderStatus(
   if (!data) return { ok: false, error: "This work order just changed in another tab — reload." };
   const after = data as WorkOrder;
   await logUpdate("commercial_work_orders", id, before, after, actorUserId);
+  // R10: when a WO is sent to the crew, make it schedulable in Field Ops (a
+  // linked job appears on the Week Grid). Best-effort; dynamic import breaks the
+  // field-ops <-> work-orders cycle.
+  if (to === "sent") {
+    const { ensureJobForWorkOrder } = await import("@/lib/commercial/field-ops/jobs");
+    await ensureJobForWorkOrder(id, actorUserId);
+  }
   return { ok: true, value: after };
 }
 

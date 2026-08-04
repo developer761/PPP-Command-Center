@@ -207,6 +207,78 @@ export async function updateJob(
   return { ok: true, job };
 }
 
+/**
+ * WO -> scheduler link: when a deal's Work Order is sent, make sure a
+ * schedulable field-ops job exists for it (idempotent - keyed on work_order_id).
+ * Pulls the deal name, site, and target dates so it appears on the Week Grid /
+ * Work Orders tab automatically. Queries tables directly (no work-orders import)
+ * to avoid a circular dependency. Best-effort - never throws.
+ */
+export async function ensureJobForWorkOrder(workOrderId: string, actorUserId: string): Promise<void> {
+  try {
+    const sb = commercialDb();
+    const { data: existing } = await sb
+      .from("commercial_jobs")
+      .select("id")
+      .eq("work_order_id", workOrderId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (existing) return; // already linked
+
+    const { data: woRow } = await sb
+      .from("commercial_work_orders")
+      .select("id, opportunity_id, account_id, scheduled_start_date, scheduled_end_date")
+      .eq("id", workOrderId)
+      .maybeSingle();
+    const wo = woRow as {
+      opportunity_id: string | null;
+      account_id: string | null;
+      scheduled_start_date: string | null;
+      scheduled_end_date: string | null;
+    } | null;
+    if (!wo) return;
+
+    const [oppRes, acctRes] = await Promise.all([
+      wo.opportunity_id
+        ? sb.from("commercial_opportunities").select("title, client_name, project_number").eq("id", wo.opportunity_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      wo.account_id
+        ? sb.from("commercial_accounts").select("company_name, site_street, site_city, site_state, site_zip").eq("id", wo.account_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const opp = oppRes.data as { title: string | null; client_name: string | null; project_number: string | null } | null;
+    const acct = acctRes.data as { company_name: string | null; site_street: string | null; site_city: string | null; site_state: string | null; site_zip: string | null } | null;
+
+    const name = opp?.title?.trim() || opp?.client_name?.trim() || acct?.company_name?.trim() || "Work order";
+    const code = `${opp?.project_number?.trim() || "WO"}-${workOrderId.slice(0, 6).toUpperCase()}`;
+
+    const { data: inserted } = await sb
+      .from("commercial_jobs")
+      .insert({
+        job_code: code,
+        name,
+        opportunity_id: wo.opportunity_id,
+        work_order_id: workOrderId,
+        account_id: wo.account_id,
+        customer_name: acct?.company_name ?? null,
+        site_address: acct?.site_street ?? null,
+        site_city: acct?.site_city ?? null,
+        site_state: acct?.site_state ?? null,
+        site_zip: acct?.site_zip ?? null,
+        status: "ready_to_schedule",
+        target_start: wo.scheduled_start_date,
+        target_end: wo.scheduled_end_date,
+        division_tag: "commercial",
+        created_by_user_id: actorUserId,
+      })
+      .select(COLS)
+      .single();
+    if (inserted) await logInsert("commercial_jobs", (inserted as { id: string }).id, inserted, actorUserId);
+  } catch (err) {
+    console.warn("[field-ops] ensureJobForWorkOrder failed:", err);
+  }
+}
+
 export async function softDeleteJob(id: string, actorUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const before = await getJob(id);
   if (!before) return { ok: false, error: "Job not found." };
