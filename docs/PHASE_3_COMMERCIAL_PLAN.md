@@ -139,17 +139,21 @@ _From `project_katie_notes_remaining_2026_08`, `project_katie_general_notes_2026
 (`reference_tomco_doc_formats_verified`, `project_tomco_proposal_format`)._
 - [ ] **Kim: build + SEND proposals via Resend** — email the proposal PDF straight
       to the GC from the platform (outbound Resend), tracked. Ties to R1 approval.
-- [ ] **CO lines ON the invoice** — a change order billable as an invoice line /
-      milestone (partly shipped as "incl. change order"; verify it fully matches
-      how Tomco bills COs). (Katie item G.)
-- [ ] **AIA templated Excel** — the G702/G703 Excel export must match Tomco's BLANK
-      template cell-for-cell (Katie item H; contractor label already = Tomco).
-- [ ] **Lien-waiver STORE** — a library of waiver templates to pick from per
-      payment (beyond today's per-payment upload).
-- [ ] **Slack integration (master-plan Block 2)** — pipe Commercial notifications
-      into Slack alongside the bell + email.
-- [ ] **Custom notification rules across BOTH platforms + one shared daily cron**
-      (Block 3) — user-defined alert rules (Katie item L).
+- [x] **CO lines ON the invoice** — DONE. Invoice line items + milestones carry
+      `change_order_id` (mig 093); status engine reconciles CO lines. (Katie item G.)
+      Only a verify-vs-Tomco's-real-bill remains if ever questioned.
+- [~] **AIA templated Excel** — BUILT (`lib/commercial/aia/export.ts` fills the
+      G702/G703 cells via ExcelJS per `TEMPLATE_MAP.md`). REMAINING: verify the
+      output matches Tomco's BLANK template cell-for-cell — **blocked on Katie
+      sending the real `.xls` + a sample filled copy to diff against.** (Katie item H.)
+- [x] **Custom notification rules + shared daily cron** — DONE. Full rule builder
+      on Settings → Notifications (create/enable/delete, triggers + bell/email
+      channels, owner-scoped, daily cron). (Katie item L, Block 3.)
+- [→ Bonus] ~~**Slack integration**~~ — moved to Bonus (Karan 2026-08-04: "we don't
+      need this now"). Only if the Tomco team lives in Slack — bell + email cover it.
+- [→ Bonus] ~~**Lien-waiver STORE**~~ — moved to Bonus (Karan 2026-08-04). Today's
+      upload-only + coverage tagging is correct if GCs supply their own waiver forms;
+      a generate-from-template store is only worth it if Tomco issues its own. Ask Katie.
 - [ ] **Reports** (Katie item K, ⛔ needs Katie's report list) — see R4.
 - [ ] **Field Ops / Scheduling** (Katie item J) — see R10 + the scheduling spec.
 - [ ] **Doc-fidelity guardrail:** every generator (proposal · transmittal ·
@@ -162,6 +166,8 @@ _From `project_katie_notes_remaining_2026_08`, `project_katie_general_notes_2026
 ## 🎁 Bonus features (do at the very end — nice-to-haves after the core roadmap)
 - [ ] **Pipeline speed** (deferred from R7, Karan 2026-08-04) — per-column **quick-add** on the kanban (type title + searchable account + Enter → deal born in that stage, optimistic insert), a **"start in stage"** selector on the New-opportunity slide-out, and rapid multi-entry (Enter = create+keep-open). Open stages only; desktop kanban; reuses `createCommercialOpportunity` + the column→(status, sub_status) map.
 - [ ] **View-only access role** (deferred from R8, Karan 2026-08-04) — a 4th least-privilege role (see-all, do-nothing). Fail-closed: migration adds 'viewer' to the role CHECK, add `requireCommercialWrite` gate, sweep EVERY mutation (~44 actions + 22 API routes) classifying read-vs-write, hide write UI via `capabilitiesFor`, then an adversarial pass proving no write path is unguarded. Ship complete or not at all.
+- [ ] **Slack integration** (deferred from Katie backlog, Karan 2026-08-04) — add a "slack" channel to the notification-rule builder (`RULE_CHANNELS` is bell/email/both today) + a workspace incoming-webhook, so commercial notifications can fan into Slack. Only if the Tomco team uses Slack.
+- [ ] **Lien-waiver template store** (deferred from Katie backlog, Karan 2026-08-04) — a library of blank waiver templates (conditional/unconditional × progress/final) generated + pre-filled from invoice data, instead of today's per-payment upload. Only if Tomco issues its own waivers (confirm with Katie — many GCs supply their own form).
 
 ## ⬜ ★ ENDGAME — full platform audit (do NOT declare done until all checked)
 - [ ] Money / KPI / backend audit — every finding fixed
