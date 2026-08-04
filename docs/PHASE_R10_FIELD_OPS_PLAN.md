@@ -16,14 +16,15 @@ Replaces Tomco's weekly scheduling spreadsheet (which does 3 jobs at once: forwa
 ---
 
 ## Data model (all net-new, migrations 112+)
-- **commercial_employees** — id, first/last/display_name, worker_type (`w2`|`sub`|`temp` — gates payroll), role (foreman|painter|taper|laborer|apprentice), pay_type, default_daily_hours (8), phone/email, sort_order (stable grid column order), active (never delete), start/end_date.
+- **commercial_employees** — id, first/last/display_name, worker_type (`w2`|`sub`|`temp` — gates payroll), role (foreman|painter|taper|laborer|apprentice), pay_type, default_daily_hours (8), phone/email, sort_order (stable grid column order), active (never delete), start/end_date, **schedule_email_opt_out (bool, default FALSE — everyone gets their weekly schedule unless they opt out)**, **preferred_language (en|es — bilingual schedule emails)**.
 - **commercial_employee_rates** _(RESTRICTED — own permission gate)_ — employee_id, cost_rate (burdened), rate_type, effective_from/to. Only job-costing reports read it; scheduling UI never does.
 - **commercial_crews / commercial_crew_members** — crew (id, name, foreman_employee_id, active); members (crew_id, employee_id, added_at/removed_at — membership historical).
 - **commercial_jobs** — id, job_code (unique, REQUIRED), name, **opportunity_id (nullable — a job can be backed by a won deal, or standalone)**, customer_id/name, site_address/city/state/zip, lat/lng (nullable), status (state machine below), estimated_labor_hours, target_start/end, prevailing_wage (bool), notes.
 - **commercial_job_phases** _(Karan's addition)_ — id, job_id, phase_no, label, start_date, end_date. Model multiple date ranges per job (Phase 1 Aug 1–6, break, Phase 2 Aug 15–20). SF captures only 1 start/end — this fixes that.
-- **commercial_assignments** _(THE SCHEDULE)_ — id, job_id, employee_id, work_date, scheduled_hours, crew_id (nullable = provenance), status (planned|published|cancelled), note. **UNIQUE(job_id, employee_id, work_date)**; one person on 2 jobs/day = 2 rows.
+- **commercial_assignments** _(THE SCHEDULE)_ — id, job_id, employee_id, work_date, scheduled_hours, **scheduled_start_time (nullable — for 2-jobs-a-day windows, e.g. Job A 7–11, Job B 12–4)**, crew_id (nullable = provenance), status (planned|published|cancelled), note. **UNIQUE(job_id, employee_id, work_date)**; one person on 2 jobs/day = 2 rows, each with its own start_time.
 - **commercial_absences** — id, employee_id, work_date, type (PTO|SICK|PERSONAL|HOLIDAY|NO_WORK|NOT_AVAILABLE), hours, note (ops only). The P/S/NW/NA vocab as structured values.
-- **commercial_time_entries** _(ACTUALS)_ — id, assignment_id (nullable = unplanned), job_id/employee_id/work_date (carried independently), actual_hours, status (submitted|questioned|approved|exported), pay_period_id, submitted_by/at, approved_by/at, questioned_reason.
+- **commercial_time_entries** _(ACTUALS, daily aggregate)_ — id, assignment_id (nullable = unplanned), job_id/employee_id/work_date (carried independently), actual_hours (**auto-summed from punches** OR manual), status (submitted|questioned|approved|exported), pay_period_id, submitted_by/at, approved_by/at, questioned_reason.
+- **commercial_time_punches** _(CLOCK IN/OUT — the raw events, Karan 2026-08-04)_ — id, employee_id, job_id, assignment_id (nullable), clock_in_at (timestamptz, **server clock, not the phone**), clock_out_at (timestamptz, null while on the clock), source (self_link|foreman|admin), edited_by/at, note. Multiple per day (2 jobs at different times = 2+ punches; a lunch break = clock-out then clock-in). Segment hours = out − in; the day's time_entry.actual_hours = Σ that employee/job/date's punches.
 - **commercial_pay_periods** — id, start/end_date, status (open|review|exported|closed), exported_at/by.
 - **scheduling audit_log** — REQUIRED on time_entries, assignments, employee_rates (reuse the existing commercial audit-log pattern).
 
@@ -75,6 +76,35 @@ R10 must wire INTO what's already built, not sit beside it:
 ## ⭐ Reuses the LOCKED conventions (build to these, per the RUX overhaul)
 Per-tool **dual/triple surface** (account-nested detail + cross-account **sidebar index** + rollup) · **ToolBackHeader + `?back=`** context-aware back-nav · **Hub pattern** for the Field-Ops landing / a **collapsible sidebar group** (it's >6 rows) · shared primitives + **DateField for every date (never native)** · **AutosaveForm** where it fits (grid cells, daily log) · **docs-per-tool auto-file** (payroll CSV filed to the pay-period) · **palette** blue/green + rose-danger only, `ppp-navy` when two states must differ (never purple/yellow) · **never a dead-end** (empty schedule → "add a job / import a crew") · **money never hard-rejects** · **mobile-perfect 44px** (the Daily Log is mobile-FIRST) · **migration-gated deploy** (hand Karan the SQL, hold the push) · edge-case audit before + AND after each sub-phase.
 
+## ⏱️ Clock in/out — how it works + integrates (Karan 2026-08-04)
+**No app, no hardware kiosk (v1).** It's the SAME mobile web page behind the painter's magic link — the clock lives where they already confirm hours. **Timestamps are the SERVER clock, never the phone** (a painter can't back-date). Flow:
+1. Morning: painter taps the magic link → "Today: **Job A** 7:00–11:00 · **Job B** 12:00–4:00" (from their assignments' start_times).
+2. Big **Clock In** on Job A → writes a `time_punch` (clock_in_at = server now). Screen flips to "On **Job A** since 7:03 — **Clock Out**."
+3. Lunch/done → **Clock Out** → clock_out_at = now → segment = 3.9h.
+4. Second job → **Clock In** on Job B → new punch → Clock Out. (2 jobs/day at different times = 2 punches — handled natively.)
+5. Day auto-totals per job (Σ punches → each job's `time_entry.actual_hours`); painter taps **Submit day** (or it auto-submits on the last clock-out) → locked pending approval.
+6. Scheduler sees **clocked actual vs scheduled** in Approvals → approve or question.
+- **Break handling:** clock out for lunch → clock back in = break naturally excluded (no separate break UI in v1; optional per-company "auto-deduct 30-min lunch after 6h" is a config flag, OFF by default).
+- **Confirm-hours fallback stays:** if they never clocked (dead zone, forgot), they — or a foreman — enter the hours manually; the entry is tagged `manual` vs `clocked` for the audit trail.
+- **Geofence/GPS = phase 2** (out of scope v1 per spec). We can optionally capture coarse browser geolocation on a punch later for verification; v1 is timestamp-only.
+
+### Clock in/out edge cases (baked in)
+- **Forgot to clock OUT** (went home on the clock): the punch stays open; a "you're still clocked in on Job A" nudge; on rollover it's flagged, and Approvals **can't approve an open punch** — scheduler/foreman closes it to the scheduled end (audit-logged).
+- **Forgot to clock IN**: retro-add a punch or use the confirm-hours path → tagged `manual`.
+- **Double-active** (clock into B while still on A): block it — "Clock out of Job A first" (or auto-close A at B's clock-in, flagged).
+- **Wrong job**: re-point the punch to the right job before submit (painter) or anytime (foreman/scheduler), audit-logged.
+- **Unplanned job** (clocked in somewhere not scheduled): allowed → time_entry with null assignment (the spec's unplanned row).
+- **Offline on site**: the page needs signal to punch; no signal → confirm-hours later or foreman submits (native offline is out of scope — call it out honestly).
+- **Double-tap / duplicate punch**: debounced + idempotent.
+- **Tampering**: server timestamps only; any edit to a punch/entry writes an audit row (payroll-adjacent).
+- **Timezone**: stored UTC, shown ET; the "work_date" a punch belongs to is derived in ET (a 9pm–1am punch stays on the start day).
+- **Two Robs / display collisions**: punches key on employee_id, never the name.
+
+## 🔔 Schedule emails + opt-out — Settings → Access, new "Schedule Emails" section (Karan 2026-08-04)
+- **Everyone gets their personal weekly schedule email by default.** Opt-out is per-person: a toggle in the new **Access → Schedule Emails** section (admin can flip anyone off), PLUS an **unsubscribe link** in the email itself (sets that employee's `schedule_email_opt_out`). Re-subscribe from Access.
+- **Internal recipients (office):** a managed list (Stephanie, Brendan, …) who get the **full weekly schedule** summary (all crews) — separate from the per-painter personal emails. Same section.
+- Sits alongside the existing per-user Approver/Receiver toggles on Settings → Access, so all "who gets what email" lives in one place.
+
 ## 📧 Painter comms — "here's your schedule" email (Karan 2026-08-04)
 When a week (or a day) is **published**, each painter gets an email of THEIR assignments — not the whole grid:
 - **Per painter, personalized:** "Here's your schedule, Miguel:" → each day → the job, the site address, start time, foreman/crew, and job details (pulled from the job / its **Work Order** if backed by one — scope, finishes). PW jobs flagged.
@@ -99,7 +129,7 @@ GPS/geofenced clock-in · materials/paint ordering · sub POs · customer schedu
 - **R10.0 Foundation** — data-model migrations + roles + rate gating + **Admin CRUD** (employees/crews/jobs/pay-periods, job_code enforced) + sidebar "Field Ops" section. Nothing schedules yet, but the masters exist.
 - **R10.1 Week Grid** — the primary surface (Scheduled/Actual/Variance + click-to-edit + Copy Week Forward + flags).
 - **R10.2 Calendar + Job Board** — drag-scheduling + the backlog drag-source.
-- **R10.3 Daily Log** — mobile foreman capture (<30s) — the make-or-break usability piece.
+- **R10.3 Daily Log + Clock in/out + painter schedule email** — per-painter magic-link mobile: clock in/out (server timestamps, 2-jobs-a-day, break-by-gap) with a confirm-hours fallback; published-schedule email to each painter (personalized, WO details, opt-out); the make-or-break usability piece.
 - **R10.4 Approvals + time-entry state machine** — variance review + period lock.
 - **R10.5 Payroll CSV + Reports + WO→scheduler link** — the $-value outputs.
 - **R10.6 Audit + polish** — edge-case + flow + mobile + a11y sweep → leads into ENDGAME round 2.
