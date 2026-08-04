@@ -49,6 +49,11 @@ async function addEmployeeAction(formData: FormData) {
     actor_user_id: userId,
   });
   if (!result.ok) redirect(`${BASE}?error=${encodeURIComponent(result.error)}`);
+  // Instantly welcome them + start their schedule emails (fire-and-forget).
+  if (result.employee.email) {
+    const { sendWelcomeEmail } = await import("@/lib/commercial/field-ops/schedule-email-send");
+    await sendWelcomeEmail(result.employee).catch(() => undefined);
+  }
   revalidatePath(BASE);
   redirect(`${BASE}?ok=added`);
 }
