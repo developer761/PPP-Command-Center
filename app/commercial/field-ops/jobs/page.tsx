@@ -10,6 +10,8 @@ import {
   createJob,
   updateJob,
   softDeleteJob,
+  listDealOptionsForWorkOrder,
+  getOpportunityAccountId,
   jobStatusLabel,
   divisionLabel,
   JOB_STATUSES,
@@ -19,6 +21,7 @@ import {
 } from "@/lib/commercial/field-ops/jobs";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 import { DateField } from "@/components/commercial/date-field";
+import { SearchableSelect } from "@/components/commercial/searchable-select";
 
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/jobs";
@@ -44,9 +47,15 @@ function num(v: FormDataEntryValue | null): number | null {
 async function addJobAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
+  // Connect to a deal (optional) - the same platform link a real WO has. Picking
+  // one ties this work order to that account + deal.
+  const opportunity_id = String(formData.get("opportunity_id") ?? "").trim() || null;
+  const account_id = opportunity_id ? await getOpportunityAccountId(opportunity_id) : null;
   const result = await createJob({
     job_code: String(formData.get("job_code") ?? ""),
     name: String(formData.get("name") ?? ""),
+    opportunity_id,
+    account_id,
     customer_name: String(formData.get("customer_name") ?? ""),
     site_address: String(formData.get("site_address") ?? ""),
     site_city: String(formData.get("site_city") ?? ""),
@@ -108,7 +117,7 @@ export default async function FieldOpsJobsPage({
 }) {
   await requireAdmin();
   const sp = await searchParams;
-  const jobs = await listJobs({ includeClosed: sp.closed === "1" });
+  const [jobs, dealOptions] = await Promise.all([listJobs({ includeClosed: sp.closed === "1" }), listDealOptionsForWorkOrder()]);
 
   return (
     <div className="pb-8 max-w-4xl">
@@ -118,13 +127,20 @@ export default async function FieldOpsJobsPage({
       </div>
 
       {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error}</div>}
-      {sp.ok && <div className="mb-4 rounded-lg bg-ppp-green-50 border border-ppp-green-100 px-3 py-2 text-[12.5px] text-ppp-green-700">{sp.ok === "added" ? "Job added." : "Saved."}</div>}
+      {sp.ok && <div className="mb-4 rounded-lg bg-ppp-green-50 border border-ppp-green-100 px-3 py-2 text-[12.5px] text-ppp-green-700">{sp.ok === "added" ? "Work order added." : "Saved."}</div>}
 
       <form action={addJobAction} className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 mb-5 space-y-3">
-        <h2 className="text-sm font-bold text-ppp-charcoal">Add a job</h2>
+        <h2 className="text-sm font-bold text-ppp-charcoal">Add a work order</h2>
+        {dealOptions.length > 0 && (
+          <div>
+            <span className={LABEL_CLS}>Connect to a deal (optional)</span>
+            <SearchableSelect name="opportunity_id" options={dealOptions} placeholder="Search a deal / GC to link it" />
+            <p className="text-[11px] text-ppp-charcoal-400 mt-1">Links this work order to that account + deal, like a real WO. Leave blank for PPP / prevailing-wage / one-off jobs.</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block"><span className={LABEL_CLS}>Job code *</span><input name="job_code" required placeholder="e.g. STARK-2606" className={INPUT_CLS} /></label>
-          <label className="block"><span className={LABEL_CLS}>Job name *</span><input name="name" required placeholder="Stark Enterprises" className={INPUT_CLS} /></label>
+          <label className="block"><span className={LABEL_CLS}>Code *</span><input name="job_code" required placeholder="e.g. STARK-2606" className={INPUT_CLS} /></label>
+          <label className="block"><span className={LABEL_CLS}>Name *</span><input name="name" required placeholder="Stark Enterprises" className={INPUT_CLS} /></label>
           <label className="block"><span className={LABEL_CLS}>Customer</span><input name="customer_name" placeholder="GC / owner" className={INPUT_CLS} /></label>
           <label className="block"><span className={LABEL_CLS}>Division</span>
             <select name="division_tag" className={SELECT_CLS} style={SELECT_BG_STYLE}>
@@ -147,18 +163,18 @@ export default async function FieldOpsJobsPage({
         </div>
         <label className="flex items-center gap-2 text-[13px] text-ppp-charcoal-700"><input type="checkbox" name="prevailing_wage" className="h-4 w-4" /> Prevailing wage (PW)</label>
         <label className="block"><span className={LABEL_CLS}>Notes</span><textarea name="notes" rows={2} className={TEXTAREA_CLS} /></label>
-        <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add job</button>
+        <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add work order</button>
       </form>
 
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-bold text-ppp-charcoal">{jobs.length} {sp.closed === "1" ? "job" : "open job"}{jobs.length === 1 ? "" : "s"}</h2>
+        <h2 className="text-sm font-bold text-ppp-charcoal">{jobs.length} {sp.closed === "1" ? "work order" : "open work order"}{jobs.length === 1 ? "" : "s"}</h2>
         <Link href={sp.closed === "1" ? BASE : `${BASE}?closed=1`} className="text-[12px] font-semibold text-cc-brand-700 hover:underline">{sp.closed === "1" ? "Hide closed" : "Show closed"}</Link>
       </div>
 
       {jobs.length === 0 ? (
         <div className="text-center py-10 bg-surface border border-ppp-charcoal-100 rounded-xl">
-          <p className="text-sm font-semibold text-ppp-charcoal">No jobs yet</p>
-          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Add a job above — then you can schedule the crew onto it.</p>
+          <p className="text-sm font-semibold text-ppp-charcoal">No work orders yet</p>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Add a work order above - then you can schedule the crew onto it.</p>
         </div>
       ) : (
         <ul className="space-y-2">
@@ -175,7 +191,7 @@ export default async function FieldOpsJobsPage({
                 <form action={editJobAction} className="px-4 pb-4 pt-1 space-y-3 border-t border-ppp-charcoal-50">
                   <input type="hidden" name="id" value={j.id} />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="block"><span className={LABEL_CLS}>Job code</span><input name="job_code" defaultValue={j.job_code} className={INPUT_CLS} /></label>
+                    <label className="block"><span className={LABEL_CLS}>Code</span><input name="job_code" defaultValue={j.job_code} className={INPUT_CLS} /></label>
                     <label className="block"><span className={LABEL_CLS}>Name</span><input name="name" defaultValue={j.name} className={INPUT_CLS} /></label>
                     <label className="block"><span className={LABEL_CLS}>Customer</span><input name="customer_name" defaultValue={j.customer_name ?? ""} className={INPUT_CLS} /></label>
                     <label className="block"><span className={LABEL_CLS}>Division</span><select name="division_tag" defaultValue={j.division_tag ?? ""} className={SELECT_CLS} style={SELECT_BG_STYLE}><option value="">—</option>{DIVISION_TAGS.map((d) => <option key={d} value={d}>{divisionLabel(d)}</option>)}</select></label>

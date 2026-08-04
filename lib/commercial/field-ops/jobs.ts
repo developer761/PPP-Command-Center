@@ -88,6 +88,37 @@ export async function listJobs(opts?: { includeClosed?: boolean }): Promise<Comm
   return (data ?? []) as CommercialJob[];
 }
 
+/** Deals (opportunities) to connect a manually-added work order to - the same
+ *  platform link a real WO has. Picking one ties the WO to that account + deal. */
+export async function listDealOptionsForWorkOrder(): Promise<{ value: string; label: string; account_id: string }[]> {
+  const sb = commercialDb();
+  const { data: opps } = await sb
+    .from("commercial_opportunities")
+    .select("id, title, client_name, account_id")
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(300);
+  const rows = (opps ?? []) as { id: string; title: string | null; client_name: string | null; account_id: string }[];
+  const accIds = [...new Set(rows.map((o) => o.account_id))];
+  const accName = new Map<string, string>();
+  if (accIds.length > 0) {
+    const { data: accs } = await sb.from("commercial_accounts").select("id, company_name").in("id", accIds);
+    for (const a of (accs ?? []) as { id: string; company_name: string }[]) accName.set(a.id, a.company_name);
+  }
+  return rows.map((o) => ({
+    value: o.id,
+    account_id: o.account_id,
+    label: `${accName.get(o.account_id) ?? "GC"} - ${o.title?.trim() || o.client_name?.trim() || "Deal"}`,
+  }));
+}
+
+/** The account behind an opportunity (for connecting a work order). */
+export async function getOpportunityAccountId(oppId: string): Promise<string | null> {
+  const sb = commercialDb();
+  const { data } = await sb.from("commercial_opportunities").select("account_id").eq("id", oppId).is("deleted_at", null).maybeSingle();
+  return (data as { account_id?: string } | null)?.account_id ?? null;
+}
+
 export async function getJob(id: string): Promise<CommercialJob | null> {
   const sb = commercialDb();
   const { data } = await sb.from("commercial_jobs").select(COLS).eq("id", id).is("deleted_at", null).maybeSingle();

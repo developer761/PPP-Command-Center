@@ -52,13 +52,13 @@ export default async function JobBoardPage() {
     <div className="pb-8">
       <div className="mb-4">
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Job Board</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">Every open job by stage. &ldquo;Ready to schedule&rdquo; is your backlog — the jobs waiting for a crew.</p>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">Every open work order by stage. &ldquo;Ready to schedule&rdquo; is your backlog - the ones waiting for a crew.</p>
       </div>
 
       {jobs.length === 0 ? (
         <div className="text-center py-10 bg-surface border border-ppp-charcoal-100 rounded-xl">
-          <p className="text-sm font-semibold text-ppp-charcoal">No open jobs</p>
-          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1"><Link href="/commercial/field-ops/jobs" className="font-semibold text-cc-brand-700 underline">Add a job</Link> to start scheduling.</p>
+          <p className="text-sm font-semibold text-ppp-charcoal">No open work orders</p>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1"><Link href="/commercial/field-ops/jobs" className="font-semibold text-cc-brand-700 underline">Add a work order</Link> to start scheduling.</p>
         </div>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
