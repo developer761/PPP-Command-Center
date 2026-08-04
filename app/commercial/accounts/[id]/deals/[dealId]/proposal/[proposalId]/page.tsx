@@ -25,6 +25,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
+import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
+import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
+import { listProposalEmailSends } from "@/lib/commercial/proposals/email";
+import { ProposalSendControl } from "@/components/commercial/proposal-send-control";
+import { fmtEtDate } from "@/lib/commercial/invoices/format";
 import {
   getCommercialOpportunity,
   derivedOppName,
@@ -801,6 +806,25 @@ export default async function ProposalEditorPage({
     listChangeOrders(dealId),
     listDocumentsForParent("opportunity", dealId),
   ]);
+  // Kim: recipient list + operating-company identity + prior email-sends for the
+  // "Send proposal" review sheet / "emailed to …" line.
+  const [accountContacts, operatingCompany, proposalEmailSends] = await Promise.all([
+    listAccountContacts(accountId),
+    getOperatingCompany(),
+    listProposalEmailSends(proposalId),
+  ]);
+  const contactsWithEmail = accountContacts
+    .map(({ contact, attachments }) => ({
+      name: contact.full_name,
+      email: (contact.email ?? "").trim(),
+      isPrimary: attachments.some((a) => a.is_primary),
+    }))
+    .filter((c) => c.email);
+  const primaryContact =
+    contactsWithEmail.find((c) => c.isPrimary) ?? contactsWithEmail[0] ?? null;
+  const sendContacts = contactsWithEmail.map((c) => ({ name: c.name, email: c.email }));
+  const lastEmailSend = proposalEmailSends[0] ?? null;
+
   // R1c: marked-up plan sets / bid docs the estimator attached to this deal.
   const bidSetDocs = dealDocuments.filter((d) => d.category === "bid_set");
   const issuedForProposal = proposalInvoices.filter(
@@ -1137,20 +1161,20 @@ export default async function ProposalEditorPage({
           {/* Approved — the real Send + Unlock-to-edit. */}
           {proposal.status === "approved" && hasPdfBody && (
             <>
-              <form action={sendProposalAction} className="inline-flex">
-                {hiddenIds}
-                <ConfirmSubmitButton
-                  message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the GC"}? This saves the sent PDF into Files as an official copy (prior drafts remain), flips the opportunity to Proposal · Sent, and notifies the team. You can still start R${proposal.revision_number + 1} after.`}
-                  pendingLabel="Sending…"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px] disabled:opacity-50"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <line x1="22" y1="2" x2="11" y2="13" />
-                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                  </svg>
-                  Send proposal
-                </ConfirmSubmitButton>
-              </form>
+              <ProposalSendControl
+                proposalId={proposalId}
+                accountId={accountId}
+                dealId={dealId}
+                revisionNumber={proposal.revision_number}
+                projectName={proposal.header_json.project_name ?? null}
+                gcCompany={proposal.header_json.gc_company ?? null}
+                contacts={sendContacts}
+                defaultEmail={primaryContact?.email ?? null}
+                defaultName={primaryContact?.name ?? null}
+                ocName={operatingCompany.name}
+                pdfHref={`/api/commercial/proposals/${proposalId}/pdf`}
+                markSentAction={sendProposalAction}
+              />
               <form action={unlockAction} className="inline-flex">
                 {hiddenIds}
                 <ConfirmSubmitButton
@@ -1405,6 +1429,31 @@ export default async function ProposalEditorPage({
           <div className="text-[12.5px] text-amber-800">
             The GC already has this copy on file. To make changes, use the &ldquo;+ New revision&rdquo; button at the top to start a fresh draft.
           </div>
+          {lastEmailSend && (
+            <div className="mt-2 pt-2 border-t border-amber-200/70 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-amber-800">
+              <span>
+                Emailed to <strong>{lastEmailSend.to_email}</strong> · {fmtEtDate(lastEmailSend.created_at)}
+                {proposalEmailSends.length > 1 ? ` · sent ${proposalEmailSends.length}×` : ""}
+              </span>
+              {proposal.status === "sent" && (
+                <ProposalSendControl
+                  proposalId={proposalId}
+                  accountId={accountId}
+                  dealId={dealId}
+                  revisionNumber={proposal.revision_number}
+                  projectName={proposal.header_json.project_name ?? null}
+                  gcCompany={proposal.header_json.gc_company ?? null}
+                  contacts={sendContacts}
+                  defaultEmail={lastEmailSend.to_email}
+                  defaultName={primaryContact?.name ?? null}
+                  ocName={operatingCompany.name}
+                  pdfHref={`/api/commercial/proposals/${proposalId}/pdf`}
+                  markSentAction={sendProposalAction}
+                  resend
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
 
