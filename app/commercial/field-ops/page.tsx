@@ -51,14 +51,19 @@ export default async function FieldOpsHubPage() {
           <span className="mt-auto text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-1 group-hover:gap-2 transition-all">Manage jobs &rarr;</span>
         </Link>
 
-        <div className="sm:col-span-2 flex flex-col gap-2 p-5 rounded-xl bg-ppp-charcoal-50/40 border border-dashed border-ppp-charcoal-200">
+        <Link href="/commercial/field-ops/schedule" className="sm:col-span-2 group flex flex-col gap-2 p-5 rounded-xl bg-surface border border-ppp-charcoal-100 hover:border-cc-brand-300 hover:shadow-sm transition-all">
           <div className="flex items-center gap-3">
-            <span className="flex items-center justify-center h-10 w-10 rounded-lg bg-surface text-ppp-charcoal-400">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+            <span className="flex items-center justify-center h-10 w-10 rounded-lg bg-cc-brand-50 text-cc-brand-700">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>
             </span>
-            <span className="text-[15px] font-bold text-ppp-charcoal-500">Week Grid · Clock in/out · Approvals · Payroll</span>
+            <span className="text-[15px] font-bold text-ppp-charcoal">Week Grid</span>
           </div>
-          <p className="text-[13px] text-ppp-charcoal-500 leading-relaxed">Building next — the scheduling grid, the painter clock, approvals, and payroll export land here as we roll them out.</p>
+          <p className="text-[13px] text-ppp-charcoal-500 leading-relaxed">Schedule the crew — employees across the top, jobs by day, hours in the cells (just like your spreadsheet). Copy a week forward in one click.</p>
+          <span className="mt-auto text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-1 group-hover:gap-2 transition-all">Open the schedule &rarr;</span>
+        </Link>
+
+        <div className="sm:col-span-2 flex items-center gap-3 p-4 rounded-xl bg-ppp-charcoal-50/40 border border-dashed border-ppp-charcoal-200">
+          <span className="text-[12.5px] text-ppp-charcoal-500">Coming next: Calendar · Clock in/out · Approvals · Payroll export.</span>
         </div>
       </div>
     </div>
