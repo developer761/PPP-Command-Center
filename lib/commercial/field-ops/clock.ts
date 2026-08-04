@@ -2,8 +2,13 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
-import { todayEtIso } from "./schedule";
+import { todayEtIso, addDaysIso } from "./schedule";
 import type { CommercialEmployee } from "./employees";
+
+/** The America/New_York calendar date a timestamp falls on (payroll work day). */
+function etDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
 
 /**
  * R10.3 Clock in/out. Painters clock via their magic link (no login) or the
@@ -60,13 +65,17 @@ export async function getEmployeeDay(employeeId: string, dateIso: string): Promi
       .from("commercial_time_punches")
       .select("id, job_id, clock_in_at, clock_out_at")
       .eq("employee_id", employeeId)
-      .gte("clock_in_at", `${dateIso}T00:00:00Z`)
-      .lte("clock_in_at", `${dateIso}T23:59:59Z`)
+      // Widen to a UTC window around the ET day, then filter by ET date below
+      // (the ET day straddles two UTC dates, esp. for evening punches).
+      .gte("clock_in_at", `${addDaysIso(dateIso, -1)}T00:00:00Z`)
+      .lte("clock_in_at", `${addDaysIso(dateIso, 1)}T23:59:59Z`)
       .order("clock_in_at", { ascending: true }),
   ]);
 
   const assigns = (aRes.data ?? []) as { id: string; job_id: string; scheduled_hours: number; scheduled_start_time: string | null }[];
-  const punches = (pRes.data ?? []) as { id: string; job_id: string; clock_in_at: string; clock_out_at: string | null }[];
+  const punches = ((pRes.data ?? []) as { id: string; job_id: string; clock_in_at: string; clock_out_at: string | null }[]).filter(
+    (p) => etDate(p.clock_in_at) === dateIso
+  );
 
   // Any open punch (from any day) - a painter can't have two open at once.
   const { data: openRow } = await sb
@@ -123,16 +132,19 @@ export async function getEmployeeDay(employeeId: string, dateIso: string): Promi
  *  punches. Upserts on UNIQUE(employee, job, date). Marks source 'clocked'. */
 async function syncTimeEntry(employeeId: string, jobId: string, dateIso: string, actorNote: string): Promise<void> {
   const sb = commercialDb();
-  const { data: punches } = await sb
+  const { data: punchRows } = await sb
     .from("commercial_time_punches")
     .select("clock_in_at, clock_out_at, assignment_id")
     .eq("employee_id", employeeId)
     .eq("job_id", jobId)
-    .gte("clock_in_at", `${dateIso}T00:00:00Z`)
-    .lte("clock_in_at", `${dateIso}T23:59:59Z`);
+    .gte("clock_in_at", `${addDaysIso(dateIso, -1)}T00:00:00Z`)
+    .lte("clock_in_at", `${addDaysIso(dateIso, 1)}T23:59:59Z`);
+  const punches = ((punchRows ?? []) as { clock_in_at: string; clock_out_at: string | null; assignment_id: string | null }[]).filter(
+    (p) => etDate(p.clock_in_at) === dateIso
+  );
   let total = 0;
   let assignmentId: string | null = null;
-  for (const p of (punches ?? []) as { clock_in_at: string; clock_out_at: string | null; assignment_id: string | null }[]) {
+  for (const p of punches) {
     if (p.assignment_id) assignmentId = p.assignment_id;
     if (!p.clock_out_at) continue;
     total += Math.max(0, (new Date(p.clock_out_at).getTime() - new Date(p.clock_in_at).getTime()) / 3_600_000);
@@ -226,8 +238,8 @@ export async function clockOut(input: {
   if (error) return { ok: false, error: error.message };
   await logUpdate("commercial_time_punches", punch.id, open, updated, input.employee_id);
 
-  // Roll the day's actuals for that job.
-  const workDate = punch.clock_in_at.slice(0, 10);
+  // Roll the day's actuals for that job (ET work day, not the UTC date).
+  const workDate = etDate(punch.clock_in_at);
   await syncTimeEntry(input.employee_id, punch.job_id, workDate, "clock-out");
   return { ok: true, jobId: punch.job_id };
 }
