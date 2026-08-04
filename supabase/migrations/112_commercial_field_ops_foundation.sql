@@ -93,10 +93,12 @@ create table if not exists public.commercial_jobs (
   division_tag          text,                            -- 'ppp' | 'commercial' | 'other' (the "(ppp job)" reality)
   notes                 text,
   created_by_user_id    uuid,
+  deleted_at            timestamptz,                     -- soft-delete (platform consistency); reports/pickers filter it out
+  deleted_by_user_id    uuid,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
-create index if not exists commercial_jobs_status_idx on public.commercial_jobs (status);
+create index if not exists commercial_jobs_status_idx on public.commercial_jobs (status) where deleted_at is null;
 create index if not exists commercial_jobs_opp_idx on public.commercial_jobs (opportunity_id);
 create index if not exists commercial_jobs_wo_idx on public.commercial_jobs (work_order_id);
 
