@@ -13,6 +13,7 @@ const TABS = [
   { label: "Job Board", href: "/commercial/field-ops/board" },
   { label: "Work Orders", href: "/commercial/field-ops/jobs" },
   { label: "Crew", href: "/commercial/field-ops/employees" },
+  { label: "Clock Station", href: "/commercial/field-ops/clock-station" },
 ];
 
 export function FieldOpsTabs() {

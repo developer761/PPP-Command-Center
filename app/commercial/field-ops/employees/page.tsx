@@ -8,6 +8,7 @@ import {
   listEmployees,
   createEmployee,
   updateEmployee,
+  setEmployeePin,
   employeeRoleLabel,
   workerTypeLabel,
   EMPLOYEE_ROLES,
@@ -78,6 +79,9 @@ async function editEmployeeAction(formData: FormData) {
     userId
   );
   if (!result.ok) redirect(`${BASE}?error=${encodeURIComponent(result.error)}`);
+  // Optional: set/replace the Clock Station PIN (only when 4 digits entered).
+  const pin = String(formData.get("clock_pin") ?? "").trim();
+  if (/^\d{4}$/.test(pin)) await setEmployeePin(id, pin, userId);
   revalidatePath(BASE);
   redirect(`${BASE}?ok=saved`);
 }
@@ -178,6 +182,7 @@ export default async function FieldOpsEmployeesPage({
                     <label className="block"><span className={LABEL_CLS}>Phone</span><input name="phone" type="tel" defaultValue={e.phone ?? ""} className={INPUT_CLS} /></label>
                     <label className="block"><span className={LABEL_CLS}>Email</span><input name="email" type="email" defaultValue={e.email ?? ""} className={INPUT_CLS} /></label>
                     <label className="block"><span className={LABEL_CLS}>Email language</span><select name="preferred_language" defaultValue={e.preferred_language} className={SELECT_CLS} style={SELECT_BG_STYLE}><option value="en">English</option><option value="es">Spanish</option></select></label>
+                    <label className="block"><span className={LABEL_CLS}>Clock Station PIN (4 digits)</span><input name="clock_pin" inputMode="numeric" pattern="\d{4}" maxLength={4} placeholder="set / replace" className={INPUT_CLS} /></label>
                   </div>
                   <div className="flex items-center gap-2">
                     <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Save</button>

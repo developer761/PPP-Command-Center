@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "crypto";
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
 
@@ -176,4 +177,45 @@ export async function updateEmployee(
   const employee = data as CommercialEmployee;
   await logUpdate("commercial_employees", id, before, employee, actorUserId);
   return { ok: true, employee };
+}
+
+/** Clock Station PIN — a shop-floor convenience credential (buddy-punch guard on
+ *  a trusted shared device), NOT a security secret. Hashed with the employee id
+ *  as salt. */
+function pinHash(id: string, pin: string): string {
+  return createHash("sha256").update(`${id}:${pin}`).digest("hex");
+}
+
+export async function setEmployeePin(
+  id: string,
+  pin: string,
+  actorUserId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const clean = (pin ?? "").trim();
+  if (!/^\d{4}$/.test(clean)) return { ok: false, error: "PIN must be 4 digits." };
+  const sb = commercialDb();
+  const { error } = await sb
+    .from("commercial_employees")
+    .update({ clock_pin_hash: pinHash(id, clean), updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  await logUpdate("commercial_employees", id, { clock_pin_hash: "***" }, { clock_pin_hash: "set" }, actorUserId);
+  return { ok: true };
+}
+
+export async function verifyEmployeePin(id: string, pin: string): Promise<boolean> {
+  const clean = (pin ?? "").trim();
+  if (!/^\d{4}$/.test(clean)) return false;
+  const sb = commercialDb();
+  const { data } = await sb.from("commercial_employees").select("clock_pin_hash").eq("id", id).eq("active", true).maybeSingle();
+  const stored = (data as { clock_pin_hash?: string | null } | null)?.clock_pin_hash;
+  if (!stored) return false;
+  return stored === pinHash(id, clean);
+}
+
+/** Which employees have a PIN set (for the Clock Station picker). */
+export async function listClockablePins(): Promise<Set<string>> {
+  const sb = commercialDb();
+  const { data } = await sb.from("commercial_employees").select("id").eq("active", true).not("clock_pin_hash", "is", null);
+  return new Set((data ?? []).map((r) => (r as { id: string }).id));
 }
