@@ -65,10 +65,11 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 - [ ] *(Parked)* Archive project docs to Google Drive / Dropbox + restore
 - [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
 
-## ⬜ Phase R7 — Onboarding & pipeline speed
+## 🔄 Phase R7 — Onboarding & pipeline speed
+- [x] **Guided onboarding tour** (2026-08-04) — one-time, physically navigates + spotlights each sidebar section; auto-degrades to centered cards on mobile; replayable via Settings → "Take the tour". Migration 110 (`profiles.commercial_onboarding_seen_at`).
 - [ ] **Getting-started checklist** on the dashboard (lights up as data appears, auto-hides)
 - [ ] **Field-ops purchase/hours form redesign** (photo-first, receipt on top, worker auto-filled, date=today)
-- [ ] **Faster pipeline actions** — inline "create GC", proposal entry on opportunity, one-click stage-advance + undo, "Move to…" legal-only everywhere
+- [→ Bonus] ~~**Faster pipeline actions**~~ — **moved to Bonus features** (Karan 2026-08-04: "not necessary right now").
 - [ ] Account header open-opportunity count + balance · alphabetical-by-customer sort
 - [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
 
@@ -156,6 +157,9 @@ _From `project_katie_notes_remaining_2026_08`, `project_katie_general_notes_2026
       samples in `reference_tomco_doc_formats_verified`. Re-check on any template edit.
 - [ ] *(Parked / blocked)* Letter-of-Transmittal S-Docs e-sign integration
       (LoT + S-Sign ⛔) — revisit when Katie confirms the S-Docs path.
+
+## 🎁 Bonus features (do at the very end — nice-to-haves after the core roadmap)
+- [ ] **Pipeline speed** (deferred from R7, Karan 2026-08-04) — per-column **quick-add** on the kanban (type title + searchable account + Enter → deal born in that stage, optimistic insert), a **"start in stage"** selector on the New-opportunity slide-out, and rapid multi-entry (Enter = create+keep-open). Open stages only; desktop kanban; reuses `createCommercialOpportunity` + the column→(status, sub_status) map.
 
 ## ⬜ ★ ENDGAME — full platform audit (do NOT declare done until all checked)
 - [ ] Money / KPI / backend audit — every finding fixed
