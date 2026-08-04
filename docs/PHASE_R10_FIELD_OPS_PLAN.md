@@ -92,5 +92,14 @@ GPS/geofenced clock-in · materials/paint ordering · sub POs · customer schedu
 ## Edge cases to bake in
 Split days (one person, 2 jobs, 8+8 or 4+4 — the UNIQUE(job,emp,date) supports it) · unplanned actuals (time_entry with null assignment) · absence on a scheduled day (block the "no assignment" flag) · publishing (scheduled-in-progress invisible to foremen until published) · period can't export with open items · rate table never leaks to scheduling UI · a deactivated employee stays in history (never delete) · job_code uniqueness collision · prevailing-wage jobs flagged for reporting · a WO re-sent after scheduling (don't double-create the job) · timezone-safe dates everywhere (DateField + ET).
 
+## ✅ Verified against the real timesheet (`Time Sheets - W_E 5_28_26.pdf`, analyzed 2026-08-04)
+- **Roster (8, stable column order = sort_order):** Rob C · Greg · JJ L · Joe L · Miguel · Erick · Paul · Rob P. (two Robs → initial-disambiguated display names; Paul + Rob P. rostered but 0h that week). → seeding these 8 is the R10.0 "initiate" step.
+- **State vocabulary is THEIRS — use verbatim:** **Scheduled · Approved · Questioned** (not "Actual/Variance"). "Approved" = the confirmed actual. Color-coded in the grid.
+- **Absence/day codes verbatim:** P (Personal) · S (Sick) · NW (No Work) · NA (Not Available) · SD (Sick Day) · OUT · Holiday (Memorial Day row). A bare **`0`** in a cell = scheduled-but-didn't-work (Joe L Thu Stark → week total 24 not 32) — the scheduled≠actual case, live in their data.
+- **CREW IS SHARED ACROSS DIVISIONS (big one):** "(ppp job)" tags — the same painters do PPP residential + Tomco commercial + misc (Brent Mako, Probst, Enecon) in one week. → **Jobs are STANDALONE-FIRST** (name + code, `opportunity_id` OPTIONAL). PPP/misc jobs are standalone with no cross-platform link (respects platform-separation). Locks integration decision #1.
+- **Job code = the discipline we ADD:** the sheet has none (free-text names). Enforcing `job_code` at creation is the reportability upgrade.
+- **PW = prevailing wage** (Enecon 6 Platinum Ct) → the `prevailing_wage` flag, confirmed. **Pending/weather notes** (Ascent Duct patches, "OShea… weather and progress pending") = the `ready_to_schedule`/on-hold backlog, shown as red side-notes today → becomes a real queue.
+- **Week = Mon–Sat**, Saturday usually OUT, per-employee column totals at the bottom. Week Grid mirrors this 1:1 → zero learning curve; **Copy Week Forward** kills the manual weekly re-type.
+
 ## Open questions for Katie (from the spec)
 1. Actuals capture owner — foreman-per-crew assumed; if individual painters submit, the Daily Log changes. [spec PDF cut mid-sentence — get the rest from Katie.]
