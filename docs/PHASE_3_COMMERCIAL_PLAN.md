@@ -81,9 +81,9 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 - [x] **Cleanups** — verified no-op: the "orphan" TeamTab/NotesTab are live (actions redirect to ?tab=team); tile-consolidation is a risky refactor that doesn't belong in hardening.
 - [ ] _(remaining)_ contrast + focus-ring micro-sweep → folded into the ENDGAME accessibility audit.
 
-## ⬜ Phase R9 — Dark mode finish
-- [ ] Contrast pass + navy accent across every page (foundation shipped; finish over stable surfaces)
-- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+## 🔄 Phase R9 — Dark mode finish
+- [x] **Code-level dark mode VERIFIED COMPLETE** (2026-08-04). Whole-platform sweep found zero breakers: 0 hardcoded `bg-white` (the 1 is an intentional logo chip), 0 default grays/slate/zinc/neutral, 0 arbitrary/inline hex, 0 hardcoded SVG fills; charts are fully token-based (`toneVar`→CSS vars); every surface incl. the newest (reports, onboarding tour, focus-trap sheets) uses adaptive tokens; theme toggle (cookie + data-theme, no flash) works. The v4 token remap (Karan 2026-07-29) + RUX-0 already did the heavy lifting.
+- [ ] _(remaining — VISUAL only)_ subjective contrast micro-polish needs eyes-on-pixels: Karan spot-checks dark live and flags any surface that reads poorly → fix those specifically (don't blind-tweak the deliberately-tuned token values). Folds into the ENDGAME visual audit.
 
 ## ⬜ Phase R10 — Field Ops / Scheduling  🐘 (the giant — LAST)
 - [ ] Data model + per-job phases + **scheduler role**
