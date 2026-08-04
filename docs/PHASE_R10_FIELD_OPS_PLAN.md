@@ -16,7 +16,7 @@ Replaces Tomco's weekly scheduling spreadsheet (which does 3 jobs at once: forwa
 ---
 
 ## Data model (all net-new, migrations 112+)
-- **commercial_employees** — id, first/last/display_name, worker_type (`w2`|`sub`|`temp` — gates payroll), role (foreman|painter|taper|laborer|apprentice), pay_type, default_daily_hours (8), phone/email, sort_order (stable grid column order), active (never delete), start/end_date, **schedule_email_opt_out (bool, default FALSE — everyone gets their weekly schedule unless they opt out)**, **preferred_language (en|es — bilingual schedule emails)**.
+- **commercial_employees** — id, first/last/display_name, worker_type (`w2`|`sub`|`temp` — gates payroll), role (foreman|painter|taper|laborer|apprentice), pay_type, default_daily_hours (8), phone/email, sort_order (stable grid column order), active (never delete), start/end_date, **schedule_email_opt_out (bool, default FALSE — everyone gets their weekly schedule unless they opt out)**, **preferred_language (en|es — bilingual schedule emails)**, **clock_pin_hash (4-digit PIN, hashed — for the Clock Station kiosk)**, **magic_link_token (rotating, for the personal schedule + clock link)**.
 - **commercial_employee_rates** _(RESTRICTED — own permission gate)_ — employee_id, cost_rate (burdened), rate_type, effective_from/to. Only job-costing reports read it; scheduling UI never does.
 - **commercial_crews / commercial_crew_members** — crew (id, name, foreman_employee_id, active); members (crew_id, employee_id, added_at/removed_at — membership historical).
 - **commercial_jobs** — id, job_code (unique, REQUIRED), name, **opportunity_id (nullable — a job can be backed by a won deal, or standalone)**, customer_id/name, site_address/city/state/zip, lat/lng (nullable), status (state machine below), estimated_labor_hours, target_start/end, prevailing_wage (bool), notes.
@@ -43,7 +43,7 @@ Admin (all + rates + reopen periods) · **Scheduler** (create/publish assignment
 
 ## The 6 views
 - **R10.1 Week Grid (primary)** — jobs down the left, employees across the top, hours in cells, Mon–Sat sections, employee cols by sort_order (sticky header). **Mode toggle: Scheduled · Actual · Variance.** Col totals/employee, row totals/job, week grand total. Click-to-edit cells (type a number → create/update assignment). **Copy Week Forward.** In-grid flags: over default_daily_hours, working-day with no assignment + no absence, job over estimated hours.
-- **R10.2 Calendar** — Month (each day: jobs running + headcount, day total, absences strip) + Resource timeline (employees = rows, days = cols, 2–6 wk scroll, colored job blocks, splits stacked, gaps = idle capacity). Drag ready_to_schedule job → day; drag crew → job-day expands to member rows; drag block to move/extend; filter by crew/foreman/job/status; planned = reduced opacity until published.
+- **R10.2 Calendar — interactive + polished (Karan: "look amazing, cool features")** — Month (each day: jobs running + headcount, day total, absences strip) + Resource timeline (employees = rows, days = cols, 2–6 wk scroll, colored job blocks, splits stacked, gaps = idle capacity), toggle between the two. **Interactions:** drag ready_to_schedule job → day · drag crew → job-day auto-expands to member rows · drag a block to move/extend across days · click a day to quick-add · planned = reduced opacity until published. **Delight/features:** per-job color chips (stable per job) · **today ring** + weekend/holiday shading · live **headcount + idle-capacity heat** (under/over-scheduled days tinted) · **conflict highlighting** (a painter double-booked at the same time glows rose) · hover/tap card with job code, site, crew, scheduled vs clocked · **filter chips** (crew/foreman/job/status/PW) with instant re-render · smooth 150ms transitions, on-brand blue/green, fully mobile (month collapses to an agenda list on a phone) · optional **map pin peek** later (jobs carry lat/lng). Never a dead-end — an empty day says "drag a job here or + add."
 - **R10.3 Job Board** — kanban by job status; cards show code/name/site/target dates/scheduled-vs-estimated burn; `ready_to_schedule` column = the drag source.
 - **R10.4 Daily Log (MOBILE-FIRST, <30s, PER-PAINTER)** — Karan 2026-08-04: **each painter submits their OWN time** (not foreman-per-crew). The field crew is low-tech-comfort (see [[feedback_ppp_one_click_autofill]]), so access is a **magic link** (tokenized URL emailed to them — no password, phone-first), NOT a full account. Painter taps the link → sees TODAY pre-filled at their scheduled hours for their assigned job(s) → one tap **Confirm**, or nudge one number → submit. Absence = tap a reason code (P/S/NW/NA). Optional unplanned job-hours row if they worked somewhere unscheduled. Submit locks their day pending approval. (Speed is the whole game — >30s and it won't happen daily, regressing to "every cell = 8".) A **Foreman/Scheduler can still submit on behalf** of someone who can't.
 - **R10.5 Approvals** — pay-period queue for scheduler/admin; group by employee|job; side-by-side scheduled vs actual + variance; bulk-approve zero-variance; question an entry (→ foreman); period can't export while any entry is submitted|questioned.
@@ -88,6 +88,12 @@ Per-tool **dual/triple surface** (account-nested detail + cross-account **sideba
 - **Confirm-hours fallback stays:** if they never clocked (dead zone, forgot), they — or a foreman — enter the hours manually; the entry is tagged `manual` vs `clocked` for the audit trail.
 - **Geofence/GPS = phase 2** (out of scope v1 per spec). We can optionally capture coarse browser geolocation on a punch later for verification; v1 is timestamp-only.
 
+### Backup: in-platform **Clock Station** (Karan 2026-08-04 — for when the magic link fails)
+A self-service clock page reachable inside the scheduling area (works on a shared shop tablet OR any painter's browser when their link is broken): **pick your name/email → enter a 4-digit PIN → pick today's work order/job → Clock In · Clock Out · Lunch.** Same `time_punches`, same server timestamps as the magic-link path — a redundant road to the identical data.
+- **PIN (set in Admin per employee)** stops buddy-punching on a shared device — the one real risk of a name-picker kiosk. Admin can reset a forgotten PIN.
+- Only shows the picker's **own** assigned WOs/jobs for today (+ an "other/unplanned" option). One active punch per employee at a time — clocking in elsewhere blocks/closes the open one (same rule as the link).
+- The magic link stays the primary/easiest path; the Clock Station is the fallback + the shop-tablet option.
+
 ### Clock in/out edge cases (baked in)
 - **Forgot to clock OUT** (went home on the clock): the punch stays open; a "you're still clocked in on Job A" nudge; on rollover it's flagged, and Approvals **can't approve an open punch** — scheduler/foreman closes it to the scheduled end (audit-logged).
 - **Forgot to clock IN**: retro-add a punch or use the confirm-hours path → tagged `manual`.
@@ -111,6 +117,13 @@ When a week (or a day) is **published**, each painter gets an email of THEIR ass
 - **One tap to confirm hours:** the email's magic link opens that painter's mobile **Daily Log** (pre-filled) — email + capture are the same low-friction loop. Reuses the Resend `sendEmail` + tokenized-link pattern (customer-form invite + WO crew-email precedents).
 - **Re-send / change alerts:** re-publishing after a change re-emails only the affected painters ("your Thursday changed"). Never spams the unchanged.
 - Bilingual-ready copy (crew is largely Hispanic, low-tech-comfort) — short, concrete, one action.
+
+**Email triggers (Karan 2026-08-04 — "everyone gets emailed"):**
+- **Weekly schedule published** → every non-opted-out employee gets their personalized week. (Default ON for all.)
+- **Assigned to a Work Order** (the person named on a WO for a job) → they get that WO's details + when they're scheduled — ties the account→deal→**team-assignment→WO→schedule** chain together, so adding someone to a deal's team + cutting their WO loops them in automatically.
+- **Their day changed after publish** → only the affected people get a "your Thursday moved" note.
+- **Consolidation, not spam:** a person on 2 WOs/jobs in a day gets ONE email with both (with times), never two. Daily/weekly digest, not per-row.
+- All respect the single opt-out + the internal-recipient list; an employee with no email on file is flagged in Admin (they use the Clock Station + foreman relay).
 
 ## 🔄 End-to-end flow (must feel like ONE smooth process — Karan)
 `Account (GC)` → `Deal / Opportunity` → **win** → `Work Order` (crew + window + scope) → **"Schedule this job?"** seeds a `Job` + `assignments` from the WO's `assigned_to` + `scheduled_start/end` → **Publish** → each painter **emailed** their schedule + magic link → painter **confirms hours** (mobile Daily Log) → Scheduler **approves** (variance review) → Payroll **exports CSV**.
@@ -136,6 +149,12 @@ GPS/geofenced clock-in · materials/paint ordering · sub POs · customer schedu
 
 ## Edge cases to bake in
 Split days (one person, 2 jobs, 8+8 or 4+4 — the UNIQUE(job,emp,date) supports it) · unplanned actuals (time_entry with null assignment) · absence on a scheduled day (block the "no assignment" flag) · publishing (scheduled-in-progress invisible to foremen until published) · period can't export with open items · rate table never leaks to scheduling UI · a deactivated employee stays in history (never delete) · job_code uniqueness collision · prevailing-wage jobs flagged for reporting · a WO re-sent after scheduling (don't double-create the job) · timezone-safe dates everywhere (DateField + ET).
+
+**Kiosk / Clock Station:** buddy-punching (PIN-gated) · forgotten PIN (admin reset) · picking a WO not yours (only your assignments show + an "other" that's flagged unplanned) · magic-link AND kiosk clock-in by the same person (ONE active punch per employee — the second is blocked/merges) · shared device left on a session (auto-return to the picker after each punch, short idle timeout) · painter not on file (can't pick — Admin adds them first).
+
+**Email "everyone":** employee with no email (flagged in Admin, no send, uses kiosk) · opted-out person still needs info (foreman relay / kiosk) · double emails from 2 WOs same day (consolidated into ONE) · a WO reassigned to a different person (old assignee gets a "removed", new gets the WO) · re-publish churn (only changed people emailed, never the whole crew again) · bounced address (surface in Admin, don't silently drop).
+
+**Interactive calendar:** painter double-booked at the SAME time (conflict-glow, not silently allowed) · drag onto a past day (warn/block) · drag onto a day the painter's absent (warn) · drag a crew where a member is already booked elsewhere that day (that member's cell flags) · a job dragged with no crew (creates the job-day at 0 → prompt "add people") · many jobs×employees (virtualize the timeline; keep it smooth) · month view on a phone (collapses to an agenda list) · ET throughout.
 
 ## ✅ Verified against the real timesheet (`Time Sheets - W_E 5_28_26.pdf`, analyzed 2026-08-04)
 - **Roster (8, stable column order = sort_order):** Rob C · Greg · JJ L · Joe L · Miguel · Erick · Paul · Rob P. (two Robs → initial-disambiguated display names; Paul + Rob P. rostered but 0h that week). → seeding these 8 is the R10.0 "initiate" step.
