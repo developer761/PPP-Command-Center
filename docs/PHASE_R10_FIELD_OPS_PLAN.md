@@ -133,6 +133,13 @@ When a week (or a day) is **published**, each painter gets an email of THEIR ass
 ## Roles — painter access = magic link (not a seat)
 Admin · Scheduler · Foreman · Payroll are real logins (RBAC). **Painters do NOT get full accounts** — they access only their own Daily Log via the tokenized magic link in their schedule email (scoped to their own `time_entries`, nothing else). Keeps onboarding to zero for the crew and the write-surface tiny. Rate table stays Admin+Payroll-only.
 
+## ✍️ Manual override + copy-out (Brendan + Karan, Karan 2026-08-04)
+Auto-scheduling and clock-in are the happy path, but the office needs a manual hand on everything:
+- **Manual edit button, everywhere it matters** — Admin (Karan) + Scheduler (**grant Brendan Scheduler or Admin** — he already approves proposals) can **manually edit any assignment (schedule) and any hours / time entry / punch** at any time: fix a bad clock, move a job, override hours, add/close a punch, correct an absence. An explicit **Edit** affordance on Week-Grid cells, Calendar blocks, Approvals rows, and Daily-Log entries — a first-class action, never a workaround.
+- **Every manual edit is audit-logged** (who, when, old -> new; source stamped `manual`/`foreman`/`admin`) since it's payroll-adjacent — so an override is traceable, not silent.
+- **They do it from their own logins** (email/password accounts — Brendan + Karan). No magic link needed for the office; the magic link is only the painters' path.
+- **Copy-to-clipboard** — a "Copy schedule" button (whole week, one crew, or one painter) grabs a clean text block Karan/Brendan can paste straight into an email or text — a manual backup to the auto-emails, or to forward a change fast. Same for "copy this person's day."
+
 ## Out of scope v1 (per spec)
 GPS/geofenced clock-in · materials/paint ordering · sub POs · customer schedule notifications · native mobile (responsive web OK) · Gusto sync · historical import · residential division.
 
