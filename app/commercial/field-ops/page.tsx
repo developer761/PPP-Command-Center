@@ -62,8 +62,30 @@ export default async function FieldOpsHubPage() {
           <span className="mt-auto text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-1 group-hover:gap-2 transition-all">Open the schedule &rarr;</span>
         </Link>
 
+        <Link href="/commercial/field-ops/calendar" className="group flex flex-col gap-2 p-5 rounded-xl bg-surface border border-ppp-charcoal-100 hover:border-cc-brand-300 hover:shadow-sm transition-all">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center justify-center h-10 w-10 rounded-lg bg-cc-brand-50 text-cc-brand-700">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+            </span>
+            <span className="text-[15px] font-bold text-ppp-charcoal">Calendar</span>
+          </div>
+          <p className="text-[13px] text-ppp-charcoal-500 leading-relaxed">The month at a glance — jobs + headcount per day, capacity heat. Click a day to schedule that week.</p>
+          <span className="mt-auto text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-1 group-hover:gap-2 transition-all">Open calendar &rarr;</span>
+        </Link>
+
+        <Link href="/commercial/field-ops/board" className="group flex flex-col gap-2 p-5 rounded-xl bg-surface border border-ppp-charcoal-100 hover:border-cc-brand-300 hover:shadow-sm transition-all">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center justify-center h-10 w-10 rounded-lg bg-cc-brand-50 text-cc-brand-700">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="3" width="7" height="18" rx="1" /><rect x="14" y="3" width="7" height="11" rx="1" /></svg>
+            </span>
+            <span className="text-[15px] font-bold text-ppp-charcoal">Job Board</span>
+          </div>
+          <p className="text-[13px] text-ppp-charcoal-500 leading-relaxed">Every open job by stage — the &ldquo;ready to schedule&rdquo; backlog through complete. Move a job with one tap.</p>
+          <span className="mt-auto text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-1 group-hover:gap-2 transition-all">Open board &rarr;</span>
+        </Link>
+
         <div className="sm:col-span-2 flex items-center gap-3 p-4 rounded-xl bg-ppp-charcoal-50/40 border border-dashed border-ppp-charcoal-200">
-          <span className="text-[12.5px] text-ppp-charcoal-500">Coming next: Calendar · Clock in/out · Approvals · Payroll export.</span>
+          <span className="text-[12.5px] text-ppp-charcoal-500">Coming next: Clock in/out (painter magic link + Clock Station) · Approvals · Payroll export.</span>
         </div>
       </div>
     </div>

@@ -138,6 +138,72 @@ export async function getWeekSchedule(mondayIso: string): Promise<WeekSchedule> 
   };
 }
 
+/** First day of the month containing `iso`, as YYYY-MM-01. */
+export function monthStartOf(iso: string): string {
+  return `${iso.slice(0, 7)}-01`;
+}
+
+export type MonthDay = {
+  date: string;
+  inMonth: boolean;
+  jobs: { id: string; name: string; prevailing_wage: boolean }[];
+  headcount: number;
+  hours: number;
+};
+
+/**
+ * Month overview for the Calendar. Returns a full 6-week grid (Sun-start) so the
+ * calendar always renders clean, with each day's scheduled jobs + headcount +
+ * total hours. `inMonth` flags the leading/trailing days from adjacent months.
+ */
+export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart: string; grid: MonthDay[] }> {
+  const monthStart = monthStartOf(anyDateIso);
+  const [y, m] = monthStart.split("-").map(Number);
+  // Grid starts on the Sunday on/before the 1st, runs 42 days (6 weeks).
+  const firstDow = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(); // 0=Sun
+  const gridStart = addDaysIso(monthStart, -firstDow);
+  const dates = Array.from({ length: 42 }, (_, i) => addDaysIso(gridStart, i));
+
+  const sb = commercialDb();
+  const { data: aRows } = await sb
+    .from("commercial_assignments")
+    .select("job_id, employee_id, work_date, scheduled_hours")
+    .gte("work_date", dates[0])
+    .lte("work_date", dates[41])
+    .neq("status", "cancelled");
+  const assignments = (aRows ?? []) as { job_id: string; employee_id: string; work_date: string; scheduled_hours: number }[];
+
+  const jobIds = [...new Set(assignments.map((a) => a.job_id))];
+  const jobsById = new Map<string, { id: string; name: string; prevailing_wage: boolean }>();
+  if (jobIds.length > 0) {
+    const { data: jobs } = await sb.from("commercial_jobs").select("id, name, prevailing_wage").in("id", jobIds);
+    for (const j of (jobs ?? []) as { id: string; name: string; prevailing_wage: boolean }[]) jobsById.set(j.id, j);
+  }
+
+  const monthPrefix = monthStart.slice(0, 7);
+  const grid: MonthDay[] = dates.map((date) => {
+    const dayAssigns = assignments.filter((a) => a.work_date === date);
+    const jobSet = new Map<string, { id: string; name: string; prevailing_wage: boolean }>();
+    const emps = new Set<string>();
+    let hours = 0;
+    for (const a of dayAssigns) {
+      const meta = jobsById.get(a.job_id);
+      if (meta) jobSet.set(a.job_id, meta);
+      emps.add(a.employee_id);
+      hours += a.scheduled_hours;
+    }
+    return {
+      date,
+      inMonth: date.slice(0, 7) === monthPrefix,
+      jobs: [...jobSet.values()],
+      headcount: emps.size,
+      hours,
+    };
+  });
+
+  return { monthStart, grid };
+}
+
 /**
  * Set the scheduled hours for one (job, employee, date). Hours <= 0 removes the
  * assignment. Returns the assignment id (or null if removed). Upsert on the
