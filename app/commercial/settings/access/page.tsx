@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -8,6 +9,52 @@ import { listManagedUsers } from "@/lib/auth/user-management";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { normalizeEmail } from "@/lib/auth/admin";
 import CommercialAccessManager from "@/components/commercial/commercial-access-manager";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
+import {
+  listScheduleRecipients,
+  addScheduleRecipient,
+  removeScheduleRecipient,
+} from "@/lib/commercial/field-ops/schedule-emails";
+import { listEmployees, updateEmployee } from "@/lib/commercial/field-ops/employees";
+import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+
+const ACCESS = "/commercial/settings/access";
+
+async function requireAccessAdmin(): Promise<string> {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  const user = data?.user;
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const profile = await getProfileByUserId(user.id);
+  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  if (role !== "admin") redirect("/commercial");
+  return user.id;
+}
+
+async function addRecipientAction(formData: FormData) {
+  "use server";
+  await requireAccessAdmin();
+  await addScheduleRecipient(String(formData.get("email") ?? ""), String(formData.get("label") ?? ""));
+  revalidatePath(ACCESS);
+  redirect(ACCESS);
+}
+
+async function removeRecipientAction(formData: FormData) {
+  "use server";
+  await requireAccessAdmin();
+  await removeScheduleRecipient(String(formData.get("id") ?? ""));
+  revalidatePath(ACCESS);
+  redirect(ACCESS);
+}
+
+async function toggleOptOutAction(formData: FormData) {
+  "use server";
+  const userId = await requireAccessAdmin();
+  await updateEmployee(String(formData.get("id") ?? ""), { schedule_email_opt_out: String(formData.get("opt_out") ?? "") === "1" }, userId);
+  revalidatePath(ACCESS);
+  redirect(ACCESS);
+}
 
 /**
  * Commercial Settings → Access.
@@ -47,6 +94,8 @@ export default async function CommercialAccessPage() {
   const oc = await getOperatingCompany();
   const approverEmails = (oc.approver_emails ?? []).map((e) => normalizeEmail(e));
   const receiverEmails = (oc.receiver_emails ?? []).map((e) => normalizeEmail(e));
+  // R10: schedule-email settings, inline (no separate click-through).
+  const [scheduleRecipients, crew] = await Promise.all([listScheduleRecipients(), listEmployees()]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 animate-fade-up">
@@ -77,20 +126,67 @@ export default async function CommercialAccessPage() {
         initialReceiverEmails={receiverEmails}
       />
 
-      {/* R10: field-ops schedule emails - who gets the weekly schedule. */}
-      <Link
-        href="/commercial/settings/schedule-emails"
-        className="group mt-6 flex items-center gap-3 p-4 rounded-xl bg-surface border border-ppp-charcoal-100 hover:border-cc-brand-300 hover:shadow-sm transition-all"
-      >
-        <span className="flex items-center justify-center h-10 w-10 rounded-lg bg-cc-brand-50 text-cc-brand-700 shrink-0">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-bold text-ppp-charcoal">Schedule Emails</div>
-          <p className="text-[12.5px] text-ppp-charcoal-500">Who gets the weekly field schedule — every crew member by default (opt-out per person) plus office recipients.</p>
+      {/* R10: schedule emails — inline, right here on Access. */}
+      <section className="mt-8">
+        <div className="mb-3">
+          <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+          <h2 className="text-xl font-bold tracking-tight text-ppp-charcoal">Schedule Emails</h2>
+          <p className="text-[13px] text-ppp-charcoal-500 mt-1 max-w-2xl">Every crew member gets their own weekly schedule emailed to them by default — turn it off per person below. Add office people who should get the full weekly schedule for all crews.</p>
         </div>
-        <span className="text-cc-brand-700 group-hover:translate-x-0.5 transition-transform shrink-0" aria-hidden>&rarr;</span>
-      </Link>
+
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 mb-4">
+          <h3 className="text-[13px] font-bold text-ppp-charcoal">Office recipients — full weekly schedule</h3>
+          <form action={addRecipientAction} className="flex flex-col sm:flex-row gap-2 my-3">
+            <input name="email" type="email" required placeholder="stephanie@tomcopainting.com" className={`${INPUT_CLS} flex-1`} />
+            <input name="label" placeholder="Name (optional)" className={`${INPUT_CLS} sm:w-44`} />
+            <button type="submit" className="inline-flex items-center justify-center px-4 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add</button>
+          </form>
+          {scheduleRecipients.length === 0 ? (
+            <p className="text-[12.5px] text-ppp-charcoal-500">No office recipients yet.</p>
+          ) : (
+            <ul className="divide-y divide-ppp-charcoal-100">
+              {scheduleRecipients.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 py-2">
+                  <div className="min-w-0"><span className="text-[13px] font-medium text-ppp-charcoal">{r.label ? `${r.label} · ` : ""}</span><span className="text-[12.5px] text-ppp-charcoal-600">{r.email}</span></div>
+                  <form action={removeRecipientAction}><input type="hidden" name="id" value={r.id} /><button type="submit" className="text-[12px] font-semibold text-rose-600 hover:text-rose-700 min-h-[36px]">Remove</button></form>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+          <h3 className="text-[13px] font-bold text-ppp-charcoal">Crew — personal schedule email</h3>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 mb-3">On for everyone by default.</p>
+          {crew.length === 0 ? (
+            <p className="text-[12.5px] text-ppp-charcoal-500">No crew yet — <Link href="/commercial/field-ops/employees" className="font-semibold text-cc-brand-700 underline">add your crew</Link> first.</p>
+          ) : (
+            <ul className="divide-y divide-ppp-charcoal-100">
+              {crew.map((e) => {
+                const on = !e.schedule_email_opt_out;
+                const noEmail = !e.email;
+                return (
+                  <li key={e.id} className="flex items-center justify-between gap-2 py-2.5">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-ppp-charcoal truncate">{e.display_name}</div>
+                      <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{noEmail ? <span className="text-amber-700">No email on file</span> : e.email}</div>
+                    </div>
+                    {noEmail ? (
+                      <Link href="/commercial/field-ops/employees" className="text-[12px] font-semibold text-cc-brand-700 hover:underline shrink-0">Add email</Link>
+                    ) : (
+                      <form action={toggleOptOutAction} className="shrink-0">
+                        <input type="hidden" name="id" value={e.id} />
+                        <input type="hidden" name="opt_out" value={on ? "1" : "0"} />
+                        <button type="submit" className={`inline-flex items-center px-3 rounded-lg text-[12px] font-semibold min-h-[40px] ${on ? "bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100" : "bg-ppp-charcoal-50 text-ppp-charcoal-500 hover:bg-ppp-charcoal-100"}`}>{on ? "Email: on" : "Email: off"}</button>
+                      </form>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

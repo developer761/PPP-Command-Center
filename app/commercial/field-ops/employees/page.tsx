@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
@@ -99,10 +98,9 @@ export default async function FieldOpsEmployeesPage({
   const activeCount = employees.filter((e) => e.active).length;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+    <div className="pb-8 max-w-4xl">
       <div className="mb-5">
-        <Link href="/commercial/field-ops" className="text-[12px] font-semibold text-cc-brand-700 hover:underline">&larr; Field Ops</Link>
-        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none mt-1">Crew</h1>
+        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Crew</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">{activeCount} active · the people who show up on the Week Grid. Add order sets their column position.</p>
       </div>
 

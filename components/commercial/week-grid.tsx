@@ -175,7 +175,7 @@ export function WeekGrid({
           <div className="min-w-max">
             {/* Header */}
             <div className="grid sticky top-0 z-10 bg-ppp-charcoal-50 border-b border-ppp-charcoal-100" style={{ gridTemplateColumns: gridCols }}>
-              <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Job</div>
+              <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Work order</div>
               {employees.map((e) => (
                 <div key={e.id} className="px-1 py-2 text-[10.5px] font-bold text-ppp-charcoal-600 text-center truncate" title={e.display_name}>{e.display_name}</div>
               ))}
@@ -195,13 +195,13 @@ export function WeekGrid({
                     </div>
                     <div style={{ gridColumn: `span ${employees.length + 1}` }} className="px-2 py-1 flex items-center justify-end">
                       <select value="" onChange={(ev) => { addJobToDay(day.date, ev.target.value); ev.target.value = ""; }} className="text-[11px] text-cc-brand-700 bg-transparent font-semibold cursor-pointer outline-none">
-                        <option value="">+ Add job</option>
+                        <option value="">+ Add work order</option>
                         {jobs.filter((j) => !rows.includes(j.id)).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
                       </select>
                     </div>
                   </div>
                   {rows.length === 0 ? (
-                    <div className="px-3 py-2 text-[11.5px] text-ppp-charcoal-400 border-b border-ppp-charcoal-50">No jobs scheduled — use &ldquo;+ Add job.&rdquo;</div>
+                    <div className="px-3 py-2 text-[11.5px] text-ppp-charcoal-400 border-b border-ppp-charcoal-50">Nothing scheduled - use &ldquo;+ Add work order.&rdquo;</div>
                   ) : (
                     rows.map((jid) => {
                       const meta = jobsById.get(jid);

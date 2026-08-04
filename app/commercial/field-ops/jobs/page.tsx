@@ -111,11 +111,10 @@ export default async function FieldOpsJobsPage({
   const jobs = await listJobs({ includeClosed: sp.closed === "1" });
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+    <div className="pb-8 max-w-4xl">
       <div className="mb-5">
-        <Link href="/commercial/field-ops" className="text-[12px] font-semibold text-cc-brand-700 hover:underline">&larr; Field Ops</Link>
-        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none mt-1">Jobs</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">What the crew works on. A job needs a code (that&rsquo;s what makes labor reportable). PPP, prevailing-wage, and one-offs all live here.</p>
+        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Work Orders</h1>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">What the crew works on — the schedulable work orders. A code is required (that&rsquo;s what makes labor reportable). Won commercial deals&rsquo; work orders will flow in here automatically; PPP, prevailing-wage, and one-offs you add directly.</p>
       </div>
 
       {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error}</div>}

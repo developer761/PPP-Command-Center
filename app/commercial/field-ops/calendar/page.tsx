@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
@@ -27,10 +26,9 @@ export default async function FieldOpsCalendarPage({
   const { monthStart, grid } = await getMonthOverview(anchor);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+    <div className="pb-8">
       <div className="mb-4">
-        <Link href="/commercial/field-ops" className="text-[12px] font-semibold text-cc-brand-700 hover:underline">&larr; Field Ops</Link>
-        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none mt-1">Calendar</h1>
+        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Calendar</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">The month at a glance — which jobs are running each day and how many hands are on. Click any day to schedule that week.</p>
       </div>
       <FieldOpsCalendar monthStart={monthStart} grid={grid} todayIso={todayEtIso()} />

@@ -49,10 +49,9 @@ export default async function JobBoardPage() {
   const statusOpts = JOB_STATUSES.map((s) => ({ value: s, label: jobStatusLabel(s) }));
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+    <div className="pb-8">
       <div className="mb-4">
-        <Link href="/commercial/field-ops" className="text-[12px] font-semibold text-cc-brand-700 hover:underline">&larr; Field Ops</Link>
-        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none mt-1">Job Board</h1>
+        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Job Board</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">Every open job by stage. &ldquo;Ready to schedule&rdquo; is your backlog — the jobs waiting for a crew.</p>
       </div>
 
