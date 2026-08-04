@@ -47,6 +47,10 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "25mb",
     },
   },
+  // isomorphic-dompurify pulls in jsdom (used server-side to sanitize archived
+  // email HTML, R8). jsdom has dynamic requires that break bundlers — keep it
+  // external so it's required at runtime from node_modules, never bundled.
+  serverExternalPackages: ["isomorphic-dompurify", "jsdom"],
   async headers() {
     return [
       {

@@ -209,11 +209,11 @@ function EmailCard({ email }: { email: ArchivedEmail }) {
                   container width. */}
               <div
                 className="px-3 pb-3 pt-1 text-sm bg-surface border-t border-ppp-charcoal-100 overflow-x-auto max-w-full [&_img]:max-w-full [&_img]:h-auto [&_table]:max-w-full"
-                // Server-side sanitization strips script/iframe/style/on-*
-                // handlers + javascript:/data:/vbscript: URLs (with HTML-
-                // entity decoding so `java&#x09;script:` is caught too) +
-                // ALL inline `style="…"` attributes before storing. See
-                // lib/commercial/email-archive/sanitize.ts.
+                // body_html is DOMPurify-sanitized at ingest (R8): the HTML is
+                // parsed into a DOM and re-serialized to an allow-listed subset,
+                // dropping script/iframe/style/on-* handlers + dangerous URLs and
+                // neutralizing mutation-XSS. Every link is forced to
+                // target=_blank rel=noopener. See lib/commercial/email-archive/sanitize.ts.
                 dangerouslySetInnerHTML={{ __html: email.body_html }}
               />
             </details>

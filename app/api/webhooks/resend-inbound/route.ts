@@ -120,6 +120,10 @@ function verifySignature(
   return false;
 }
 
+// Node runtime required: email-HTML sanitization (lib/.../sanitize.ts) uses
+// isomorphic-dompurify → jsdom, which cannot run on the edge runtime.
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   // Read raw body BEFORE JSON-parsing so signature verification is byte-accurate.
   const rawBody = await request.text();

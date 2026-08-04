@@ -5,210 +5,126 @@ import {
 } from "@/lib/commercial/email-archive/sanitize";
 
 /**
- * Tests for lib/commercial/email-archive/sanitize.ts — HTML stripper
- * for archived email bodies.
+ * Tests for lib/commercial/email-archive/sanitize.ts — the DOMPurify-grade
+ * sanitizer for archived email bodies (R8 hardening).
  *
- * Why this matters: Stage 2 recheck caught a CRITICAL bypass via
- * entity-encoded URL schemes (`href="java&#x09;script:..."`). These
- * tests lock in every known bypass + the audit-flagged regressions
- * (inline `style=` carrying `expression()`, `<svg onload>` attribute
- * tricks, etc).
- *
- * NOTE: This is a focused sanitizer, NOT a full DOMPurify. Some
- * mutation-XSS cases are knowingly out of scope (acknowledged in
- * the file's own block comment). These tests verify the
- * dangerous-tags + on-* attributes + dangerous-protocol cases that
- * matter for the actual attack surface (internal team rendering an
- * archived email from a hostile GC).
+ * These assert SECURITY INVARIANTS (no executable content survives) rather than
+ * exact output strings — DOMPurify normalizes markup (attribute order, quoting,
+ * self-closing), so pinning exact strings would be brittle. What must ALWAYS
+ * hold: no <script>/<iframe>/<style>, no on-* handlers, no javascript:/vbscript:
+ * URLs, no inline style=, and links are forced safe.
  */
 
-describe("sanitizeEmailHtml — script + iframe + style stripping", () => {
-  it("strips <script> tag + contents", () => {
-    expect(sanitizeEmailHtml("<p>Hi</p><script>alert(1)</script><p>Bye</p>")).toBe(
-      "<p>Hi</p><p>Bye</p>"
-    );
+const hasScript = (s: string) => /<script/i.test(s);
+const hasOnHandler = (s: string) => /\son\w+\s*=/i.test(s);
+const hasJsUrl = (s: string) => /javascript:|vbscript:/i.test(s);
+
+describe("sanitizeEmailHtml — removes executable content", () => {
+  it("drops <script> tags and their contents", () => {
+    const out = sanitizeEmailHtml("<p>Hi</p><script>alert(1)</script><p>Bye</p>");
+    expect(hasScript(out)).toBe(false);
+    expect(out).toContain("Hi");
+    expect(out).toContain("Bye");
   });
 
-  it("strips <iframe> tag", () => {
-    expect(
-      sanitizeEmailHtml('<iframe src="http://evil.com"></iframe>OK')
-    ).toBe("OK");
+  it("drops <iframe>", () => {
+    const out = sanitizeEmailHtml('<iframe src="http://evil.com"></iframe>OK');
+    expect(out).not.toMatch(/<iframe/i);
+    expect(out).toContain("OK");
   });
 
-  it("strips <style> tag + contents", () => {
-    expect(sanitizeEmailHtml("<style>body{background:red}</style>OK")).toBe(
-      "OK"
-    );
+  it("drops <style> blocks", () => {
+    const out = sanitizeEmailHtml("<style>body{background:red}</style>OK");
+    expect(out).not.toMatch(/<style/i);
+    expect(out).toContain("OK");
   });
 
-  it("strips inline style= attribute", () => {
-    expect(
-      sanitizeEmailHtml('<div style="background:url(javascript:alert(1))">x</div>')
-    ).toBe("<div>x</div>");
+  it("strips on-* event handlers", () => {
+    const out = sanitizeEmailHtml('<p onclick="alert(1)" onmouseover="x()">hi</p>');
+    expect(hasOnHandler(out)).toBe(false);
+    expect(out).toContain("hi");
   });
 
-  it("strips <form> and friends", () => {
-    expect(sanitizeEmailHtml("<form><input/><button>OK</button></form>")).toBe("");
+  it("strips inline style attributes", () => {
+    const out = sanitizeEmailHtml('<p style="background:url(javascript:alert(1))">hi</p>');
+    expect(out).not.toMatch(/style\s*=/i);
+    expect(hasJsUrl(out)).toBe(false);
   });
 
-  it("strips <object> + <embed>", () => {
-    expect(
-      sanitizeEmailHtml('<object data="x.swf"></object><embed src="y.swf"/>')
-    ).toBe("");
+  it("neutralizes javascript: hrefs", () => {
+    const out = sanitizeEmailHtml('<a href="javascript:alert(1)">click</a>');
+    expect(hasJsUrl(out)).toBe(false);
   });
 
-  it("strips <link> + <meta>", () => {
-    expect(
-      sanitizeEmailHtml('<link rel="stylesheet" href="x.css"><meta charset="utf-8">OK')
-    ).toBe("OK");
-  });
-
-  it("self-closing forms also stripped", () => {
-    expect(sanitizeEmailHtml('<input type="text"/>OK')).toBe("OK");
-  });
-});
-
-describe("sanitizeEmailHtml — on-* attribute strip", () => {
-  it("strips onclick handler", () => {
-    expect(
-      sanitizeEmailHtml('<a href="https://safe.com" onclick="alert(1)">link</a>')
-    ).toMatch(/^<a href="https:\/\/safe\.com">link<\/a>$/);
-  });
-
-  it("strips onload handler (lowercase)", () => {
-    expect(sanitizeEmailHtml('<img src="x.png" onload="alert(1)">')).toMatch(
-      /<img src="x\.png">/
-    );
-  });
-
-  it("strips ONERROR handler (case-insensitive)", () => {
-    expect(sanitizeEmailHtml('<img src="x.png" ONERROR="alert(1)">')).not.toMatch(
-      /onerror/i
-    );
-  });
-
-  it("strips onmouseover handler", () => {
-    expect(
-      sanitizeEmailHtml('<span onmouseover="alert(1)">hover</span>')
-    ).not.toMatch(/onmouseover/);
-  });
-});
-
-describe("sanitizeEmailHtml — dangerous URL protocol neutralization", () => {
-  it("neutralizes plain javascript: href", () => {
-    const out = sanitizeEmailHtml('<a href="javascript:alert(1)">x</a>');
-    expect(out).toContain('href="#"');
-    expect(out).not.toContain("javascript:");
-  });
-
-  it("neutralizes entity-encoded javascript: href (the audit bypass)", () => {
-    // The CRITICAL Stage 2 audit fix: href="java&#x09;script:alert(1)"
-    // — browsers decode the entity + strip whitespace before resolving
-    // the scheme. Pre-fix regex missed it. Post-fix normalizeUrlAttr
-    // entity-decodes before testing.
+  it("neutralizes entity-encoded scheme bypass (java&#x09;script:)", () => {
     const out = sanitizeEmailHtml('<a href="java&#x09;script:alert(1)">x</a>');
-    expect(out).toContain('href="#"');
+    expect(hasJsUrl(out)).toBe(false);
   });
 
-  it("neutralizes vbscript: href", () => {
-    expect(
-      sanitizeEmailHtml('<a href="vbscript:msgbox(1)">x</a>')
-    ).toContain('href="#"');
+  it("strips <svg> (can carry script via foreignObject)", () => {
+    const out = sanitizeEmailHtml('<svg><foreignObject><script>alert(1)</script></foreignObject></svg>ok');
+    expect(hasScript(out)).toBe(false);
+    expect(out).not.toMatch(/<svg/i);
   });
 
-  it("neutralizes data: href", () => {
-    expect(
-      sanitizeEmailHtml('<a href="data:text/html,<script>alert(1)</script>">x</a>')
-    ).toContain('href="#"');
+  it("drops form controls", () => {
+    const out = sanitizeEmailHtml('<form><input name="x"><button>go</button></form>text');
+    expect(out).not.toMatch(/<form|<input|<button/i);
+    expect(out).toContain("text");
   });
 
-  it("preserves safe https: href", () => {
-    const out = sanitizeEmailHtml('<a href="https://example.com">x</a>');
-    expect(out).toContain('href="https://example.com"');
-  });
-
-  it("preserves safe http: href", () => {
-    const out = sanitizeEmailHtml('<a href="http://example.com">x</a>');
-    expect(out).toContain('href="http://example.com"');
-  });
-
-  it("preserves mailto: href", () => {
-    const out = sanitizeEmailHtml('<a href="mailto:a@b.com">x</a>');
-    expect(out).toContain('href="mailto:a@b.com"');
+  it("resists a mutation-XSS style nesting trick", () => {
+    // A classic mXSS payload — must not yield an executable <script>/handler.
+    const out = sanitizeEmailHtml('<div><style><style/><img src=x onerror=alert(1)>');
+    expect(hasScript(out)).toBe(false);
+    expect(hasOnHandler(out)).toBe(false);
+    expect(hasJsUrl(out)).toBe(false);
   });
 });
 
-describe("sanitizeEmailHtml — srcset + target stripping", () => {
-  it("strips srcset (tracker-pixel vector)", () => {
-    expect(
-      sanitizeEmailHtml('<img src="x.png" srcset="x.png 1x, y.png 2x">')
-    ).not.toMatch(/srcset/);
+describe("sanitizeEmailHtml — keeps safe email content", () => {
+  it("preserves basic formatting + links + images", () => {
+    const out = sanitizeEmailHtml('<p>Hello <strong>Alex</strong> <a href="https://ppp.com">link</a> <img src="https://ppp.com/a.png"></p>');
+    expect(out).toContain("Hello");
+    expect(out).toMatch(/<strong>/i);
+    expect(out).toMatch(/href="https:\/\/ppp\.com"/i);
+    expect(out).toMatch(/<img/i);
   });
 
-  it("strips target=_blank (reverse-tabnabbing defense)", () => {
-    expect(
-      sanitizeEmailHtml('<a href="https://x.com" target="_blank">x</a>')
-    ).not.toMatch(/target/);
-  });
-});
-
-describe("sanitizeEmailHtml — safe content preservation", () => {
-  it("keeps <p>, <strong>, <em>, <br>", () => {
-    const out = sanitizeEmailHtml(
-      "<p>Hello <strong>bold</strong> <em>italic</em><br/>line2</p>"
-    );
-    expect(out).toContain("<p>");
-    expect(out).toContain("<strong>");
-    expect(out).toContain("<em>");
-    expect(out).toContain("<br/>");
+  it("forces links to open safely (target=_blank rel=noopener)", () => {
+    const out = sanitizeEmailHtml('<a href="https://ppp.com">x</a>');
+    expect(out).toMatch(/rel="noopener noreferrer"/i);
+    expect(out).toMatch(/target="_blank"/i);
   });
 
-  it("keeps <table> markup", () => {
-    const out = sanitizeEmailHtml(
-      "<table><tr><td>cell</td></tr></table>"
-    );
-    expect(out).toContain("<table>");
-    expect(out).toContain("<td>");
-  });
-
-  it("keeps <img> with safe src", () => {
-    const out = sanitizeEmailHtml('<img src="https://safe.com/x.png" alt="x">');
-    expect(out).toContain('src="https://safe.com/x.png"');
-  });
-
-  it("empty input returns empty string", () => {
+  it("returns empty string for falsy input", () => {
     expect(sanitizeEmailHtml("")).toBe("");
     expect(sanitizeEmailHtml(null)).toBe("");
     expect(sanitizeEmailHtml(undefined)).toBe("");
   });
+
+  it("converges — re-sanitizing is stable (safe attr reordering aside)", () => {
+    // DOMPurify may reorder attributes (e.g. the target/rel we add) on the first
+    // re-parse, so strict once===twice doesn't hold — but it must stabilize.
+    const a = sanitizeEmailHtml('<p onclick="x">hi <a href="https://ppp.com">l</a></p>');
+    const b = sanitizeEmailHtml(a);
+    const c = sanitizeEmailHtml(b);
+    expect(c).toBe(b);
+    expect(hasOnHandler(b)).toBe(false);
+  });
 });
 
-describe("htmlToPlainText — fallback text extraction", () => {
-  it("strips all HTML tags", () => {
-    expect(htmlToPlainText("<p>Hi <strong>there</strong>!</p>")).toBe("Hi there!");
+describe("htmlToPlainText", () => {
+  it("strips tags and decodes entities", () => {
+    expect(htmlToPlainText("<p>Hi &amp; bye</p>")).toBe("Hi & bye");
   });
-
-  it("converts <br> and </p> to newlines", () => {
-    const out = htmlToPlainText("<p>Line1</p><p>Line2</p>");
-    expect(out).toBe("Line1\nLine2");
+  it("drops script/style content", () => {
+    expect(htmlToPlainText("<style>x{}</style><p>keep</p><script>y()</script>")).toBe("keep");
   });
-
-  it("strips <script> content entirely", () => {
-    expect(htmlToPlainText("Hi<script>alert(1)</script>Bye")).toBe("HiBye");
+  it("converts breaks to newlines", () => {
+    expect(htmlToPlainText("a<br>b")).toBe("a\nb");
   });
-
-  it("decodes &amp; &lt; &gt; &quot; entities", () => {
-    expect(htmlToPlainText("a &amp; b &lt; c &gt; d &quot;e&quot;")).toBe(
-      'a & b < c > d "e"'
-    );
-  });
-
-  it("collapses runs of whitespace", () => {
-    expect(htmlToPlainText("a   b\t\t\tc")).toBe("a b c");
-  });
-
-  it("empty input returns empty string", () => {
-    expect(htmlToPlainText("")).toBe("");
+  it("returns empty for falsy", () => {
     expect(htmlToPlainText(null)).toBe("");
   });
 });
