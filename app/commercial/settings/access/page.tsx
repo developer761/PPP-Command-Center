@@ -76,6 +76,21 @@ export default async function CommercialAccessPage() {
         initialApproverEmails={approverEmails}
         initialReceiverEmails={receiverEmails}
       />
+
+      {/* R10: field-ops schedule emails - who gets the weekly schedule. */}
+      <Link
+        href="/commercial/settings/schedule-emails"
+        className="group mt-6 flex items-center gap-3 p-4 rounded-xl bg-surface border border-ppp-charcoal-100 hover:border-cc-brand-300 hover:shadow-sm transition-all"
+      >
+        <span className="flex items-center justify-center h-10 w-10 rounded-lg bg-cc-brand-50 text-cc-brand-700 shrink-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-bold text-ppp-charcoal">Schedule Emails</div>
+          <p className="text-[12.5px] text-ppp-charcoal-500">Who gets the weekly field schedule — every crew member by default (opt-out per person) plus office recipients.</p>
+        </div>
+        <span className="text-cc-brand-700 group-hover:translate-x-0.5 transition-transform shrink-0" aria-hidden>&rarr;</span>
+      </Link>
     </div>
   );
 }
