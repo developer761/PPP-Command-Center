@@ -39,6 +39,7 @@ import {
   type CommercialAccountDocument,
 } from "@/lib/commercial/accounts/documents";
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
+import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
 import { DateField } from "@/components/commercial/date-field";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -7531,7 +7532,7 @@ async function DealEditSheet({
   const selectCls = `${inputCls} appearance-none bg-surface bg-no-repeat pr-9`;
   const labelCls = "block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5";
   return (
-    <div id="deal-edit-sheet" className="fixed inset-0 z-40" role="dialog" aria-labelledby="deal-edit-title">
+    <div id="deal-edit-sheet" className="fixed inset-0 z-40">
       {/* Backdrop — full-viewport link closes the sheet by dropping ?edit. */}
       <Link
         href={closeHref}
@@ -7542,7 +7543,10 @@ async function DealEditSheet({
           desktop width from 520px → 720px so the form breathes; long
           field labels + hints don't wrap mid-word anymore. Full-width
           on mobile stays. */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[600px] lg:w-[720px] max-w-full bg-surface border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
+      <FocusTrapAside
+        closeHref={closeHref}
+        ariaLabelledBy="deal-edit-title"
+        className="absolute right-0 top-0 bottom-0 w-full sm:w-[600px] lg:w-[720px] max-w-full bg-surface border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
         {/* Karan 2026-07-08 simplification pass: killed the read-only KPI
             band (redundant with the form field values below) and the
             "status changes happen elsewhere" paragraph (users learn
@@ -8153,7 +8157,7 @@ async function DealEditSheet({
             Cancel
           </Link>
         </footer>
-      </aside>
+      </FocusTrapAside>
     </div>
   );
 }

@@ -36,6 +36,7 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from 
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { ProjectToolbar } from "@/components/commercial/project-toolbar";
+import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import { DateField } from "@/components/commercial/date-field";
 import {
   isTerminalOpportunityStatus,
@@ -2361,13 +2362,16 @@ async function OpportunityInvoicesPanel({
           : "";
         const backHref = `?tab=invoices#inv-${editing.id}`;
         return (
-          <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-labelledby="invoice-edit-sheet-title">
+          <div className="fixed inset-0 z-50 flex justify-end">
             <Link
               href={backHref}
               aria-label="Close edit panel"
               className="absolute inset-0 bg-ppp-navy-900/40 backdrop-blur-[1px]"
             />
-            <aside className="relative z-10 w-full max-w-[92vw] sm:max-w-md h-full bg-surface shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
+            <FocusTrapAside
+              closeHref={backHref}
+              ariaLabelledBy="invoice-edit-sheet-title"
+              className="relative z-10 w-full max-w-[92vw] sm:max-w-md h-full bg-surface shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
               <header className="px-5 pt-5 pb-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-500">
@@ -2531,7 +2535,7 @@ async function OpportunityInvoicesPanel({
                   Save details
                 </button>
               </footer>
-            </aside>
+            </FocusTrapAside>
           </div>
         );
       })()}

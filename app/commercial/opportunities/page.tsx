@@ -28,6 +28,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
 import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
+import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import { createClient } from "@/lib/supabase/server";
 import {
   listCommercialOpportunities,
@@ -1467,14 +1468,15 @@ function NewDealSlideOut({
         aria-label="Close new opportunity panel"
         className="fixed inset-0 z-40 bg-ppp-navy-900/40 backdrop-blur-sm"
       />
-      <aside
+      <FocusTrapAside
+        closeHref={closeHref}
         id="new-deal-sheet"
         className="fixed right-0 top-0 bottom-0 z-50 w-full sm:max-w-md bg-surface shadow-2xl flex flex-col"
-        aria-label="Create a new opportunity"
+        ariaLabelledBy="new-deal-sheet-title"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-ppp-charcoal-100">
           <div>
-            <h2 className="text-base font-bold text-ppp-charcoal">New opportunity</h2>
+            <h2 id="new-deal-sheet-title" className="text-base font-bold text-ppp-charcoal">New opportunity</h2>
             <p className="text-xs text-ppp-charcoal-500 mt-0.5">
               Pick the GC (account), name the opportunity, click Create.
             </p>
@@ -1592,7 +1594,7 @@ function NewDealSlideOut({
           </Link>
           <NewDealSubmitProxy />
         </div>
-      </aside>
+      </FocusTrapAside>
     </>
   );
 }
@@ -3514,7 +3516,7 @@ function CustomerQuickSheet({
       ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))
       : 0;
   return (
-    <div id="customer-sheet" className="fixed inset-0 z-40" role="dialog" aria-labelledby="customer-sheet-title">
+    <div id="customer-sheet" className="fixed inset-0 z-40">
       {/* Backdrop — full-viewport link that closes the sheet. */}
       <Link
         href={closeHref}
@@ -3524,7 +3526,10 @@ function CustomerQuickSheet({
       {/* Sheet — right-aligned slide-out. Wider than deal peek (480px)
           because it carries more content: team, financials, invoices,
           deals. Full width on mobile. */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-surface border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
+      <FocusTrapAside
+        closeHref={closeHref}
+        ariaLabelledBy="customer-sheet-title"
+        className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-surface border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
         {/* Header — company name + close + right-aligned View Account CTA
             per user's explicit ask ("top right of the sheet it says view
             full account button and brings the user to the account"). */}
@@ -3853,7 +3858,7 @@ function CustomerQuickSheet({
             </section>
           )}
         </div>
-      </aside>
+      </FocusTrapAside>
     </div>
   );
 }
