@@ -73,12 +73,13 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 - [ ] Account header open-opportunity count + balance · alphabetical-by-customer sort
 - [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
 
-## ⬜ Phase R8 — Hardening
-- [ ] **Accessibility** — focus-trap/inert for the 3 slide-out sheets + finish contrast sweep + remaining focus rings
-- [ ] **Security** — DOMPurify-grade email-HTML sanitizer; raw date formatters → `fmtEtDate`
-- [ ] **View-only access role** (least-privilege commercial login)
-- [ ] **Cleanups** — remove orphan TeamTab/NotesTab; consolidate duplicate tile components; latent date-safety
-- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+## 🔄 Phase R8 — Hardening
+- [x] **Security — DOMPurify-grade email sanitizer** (2026-08-04) — isomorphic-dompurify at ingest (mXSS/DOM-clobbering resistant), jsdom external, webhook pinned nodejs, links forced target=_blank rel=noopener. Tests → security invariants.
+- [x] **Security — timezone date sweep** (2026-08-04) — platform already ET-safe; fixed the competitors "Last seen" straggler.
+- [x] **Accessibility — focus-trap the slide-out sheets** (2026-08-04) — reusable `<FocusTrapAside>` on all 4 URL-driven sheets (focus in/restore, Tab trap, Esc close, single dialog).
+- [→ Bonus] ~~**View-only access role**~~ — **moved to Bonus** (Karan 2026-08-04). Needs a per-mutation sweep (~44 actions + 22 routes; `assertCommercialAccess` also gates reads so no single chokepoint) — must ship complete/fail-closed, so it's its own focused build.
+- [x] **Cleanups** — verified no-op: the "orphan" TeamTab/NotesTab are live (actions redirect to ?tab=team); tile-consolidation is a risky refactor that doesn't belong in hardening.
+- [ ] _(remaining)_ contrast + focus-ring micro-sweep → folded into the ENDGAME accessibility audit.
 
 ## ⬜ Phase R9 — Dark mode finish
 - [ ] Contrast pass + navy accent across every page (foundation shipped; finish over stable surfaces)
@@ -160,6 +161,7 @@ _From `project_katie_notes_remaining_2026_08`, `project_katie_general_notes_2026
 
 ## 🎁 Bonus features (do at the very end — nice-to-haves after the core roadmap)
 - [ ] **Pipeline speed** (deferred from R7, Karan 2026-08-04) — per-column **quick-add** on the kanban (type title + searchable account + Enter → deal born in that stage, optimistic insert), a **"start in stage"** selector on the New-opportunity slide-out, and rapid multi-entry (Enter = create+keep-open). Open stages only; desktop kanban; reuses `createCommercialOpportunity` + the column→(status, sub_status) map.
+- [ ] **View-only access role** (deferred from R8, Karan 2026-08-04) — a 4th least-privilege role (see-all, do-nothing). Fail-closed: migration adds 'viewer' to the role CHECK, add `requireCommercialWrite` gate, sweep EVERY mutation (~44 actions + 22 API routes) classifying read-vs-write, hide write UI via `capabilitiesFor`, then an adversarial pass proving no write path is unguarded. Ship complete or not at all.
 
 ## ⬜ ★ ENDGAME — full platform audit (do NOT declare done until all checked)
 - [ ] Money / KPI / backend audit — every finding fixed
