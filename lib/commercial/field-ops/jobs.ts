@@ -96,6 +96,7 @@ export async function listDealOptionsForWorkOrder(): Promise<{ value: string; la
     .from("commercial_opportunities")
     .select("id, title, client_name, account_id")
     .is("deleted_at", null)
+    .is("archived_at", null) // archived deals are hidden from the pipeline - hide them here too
     .order("updated_at", { ascending: false })
     .limit(300);
   const rows = (opps ?? []) as { id: string; title: string | null; client_name: string | null; account_id: string }[];
