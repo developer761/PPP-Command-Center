@@ -356,7 +356,7 @@ export default async function CompetitorsAdminPage({
                               <>
                                 <span aria-hidden className="text-ppp-charcoal-300">·</span>
                                 <span className="text-ppp-charcoal-500">
-                                  Last seen {new Date(stats.last_seen_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  Last seen {new Date(stats.last_seen_at).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" })}
                                 </span>
                               </>
                             )}
