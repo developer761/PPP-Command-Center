@@ -1,0 +1,195 @@
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { isAdminEmail } from "@/lib/auth/admin";
+import {
+  listEmployees,
+  createEmployee,
+  updateEmployee,
+  employeeRoleLabel,
+  workerTypeLabel,
+  EMPLOYEE_ROLES,
+  WORKER_TYPES,
+  PAY_TYPES,
+  type CommercialEmployee,
+} from "@/lib/commercial/field-ops/employees";
+import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
+
+export const dynamic = "force-dynamic";
+
+const BASE = "/commercial/field-ops/employees";
+
+async function requireAdmin(): Promise<string> {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  const user = data?.user;
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const profile = await getProfileByUserId(user.id);
+  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
+  if (!isAdmin) redirect("/commercial");
+  return user.id;
+}
+
+async function addEmployeeAction(formData: FormData) {
+  "use server";
+  const userId = await requireAdmin();
+  const result = await createEmployee({
+    first_name: String(formData.get("first_name") ?? ""),
+    last_name: String(formData.get("last_name") ?? ""),
+    display_name: String(formData.get("display_name") ?? ""),
+    worker_type: (String(formData.get("worker_type") ?? "w2") as CommercialEmployee["worker_type"]),
+    role: (String(formData.get("role") ?? "painter") as CommercialEmployee["role"]),
+    pay_type: (String(formData.get("pay_type") ?? "hourly") as CommercialEmployee["pay_type"]),
+    phone: String(formData.get("phone") ?? ""),
+    email: String(formData.get("email") ?? ""),
+    preferred_language: (String(formData.get("preferred_language") ?? "en") as "en" | "es"),
+    actor_user_id: userId,
+  });
+  if (!result.ok) redirect(`${BASE}?error=${encodeURIComponent(result.error)}`);
+  revalidatePath(BASE);
+  redirect(`${BASE}?ok=added`);
+}
+
+async function editEmployeeAction(formData: FormData) {
+  "use server";
+  const userId = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const result = await updateEmployee(
+    id,
+    {
+      first_name: String(formData.get("first_name") ?? ""),
+      last_name: String(formData.get("last_name") ?? ""),
+      display_name: String(formData.get("display_name") ?? ""),
+      worker_type: String(formData.get("worker_type") ?? "w2") as CommercialEmployee["worker_type"],
+      role: String(formData.get("role") ?? "painter") as CommercialEmployee["role"],
+      pay_type: String(formData.get("pay_type") ?? "hourly") as CommercialEmployee["pay_type"],
+      phone: String(formData.get("phone") ?? ""),
+      email: String(formData.get("email") ?? ""),
+      preferred_language: String(formData.get("preferred_language") ?? "en") as "en" | "es",
+    },
+    userId
+  );
+  if (!result.ok) redirect(`${BASE}?error=${encodeURIComponent(result.error)}`);
+  revalidatePath(BASE);
+  redirect(`${BASE}?ok=saved`);
+}
+
+async function toggleActiveAction(formData: FormData) {
+  "use server";
+  const userId = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const active = String(formData.get("active") ?? "") === "1";
+  await updateEmployee(id, { active }, userId);
+  revalidatePath(BASE);
+  redirect(BASE);
+}
+
+export default async function FieldOpsEmployeesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; ok?: string }>;
+}) {
+  await requireAdmin();
+  const sp = await searchParams;
+  const employees = await listEmployees({ includeInactive: true });
+  const activeCount = employees.filter((e) => e.active).length;
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+      <div className="mb-5">
+        <Link href="/commercial/field-ops" className="text-[12px] font-semibold text-cc-brand-700 hover:underline">&larr; Field Ops</Link>
+        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none mt-1">Crew</h1>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">{activeCount} active · the people who show up on the Week Grid. Add order sets their column position.</p>
+      </div>
+
+      {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error}</div>}
+      {sp.ok && <div className="mb-4 rounded-lg bg-ppp-green-50 border border-ppp-green-100 px-3 py-2 text-[12.5px] text-ppp-green-700">{sp.ok === "added" ? "Added." : "Saved."}</div>}
+
+      {/* Add */}
+      <form action={addEmployeeAction} className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 mb-5 space-y-3">
+        <h2 className="text-sm font-bold text-ppp-charcoal">Add a crew member</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block"><span className={LABEL_CLS}>First name *</span>
+            <input name="first_name" required placeholder="Rob" className={INPUT_CLS} /></label>
+          <label className="block"><span className={LABEL_CLS}>Last name</span>
+            <input name="last_name" placeholder="Castellano" className={INPUT_CLS} /></label>
+          <label className="block"><span className={LABEL_CLS}>Display name (grid column)</span>
+            <input name="display_name" placeholder="Rob C (blank = auto)" className={INPUT_CLS} /></label>
+          <label className="block"><span className={LABEL_CLS}>Role</span>
+            <select name="role" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              {EMPLOYEE_ROLES.map((r) => <option key={r} value={r}>{employeeRoleLabel(r)}</option>)}
+            </select></label>
+          <label className="block"><span className={LABEL_CLS}>Type</span>
+            <select name="worker_type" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              {WORKER_TYPES.map((t) => <option key={t} value={t}>{workerTypeLabel(t)}</option>)}
+            </select></label>
+          <label className="block"><span className={LABEL_CLS}>Pay type</span>
+            <select name="pay_type" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              {PAY_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select></label>
+          <label className="block"><span className={LABEL_CLS}>Phone</span>
+            <input name="phone" type="tel" placeholder="(631) 555-0100" className={INPUT_CLS} /></label>
+          <label className="block"><span className={LABEL_CLS}>Email (for their schedule)</span>
+            <input name="email" type="email" placeholder="rob@…" className={INPUT_CLS} /></label>
+          <label className="block"><span className={LABEL_CLS}>Schedule email language</span>
+            <select name="preferred_language" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+            </select></label>
+        </div>
+        <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add crew member</button>
+      </form>
+
+      {/* List */}
+      {employees.length === 0 ? (
+        <div className="text-center py-10 bg-surface border border-ppp-charcoal-100 rounded-xl">
+          <p className="text-sm font-semibold text-ppp-charcoal">No crew yet</p>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Add your painters above — they become the columns on the Week Grid.</p>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {employees.map((e) => (
+            <li key={e.id} className={`bg-surface border rounded-xl ${e.active ? "border-ppp-charcoal-100" : "border-ppp-charcoal-100 opacity-60"}`}>
+              <details>
+                <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer list-none min-h-[52px]">
+                  <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-cc-brand-50 text-cc-brand-700 text-[12px] font-bold shrink-0">{e.display_name.slice(0, 2).toUpperCase()}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{e.display_name}{!e.active && <span className="ml-2 text-[10.5px] font-bold uppercase text-ppp-charcoal-400">inactive</span>}</div>
+                    <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{employeeRoleLabel(e.role)} · {workerTypeLabel(e.worker_type)}{e.email ? ` · ${e.email}` : " · no email"}</div>
+                  </div>
+                  <span className="text-[11px] text-ppp-charcoal-400 shrink-0">Edit</span>
+                </summary>
+                <form action={editEmployeeAction} className="px-4 pb-4 pt-1 space-y-3 border-t border-ppp-charcoal-50">
+                  <input type="hidden" name="id" value={e.id} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block"><span className={LABEL_CLS}>First name</span><input name="first_name" defaultValue={e.first_name} className={INPUT_CLS} /></label>
+                    <label className="block"><span className={LABEL_CLS}>Last name</span><input name="last_name" defaultValue={e.last_name ?? ""} className={INPUT_CLS} /></label>
+                    <label className="block"><span className={LABEL_CLS}>Display name</span><input name="display_name" defaultValue={e.display_name} className={INPUT_CLS} /></label>
+                    <label className="block"><span className={LABEL_CLS}>Role</span><select name="role" defaultValue={e.role} className={SELECT_CLS} style={SELECT_BG_STYLE}>{EMPLOYEE_ROLES.map((r) => <option key={r} value={r}>{employeeRoleLabel(r)}</option>)}</select></label>
+                    <label className="block"><span className={LABEL_CLS}>Type</span><select name="worker_type" defaultValue={e.worker_type} className={SELECT_CLS} style={SELECT_BG_STYLE}>{WORKER_TYPES.map((t) => <option key={t} value={t}>{workerTypeLabel(t)}</option>)}</select></label>
+                    <label className="block"><span className={LABEL_CLS}>Pay type</span><select name="pay_type" defaultValue={e.pay_type} className={SELECT_CLS} style={SELECT_BG_STYLE}>{PAY_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
+                    <label className="block"><span className={LABEL_CLS}>Phone</span><input name="phone" type="tel" defaultValue={e.phone ?? ""} className={INPUT_CLS} /></label>
+                    <label className="block"><span className={LABEL_CLS}>Email</span><input name="email" type="email" defaultValue={e.email ?? ""} className={INPUT_CLS} /></label>
+                    <label className="block"><span className={LABEL_CLS}>Email language</span><select name="preferred_language" defaultValue={e.preferred_language} className={SELECT_CLS} style={SELECT_BG_STYLE}><option value="en">English</option><option value="es">Spanish</option></select></label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Save</button>
+                  </div>
+                </form>
+                <form action={toggleActiveAction} className="px-4 pb-4">
+                  <input type="hidden" name="id" value={e.id} />
+                  <input type="hidden" name="active" value={e.active ? "0" : "1"} />
+                  <button type="submit" className={`text-[12px] font-semibold ${e.active ? "text-rose-600 hover:text-rose-700" : "text-ppp-green-700 hover:text-ppp-green-800"}`}>{e.active ? "Deactivate" : "Reactivate"}</button>
+                </form>
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

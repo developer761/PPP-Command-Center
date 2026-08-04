@@ -101,6 +101,14 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    // R10: Field Ops - crew scheduling, clock in/out, payroll. Hub pattern
+    // (one entry -> card grid). Surfaces build out phase by phase.
+    heading: "Field Ops",
+    items: [
+      { label: "Field Ops", href: "/commercial/field-ops", icon: <IconHardHat /> },
+    ],
+  },
+  {
     heading: "Reports",
     items: [
       // R4: a Reports framework — one entry, a tab bar inside switches reports
