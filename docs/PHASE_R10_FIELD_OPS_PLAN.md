@@ -44,7 +44,7 @@ Admin (all + rates + reopen periods) · **Scheduler** (create/publish assignment
 - **R10.1 Week Grid (primary)** — jobs down the left, employees across the top, hours in cells, Mon–Sat sections, employee cols by sort_order (sticky header). **Mode toggle: Scheduled · Actual · Variance.** Col totals/employee, row totals/job, week grand total. Click-to-edit cells (type a number → create/update assignment). **Copy Week Forward.** In-grid flags: over default_daily_hours, working-day with no assignment + no absence, job over estimated hours.
 - **R10.2 Calendar** — Month (each day: jobs running + headcount, day total, absences strip) + Resource timeline (employees = rows, days = cols, 2–6 wk scroll, colored job blocks, splits stacked, gaps = idle capacity). Drag ready_to_schedule job → day; drag crew → job-day expands to member rows; drag block to move/extend; filter by crew/foreman/job/status; planned = reduced opacity until published.
 - **R10.3 Job Board** — kanban by job status; cards show code/name/site/target dates/scheduled-vs-estimated burn; `ready_to_schedule` column = the drag source.
-- **R10.4 Daily Log (MOBILE-FIRST, <30s)** — foreman opens → crew's assignments pre-filled at scheduled hours → adjust the differences → submit. Add unplanned job-hours row, mark absence w/ reason code. Submit locks the day pending approval. (Speed is the whole game — if it's slow it regresses to "every cell = 8".)
+- **R10.4 Daily Log (MOBILE-FIRST, <30s, PER-PAINTER)** — Karan 2026-08-04: **each painter submits their OWN time** (not foreman-per-crew). The field crew is low-tech-comfort (see [[feedback_ppp_one_click_autofill]]), so access is a **magic link** (tokenized URL emailed to them — no password, phone-first), NOT a full account. Painter taps the link → sees TODAY pre-filled at their scheduled hours for their assigned job(s) → one tap **Confirm**, or nudge one number → submit. Absence = tap a reason code (P/S/NW/NA). Optional unplanned job-hours row if they worked somewhere unscheduled. Submit locks their day pending approval. (Speed is the whole game — >30s and it won't happen daily, regressing to "every cell = 8".) A **Foreman/Scheduler can still submit on behalf** of someone who can't.
 - **R10.5 Approvals** — pay-period queue for scheduler/admin; group by employee|job; side-by-side scheduled vs actual + variance; bulk-approve zero-variance; question an entry (→ foreman); period can't export while any entry is submitted|questioned.
 - **R10.6 Admin** — CRUD employees/crews/jobs/pay-periods. Job create form won't submit without a job_code.
 
@@ -75,6 +75,21 @@ R10 must wire INTO what's already built, not sit beside it:
 ## ⭐ Reuses the LOCKED conventions (build to these, per the RUX overhaul)
 Per-tool **dual/triple surface** (account-nested detail + cross-account **sidebar index** + rollup) · **ToolBackHeader + `?back=`** context-aware back-nav · **Hub pattern** for the Field-Ops landing / a **collapsible sidebar group** (it's >6 rows) · shared primitives + **DateField for every date (never native)** · **AutosaveForm** where it fits (grid cells, daily log) · **docs-per-tool auto-file** (payroll CSV filed to the pay-period) · **palette** blue/green + rose-danger only, `ppp-navy` when two states must differ (never purple/yellow) · **never a dead-end** (empty schedule → "add a job / import a crew") · **money never hard-rejects** · **mobile-perfect 44px** (the Daily Log is mobile-FIRST) · **migration-gated deploy** (hand Karan the SQL, hold the push) · edge-case audit before + AND after each sub-phase.
 
+## 📧 Painter comms — "here's your schedule" email (Karan 2026-08-04)
+When a week (or a day) is **published**, each painter gets an email of THEIR assignments — not the whole grid:
+- **Per painter, personalized:** "Here's your schedule, Miguel:" → each day → the job, the site address, start time, foreman/crew, and job details (pulled from the job / its **Work Order** if backed by one — scope, finishes). PW jobs flagged.
+- **One tap to confirm hours:** the email's magic link opens that painter's mobile **Daily Log** (pre-filled) — email + capture are the same low-friction loop. Reuses the Resend `sendEmail` + tokenized-link pattern (customer-form invite + WO crew-email precedents).
+- **Re-send / change alerts:** re-publishing after a change re-emails only the affected painters ("your Thursday changed"). Never spams the unchanged.
+- Bilingual-ready copy (crew is largely Hispanic, low-tech-comfort) — short, concrete, one action.
+
+## 🔄 End-to-end flow (must feel like ONE smooth process — Karan)
+`Account (GC)` → `Deal / Opportunity` → **win** → `Work Order` (crew + window + scope) → **"Schedule this job?"** seeds a `Job` + `assignments` from the WO's `assigned_to` + `scheduled_start/end` → **Publish** → each painter **emailed** their schedule + magic link → painter **confirms hours** (mobile Daily Log) → Scheduler **approves** (variance review) → Payroll **exports CSV**.
+- Standalone jobs (PPP / PW / misc — the "(ppp job)" reality) skip the deal/WO front-half and are created straight in the scheduler.
+- Every hop drops the expected note / notification / rollup so the account timeline, the deal, the WO index, and the schedule all stay in sync — no dead ends, no re-typing. The WO index already shows "not created / draft / sent to crew"; add **"sent · not scheduled"** so nothing falls through the account→deal→WO→schedule handoff.
+
+## Roles — painter access = magic link (not a seat)
+Admin · Scheduler · Foreman · Payroll are real logins (RBAC). **Painters do NOT get full accounts** — they access only their own Daily Log via the tokenized magic link in their schedule email (scoped to their own `time_entries`, nothing else). Keeps onboarding to zero for the crew and the write-surface tiny. Rate table stays Admin+Payroll-only.
+
 ## Out of scope v1 (per spec)
 GPS/geofenced clock-in · materials/paint ordering · sub POs · customer schedule notifications · native mobile (responsive web OK) · Gusto sync · historical import · residential division.
 
@@ -101,5 +116,9 @@ Split days (one person, 2 jobs, 8+8 or 4+4 — the UNIQUE(job,emp,date) supports
 - **PW = prevailing wage** (Enecon 6 Platinum Ct) → the `prevailing_wage` flag, confirmed. **Pending/weather notes** (Ascent Duct patches, "OShea… weather and progress pending") = the `ready_to_schedule`/on-hold backlog, shown as red side-notes today → becomes a real queue.
 - **Week = Mon–Sat**, Saturday usually OUT, per-employee column totals at the bottom. Week Grid mirrors this 1:1 → zero learning curve; **Copy Week Forward** kills the manual weekly re-type.
 
-## Open questions for Katie (from the spec)
-1. Actuals capture owner — foreman-per-crew assumed; if individual painters submit, the Daily Log changes. [spec PDF cut mid-sentence — get the rest from Katie.]
+## Resolved decisions (Karan 2026-08-04)
+1. **Actuals capture = EACH PAINTER submits their own** (via magic-link Daily Log). ✅ (was the open Katie question — now answered.)
+2. Jobs **standalone-first** + optional opportunity/WO link. ✅ (confirmed by the "(ppp job)" timesheet reality.)
+3. Labor cost: keep today's path **parallel** with time_entries for v1; reconcile later. ✅
+4. Build the **Scheduler/Foreman/Payroll role model in R10.0** (where the deferred RBAC lands). ✅
+5. **WO → schedule** integration + the **"here's your schedule" painter email** are in-scope. ✅
