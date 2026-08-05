@@ -50,6 +50,7 @@ export default function PurchaseForm({
   oppId,
   accountId,
   back,
+  origin = "",
   categories,
   recentVendors,
   recentWorkers,
@@ -62,6 +63,8 @@ export default function PurchaseForm({
   oppId: string;
   accountId: string;
   back: string;
+  /** Where the tool is rendered ("route" | "inline") so the action returns you here. */
+  origin?: string;
   /** [value, label] pairs in display order. */
   categories: [string, string][];
   recentVendors: string[];
@@ -92,6 +95,7 @@ export default function PurchaseForm({
       <input type="hidden" name="opp_id" value={oppId} />
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="back" value={back} />
+      <input type="hidden" name="origin" value={origin} />
       {purchase && <input type="hidden" name="purchase_id" value={purchase.id} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
