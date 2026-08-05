@@ -1089,8 +1089,17 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   const dealMaterialsCents = dealFin.costs.materials;
   const dealLaborOutCents = dealFin.costs.labor;
   const dealCostsTotalCents = dealFin.costs.total;
-  const dealNetCents = dealFin.billedPreTaxCents - dealCostsTotalCents;
+  // Deal P&L — the SAME definitions as the account + dashboard levels: Gross =
+  // billed (pre-tax), Net = gross − costs, Margin = net ÷ gross. Kept identical so
+  // a deal's numbers reconcile up to its GC (account) and the whole platform.
+  const dealGrossCents = dealFin.billedPreTaxCents;
+  const dealNetCents = dealGrossCents - dealCostsTotalCents;
+  // Margin is null until real costs are logged — otherwise it's a fake 100%
+  // "healthy" (persona-audit blocker), same guard as the dashboard.
+  const dealMarginPct =
+    dealCostsTotalCents > 0 && dealGrossCents > 0 ? Math.round((dealNetCents / dealGrossCents) * 100) : null;
   const dealHasRollup = dealCostsTotalCents > 0 || dealTotalHours > 0;
+  const dealShowPnl = dealHasRollup || p.contractToDateCents > 0 || p.invoicedCents > 0;
   const dealProposals = await listProposalsForOpp(p.opp.id);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
   // Milestones (2026-08): an invoice can be broken into a schedule of milestones
@@ -1254,17 +1263,22 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           <ProjectStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={hasContract ? formatCentsCompact(p.overBilled ? p.billedContractCents - p.contractToDateCents : p.leftToBillCents) : "—"} tone={p.overBilled ? "amber" : undefined} />
           <ProjectStat label="Outstanding" value={formatCentsCompact(p.outstandingCents)} sub={p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={p.outstandingCents > 0 ? "amber" : undefined} />
         </div>
-        {/* R5 project rollup — the COST/production side (money out) right under the
-            billing KPIs, so the deal header reads as the whole job at a glance.
-            Self-hides until costs or hours exist. Full detail on the Costs & P&L tab. */}
-        {dealHasRollup && (
+        {/* Deal Profitability — the money-out / P&L lens under the billing KPIs,
+            using the SAME Gross/Net/Margin definitions as the account + dashboard
+            so a deal reconciles up to its GC and the platform. Shows for any real
+            project (contract, billing, or costs); margin waits for real costs so it
+            never reads a fake 100%. Full chart/donuts on the Costs & P&L tab. */}
+        {dealShowPnl && (
           <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-400 mb-2">Job costs</div>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-400">Profitability · gross = billed · net = billed − costs</div>
+              <Link href={`${base}?tab=projects&project=${p.opp.id}&dt=pnl`} className="text-[11px] font-semibold text-cc-brand-700 hover:underline shrink-0">Full P&amp;L →</Link>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <ProjectStat label="Hours" value={`${Number.isInteger(dealTotalHours) ? dealTotalHours : dealTotalHours.toFixed(1)}h`} sub="logged" />
-              <ProjectStat label="Materials" value={formatCentsCompact(dealMaterialsCents)} sub="purchases" />
-              <ProjectStat label="Labor out" value={formatCentsCompact(dealLaborOutCents)} sub="paid to workers" />
-              <ProjectStat label="Net" value={`${dealNetCents < 0 ? "−" : "+"}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="billed − costs" />
+              <ProjectStat label="Gross revenue" value={formatCentsCompact(dealGrossCents)} sub="billed to date" />
+              <ProjectStat label="Job costs" value={formatCentsCompact(dealCostsTotalCents)} tone={dealCostsTotalCents > 0 ? "amber" : undefined} sub={dealCostsTotalCents === 0 ? "none logged" : `materials · labor · ${Number.isInteger(dealTotalHours) ? dealTotalHours : dealTotalHours.toFixed(1)}h`} />
+              <ProjectStat label="Net profit" value={`${dealNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+              <ProjectStat label="Margin" value={dealMarginPct === null ? "—" : `${dealMarginPct}%`} tone={dealMarginPct === null ? undefined : dealMarginPct < 0 ? "rose" : dealMarginPct < 15 ? "amber" : "emerald"} sub={dealMarginPct === null ? "log costs to see" : "net ÷ gross"} />
             </div>
           </div>
         )}
