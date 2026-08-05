@@ -50,6 +50,9 @@ async function addEmployeeAction(formData: FormData) {
     actor_user_id: userId,
   });
   if (!result.ok) redirect(`${BASE}?error=${encodeURIComponent(result.error)}`);
+  // Optional Clock Station PIN set at create time (only when 4 digits entered).
+  const pin = String(formData.get("clock_pin") ?? "").trim();
+  if (/^\d{4}$/.test(pin)) await setEmployeePin(result.employee.id, pin, userId);
   // Instantly welcome them + start their schedule emails (fire-and-forget).
   if (result.employee.email) {
     const { sendWelcomeEmail } = await import("@/lib/commercial/field-ops/schedule-email-send");
@@ -110,7 +113,7 @@ export default async function FieldOpsEmployeesPage({
     <div className="pb-8 max-w-4xl">
       <div className="mb-5">
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Crew</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">{activeCount} active · the people who show up on the Week Grid. Add order sets their column position.</p>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">{activeCount} active · the people you schedule on the Calendar. Each gets a magic link to see their schedule and clock in/out.</p>
       </div>
 
       {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error}</div>}
@@ -124,7 +127,7 @@ export default async function FieldOpsEmployeesPage({
             <input name="first_name" required placeholder="Rob" className={INPUT_CLS} /></label>
           <label className="block"><span className={LABEL_CLS}>Last name</span>
             <input name="last_name" placeholder="Castellano" className={INPUT_CLS} /></label>
-          <label className="block"><span className={LABEL_CLS}>Display name (grid column)</span>
+          <label className="block"><span className={LABEL_CLS}>Display name (shown on the schedule)</span>
             <input name="display_name" placeholder="Rob C (blank = auto)" className={INPUT_CLS} /></label>
           <label className="block"><span className={LABEL_CLS}>Role</span>
             <select name="role" className={SELECT_CLS} style={SELECT_BG_STYLE}>
@@ -147,6 +150,8 @@ export default async function FieldOpsEmployeesPage({
               <option value="en">English</option>
               <option value="es">Spanish</option>
             </select></label>
+          <label className="block"><span className={LABEL_CLS}>Clock Station PIN (4 digits, optional)</span>
+            <input name="clock_pin" inputMode="numeric" pattern="\d{4}" maxLength={4} placeholder="e.g. 1234" className={INPUT_CLS} /></label>
         </div>
         <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add crew member</button>
       </form>
@@ -155,7 +160,7 @@ export default async function FieldOpsEmployeesPage({
       {employees.length === 0 ? (
         <div className="text-center py-10 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No crew yet</p>
-          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Add your painters above — they become the columns on the Week Grid.</p>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Add your painters above — then schedule them on the Calendar.</p>
         </div>
       ) : (
         <ul className="space-y-2">

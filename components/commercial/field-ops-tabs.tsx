@@ -4,17 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * R10.2 - Field Ops tab bar. Week Grid + Calendar + Board + Work Orders + Crew
- * are their own tabs under Field Ops (mirrors the Reports tab framework).
+ * R10.7 - Field Ops tab bar. The interactive Calendar is the one scheduling
+ * surface (Week Grid + Job Board retired). Overview leads with the week's KPIs.
  */
 const TABS = [
-  { label: "Week Grid", href: "/commercial/field-ops/schedule" },
+  { label: "Overview", href: "/commercial/field-ops/overview" },
   { label: "Calendar", href: "/commercial/field-ops/calendar" },
-  { label: "Job Board", href: "/commercial/field-ops/board" },
   { label: "Work Orders", href: "/commercial/field-ops/jobs" },
+  { label: "Crew", href: "/commercial/field-ops/employees" },
   { label: "Approvals", href: "/commercial/field-ops/approvals" },
   { label: "Payroll", href: "/commercial/field-ops/payroll" },
-  { label: "Crew", href: "/commercial/field-ops/employees" },
   { label: "Clock Station", href: "/commercial/field-ops/clock-station" },
 ];
 

@@ -29,6 +29,12 @@ type ResendSendInput = {
   /** Useful for grouping in Resend dashboard + future webhooks. */
   tags?: Array<{ name: string; value: string }>;
   /**
+   * Schedule the send for a future instant (ISO 8601, e.g. the "10 minutes
+   * before shift" clock-in nudge). Resend holds the message and delivers it at
+   * this time — no minute-by-minute cron needed. Ignored if in the past.
+   */
+  scheduledAt?: string;
+  /**
    * File attachments. `content` is the raw bytes; we base64-encode for the
    * Resend API. Used e.g. to send the crew the Work Order PDF. Keep total size
    * modest (Resend caps at ~40MB/message) — a WO/proposal PDF is well under.
@@ -132,6 +138,11 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
             content: Buffer.from(a.content).toString("base64"),
           })),
         }
+      : {}),
+    // Only forward a future schedule; a past instant would make Resend reject
+    // the send, so drop it and deliver immediately instead.
+    ...(input.scheduledAt && Date.parse(input.scheduledAt) > Date.now()
+      ? { scheduled_at: input.scheduledAt }
       : {}),
     tags: finalTags,
   };

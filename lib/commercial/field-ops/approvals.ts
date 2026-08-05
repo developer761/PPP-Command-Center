@@ -7,8 +7,15 @@ import { logUpdate } from "@/lib/commercial/audit-log";
  * R10.4 Approvals - the pay-period variance review. Each time_entry is the
  * actual (clocked or manual) hours for an employee/job/day; the scheduled hours
  * come from the matching assignment. Scheduler/admin approves, questions (back to
- * the crew), or manually overrides the hours (Karan's manual-edit).
+ * the crew), or manually overrides the hours (Karan/Brendan's manual-edit).
+ *
+ * Clocked entries within AUTO_APPROVE_THRESHOLD_HOURS of scheduled auto-approve
+ * at clock-out (see clock.ts) and never appear here — only the meaningful gaps
+ * (>30 min) and manual entries land in this queue.
  */
+
+/** Clock-vs-scheduled gap (hours) that auto-clears without review. 0.5 = 30 min. */
+export const AUTO_APPROVE_THRESHOLD_HOURS = 0.5;
 
 export type ApprovalRow = {
   id: string;

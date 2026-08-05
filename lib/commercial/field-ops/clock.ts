@@ -2,7 +2,8 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
-import { todayEtIso, addDaysIso } from "./schedule";
+import { addDaysIso } from "./schedule";
+import { AUTO_APPROVE_THRESHOLD_HOURS } from "./approvals";
 import type { CommercialEmployee } from "./employees";
 
 /** The America/New_York calendar date a timestamp falls on (payroll work day). */
@@ -151,18 +152,46 @@ async function syncTimeEntry(employeeId: string, jobId: string, dateIso: string,
   }
   const rounded = Math.round(total * 4) / 4; // nearest quarter hour
 
+  // Scheduled hours for this employee/job/day (the assignment). Drives the
+  // 30-min auto-approve: clocked within ±0.5h of scheduled clears itself; a
+  // bigger gap (or no schedule to compare) goes to Approvals for review.
+  const { data: aRow } = await sb
+    .from("commercial_assignments")
+    .select("scheduled_hours")
+    .eq("employee_id", employeeId)
+    .eq("job_id", jobId)
+    .eq("work_date", dateIso)
+    .neq("status", "cancelled")
+    .maybeSingle();
+  const scheduled = (aRow as { scheduled_hours?: number } | null)?.scheduled_hours ?? null;
+  const withinThreshold = scheduled != null && Math.abs(rounded - scheduled) <= AUTO_APPROVE_THRESHOLD_HOURS;
+
   const { data: existing } = await sb
     .from("commercial_time_entries")
-    .select("id")
+    .select("id, status, approved_by_user_id")
     .eq("employee_id", employeeId)
     .eq("job_id", jobId)
     .eq("work_date", dateIso)
     .maybeSingle();
+
   if (existing) {
-    await sb
-      .from("commercial_time_entries")
-      .update({ actual_hours: rounded, source: "clocked", updated_at: new Date().toISOString() })
-      .eq("id", (existing as { id: string }).id);
+    const cur = existing as { id: string; status: string; approved_by_user_id: string | null };
+    const patch: Record<string, unknown> = { actual_hours: rounded, source: "clocked", updated_at: new Date().toISOString() };
+    // Never override a human decision: a manually-approved (approved_by set) or
+    // questioned entry keeps its status. A system-auto-approved or still-submitted
+    // entry is re-evaluated against the new actuals.
+    const humanTouched = cur.status === "questioned" || (cur.status === "approved" && cur.approved_by_user_id);
+    if (!humanTouched) {
+      if (withinThreshold) {
+        patch.status = "approved";
+        patch.approved_by_user_id = null; // system auto-approval
+        patch.approved_at = new Date().toISOString();
+      } else {
+        patch.status = "submitted";
+        patch.approved_at = null;
+      }
+    }
+    await sb.from("commercial_time_entries").update(patch).eq("id", cur.id);
   } else if (rounded > 0) {
     await sb.from("commercial_time_entries").insert({
       employee_id: employeeId,
@@ -171,8 +200,9 @@ async function syncTimeEntry(employeeId: string, jobId: string, dateIso: string,
       assignment_id: assignmentId,
       actual_hours: rounded,
       source: "clocked",
-      status: "submitted",
+      status: withinThreshold ? "approved" : "submitted",
       submitted_at: new Date().toISOString(),
+      ...(withinThreshold ? { approved_at: new Date().toISOString() } : {}),
     });
   }
 }

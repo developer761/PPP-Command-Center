@@ -95,12 +95,13 @@ export async function GET(request: Request) {
       ? dunningRes.value
       : { ok: false, found: 0, sent: 0, skipped: 0, errors: [String(dunningRes.reason)] };
 
-  // R10.3: daily crew schedule emails (the rolling week ahead) - isolated from
-  // the wipe-out detection above so a Resend hiccup here can't 500 the cron.
-  let scheduleEmails = { crew: 0, office: 0 };
+  // R10.7: crew schedule emails - day-of + clock-in nudges (Resend-scheduled) +
+  // Sunday week-ahead + office digest. Isolated from the wipe-out detection above
+  // so a Resend hiccup here can't 500 the cron.
+  let scheduleEmails = { dayOf: 0, reminders: 0, weekly: 0, office: 0 };
   try {
-    const { sendDailyScheduleEmails } = await import("@/lib/commercial/field-ops/schedule-email-send");
-    scheduleEmails = await sendDailyScheduleEmails();
+    const { runDailyScheduleEmails } = await import("@/lib/commercial/field-ops/schedule-email-send");
+    scheduleEmails = await runDailyScheduleEmails();
   } catch (err) {
     console.warn("[cron/commercial-daily] schedule emails failed:", err);
   }

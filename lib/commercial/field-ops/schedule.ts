@@ -2,7 +2,6 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
-import { listEmployees } from "./employees";
 
 /**
  * R10.1 Week Grid - the primary scheduling surface. Mirrors Tomco's spreadsheet:
@@ -31,111 +30,52 @@ export function todayEtIso(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
-const DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+/** Milliseconds to add to a UTC instant to reach America/New_York wall time
+ *  (negative — e.g. -4h in EDT, -5h in EST). DST-correct at the given instant. */
+function etOffsetMs(at: Date): number {
+  const utc = new Date(at.toLocaleString("en-US", { timeZone: "UTC" }));
+  const et = new Date(at.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  return et.getTime() - utc.getTime();
+}
 
-export type WeekCell = { assignmentId: string; scheduled: number; actual: number | null; status: string };
-export type WeekJobRow = {
-  job: { id: string; name: string; job_code: string; prevailing_wage: boolean };
-  cells: Record<string, WeekCell>; // employee_id -> cell
-};
-export type WeekDay = { date: string; label: string; rows: WeekJobRow[] };
-export type WeekEmployee = { id: string; display_name: string; default_daily_hours: number };
-export type WeekSchedule = {
-  weekStart: string;
-  days: WeekDay[];
-  employees: WeekEmployee[];
-  colScheduled: Record<string, number>; // employee_id -> scheduled total
-  colActual: Record<string, number>;
-  grandScheduled: number;
-  grandActual: number;
-};
+/**
+ * The UTC instant of a wall-clock time in America/New_York on a given date.
+ * `dateIso` = YYYY-MM-DD, `timeStr` = "HH:MM" or "HH:MM:SS". DST-correct.
+ * Used to schedule the "10 min before shift" clock-in email at the right moment.
+ */
+export function etWallTimeToUtcIso(dateIso: string, timeStr: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(timeStr ?? "");
+  if (!m) return null;
+  const [y, mo, d] = dateIso.split("-").map(Number);
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (hh > 23 || mm > 59) return null;
+  const guess = Date.UTC(y, mo - 1, d, hh, mm);
+  const off = etOffsetMs(new Date(guess));
+  return new Date(guess - off).toISOString();
+}
 
-export async function getWeekSchedule(mondayIso: string): Promise<WeekSchedule> {
-  const start = mondayOf(mondayIso);
-  const dates = Array.from({ length: 6 }, (_, i) => addDaysIso(start, i)); // Mon..Sat
-  const sb = commercialDb();
+/** "07:00:00" / "07:00" -> "7:00 AM". Blank -> null. */
+export function fmtTime12(t: string | null | undefined): string | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(t ?? "");
+  if (!m) return null;
+  let h = Number(m[1]);
+  const mm = m[2];
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${mm} ${ap}`;
+}
 
-  const [emps, assignRes, entryRes] = await Promise.all([
-    listEmployees(),
-    sb
-      .from("commercial_assignments")
-      .select("id, job_id, employee_id, work_date, scheduled_hours, status")
-      .in("work_date", dates)
-      .neq("status", "cancelled"),
-    sb
-      .from("commercial_time_entries")
-      .select("job_id, employee_id, work_date, actual_hours, status")
-      .in("work_date", dates),
-  ]);
-
-  const assignments = (assignRes.data ?? []) as {
-    id: string; job_id: string; employee_id: string; work_date: string; scheduled_hours: number; status: string;
-  }[];
-  const entries = (entryRes.data ?? []) as {
-    job_id: string; employee_id: string; work_date: string; actual_hours: number; status: string;
-  }[];
-
-  // Job metadata for every job that appears this week.
-  const jobIds = [...new Set(assignments.map((a) => a.job_id))];
-  const jobsById = new Map<string, { id: string; name: string; job_code: string; prevailing_wage: boolean }>();
-  if (jobIds.length > 0) {
-    const { data: jobs } = await sb
-      .from("commercial_jobs")
-      .select("id, name, job_code, prevailing_wage")
-      .in("id", jobIds);
-    for (const j of (jobs ?? []) as { id: string; name: string; job_code: string; prevailing_wage: boolean }[]) {
-      jobsById.set(j.id, j);
-    }
-  }
-
-  // actual lookup
-  const actualKey = (jid: string, eid: string, date: string) => `${jid}|${eid}|${date}`;
-  const actualMap = new Map<string, { hours: number; status: string }>();
-  for (const e of entries) actualMap.set(actualKey(e.job_id, e.employee_id, e.work_date), { hours: e.actual_hours, status: e.status });
-
-  const colScheduled: Record<string, number> = {};
-  const colActual: Record<string, number> = {};
-  let grandScheduled = 0;
-  let grandActual = 0;
-
-  const days: WeekDay[] = dates.map((date, i) => {
-    // job rows for this day: group assignments by job
-    const byJob = new Map<string, WeekJobRow>();
-    for (const a of assignments.filter((x) => x.work_date === date)) {
-      const meta = jobsById.get(a.job_id);
-      if (!meta) continue;
-      let row = byJob.get(a.job_id);
-      if (!row) {
-        row = { job: meta, cells: {} };
-        byJob.set(a.job_id, row);
-      }
-      const act = actualMap.get(actualKey(a.job_id, a.employee_id, date));
-      row.cells[a.employee_id] = {
-        assignmentId: a.id,
-        scheduled: a.scheduled_hours,
-        actual: act?.hours ?? null,
-        status: act?.status ?? a.status,
-      };
-      colScheduled[a.employee_id] = (colScheduled[a.employee_id] ?? 0) + a.scheduled_hours;
-      grandScheduled += a.scheduled_hours;
-      if (act) {
-        colActual[a.employee_id] = (colActual[a.employee_id] ?? 0) + act.hours;
-        grandActual += act.hours;
-      }
-    }
-    const rows = [...byJob.values()].sort((x, y) => x.job.name.localeCompare(y.job.name));
-    return { date, label: DAY_LABELS[i], rows };
-  });
-
-  return {
-    weekStart: start,
-    days,
-    employees: emps.map((e) => ({ id: e.id, display_name: e.display_name, default_daily_hours: e.default_daily_hours })),
-    colScheduled,
-    colActual,
-    grandScheduled,
-    grandActual,
-  };
+/** Whole/quarter hours between two "HH:MM" times, or null if unusable. */
+export function hoursBetween(start: string | null | undefined, end: string | null | undefined): number | null {
+  const ms = /^(\d{1,2}):(\d{2})/.exec(start ?? "");
+  const me = /^(\d{1,2}):(\d{2})/.exec(end ?? "");
+  if (!ms || !me) return null;
+  const s = Number(ms[1]) * 60 + Number(ms[2]);
+  const e = Number(me[1]) * 60 + Number(me[2]);
+  if (e <= s) return null;
+  return Math.round(((e - s) / 60) * 4) / 4;
 }
 
 /** First day of the month containing `iso`, as YYYY-MM-01. */
@@ -204,19 +144,106 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
   return { monthStart, grid };
 }
 
+/* ── R10.7 Interactive Calendar — a day's assignments + rich upsert ────────── */
+
+export type DayAssignment = {
+  assignment_id: string;
+  employee_id: string;
+  employee_name: string;
+  job_id: string;
+  job_name: string;
+  job_code: string;
+  prevailing_wage: boolean;
+  site: string | null;
+  scheduled_hours: number;
+  start_time: string | null; // "HH:MM:SS"
+  end_time: string | null;
+  note: string | null;
+};
+
+/** Everyone scheduled on one date, with their job + times + note. Sorted by
+ *  start time (unset last), then crew name. Powers the Calendar day panel. */
+export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> {
+  const sb = commercialDb();
+  const { data: aRows } = await sb
+    .from("commercial_assignments")
+    .select("id, job_id, employee_id, scheduled_hours, scheduled_start_time, scheduled_end_time, note")
+    .eq("work_date", dateIso)
+    .neq("status", "cancelled");
+  const assigns = (aRows ?? []) as {
+    id: string; job_id: string; employee_id: string; scheduled_hours: number;
+    scheduled_start_time: string | null; scheduled_end_time: string | null; note: string | null;
+  }[];
+  if (assigns.length === 0) return [];
+
+  const empIds = [...new Set(assigns.map((a) => a.employee_id))];
+  const jobIds = [...new Set(assigns.map((a) => a.job_id))];
+  const [empRes, jobRes] = await Promise.all([
+    sb.from("commercial_employees").select("id, display_name").in("id", empIds),
+    sb.from("commercial_jobs").select("id, name, job_code, prevailing_wage, site_address, site_city").in("id", jobIds),
+  ]);
+  const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
+  const jobsById = new Map(
+    (jobRes.data ?? []).map((r) => {
+      const j = r as { id: string; name: string; job_code: string; prevailing_wage: boolean; site_address: string | null; site_city: string | null };
+      return [j.id, j];
+    })
+  );
+
+  return assigns
+    .map((a): DayAssignment => {
+      const j = jobsById.get(a.job_id);
+      return {
+        assignment_id: a.id,
+        employee_id: a.employee_id,
+        employee_name: empName.get(a.employee_id) ?? "(crew)",
+        job_id: a.job_id,
+        job_name: j?.name ?? "(work order)",
+        job_code: j?.job_code ?? "",
+        prevailing_wage: j?.prevailing_wage ?? false,
+        site: [j?.site_address, j?.site_city].filter(Boolean).join(", ") || null,
+        scheduled_hours: a.scheduled_hours,
+        start_time: a.scheduled_start_time,
+        end_time: a.scheduled_end_time,
+        note: a.note,
+      };
+    })
+    .sort((x, y) => {
+      const sx = x.start_time ?? "99:99";
+      const sy = y.start_time ?? "99:99";
+      return sx === sy ? x.employee_name.localeCompare(y.employee_name) : sx.localeCompare(sy);
+    });
+}
+
 /**
- * Set the scheduled hours for one (job, employee, date). Hours <= 0 removes the
- * assignment. Returns the assignment id (or null if removed). Upsert on the
- * UNIQUE(job, employee, date).
+ * Place (or update) one crew member on one work order for one day, with the
+ * times they work + a note that flows into their email. Hours are derived from
+ * start+end when both are given, else fall back to the provided hours / 8.
+ * On success, emails the crew member their shift for that day (fire-and-forget)
+ * and — if a start time is set — schedules their 10-min-before clock-in nudge.
+ * Upsert on UNIQUE(job, employee, date).
  */
-export async function setAssignmentHours(input: {
+export async function upsertAssignment(input: {
   job_id: string;
   employee_id: string;
   work_date: string;
-  hours: number;
+  start_time?: string | null;
+  end_time?: string | null;
+  hours?: number | null;
+  note?: string | null;
   actor_user_id: string;
-}): Promise<{ ok: true; assignmentId: string | null } | { ok: false; error: string }> {
+}): Promise<{ ok: true; assignmentId: string } | { ok: false; error: string }> {
   const sb = commercialDb();
+  const start = (input.start_time ?? "").trim() || null;
+  const end = (input.end_time ?? "").trim() || null;
+  if (start && end && hoursBetween(start, end) == null) {
+    return { ok: false, error: "End time must be after start time." };
+  }
+  const derived = start && end ? hoursBetween(start, end) : null;
+  let hours = derived ?? (input.hours != null && Number.isFinite(input.hours) ? input.hours : 8);
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) hours = 8;
+  const note = (input.note ?? "").trim().slice(0, 500) || null;
+
   const { data: existing } = await sb
     .from("commercial_assignments")
     .select("*")
@@ -225,75 +252,66 @@ export async function setAssignmentHours(input: {
     .eq("work_date", input.work_date)
     .maybeSingle();
 
-  if (input.hours <= 0) {
-    if (existing) {
-      await sb.from("commercial_assignments").delete().eq("id", (existing as { id: string }).id);
-      await logDelete("commercial_assignments", (existing as { id: string }).id, existing, input.actor_user_id);
-    }
-    return { ok: true, assignmentId: null };
-  }
+  const row = {
+    scheduled_hours: hours,
+    scheduled_start_time: start,
+    scheduled_end_time: end,
+    note,
+    status: "planned" as const,
+    updated_at: new Date().toISOString(),
+  };
 
+  let assignmentId: string;
   if (existing) {
     const { data, error } = await sb
       .from("commercial_assignments")
-      .update({ scheduled_hours: input.hours, status: "planned", updated_at: new Date().toISOString() })
+      .update(row)
       .eq("id", (existing as { id: string }).id)
       .select("*")
       .single();
     if (error) return { ok: false, error: error.message };
     await logUpdate("commercial_assignments", (data as { id: string }).id, existing, data, input.actor_user_id);
-    return { ok: true, assignmentId: (data as { id: string }).id };
+    assignmentId = (data as { id: string }).id;
+  } else {
+    const { data, error } = await sb
+      .from("commercial_assignments")
+      .insert({
+        job_id: input.job_id,
+        employee_id: input.employee_id,
+        work_date: input.work_date,
+        created_by_user_id: input.actor_user_id,
+        ...row,
+      })
+      .select("*")
+      .single();
+    if (error) return { ok: false, error: error.message };
+    await logInsert("commercial_assignments", (data as { id: string }).id, data, input.actor_user_id);
+    assignmentId = (data as { id: string }).id;
   }
 
-  const { data, error } = await sb
-    .from("commercial_assignments")
-    .insert({
-      job_id: input.job_id,
-      employee_id: input.employee_id,
-      work_date: input.work_date,
-      scheduled_hours: input.hours,
-      status: "planned",
-      created_by_user_id: input.actor_user_id,
-    })
-    .select("*")
-    .single();
-  if (error) return { ok: false, error: error.message };
-  await logInsert("commercial_assignments", (data as { id: string }).id, data, input.actor_user_id);
-  return { ok: true, assignmentId: (data as { id: string }).id };
+  // Email the crew member their shift (consolidated for the day) + schedule the
+  // clock-in nudge. Dynamic import breaks the schedule ↔ email-send cycle.
+  try {
+    const { sendShiftAssignmentEmail } = await import("./schedule-email-send");
+    await sendShiftAssignmentEmail(input.employee_id, input.work_date);
+  } catch (err) {
+    console.warn("[field-ops] shift assignment email failed:", err);
+  }
+
+  return { ok: true, assignmentId };
 }
 
-/** Copy every assignment in a week forward 7 days. Skips a target cell that
- *  already has an assignment (never overwrites next week's real edits). */
-export async function copyWeekForward(
-  mondayIso: string,
+/** Remove one assignment (by id). Used by the Calendar day panel. */
+export async function deleteAssignmentById(
+  assignmentId: string,
   actorUserId: string
-): Promise<{ ok: true; copied: number } | { ok: false; error: string }> {
-  const start = mondayOf(mondayIso);
-  const dates = Array.from({ length: 6 }, (_, i) => addDaysIso(start, i));
-  const targetDates = dates.map((d) => addDaysIso(d, 7));
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
-
-  const [srcRes, tgtRes] = await Promise.all([
-    sb.from("commercial_assignments").select("job_id, employee_id, work_date, scheduled_hours, crew_id").in("work_date", dates).neq("status", "cancelled"),
-    sb.from("commercial_assignments").select("job_id, employee_id, work_date").in("work_date", targetDates),
-  ]);
-  const src = (srcRes.data ?? []) as { job_id: string; employee_id: string; work_date: string; scheduled_hours: number; crew_id: string | null }[];
-  const taken = new Set((tgtRes.data ?? []).map((t) => `${(t as { job_id: string }).job_id}|${(t as { employee_id: string }).employee_id}|${(t as { work_date: string }).work_date}`));
-
-  const toInsert = src
-    .map((a) => ({
-      job_id: a.job_id,
-      employee_id: a.employee_id,
-      work_date: addDaysIso(a.work_date, 7),
-      scheduled_hours: a.scheduled_hours,
-      crew_id: a.crew_id,
-      status: "planned" as const,
-      created_by_user_id: actorUserId,
-    }))
-    .filter((a) => !taken.has(`${a.job_id}|${a.employee_id}|${a.work_date}`));
-
-  if (toInsert.length === 0) return { ok: true, copied: 0 };
-  const { data, error } = await sb.from("commercial_assignments").insert(toInsert).select("id");
+  const { data: existing } = await sb.from("commercial_assignments").select("*").eq("id", assignmentId).maybeSingle();
+  if (!existing) return { ok: true };
+  const { error } = await sb.from("commercial_assignments").delete().eq("id", assignmentId);
   if (error) return { ok: false, error: error.message };
-  return { ok: true, copied: (data ?? []).length };
+  await logDelete("commercial_assignments", assignmentId, existing, actorUserId);
+  return { ok: true };
 }
+
