@@ -2,7 +2,7 @@
  * Work Order — the crew's marching-orders sheet for a job. Autofills scope
  * (Inclusions / Alternates / Exclusions) from the accepted proposal + the Room
  * Finish Schedule, generates a Tomco-letterhead PDF (tap-to-sign), and files it
- * to the deal's Documents on "send to crew". Same account-scoped tool pattern as
+ * to the deal's Documents on "Send to Field Ops". Same account-scoped tool pattern as
  * Closeout / AIA / Change Orders / Submittals.
  */
 import Link from "next/link";
@@ -208,7 +208,7 @@ async function autoFileWorkOrder(
       file_name: safeDocName("Work_Order", dealName) + ".pdf",
       size_bytes: pdf.length,
       mime_type: "application/pdf",
-      notes: sentStampNote("Work order sent to crew"),
+      notes: sentStampNote("Work order sent to Field Ops"),
       data: new Uint8Array(pdf),
       uploaded_by_user_id: userId,
     });
@@ -308,8 +308,8 @@ export async function WorkOrderTool({
       {spv.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700" role="alert">{decodeURIComponent(spv.error)}</div>}
       {spv.ok && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800" role="status">
-          Work order sent to crew — the PDF was filed to this job's Documents
-          {spv.emailed ? " and emailed to the crew." : "."}
+          Sent to Field Ops — it&rsquo;s now schedulable there, and the PDF was filed to this job&rsquo;s Documents
+          {spv.emailed ? " and emailed to the foreman." : "."}
         </div>
       )}
       {spv.emailfail && (
@@ -374,7 +374,7 @@ export async function WorkOrderTool({
                     className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[12px] font-semibold min-h-[44px] ${to === "voided" ? "border border-rose-300 text-rose-700 hover:bg-rose-50" : to === "draft" ? "border border-ppp-charcoal-300 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50" : "bg-cc-brand-600 text-white hover:bg-cc-brand-700"}`}
                     pendingLabel="…"
                   >
-                    {to === "sent" ? "Send to crew" : to === "draft" ? "Re-open to edit" : "Void"}
+                    {to === "sent" ? "Send to Field Ops" : to === "draft" ? "Re-open to edit" : "Void"}
                   </PendingSubmitButton>
                 </form>
               ))}
@@ -506,7 +506,7 @@ export async function WorkOrderTool({
           </div>
 
           {wo.sent_at && (
-            <p className="text-[11px] text-ppp-charcoal-400">Last sent to crew {fmtEtDate(wo.sent_at)}. The frozen copy is in this job's Documents.</p>
+            <p className="text-[11px] text-ppp-charcoal-400">Last sent to Field Ops {fmtEtDate(wo.sent_at)}. The frozen copy is in this job&rsquo;s Documents.</p>
           )}
         </div>
       )}

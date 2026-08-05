@@ -1412,11 +1412,11 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         </ToolMiniCard>
 
         {/* Work Order — the crew's sheet, autofilled from the proposal + finish schedule */}
-        <ToolMiniCard label="Work Order" href={`${base}?tab=projects&project=${p.opp.id}&dt=work-order`} iconBg="bg-ppp-navy-600" icon={<path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />} chip={latestWo == null ? null : { label: latestWo.status === "sent" ? "sent to crew" : latestWo.status, tone: latestWo.status === "sent" ? "emerald" : "neutral" }}>
+        <ToolMiniCard label="Work Order" href={`${base}?tab=projects&project=${p.opp.id}&dt=work-order`} iconBg="bg-ppp-navy-600" icon={<path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />} chip={latestWo == null ? null : { label: latestWo.status === "sent" ? "sent to Field Ops" : latestWo.status, tone: latestWo.status === "sent" ? "emerald" : "neutral" }}>
           {latestWo == null ? (
             <p className="text-[11.5px] text-ppp-charcoal-500">Not created — the crew's marching-orders sheet (scope + room-finish schedule).</p>
           ) : (
-            <p className="text-[11.5px] font-semibold text-ppp-charcoal">{latestWo.status === "sent" ? "Sent to crew" : "Draft — add crew notes, then send"}</p>
+            <p className="text-[11.5px] font-semibold text-ppp-charcoal">{latestWo.status === "sent" ? "Sent to Field Ops" : "Draft — add crew notes, then send"}</p>
           )}
         </ToolMiniCard>
       </div>

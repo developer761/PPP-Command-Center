@@ -1,6 +1,6 @@
 /**
  * Work Orders — cross-project index (sidebar tab). Projects grouped by account
- * with each one's Work Order status (not created / draft / sent to crew); tap to
+ * with each one's Work Order status (not created / draft / sent to Field Ops); tap to
  * open that project's Work Order. Consistent with the other Post-Contract tabs.
  */
 import { redirect } from "next/navigation";

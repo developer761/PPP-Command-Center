@@ -1,7 +1,7 @@
 /**
  * (helper) Work Orders index — grouped-by-account view on the shared
  * PostJobToolIndex, so it reads like the other Post-Contract queues. Status:
- * Not created / Draft / Sent to crew.
+ * Not created / Draft / Sent to Field Ops.
  */
 import { listProjects, type ProjectRow } from "@/lib/commercial/projects/db";
 import { listAllWorkOrders } from "@/lib/commercial/work-orders/db";
@@ -29,14 +29,14 @@ export async function WorkOrdersGroupedIndex() {
       status={(p: ProjectRow): { label: string; tone: ToolStatusTone } => {
         const w = byOpp.get(p.opp.id);
         if (!w) return { label: "Not created", tone: "neutral" };
-        if (w.status === "sent") return { label: "Sent to crew", tone: "emerald" };
+        if (w.status === "sent") return { label: "Sent to Field Ops", tone: "emerald" };
         return { label: "Draft", tone: "neutral" };
       }}
       hrefFor={(p) => `/commercial/accounts/${p.accountId}/work-order/${p.opp.id}?back=/commercial/post-job/work-orders`}
       accent="navy"
       kpis={
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Tile label="Sent to crew" value={String(sent)} tone={sent > 0 ? "emerald" : "neutral"} />
+          <Tile label="Sent to Field Ops" value={String(sent)} tone={sent > 0 ? "emerald" : "neutral"} />
           <Tile label="Draft" value={String(drafts)} tone={drafts > 0 ? "amber" : "neutral"} />
           <Tile label="Created" value={String(created)} tone="neutral" />
           <Tile label="Not created" value={String(projects.length - created)} tone="neutral" />

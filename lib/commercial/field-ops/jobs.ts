@@ -148,13 +148,23 @@ export type CreateJobInput = {
   actor_user_id: string;
 };
 
+/** Auto-generate a reportable work-order code from the name. Used when the
+ *  scheduler doesn't type one (they rarely want to) — the code still exists so
+ *  labor rolls up per work order in payroll + reports. Practically unique via a
+ *  4-char suffix; the UNIQUE index is the real guard. */
+function autoJobCode(name: string): string {
+  const base = (name || "WO").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || "WO";
+  const suffix = globalThis.crypto.randomUUID().replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase();
+  return `${base}-${suffix}`;
+}
+
 export async function createJob(
   input: CreateJobInput
 ): Promise<{ ok: true; job: CommercialJob } | { ok: false; error: string }> {
-  const code = (input.job_code ?? "").trim();
   const name = (input.name ?? "").trim();
-  if (!code) return { ok: false, error: "A job code is required — it's what makes labor reportable." };
-  if (!name) return { ok: false, error: "Job name is required." };
+  if (!name) return { ok: false, error: "Work order name is required." };
+  // Code is auto-generated when blank — the scheduler shouldn't have to invent one.
+  const code = (input.job_code ?? "").trim() || autoJobCode(name);
 
   const sb = commercialDb();
   // Friendly duplicate check (the unique index is the real guard).

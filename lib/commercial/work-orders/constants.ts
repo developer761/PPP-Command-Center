@@ -21,7 +21,7 @@ export const WORK_ORDER_STATUS_META: Record<
 > = {
   not_created: { label: "Not created", tone: "charcoal" },
   draft: { label: "Draft", tone: "charcoal" },
-  sent: { label: "Sent to crew", tone: "emerald" },
+  sent: { label: "Sent to Field Ops", tone: "emerald" },
   voided: { label: "Voided", tone: "rose" },
 };
 

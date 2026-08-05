@@ -66,7 +66,7 @@ async function addJobAction(formData: FormData) {
     target_start: String(formData.get("target_start") ?? ""),
     target_end: String(formData.get("target_end") ?? ""),
     prevailing_wage: formData.get("prevailing_wage") === "on",
-    division_tag: (String(formData.get("division_tag") ?? "") || null) as DivisionTag | null,
+    division_tag: (String(formData.get("division_tag") ?? "") || "commercial") as DivisionTag,
     notes: String(formData.get("notes") ?? ""),
     actor_user_id: userId,
   });
@@ -123,7 +123,7 @@ export default async function FieldOpsJobsPage({
     <div className="pb-8 max-w-4xl">
       <div className="mb-5">
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Work Orders</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">What the crew works on — the schedulable work orders. A code is required (that&rsquo;s what makes labor reportable). Won commercial deals&rsquo; work orders will flow in here automatically; PPP, prevailing-wage, and one-offs you add directly.</p>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">What the crew gets scheduled on. Won commercial deals flow in here automatically when you <strong>Send to Field Ops</strong> from the deal. Add one here only for a <strong>PPP, prevailing-wage, or one-off</strong> work order that has no deal behind it.</p>
       </div>
 
       {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error}</div>}
@@ -139,12 +139,10 @@ export default async function FieldOpsJobsPage({
           </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block"><span className={LABEL_CLS}>Code *</span><input name="job_code" required placeholder="e.g. STARK-2606" className={INPUT_CLS} /></label>
-          <label className="block"><span className={LABEL_CLS}>Name *</span><input name="name" required placeholder="Stark Enterprises" className={INPUT_CLS} /></label>
+          <label className="block sm:col-span-2"><span className={LABEL_CLS}>Name *</span><input name="name" required placeholder="Stark Enterprises — lobby & halls" className={INPUT_CLS} /></label>
           <label className="block"><span className={LABEL_CLS}>Customer</span><input name="customer_name" placeholder="GC / owner" className={INPUT_CLS} /></label>
           <label className="block"><span className={LABEL_CLS}>Division</span>
-            <select name="division_tag" className={SELECT_CLS} style={SELECT_BG_STYLE}>
-              <option value="">—</option>
+            <select name="division_tag" defaultValue="commercial" className={SELECT_CLS} style={SELECT_BG_STYLE}>
               {DIVISION_TAGS.map((d) => <option key={d} value={d}>{divisionLabel(d)}</option>)}
             </select></label>
           <label className="block sm:col-span-2"><span className={LABEL_CLS}>Site address</span><input name="site_address" placeholder="Street" className={INPUT_CLS} /></label>
@@ -174,7 +172,7 @@ export default async function FieldOpsJobsPage({
       {jobs.length === 0 ? (
         <div className="text-center py-10 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No work orders yet</p>
-          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Add a work order above - then you can schedule the crew onto it.</p>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Send a deal&rsquo;s work order to Field Ops, or add a one-off above — then schedule the crew onto it.</p>
         </div>
       ) : (
         <ul className="space-y-2">
@@ -208,7 +206,7 @@ export default async function FieldOpsJobsPage({
                 </form>
                 <form action={deleteJobAction} className="px-4 pb-4">
                   <input type="hidden" name="id" value={j.id} />
-                  <button type="submit" className="text-[12px] font-semibold text-rose-600 hover:text-rose-700">Delete job</button>
+                  <button type="submit" className="text-[12px] font-semibold text-rose-600 hover:text-rose-700">Delete work order</button>
                 </form>
               </details>
             </li>
