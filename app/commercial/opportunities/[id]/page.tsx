@@ -45,6 +45,7 @@ import {
   isPostSaleProject,
   isLost,
 } from "@/lib/commercial/opportunities/constants";
+import { daysFromTodayEt } from "@/lib/date-et";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
@@ -3629,9 +3630,8 @@ function TaskList({
 }
 
 function dueLabel(iso: string): string {
-  const target = new Date(iso.slice(0, 10) + "T00:00:00").getTime();
-  if (!Number.isFinite(target)) return "—";
-  const days = Math.ceil((target - Date.now()) / 86_400_000);
+  if (!iso) return "—";
+  const days = daysFromTodayEt(iso); // whole ET days (was UTC-midnight → overdue 1d early in ET evenings)
   if (days < 0) return `Overdue ${Math.abs(days)}d`;
   if (days === 0) return "Due today";
   if (days === 1) return "Due tomorrow";
@@ -5012,9 +5012,7 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
 
 function daysUntilDisplay(iso: string | null): string {
   if (!iso) return "—";
-  const target = new Date(iso.slice(0, 10) + "T00:00:00").getTime();
-  if (!Number.isFinite(target)) return "—";
-  const days = Math.ceil((target - Date.now()) / 86_400_000);
+  const days = daysFromTodayEt(iso); // whole ET days (was UTC-midnight → overdue 1d early in ET evenings)
   if (days < 0) return `${Math.abs(days)}d overdue`;
   if (days === 0) return "today";
   if (days === 1) return "tomorrow";

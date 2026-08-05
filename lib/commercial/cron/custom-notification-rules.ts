@@ -344,7 +344,10 @@ function formatCents(cents: number): string {
 }
 
 function fmtDate(iso: string): string {
-  const d = new Date(iso);
+  // Bare DATE columns ("2026-08-04") parse as UTC midnight and render a day
+  // early in ET — anchor at noon UTC so the ET calendar day is preserved.
+  const norm = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T12:00:00Z` : iso;
+  const d = new Date(norm);
   if (!Number.isFinite(d.getTime())) return "—";
   return d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" });
 }

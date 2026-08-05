@@ -30,6 +30,7 @@ import {
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject, isLost, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { etTodayIso } from "@/lib/date-et";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, BILLABLE_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
@@ -118,9 +119,13 @@ export default async function CommercialDashboardPage() {
   // ─── This month ───
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const wonThisMonth = wonOpps.filter((o) => (o.decided_at ?? "") >= monthStart);
+  // decided_at is a DATE column ("2026-08-01"); compare it to a bare ET
+  // month-start DATE — the full-ISO monthStart sorts AFTER "2026-08-01" and
+  // silently drops every deal decided on the 1st.
+  const monthStartDate = `${etTodayIso().slice(0, 7)}-01`;
+  const wonThisMonth = wonOpps.filter((o) => (o.decided_at ?? "") >= monthStartDate);
   const totalDecidedForMonth = decidedOpps.filter(
-    (o) => (o.decided_at ?? "") >= monthStart
+    (o) => (o.decided_at ?? "") >= monthStartDate
   ).length;
   const monthWinPct =
     totalDecidedForMonth > 0
@@ -144,9 +149,13 @@ export default async function CommercialDashboardPage() {
   const lastMonthStartMs = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
   const lastMonthStartIso = new Date(lastMonthStartMs).toISOString();
   const lastMonthCutoffIso = new Date(lastMonthStartMs + elapsedThisMonthMs).toISOString();
+  // decided_at is a DATE column — compare against DATE-only bounds (full ISO
+  // would drop the 1st-of-month here too).
+  const lastMonthStartDate = lastMonthStartIso.slice(0, 10);
+  const lastMonthCutoffDate = lastMonthCutoffIso.slice(0, 10);
   const wonLastMonthToDate = wonOpps.filter(
     (o) =>
-      (o.decided_at ?? "") >= lastMonthStartIso && (o.decided_at ?? "") < lastMonthCutoffIso
+      (o.decided_at ?? "") >= lastMonthStartDate && (o.decided_at ?? "") < lastMonthCutoffDate
   ).length;
   const winsDelta = wonThisMonth.length - wonLastMonthToDate;
 
@@ -161,7 +170,8 @@ export default async function CommercialDashboardPage() {
   // or earlier). We approximate by counting any open opp whose
   // proposal_due_at is past-due.
   const overdueProposals = openOpps.filter(
-    (o) => o.proposal_due_at && o.proposal_due_at < nowIso
+    // proposal_due_at is a DATE column; a proposal due TODAY (ET) is not overdue.
+    (o) => o.proposal_due_at && o.proposal_due_at.slice(0, 10) < etTodayIso()
   );
   // Cold RFPs: RFP received > 7 days ago, deal still open. Signal
   // that we're sitting on a request without responding.

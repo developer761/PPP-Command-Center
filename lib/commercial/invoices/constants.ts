@@ -10,6 +10,8 @@
  *     — immutable audit trail. Sibling-nav regex handles both prefixes.
  */
 
+import { daysFromTodayEt } from "@/lib/date-et";
+
 /** Status DAG for invoices. Terminal-ish states: paid + void.
  *  overdue is a computed pseudo-state (derived from due_at + balance),
  *  not stored on the row. See `deriveInvoiceStatus()` in db.ts. */
@@ -114,8 +116,11 @@ export function isInvoiceOverdue(row: {
   if (!row.due_at) return false;
   const dueMs = new Date(row.due_at).getTime();
   if (!Number.isFinite(dueMs)) return false;
-  const graceMs = OVERDUE_GRACE_DAYS * 86_400_000;
-  return Date.now() > dueMs + graceMs;
+  // Overdue = the ET DUE DATE is more than `grace` days before ET-today. Comparing
+  // instants (Date.now() > noon-ET dueMs) flipped every invoice overdue at midday
+  // on its own due date; an invoice is only past due after the day has ended in ET.
+  const dueEtDate = new Date(row.due_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  return daysFromTodayEt(dueEtDate) < -OVERDUE_GRACE_DAYS;
 }
 
 /**

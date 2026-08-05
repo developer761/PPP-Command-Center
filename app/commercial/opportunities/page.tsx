@@ -69,6 +69,7 @@ import {
   isFollowUp,
   opportunitySubStatusLabel,
 } from "@/lib/commercial/opportunities/constants";
+import { daysFromTodayEt } from "@/lib/date-et";
 import {
   quickFlipNextStatuses,
   changeOpportunityStatus,
@@ -3223,9 +3224,7 @@ function relativeAgo(iso: string): string {
 
 function decisionChip(iso: string | null): { label: string; tone: "ok" | "soon" | "overdue" } | null {
   if (!iso) return null;
-  const target = new Date(iso.slice(0, 10) + "T00:00:00").getTime();
-  if (!Number.isFinite(target)) return null;
-  const days = Math.ceil((target - Date.now()) / 86_400_000);
+  const days = daysFromTodayEt(iso); // whole ET days; was UTC-midnight, overdue 1d early in ET evenings
   if (days < 0) return { label: `${Math.abs(days)}d overdue`, tone: "overdue" };
   if (days === 0) return { label: "Due today", tone: "soon" };
   if (days === 1) return { label: "Due tomorrow", tone: "soon" };

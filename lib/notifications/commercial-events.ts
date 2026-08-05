@@ -345,7 +345,8 @@ export async function insertCommercialTaskOverdueNotification(input: {
   // is a DATE (YYYY-MM-DD); today is the cron-day in UTC. Both are
   // start-of-day so the diff is clean integer days.
   const dueDateStr = input.dueAt.slice(0, 10);
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // ET date so the "X days past due" count matches the ET-based overdue detector.
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const overdueDays = Math.max(
     1,
     Math.round(

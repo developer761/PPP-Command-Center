@@ -65,9 +65,9 @@ function csvEscape(value: unknown): string {
 
 function isoDate(s: string | null | undefined): string {
   if (!s) return "";
-  // Slice to YYYY-MM-DD for the CSV — full timestamps are noisy and
-  // Excel doesn't render TZ-suffixed strings as dates anyway.
-  return s.slice(0, 10);
+  // Full timestamps → the ET calendar date (a bare UTC slice was a day off for
+  // evening-ET records). Already-bare dates pass through unchanged.
+  return s.includes("T") ? new Date(s).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) : s.slice(0, 10);
 }
 
 export async function exportAccountsCsv(filters: AccountsListFilters = {}): Promise<string> {

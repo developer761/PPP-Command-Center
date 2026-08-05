@@ -42,9 +42,14 @@ function emptyBuckets(): ArAgingBuckets {
 /** Whole days from the due date to today (ET-agnostic day granularity). >0 = past due. */
 export function daysPastDue(dueAt: string | null, nowMs: number): number {
   if (!dueAt) return 0; // no due date → not yet past due → Current
-  const d = new Date(`${dueAt.slice(0, 10)}T00:00:00Z`).getTime();
-  if (!Number.isFinite(d)) return 0;
-  return Math.floor((nowMs - d) / 86_400_000);
+  const due = dueAt.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return 0;
+  // Diff whole ET calendar days — anchoring on UTC midnight flipped the bucket a
+  // day early during ET evenings (UTC-day rollover is ~7-8pm ET).
+  const nowEt = new Date(nowMs).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const [dy, dm, dd] = due.split("-").map(Number);
+  const [ny, nm, nd] = nowEt.split("-").map(Number);
+  return Math.round((Date.UTC(ny, nm - 1, nd) - Date.UTC(dy, dm - 1, dd)) / 86_400_000);
 }
 
 function bucketOf(days: number): keyof Omit<ArAgingBuckets, "total"> {

@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logUpdate, logInsert } from "@/lib/commercial/audit-log";
+import { etTodayIso } from "@/lib/date-et";
 import { insertCommercialOppStatusChangedNotifications } from "@/lib/notifications/commercial-events";
 import {
   ALLOWED_TRANSITIONS,
@@ -258,7 +259,7 @@ export async function changeOpportunityStatus(
     wasTerminal && PRE_SALE_OPEN_STATUSES.includes(input.to_status);
   let nextDecidedAt: string | null | undefined = undefined; // undefined = don't touch
   if (isTerminal && !wasTerminal) {
-    nextDecidedAt = new Date().toISOString().slice(0, 10); // DATE column
+    nextDecidedAt = etTodayIso(); // DATE column — ET day, so an evening close lands in the right month
   } else if (reopensToPipeline) {
     nextDecidedAt = null;
   }
