@@ -35,13 +35,16 @@ async function createSubmittalAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
   const backQ = back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
   const backQfirst = back && back.startsWith("/commercial/post-job/") ? `?back=${encodeURIComponent(back)}` : "";
   if (!UUID_RE.test(account_id) || !UUID_RE.test(opportunity_id)) redirect("/commercial/accounts");
-  // Canonical home = the deal's Project sub-tab (carries a query already).
-  // Stay on the submittals log after an action instead of bouncing to the account
-  // page (the standalone route renders the same tool + reads flags).
-  const base = `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`;
+  // Return you to WHERE you are — standalone submittals log when opened directly,
+  // the account's deal (Project sub-tab) view when embedded there. Never jump.
+  const base =
+    origin === "route"
+      ? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`
+      : `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`;
 
   const sb = commercialDb();
   const { data: acctRow } = await sb
@@ -170,6 +173,7 @@ export async function SubmittalsTool({
           </div>
           <input type="hidden" name="account_id" value={id} />
           <input type="hidden" name="opportunity_id" value={dealId} />
+          <input type="hidden" name="origin" value={variant} />
           <input type="hidden" name="back" value={sp.back ?? ""} />
           <button type="submit" className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm min-h-[44px] touch-manipulation shrink-0">
             + New submittal
