@@ -65,7 +65,8 @@ function revalidateChangeOrderSurfaces(accountId: string, oppId: string) {
 
 /** Canonical home for Change Orders = the deal's Project sub-tab. */
 export function coBase(accountId: string, oppId: string): string {
-  return `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=change-orders`;
+  // Stay on the tool after an action instead of bouncing to the account page.
+  return `/commercial/accounts/${accountId}/change-orders/${oppId}?v=1`;
 }
 function coRedirect(accountId: string, oppId: string, params: Record<string, string>, back = ""): never {
   const p = { ...params };

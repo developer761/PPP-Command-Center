@@ -68,7 +68,9 @@ function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
 }
 function base(id: string, dealId: string) {
-  return `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=closeout`;
+  // Stay on the tool after an action / package switch instead of bouncing to the
+  // account page. The standalone route renders the same tool body + reads flags.
+  return `/commercial/accounts/${id}/closeout/${dealId}?v=1`;
 }
 function revalidateCloseout(id: string, dealId: string) {
   revalidatePath(`/commercial/accounts/${id}/closeout/${dealId}`);

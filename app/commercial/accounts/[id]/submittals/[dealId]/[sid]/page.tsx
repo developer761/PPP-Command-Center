@@ -347,7 +347,7 @@ async function deleteSubmittalAction(formData: FormData) {
   // index if they drilled in from there), else the deal's Project sub-tab.
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/post-job/submittals");
-  redirect(back ?? `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`);
+  redirect(back ?? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -709,7 +709,7 @@ export default async function SubmittalDetailPage({
   // The submittal log now lives inline under the deal's Project sub-tab.
   const backTo = safeBack(pickFirst(sp.back));
   const submittalsListHref =
-    backTo ?? `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`;
+    backTo ?? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`;
 
   // Finish-code suggestions for the items editor (autocomplete-friendly).
   // Attachments — linked + unlinked, fetched in parallel for the

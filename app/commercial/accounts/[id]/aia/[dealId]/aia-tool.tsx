@@ -72,7 +72,8 @@ async function ownsAiaContext(accountId: string, dealId: string, appId?: string)
 /** Canonical home for AIA billing = the deal's Project sub-tab. Already carries
  *  a query string, so callers append params with `&`. */
 function base(id: string, dealId: string): string {
-  return `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=aia`;
+  // Stay on the tool after an action instead of bouncing to the account page.
+  return `/commercial/accounts/${id}/aia/${dealId}?v=1`;
 }
 function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";

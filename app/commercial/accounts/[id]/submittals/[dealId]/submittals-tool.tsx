@@ -39,7 +39,9 @@ async function createSubmittalAction(formData: FormData) {
   const backQfirst = back && back.startsWith("/commercial/post-job/") ? `?back=${encodeURIComponent(back)}` : "";
   if (!UUID_RE.test(account_id) || !UUID_RE.test(opportunity_id)) redirect("/commercial/accounts");
   // Canonical home = the deal's Project sub-tab (carries a query already).
-  const base = `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`;
+  // Stay on the submittals log after an action instead of bouncing to the account
+  // page (the standalone route renders the same tool + reads flags).
+  const base = `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`;
 
   const sb = commercialDb();
   const { data: acctRow } = await sb
