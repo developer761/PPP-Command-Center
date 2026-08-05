@@ -396,7 +396,7 @@ export async function getLifetimeCompetitorStats(): Promise<Map<string, Competit
       outcome,
       debriefed_at,
       deciding_factor,
-      opportunity:commercial_opportunities!inner(bid_value_low_cents, bid_value_high_cents)
+      opportunity:commercial_opportunities!inner(bid_value_low_cents, bid_value_high_cents, deleted_at)
     `)
     .not("competitor_id", "is", null);
 
@@ -406,8 +406,8 @@ export async function getLifetimeCompetitorStats(): Promise<Map<string, Competit
     debriefed_at: string;
     deciding_factor: string | null;
     opportunity:
-      | { bid_value_low_cents: number | null; bid_value_high_cents: number | null }
-      | Array<{ bid_value_low_cents: number | null; bid_value_high_cents: number | null }>
+      | { bid_value_low_cents: number | null; bid_value_high_cents: number | null; deleted_at: string | null }
+      | Array<{ bid_value_low_cents: number | null; bid_value_high_cents: number | null; deleted_at: string | null }>
       | null;
   };
 
@@ -417,6 +417,8 @@ export async function getLifetimeCompetitorStats(): Promise<Map<string, Competit
 
   const byId = new Map<string, CompetitorLifetimeStats>();
   for (const r of ((data as Row[] | null) ?? [])) {
+    const oppRow = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
+    if (oppRow?.deleted_at) continue; // skip debriefs whose opp was soft-deleted
     const cur = byId.get(r.competitor_id) ?? {
       won_count: 0,
       lost_count: 0,

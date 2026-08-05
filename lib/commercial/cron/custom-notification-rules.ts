@@ -236,7 +236,10 @@ async function evaluateRule(
         .limit(500);
       warnIfCapped(data, "opp_no_activity");
       return ((data ?? []) as Array<{ id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; updated_at: string }>).map((o) => ({
-        entityId: o.id,
+        // Composite key with the idle-since date so a deal that goes idle, is
+        // worked (updated_at bumps), then idle again RE-fires — a bare opp id
+        // fired once for all time (fire rows are permanent).
+        entityId: `${o.id}:${o.updated_at.slice(0, 10)}`,
         title: `No activity in ${rule.threshold_days}+ days: ${derivedOppName({ ...o, title: o.title ?? "" }, null)}`,
         body: `Last touched ${fmtDate(o.updated_at)}.`,
         link: `/commercial/opportunities/${o.id}`,

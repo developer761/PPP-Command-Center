@@ -300,7 +300,8 @@ async function deleteMilestoneAction(formData: FormData) {
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(milestone_id)) redirect("/commercial/invoices");
   const res = await deleteMilestone(milestone_id, user.id);
   await revalidateInvoiceContext(invoice_id);
-  const q = new URLSearchParams({ saved: "milestone" });
+  // Surface a failed delete instead of flashing success (matches add/update).
+  const q = new URLSearchParams(res.ok ? { saved: "milestone" } : { error: res.error });
   if (res.ok && res.warning) q.set("heads_up", res.warning);
   redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
 }

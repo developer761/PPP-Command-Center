@@ -294,7 +294,7 @@ export async function getLessonsLearnedFeed(
       deciding_factor,
       lessons_learned,
       debriefed_at,
-      opportunity:commercial_opportunities!inner(title),
+      opportunity:commercial_opportunities!inner(title, deleted_at),
       competitor:commercial_competitors!commercial_win_loss_debrief_competitor_id_fkey(name)
     `)
     .gte("debriefed_at", range.fromIso)
@@ -310,11 +310,13 @@ export async function getLessonsLearnedFeed(
     deciding_factor: string | null;
     lessons_learned: string | null;
     debriefed_at: string;
-    opportunity: { title: string | null } | Array<{ title: string | null }> | null;
+    opportunity: { title: string | null; deleted_at: string | null } | Array<{ title: string | null; deleted_at: string | null }> | null;
     competitor: { name: string | null } | Array<{ name: string | null }> | null;
   };
 
+  const oppOf = (r: Row) => (Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity);
   return ((data as unknown as Row[] | null) ?? [])
+    .filter((r) => !oppOf(r)?.deleted_at) // drop lessons whose opp was soft-deleted
     .filter((r) => r.lessons_learned && r.lessons_learned.trim().length > 0)
     .map((r) => {
       const opp = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;

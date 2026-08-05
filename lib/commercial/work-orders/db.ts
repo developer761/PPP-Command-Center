@@ -147,6 +147,15 @@ export async function updateWorkOrder(
   }
   if (patch.scheduled_start_date !== undefined) row.scheduled_start_date = patch.scheduled_start_date || null;
   if (patch.scheduled_end_date !== undefined) row.scheduled_end_date = patch.scheduled_end_date || null;
+  // Don't persist an inverted range (autosave sets both fields) — it would print
+  // "Scheduled start → finish" backwards on the crew PDF. Clamp finish up to start.
+  if (
+    typeof row.scheduled_start_date === "string" &&
+    typeof row.scheduled_end_date === "string" &&
+    row.scheduled_end_date < row.scheduled_start_date
+  ) {
+    row.scheduled_end_date = row.scheduled_start_date;
+  }
 
   const { data, error } = await sb
     .from("commercial_work_orders")

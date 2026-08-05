@@ -95,6 +95,16 @@ function dollarsInputToCents(s: string): number {
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.round(n * 100);
 }
+/** Like dollarsInputToCents but returns null (not 0) on an unparseable value —
+ *  used for the Final-price override so a typo falls back to NO override (total =
+ *  real subtotal) instead of silently zeroing the contract. */
+function dollarsInputToCentsOrNull(s: string): number | null {
+  const cleaned = s.replace(/[$,\s]/g, "").trim();
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
 function formatDollars(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -216,7 +226,9 @@ async function saveProposalAction(formData: FormData) {
   // overrides the total (dollarsInputToCents clamps ≥0).
   const bidSetDate = String(formData.get("bid_set_date") ?? "").trim() || null;
   const finalPriceRaw = String(formData.get("final_price_override") ?? "").trim();
-  const finalPriceOverride = finalPriceRaw === "" ? null : dollarsInputToCents(finalPriceRaw);
+  // A typo/unparseable entry -> null (clears the override; total falls back to the
+  // real subtotal) rather than $0, which would silently zero the contract + AIA.
+  const finalPriceOverride = finalPriceRaw === "" ? null : dollarsInputToCentsOrNull(finalPriceRaw);
 
   let exclusionIds: string[] = existing.exclusion_ids;
   const rawIds = String(formData.get("exclusion_ids") ?? "").trim();
@@ -345,9 +357,9 @@ async function renameProposalAction(formData: FormData) {
   );
   revalidatePath(`/commercial/accounts/${accountId}`);
   revalidatePath("/commercial/proposals");
-  redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?saved=1`
-  );
+  // No redirect on success: this is a debounced autosave, and navigating on every
+  // keystroke-pause scrolled the editor + stuck a ?saved=1 flag. revalidatePath
+  // already refreshes the name in place (matches saveProposalAction).
 }
 
 async function addLineItemAction(formData: FormData) {
