@@ -29,26 +29,24 @@ async function requireAdmin(): Promise<string> {
   return user.id;
 }
 
+function doneOr(res: { ok: true } | { ok: false; error: string }) {
+  revalidatePath(BASE);
+  redirect(res.ok ? BASE : `${BASE}?error=${encodeURIComponent(res.error)}`);
+}
 async function approveAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
-  await approveTimeEntry(String(formData.get("id") ?? ""), userId);
-  revalidatePath(BASE);
-  redirect(BASE);
+  doneOr(await approveTimeEntry(String(formData.get("id") ?? ""), userId));
 }
 async function questionAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
-  await questionTimeEntry(String(formData.get("id") ?? ""), String(formData.get("reason") ?? ""), userId);
-  revalidatePath(BASE);
-  redirect(BASE);
+  doneOr(await questionTimeEntry(String(formData.get("id") ?? ""), String(formData.get("reason") ?? ""), userId));
 }
 async function overrideAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
-  await overrideTimeEntryHours(String(formData.get("id") ?? ""), Number(formData.get("hours") ?? 0), userId);
-  revalidatePath(BASE);
-  redirect(BASE);
+  doneOr(await overrideTimeEntryHours(String(formData.get("id") ?? ""), Number(formData.get("hours") ?? 0), userId));
 }
 async function bulkApproveAction() {
   "use server";
@@ -64,7 +62,7 @@ function varTone(v: number | null): string {
   return v < 0 ? "text-rose-600" : "text-amber-700";
 }
 
-export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ ok?: string }> }) {
+export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
   const rows = await listPendingApprovals();
@@ -83,6 +81,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
         <div>
           <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Approvals</h1>
           <p className="text-[13px] text-ppp-charcoal-500 mt-1">Scheduled vs. clocked hours. Approve, question (sends it back), or fix the hours yourself.</p>
+          {sp.error && <div className="mt-2 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error}</div>}
         </div>
         {zeroCount > 0 && (
           <form action={bulkApproveAction}>

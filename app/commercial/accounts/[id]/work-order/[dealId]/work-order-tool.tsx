@@ -39,7 +39,7 @@ import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
-export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; back?: string };
+export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; filefail?: string; back?: string };
 
 async function requireUser(): Promise<string> {
   const supabase = await createClient();
@@ -121,9 +121,14 @@ async function changeStatusAction(formData: FormData) {
   // File the frozen PDF into Documents when the WO is sent to the crew — and, if
   // a crew email is on file, email them that exact PDF.
   let emailFlag = "";
+  let fileFailed = false;
   if (to === "sent") {
     const filed = await autoFileWorkOrder(id, dealId, woId, userId);
-    if (filed && res.value.crew_email) {
+    if (!filed) {
+      // Status already flipped to 'sent', but the PDF didn't render/file — don't
+      // claim it was filed, and skip the (now PDF-less) crew email.
+      fileFailed = true;
+    } else if (res.value.crew_email) {
       const sent = await emailWorkOrderToCrew(res.value.crew_email, filed.dealName, filed.pdf);
       if (sent) {
         await markWorkOrderEmailed(woId);
@@ -134,6 +139,7 @@ async function changeStatusAction(formData: FormData) {
     }
   }
   revalidateWO(id, dealId);
+  if (fileFailed) redirect(`${base(id, dealId)}&filefail=1${backQ(back)}`);
   redirect(`${base(id, dealId)}&ok=1${emailFlag}${backQ(back)}`);
 }
 
@@ -310,6 +316,11 @@ export async function WorkOrderTool({
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800" role="status">
           Sent to Field Ops — it&rsquo;s now schedulable there, and the PDF was filed to this job&rsquo;s Documents
           {spv.emailed ? " and emailed to the foreman." : "."}
+        </div>
+      )}
+      {spv.filefail && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-[13px] text-amber-800" role="status">
+          Sent to Field Ops (it&rsquo;s schedulable there), but the PDF couldn&rsquo;t be generated to file or email. Re-open to edit and send again, or download it manually from below.
         </div>
       )}
       {spv.emailfail && (

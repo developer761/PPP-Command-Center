@@ -379,7 +379,7 @@ export async function CloseoutTool({
       {!activePkg ? (
         <div className="text-center py-12 px-4 bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No close-out package yet</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Create one when the job wraps — it seeds the standard checklist (as-builts, O&amp;M, warranty, waivers, final invoice, COI) + the 2-year warranty term.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Create one when the job wraps — it seeds the standard checklist (as-builts, O&amp;M, warranty, waivers, final invoice, COI) + the 1-year warranty term.</p>
         </div>
       ) : (
         <div className="space-y-4">
