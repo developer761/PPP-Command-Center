@@ -157,6 +157,10 @@ async function dispatchCommercialNotification(input: {
    *  rules with an in-app-only channel. Default false = send email if the
    *  recipient opted into email notifications. */
   skipEmail?: boolean;
+  /** When true, email the recipient even if they haven't opted into email
+   *  notifications — falls back to their profile email. Used for the approval
+   *  loop (approvers ARE the gate; a bell they never see stalls proposals). */
+  alwaysEmail?: boolean;
 }): Promise<{ ok: true; written: boolean } | { ok: false; error: string }> {
   // Self-skip — actor already knows.
   if (input.actingUserId && input.actingUserId === input.recipientUserId) {
@@ -216,7 +220,12 @@ async function dispatchCommercialNotification(input: {
     // source of truth; email only goes out if the recipient set a notification
     // email + turned it on (commercial_user_email_prefs). No pref → bell only.
     // Fire-and-forget — log on failure but don't propagate.
-    const notifyEmail = input.skipEmail ? null : await getEnabledNotifyEmail(input.recipientUserId);
+    // Email target: the recipient's opted-in notify email, or — when the caller
+    // marks this alwaysEmail (the approval loop) — their profile email as a
+    // fallback so an approver/requester is never left with only a bell.
+    const notifyEmail = input.skipEmail
+      ? null
+      : (await getEnabledNotifyEmail(input.recipientUserId)) ?? (input.alwaysEmail ? p.email ?? null : null);
     if (notifyEmail) {
       const result = await sendEmail({
         to: notifyEmail,
@@ -1465,6 +1474,7 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
         body,
         link: relativeLink,
         email: { subject, text, html },
+        alwaysEmail: true, // approvers gate the proposal — always email, not opt-in
       });
       if (r.ok && r.written) fanout += 1;
     })
@@ -1559,6 +1569,7 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
     body,
     link: relativeLink,
     email: { subject, text, html },
+    alwaysEmail: true, // the requester is waiting on this decision — always email
   });
   return { ok: r.ok, written: r.ok ? (r as { written: boolean }).written : false };
 }
