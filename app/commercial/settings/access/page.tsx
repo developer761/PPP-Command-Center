@@ -35,17 +35,17 @@ async function requireAccessAdmin(): Promise<string> {
 async function addRecipientAction(formData: FormData) {
   "use server";
   await requireAccessAdmin();
-  await addScheduleRecipient(String(formData.get("email") ?? ""), String(formData.get("label") ?? ""));
+  const res = await addScheduleRecipient(String(formData.get("email") ?? ""), String(formData.get("label") ?? ""));
   revalidatePath(ACCESS);
-  redirect(ACCESS);
+  redirect(res.ok ? ACCESS : `${ACCESS}?se_error=${encodeURIComponent(res.error)}`);
 }
 
 async function removeRecipientAction(formData: FormData) {
   "use server";
   await requireAccessAdmin();
-  await removeScheduleRecipient(String(formData.get("id") ?? ""));
+  const res = await removeScheduleRecipient(String(formData.get("id") ?? ""));
   revalidatePath(ACCESS);
-  redirect(ACCESS);
+  redirect(res.ok ? ACCESS : `${ACCESS}?se_error=${encodeURIComponent(res.error)}`);
 }
 
 async function toggleOptOutAction(formData: FormData) {
@@ -71,7 +71,8 @@ async function toggleOptOutAction(formData: FormData) {
 
 export const dynamic = "force-dynamic";
 
-export default async function CommercialAccessPage() {
+export default async function CommercialAccessPage({ searchParams }: { searchParams: Promise<{ se_error?: string }> }) {
+  const seError = (await searchParams).se_error;
   const supabase = await createClient();
   const {
     data: { user },
@@ -157,6 +158,7 @@ export default async function CommercialAccessPage() {
           <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
           <h2 className="text-xl font-bold tracking-tight text-ppp-charcoal">Schedule Emails</h2>
           <p className="text-[13px] text-ppp-charcoal-500 mt-1 max-w-2xl">Every crew member gets their own weekly schedule emailed to them by default — turn it off per person below. Add office people who should get the full weekly schedule for all crews.</p>
+          {seError && <div className="mt-2 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{seError}</div>}
         </div>
 
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 mb-4">

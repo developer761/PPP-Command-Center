@@ -67,6 +67,7 @@ import ExclusionPicker from "@/components/commercial/exclusion-picker";
 import ProductPicker from "@/components/commercial/product-picker";
 import { IconTrophy } from "@/components/commercial/inline-icons";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { EditableProductChip } from "@/components/commercial/editable-product-chip";
 import { AutosaveProposalName } from "@/components/commercial/autosave-proposal-name";
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
@@ -2147,12 +2148,12 @@ function AddLineItemForm({
       )}
 
       <div className="flex justify-end">
-        <button type="submit" className="inline-flex items-center gap-1.5 px-4 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 touch-manipulation">
+        <PendingSubmitButton pendingLabel="Adding…" className="inline-flex items-center gap-1.5 px-4 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 touch-manipulation disabled:opacity-60">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M12 5v14 M5 12h14" />
           </svg>
           Add {addLabel}
-        </button>
+        </PendingSubmitButton>
       </div>
     </form>
   );
