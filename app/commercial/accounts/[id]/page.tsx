@@ -400,10 +400,6 @@ export default async function CommercialAccountDetailPage({
   // numbers. Keyed on a VALID uuid so ?project=garbage doesn't strip the chrome
   // off the projects-list fallback.
   const inDealDrillIn = tab === "projects" && typeof sp.project === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.project);
-  // The persistent Financial-snapshot strip is a money glance while scanning the
-  // deal blocks — so show it only on the Deals tab. On Overview it duplicates the
-  // dashboard's Financials group; on Documents it's unrelated to the content.
-  const showOverviewStrip = primaryTab === "deals" && !inDealDrillIn;
 
   const account = await getCommercialAccount(id);
   if (!account) notFound();
@@ -632,12 +628,8 @@ export default async function CommercialAccountDetailPage({
         </div>
       </header>
 
-      {/* Account 360 KPI strip — Karan 2026-06-14. One-glance summary of
-          every count + last-activity tone. Blue tiles = live counts (Phase
-          1). Grey tiles = "coming with Phase N" placeholders for the bid /
-          invoiced / paid / balance numbers that fill in when later phases
-          ship. The strip never changes shape — the data just gets richer. */}
-      {showOverviewStrip && <AccountOverviewStrip overview={overview} invoiceRollup={invoiceRollup} accountId={account.id} />}
+      {/* Financial snapshot strip removed (Karan 2026-08) — the account
+          Profitability + Collections sections cover the money picture. */}
 
       {/* Stage 3: Expiring-doc banner — appears between the KPI strip
           and the tab bar when ANY active doc on this account expires
