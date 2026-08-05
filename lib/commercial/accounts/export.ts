@@ -125,7 +125,7 @@ export function exportAccountsFilename(
   filters: AccountsListFilters,
   totalCount: number
 ): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const tokens: string[] = ["ppp-commercial-accounts"];
   if (filters.rating) tokens.push(`rating-${filters.rating}`);
   if (filters.compliance) tokens.push(`compliance-${filters.compliance}`);

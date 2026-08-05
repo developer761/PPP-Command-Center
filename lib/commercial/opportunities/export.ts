@@ -215,7 +215,7 @@ export function exportOpportunitiesFilename(
   filters: OpportunitiesExportFilters,
   totalCount: number
 ): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const tokens: string[] = ["ppp-commercial-opportunities"];
   if (filters.status) tokens.push(`status-${filters.status}`);
   if (filters.accountId) tokens.push("account-scoped");

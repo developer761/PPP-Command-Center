@@ -3447,7 +3447,8 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
   const open = tasks.filter((t) => !t.completed_at);
   const closed = tasks.filter((t) => !!t.completed_at);
   const staffById = new Map(staff.map((s) => [s.user_id, s]));
-  const today = new Date().toISOString().slice(0, 10);
+  // ET calendar date so overdue coloring flips at ET midnight, not UTC.
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   return (
     <div className="space-y-5">
       {errorMessage && (
