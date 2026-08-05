@@ -71,7 +71,9 @@ async function requireCommercialUser(): Promise<string> {
 }
 
 function costsBase(accountId: string, oppId: string): string {
-  return `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=costs`;
+  // Stay on the P&L / costs tool after an action instead of bouncing to the
+  // account page (the standalone route renders the same tool + reads flags).
+  return `/commercial/accounts/${accountId}/costs/${oppId}?v=1`;
 }
 function costsRedirect(accountId: string, oppId: string, params: Record<string, string>, back = ""): never {
   const p = { ...params };
