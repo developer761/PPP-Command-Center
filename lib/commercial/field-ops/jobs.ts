@@ -253,7 +253,7 @@ export async function updateJob(
 /**
  * WO -> scheduler link: when a deal's Work Order is sent, make sure a
  * schedulable field-ops job exists for it (idempotent - keyed on work_order_id).
- * Pulls the deal name, site, and target dates so it appears on the Week Grid /
+ * Pulls the deal name, site, and target dates so it appears on the Calendar /
  * Work Orders tab automatically. Queries tables directly (no work-orders import)
  * to avoid a circular dependency. Best-effort - never throws.
  */

@@ -113,7 +113,12 @@ export function FieldOpsCalendar({
   const prevMonth = addDays(monthStart, -1).slice(0, 7) + "-01";
   const [my, mm] = monthStart.split("-").map(Number);
   const nextMonth = `${new Date(Date.UTC(my, mm, 1)).toISOString().slice(0, 7)}-01`;
-  const goMonth = (month: string) => router.push(`/commercial/field-ops/calendar?month=${month}`, { scroll: false });
+  function goMonth(month: string) {
+    setAddDay(null);
+    setPerson(null);
+    setMsg(null);
+    router.push(`/commercial/field-ops/calendar?month=${month}`, { scroll: false });
+  }
   const dayCrew = (date: string): DayCrew[] => grid.find((d) => d.date === date)?.crew ?? [];
 
   useEffect(() => {
@@ -237,7 +242,7 @@ export function FieldOpsCalendar({
       <div className="flex items-center gap-2 mb-3">
         <div className="inline-flex items-center rounded-lg border border-ppp-charcoal-200 overflow-hidden">
           <button onClick={() => goMonth(prevMonth)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[40px]" aria-label="Previous month">&larr;</button>
-          <button onClick={() => router.push("/commercial/field-ops/calendar", { scroll: false })} className="px-3 py-2 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 border-x border-ppp-charcoal-200 min-h-[40px]">Today</button>
+          <button onClick={() => { closeAll(); router.push("/commercial/field-ops/calendar", { scroll: false }); }} className="px-3 py-2 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 border-x border-ppp-charcoal-200 min-h-[40px]">Today</button>
           <button onClick={() => goMonth(nextMonth)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[40px]" aria-label="Next month">&rarr;</button>
         </div>
         <h2 className="text-[15px] font-bold text-ppp-charcoal">{monthLabel(monthStart)}</h2>

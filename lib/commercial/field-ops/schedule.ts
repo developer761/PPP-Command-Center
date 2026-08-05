@@ -4,9 +4,8 @@ import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 
 /**
- * R10.1 Week Grid - the primary scheduling surface. Mirrors Tomco's spreadsheet:
- * employees across the top, jobs down the left grouped by day (Mon-Sat), hours in
- * click-to-edit cells. Scheduled = assignments; Approved/Questioned = time_entries.
+ * R10.7 Scheduling core — powers the interactive Calendar (the one scheduling
+ * surface). Scheduled hours = commercial_assignments; actuals = time_entries.
  *
  * Dates are plain YYYY-MM-DD and all week math is done in UTC so it never shifts.
  */
