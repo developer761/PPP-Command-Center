@@ -114,11 +114,36 @@ export default async function CommercialAccessPage() {
         <p className="text-[13px] text-ppp-charcoal-500 mt-1 max-w-2xl">
           Give someone a Commercial login — email + password, no Google needed.
           Accounts made here can reach the Commercial Command Center only, not PPP
-          Command Center. Anyone who needs both is set up separately. Flag anyone as
-          a <strong>proposal approver</strong> to let them sign off proposals before they go to a GC,
-          or a <strong>receiver</strong> to get pinged whenever a proposal is approved or sent back with changes.
+          Command Center. Anyone who needs both is set up separately.
         </p>
       </header>
+
+      {/* Roles key — what each toggle below actually does */}
+      <dl className="bg-ppp-charcoal-50/60 border border-ppp-charcoal-100 rounded-xl p-4 mb-5 space-y-2.5">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-400">What the toggles mean</p>
+        <div className="flex gap-2.5">
+          <span aria-hidden className="mt-1.5 h-2 w-2 rounded-full bg-ppp-navy-600 shrink-0" />
+          <div>
+            <dt className="text-[13px] font-semibold text-ppp-charcoal inline">Admin</dt>
+            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — full control: provisions logins, sets who&rsquo;s an approver or receiver, and can do everything in the Commercial Command Center. Admins can always approve proposals.</dd>
+          </div>
+        </div>
+        <div className="flex gap-2.5">
+          <span aria-hidden className="mt-1.5 h-2 w-2 rounded-full bg-cc-brand-600 shrink-0" />
+          <div>
+            <dt className="text-[13px] font-semibold text-ppp-charcoal inline">Proposal approver</dt>
+            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — signs off proposals before they reach a GC. A proposal <strong>can&rsquo;t be emailed until an approver approves it</strong>. Every approver is alerted (bell + email) the moment approval is requested. Brendan is the primary approver.</dd>
+          </div>
+        </div>
+        <div className="flex gap-2.5">
+          <span aria-hidden className="mt-1.5 h-2 w-2 rounded-full bg-ppp-green-600 shrink-0" />
+          <div>
+            <dt className="text-[13px] font-semibold text-ppp-charcoal inline">Receiver</dt>
+            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — kept in the loop on decisions: pinged whenever a proposal is <strong>approved</strong> or <strong>sent back for changes</strong>. Receivers don&rsquo;t approve — they just watch (e.g. the office wanting visibility).</dd>
+          </div>
+        </div>
+      </dl>
+
       <CommercialAccessManager
         initialUsers={users}
         currentUserId={user.id}

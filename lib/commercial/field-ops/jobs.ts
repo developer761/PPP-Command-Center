@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
+import { todayEtIso } from "./schedule";
 
 /**
  * R10 Field Ops - schedulable jobs (commercial_jobs).
@@ -320,6 +321,15 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
     .update({ deleted_at: new Date().toISOString(), deleted_by_user_id: actorUserId })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
+  // Cancel this job's FUTURE assignments so crew aren't scheduled/emailed for a
+  // dead work order. Past assignments stay for history + approval variance; the
+  // clocked time_entries are a separate table and are never touched.
+  await sb
+    .from("commercial_assignments")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("job_id", id)
+    .gte("work_date", todayEtIso())
+    .neq("status", "cancelled");
   await logDelete("commercial_jobs", id, before, actorUserId);
   return { ok: true };
 }

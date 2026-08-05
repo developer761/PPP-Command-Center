@@ -67,7 +67,7 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
   if (assigns.length === 0) return [];
   const jobIds = [...new Set(assigns.map((a) => a.job_id))];
   const jobsById = new Map<string, { name: string; site_address: string | null; site_city: string | null; prevailing_wage: boolean }>();
-  const { data: jobs } = await sb.from("commercial_jobs").select("id, name, site_address, site_city, prevailing_wage").in("id", jobIds);
+  const { data: jobs } = await sb.from("commercial_jobs").select("id, name, site_address, site_city, prevailing_wage").in("id", jobIds).is("deleted_at", null);
   for (const j of (jobs ?? []) as { id: string; name: string; site_address: string | null; site_city: string | null; prevailing_wage: boolean }[])
     jobsById.set(j.id, j);
 
@@ -75,7 +75,7 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
   for (let i = 0; i < numDays; i++) {
     const d = addDaysIso(fromIso, i);
     const dayAssigns = assigns
-      .filter((a) => a.work_date === d)
+      .filter((a) => a.work_date === d && jobsById.has(a.job_id)) // drop shifts for deleted work orders
       .sort((x, y) => (x.scheduled_start_time ?? "99").localeCompare(y.scheduled_start_time ?? "99"));
     if (dayAssigns.length === 0) continue;
     byDate.set(d, {
@@ -412,5 +412,7 @@ async function buildOfficeDigest(
     for (const d of week) weekLines.push(`  ${dayLabel(d.date, false)}: ${d.jobs.map((j) => `${j.name} ${j.hours}h`).join(", ")}`);
     weekLines.push("");
   }
+  // Nothing today and nothing next week -> don't send an empty Sunday digest.
+  if (!anyToday && !anyWeek) return null;
   return [...todayLines, ...(anyWeek ? weekLines : [])].join("\n");
 }

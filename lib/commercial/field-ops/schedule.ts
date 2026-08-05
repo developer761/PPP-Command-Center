@@ -180,7 +180,7 @@ export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> 
   const jobIds = [...new Set(assigns.map((a) => a.job_id))];
   const [empRes, jobRes] = await Promise.all([
     sb.from("commercial_employees").select("id, display_name").in("id", empIds),
-    sb.from("commercial_jobs").select("id, name, job_code, prevailing_wage, site_address, site_city").in("id", jobIds),
+    sb.from("commercial_jobs").select("id, name, job_code, prevailing_wage, site_address, site_city").in("id", jobIds).is("deleted_at", null),
   ]);
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
   const jobsById = new Map(
@@ -191,6 +191,7 @@ export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> 
   );
 
   return assigns
+    .filter((a) => jobsById.has(a.job_id)) // drop shifts whose work order was deleted
     .map((a): DayAssignment => {
       const j = jobsById.get(a.job_id);
       return {
