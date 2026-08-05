@@ -1103,6 +1103,16 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // with costs logged — so a won deal shows its Profitability (prompting costs)
   // even before anything's billed.
   const dealShowPnl = dealHasRollup || p.contractToDateCents > 0 || p.invoicedCents > 0 || isPostSaleProject(p.opp);
+  // Account-style Profitability visuals for THIS deal (same components + defs as
+  // the GC + platform levels): monthly billed line + margin gauge + cost donut.
+  const dealRevenueMonthly = monthlyBilledSeries(dealInvoices);
+  const dealMarginTone: ChartTone = dealMarginPct === null ? "neutral" : dealMarginPct < 0 ? "rose" : dealMarginPct < 15 ? "amber" : "emerald";
+  const dealCostSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => dealFin.costs[c] > 0).map((c) => ({
+    label: PURCHASE_CATEGORY_META[c].label,
+    value: dealFin.costs[c],
+    tone: PNL_COST_TONE[c] ?? "neutral",
+    valueLabel: formatCentsCompact(dealFin.costs[c]),
+  }));
   const dealProposals = await listProposalsForOpp(p.opp.id);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
   // Milestones (2026-08): an invoice can be broken into a schedule of milestones
@@ -1256,35 +1266,45 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             </span>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ProjectStat
-            label={isPostSale ? "Contract to date" : "Bid estimate"}
-            value={hasContract ? formatCentsCompact(p.contractToDateCents) : "—"}
-            sub={!hasContract ? "Set the contract" : isPostSale ? undefined : "not under contract yet"}
-          />
-          <ProjectStat label="Invoiced" value={formatCentsCompact(p.invoicedCents)} tone="emerald" sub={p.paidCents > 0 ? `${formatCentsCompact(p.paidCents)} paid` : undefined} />
-          <ProjectStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={hasContract ? formatCentsCompact(p.overBilled ? p.billedContractCents - p.contractToDateCents : p.leftToBillCents) : "—"} tone={p.overBilled ? "amber" : undefined} />
-          <ProjectStat label="Outstanding" value={formatCentsCompact(p.outstandingCents)} sub={p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={p.outstandingCents > 0 ? "amber" : undefined} />
-        </div>
-        {/* Deal Profitability — the money-out / P&L lens under the billing KPIs,
-            using the SAME Gross/Net/Margin definitions as the account + dashboard
-            so a deal reconciles up to its GC and the platform. Shows for any real
-            project (contract, billing, or costs); margin waits for real costs so it
-            never reads a fake 100%. Full chart/donuts on the Costs & P&L tab. */}
-        {dealShowPnl && (
-          <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-400">Profitability · gross = billed · net = billed − costs</div>
-              <Link href={`${base}?tab=projects&project=${p.opp.id}&dt=pnl`} className="text-[11px] font-semibold text-cc-brand-700 hover:underline shrink-0">Full P&amp;L →</Link>
+        {/* Profitability — THIS deal's P&L in the same layout as the GC (account)
+            and platform (dashboard): Gross/Costs/Net/Margin cards + monthly billed
+            line + margin gauge + cost donut. Scope-labeled so it never reads as
+            company-wide. Same definitions everywhere, so it reconciles up a level. */}
+        <section className="mt-4 rounded-xl border border-ppp-charcoal-100 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Profitability</h3>
+            <span className="text-[11px] text-ppp-charcoal-500">only this deal · Gross = billed, Net = billed − costs</span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="Gross revenue" value={formatCentsCompact(dealGrossCents)} tone="brand" sub="billed to date · pre-tax" spark={dealRevenueMonthly.map((r) => r.value)} sparkLabels={dealRevenueMonthly.map((r) => r.label)} />
+            <StatCard label="Job costs" value={formatCentsCompact(dealCostsTotalCents)} tone="amber" sub={dealCostsTotalCents === 0 ? "none logged" : "materials · labor · subs"} />
+            <StatCard label="Net profit" value={`${dealNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+            <StatCard label="Margin" value={dealMarginPct === null ? "—" : `${dealMarginPct}%`} tone={dealMarginTone} sub={dealMarginPct === null ? "log costs to see" : "net ÷ gross"} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
+            <div className="lg:col-span-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Revenue billed / month · last 6 mo</div>
+              <TrendChart data={dealRevenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[140px]" />
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <ProjectStat label="Gross revenue" value={formatCentsCompact(dealGrossCents)} sub="billed to date · pre-tax" />
-              <ProjectStat label="Job costs" value={formatCentsCompact(dealCostsTotalCents)} tone={dealCostsTotalCents > 0 ? "amber" : undefined} sub={dealCostsTotalCents === 0 ? "none logged" : `materials · labor · ${Number.isInteger(dealTotalHours) ? dealTotalHours : dealTotalHours.toFixed(1)}h`} />
-              <ProjectStat label="Net profit" value={`${dealNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
-              <ProjectStat label="Margin" value={dealMarginPct === null ? "—" : `${dealMarginPct}%`} tone={dealMarginPct === null ? undefined : dealMarginPct < 0 ? "rose" : dealMarginPct < 15 ? "amber" : "emerald"} sub={dealMarginPct === null ? "log costs to see" : "net ÷ gross"} />
+            <div className="flex items-center gap-4 justify-center">
+              <GaugeRing pct={dealMarginPct ?? 0} tone={dealMarginTone} value={dealMarginPct === null ? "—" : `${dealMarginPct}%`} label="margin" size={104} />
+              {dealCostSegments.length > 0 ? (
+                <DonutChart size={104} legend={false} segments={dealCostSegments} centerValue={formatCentsCompact(dealCostsTotalCents)} centerLabel="costs" />
+              ) : (
+                <div className="text-[11px] text-ppp-charcoal-400 max-w-[100px]">Costs appear here as they&rsquo;re logged.</div>
+              )}
             </div>
           </div>
-        )}
+          {/* Contract billing progress — deal-specific (a GC/company has no single
+              contract), kept as a slim strip, not big blocks. */}
+          {hasContract && (
+            <div className="mt-4 pt-3 border-t border-ppp-charcoal-50 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ppp-charcoal-600">
+              <span><span className="text-ppp-charcoal-400">{isPostSale ? "Contract to date" : "Bid estimate"}</span> <span className="font-semibold tabular-nums text-ppp-charcoal ml-1">{formatCentsCompact(p.contractToDateCents)}</span></span>
+              <span><span className="text-ppp-charcoal-400">{p.overBilled ? "Over-billed" : "Left to bill"}</span> <span className={`font-semibold tabular-nums ml-1 ${p.overBilled ? "text-amber-700" : "text-ppp-charcoal"}`}>{formatCentsCompact(p.overBilled ? p.billedContractCents - p.contractToDateCents : p.leftToBillCents)}</span></span>
+              {p.outstandingCents > 0 && <span><span className="text-ppp-charcoal-400">Outstanding</span> <span className="font-semibold tabular-nums text-amber-700 ml-1">{formatCentsCompact(p.outstandingCents)}</span></span>}
+            </div>
+          )}
+        </section>
         {/* Retainage held by the GC — real money owed back at closeout, the
             number a PM chases hardest. Only shows once an AIA app withholds it
             (2026-08 PM UX walk). */}
@@ -7247,7 +7267,7 @@ async function AccountKpisTab({
             <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
             Profitability
           </h3>
-          <span className="text-[11px] text-ppp-charcoal-500">all opportunities · Gross = billed, Net = billed − costs</span>
+          <span className="text-[11px] text-ppp-charcoal-500">all deals for this GC · Gross = billed, Net = billed − costs</span>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Gross revenue" value={formatCentsCompact(acctGrossCents)} tone="brand" sub="billed to date" spark={acctRevenueMonthly.map((r) => r.value)} sparkLabels={acctRevenueMonthly.map((r) => r.label)} />

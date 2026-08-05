@@ -288,7 +288,7 @@ export default async function CommercialDashboardPage() {
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
           Are we making money?
-          <span className="text-[11px] font-medium text-ppp-charcoal-500">— across every job</span>
+          <span className="text-[11px] font-medium text-ppp-charcoal-500">— whole company · every deal</span>
         </h2>
         {/* Calm zero-state on a brand-new workspace — one line, not four "$0"
             tiles + a flat chart that read as "is this broken?" (2026-08 first-run
