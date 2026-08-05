@@ -74,7 +74,8 @@ export async function hydrateProposalContext(
     gc_address_lines: gcAddressLines.length > 0 ? gcAddressLines : undefined,
     project_name: projectName || undefined,
     project_address: projectAddress || undefined,
-    date_iso: new Date().toISOString().slice(0, 10),
+    // ET calendar date (not UTC) so an evening proposal doesn't stamp tomorrow.
+    date_iso: new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }),
     show_capital_improvement_notice: false,
     // Migration 065 (Phase G Q1): snapshot the deal number ("ALT-0125")
     // into header_json.proposal_number so the PDF LogoBlock renders

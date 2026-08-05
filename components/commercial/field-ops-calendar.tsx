@@ -105,6 +105,7 @@ export function FieldOpsCalendar({
   const [person, setPerson] = useState<{ employeeId: string; name: string; date: string } | null>(null);
   const [detail, setDetail] = useState<PersonDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
   const [formKey, setFormKey] = useState(0);
@@ -150,10 +151,15 @@ export function FieldOpsCalendar({
     }
     let cancelled = false;
     setDetailLoading(true);
+    setDetailError(false);
     fetch(`/api/commercial/field-ops/person-day?employee_id=${person.employeeId}&date=${person.date}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => !cancelled && setDetail(d && d.ok ? (d as PersonDetail) : null))
-      .catch(() => !cancelled && setDetail(null))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("fetch"))))
+      .then((d) => {
+        if (cancelled) return;
+        if (d && d.ok) setDetail(d as PersonDetail);
+        else setDetailError(true);
+      })
+      .catch(() => !cancelled && setDetailError(true))
       .finally(() => !cancelled && setDetailLoading(false));
     return () => {
       cancelled = true;
@@ -204,7 +210,9 @@ export function FieldOpsCalendar({
       const d = await r.json().catch(() => ({}));
       if (!r.ok) setMsg({ tone: "err", text: d.detail || "Couldn't schedule — try again." });
       else {
-        setMsg({ tone: "ok", text: "Scheduled — crew member emailed." });
+        // Only claim "emailed" when the person actually has an email on file.
+        const hasEmail = !!employees.find((emp) => emp.id === body.employee_id)?.email;
+        setMsg({ tone: "ok", text: hasEmail ? "Scheduled — crew member emailed." : "Scheduled. No email on file, so they weren't notified — add one on the Crew page." });
         setFormKey((k) => k + 1);
         refresh();
       }
@@ -314,7 +322,7 @@ export function FieldOpsCalendar({
           <div className="absolute inset-0 bg-ppp-charcoal-900/30" onClick={closeAll} aria-hidden />
           <div role="dialog" aria-modal="true" className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none">
             {person ? (
-              <PersonPanel person={person} detail={detail} loading={detailLoading} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} />
+              <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} />
             ) : addDay ? (
               <DayPanel date={addDay} crew={dayCrew(addDay)} crewOptions={crewOptions} jobOptions={jobOptions} formKey={formKey} saving={saving} msg={msg} onClose={closeAll} onAdd={handleAdd} onOpenPerson={(id, name) => openPerson(id, name, addDay)} />
             ) : null}
@@ -401,11 +409,12 @@ function DayPanel({
 }
 
 function PersonPanel({
-  person, detail, loading, nowMs, saving, onBack, onClose, onRemove,
+  person, detail, loading, error, nowMs, saving, onBack, onClose, onRemove,
 }: {
   person: { employeeId: string; name: string; date: string };
   detail: PersonDetail | null;
   loading: boolean;
+  error: boolean;
   nowMs: number;
   saving: boolean;
   onBack: () => void;
@@ -435,7 +444,9 @@ function PersonPanel({
           </div>
         )}
 
-        {loading && !detail ? (
+        {error ? (
+          <p className="text-[12.5px] text-rose-600">Couldn&rsquo;t load this shift — check your connection and reopen.</p>
+        ) : loading && !detail ? (
           <p className="text-[12.5px] text-ppp-charcoal-400">Loading…</p>
         ) : detail && detail.shifts.length > 0 ? (
           <ul className="space-y-3">

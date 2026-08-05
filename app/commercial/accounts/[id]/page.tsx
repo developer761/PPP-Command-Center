@@ -7043,7 +7043,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
                     <span className="text-[12px] font-semibold text-ppp-charcoal-700">Date</span>
-                    <DateField name="paid_at" defaultValue={new Date().toISOString().slice(0, 10)} placeholder="Pick a date" className="mt-0.5" />
+                    <DateField name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Pick a date" className="mt-0.5" />
                   </label>
                   <label className="block">
                     <span className="text-[12px] font-semibold text-ppp-charcoal-700">Method</span>
