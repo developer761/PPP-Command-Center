@@ -237,7 +237,12 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
 
   const proposals = await listProposalsForOpp(app.opportunity_id);
   if (proposals.length === 0) return;
-  const items = await listLineItemsForProposal(proposals[0].id);
+  // Seed from the WON proposal (the signed contract that drives G702 line 1), so
+  // the G703 schedule-of-values total can't diverge from the contract sum. Fall
+  // back to the latest revision when nothing is won yet — the same ladder as
+  // pickContractBaseCents (won -> latest).
+  const seedProposal = proposals.find((p) => p.status === "won") ?? proposals[0];
+  const items = await listLineItemsForProposal(seedProposal.id);
   const sov = items.filter((li) => !li.is_alternate);
   if (sov.length === 0) return;
   const rows = sov.map((li, i) => ({

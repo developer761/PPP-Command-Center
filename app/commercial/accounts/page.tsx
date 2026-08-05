@@ -263,12 +263,15 @@ export default async function CommercialAccountsPage({
   // whole book — the labels below flip to say so (Karan 2026-07-27 audit; the
   // old copy claimed "book" while showing the filtered slice).
   const filterActive = !!(search || rating || compliance || industry || filterStale || filterExpiring || filterIssue);
-  const universeCount = accountsRaw.length;
+  const universeCount = accountsRaw.length; // search/rating-filtered size — for the "of N" header
+  const matchingCount = accounts.length; // the DISPLAYED set (after the quick-filter chips)
   const recentlyActiveCount = recentlyActive.length;
-  const overviewList = Array.from(overviewsById.values());
-  const openBidsAcrossBook = overviewList.reduce((acc, o) => acc + (o.open_opps_count ?? 0), 0);
-  const totalActiveBidLowCents = overviewList.reduce((acc, o) => acc + (o.total_active_bid_low_cents ?? 0), 0);
-  const totalActiveBidHighCents = overviewList.reduce((acc, o) => acc + (o.total_active_bid_high_cents ?? 0), 0);
+  // Roll up over the DISPLAYED set so "Open bids / Bid range · across matches"
+  // agree with the visible list, not the pre-chip set (audit fix).
+  const matchOverviews = accounts.map((a) => overviewsById.get(a.id)).filter((o) => !!o);
+  const openBidsAcrossBook = matchOverviews.reduce((acc, o) => acc + (o?.open_opps_count ?? 0), 0);
+  const totalActiveBidLowCents = matchOverviews.reduce((acc, o) => acc + (o?.total_active_bid_low_cents ?? 0), 0);
+  const totalActiveBidHighCents = matchOverviews.reduce((acc, o) => acc + (o?.total_active_bid_high_cents ?? 0), 0);
   const bookBidRange = formatBidCents(totalActiveBidLowCents, totalActiveBidHighCents);
 
   // URL builders (unchanged behavior — link helpers for chip toggles + sort).
@@ -383,8 +386,8 @@ export default async function CommercialAccountsPage({
           <KpiCard
             tone="neutral"
             label={filterActive ? "Matching accounts" : "Total accounts"}
-            value={universeCount.toLocaleString()}
-            sub={filterActive ? "matching your filters" : universeCount === 1 ? "customer in your book" : "customers in your book"}
+            value={matchingCount.toLocaleString()}
+            sub={filterActive ? "matching your filters" : matchingCount === 1 ? "customer in your book" : "customers in your book"}
           />
           <KpiCard
             tone="blue"
