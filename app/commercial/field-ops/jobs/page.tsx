@@ -7,6 +7,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import {
   listJobs,
+  ensureJobsForSentWorkOrders,
   createJob,
   updateJob,
   softDeleteJob,
@@ -115,8 +116,10 @@ export default async function FieldOpsJobsPage({
 }: {
   searchParams: Promise<{ error?: string; ok?: string; closed?: string }>;
 }) {
-  await requireAdmin();
+  const userId = await requireAdmin();
   const sp = await searchParams;
+  // Backfill schedulable twins for any sent deal WOs before listing.
+  await ensureJobsForSentWorkOrders(userId);
   const [jobs, dealOptions] = await Promise.all([listJobs({ includeClosed: sp.closed === "1" }), listDealOptionsForWorkOrder()]);
 
   return (

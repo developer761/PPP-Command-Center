@@ -51,8 +51,12 @@ async function requireUser(): Promise<string> {
 function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
 }
-function base(id: string, dealId: string) {
-  return `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=work-order`;
+function base(id: string, dealId: string, origin?: string) {
+  // Stay on the standalone tool page when the action came from there; only the
+  // embedded Project-tab usage returns to the account page (its canonical home).
+  return origin === "route"
+    ? `/commercial/accounts/${id}/work-order/${dealId}?v=1`
+    : `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=work-order`;
 }
 function revalidateWO(id: string, dealId: string) {
   revalidatePath(`/commercial/accounts/${id}/work-order/${dealId}`);
@@ -75,11 +79,12 @@ async function createWorkOrderAction(formData: FormData) {
   const id = String(formData.get("account_id") ?? "");
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId)) redirect("/commercial/accounts");
   const res = await createWorkOrder({ opportunity_id: dealId, created_by_user_id: userId });
-  if (!res.ok) redirect(`${base(id, dealId)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   revalidateWO(id, dealId);
-  redirect(`${base(id, dealId)}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin)}${backQ(back)}`);
 }
 
 /** Autosave the editable draft fields (crew, start date, notes). */
@@ -112,12 +117,13 @@ async function changeStatusAction(formData: FormData) {
   const id = String(formData.get("account_id") ?? "");
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
   const woId = String(formData.get("wo_id") ?? "");
   const to = String(formData.get("to") ?? "") as WorkOrderStatus;
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(woId)) redirect("/commercial/accounts");
   if (!(await woBelongs(woId, id, dealId))) redirect("/commercial/accounts");
   const res = await changeWorkOrderStatus(woId, to, userId);
-  if (!res.ok) redirect(`${base(id, dealId)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   // File the frozen PDF into Documents when the WO is sent to the crew — and, if
   // a crew email is on file, email them that exact PDF.
   let emailFlag = "";
@@ -139,8 +145,8 @@ async function changeStatusAction(formData: FormData) {
     }
   }
   revalidateWO(id, dealId);
-  if (fileFailed) redirect(`${base(id, dealId)}&filefail=1${backQ(back)}`);
-  redirect(`${base(id, dealId)}&ok=1${emailFlag}${backQ(back)}`);
+  if (fileFailed) redirect(`${base(id, dealId, origin)}&filefail=1${backQ(back)}`);
+  redirect(`${base(id, dealId, origin)}&ok=1${emailFlag}${backQ(back)}`);
 }
 
 /** Email the crew the Work Order PDF (commercial channel). Best-effort — a
@@ -295,6 +301,9 @@ export async function WorkOrderTool({
       <input type="hidden" name="account_id" value={id} />
       <input type="hidden" name="opp_id" value={dealId} />
       <input type="hidden" name="back" value={spv.back ?? ""} />
+      {/* Where the tool is rendered, so an action returns you here instead of
+          always bouncing to the account page. */}
+      <input type="hidden" name="origin" value={variant} />
       {wo && <input type="hidden" name="wo_id" value={wo.id} />}
     </>
   );

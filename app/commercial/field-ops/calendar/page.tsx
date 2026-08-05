@@ -5,7 +5,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getMonthOverview, todayEtIso } from "@/lib/commercial/field-ops/schedule";
 import { listEmployees } from "@/lib/commercial/field-ops/employees";
-import { listJobs } from "@/lib/commercial/field-ops/jobs";
+import { listJobs, ensureJobsForSentWorkOrders } from "@/lib/commercial/field-ops/jobs";
 import { FieldOpsCalendar } from "@/components/commercial/field-ops-calendar";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,9 @@ export default async function FieldOpsCalendarPage({
 
   const sp = await searchParams;
   const anchor = DATE_RE.test(sp.month ?? "") ? sp.month! : todayEtIso();
+  // Safety net: any deal WO marked "sent" but missing its schedulable twin (e.g.
+  // a send-time create that failed) gets one now, so it always shows in the picker.
+  await ensureJobsForSentWorkOrders(user.id);
   const [{ monthStart, grid }, employees, jobs] = await Promise.all([
     getMonthOverview(anchor),
     listEmployees(),

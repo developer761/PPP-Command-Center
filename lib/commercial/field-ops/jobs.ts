@@ -252,21 +252,42 @@ export async function updateJob(
 
 /**
  * WO -> scheduler link: when a deal's Work Order is sent, make sure a
- * schedulable field-ops job exists for it (idempotent - keyed on work_order_id).
- * Pulls the deal name, site, and target dates so it appears on the Calendar /
- * Work Orders tab automatically. Queries tables directly (no work-orders import)
- * to avoid a circular dependency. Best-effort - never throws.
+ * schedulable field-ops job exists for it so it appears on the Calendar / Work
+ * Orders tab. Idempotent + self-healing:
+ *   - a LIVE job already linked  -> nothing to do
+ *   - a SOFT-DELETED job for this WO -> revived (was the silent-failure case: the
+ *     old code re-inserted the same job_code and hit the UNIQUE index)
+ *   - otherwise -> create it, with a collision-proof code fallback
+ * Returns a result so callers/backfill can tell it actually worked. Never throws.
+ * Queries tables directly (no work-orders import) to avoid a circular dependency.
  */
-export async function ensureJobForWorkOrder(workOrderId: string, actorUserId: string): Promise<void> {
+export async function ensureJobForWorkOrder(
+  workOrderId: string,
+  actorUserId: string
+): Promise<{ ok: true; jobId: string; created: boolean } | { ok: false; error: string }> {
   try {
     const sb = commercialDb();
-    const { data: existing } = await sb
+    // Look at ALL jobs for this WO (incl. soft-deleted) — prefer a live one, else
+    // revive the most recent deleted one instead of colliding on job_code.
+    const { data: rows } = await sb
       .from("commercial_jobs")
-      .select("id")
+      .select("id, deleted_at")
       .eq("work_order_id", workOrderId)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (existing) return; // already linked
+      .order("created_at", { ascending: false });
+    const all = (rows ?? []) as { id: string; deleted_at: string | null }[];
+    const live = all.find((r) => !r.deleted_at);
+    if (live) return { ok: true, jobId: live.id, created: false };
+    if (all.length > 0) {
+      // Revive the most recent soft-deleted twin.
+      const reviveId = all[0].id;
+      const { error } = await sb
+        .from("commercial_jobs")
+        .update({ deleted_at: null, deleted_by_user_id: null, status: "ready_to_schedule", updated_at: new Date().toISOString() })
+        .eq("id", reviveId);
+      if (error) return { ok: false, error: error.message };
+      await logUpdate("commercial_jobs", reviveId, { deleted_at: "set" }, { deleted_at: null }, actorUserId);
+      return { ok: true, jobId: reviveId, created: false };
+    }
 
     const { data: woRow } = await sb
       .from("commercial_work_orders")
@@ -279,7 +300,7 @@ export async function ensureJobForWorkOrder(workOrderId: string, actorUserId: st
       scheduled_start_date: string | null;
       scheduled_end_date: string | null;
     } | null;
-    if (!wo) return;
+    if (!wo) return { ok: false, error: "Work order not found." };
 
     const [oppRes, acctRes] = await Promise.all([
       wo.opportunity_id
@@ -293,32 +314,65 @@ export async function ensureJobForWorkOrder(workOrderId: string, actorUserId: st
     const acct = acctRes.data as { company_name: string | null; site_street: string | null; site_city: string | null; site_state: string | null; site_zip: string | null } | null;
 
     const name = opp?.title?.trim() || opp?.client_name?.trim() || acct?.company_name?.trim() || "Work order";
-    const code = `${opp?.project_number?.trim() || "WO"}-${workOrderId.slice(0, 6).toUpperCase()}`;
-
-    const { data: inserted } = await sb
-      .from("commercial_jobs")
-      .insert({
-        job_code: code,
-        name,
-        opportunity_id: wo.opportunity_id,
-        work_order_id: workOrderId,
-        account_id: wo.account_id,
-        customer_name: acct?.company_name ?? null,
-        site_address: acct?.site_street ?? null,
-        site_city: acct?.site_city ?? null,
-        site_state: acct?.site_state ?? null,
-        site_zip: acct?.site_zip ?? null,
-        status: "ready_to_schedule",
-        target_start: wo.scheduled_start_date,
-        target_end: wo.scheduled_end_date,
-        division_tag: "commercial",
-        created_by_user_id: actorUserId,
-      })
-      .select(COLS)
-      .single();
-    if (inserted) await logInsert("commercial_jobs", (inserted as { id: string }).id, inserted, actorUserId);
+    const baseCode = `${opp?.project_number?.trim() || "WO"}-${workOrderId.slice(0, 6).toUpperCase()}`;
+    const jobRow = {
+      name,
+      opportunity_id: wo.opportunity_id,
+      work_order_id: workOrderId,
+      account_id: wo.account_id,
+      customer_name: acct?.company_name ?? null,
+      site_address: acct?.site_street ?? null,
+      site_city: acct?.site_city ?? null,
+      site_state: acct?.site_state ?? null,
+      site_zip: acct?.site_zip ?? null,
+      status: "ready_to_schedule" as const,
+      target_start: wo.scheduled_start_date,
+      target_end: wo.scheduled_end_date,
+      division_tag: "commercial",
+      created_by_user_id: actorUserId,
+    };
+    // Try the readable code, then a collision-proof one, so a rare code clash can
+    // never leave a sent WO unschedulable.
+    for (const code of [baseCode, `${baseCode}-${workOrderId.slice(6, 12).toUpperCase()}`]) {
+      const { data: inserted, error } = await sb
+        .from("commercial_jobs")
+        .insert({ job_code: code, ...jobRow })
+        .select("id")
+        .single();
+      if (!error && inserted) {
+        await logInsert("commercial_jobs", (inserted as { id: string }).id, inserted, actorUserId);
+        return { ok: true, jobId: (inserted as { id: string }).id, created: true };
+      }
+      if (error && !/duplicate key|unique/i.test(error.message)) {
+        return { ok: false, error: error.message };
+      }
+    }
+    return { ok: false, error: "Could not create a schedulable work order (code conflict)." };
   } catch (err) {
     console.warn("[field-ops] ensureJobForWorkOrder failed:", err);
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Safety net: make sure EVERY sent deal Work Order has a live schedulable twin.
+ * Run on the Calendar / Work Orders load so a WO that missed its create at
+ * send-time (or was created then deleted) still shows up. Cheap + idempotent.
+ */
+export async function ensureJobsForSentWorkOrders(actorUserId: string): Promise<{ created: number; failed: number }> {
+  try {
+    const sb = commercialDb();
+    const { data: wos } = await sb.from("commercial_work_orders").select("id").eq("status", "sent");
+    let created = 0;
+    let failed = 0;
+    for (const w of (wos ?? []) as { id: string }[]) {
+      const res = await ensureJobForWorkOrder(w.id, actorUserId);
+      if (!res.ok) failed++;
+      else if (res.created) created++;
+    }
+    return { created, failed };
+  } catch {
+    return { created: 0, failed: 0 };
   }
 }
 
