@@ -304,6 +304,9 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
   const { data: inserted, error } = await sb
     .from("commercial_project_purchases")
     .insert({
+      // Generate the id in code — the column has no DB default, so an insert
+      // without it fails the NOT NULL constraint.
+      id: globalThis.crypto.randomUUID(),
       opportunity_id: input.opportunity_id,
       account_id: scope.account_id,
       category,

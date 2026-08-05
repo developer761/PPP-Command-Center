@@ -1099,7 +1099,10 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   const dealMarginPct =
     dealCostsTotalCents > 0 && dealGrossCents > 0 ? Math.round((dealNetCents / dealGrossCents) * 100) : null;
   const dealHasRollup = dealCostsTotalCents > 0 || dealTotalHours > 0;
-  const dealShowPnl = dealHasRollup || p.contractToDateCents > 0 || p.invoicedCents > 0;
+  // Show the P&L for any real project: won/post-sale, under contract, billed, or
+  // with costs logged — so a won deal shows its Profitability (prompting costs)
+  // even before anything's billed.
+  const dealShowPnl = dealHasRollup || p.contractToDateCents > 0 || p.invoicedCents > 0 || isPostSaleProject(p.opp);
   const dealProposals = await listProposalsForOpp(p.opp.id);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
   // Milestones (2026-08): an invoice can be broken into a schedule of milestones
@@ -1275,7 +1278,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
               <Link href={`${base}?tab=projects&project=${p.opp.id}&dt=pnl`} className="text-[11px] font-semibold text-cc-brand-700 hover:underline shrink-0">Full P&amp;L →</Link>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <ProjectStat label="Gross revenue" value={formatCentsCompact(dealGrossCents)} sub="billed to date" />
+              <ProjectStat label="Gross revenue" value={formatCentsCompact(dealGrossCents)} sub="billed to date · pre-tax" />
               <ProjectStat label="Job costs" value={formatCentsCompact(dealCostsTotalCents)} tone={dealCostsTotalCents > 0 ? "amber" : undefined} sub={dealCostsTotalCents === 0 ? "none logged" : `materials · labor · ${Number.isInteger(dealTotalHours) ? dealTotalHours : dealTotalHours.toFixed(1)}h`} />
               <ProjectStat label="Net profit" value={`${dealNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
               <ProjectStat label="Margin" value={dealMarginPct === null ? "—" : `${dealMarginPct}%`} tone={dealMarginPct === null ? undefined : dealMarginPct < 0 ? "rose" : dealMarginPct < 15 ? "amber" : "emerald"} sub={dealMarginPct === null ? "log costs to see" : "net ÷ gross"} />
