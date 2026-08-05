@@ -192,7 +192,7 @@ export async function SubmittalsTool({
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {submittals.map((s) => (
-              <SubmittalRow key={s.id} submittal={s} oppId={dealId} accountId={id} back={sp.back} />
+              <SubmittalRow key={s.id} submittal={s} oppId={dealId} accountId={id} back={sp.back} origin={variant} />
             ))}
           </ul>
         </section>
@@ -211,10 +211,15 @@ function SubmittalStat({ label, value, tone }: { label: string; value: number; t
   );
 }
 
-function SubmittalRow({ submittal, oppId, accountId, back }: { submittal: OpportunitySubmittalWithItemCount; oppId: string; accountId: string; back?: string }) {
-  // Forward the tool's origin so the detail's Back returns to where the user
-  // actually came from (global submittals index) instead of the account tab.
-  const backHref = back && back.startsWith("/commercial/") ? `?back=${encodeURIComponent(back)}` : "";
+function SubmittalRow({ submittal, oppId, accountId, back, origin = "" }: { submittal: OpportunitySubmittalWithItemCount; oppId: string; accountId: string; back?: string; origin?: string }) {
+  // Forward where the user is so the detail's Back / save-redirect returns HERE
+  // (the deal's Project sub-tab when embedded, the standalone log otherwise, or a
+  // deeper origin like the global submittals index if one was passed in).
+  const logHere =
+    origin === "route"
+      ? `/commercial/accounts/${accountId}/submittals/${oppId}?v=1`
+      : `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=submittals`;
+  const backHref = `?back=${encodeURIComponent(back && back.startsWith("/commercial/") ? back : logHere)}`;
   const tone = submittalStatusTone(submittal.status);
   const tonePillCls =
     tone === "emerald" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
