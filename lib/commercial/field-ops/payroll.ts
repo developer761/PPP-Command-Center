@@ -1,12 +1,17 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
-import { mondayOf } from "./schedule";
+import { mondayOf, addDaysIso } from "./schedule";
 
 /**
  * R10.5 Payroll - export APPROVED time for a date range as a per-employee
  * summary + CSV. W-2 only (subs/temps excluded by construction). Overtime is
  * split at 40h per week (bucketed by the Monday of each work week).
+ *
+ * Because OT is a whole-week (40h) concept, the requested range is SNAPPED
+ * outward to complete Monday-Sunday weeks — otherwise a range that starts or
+ * ends mid-week would only see part of a week and under/over-count OT. The
+ * effective (snapped) period is returned so the CSV + UI show the true span.
  */
 
 export type PayrollRow = {
@@ -18,17 +23,27 @@ export type PayrollRow = {
   otHours: number;
 };
 
-export async function getPayrollSummary(fromIso: string, toIso: string): Promise<{ rows: PayrollRow[]; approvedCount: number; unapprovedCount: number }> {
+export type PayrollSummary = {
+  rows: PayrollRow[];
+  approvedCount: number;
+  unapprovedCount: number;
+  periodStart: string; // snapped to a Monday
+  periodEnd: string; // snapped to the following Sunday
+};
+
+export async function getPayrollSummary(fromIso: string, toIso: string): Promise<PayrollSummary> {
+  const periodStart = mondayOf(fromIso);
+  const periodEnd = addDaysIso(mondayOf(toIso), 6); // Sunday of the week containing `to`
   const sb = commercialDb();
   const { data: eRows } = await sb
     .from("commercial_time_entries")
     .select("employee_id, work_date, actual_hours, status")
-    .gte("work_date", fromIso)
-    .lte("work_date", toIso);
+    .gte("work_date", periodStart)
+    .lte("work_date", periodEnd);
   const entries = (eRows ?? []) as { employee_id: string; work_date: string; actual_hours: number; status: string }[];
   const approved = entries.filter((e) => e.status === "approved");
   const unapprovedCount = entries.filter((e) => e.status === "submitted" || e.status === "questioned").length;
-  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount };
+  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd };
 
   const empIds = [...new Set(approved.map((e) => e.employee_id))];
   const { data: emps } = await sb
@@ -74,7 +89,7 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
     });
   }
   rows.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
-  return { rows, approvedCount: approved.length, unapprovedCount };
+  return { rows, approvedCount: approved.length, unapprovedCount, periodStart, periodEnd };
 }
 
 function csvCell(v: string | number): string {
@@ -83,11 +98,12 @@ function csvCell(v: string | number): string {
 }
 
 export async function buildPayrollCsv(fromIso: string, toIso: string): Promise<string> {
-  const { rows } = await getPayrollSummary(fromIso, toIso);
+  const { rows, periodStart, periodEnd } = await getPayrollSummary(fromIso, toIso);
   const header = ["Employee", "External Ref", "Regular Hours", "Overtime Hours", "Total Hours", "Period Start", "Period End"];
   const lines = [header.map(csvCell).join(",")];
   for (const r of rows) {
-    lines.push([r.employee_name, r.external_ref ?? "", r.regHours, r.otHours, r.totalHours, fromIso, toIso].map(csvCell).join(","));
+    // Period columns use the SNAPPED full-week span so OT reconciles.
+    lines.push([r.employee_name, r.external_ref ?? "", r.regHours, r.otHours, r.totalHours, periodStart, periodEnd].map(csvCell).join(","));
   }
   return lines.join("\r\n");
 }

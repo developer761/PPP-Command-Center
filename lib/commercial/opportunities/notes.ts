@@ -490,6 +490,16 @@ export async function deleteOpportunityNote(
     .is("deleted_at", null)
     .maybeSingle();
   if (!before) return { ok: false, error: "Note not found." };
+  // Author-only gate (mirrors editOpportunityNote): the UI hides Delete for
+  // non-authors, but a hand-crafted POST would otherwise let any CC user delete
+  // someone else's note. Server-side enforcement closes the loop.
+  if (
+    acting_user_id &&
+    (before as { author_user_id: string | null }).author_user_id &&
+    (before as { author_user_id: string }).author_user_id !== acting_user_id
+  ) {
+    return { ok: false, error: "Only the note's author can delete it." };
+  }
   const { data: after, error } = await sb
     .from("commercial_opportunity_notes")
     .update({ deleted_at: new Date().toISOString() })

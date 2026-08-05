@@ -20,7 +20,9 @@ function genPassword(): string {
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const nums = "23456789";
   const all = lower + upper + nums;
-  const pick = (set: string) => set[Math.floor(Math.random() * set.length)];
+  // Use the CSPRNG for credentials, not Math.random (a starter password an admin
+  // may hand out and the user may never change should not rest on a weak PRNG).
+  const pick = (set: string) => set[crypto.getRandomValues(new Uint32Array(1))[0] % set.length];
   let out = pick(upper) + pick(lower) + pick(nums);
   for (let i = 0; i < 9; i++) out += pick(all);
   return out;

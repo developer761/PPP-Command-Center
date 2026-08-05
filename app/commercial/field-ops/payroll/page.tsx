@@ -28,14 +28,20 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   const today = todayEtIso();
   const from = /^\d{4}-\d{2}-\d{2}$/.test(sp.from ?? "") ? sp.from! : addDaysIso(today, -13);
   const to = /^\d{4}-\d{2}-\d{2}$/.test(sp.to ?? "") ? sp.to! : today;
-  const { rows, approvedCount, unapprovedCount } = await getPayrollSummary(from, to);
+  const { rows, approvedCount, unapprovedCount, periodStart, periodEnd } = await getPayrollSummary(from, to);
   const totals = rows.reduce((t, r) => ({ reg: t.reg + r.regHours, ot: t.ot + r.otHours, all: t.all + r.totalHours }), { reg: 0, ot: 0, all: 0 });
+  // OT is a whole-week concept, so the summary snaps the range out to full
+  // Mon-Sun weeks. Surface it when the picked range wasn't already aligned.
+  const snapped = periodStart !== from || periodEnd !== to;
 
   return (
     <div className="pb-8 max-w-4xl">
       <div className="mb-4">
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Payroll</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">Approved hours for the period, W-2 only, overtime split at 40h/week. Export the CSV for your payroll run.</p>
+        {snapped && (
+          <p className="text-[12px] text-ppp-charcoal-400 mt-1">Overtime is figured per full week, so this covers whole Mon–Sun weeks: <span className="font-semibold text-ppp-charcoal-600">{fmtEtDate(periodStart)} – {fmtEtDate(periodEnd)}</span>.</p>
+        )}
       </div>
 
       <form method="get" className="flex flex-wrap items-end gap-3 mb-4 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">

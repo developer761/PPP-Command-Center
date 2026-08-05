@@ -168,20 +168,26 @@ async function syncTimeEntry(employeeId: string, jobId: string, dateIso: string,
 
   const { data: existing } = await sb
     .from("commercial_time_entries")
-    .select("id, status, approved_by_user_id")
+    .select("id, status, source, approved_by_user_id")
     .eq("employee_id", employeeId)
     .eq("job_id", jobId)
     .eq("work_date", dateIso)
     .maybeSingle();
 
   if (existing) {
-    const cur = existing as { id: string; status: string; approved_by_user_id: string | null };
-    const patch: Record<string, unknown> = { actual_hours: rounded, source: "clocked", updated_at: new Date().toISOString() };
-    // Never override a human decision: a manually-approved (approved_by set) or
-    // questioned entry keeps its status. A system-auto-approved or still-submitted
-    // entry is re-evaluated against the new actuals.
-    const humanTouched = cur.status === "questioned" || (cur.status === "approved" && cur.approved_by_user_id);
+    const cur = existing as { id: string; status: string; source: string; approved_by_user_id: string | null };
+    // Never clobber a human decision: a manually-set (source='manual'),
+    // human-approved (approved_by set), or questioned entry keeps BOTH its hours
+    // and its status — a later clock-out must not silently overwrite a manager's
+    // correction. Only system-auto/still-submitted clocked entries are recomputed.
+    const humanTouched =
+      cur.source === "manual" ||
+      cur.status === "questioned" ||
+      (cur.status === "approved" && !!cur.approved_by_user_id);
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (!humanTouched) {
+      patch.actual_hours = rounded;
+      patch.source = "clocked";
       if (withinThreshold) {
         patch.status = "approved";
         patch.approved_by_user_id = null; // system auto-approval

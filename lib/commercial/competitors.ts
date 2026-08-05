@@ -350,12 +350,14 @@ export async function updateCompetitorIntel(
     writable.typical_bid_high_cents = lo;
   }
 
+  const { data: before } = await sb.from("commercial_competitors").select("*").eq("id", id).maybeSingle();
   const { error } = await sb
     .from("commercial_competitors")
     .update(writable)
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
-  await logUpdate("commercial_competitors", id, writable, actingUserId);
+  // logUpdate(table, rowId, before, after, userId) — the actor must be last.
+  await logUpdate("commercial_competitors", id, before ?? {}, { ...(before ?? {}), ...writable }, actingUserId);
   return { ok: true };
 }
 

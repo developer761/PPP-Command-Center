@@ -90,11 +90,15 @@ export async function POST(request: Request) {
   // Find-or-create the account by an exact (case-insensitive) company name so we
   // don't spawn duplicate GCs for a repeat submitter.
   const sb = commercialDb();
+  // Escape LIKE wildcards in the untrusted company name — otherwise a submitter
+  // sending "%" or "Turner%" would match an arbitrary existing account and attach
+  // their bid to it (this is a public, unauthenticated route).
+  const companyLike = company.replace(/[\\%_]/g, "\\$&");
   const { data: existing } = await sb
     .from("commercial_accounts")
     .select("id, company_name")
     .is("deleted_at", null)
-    .ilike("company_name", company)
+    .ilike("company_name", companyLike)
     .limit(1)
     .maybeSingle();
 

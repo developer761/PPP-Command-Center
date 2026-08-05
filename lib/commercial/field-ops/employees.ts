@@ -159,7 +159,15 @@ export async function updateEmployee(
   const next: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.first_name !== undefined) next.first_name = patch.first_name.trim();
   if (patch.last_name !== undefined) next.last_name = (patch.last_name ?? "").trim() || null;
-  if (patch.display_name !== undefined) next.display_name = patch.display_name.trim();
+  if (patch.display_name !== undefined) {
+    // Never save a blank display name — fall back to first+last, then the prior
+    // name (create auto-fills the same way; edit previously allowed empty).
+    const dn = patch.display_name.trim();
+    next.display_name =
+      dn ||
+      [(patch.first_name ?? before.first_name ?? "").trim(), (patch.last_name ?? before.last_name ?? "").trim()].filter(Boolean).join(" ") ||
+      before.display_name;
+  }
   if (patch.worker_type !== undefined) next.worker_type = patch.worker_type;
   if (patch.role !== undefined) next.role = patch.role;
   if (patch.pay_type !== undefined) next.pay_type = patch.pay_type;

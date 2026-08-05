@@ -832,6 +832,7 @@ export async function addPayment(
     .from("commercial_invoices")
     .select("balance_cents, status")
     .eq("id", invoice_id)
+    .is("deleted_at", null)
     .maybeSingle();
   if (!inv) return { ok: false, error: "invoice_not_found" };
   if (inv.status === "void") return { ok: false, error: "cannot_pay_voided" };

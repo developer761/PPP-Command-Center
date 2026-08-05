@@ -148,18 +148,17 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
       opportunity_id,
       debriefed_at,
       outcome,
-      opportunity:commercial_opportunities!inner(bid_value_low_cents, bid_value_high_cents)
+      opportunity:commercial_opportunities!inner(bid_value_low_cents, bid_value_high_cents, deleted_at)
     `)
     .gte("debriefed_at", range.fromIso)
     .lt("debriefed_at", range.toIso);
 
+  type OppEmbed = { bid_value_low_cents: number | null; bid_value_high_cents: number | null; deleted_at: string | null };
   type Row = {
     opportunity_id: string;
     debriefed_at: string;
     outcome: "won" | "lost" | "no_bid";
-    opportunity: { bid_value_low_cents: number | null; bid_value_high_cents: number | null }
-      | Array<{ bid_value_low_cents: number | null; bid_value_high_cents: number | null }>
-      | null;
+    opportunity: OppEmbed | Array<OppEmbed> | null;
   };
 
   // 2026-07-29 re-audit fix: a deal that was won+debriefed, reopened, then
@@ -169,6 +168,8 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   // opp contributes exactly one outcome — its most recent decision.
   const latestByOpp = new Map<string, Row>();
   for (const r of (data as unknown as Row[] | null) ?? []) {
+    const opp = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
+    if (opp?.deleted_at) continue; // skip debriefs whose opp was soft-deleted
     const prev = latestByOpp.get(r.opportunity_id);
     if (!prev || r.debriefed_at > prev.debriefed_at) latestByOpp.set(r.opportunity_id, r);
   }

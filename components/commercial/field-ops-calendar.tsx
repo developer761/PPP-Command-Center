@@ -235,7 +235,12 @@ export function FieldOpsCalendar({
         setPerson(null);
         setMsg({ tone: "ok", text: "Removed." });
         refresh();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        setMsg({ tone: "err", text: d.detail || "Couldn't remove — try again." });
       }
+    } catch {
+      setMsg({ tone: "err", text: "Network error — try again." });
     } finally {
       setSaving(false);
     }
@@ -322,7 +327,7 @@ export function FieldOpsCalendar({
           <div className="absolute inset-0 bg-ppp-charcoal-900/30" onClick={closeAll} aria-hidden />
           <div role="dialog" aria-modal="true" className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none">
             {person ? (
-              <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} />
+              <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} />
             ) : addDay ? (
               <DayPanel date={addDay} crew={dayCrew(addDay)} crewOptions={crewOptions} jobOptions={jobOptions} formKey={formKey} saving={saving} msg={msg} onClose={closeAll} onAdd={handleAdd} onOpenPerson={(id, name) => openPerson(id, name, addDay)} />
             ) : null}
@@ -409,12 +414,13 @@ function DayPanel({
 }
 
 function PersonPanel({
-  person, detail, loading, error, nowMs, saving, onBack, onClose, onRemove,
+  person, detail, loading, error, msg, nowMs, saving, onBack, onClose, onRemove,
 }: {
   person: { employeeId: string; name: string; date: string };
   detail: PersonDetail | null;
   loading: boolean;
   error: boolean;
+  msg: Msg;
   nowMs: number;
   saving: boolean;
   onBack: () => void;
@@ -433,6 +439,7 @@ function PersonPanel({
       </div>
 
       <div className="overflow-y-auto p-4 space-y-4">
+        {msg && msg.tone === "err" && <div className="rounded-lg px-3 py-2 text-[12.5px] bg-rose-50 border border-rose-200 text-rose-700">{msg.text}</div>}
         {clock && (
           <div className={`rounded-lg px-3 py-2.5 text-[12.5px] flex items-center gap-2 ${clock.open ? "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-800" : "bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-ppp-charcoal-600"}`}>
             <span aria-hidden className={`h-2 w-2 rounded-full shrink-0 ${clock.open ? "bg-ppp-green-500" : "bg-ppp-charcoal-300"}`} />

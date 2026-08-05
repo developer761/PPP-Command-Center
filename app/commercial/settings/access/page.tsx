@@ -125,7 +125,7 @@ export default async function CommercialAccessPage() {
           <span aria-hidden className="mt-1.5 h-2 w-2 rounded-full bg-ppp-navy-600 shrink-0" />
           <div>
             <dt className="text-[13px] font-semibold text-ppp-charcoal inline">Admin</dt>
-            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — full control: provisions logins, sets who&rsquo;s an approver or receiver, and can do everything in the Commercial Command Center. Admins can always approve proposals.</dd>
+            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — full control: provisions logins, sets who&rsquo;s an approver or receiver, and can do everything in the Commercial Command Center. To approve proposals, an admin must also be flagged as an approver below (approval is an explicit role, so the gate stays meaningful).</dd>
           </div>
         </div>
         <div className="flex gap-2.5">

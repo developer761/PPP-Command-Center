@@ -86,7 +86,7 @@ export default async function FieldOpsOverviewPage() {
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
           <h2 className="text-[12px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-3">Overtime forecast</h2>
           {o.otForecast.length === 0 ? (
-            <p className="text-[13px] text-ppp-charcoal-500">Nobody scheduled past 40h this week. 👍</p>
+            <p className="text-[13px] text-ppp-charcoal-500">Nobody scheduled past 40h this week.</p>
           ) : (
             <ul className="space-y-2">
               {o.otForecast.map((r) => (
