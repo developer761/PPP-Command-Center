@@ -62,6 +62,7 @@ export function AiaApplicationDetail({
   accountId,
   dealId,
   back = "",
+  origin = "",
   lines,
   g702,
   basePath,
@@ -78,6 +79,9 @@ export function AiaApplicationDetail({
   dealId: string;
   /** ?back= sidebar-tool origin, carried through every form action. */
   back?: string;
+  /** inline/route origin so an action returns you to WHERE you are (not the
+   *  inline deal Project tab by default). */
+  origin?: string;
   lines: AiaLineItem[];
   g702: AiaG702;
   basePath: string; // list URL (drop ?app)
@@ -101,6 +105,7 @@ export function AiaApplicationDetail({
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="opp_id" value={dealId} />
       <input type="hidden" name="back" value={back} />
+      <input type="hidden" name="origin" value={origin} />
     </>
   );
 
@@ -229,6 +234,8 @@ export function AiaApplicationDetail({
                       appId={application.id}
                       accountId={accountId}
                       dealId={dealId}
+                      back={back}
+                      origin={origin}
                       gridCls="grid grid-cols-[46px_minmax(150px,1fr)_92px_92px_92px_92px_96px_104px] gap-2 px-1 py-1.5 items-center"
                       saveAction={saveLineAutosaveAction}
                       deleteAction={deleteLineAction}

@@ -348,6 +348,7 @@ export async function WorkOrderTool({
             <input type="hidden" name="account_id" value={id} />
             <input type="hidden" name="opp_id" value={dealId} />
             <input type="hidden" name="back" value={spv.back ?? ""} />
+            <input type="hidden" name="origin" value={variant} />
             <PendingSubmitButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation" pendingLabel="Creating…">
               + Create work order
             </PendingSubmitButton>

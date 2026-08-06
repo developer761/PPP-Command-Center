@@ -426,6 +426,7 @@ export async function AiaTool({
                 accountId={id}
                 dealId={dealId}
                 back={sp.back ?? ""}
+                origin={variant}
                 lines={lines}
                 g702={g702!}
                 basePath={b}

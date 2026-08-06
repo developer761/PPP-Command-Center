@@ -37,7 +37,16 @@ async function createSubmittalAction(formData: FormData) {
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
   const backQ = back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
-  const backQfirst = back && back.startsWith("/commercial/post-job/") ? `?back=${encodeURIComponent(back)}` : "";
+  // Detail-page ?back for the new submittal's "Back to submittals": a guarded
+  // post-job origin wins; otherwise, when created from the INLINE deal tab, point
+  // Back at the deal's Project→Submittals sub-tab (not the standalone log) so the
+  // user returns to WHERE they were. From the standalone route, the detail's
+  // default back (the standalone log) is already correct.
+  const backQfirst = back && back.startsWith("/commercial/post-job/")
+    ? `?back=${encodeURIComponent(back)}`
+    : origin === "inline"
+      ? `?back=${encodeURIComponent(`/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`)}`
+      : "";
   if (!UUID_RE.test(account_id) || !UUID_RE.test(opportunity_id)) redirect("/commercial/accounts");
   // Return you to WHERE you are — standalone submittals log when opened directly,
   // the account's deal (Project sub-tab) view when embedded there. Never jump.

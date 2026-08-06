@@ -71,6 +71,8 @@ export function AiaLineRow({
   appId,
   accountId,
   dealId,
+  back = "",
+  origin = "",
   gridCls,
   saveAction,
   deleteAction,
@@ -79,6 +81,10 @@ export function AiaLineRow({
   appId: string;
   accountId: string;
   dealId: string;
+  /** Sidebar-tool ?back= origin + inline/route origin, so the delete redirect
+   *  returns to WHERE the user is (not the inline deal tab by default). */
+  back?: string;
+  origin?: string;
   gridCls: string;
   saveAction: (fd: FormData) => Promise<AiaLineSaveResult>;
   deleteAction: (fd: FormData) => void | Promise<void>;
@@ -211,6 +217,8 @@ export function AiaLineRow({
           <input type="hidden" name="app_id" value={appId} />
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="opp_id" value={dealId} />
+          <input type="hidden" name="back" value={back} />
+          <input type="hidden" name="origin" value={origin} />
           <input type="hidden" name="line_id" value={line.id} />
           <button type="submit" aria-label="Remove line" className="h-[44px] w-[44px] inline-flex items-center justify-center rounded text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 touch-manipulation">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18 M6 6l12 12" /></svg>

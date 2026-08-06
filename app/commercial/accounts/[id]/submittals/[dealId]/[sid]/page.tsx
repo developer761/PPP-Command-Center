@@ -591,8 +591,11 @@ async function changeStatusAction(formData: FormData) {
     const reason = (formData.get("void_reason") as string)?.trim();
     if (!reason) {
       redirect(
-        `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
-          encodeURIComponent("Void reason is required.")
+        withBack(
+          `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+            encodeURIComponent("Void reason is required."),
+          formBack(formData)
+        )
       );
     }
     input.void_reason = reason;
@@ -601,8 +604,11 @@ async function changeStatusAction(formData: FormData) {
   const result = await changeSubmittalStatus(input);
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
-        encodeURIComponent(result.error)
+      withBack(
+        `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+          encodeURIComponent(result.error),
+        formBack(formData)
+      )
     );
   }
   // Auto-file the Letter of Transmittal when the submittal is sent to the GC
@@ -614,7 +620,10 @@ async function changeStatusAction(formData: FormData) {
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/opportunities");
   redirect(
-    `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?saved=1`
+    withBack(
+      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?saved=1`,
+      formBack(formData)
+    )
   );
 }
 
@@ -705,6 +714,18 @@ export default async function SubmittalDetailPage({
   const loaded = await getOpportunitySubmittal(opportunity_id, submittal_id);
   if (!loaded) notFound();
   const { submittal, items, statusLog } = loaded;
+
+  // The URL's account segment is trusted only after confirming it actually owns
+  // this deal — otherwise /accounts/<any-valid-account>/submittals/<opp>/<sid>
+  // would render this submittal under the WRONG customer (bad breadcrumb + the
+  // Back button / redirects pointing at an unrelated account). Mirror the tool's
+  // opp.account_id guard.
+  const { data: ownRow } = await commercialDb()
+    .from("commercial_opportunities")
+    .select("account_id")
+    .eq("id", opportunity_id)
+    .maybeSingle();
+  if (!ownRow || (ownRow as { account_id: string }).account_id !== account_id) notFound();
 
   // The submittal log now lives inline under the deal's Project sub-tab.
   const backTo = safeBack(pickFirst(sp.back));
