@@ -388,12 +388,29 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
   // Cancel this job's FUTURE assignments so crew aren't scheduled/emailed for a
   // dead work order. Past assignments stay for history + approval variance; the
   // clocked time_entries are a separate table and are never touched.
+  const { data: affected } = await sb
+    .from("commercial_assignments")
+    .select("employee_id, work_date")
+    .eq("job_id", id)
+    .gte("work_date", todayEtIso())
+    .neq("status", "cancelled");
   await sb
     .from("commercial_assignments")
     .update({ status: "cancelled", updated_at: new Date().toISOString() })
     .eq("job_id", id)
     .gte("work_date", todayEtIso())
     .neq("status", "cancelled");
+  // Cancel the queued clock-in nudges for those now-dead shifts (audit #3) — one
+  // reset per distinct (employee, day); the cron re-schedules any that still have
+  // a surviving shift on another job that day.
+  const pairs = new Set(((affected ?? []) as Array<{ employee_id: string; work_date: string }>).map((a) => `${a.employee_id}|${a.work_date}`));
+  if (pairs.size > 0) {
+    const { resetClockReminder } = await import("./schedule-email-send");
+    for (const p of pairs) {
+      const [emp, day] = p.split("|");
+      await resetClockReminder(emp, day).catch(() => undefined);
+    }
+  }
   await logDelete("commercial_jobs", id, before, actorUserId);
   return { ok: true };
 }

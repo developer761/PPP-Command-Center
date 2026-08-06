@@ -114,6 +114,10 @@ export function BidSubmitForm({ turnstileSiteKey }: { turnstileSiteKey?: string 
           <label className={LABEL} htmlFor="bf-project">Project name</label>
           <input id="bf-project" name="project_title" maxLength={200} placeholder="e.g. Warehouse repaint — Building C" className={INPUT} />
         </div>
+        <div>
+          <label className={LABEL} htmlFor="bf-street">Street address</label>
+          <input id="bf-street" name="street" maxLength={200} autoComplete="address-line1" placeholder="123 Industrial Pkwy" className={INPUT} />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-1">
             <label className={LABEL} htmlFor="bf-city">City</label>

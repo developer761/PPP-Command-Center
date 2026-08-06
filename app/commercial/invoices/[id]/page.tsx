@@ -498,7 +498,10 @@ async function deleteDraftAction(formData: FormData) {
   if (ctx.opportunity_id) revalidatePath(`/commercial/opportunities/${ctx.opportunity_id}`);
   if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
   const undoLabel = preInvoice?.invoice_number ?? "";
-  const undoQuery = `deleted=1&undo_id=${invoice_id}&undo_kind=invoice&undo_label=${encodeURIComponent(undoLabel)}`;
+  // If change orders were freed for re-billing, tell the user — undo restores the
+  // invoice but NOT those CO charges (audit #1), so it must not be a silent loss.
+  const freedCoQuery = result.freedChangeOrders ? `&freed_co=${result.freedChangeOrders}` : "";
+  const undoQuery = `deleted=1&undo_id=${invoice_id}&undo_kind=invoice&undo_label=${encodeURIComponent(undoLabel)}${freedCoQuery}`;
   // Fallback lands on the account's invoices view (canonical home) when we have
   // the account; otherwise the global list. Never the opp tab.
   const fallback = ctx.account_id

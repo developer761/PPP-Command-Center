@@ -543,6 +543,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     if (statusFilter) p.set("status", statusFilter);
     if (newSort !== "recent") p.set("sort", newSort);
     if (accountIdFilter) p.set("account_id", accountIdFilter);
+    if (opportunityIdFilter) p.set("opportunity_id", opportunityIdFilter);
     return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
   };
   const setStatusHref = (newStatus: InvoiceStatus | null): string => {
@@ -551,6 +552,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     if (newStatus) p.set("status", newStatus);
     if (sortKey !== "recent") p.set("sort", sortKey);
     if (accountIdFilter) p.set("account_id", accountIdFilter);
+    if (opportunityIdFilter) p.set("opportunity_id", opportunityIdFilter);
     // Switching the status pill clears any aging-bucket filter.
     return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
   };
@@ -561,6 +563,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     p.set("status", "overdue");
     if (agingFilter !== bucket) p.set("aging", bucket);
     if (accountIdFilter) p.set("account_id", accountIdFilter);
+    if (opportunityIdFilter) p.set("opportunity_id", opportunityIdFilter);
     return `/commercial/invoices?${p.toString()}`;
   };
 
@@ -1041,6 +1044,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
           {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
           {accountIdFilter && <input type="hidden" name="account_id" value={accountIdFilter} />}
+          {opportunityIdFilter && <input type="hidden" name="opportunity_id" value={opportunityIdFilter} />}
 
           {/* Status pills — visible on mobile too (Alex reviews AR on his
               phone; "show me what's overdue/unpaid" must be reachable). The

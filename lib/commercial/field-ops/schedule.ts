@@ -348,6 +348,14 @@ export async function deleteAssignmentById(
   const { error } = await sb.from("commercial_assignments").delete().eq("id", assignmentId);
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_assignments", assignmentId, existing, actorUserId);
+  // Cancel the queued 10-min clock-in nudge — otherwise the crew member is still
+  // pinged to clock in for a shift that was removed (audit #3). If they still have
+  // another shift that day, the daily cron re-schedules a nudge for it.
+  const ex = existing as { employee_id?: string; work_date?: string };
+  if (ex.employee_id && ex.work_date) {
+    const { resetClockReminder } = await import("./schedule-email-send");
+    await resetClockReminder(ex.employee_id, ex.work_date).catch(() => undefined);
+  }
   return { ok: true };
 }
 

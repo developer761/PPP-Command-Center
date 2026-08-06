@@ -260,28 +260,28 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
   // Reconcile the schedule of values so its total FOOTS to the G702 contract
   // ladder — otherwise the two AIA sheets sent to the GC don't match:
   //  (#2) a proposal final-price override makes total_cents != Σ(qty × price),
-  //       so G702 line 1 (= the override) diverges from the G703 scheduled column
-  //       (= the line-item sum). Add one explicit adjustment line for the delta.
+  //       so G702 line 1 (= the override) would diverge from the G703 scheduled
+  //       column. SCALE each line proportionally to the contract sum — standard
+  //       AIA practice for a lump-sum contract, and it keeps every scheduled
+  //       value NON-NEGATIVE (grid + rollups clamp to ≥0), so an override
+  //       DISCOUNT can't produce an invalid negative "credit" row.
   //  (#12) approved change orders feed G702 line 2 but weren't in the G703, so
   //       Σ scheduled_value != Contract Sum to Date (line 3). Add one SOV line per
   //       approved CO. (App 2+ copy these forward via the carry-forward seed.)
   const rawSum = rows.reduce((s, r) => s + r.scheduled_value_cents, 0);
-  let nextNo = rows.length + 1;
   const contractCents = Math.round(Number(seedProposal.total_cents ?? 0));
-  if (contractCents > 0 && contractCents !== rawSum) {
-    const delta = contractCents - rawSum;
-    rows.push({
-      application_id: app.id,
-      position: nextNo * 1000,
-      item_no: String(nextNo),
-      description: delta >= 0 ? "Contract price adjustment" : "Negotiated price adjustment (credit)",
-      scheduled_value_cents: delta,
-      from_previous_cents: 0,
-      this_period_cents: 0,
-      materials_stored_cents: 0,
+  if (contractCents > 0 && rawSum > 0 && contractCents !== rawSum) {
+    let acc = 0;
+    rows.forEach((r, i) => {
+      if (i === rows.length - 1) {
+        r.scheduled_value_cents = Math.max(0, contractCents - acc); // last line absorbs rounding
+      } else {
+        r.scheduled_value_cents = Math.max(0, Math.round((r.scheduled_value_cents * contractCents) / rawSum));
+        acc += r.scheduled_value_cents;
+      }
     });
-    nextNo += 1;
   }
+  let nextNo = rows.length + 1;
   const approvedCOs = (await listChangeOrders(app.opportunity_id)).filter((c) => c.status === "approved");
   for (const co of approvedCOs) {
     rows.push({

@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { DateField } from "@/components/commercial/date-field";
 
 /** Mirror of MAX_UPLOAD_BYTES in lib/commercial/accounts/documents.ts.
  *  Duplicated because importing a server-only lib into a client component
@@ -334,16 +335,14 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
               })}
             </div>
             {expiryMode === "custom" && (
-              <input
+              // Brand DateField (not a native picker) — matches the platform-wide
+              // date-input convention (audit #8). Can't set an expiry in the past
+              // (would land the doc straight in the red "Expired" state).
+              <DateField
                 id="expires_at"
                 name="expires_at"
-                type="date"
                 required
-                // Can't set an expiry in the past — it would land the doc
-                // straight in the red "Expired" state (Karan 2026-07-27 audit).
                 min={new Date().toISOString().slice(0, 10)}
-                // text-base = 16px so iOS Safari doesn't auto-zoom on focus.
-                className={`${INPUT_CLS} text-base`}
               />
             )}
             {expiryMode === "auto" && (

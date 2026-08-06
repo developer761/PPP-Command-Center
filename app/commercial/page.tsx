@@ -206,7 +206,9 @@ export default async function CommercialDashboardPage() {
   // still-reachable deal P&L (no status filter) stays a subset of this number
   // — deal ⊂ account ⊂ portfolio (2026-08 money audit #5 / regression #2). This
   // is a different, wider scope than the active-only "Under contract" strip.
-  const allProjectRows = await listProjects({ includeClosed: true });
+  // allDeals:true so a PRE-SALE bid's costs (shown in its own reachable P&L) roll
+  // into the portfolio too — otherwise deal ⊄ portfolio for pre-sale costs (#6).
+  const allProjectRows = await listProjects({ includeClosed: true, allDeals: true });
   const allProjectOppIds = new Set(allProjectRows.map((p) => p.opp.id));
   const byOpp = await costBreakdownByOpp(allProjectRows.map((p) => p.opp.id));
   const costs = emptyCostBreakdown();

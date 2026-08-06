@@ -152,7 +152,7 @@ async function releaseClaim(employeeId: string, workDate: string, kind: "day_of"
 
 /** Cancel a scheduled clock-in nudge + drop its claim so a start-time change
  *  reschedules a fresh, correctly-timed nudge (and the stale one doesn't fire). */
-async function resetClockReminder(employeeId: string, workDate: string): Promise<void> {
+export async function resetClockReminder(employeeId: string, workDate: string): Promise<void> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_schedule_email_log")

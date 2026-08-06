@@ -20,7 +20,7 @@ import {
   ALLOWED_INVOICE_TRANSITIONS,
   type InvoiceStatus,
 } from "./constants";
-import { logStatusChange } from "./db";
+import { logStatusChange, recomputeSubtotal } from "./db";
 
 export function isTransitionAllowed(
   from_status: InvoiceStatus,
@@ -126,7 +126,7 @@ export async function changeInvoiceStatus(
  * `WHERE deleted_at IS NULL` slot), and null the COs' invoiced_invoice_id — but
  * ONLY for COs still pointing at THIS invoice (never stomps another claim).
  */
-async function releaseTickedChangeOrders(invoiceId: string): Promise<void> {
+async function releaseTickedChangeOrders(invoiceId: string): Promise<number> {
   const sb = commercialDb();
   const [{ data: lines }, { data: ms }] = await Promise.all([
     sb.from("commercial_invoice_line_items").select("change_order_id").eq("invoice_id", invoiceId).not("change_order_id", "is", null),
@@ -135,10 +135,15 @@ async function releaseTickedChangeOrders(invoiceId: string): Promise<void> {
   const coIds = new Set<string>();
   for (const l of (lines ?? []) as { change_order_id: string | null }[]) if (l.change_order_id) coIds.add(l.change_order_id);
   for (const m of (ms ?? []) as { change_order_id: string | null }[]) if (m.change_order_id) coIds.add(m.change_order_id);
-  if (coIds.size === 0) return;
+  if (coIds.size === 0) return 0;
   await sb.from("commercial_invoice_line_items").delete().eq("invoice_id", invoiceId).not("change_order_id", "is", null);
   await sb.from("commercial_invoice_milestones").update({ deleted_at: new Date().toISOString() }).eq("invoice_id", invoiceId).not("change_order_id", "is", null).is("deleted_at", null);
   await sb.from("commercial_change_orders").update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() }).in("id", [...coIds]).eq("invoiced_invoice_id", invoiceId);
+  // Recompute the invoice subtotal off the REMAINING (base) lines so a voided /
+  // soft-deleted invoice — and any later restore of it — doesn't carry a phantom
+  // CO charge (audit #2). recomputeSubtotal writes subtotal_cents unconditionally.
+  await recomputeSubtotal(invoiceId);
+  return coIds.size;
 }
 
 /** Soft-delete an invoice. Karan 2026-07-07: opened up to any state so
@@ -148,7 +153,7 @@ async function releaseTickedChangeOrders(invoiceId: string): Promise<void> {
 export async function softDeleteInvoice(
   invoice_id: string,
   actor_user_id: string
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; freedChangeOrders?: number }> {
   const sb = commercialDb();
   const { data: before } = await sb
     .from("commercial_invoices")
@@ -167,16 +172,15 @@ export async function softDeleteInvoice(
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
   if (!deleted) return { ok: false, error: "invoice_not_found" };
-  await releaseTickedChangeOrders(invoice_id); // D1: re-open any billed COs
-  // Phase 2 (audit H1): per-payment lien waivers + invoice attachments are
-  // deliberately RETAINED on soft-delete — each is parented to the live
-  // opportunity (a valid deal document, never an orphan) and this keeps
-  // restoreInvoice lossless. The only payment-removal path (removePayment)
-  // retires its own waiver. If a HARD invoice delete is ever added, it MUST
-  // iterate payments to retire lien_waiver_document_id + retire attachment docs
-  // (the payments FK is ON DELETE CASCADE and would bypass that teardown).
+  const freedChangeOrders = await releaseTickedChangeOrders(invoice_id); // D1: re-open any billed COs
+  // Lien waivers + invoice attachments are RETAINED on soft-delete (parented to
+  // the live opportunity), so THOSE restore cleanly. Change orders, however, are
+  // deliberately FREED here (their line stripped + link nulled) so they can be
+  // re-billed while this invoice is gone — restore does NOT bring those charges
+  // back (audit #1/#2). softDeleteInvoice reports the freed count so the caller
+  // can tell the user the undo won't restore change-order charges.
   await logStatusChange(invoice_id, from_status, "void", actor_user_id, "Invoice deleted");
-  return { ok: true };
+  return { ok: true, freedChangeOrders };
 }
 
 /**

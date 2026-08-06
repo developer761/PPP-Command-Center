@@ -119,20 +119,20 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                       </div>
                       <form action={approveAction}>
                         <input type="hidden" name="id" value={r.id} />
-                        <button type="submit" className="inline-flex items-center px-3 rounded-lg bg-ppp-green-50 text-ppp-green-700 text-[12px] font-semibold hover:bg-ppp-green-100 min-h-[36px]">Approve</button>
+                        <button type="submit" className="inline-flex items-center px-3 rounded-lg bg-ppp-green-50 text-ppp-green-700 text-[12px] font-semibold hover:bg-ppp-green-100 min-h-[44px] touch-manipulation">Approve</button>
                       </form>
                       <details className="relative">
-                        <summary className="list-none cursor-pointer text-[12px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal px-2 min-h-[36px] inline-flex items-center">More</summary>
+                        <summary className="list-none cursor-pointer text-[12px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal px-2 min-h-[44px] inline-flex items-center touch-manipulation">More</summary>
                         <div className="mt-2 flex flex-col gap-2 bg-ppp-charcoal-50/60 rounded-lg p-2">
                           <form action={overrideAction} className="flex items-center gap-2">
                             <input type="hidden" name="id" value={r.id} />
                             <input name="hours" type="number" min="0" max="24" step="0.25" defaultValue={r.actual} className={`${INPUT_CLS} w-20`} />
-                            <button type="submit" className="text-[12px] font-semibold text-cc-brand-700 hover:underline">Set hours</button>
+                            <button type="submit" className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 touch-manipulation">Set hours</button>
                           </form>
                           <form action={questionAction} className="flex items-center gap-2">
                             <input type="hidden" name="id" value={r.id} />
                             <input name="reason" placeholder="What's wrong?" className={`${INPUT_CLS} flex-1`} />
-                            <button type="submit" className="text-[12px] font-semibold text-amber-700 hover:underline">Question</button>
+                            <button type="submit" className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-amber-700 hover:bg-amber-50 touch-manipulation">Question</button>
                           </form>
                         </div>
                       </details>

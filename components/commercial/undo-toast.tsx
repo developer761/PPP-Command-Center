@@ -49,6 +49,7 @@ export function UndoToast() {
   const undoId = sp?.get("undo_id");
   const undoKindRaw = sp?.get("undo_kind");
   const undoLabel = sp?.get("undo_label") ?? "";
+  const freedCo = Number(sp?.get("freed_co") ?? 0);
   const kind = (undoKindRaw as UndoKind | null) &&
     ["deal", "note", "invoice"].includes(undoKindRaw!)
     ? (undoKindRaw as UndoKind)
@@ -80,6 +81,7 @@ export function UndoToast() {
     url.searchParams.delete("undo_id");
     url.searchParams.delete("undo_kind");
     url.searchParams.delete("undo_label");
+    url.searchParams.delete("freed_co");
     window.history.replaceState({}, "", url.toString());
   };
 
@@ -119,12 +121,19 @@ export function UndoToast() {
       aria-live="polite"
       className="fixed bottom-6 right-6 z-50 max-w-sm w-full sm:w-auto bg-ppp-navy-900 text-white rounded-xl shadow-xl border border-ppp-charcoal-700 px-4 py-3 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4"
     >
-      <span className="text-[13px] font-medium truncate flex-1">
-        {status === "restoring"
-          ? "Restoring…"
-          : status === "error"
-          ? `Restore failed: ${errorMsg}`
-          : displayLabel}
+      <span className="flex-1 min-w-0 flex flex-col">
+        <span className="text-[13px] font-medium truncate">
+          {status === "restoring"
+            ? "Restoring…"
+            : status === "error"
+            ? `Restore failed: ${errorMsg}`
+            : displayLabel}
+        </span>
+        {status === "idle" && freedCo > 0 && (
+          <span className="text-[11px] text-ppp-charcoal-300 mt-0.5 leading-snug">
+            {freedCo} change-order {freedCo === 1 ? "charge was" : "charges were"} freed to re-bill — undo won&apos;t restore {freedCo === 1 ? "it" : "them"}.
+          </span>
+        )}
       </span>
       {status === "idle" && (
         <button

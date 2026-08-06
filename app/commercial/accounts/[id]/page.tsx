@@ -246,6 +246,12 @@ type SP = Promise<{
   co_amt?: string;
   co_desc?: string;
   ok?: string;
+  /** Inline Work Order "Send to Field Ops" outcome flags (audit #7) — without
+   *  these the inline tool swallows PDF/email failures while the standalone
+   *  route warns. */
+  emailed?: string;
+  emailfail?: string;
+  filefail?: string;
   app?: string;
   pkg?: string;
   /** Phase 2 Costs & P&L tool. */
@@ -1751,7 +1757,7 @@ async function ProjectToolsPanel({
           id={accountId}
           dealId={dealId}
           variant="inline"
-          sp={{ error: sp?.error, ok: sp?.ok }}
+          sp={{ error: sp?.error, ok: sp?.ok, emailed: sp?.emailed, emailfail: sp?.emailfail, filefail: sp?.filefail }}
         />
       )}
 
@@ -6896,16 +6902,24 @@ async function AccountKpisTab({
   // gross covers (costBreakdownForOpps) — costBreakdownForAccount counted costs
   // account-wide, so a soft-deleted deal's orphaned purchases inflated account
   // net/margin even though its gross had dropped out (audit #3).
-  const allAccountRows = await listProjects({ accountId, includeClosed: true });
+  // "Under contract" / production is scoped to real jobs (post-sale/won). The
+  // P&L rollup uses EVERY deal (allDeals) — the same universe the deal drill-in
+  // P&L is reachable on — so a pre-sale bid's costs (and its typically-$0 billed
+  // gross) roll into the account too; otherwise a cost shown in a bid's own P&L
+  // would be missing from the account/portfolio and break deal ⊂ account (audit #6).
+  const [allAccountRows, pnlRows] = await Promise.all([
+    listProjects({ accountId, includeClosed: true }),
+    listProjects({ accountId, includeClosed: true, allDeals: true }),
+  ]);
   const activeRows = allAccountRows.filter((p) => p.opp.status !== "post_sale_closed");
   const production = summarizeProduction(activeRows);
   const [accountInvoices, accountCosts] = await Promise.all([
     listCommercialInvoices({ accountId }),
-    costBreakdownForOpps(allAccountRows.map((p) => p.opp.id)),
+    costBreakdownForOpps(pnlRows.map((p) => p.opp.id)),
   ]);
   // ── Account-wide P&L (all this GC's deals combined) — Gross = billed pre-tax,
   // Net = billed − costs. Same definitions as the deal P&L + Revenue page. ──
-  const acctGrossCents = allAccountRows.reduce((acc, p) => acc + p.billedContractCents, 0);
+  const acctGrossCents = pnlRows.reduce((acc, p) => acc + p.billedContractCents, 0);
   const acctCostsCents = accountCosts.total;
   const acctNetCents = acctGrossCents - acctCostsCents;
   const acctMarginPct = acctGrossCents > 0 ? Math.round((acctNetCents / acctGrossCents) * 100) : null;
