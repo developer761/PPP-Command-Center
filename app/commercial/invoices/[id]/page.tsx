@@ -63,7 +63,7 @@ import { SegmentedMeter, type MeterSegment } from "@/components/commercial/segme
 import { getCommercialAccount, formatAccountNumber } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 import { getProposal, formatProposalNumber } from "@/lib/commercial/proposals/db";
-import { isWon } from "@/lib/commercial/opportunities/constants";
+import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -1019,11 +1019,11 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <CopyInvoiceLinkButton />
-            {/* New invoice for this opp — Karan 2026-07-07: "give the
-                ability to add another invoice even after the first one
-                is created." Only shown when the parent opp is Won +
-                exists (all created invoices satisfy that but be safe). */}
-            {opp && isWon(opp) && (
+            {/* New invoice for this deal — Karan 2026-07-07: "give the ability to
+                add another invoice even after the first one is created." Shown for
+                any POST-SALE project (won + in-progress/billing/post-sale), not just
+                the moment it's Won — matches the invoices list gate (R5 regression). */}
+            {opp && isPostSaleProject(opp) && (
               <Link
                 href={`/commercial/invoices/new?opp=${opp.id}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue-600 text-white text-[12px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30"
@@ -1032,7 +1032,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 5v14 M5 12h14" />
                 </svg>
-                New invoice for this opp
+                New invoice for this deal
               </Link>
             )}
             <form action={deleteDraftAction} className="inline">

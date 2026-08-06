@@ -5300,7 +5300,7 @@ async function AccountProposalsTab({
   const { data: proposalsData } = await sb
     .from("commercial_proposals")
     .select(
-      `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
+      `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, header_json, snapshot_document_id,
        opportunity:commercial_opportunities!inner(id, title, title_override, client_name, property_street, account_id, deleted_at, archived_at, status, sub_status)`
     )
     .is("deleted_at", null)
@@ -5324,6 +5324,7 @@ async function AccountProposalsTab({
     updated_at: string;
     opportunity_id: string;
     header_json: { gc_company?: string; project_name?: string } | null;
+    snapshot_document_id: string | null;
     opportunity: {
       id: string;
       title: string | null;
@@ -5712,7 +5713,12 @@ async function AccountProposalsTab({
                               </Link>
                             )}
                             <a
-                              href={`/api/commercial/proposals/${r.id}/pdf`}
+                              // A non-draft proposal serves the FROZEN snapshot the GC received —
+                              // a live re-render could show different exclusions/prices than what
+                              // was sent. Matches the global proposals list branching (R5).
+                              href={r.status !== "draft" && r.snapshot_document_id
+                                ? `/api/commercial/documents/${r.snapshot_document_id}/download`
+                                : `/api/commercial/proposals/${r.id}/pdf`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-cc-brand-50 touch-manipulation"
