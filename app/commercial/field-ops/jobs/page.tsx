@@ -23,6 +23,7 @@ import {
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 import { DateField } from "@/components/commercial/date-field";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/jobs";
@@ -209,7 +210,13 @@ export default async function FieldOpsJobsPage({
                 </form>
                 <form action={deleteJobAction} className="px-4 pb-4">
                   <input type="hidden" name="id" value={j.id} />
-                  <button type="submit" className="text-[12px] font-semibold text-rose-600 hover:text-rose-700">Delete work order</button>
+                  <ConfirmSubmitButton
+                    message="Delete this work order? It will be removed from the calendar and the scheduling picker."
+                    pendingLabel="Deleting…"
+                    className="inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 touch-manipulation"
+                  >
+                    Delete work order
+                  </ConfirmSubmitButton>
                 </form>
               </details>
             </li>

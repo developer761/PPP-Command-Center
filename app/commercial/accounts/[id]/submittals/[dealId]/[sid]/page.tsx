@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import SubmittalDirectUpload from "@/components/commercial/submittal-direct-upload";
 import { DateField } from "@/components/commercial/date-field";
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
@@ -864,12 +865,13 @@ export default async function SubmittalDetailPage({
                 <input type="hidden" name="submittal_id" value={submittal_id} />
                 <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
-                <button
-                  type="submit"
+                <ConfirmSubmitButton
+                  message="Delete this draft submittal? Its items and linked spec sheets will be removed."
+                  pendingLabel="Deleting…"
                   className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation"
                 >
                   Delete draft
-                </button>
+                </ConfirmSubmitButton>
               </form>
             )}
           </div>
@@ -1330,12 +1332,13 @@ export default async function SubmittalDetailPage({
                 <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
                       <input type="hidden" name="item_id" value={item.id} />
-                      <button
-                        type="submit"
+                      <ConfirmSubmitButton
+                        message="Delete this submittal item?"
+                        pendingLabel="Deleting…"
                         className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] sm:min-h-[36px]"
                       >
                         Delete item
-                      </button>
+                      </ConfirmSubmitButton>
                     </form>
                   </details>
                 ) : (

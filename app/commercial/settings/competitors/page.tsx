@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import {
@@ -508,12 +509,13 @@ function MergeForm({
           placeholder="Pick target…"
           ariaLabel={`Merge ${sourceName} into`}
         />
-        <button
-          type="submit"
-          className="mt-2 w-full text-xs font-semibold px-3 py-2 rounded bg-rose-600 text-white hover:bg-rose-700 min-h-[44px]"
+        <ConfirmSubmitButton
+          message={`Merge "${sourceName}" into the selected competitor? This permanently rolls up all its debriefs and can't be undone.`}
+          pendingLabel="Merging…"
+          className="mt-2 w-full inline-flex items-center justify-center text-xs font-semibold px-3 py-2 rounded bg-rose-600 text-white hover:bg-rose-700 min-h-[44px] touch-manipulation"
         >
           Merge
-        </button>
+        </ConfirmSubmitButton>
       </form>
     </details>
   );

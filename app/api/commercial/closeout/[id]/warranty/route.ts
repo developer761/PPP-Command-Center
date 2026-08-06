@@ -32,10 +32,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
-    .select("title, title_override, client_name, property_street, account_id")
+    .select("title, title_override, client_name, property_street, account_id, deleted_at")
     .eq("id", pkg.opportunity_id)
     .maybeSingle();
-  const { data: acctRow } = await sb.from("commercial_accounts").select("company_name").eq("id", pkg.account_id).maybeSingle();
+  const { data: acctRow } = await sb.from("commercial_accounts").select("company_name, deleted_at").eq("id", pkg.account_id).maybeSingle();
+  // Don't serve a warranty for a soft-deleted deal/account via a stale link (audit R3 #15).
+  if (!oppRow || (oppRow as { deleted_at: string | null }).deleted_at) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!acctRow || (acctRow as { deleted_at: string | null }).deleted_at) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const accountName = (acctRow as { company_name?: string | null } | null)?.company_name ?? null;
   const dealName = oppRow ? derivedOppName(oppRow as never, accountName) : "Project";
 

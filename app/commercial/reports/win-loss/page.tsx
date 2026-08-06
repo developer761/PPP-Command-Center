@@ -161,23 +161,22 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
   const totalFactorMentions = factors.reduce((sum, f) => sum + f.count, 0);
 
   return (
-    <div className="space-y-5">
-      {/* ─── Hero — same PageHeader shape as every other Commercial CC
-          surface. 3px×40px red accent bar → title → subtitle. ─── */}
-      <header>
-        <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
-            Win/Loss Reports
-          </h1>
-          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 px-2 py-0.5 rounded">
-            {range.label}
-          </span>
+    // Match the shared Reports framework width/inset so the tab bar aligns with
+    // the body, and use the sibling tabs' compact header (audit R3 #8 / #23).
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-bold text-ppp-charcoal">Win / Loss</h2>
+            <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 px-2 py-0.5 rounded">
+              {range.label}
+            </span>
+          </div>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+            Aggregated debrief data — what we&apos;re winning, what we&apos;re losing, and why. Quarterly review fuel.
+          </p>
         </div>
-        <p className="text-sm text-ppp-charcoal-500">
-          Aggregated debrief data — what we&apos;re winning, what we&apos;re losing, and why. Quarterly review fuel.
-        </p>
-      </header>
+      </div>
 
       {/* ─── Toolbar with period picker (preset chips + custom range form) ─── */}
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">

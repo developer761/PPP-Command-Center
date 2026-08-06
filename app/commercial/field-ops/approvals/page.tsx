@@ -112,6 +112,9 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                       <div className="min-w-0 flex-1">
                         <div className="text-[12.5px] font-semibold text-ppp-charcoal truncate">{r.job_name}</div>
                         <div className="text-[11px] text-ppp-charcoal-500">{fmtEtDate(r.work_date)} · {r.source === "clocked" ? "clocked" : "manual"}{r.status === "questioned" ? " · questioned" : ""}</div>
+                        {r.status === "questioned" && r.questioned_reason && (
+                          <div className="text-[11px] text-amber-800 mt-0.5">“{r.questioned_reason}”</div>
+                        )}
                       </div>
                       <div className="text-[12px] tabular-nums text-ppp-charcoal-600">
                         <span className="text-ppp-charcoal-400">{r.scheduled ?? "—"}h</span> → <span className="font-bold text-ppp-charcoal">{r.actual}h</span>

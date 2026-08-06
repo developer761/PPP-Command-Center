@@ -36,6 +36,7 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from 
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { ProjectToolbar } from "@/components/commercial/project-toolbar";
+import EmailArchiveTab from "@/components/commercial/email-archive-tab";
 import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import { DateField } from "@/components/commercial/date-field";
 import {
@@ -1200,7 +1201,7 @@ async function deleteFinishAction(formData: FormData) {
 // Sub-navigation drives from URL `?tab=X&sub=Y`. Missing/invalid `sub`
 // falls back to the group's default (Info / Plans / Notes).
 type PrimaryTab = "overview" | "docs" | "activity" | "invoices" | "debrief";
-type SubTab = "info" | "team" | "plans" | "finishes" | "files" | "notes" | "tasks" | "timeline";
+type SubTab = "info" | "team" | "plans" | "finishes" | "files" | "notes" | "tasks" | "timeline" | "emails";
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
 // Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
 const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
@@ -1222,6 +1223,7 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, {
     { key: "notes", label: "Notes" },
     { key: "tasks", label: "Tasks" },
     { key: "timeline", label: "Timeline" },
+    { key: "emails", label: "Email Archive" },
   ],
 };
 const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, SubTab> = {
@@ -1247,7 +1249,7 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   if (raw === "plans" || raw === "finishes" || raw === "files") return { primary: "docs", sub: raw as SubTab };
   // Submittals moved to its own account-scoped page (2026-07-29); a legacy
   // ?tab=submittals now falls through to the account drill-in bounce below.
-  if (raw === "notes" || raw === "tasks" || raw === "timeline") return { primary: "activity", sub: raw as SubTab };
+  if (raw === "notes" || raw === "tasks" || raw === "timeline" || raw === "emails") return { primary: "activity", sub: raw as SubTab };
   // Unknown / stale keys → fall through to Overview.
   return { primary: "overview", sub: null };
 }
@@ -1805,6 +1807,7 @@ export default async function OpportunityDetailPage({
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} assignedOk={pickFirst(sp.assigned) === "1"} />}
       {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "emails" && <EmailArchiveTab kind="opp" sourceId={opp.id} />}
       {tab === "plans" && <PlansTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "finishes" && (
         <FinishesTab

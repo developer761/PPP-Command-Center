@@ -612,6 +612,7 @@ export default async function CommercialOpportunitiesPage({
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
   if (viewMode === "list") baseParams.set("view", "list");
   else if (viewMode === "kanban") baseParams.set("view", "kanban");
+  else if (viewMode === "customer") baseParams.set("view", "customer");
   // Attention deep-link filters live in baseParams so every builder that
   // clones it preserves them automatically (unlike stale/hot/archived,
   // which have toggle builders and are re-added manually). setSortHref +
@@ -689,6 +690,7 @@ export default async function CommercialOpportunitiesPage({
     // kanban user changing sort got kicked back to list view.
     if (viewMode === "list") p.set("view", "list");
     else if (viewMode === "kanban") p.set("view", "kanban");
+    else if (viewMode === "customer") p.set("view", "customer");
     if (newSort !== "recent") p.set("sort", newSort);
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
@@ -707,6 +709,7 @@ export default async function CommercialOpportunitiesPage({
     if (followupFilter) p.set("followup", "1");
     if (viewMode === "list") p.set("view", "list");
     else if (viewMode === "kanban") p.set("view", "kanban");
+    else if (viewMode === "customer") p.set("view", "customer");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -1124,9 +1127,9 @@ export default async function CommercialOpportunitiesPage({
 
           {anyFilterActive && (
             <Link
-              // Preserve view mode when clearing filters — dropping filters
-              // shouldn't yank the user from list view back to kanban default.
-              href={viewMode === "list" ? "/commercial/opportunities?view=list" : "/commercial/opportunities"}
+              // Preserve view mode when clearing filters — dropping filters must
+              // not yank a Kanban or By-customer user back to the List default (#18).
+              href={`/commercial/opportunities?view=${viewMode}`}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

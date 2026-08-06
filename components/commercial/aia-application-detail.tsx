@@ -270,19 +270,19 @@ export function AiaApplicationDetail({
           <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
             <label className="sm:col-span-1 block">
               <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Item</span>
-              <input name="item_no" className={`${INPUT_CLS} !py-1.5 text-[12px]`} placeholder="1" />
+              <input name="item_no" className={`${INPUT_CLS} !py-1.5 text-base sm:text-[12px]`} placeholder="1" />
             </label>
             <label className="col-span-2 sm:col-span-5 block">
               <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Description</span>
-              <input name="description" maxLength={500} className={`${INPUT_CLS} !py-1.5 text-[12px]`} placeholder="Line of work" />
+              <input name="description" maxLength={500} className={`${INPUT_CLS} !py-1.5 text-base sm:text-[12px]`} placeholder="Line of work" />
             </label>
             <label className="block">
               <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Scheduled</span>
-              <input name="scheduled" inputMode="decimal" className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} placeholder="0.00" />
+              <input name="scheduled" inputMode="decimal" className={`${INPUT_CLS} !py-1.5 text-base sm:text-[12px] tabular-nums`} placeholder="0.00" />
             </label>
             <label className="block">
               <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">This period</span>
-              <input name="this_period" inputMode="decimal" className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} placeholder="0.00" />
+              <input name="this_period" inputMode="decimal" className={`${INPUT_CLS} !py-1.5 text-base sm:text-[12px] tabular-nums`} placeholder="0.00" />
             </label>
             <div className="sm:col-span-3 flex justify-end">
               <PendingSubmitButton pendingLabel="Adding…" className="px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add line</PendingSubmitButton>

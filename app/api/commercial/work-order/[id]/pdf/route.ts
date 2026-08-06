@@ -39,10 +39,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
-    .select("title, title_override, client_name, property_street, property_city, property_state, account_id, status, sub_status")
+    .select("title, title_override, client_name, property_street, property_city, property_state, account_id, status, sub_status, deleted_at")
     .eq("id", wo.opportunity_id)
     .maybeSingle();
-  const { data: acctRow } = await sb.from("commercial_accounts").select("company_name").eq("id", wo.account_id).maybeSingle();
+  const { data: acctRow } = await sb.from("commercial_accounts").select("company_name, deleted_at").eq("id", wo.account_id).maybeSingle();
+  // Don't serve a work order whose parent deal or account was soft-deleted — a
+  // stale link would leak deleted-deal data (audit R3 #14).
+  if (!oppRow || (oppRow as { deleted_at: string | null }).deleted_at) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!acctRow || (acctRow as { deleted_at: string | null }).deleted_at) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const account = { company_name: (acctRow as { company_name?: string | null } | null)?.company_name ?? "" };
   const opp = (oppRow ?? {}) as {
     title: string | null; client_name: string | null;

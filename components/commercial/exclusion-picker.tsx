@@ -112,6 +112,26 @@ export function ExclusionPicker({
   const idsJson = useMemo(() => JSON.stringify(selected.map((s) => s.id)), [selected]);
   const customJson = useMemo(() => JSON.stringify(customLines), [customLines]);
 
+  // The hidden payloads feed a form-level autosave that listens for bubbling
+  // change events. A React-controlled `value=` never emits one, so an add/remove
+  // was silently lost (audit R3 #1). Mirror DateField: uncontrolled + a ref, and
+  // dispatch a native change on every user edit (but not on mount).
+  const idsRef = useRef<HTMLInputElement>(null);
+  const customRef = useRef<HTMLInputElement>(null);
+  const firstSync = useRef(true);
+  useEffect(() => {
+    const a = idsRef.current;
+    const b = customRef.current;
+    if (a) a.value = idsJson;
+    if (b) b.value = customJson;
+    if (firstSync.current) {
+      firstSync.current = false;
+      return; // don't autosave on initial mount
+    }
+    a?.dispatchEvent(new Event("change", { bubbles: true }));
+    b?.dispatchEvent(new Event("change", { bubbles: true }));
+  }, [idsJson, customJson]);
+
   const addRow = (r: Row) => {
     setSelected((prev) => [...prev, r]);
     setQuery("");
@@ -407,7 +427,7 @@ export function ExclusionPicker({
               }
             }}
             disabled={!customDraft.trim()}
-            className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-600 min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
           >
             + Add
           </button>
@@ -421,8 +441,8 @@ export function ExclusionPicker({
       </div>
 
       {/* Hidden JSON payloads for form submit. */}
-      <input type="hidden" name={`${namePrefix}exclusion_ids`} value={idsJson} />
-      <input type="hidden" name={`${namePrefix}custom_exclusions`} value={customJson} />
+      <input ref={idsRef} type="hidden" name={`${namePrefix}exclusion_ids`} defaultValue={idsJson} />
+      <input ref={customRef} type="hidden" name={`${namePrefix}custom_exclusions`} defaultValue={customJson} />
     </div>
   );
 }

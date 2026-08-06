@@ -62,7 +62,7 @@ function fmtCents(c: number): string {
 }
 
 const CELL_BASE =
-  "w-full px-1.5 py-1 border rounded text-[12px] bg-surface focus:outline-none focus:ring-1 min-h-[44px]";
+  "w-full px-1.5 py-1 border rounded text-base sm:text-[12px] bg-surface focus:outline-none focus:ring-1 min-h-[44px]";
 const CELL_OK = `${CELL_BASE} border-ppp-charcoal-200 focus:ring-cc-brand-500/50`;
 const CELL_BAD = `${CELL_BASE} border-rose-400 ring-1 ring-rose-300 focus:ring-rose-400`;
 

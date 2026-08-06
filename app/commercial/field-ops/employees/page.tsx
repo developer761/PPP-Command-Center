@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
@@ -153,7 +154,7 @@ export default async function FieldOpsEmployeesPage({
           <label className="block"><span className={LABEL_CLS}>Clock Station PIN (4 digits, optional)</span>
             <input name="clock_pin" inputMode="numeric" pattern="\d{4}" maxLength={4} placeholder="e.g. 1234" className={INPUT_CLS} /></label>
         </div>
-        <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add crew member</button>
+        <PendingSubmitButton pendingLabel="Adding…" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] disabled:opacity-60 touch-manipulation">Add crew member</PendingSubmitButton>
       </form>
 
       {/* List */}
@@ -196,7 +197,7 @@ export default async function FieldOpsEmployeesPage({
                 <form action={toggleActiveAction} className="px-4 pb-4">
                   <input type="hidden" name="id" value={e.id} />
                   <input type="hidden" name="active" value={e.active ? "0" : "1"} />
-                  <button type="submit" className={`text-[12px] font-semibold ${e.active ? "text-rose-600 hover:text-rose-700" : "text-ppp-green-700 hover:text-ppp-green-800"}`}>{e.active ? "Deactivate" : "Reactivate"}</button>
+                  <button type="submit" className={`inline-flex items-center px-3 min-h-[44px] rounded-lg border text-[12px] font-semibold touch-manipulation ${e.active ? "border-rose-200 text-rose-600 hover:bg-rose-50" : "border-ppp-green-200 text-ppp-green-700 hover:bg-ppp-green-50"}`}>{e.active ? "Deactivate" : "Reactivate"}</button>
                 </form>
               </details>
             </li>

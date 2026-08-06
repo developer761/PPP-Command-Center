@@ -686,8 +686,11 @@ async function deleteProposalAction(formData: FormData) {
       `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
     );
   }
+  // Land straight on the deal's Proposals view (the deleted revision is simply
+  // gone from the list = the feedback). Going via .../proposal?deleted=1 dropped
+  // the flag on its 302 to the account page, so the old flow gave no context (#20).
   redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal?deleted=1`
+    `/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=proposals#deal-proposals`
   );
 }
 
@@ -1253,7 +1256,7 @@ export default async function ProposalEditorPage({
                 <ConfirmSubmitButton
                   message={`Mark R${proposal.revision_number} WON? This also flips the opportunity to Pre-Sale Closed · Won. You'll be able to start the project next.`}
                   pendingLabel="Marking won…"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-600 shadow-sm min-h-[40px] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 transition-colors shadow-sm min-h-[44px] disabled:opacity-50 touch-manipulation"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="20 6 9 17 4 12" />

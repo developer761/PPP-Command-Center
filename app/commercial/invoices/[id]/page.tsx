@@ -48,6 +48,7 @@ import {
 } from "@/lib/commercial/invoices/milestones";
 import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
 import { DateField } from "@/components/commercial/date-field";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { InvoiceAttachments } from "@/components/commercial/invoice-attachments";
 import {
   deriveInvoiceStatus,
@@ -1374,12 +1375,13 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       <input type="hidden" name="invoice_id" value={invoice.id} />
                             <input type="hidden" name="from" value={fromRaw ?? ""} />
                       <input type="hidden" name="payment_id" value={p.id} />
-                      <button
-                        type="submit"
+                      <ConfirmSubmitButton
+                        message="Remove this recorded payment? This permanently deletes it — the invoice balance and status will recalculate."
+                        pendingLabel="Removing…"
                         className="inline-flex items-center justify-center min-h-[44px] px-3 rounded-lg text-rose-700 text-[11px] font-semibold hover:bg-rose-50 touch-manipulation"
                       >
                         Remove
-                      </button>
+                      </ConfirmSubmitButton>
                     </form>
                   )}
                 </div>
@@ -1558,7 +1560,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                             </div>
                             <div>
                               <span className={LABEL_CLS}>Paid on</span>
-                              <DateField name="paid_at" placeholder="Pick a date" className="mt-1" />
+                              <DateField name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Pick a date" className="mt-1" />
                             </div>
                             <div>
                               <label className={LABEL_CLS} htmlFor={`mp-method-${m.id}`}>Method</label>
@@ -1597,7 +1599,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                               <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                               <input type="hidden" name="payment_id" value={pp.id} />
-                              <button type="submit" className="text-ppp-charcoal-300 hover:text-rose-600 min-h-[44px] sm:min-h-[28px] px-1" title="Remove this payment" aria-label="Remove payment">×</button>
+                              <ConfirmSubmitButton message="Remove this recorded payment? This permanently deletes it — the balance recalculates." pendingLabel="…" className="inline-flex items-center justify-center text-ppp-charcoal-300 hover:text-rose-600 min-h-[44px] sm:min-h-[28px] px-1 touch-manipulation" ariaLabel="Remove payment">×</ConfirmSubmitButton>
                             </form>
                           </li>
                         ))}

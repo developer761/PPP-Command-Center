@@ -22,6 +22,8 @@ type Props = {
    *  and a confirm-guarded secondary action (e.g. Save row + Remove)
    *  without nesting forms. */
   formAction?: (formData: FormData) => void | Promise<void>;
+  /** Accessible name — use when the visible children are a glyph (e.g. "×"). */
+  ariaLabel?: string;
   children: React.ReactNode;
 };
 
@@ -30,6 +32,7 @@ export default function ConfirmSubmitButton({
   className,
   pendingLabel = "Working…",
   formAction,
+  ariaLabel,
   children,
 }: Props) {
   const [pending, setPending] = useState(false);
@@ -38,6 +41,7 @@ export default function ConfirmSubmitButton({
       type="submit"
       formAction={formAction}
       className={className}
+      aria-label={ariaLabel}
       disabled={pending}
       onClick={(e) => {
         if (!window.confirm(message)) {

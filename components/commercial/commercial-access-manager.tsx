@@ -453,13 +453,16 @@ function UserRow({
     }
   };
 
-  const toggleActive = () =>
+  const toggleActive = () => {
+    // Deactivating cuts off a login immediately — confirm it (reactivating is safe).
+    if (user.is_active && !window.confirm(`Deactivate ${label}? They will no longer be able to sign in.`)) return;
     patch(
       { action: "active", is_active: !user.is_active },
       user.is_active
         ? `${label} deactivated — they can no longer sign in.`
         : `${label} reactivated.`
     );
+  };
 
   const doReset = async () => {
     if (newPw.length < 8) {
@@ -574,7 +577,7 @@ function UserRow({
                 type="button"
                 onClick={toggleActive}
                 disabled={busy}
-                className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[36px] ${
+                className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold disabled:opacity-60 min-h-[44px] sm:min-h-[36px] touch-manipulation ${
                   user.is_active
                     ? "border border-rose-200 text-rose-700 hover:bg-rose-50"
                     : "border border-emerald-200 text-emerald-700 hover:bg-emerald-50"

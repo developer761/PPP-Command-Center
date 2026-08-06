@@ -461,10 +461,10 @@ function PersonPanel({
               <li key={s.assignment_id} className="border border-ppp-charcoal-100 rounded-lg p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{s.job_name}{s.prevailing_wage && <span className="ml-1 text-[9px] font-bold text-amber-700">PW</span>}</div>
+                    <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{s.job_name}{s.prevailing_wage && <span className="ml-1 align-middle inline-flex items-center rounded px-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy">PW</span>}</div>
                     <div className="text-[11px] font-mono text-ppp-charcoal-500 truncate">{s.job_code}</div>
                   </div>
-                  <button onClick={() => onRemove(s.assignment_id)} disabled={saving} className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-50 shrink-0 min-h-[40px] px-1">Remove</button>
+                  <button onClick={() => { if (window.confirm("Remove this shift? They'll be unscheduled and their clock-in reminder cancelled.")) onRemove(s.assignment_id); }} disabled={saving} className="inline-flex items-center text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-50 shrink-0 min-h-[44px] px-2 touch-manipulation">Remove</button>
                 </div>
                 <div className="text-[12px] text-ppp-charcoal-600 mt-1.5">{s.start_time ? `${fmtTime12(s.start_time)}${s.end_time ? ` – ${fmtTime12(s.end_time)}` : ""} · ` : ""}{s.scheduled_hours}h</div>
                 {s.site && <div className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">{s.site}</div>}
