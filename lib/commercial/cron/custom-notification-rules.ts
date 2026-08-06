@@ -114,8 +114,23 @@ export async function runCustomNotificationRules(): Promise<Result> {
             link: m.link,
             channel: rule.channel,
           });
-          if (res.written) out.sent += 1;
-          else out.skipped += 1;
+          if (res.ok) {
+            // ok=true: delivered (written) OR a deliberate skip (inactive owner /
+            // dedup) — either way the claim rightly stays so we don't re-fire.
+            if (res.written) out.sent += 1;
+            else out.skipped += 1;
+          } else {
+            // ok=false: a TRANSIENT delivery failure. Roll back the claim so the
+            // next run retries — claim-first would otherwise drop this alert
+            // permanently (audit #27).
+            await sb
+              .from("commercial_notification_rule_fires")
+              .delete()
+              .eq("rule_id", rule.id)
+              .eq("entity_id", m.entityId);
+            out.skipped += 1;
+            out.errors.push(`rule ${rule.id.slice(0, 8)} deliver: transient failure — claim rolled back for retry`);
+          }
         }
         await touchEvaluated(sb, rule.id);
       } catch (err) {
@@ -152,13 +167,22 @@ async function evaluateRule(
   // The (rule, entity) fire-log still guarantees each event fires exactly once.
   const recentCutoffIso = new Date(nowMs - RECENT_EVENT_WINDOW_DAYS * 86_400_000).toISOString();
 
+  // Soft-deleting an ACCOUNT doesn't cascade to its invoices/opps (they stay
+  // live), so a custom rule would keep firing about a buried customer. Drop any
+  // match whose parent account is soft-deleted (audit #18).
+  const { data: delAccts } = await sb
+    .from("commercial_accounts")
+    .select("id")
+    .not("deleted_at", "is", null);
+  const deletedAccountIds = new Set(((delAccts ?? []) as Array<{ id: string }>).map((a) => a.id));
+
   switch (rule.trigger) {
     case "invoice_overdue": {
       // Exclude soft-deleted + drafts (a draft was never sent, so it isn't
       // "overdue"); oldest-due first so the daily cap converges deterministically.
       const { data } = await sb
         .from("commercial_invoices")
-        .select("id, invoice_number, due_at, balance_cents, status")
+        .select("id, account_id, invoice_number, due_at, balance_cents, status")
         .not("status", "in", "(void,paid,draft)")
         .gt("balance_cents", 0)
         .not("due_at", "is", null)
@@ -167,7 +191,9 @@ async function evaluateRule(
         .order("due_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, "invoice_overdue");
-      return ((data ?? []) as Array<{ id: string; invoice_number: string; due_at: string; balance_cents: number }>).map((i) => ({
+      return ((data ?? []) as Array<{ id: string; account_id: string; invoice_number: string; due_at: string; balance_cents: number }>)
+        .filter((i) => !deletedAccountIds.has(i.account_id))
+        .map((i) => ({
         entityId: i.id,
         title: `Invoice ${i.invoice_number} is ${rule.threshold_days}+ days past due`,
         body: `Balance ${formatCents(i.balance_cents)} — due ${fmtDate(i.due_at)}.`,
@@ -192,8 +218,9 @@ async function evaluateRule(
       return ((data ?? []) as unknown as Row[])
         .map((p) => {
           const opp = Array.isArray(p.opportunity) ? p.opportunity[0] ?? null : p.opportunity;
-          // Skip deleted OR archived parent deals (archived = deliberately buried).
-          if (!opp || opp.deleted_at || opp.archived_at) return null;
+          // Skip deleted OR archived parent deals (archived = deliberately buried),
+          // and deals under a soft-deleted account (audit #18).
+          if (!opp || opp.deleted_at || opp.archived_at || deletedAccountIds.has(opp.account_id)) return null;
           const name = derivedOppName({ ...opp, title: opp.title ?? "" }, null);
           return {
             entityId: p.id,
@@ -216,7 +243,9 @@ async function evaluateRule(
         .order("follow_up_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, "followup_due");
-      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; follow_up_at: string }>).map((o) => ({
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; follow_up_at: string }>)
+        .filter((o) => !deletedAccountIds.has(o.account_id))
+        .map((o) => ({
         // Composite key: rescheduling to a new date re-fires.
         entityId: `${o.id}:${o.follow_up_at}`,
         title: `Follow-up due: ${derivedOppName({ ...o, title: o.title ?? "" }, null)}`,
@@ -227,7 +256,7 @@ async function evaluateRule(
     case "opp_no_activity": {
       const { data } = await sb
         .from("commercial_opportunities")
-        .select("id, title, title_override, client_name, property_street, updated_at")
+        .select("id, account_id, title, title_override, client_name, property_street, updated_at")
         .in("status", OPEN_OPP_STATUSES as readonly string[])
         .lt("updated_at", cutoffIso)
         .is("deleted_at", null)
@@ -235,7 +264,9 @@ async function evaluateRule(
         .order("updated_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, "opp_no_activity");
-      return ((data ?? []) as Array<{ id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; updated_at: string }>).map((o) => ({
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; updated_at: string }>)
+        .filter((o) => !deletedAccountIds.has(o.account_id))
+        .map((o) => ({
         // Composite key with the idle-since date so a deal that goes idle, is
         // worked (updated_at bumps), then idle again RE-fires — a bare opp id
         // fired once for all time (fire rows are permanent).
@@ -252,7 +283,7 @@ async function evaluateRule(
       const dueByIso = new Date(nowMs + rule.threshold_days * 86_400_000).toISOString();
       const { data } = await sb
         .from("commercial_invoices")
-        .select("id, invoice_number, due_at, balance_cents, status")
+        .select("id, account_id, invoice_number, due_at, balance_cents, status")
         .not("status", "in", "(void,paid,draft)")
         .gt("balance_cents", 0)
         .not("due_at", "is", null)
@@ -262,7 +293,9 @@ async function evaluateRule(
         .order("due_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, "invoice_due_soon");
-      return ((data ?? []) as Array<{ id: string; invoice_number: string; due_at: string; balance_cents: number }>).map((i) => ({
+      return ((data ?? []) as Array<{ id: string; account_id: string; invoice_number: string; due_at: string; balance_cents: number }>)
+        .filter((i) => !deletedAccountIds.has(i.account_id))
+        .map((i) => ({
         entityId: i.id,
         title: `Invoice ${i.invoice_number} due within ${rule.threshold_days} days`,
         body: `Balance ${formatCents(i.balance_cents)} — due ${fmtDate(i.due_at)}.`,
@@ -273,7 +306,7 @@ async function evaluateRule(
       // Recently marked paid in full. paid_at is stamped on full payment.
       const { data } = await sb
         .from("commercial_invoices")
-        .select("id, invoice_number, total_cents, paid_at, status")
+        .select("id, account_id, invoice_number, total_cents, paid_at, status")
         .eq("status", "paid")
         .not("paid_at", "is", null)
         .gte("paid_at", recentCutoffIso)
@@ -281,7 +314,9 @@ async function evaluateRule(
         .order("paid_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, "invoice_paid");
-      return ((data ?? []) as Array<{ id: string; invoice_number: string; total_cents: number | null; paid_at: string }>).map((i) => ({
+      return ((data ?? []) as Array<{ id: string; account_id: string; invoice_number: string; total_cents: number | null; paid_at: string }>)
+        .filter((i) => !deletedAccountIds.has(i.account_id))
+        .map((i) => ({
         entityId: i.id,
         title: `Invoice ${i.invoice_number} paid in full`,
         body: `${i.total_cents != null ? formatCents(i.total_cents) + " — " : ""}paid ${fmtDate(i.paid_at)}.`,
@@ -301,7 +336,9 @@ async function evaluateRule(
         .order("decided_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, "deal_won");
-      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>).map((o) => ({
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>)
+        .filter((o) => !deletedAccountIds.has(o.account_id))
+        .map((o) => ({
         entityId: o.id,
         title: `Deal won: ${derivedOppName({ ...o, title: o.title ?? "" }, null)}`,
         body: `Marked won ${fmtDate(o.decided_at)}.`,
@@ -321,7 +358,9 @@ async function evaluateRule(
         .order("decided_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, "deal_lost");
-      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>).map((o) => ({
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>)
+        .filter((o) => !deletedAccountIds.has(o.account_id))
+        .map((o) => ({
         entityId: o.id,
         title: `Deal lost: ${derivedOppName({ ...o, title: o.title ?? "" }, null)}`,
         body: `Marked lost ${fmtDate(o.decided_at)}.`,

@@ -463,7 +463,7 @@ export async function changeOpportunityStatus(
     };
     const target = deriveTargetProposalStatus();
     if (target) {
-      const { updateProposalStatus } = await import(
+      const { updateProposalStatus, requestProposalApproval } = await import(
         "@/lib/commercial/proposals/db"
       );
       // Karan 2026-07-15 (Option A): cascade only affects the LATEST
@@ -488,6 +488,24 @@ export async function changeOpportunityStatus(
         (propRows as { id: string; status: string; revision_number: number }[] | null) ?? [];
       for (const p of proposals) {
         if (p.status === target.to) continue;
+        // Dragging a deal to "Proposal Drafted" flips its DRAFT proposal to
+        // pending_approval — route that through requestProposalApproval (not the
+        // bare status flip) so the ≥1-inclusion guard runs, the requester is
+        // stamped, AND the designated approver actually gets the "please approve"
+        // bell + email. A bare updateProposalStatus left approvers un-notified,
+        // so an approval could sit silently forever (audit #14).
+        if (target.to === "pending_approval" && p.status === "draft" && input.acting_user_id) {
+          const req = await requestProposalApproval({
+            proposal_id: p.id,
+            actor_user_id: input.acting_user_id,
+          });
+          if (!req.ok) {
+            console.warn(
+              `[changeOpportunityStatus] approval-request cascade failed for ${p.id} (opp ${input.opp_id}): ${req.error}`
+            );
+          }
+          continue;
+        }
         const flip = await updateProposalStatus({
           id: p.id,
           to_status: target.to as Parameters<typeof updateProposalStatus>[0]["to_status"],

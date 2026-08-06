@@ -400,6 +400,28 @@ export async function getLifetimeCompetitorStats(): Promise<Map<string, Competit
     `)
     .not("competitor_id", "is", null);
 
+  // Resolve merge chains: a debrief still points at the SOURCE competitor after a
+  // merge (mergeCompetitor re-points the tombstone, not the debrief rows), so
+  // fold each row's stats into its SURVIVING competitor. Otherwise a merged-away
+  // competitor keeps its own stranded win-rate and the survivor is missing that
+  // history (audit #15).
+  const { data: compRows } = await sb
+    .from("commercial_competitors")
+    .select("id, merged_into_competitor_id");
+  const mergeInto = new Map<string, string | null>();
+  for (const c of (compRows ?? []) as { id: string; merged_into_competitor_id: string | null }[]) {
+    mergeInto.set(c.id, c.merged_into_competitor_id);
+  }
+  const resolveTerminus = (id: string): string => {
+    let cur = id;
+    const seen = new Set<string>();
+    while (mergeInto.get(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      cur = mergeInto.get(cur)!;
+    }
+    return cur;
+  };
+
   type Row = {
     competitor_id: string;
     outcome: "won" | "lost" | "no_bid";
@@ -419,7 +441,8 @@ export async function getLifetimeCompetitorStats(): Promise<Map<string, Competit
   for (const r of ((data as Row[] | null) ?? [])) {
     const oppRow = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
     if (oppRow?.deleted_at) continue; // skip debriefs whose opp was soft-deleted
-    const cur = byId.get(r.competitor_id) ?? {
+    const cid = resolveTerminus(r.competitor_id); // fold merged sources into the survivor
+    const cur = byId.get(cid) ?? {
       won_count: 0,
       lost_count: 0,
       no_bid_count: 0,
@@ -442,14 +465,14 @@ export async function getLifetimeCompetitorStats(): Promise<Map<string, Competit
       // Tally deciding_factor for lost debriefs only — we care about
       // "why we lose", not "why we win" on this surface.
       if (r.deciding_factor) {
-        const inner = factorCounts.get(r.competitor_id) ?? new Map<string, number>();
+        const inner = factorCounts.get(cid) ?? new Map<string, number>();
         inner.set(r.deciding_factor, (inner.get(r.deciding_factor) ?? 0) + 1);
-        factorCounts.set(r.competitor_id, inner);
+        factorCounts.set(cid, inner);
       }
     } else if (r.outcome === "no_bid") cur.no_bid_count++;
     cur.total_count++;
     if (!cur.last_seen_at || r.debriefed_at > cur.last_seen_at) cur.last_seen_at = r.debriefed_at;
-    byId.set(r.competitor_id, cur);
+    byId.set(cid, cur);
   }
   // Compute win rate = won / (won + lost). No-bid excluded because it's not
   // a head-to-head. If no head-to-heads exist we leave win_rate_pct null.
