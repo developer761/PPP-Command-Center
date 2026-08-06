@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
@@ -197,7 +198,17 @@ export default async function FieldOpsEmployeesPage({
                 <form action={toggleActiveAction} className="px-4 pb-4">
                   <input type="hidden" name="id" value={e.id} />
                   <input type="hidden" name="active" value={e.active ? "0" : "1"} />
-                  <button type="submit" className={`inline-flex items-center px-3 min-h-[44px] rounded-lg border text-[12px] font-semibold touch-manipulation ${e.active ? "border-rose-200 text-rose-600 hover:bg-rose-50" : "border-ppp-green-200 text-ppp-green-700 hover:bg-ppp-green-50"}`}>{e.active ? "Deactivate" : "Reactivate"}</button>
+                  {e.active ? (
+                    <ConfirmSubmitButton
+                      message={`Deactivate ${e.display_name || `${e.first_name} ${e.last_name}`.trim() || "this crew member"}? They'll be removed from the scheduling picker and their clock-in magic link stops working.`}
+                      pendingLabel="…"
+                      className="inline-flex items-center px-3 min-h-[44px] rounded-lg border border-rose-200 text-[12px] font-semibold text-rose-600 hover:bg-rose-50 touch-manipulation"
+                    >
+                      Deactivate
+                    </ConfirmSubmitButton>
+                  ) : (
+                    <button type="submit" className="inline-flex items-center px-3 min-h-[44px] rounded-lg border border-ppp-green-200 text-[12px] font-semibold text-ppp-green-700 hover:bg-ppp-green-50 touch-manipulation">Reactivate</button>
+                  )}
                 </form>
               </details>
             </li>

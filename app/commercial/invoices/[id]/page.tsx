@@ -1161,8 +1161,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         </div>
       </header>
 
-      {/* Status actions */}
-      {nextStatuses.length > 0 && !isVoid && (
+      {/* Status actions — shown for VOID too (void→draft is an allowed transition),
+          so a mis-voided invoice has a recovery path instead of a dead-end (R6 #5). */}
+      {nextStatuses.length > 0 && (
         <section className="bg-surface border border-ppp-blue-200 rounded-xl p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
             <div>
@@ -1186,7 +1187,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       : "bg-ppp-blue-600 text-white hover:bg-ppp-blue-700 active:bg-ppp-blue-800 shadow-sm shadow-ppp-blue-600/30"
                   }`}
                 >
-                  {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : invoiceStatusLabel(s)}
+                  {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : s === "draft" && invoice.status === "void" ? "Reopen as draft" : invoiceStatusLabel(s)}
                 </button>
               </form>
             ))}

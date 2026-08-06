@@ -1267,7 +1267,10 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         {/* Profitability — THIS deal's P&L in the same layout as the GC (account)
             and platform (dashboard): Gross/Costs/Net/Margin cards + monthly billed
             line + margin gauge + cost donut. Scope-labeled so it never reads as
-            company-wide. Same definitions everywhere, so it reconciles up a level. */}
+            company-wide. Same definitions everywhere, so it reconciles up a level.
+            Only on the Overview tab — the dedicated P&L tab (DealPnLView) renders
+            an identical block, so ungated it showed twice on that tab (R6 #1). */}
+        {dealTab === "overview" && (
         <section className="mt-4 rounded-xl border border-ppp-charcoal-100 p-4 sm:p-5">
           <div className="flex items-center justify-between gap-2 mb-3">
             <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Profitability</h3>
@@ -1303,6 +1306,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             </div>
           )}
         </section>
+        )}
         {/* Retainage held by the GC — real money owed back at closeout, the
             number a PM chases hardest. Only shows once an AIA app withholds it
             (2026-08 PM UX walk). */}
@@ -1702,6 +1706,7 @@ async function ProjectToolsPanel({
           sp={{
             co_ok: sp?.co_ok,
             error: sp?.error,
+            heads_up: sp?.heads_up,
             edit_co: sp?.edit_co,
             co_title: sp?.co_title,
             co_amt: sp?.co_amt,
@@ -5170,7 +5175,7 @@ function AccountOpportunityRow({
         <div className="px-4 pb-3 -mt-1">
           <Link
             href={`/commercial/accounts/${accountId}/debrief/${opp.id}`}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold min-h-[28px] ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold min-h-[44px] sm:min-h-[28px] ${
               opp.win_loss_debriefed_at
                 ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
                 : "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
@@ -5204,7 +5209,7 @@ function AccountOpportunityRow({
             defaultValue=""
             required
             aria-label={`Move ${opp.title} to next stage`}
-            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[36px]`}
+            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
             style={SELECT_BG_STYLE}
           >
             <option value="" disabled>
@@ -7399,7 +7404,7 @@ async function DealEditSheet({
             </span>
             <Link
               href={`/commercial/accounts/${accountId}/debrief/${deal.id}`}
-              className={`shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold min-h-[32px] ${
+              className={`shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold min-h-[44px] sm:min-h-[32px] ${
                 deal.win_loss_debriefed_at
                   ? "bg-surface border border-emerald-300 text-emerald-800 hover:bg-emerald-100"
                   : "bg-surface border border-amber-300 text-amber-800 hover:bg-amber-100"

@@ -184,7 +184,7 @@ export default async function ArchivedDealsPage({
             </span>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-md bg-cc-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md bg-cc-brand-600 px-3 py-2 min-h-[44px] touch-manipulation text-sm font-medium text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 disabled:opacity-50"
             >
               Unarchive selected
             </button>
@@ -323,7 +323,7 @@ export default async function ArchivedDealsPage({
                     <button
                       type="submit"
                       form={`unarchive-one-${o.id}`}
-                      className="mt-2 inline-flex items-center rounded border border-ppp-charcoal-200 px-2 py-1 text-xs font-medium text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                      className="mt-2 inline-flex items-center rounded border border-ppp-charcoal-200 px-3 py-2 min-h-[44px] touch-manipulation text-xs font-medium text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                     >
                       Unarchive
                     </button>

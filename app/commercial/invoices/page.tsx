@@ -1045,6 +1045,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
           {accountIdFilter && <input type="hidden" name="account_id" value={accountIdFilter} />}
           {opportunityIdFilter && <input type="hidden" name="opportunity_id" value={opportunityIdFilter} />}
+          {agingFilter && <input type="hidden" name="aging" value={agingFilter} />}
 
           {/* Status pills — visible on mobile too (Alex reviews AR on his
               phone; "show me what's overdue/unpaid" must be reachable). The
