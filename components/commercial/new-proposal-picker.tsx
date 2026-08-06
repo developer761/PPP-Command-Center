@@ -260,7 +260,7 @@ export default function NewProposalPicker({
                 <ul className="max-h-64 overflow-y-auto divide-y divide-ppp-charcoal-100 border border-ppp-charcoal-100 rounded-lg">
                   {dealsForAccount.length === 0 ? (
                     <li className="px-3 py-3 text-[12px] text-ppp-charcoal-500 italic text-center">
-                      No open deals on this customer.
+                      {dealQuery.trim() ? "No opportunities match your search." : "No open deals on this customer."}
                     </li>
                   ) : (
                     dealsForAccount.map((d) => (

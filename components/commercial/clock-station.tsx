@@ -96,7 +96,7 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
   if (!day) {
     return (
       <div className="max-w-xs mx-auto text-center">
-        <button onClick={reset} className="text-[12px] font-semibold text-ppp-charcoal-500 mb-3">&larr; Back</button>
+        <button onClick={reset} className="inline-flex items-center min-h-[44px] px-2 -ml-2 text-[12px] font-semibold text-ppp-charcoal-500 mb-3 touch-manipulation">&larr; Back</button>
         <p className="text-[15px] font-bold text-ppp-charcoal mb-3">{sel.display_name} — enter your PIN</p>
         <input
           type="password"
@@ -118,7 +118,7 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
   const open = day.openPunch;
   return (
     <div className="max-w-sm mx-auto">
-      <button onClick={reset} className="text-[12px] font-semibold text-ppp-charcoal-500 mb-3">&larr; Not you? Go back</button>
+      <button onClick={reset} className="inline-flex items-center min-h-[44px] px-2 -ml-2 text-[12px] font-semibold text-ppp-charcoal-500 mb-3 touch-manipulation">&larr; Not you? Go back</button>
       {error && <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[13px] text-rose-700 mb-3">{error}</div>}
       {open ? (
         <div className="rounded-2xl bg-ppp-green-50 border border-ppp-green-100 p-5 text-center">

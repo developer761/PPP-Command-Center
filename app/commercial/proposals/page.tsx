@@ -172,9 +172,12 @@ function toneForStatus(status: ProposalStatus): ColumnTone {
 }
 
 function formatDollars(cents: number): string {
+  // 0 OR 2 decimals, never 1 — min:0/max:2 rendered "$12,345.5" for an X.X0 total,
+  // disagreeing with the editor's 2-decimal formatter (R7 #5).
+  const whole = cents % 100 === 0;
   return `$${(cents / 100).toLocaleString("en-US", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
   })}`;
 }
 
@@ -1051,7 +1054,7 @@ function DealMiniKanban({
   };
   accountId: string;
 }) {
-  const dealHref = `/commercial/accounts/${accountId}?tab=deals&sub=opportunities#deal-row-${deal.dealId}`;
+  const dealHref = `/commercial/accounts/${accountId}?tab=opportunities#deal-row-${deal.dealId}`;
   // Karan 2026-07-16: header now says "current · N older" instead of
   // "N revs" — makes it explicit that older revisions are on the account
   // Proposals tab, not clogging the kanban.

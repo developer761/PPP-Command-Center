@@ -93,7 +93,7 @@ export default async function OperatingCompanyPage({
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Saved. New documents will use this identity.</div>
       )}
       {sp.error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{decodeURIComponent(sp.error)}</div>
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{sp.error}</div>
       )}
 
       <form action={saveAction} className="space-y-5">

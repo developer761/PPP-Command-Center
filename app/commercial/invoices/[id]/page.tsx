@@ -28,6 +28,7 @@ import {
   updateInvoiceCoreFields,
   getInvoiceContext,
   listCommercialInvoices,
+  changeOrderLineCentsByInvoice,
 } from "@/lib/commercial/invoices/db";
 import {
   changeInvoiceStatus,
@@ -677,8 +678,14 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   const proposalIssuedSiblings = proposalSiblings.filter((s) => s.status !== "draft");
   // Contract math is PRE-TAX (proposal total = Σ line items, no tax), so bill-
   // against-proposal sums invoice SUBTOTALS — using tax-inclusive totals would
-  // overstate "billed of contract" on any taxed invoice.
-  const billedAgainstProposalCents = proposalIssuedSiblings.reduce((s, i) => s + i.subtotal_cents, 0);
+  // overstate "billed of contract" on any taxed invoice. Subtract any billed
+  // change-order lines (they add to the invoice subtotal but are NOT part of the
+  // base proposal contract) so this matches the deal invoice builder and can't
+  // exceed 100% (R7 #4).
+  const coLineByInvoice = await changeOrderLineCentsByInvoice(proposalIssuedSiblings.map((s) => s.id));
+  const coLineTotalCents = [...coLineByInvoice.values()].reduce((s, v) => s + v, 0);
+  const billedAgainstProposalCents =
+    proposalIssuedSiblings.reduce((s, i) => s + i.subtotal_cents, 0) - coLineTotalCents;
   const proposalContractCents = invoice.proposal_total_cents_at_bill ?? linkedProposal?.total_cents ?? null;
   const thisInvoiceProposalIndex = proposalSiblings.findIndex((s) => s.id === invoice.id);
   // Karan 2026-07-07: sibling-invoice nav. If this opp has multiple

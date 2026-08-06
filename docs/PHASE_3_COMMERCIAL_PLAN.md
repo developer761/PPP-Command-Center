@@ -168,13 +168,15 @@ _From `project_katie_notes_remaining_2026_08`, `project_katie_general_notes_2026
 - [ ] **View-only access role** (deferred from R8, Karan 2026-08-04) — a 4th least-privilege role (see-all, do-nothing). Fail-closed: migration adds 'viewer' to the role CHECK, add `requireCommercialWrite` gate, sweep EVERY mutation (~44 actions + 22 API routes) classifying read-vs-write, hide write UI via `capabilitiesFor`, then an adversarial pass proving no write path is unguarded. Ship complete or not at all.
 - [ ] **Slack integration** (deferred from Katie backlog, Karan 2026-08-04) — add a "slack" channel to the notification-rule builder (`RULE_CHANNELS` is bell/email/both today) + a workspace incoming-webhook, so commercial notifications can fan into Slack. Only if the Tomco team uses Slack.
 - [ ] **Lien-waiver template store** (deferred from Katie backlog, Karan 2026-08-04) — a library of blank waiver templates (conditional/unconditional × progress/final) generated + pre-filled from invoice data, instead of today's per-payment upload. Only if Tomco issues its own waivers (confirm with Katie — many GCs supply their own form).
+- [ ] **Proposal PDF → Operating-Company identity** (deferred from the 2026-08-06 audit, R4 #7) — the customer proposal PDF deliberately renders Tomco's fixed 1:1 letterhead (bundled logo + hand-matched format), NOT the Operating-Company identity every other doc uses. Only worth building if PPP rebrands or runs a **second operating company**; must be reference-tested against Tomco's real proposal so the daily customer document doesn't shift. (Also surfaces the collected-but-unused `fax` + `legal_name` fields.)
+- [ ] **Proposal editor "Back to Proposals" breadcrumb persistence** (deferred from the 2026-08-06 audit, R4 #11, LOW) — the editor honors the `?back=/commercial/proposals` origin only on the initial GET; after any save/approval/error action it falls back to the deal's proposals (a valid place, not a dead-end). Full fix = threading `?back` through 15+ approval/error redirect actions + their forms — disproportionate for the payoff, parked here.
 
-## ⬜ ★ ENDGAME — full platform audit (do NOT declare done until all checked)
-- [ ] Money / KPI / backend audit — every finding fixed
-- [ ] UI/UX + flow audit — every finding fixed
-- [ ] Mobile audit — every finding fixed
-- [ ] Accessibility audit — every finding fixed
-- [ ] Security audit — every finding fixed
+## 🟡 ★ ENDGAME — full platform audit (2026-08-06: 7 orchestrated, adversarially-verified rounds — ~100 findings fixed)
+- [x] Money / KPI / backend audit — every finding fixed (rounds 1–2 + safety-net lanes every round; AIA/CO/P&L reconcile, deal ⊂ account ⊂ platform)
+- [x] UI/UX + flow audit — every finding fixed (rounds 3–7; confirmations, loading states, view-state, cross-page flow)
+- [x] Mobile audit — every finding fixed (375px sweeps every round; tap-targets, overflow, iOS-zoom fonts)
+- [ ] Accessibility audit — every finding fixed (**not yet a dedicated pass** — a11y is the one remaining ENDGAME lane; focus rings + labels + contrast micro-sweep)
+- [x] Security audit — every finding fixed (round 1 security lane + safety-security lane every round; authz gates, IDOR, public-endpoint guards, soft-delete PDF gating)
 
 ## ⬜ ★ ENDGAME — start-to-finish SMOKE TEST (desktop AND mobile, expected result each step)
 - [ ] Add a new GC (account)

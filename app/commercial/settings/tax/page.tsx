@@ -175,7 +175,7 @@ export default async function TaxJurisdictionsAdminPage({
       )}
       {sp.error && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 text-sm text-rose-800">
-          {decodeURIComponent(sp.error)}
+          {sp.error}
         </div>
       )}
 

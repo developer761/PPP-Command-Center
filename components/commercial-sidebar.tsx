@@ -105,7 +105,7 @@ const navSections: NavSection[] = [
     // (one entry -> card grid). Surfaces build out phase by phase.
     heading: "Field Ops",
     items: [
-      { label: "Field Ops", href: "/commercial/field-ops", icon: <IconHardHat /> },
+      { label: "Field Ops", href: "/commercial/field-ops", icon: <IconHardHat />, adminOnly: true },
     ],
   },
   {
