@@ -126,14 +126,48 @@ function buildBody(firstName: string, upcoming: UpDay[], link: string, ocName: s
 /** Atomically claim (employee, date, kind). Returns true if WE claimed it (so we
  *  should send), false if it was already claimed. The UNIQUE constraint is the
  *  real guard — safe even if two cron runs overlap. */
-async function claimSend(employeeId: string, workDate: string, kind: "day_of" | "clock_reminder" | "weekly"): Promise<boolean> {
+async function claimSend(employeeId: string, workDate: string, kind: "day_of" | "clock_reminder" | "weekly"): Promise<string | null> {
   const sb = commercialDb();
-  const { error } = await sb
+  const { data, error } = await sb
     .from("commercial_schedule_email_log")
     .insert({ employee_id: employeeId, work_date: workDate, kind })
     .select("id")
     .single();
-  return !error; // error (incl. unique violation) => already claimed
+  if (error) return null; // error (incl. unique violation) => already claimed
+  return (data as { id: string }).id;
+}
+
+/** Roll back a claim so a later run/edit can re-fire — used when the send fails
+ *  (transient Resend error) so a claim-before-send never permanently suppresses
+ *  a notification. */
+async function releaseClaim(employeeId: string, workDate: string, kind: "day_of" | "clock_reminder" | "weekly"): Promise<void> {
+  const sb = commercialDb();
+  await sb
+    .from("commercial_schedule_email_log")
+    .delete()
+    .eq("employee_id", employeeId)
+    .eq("work_date", workDate)
+    .eq("kind", kind);
+}
+
+/** Cancel a scheduled clock-in nudge + drop its claim so a start-time change
+ *  reschedules a fresh, correctly-timed nudge (and the stale one doesn't fire). */
+async function resetClockReminder(employeeId: string, workDate: string): Promise<void> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_schedule_email_log")
+    .select("id, resend_message_id")
+    .eq("employee_id", employeeId)
+    .eq("work_date", workDate)
+    .eq("kind", "clock_reminder")
+    .maybeSingle();
+  const row = data as { id: string; resend_message_id: string | null } | null;
+  if (!row) return;
+  if (row.resend_message_id) {
+    const { cancelScheduledEmail } = await import("@/lib/email/resend");
+    await cancelScheduledEmail(row.resend_message_id, "commercial");
+  }
+  await sb.from("commercial_schedule_email_log").delete().eq("id", row.id);
 }
 
 /** Has (employee, date, kind) already been claimed/sent? Read-only check. */
@@ -218,6 +252,10 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
     });
 
     // Schedule the 10-min-before clock-in nudge for the day's earliest start.
+    // Reset first: if this is an EDIT (start time moved), cancel the previously
+    // scheduled nudge + drop its claim so a fresh, correctly-timed one is queued
+    // instead of the old one firing at the wrong time.
+    await resetClockReminder(employeeId, workDate);
     const firstStart = shifts[0].jobs.map((j) => j.start).filter(Boolean).sort()[0] ?? null;
     if (firstStart) await scheduleClockReminder(employeeId, workDate, firstStart, emp, oc.name, link);
   } catch (err) {
@@ -240,14 +278,15 @@ async function scheduleClockReminder(
   if (!startUtc) return;
   const fireAt = new Date(Date.parse(startUtc) - CLOCK_LEAD_MIN * 60_000).toISOString();
   if (Date.parse(fireAt) <= Date.now()) return; // too late to nudge
-  if (!(await claimSend(employeeId, workDate, "clock_reminder"))) return; // already scheduled
+  const claimId = await claimSend(employeeId, workDate, "clock_reminder");
+  if (!claimId) return; // already scheduled
   const es = emp.preferred_language === "es";
   const t = fmtTime12(startTime);
   const body = es
     ? `Hola ${emp.first_name},\n\nTu turno empieza a las ${t}. Toca aqui para marcar entrada (y salida cuando termines):\n\n${link}\n\n- ${ocName}`
     : `Hi ${emp.first_name},\n\nYour shift starts at ${t}. Tap here to clock in (and clock out when you finish):\n\n${link}\n\n- ${ocName}`;
   const { sendEmail } = await import("@/lib/email/resend");
-  await sendEmail({
+  const sent = await sendEmail({
     channel: "commercial",
     to: emp.email,
     subject: es ? `Marca entrada - empieza a las ${t}` : `Clock in - shift starts at ${t}`,
@@ -256,6 +295,16 @@ async function scheduleClockReminder(
     ...(fromLine(ocName) ? { from: fromLine(ocName) } : {}),
     tags: [{ name: "kind", value: "crew_clock_reminder" }],
   });
+  if (sent.ok) {
+    // Store the Resend id so a later start-time change can cancel this exact
+    // scheduled send (see resetClockReminder). id may be null (accepted w/o id).
+    if (sent.id) {
+      await commercialDb().from("commercial_schedule_email_log").update({ resend_message_id: sent.id }).eq("id", claimId);
+    }
+  } else {
+    // Scheduling failed — release the claim so a later run reschedules it.
+    await releaseClaim(employeeId, workDate, "clock_reminder");
+  }
 }
 
 /* ── 3+4+5. Daily orchestrator (called by the commercial-daily cron) ───────── */
@@ -312,6 +361,9 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
         dayOf++;
       } catch (err) {
         console.warn(`[field-ops] day-of email failed for ${e.email}:`, err);
+        // Release the claim so a retry (or the next run) can re-fire — a transient
+        // Resend failure must not permanently suppress today's schedule email.
+        await releaseClaim(e.id, today, "day_of");
       }
     }
 
@@ -333,7 +385,7 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
     // WEEKLY (Sundays): the week ahead (Mon-Sat), deduped on next Monday's date.
     if (isSunday) {
       const weekStart = addDaysIso(today, 1); // Monday
-      const week = await getShiftsForRange(e.id, weekStart, 6);
+      const week = await getShiftsForRange(e.id, weekStart, 7); // full Mon–Sun (incl. Sunday PW shifts)
       if (week.length > 0 && (await claimSend(e.id, weekStart, "weekly"))) {
         try {
           await sendEmail({
@@ -347,6 +399,7 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
           weekly++;
         } catch (err) {
           console.warn(`[field-ops] weekly email failed for ${e.email}:`, err);
+          await releaseClaim(e.id, weekStart, "weekly");
         }
       }
     }
@@ -405,7 +458,7 @@ async function buildOfficeDigest(
   const weekLines: string[] = ["", "", `Week ahead - starting ${dayLabel(weekStart, false)}`, ""];
   let anyWeek = false;
   for (const e of emps) {
-    const week = await getShiftsForRange(e.id, weekStart, 6);
+    const week = await getShiftsForRange(e.id, weekStart, 7); // full Mon–Sun
     if (week.length === 0) continue;
     anyWeek = true;
     weekLines.push(e.first_name);

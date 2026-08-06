@@ -59,6 +59,8 @@ export function PainterClock({
         clockIn: "Marcar entrada",
         netErr: "Sin conexión — intenta otra vez.",
         genErr: "Algo salió mal — intenta otra vez.",
+        alreadyIn: "Ya marcaste tu entrada — primero marca la salida.",
+        notIn: "No has marcado tu entrada.",
       }
     : {
         hi: `Hi ${firstName}`,
@@ -77,6 +79,8 @@ export function PainterClock({
         clockIn: "Clock In",
         netErr: "No connection - try again.",
         genErr: "Something went wrong - try again.",
+        alreadyIn: "You're already clocked in - clock out first.",
+        notIn: "You're not clocked in.",
       };
 
   const post = async (payload: Record<string, unknown>) => {
@@ -89,11 +93,16 @@ export function PainterClock({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, ...payload }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; code?: string; detail?: string };
       if (json.ok) {
         setConfirmOut(false);
         router.refresh();
-      } else setError(json.detail ?? L.genErr);
+      } else {
+        // Map the server's machine code to a LOCALIZED string. Never surface the
+        // server's English free-text as the primary message on a bilingual screen.
+        const byCode: Record<string, string> = { already_clocked_in: L.alreadyIn, not_clocked_in: L.notIn };
+        setError((json.code && byCode[json.code]) || L.genErr);
+      }
     } catch {
       setError(L.netErr);
     } finally {
@@ -157,7 +166,7 @@ export function PainterClock({
             const clocked = day.hoursByJob[a.job_id] ?? 0;
             return (
               <div key={a.assignment_id} className="rounded-2xl bg-surface border border-ppp-charcoal-100 p-4">
-                <div className="text-[16px] font-bold text-ppp-charcoal">{a.job_name}{a.prevailing_wage && <span className="ml-1.5 text-[10px] font-bold text-amber-700">PW</span>}</div>
+                <div className="text-[16px] font-bold text-ppp-charcoal">{a.job_name}{a.prevailing_wage && <span className="ml-1.5 align-middle inline-flex items-center rounded px-1 py-0.5 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy">PW</span>}</div>
                 {a.site && <div className="text-[12.5px] text-ppp-charcoal-500 mt-0.5">{a.site}</div>}
                 <div className="text-[12px] text-ppp-charcoal-400 mt-0.5">
                   {a.scheduled_start_time ? `${L.start} ${a.scheduled_start_time.slice(0, 5)} · ` : ""}{fmtHm(a.scheduled_hours, es)} {L.scheduled}{clocked > 0 ? ` · ${fmtHm(clocked, es)} ${L.clockedToday}` : ""}

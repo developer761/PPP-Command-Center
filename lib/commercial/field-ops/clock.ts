@@ -131,7 +131,13 @@ export async function getEmployeeDay(employeeId: string, dateIso: string): Promi
 
 /** Recompute the daily time_entry for one (employee, job, date) from its closed
  *  punches. Upserts on UNIQUE(employee, job, date). Marks source 'clocked'. */
-async function syncTimeEntry(employeeId: string, jobId: string, dateIso: string, actorNote: string): Promise<void> {
+async function syncTimeEntry(
+  employeeId: string,
+  jobId: string,
+  dateIso: string,
+  actorNote: string,
+  opts?: { forceReview?: boolean },
+): Promise<void> {
   const sb = commercialDb();
   const { data: punchRows } = await sb
     .from("commercial_time_punches")
@@ -164,7 +170,10 @@ async function syncTimeEntry(employeeId: string, jobId: string, dateIso: string,
     .neq("status", "cancelled")
     .maybeSingle();
   const scheduled = (aRow as { scheduled_hours?: number } | null)?.scheduled_hours ?? null;
-  const withinThreshold = scheduled != null && Math.abs(rounded - scheduled) <= AUTO_APPROVE_THRESHOLD_HOURS;
+  // A force-closed (missed clock-out) entry is a CAPPED GUESS, never a real
+  // clock-out — it must always land in Approvals for a manager, never auto-approve.
+  const withinThreshold =
+    !opts?.forceReview && scheduled != null && Math.abs(rounded - scheduled) <= AUTO_APPROVE_THRESHOLD_HOURS;
 
   const { data: existing } = await sb
     .from("commercial_time_entries")
@@ -213,21 +222,97 @@ async function syncTimeEntry(employeeId: string, jobId: string, dateIso: string,
   }
 }
 
+/** Never attribute more than a long shift to a forgotten punch. */
+const STALE_PUNCH_CAP_HOURS = 12;
+
+/**
+ * Force-close a punch left open (missed clock-out). Without this, the worked day
+ * records ZERO paid hours (a time_entry is only written on a real clock-out) AND
+ * the stale punch blocks the painter's next-day clock-in. Caps the paid span at
+ * the scheduled hours (fallback 8h, hard max 12h) so a forgotten punch never
+ * balloons into a ~24h entry, files it as a time_entry FLAGGED FOR REVIEW (never
+ * auto-approved — the hours are a guess), and stamps an audit note. Returns true
+ * if it closed the punch (false if a concurrent real clock-out beat it).
+ */
+async function forceCloseStalePunch(
+  sb: ReturnType<typeof commercialDb>,
+  punch: { id: string; employee_id: string; job_id: string; clock_in_at: string; note: string | null },
+): Promise<boolean> {
+  const workDate = etDate(punch.clock_in_at);
+  const { data: aRow } = await sb
+    .from("commercial_assignments")
+    .select("scheduled_hours")
+    .eq("employee_id", punch.employee_id)
+    .eq("job_id", punch.job_id)
+    .eq("work_date", workDate)
+    .neq("status", "cancelled")
+    .maybeSingle();
+  const scheduled = (aRow as { scheduled_hours?: number } | null)?.scheduled_hours ?? null;
+  const capHours = Math.min(scheduled && scheduled > 0 ? scheduled : 8, STALE_PUNCH_CAP_HOURS);
+  const inMs = new Date(punch.clock_in_at).getTime();
+  const outIso = new Date(Math.min(inMs + capHours * 3_600_000, Date.now())).toISOString();
+  const note = [punch.note, "[auto-closed: missed clock-out — hours capped, needs review]"].filter(Boolean).join(" ");
+  const { data: before } = await sb.from("commercial_time_punches").select("*").eq("id", punch.id).maybeSingle();
+  const { data: updated } = await sb
+    .from("commercial_time_punches")
+    .update({ clock_out_at: outIso, note })
+    .eq("id", punch.id)
+    .is("clock_out_at", null) // race guard: a concurrent real clock-out wins
+    .select("*")
+    .maybeSingle();
+  if (!updated) return false;
+  await logUpdate("commercial_time_punches", punch.id, before, updated, punch.employee_id);
+  await syncTimeEntry(punch.employee_id, punch.job_id, workDate, "auto-close", { forceReview: true });
+  return true;
+}
+
+/**
+ * Daily-cron sweep: force-close every punch left open past a full shift. Keeps a
+ * missed clock-out from silently zeroing a worked day and from blocking tomorrow's
+ * clock-in. Idempotent — a punch closed on a prior run no longer matches.
+ */
+export async function closeStalePunches(): Promise<{ closed: number }> {
+  const sb = commercialDb();
+  const cutoff = new Date(Date.now() - STALE_PUNCH_CAP_HOURS * 3_600_000).toISOString();
+  const { data: rows } = await sb
+    .from("commercial_time_punches")
+    .select("id, employee_id, job_id, clock_in_at, note")
+    .is("clock_out_at", null)
+    .lt("clock_in_at", cutoff);
+  const punches = (rows ?? []) as { id: string; employee_id: string; job_id: string; clock_in_at: string; note: string | null }[];
+  let closed = 0;
+  for (const p of punches) {
+    if (await forceCloseStalePunch(sb, p)) closed += 1;
+  }
+  return { closed };
+}
+
 export async function clockIn(input: {
   employee_id: string;
   job_id: string;
   assignment_id?: string | null;
   source?: "self_link" | "kiosk" | "foreman" | "admin";
   actor_note?: string;
-}): Promise<{ ok: true; punchId: string } | { ok: false; error: string }> {
+}): Promise<{ ok: true; punchId: string } | { ok: false; error: string; code?: string }> {
   const sb = commercialDb();
   const { data: open } = await sb
     .from("commercial_time_punches")
-    .select("id, job_id")
+    .select("id, job_id, clock_in_at, note")
     .eq("employee_id", input.employee_id)
     .is("clock_out_at", null)
     .maybeSingle();
-  if (open) return { ok: false, error: "You're already clocked in - clock out first." };
+  if (open) {
+    const openPunch = open as { id: string; job_id: string; clock_in_at: string; note: string | null };
+    const todayEt = etDate(new Date().toISOString());
+    if (etDate(openPunch.clock_in_at) === todayEt) {
+      // A genuine open punch from TODAY — keep the hard block.
+      return { ok: false, error: "You're already clocked in - clock out first.", code: "already_clocked_in" };
+    }
+    // A stale punch from a PRIOR ET day (missed clock-out). Force-close it
+    // (capped + flagged for review) so this painter can clock into today's job
+    // instead of being locked out — never leave a worked day at 0 hours.
+    await forceCloseStalePunch(sb, { ...openPunch, employee_id: input.employee_id });
+  }
 
   const { data, error } = await sb
     .from("commercial_time_punches")
@@ -243,8 +328,8 @@ export async function clockIn(input: {
     .single();
   if (error) {
     // 23505 = the one-open-punch partial unique fired on a race.
-    if (/duplicate key|unique/i.test(error.message)) return { ok: false, error: "You're already clocked in - clock out first." };
-    return { ok: false, error: error.message };
+    if (/duplicate key|unique/i.test(error.message)) return { ok: false, error: "You're already clocked in - clock out first.", code: "already_clocked_in" };
+    return { ok: false, error: error.message, code: "clock_failed" };
   }
   await logInsert("commercial_time_punches", (data as { id: string }).id, data, input.employee_id);
   return { ok: true, punchId: (data as { id: string }).id };
@@ -253,7 +338,7 @@ export async function clockIn(input: {
 export async function clockOut(input: {
   employee_id: string;
   source?: "self_link" | "kiosk" | "foreman" | "admin";
-}): Promise<{ ok: true; jobId: string } | { ok: false; error: string }> {
+}): Promise<{ ok: true; jobId: string } | { ok: false; error: string; code?: string }> {
   const sb = commercialDb();
   const { data: open } = await sb
     .from("commercial_time_punches")
@@ -261,7 +346,7 @@ export async function clockOut(input: {
     .eq("employee_id", input.employee_id)
     .is("clock_out_at", null)
     .maybeSingle();
-  if (!open) return { ok: false, error: "You're not clocked in." };
+  if (!open) return { ok: false, error: "You're not clocked in.", code: "not_clocked_in" };
 
   const punch = open as { id: string; job_id: string; clock_in_at: string };
   const now = new Date().toISOString();
@@ -271,7 +356,7 @@ export async function clockOut(input: {
     .eq("id", punch.id)
     .select("*")
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, code: "clock_failed" };
   await logUpdate("commercial_time_punches", punch.id, open, updated, input.employee_id);
 
   // Roll the day's actuals for that job (ET work day, not the UTC date).

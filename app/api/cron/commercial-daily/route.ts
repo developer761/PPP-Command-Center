@@ -106,6 +106,19 @@ export async function GET(request: Request) {
     console.warn("[cron/commercial-daily] schedule emails failed:", err);
   }
 
+  // Force-close forgotten clock-outs (missed clock-out zeroes a worked day + blocks
+  // next-day clock-in). Isolated so a failure here can't 500 the reminder cron.
+  let stalePunches = { closed: 0 };
+  try {
+    const { closeStalePunches } = await import("@/lib/commercial/field-ops/clock");
+    stalePunches = await closeStalePunches();
+    if (stalePunches.closed > 0) {
+      console.log(`[cron/commercial-daily] force-closed ${stalePunches.closed} stale punch(es) → Approvals`);
+    }
+  } catch (err) {
+    console.warn("[cron/commercial-daily] stale-punch closer failed:", err);
+  }
+
   const durationMs = Date.now() - startedAt;
   const totalSent = tasks.sent + docs.sent + hot.sent + rules.sent + debrief.sent + dunning.sent;
   const totalFound = tasks.found + docs.found + hot.found + rules.found + debrief.found + dunning.found;

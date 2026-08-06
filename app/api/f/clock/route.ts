@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
   if (action === "out") {
     const result = await clockOut({ employee_id: employee.id, source: "self_link" });
-    if (!result.ok) return NextResponse.json({ error: "clock_failed", detail: result.error }, { status: 400 });
+    if (!result.ok) return NextResponse.json({ error: "clock_failed", code: result.code, detail: result.error }, { status: 400 });
     return NextResponse.json({ ok: true });
   }
 
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       assignment_id: assignment_id && UUID_RE.test(assignment_id) ? assignment_id : null,
       source: "self_link",
     });
-    if (!result.ok) return NextResponse.json({ error: "clock_failed", detail: result.error }, { status: 400 });
+    if (!result.ok) return NextResponse.json({ error: "clock_failed", code: result.code, detail: result.error }, { status: 400 });
     return NextResponse.json({ ok: true });
   }
 

@@ -186,6 +186,34 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
 }
 
 /**
+ * Cancel a previously SCHEDULED Resend send (scheduled_at in the future). Used
+ * when a shift's start time changes so the stale clock-in nudge doesn't fire at
+ * the old time. Best-effort: a cancel that fails (already sent, unknown id) is
+ * swallowed — the caller reschedules a fresh, correct send regardless.
+ */
+export async function cancelScheduledEmail(
+  id: string,
+  channel: "customer" | "commercial" = "commercial",
+): Promise<boolean> {
+  if (!id) return false;
+  const apiKey =
+    channel === "commercial"
+      ? process.env.COMMERCIAL_RESEND_API_KEY || process.env.RESEND_API_KEY
+      : process.env.RESEND_API_KEY;
+  if (!apiKey) return false;
+  try {
+    const res = await fetch(`${RESEND_API_URL}/${id}/cancel`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Convenience: send the customer color-form invitation email.
  *
  * Template copy now lives in lib/customer-form/templates.ts — admin can edit
