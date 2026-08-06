@@ -35,6 +35,7 @@ import {
 } from "@/lib/commercial/invoices/constants";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
+import { daysPastDue as arDaysPastDue } from "@/lib/commercial/reports/ar-aging";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { listProducts } from "@/lib/commercial/products/db";
@@ -397,7 +398,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const invoices = agingFilter
     ? invoicesSearched.filter((i) => {
         if (deriveInvoiceStatus(i) !== "overdue" || !i.due_at) return false;
-        const days = Math.floor((Date.now() - new Date(i.due_at).getTime()) / 86_400_000);
+        const days = arDaysPastDue(i.due_at, Date.now());
         if (agingFilter === "0-30") return days <= 30;
         if (agingFilter === "30-60") return days > 30 && days <= 60;
         return days > 60;
@@ -488,7 +489,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const overdueRows = kpiSource.filter((i) => deriveInvoiceStatus(i) === "overdue" && i.due_at);
   const agingBuckets = overdueRows.reduce(
     (acc, i) => {
-      const days = Math.floor((nowMs - new Date(i.due_at as string).getTime()) / 86_400_000);
+      const days = arDaysPastDue(i.due_at as string, nowMs);
       if (days <= 30) {
         acc.b0_30_cents += i.balance_cents;
         acc.b0_30_count += 1;

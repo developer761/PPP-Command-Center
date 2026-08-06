@@ -13,6 +13,7 @@ import "server-only";
 import { listCommercialInvoices } from "./db";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { deriveInvoiceStatus, type InvoiceStatus } from "./constants";
+import { daysPastDue as arDaysPastDue } from "@/lib/commercial/reports/ar-aging";
 
 export type ARStatementRow = {
   invoiceId: string;
@@ -47,7 +48,6 @@ export type ARStatement = {
   generatedAt: string;
 };
 
-const DAY_MS = 86_400_000;
 const emptyBucket = (): ARAgingBucket => ({ cents: 0, count: 0 });
 
 /**
@@ -98,13 +98,13 @@ export async function getOpenInvoiceStatementForAccount(
     if (balance <= 0) continue;
 
     const opp = oppById.get(inv.opportunity_id);
-    const dueMs = inv.due_at ? new Date(inv.due_at).getTime() : null;
-    const daysPastDue = dueMs != null ? Math.floor((now - dueMs) / DAY_MS) : null;
+    const daysPastDue = inv.due_at ? arDaysPastDue(inv.due_at, now) : null;
     const status = deriveInvoiceStatus(inv);
-    // Overdue for AGING is computed off the injected `now` (not deriveInvoiceStatus,
-    // which reads wall-clock Date.now()) so the on-screen view + PDF bucket an
-    // invoice identically for the same request. Balance is already > 0 here.
-    const isOverdue = dueMs != null && now > dueMs;
+    // Overdue for AGING uses ET CALENDAR days off the injected `now` (same rule as
+    // the AR-Aging report + isInvoiceOverdue) so the on-screen view, PDF, and report
+    // bucket an invoice identically — a noon-ET due date must not flip overdue mid-
+    // afternoon ET. Balance is already > 0 here.
+    const isOverdue = daysPastDue != null && daysPastDue > 0;
 
     rows.push({
       invoiceId: inv.id,

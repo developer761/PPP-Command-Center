@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { rawAccessDenied } from "@/lib/commercial/auth";
 import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
+import { etTodayIso } from "@/lib/date-et";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export async function GET() {
   const lines = report.rows.map((r) => [r.label, r.count, money(r.bidCents), money(r.weightedCents)].map(csv).join(","));
   const totals = ["All open", report.totals.count, money(report.totals.bidCents), money(report.totals.weightedCents)].map(csv).join(",");
   const body = [header.map(csv).join(","), ...lines, totals].join("\r\n") + "\r\n";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = etTodayIso();
   return new NextResponse(body, {
     status: 200,
     headers: {

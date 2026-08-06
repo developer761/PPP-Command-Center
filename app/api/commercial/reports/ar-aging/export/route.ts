@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { rawAccessDenied } from "@/lib/commercial/auth";
 import { getArAging, type ArAgingRow } from "@/lib/commercial/reports/ar-aging";
+import { etTodayIso } from "@/lib/date-et";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export async function GET() {
   ].map(csv).join(",");
 
   const body = [header.map(csv).join(","), ...aging.rows.map(line), totals].join("\r\n") + "\r\n";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = etTodayIso();
   return new NextResponse(body, {
     status: 200,
     headers: {
