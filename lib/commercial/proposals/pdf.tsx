@@ -1119,7 +1119,7 @@ function ExclusionsBlock({ exclusions }: { exclusions: string[] }) {
  *  hrs @ {rate}/hr = {subtotal}". Rolls into TOTAL as part of the
  *  standard rollup (same math as inclusions). Suppressed when zero
  *  labor rows so old proposals render unchanged. */
-function LaborSection({ items }: { items: CommercialProposalLineItem[] }) {
+function LaborSection({ items, hidePrices = false }: { items: CommercialProposalLineItem[]; hidePrices?: boolean }) {
   if (items.length === 0) return null;
   const totalCents = items.reduce(
     (acc, it) => acc + Math.round(Number(it.quantity) * it.unit_price_cents),
@@ -1132,7 +1132,9 @@ function LaborSection({ items }: { items: CommercialProposalLineItem[] }) {
     const rate = it.unit_price_cents / 100;
     // R1a: a hidden-price labor row keeps its description + hours but drops the
     // "@ rate = subtotal" tail so its rate doesn't leak on the client PDF.
-    const priceTail = it.show_price === false
+    // hidePrices (a final-price override is active) drops the tail on EVERY row so
+    // the labor $ can't contradict the reconciled TOTAL (#4).
+    const priceTail = it.show_price === false || hidePrices
       ? ""
       : ` @ $${rate.toFixed(2)}/hr = $${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     return (
@@ -1155,9 +1157,15 @@ function LaborSection({ items }: { items: CommercialProposalLineItem[] }) {
         <View style={{ marginTop: 4 }}>{renderRow(items[0]!)}</View>
       </View>
       {items.length > 1 && <View>{items.slice(1).map(renderRow)}</View>}
-      <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
-        Labor subtotal: {totalHours} {totalHours === 1 ? "hr" : "hrs"} — ${(totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </Text>
+      {hidePrices ? (
+        <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
+          Labor: {totalHours} {totalHours === 1 ? "hr" : "hrs"} (included in the total below)
+        </Text>
+      ) : (
+        <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
+          Labor subtotal: {totalHours} {totalHours === 1 ? "hr" : "hrs"} — ${(totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </Text>
+      )}
     </View>
   );
 }
@@ -1233,7 +1241,15 @@ export function ProposalPdfDocument({
   // mode shows the line-item table when Alex opts in via the toggle
   // ("Show per-line prices on customer PDF"), otherwise stays on the
   // Tomco-default narrative-bullets rendering.
-  const showLineTable = mode === "internal" || proposal.pdf_show_line_prices;
+  // When a final-price OVERRIDE is set, proposal.total_cents (the printed TOTAL)
+  // no longer equals the sum of the itemized line prices. Showing per-line
+  // prices / phase subtotals / a labor subtotal on the CUSTOMER copy would then
+  // visibly contradict the TOTAL (#4). Internal mode always keeps the real
+  // itemized math (the estimator set the override); the customer copy drops all
+  // itemized prices so only the single, reconciled TOTAL shows.
+  const itemizedSumCents = [...inclusions, ...laborRows].reduce((s, it) => s + lineTotalCents(it), 0);
+  const overrideActive = mode !== "internal" && Math.abs(proposal.total_cents - itemizedSumCents) > 1;
+  const showLineTable = mode === "internal" || (proposal.pdf_show_line_prices && !overrideActive);
 
   return (
     <Document
@@ -1277,7 +1293,7 @@ export function ProposalPdfDocument({
             Inclusions and Alternates. Included in TOTAL. Internal-mode
             renders labor rows inline in the standard line-item table
             (they carry price + qty just like inclusions). */}
-        {!showLineTable && <LaborSection items={laborRows} />}
+        {!showLineTable && <LaborSection items={laborRows} hidePrices={overrideActive} />}
         {showLineTable && laborRows.length > 0 && (
           <InclusionsInternal items={laborRows} internal={mode === "internal"} heading="Labor" />
         )}

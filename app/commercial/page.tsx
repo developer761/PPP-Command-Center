@@ -500,7 +500,13 @@ export default async function CommercialDashboardPage() {
               <DashStat
                 label="Billed"
                 value={formatCentsCompact(production.billedContractCents)}
-                sub={production.overBilledCents > 0 ? `${formatCentsCompact(production.overBilledCents)} over on ${production.overBilledProjects} ${production.overBilledProjects === 1 ? "job" : "jobs"}` : `${formatCentsCompact(production.paidCents)} paid`}
+                sub={
+                  production.overBilledCents > 0
+                    ? `${formatCentsCompact(production.overBilledCents)} over on ${production.overBilledProjects} ${production.overBilledProjects === 1 ? "job" : "jobs"}`
+                    : production.invoicedCents > 0
+                      ? `${Math.round((production.paidCents / production.invoicedCents) * 100)}% collected`
+                      : "pre-tax contract billed"
+                }
                 tone={production.overBilledCents > 0 ? "amber" : "emerald"}
                 href="/commercial/projects"
               />

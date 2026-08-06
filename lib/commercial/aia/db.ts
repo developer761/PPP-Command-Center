@@ -6,7 +6,7 @@
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
-import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
+import { netApprovedChangeOrderCents, listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/proposals/db";
 import {
   computeG702,
@@ -256,6 +256,46 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
     this_period_cents: 0,
     materials_stored_cents: 0,
   }));
+
+  // Reconcile the schedule of values so its total FOOTS to the G702 contract
+  // ladder — otherwise the two AIA sheets sent to the GC don't match:
+  //  (#2) a proposal final-price override makes total_cents != Σ(qty × price),
+  //       so G702 line 1 (= the override) diverges from the G703 scheduled column
+  //       (= the line-item sum). Add one explicit adjustment line for the delta.
+  //  (#12) approved change orders feed G702 line 2 but weren't in the G703, so
+  //       Σ scheduled_value != Contract Sum to Date (line 3). Add one SOV line per
+  //       approved CO. (App 2+ copy these forward via the carry-forward seed.)
+  const rawSum = rows.reduce((s, r) => s + r.scheduled_value_cents, 0);
+  let nextNo = rows.length + 1;
+  const contractCents = Math.round(Number(seedProposal.total_cents ?? 0));
+  if (contractCents > 0 && contractCents !== rawSum) {
+    const delta = contractCents - rawSum;
+    rows.push({
+      application_id: app.id,
+      position: nextNo * 1000,
+      item_no: String(nextNo),
+      description: delta >= 0 ? "Contract price adjustment" : "Negotiated price adjustment (credit)",
+      scheduled_value_cents: delta,
+      from_previous_cents: 0,
+      this_period_cents: 0,
+      materials_stored_cents: 0,
+    });
+    nextNo += 1;
+  }
+  const approvedCOs = (await listChangeOrders(app.opportunity_id)).filter((c) => c.status === "approved");
+  for (const co of approvedCOs) {
+    rows.push({
+      application_id: app.id,
+      position: nextNo * 1000,
+      item_no: `CO-${String(co.co_number).padStart(3, "0")}`,
+      description: `Change Order ${co.co_number}: ${co.title}`.slice(0, 500),
+      scheduled_value_cents: Math.round(Number(co.amount_cents)),
+      from_previous_cents: 0,
+      this_period_cents: 0,
+      materials_stored_cents: 0,
+    });
+    nextNo += 1;
+  }
   await sb.from("commercial_aia_line_items").insert(rows);
 }
 

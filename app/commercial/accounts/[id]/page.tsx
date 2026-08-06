@@ -75,7 +75,7 @@ import { DonutChart, GaugeRing, HBars, StatCard, type ChartTone, type DonutSegme
 import { getProjectFinancials } from "@/lib/commercial/projects/financials";
 import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
-import { costBreakdownForAccount } from "@/lib/commercial/purchases/db";
+import { costBreakdownForOpps } from "@/lib/commercial/purchases/db";
 import TrendChart from "@/components/trend-chart";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
@@ -6892,14 +6892,16 @@ async function AccountKpisTab({
   // "Under contract" is scoped to ACTIVE jobs; the P&L gross spans ALL deals
   // incl. closed (a finished job's revenue is still revenue) so a closed deal's
   // own P&L stays a subset of the account's — deal ⊂ account ⊂ portfolio
-  // (2026-08 money audit #5). Costs (costBreakdownForAccount) are already
-  // account-wide, so gross must be too or the two wouldn't reconcile.
+  // (2026-08 money audit #5). Costs MUST be scoped to the SAME live deal rows the
+  // gross covers (costBreakdownForOpps) — costBreakdownForAccount counted costs
+  // account-wide, so a soft-deleted deal's orphaned purchases inflated account
+  // net/margin even though its gross had dropped out (audit #3).
   const allAccountRows = await listProjects({ accountId, includeClosed: true });
   const activeRows = allAccountRows.filter((p) => p.opp.status !== "post_sale_closed");
   const production = summarizeProduction(activeRows);
   const [accountInvoices, accountCosts] = await Promise.all([
     listCommercialInvoices({ accountId }),
-    costBreakdownForAccount(accountId),
+    costBreakdownForOpps(allAccountRows.map((p) => p.opp.id)),
   ]);
   // ── Account-wide P&L (all this GC's deals combined) — Gross = billed pre-tax,
   // Net = billed − costs. Same definitions as the deal P&L + Revenue page. ──

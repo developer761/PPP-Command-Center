@@ -151,6 +151,23 @@ export async function costBreakdownByOpp(oppIds: string[]): Promise<Map<string, 
   return out;
 }
 
+/** Per-category cost sums across a SPECIFIC set of deals. The account P&L scopes
+ *  this to the exact LIVE deal rows its gross covers, so costs left on a
+ *  soft-deleted deal (whose invoices cascaded away but whose purchases didn't)
+ *  can't inflate account net/margin — keeps deal ⊂ account ⊂ portfolio. */
+export async function costBreakdownForOpps(oppIds: string[]): Promise<CostBreakdown> {
+  const ids = [...new Set(oppIds.filter(Boolean))];
+  if (ids.length === 0) return emptyCostBreakdown();
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_project_purchases")
+    .select("category, amount_cents")
+    .in("opportunity_id", ids)
+    .is("deleted_at", null);
+  if (error) return emptyCostBreakdown();
+  return foldBreakdown((data ?? []) as { category: string; amount_cents: number }[]);
+}
+
 /** Per-category cost sums for a whole account (portfolio cost tile). */
 export async function costBreakdownForAccount(accountId: string): Promise<CostBreakdown> {
   const sb = commercialDb();

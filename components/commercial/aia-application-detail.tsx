@@ -109,12 +109,27 @@ export function AiaApplicationDetail({
     </>
   );
 
+  // The G703 scheduled-value column should foot to the G702 Contract Sum to Date
+  // (line 3). If it drifts — a change order approved AFTER this application was
+  // seeded, or a legacy app seeded before the reconciliation fix — warn the
+  // estimator (draft only) so the two sheets don't leave matching to chance.
+  const sovTotalCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+  const sovDriftCents = g702.contractSumToDateCents - sovTotalCents;
+  const showSovDrift = editable && Math.abs(sovDriftCents) > 1;
+
   return (
     <div className="space-y-3">
       {errorMessage && (
         <div className="rounded-lg px-4 py-3 text-sm bg-rose-50 border border-rose-200 text-rose-700 flex items-start justify-between gap-3">
           <span>{errorMessage}</span>
           <Link href={selfHref} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
+        </div>
+      )}
+
+      {showSovDrift && (
+        <div className="rounded-lg px-4 py-3 text-[12.5px] bg-amber-50 border border-amber-200 text-amber-800">
+          <span className="font-semibold">Schedule of values is off by {formatCentsFull(Math.abs(sovDriftCents))}.</span>{" "}
+          The scheduled-value total doesn't match the Contract Sum to Date (contract + approved change orders) — likely a change order approved after this application was created. Add a line for it below so the G702 and G703 foot to the same number before you send.
         </div>
       )}
 
