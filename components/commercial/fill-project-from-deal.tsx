@@ -34,7 +34,9 @@ export function FillProjectFromDeal({
   projectAddressInputId,
 }: {
   deals: FillableDeal[];
-  projectNameInputId: string;
+  /** Optional — omitted where the name is owned by a separate sticky control
+   *  (the proposal editor), so fill-from-deal only sets the address there. */
+  projectNameInputId?: string;
   projectAddressInputId: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -61,7 +63,7 @@ export function FillProjectFromDeal({
   }
 
   function apply(deal: FillableDeal) {
-    setInput(projectNameInputId, deal.projectName);
+    if (projectNameInputId) setInput(projectNameInputId, deal.projectName);
     setInput(projectAddressInputId, deal.projectAddress);
     setOpen(false);
     setFlash(deal.label);

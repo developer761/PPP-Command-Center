@@ -118,6 +118,19 @@ const MOVE_TO_COLUMNS: { key: string; label: string }[] = [
   { key: "post_sale_closed", label: "Closed (post-sale)" },
 ];
 
+/** The REAL OpportunityStatus behind each Move-to column key — the virtual
+ *  columns (proposal_drafted/sent, won, lost) carry a sub-status but transition
+ *  a real status. quickFlipNextStatuses returns REAL statuses, so we must map
+ *  before filtering, or the virtual columns are silently unreachable (audit R4
+ *  #1) and the current stage is offered as a no-op (#4). */
+const COL_REAL_STATUS: Record<string, string> = {
+  proposal_drafted: "estimating",
+  proposal_sent: "proposal",
+  won: "pre_sale_closed",
+  lost: "pre_sale_closed",
+};
+const colRealStatus = (key: string): string => COL_REAL_STATUS[key] ?? key;
+
 /**
  * Deterministic per-account color tone for the pipeline list-view group
  * cards. Karan 2026-07-10 (rev 6): "would every account color be
@@ -2682,7 +2695,7 @@ function KanbanCard({
             {/* Only offer legal next statuses for THIS card (Karan 2026-07-27
                 audit) — the menu used to list every column incl. the card's own
                 current stage, so a Qualifying card offered "→ Qualifying". */}
-            {MOVE_TO_COLUMNS.filter((col) => (nextStatuses as readonly string[]).includes(col.key)).map((col) => (
+            {MOVE_TO_COLUMNS.filter((col) => (nextStatuses as readonly string[]).includes(colRealStatus(col.key))).map((col) => (
               <option key={col.key} value={col.key}>
                 → {col.label}
               </option>
@@ -3186,7 +3199,7 @@ function OpportunityRow({
             <option value="" disabled>
               Move to…
             </option>
-            {MOVE_TO_COLUMNS.map((col) => (
+            {MOVE_TO_COLUMNS.filter((col) => (nextStatuses as readonly string[]).includes(colRealStatus(col.key))).map((col) => (
               <option key={col.key} value={col.key}>
                 → {col.label}
               </option>
@@ -3784,7 +3797,7 @@ function CustomerQuickSheet({
                             style={SELECT_BG_STYLE}
                           >
                             <option value="" disabled>Move to…</option>
-                            {MOVE_TO_COLUMNS.map((col) => (
+                            {MOVE_TO_COLUMNS.filter((col) => (nextStatuses as readonly string[]).includes(colRealStatus(col.key))).map((col) => (
                               <option key={col.key} value={col.key}>
                                 → {col.label}
                               </option>

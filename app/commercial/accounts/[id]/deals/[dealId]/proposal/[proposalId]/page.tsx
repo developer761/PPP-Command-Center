@@ -898,6 +898,9 @@ export default async function ProposalEditorPage({
   const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
+  // Line-item mutations are server-guarded draft-only; the editor renders them
+  // read-only past draft so a locked proposal isn't an edit→error dead-end (#2).
+  const canEditLines = proposal.status === "draft";
   // R1b: raw non-alternate line-item sum — what the total is when there's no
   // final-price override (shown as the "leave blank to use" hint).
   const lineItemSumCents = lineItems
@@ -1095,7 +1098,7 @@ export default async function ProposalEditorPage({
               <ConfirmSubmitButton
                 message={`Send R${proposal.revision_number} for approval? A designated approver must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
                 pendingLabel="Requesting…"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 shadow-sm min-h-[40px] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M9 12l2 2 4-4" />
@@ -1129,7 +1132,7 @@ export default async function ProposalEditorPage({
                 <ConfirmSubmitButton
                   message={`Approve R${proposal.revision_number}? This clears it to send to ${proposal.header_json.gc_company ?? "the GC"}. Whoever requested approval will be notified.`}
                   pendingLabel="Approving…"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm min-h-[40px] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="20 6 9 17 4 12" />
@@ -1138,7 +1141,7 @@ export default async function ProposalEditorPage({
                 </ConfirmSubmitButton>
               </form>
               <details className="inline-flex relative group">
-                <summary className="list-none inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-amber-300 bg-surface text-amber-800 text-[13px] font-semibold hover:bg-amber-50 min-h-[40px] cursor-pointer select-none">
+                <summary className="list-none inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-amber-300 bg-surface text-amber-800 text-[13px] font-semibold hover:bg-amber-50 min-h-[44px] sm:min-h-[40px] cursor-pointer select-none">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                     <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z" />
@@ -1163,7 +1166,7 @@ export default async function ProposalEditorPage({
                   />
                   <button
                     type="submit"
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 min-h-[40px]"
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 min-h-[44px] sm:min-h-[40px]"
                   >
                     Send back for changes
                   </button>
@@ -1270,7 +1273,7 @@ export default async function ProposalEditorPage({
                 <ConfirmSubmitButton
                   message={`Mark R${proposal.revision_number} LOST? You'll be routed to the debrief page to capture the reason (competitor won / price / no response / etc.). This also flips the opportunity to Pre-Sale Closed · Lost.`}
                   pendingLabel="Marking lost…"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-300 bg-surface text-rose-700 text-[13px] font-semibold hover:bg-rose-50 min-h-[40px] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-300 bg-surface text-rose-700 text-[13px] font-semibold hover:bg-rose-50 min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
                 >
                   Mark lost
                 </ConfirmSubmitButton>
@@ -1566,17 +1569,15 @@ export default async function ProposalEditorPage({
                 </div>
                 {fillableDeals.length > 0 && (
                   <FillProjectFromDeal
+                    // Name is owned by the sticky AutosaveProposalName above — a
+                    // second project_name input here reverted it on any body-field
+                    // autosave (R4 #3). Fill only the address.
                     deals={fillableDeals}
-                    projectNameInputId="header-project-name"
                     projectAddressInputId="header-project-address"
                   />
                 )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="block">
-                  <span className={LABEL_CLS}>Project name</span>
-                  <input id="header-project-name" type="text" name="project_name" defaultValue={proposal.header_json.project_name ?? ""} className={INPUT_CLS} placeholder="e.g. JD Sports" />
-                </label>
+              <div className="grid grid-cols-1 gap-3">
                 <label className="block">
                   <span className={LABEL_CLS}>Project address</span>
                   <input id="header-project-address" type="text" name="project_address" defaultValue={proposal.header_json.project_address ?? ""} className={INPUT_CLS} placeholder="e.g. 37-38 Junction Blvd, Queens" />
@@ -1771,7 +1772,10 @@ export default async function ProposalEditorPage({
       </AutosaveProposalForm>
 
       {/* Line items — separate forms outside the main save form so each
-          row is its own action. 2026-07-21: unified under EditorSection. */}
+          row is its own action. 2026-07-21: unified under EditorSection.
+          Only a DRAFT can be edited: every line-item mutation is server-guarded
+          draft-only, so on a sent/won/etc. proposal the editable table + Add form
+          are a guaranteed-error dead-end — render read-only instead (R4 #2). */}
       <EditorSection
         id="line-items"
         title="Inclusions"
@@ -1789,8 +1793,8 @@ export default async function ProposalEditorPage({
       >
         <div className="space-y-4">
           {inclusions.length === 0 ? (
-            <p className="text-[13px] text-ppp-charcoal-500 italic">No inclusions yet — add the first one below.</p>
-          ) : (
+            <p className="text-[13px] text-ppp-charcoal-500 italic">{canEditLines ? "No inclusions yet — add the first one below." : "No inclusions."}</p>
+          ) : canEditLines ? (
             <LineItemsTable
               rows={inclusions}
               accountId={accountId}
@@ -1799,18 +1803,22 @@ export default async function ProposalEditorPage({
               updateAction={updateLineItemAction}
               deleteAction={deleteLineItemAction}
             />
+          ) : (
+            <ReadOnlyLineItems rows={inclusions} />
           )}
-          <AddLineItemForm
-            accountId={accountId}
-            dealId={dealId}
-            proposalId={proposalId}
-            products={products.map((p) => ({
-              ...p,
-              is_parent_only: parentIdsWithChildren.has(p.id),
-            }))}
-            submitAction={addLineItemAction}
-            isAlternate={false}
-          />
+          {canEditLines && (
+            <AddLineItemForm
+              accountId={accountId}
+              dealId={dealId}
+              proposalId={proposalId}
+              products={products.map((p) => ({
+                ...p,
+                is_parent_only: parentIdsWithChildren.has(p.id),
+              }))}
+              submitAction={addLineItemAction}
+              isAlternate={false}
+            />
+          )}
         </div>
       </EditorSection>
 
@@ -1835,8 +1843,8 @@ export default async function ProposalEditorPage({
       >
         <div className="space-y-4">
           {laborRows.length === 0 ? (
-            <p className="text-[13px] text-ppp-charcoal-500 italic">No labor rows — add hours + rate below if you're billing labor separately.</p>
-          ) : (
+            <p className="text-[13px] text-ppp-charcoal-500 italic">{canEditLines ? "No labor rows — add hours + rate below if you're billing labor separately." : "No labor rows."}</p>
+          ) : canEditLines ? (
             <LineItemsTable
               rows={laborRows}
               accountId={accountId}
@@ -1845,19 +1853,23 @@ export default async function ProposalEditorPage({
               updateAction={updateLineItemAction}
               deleteAction={deleteLineItemAction}
             />
+          ) : (
+            <ReadOnlyLineItems rows={laborRows} />
           )}
-          <AddLineItemForm
-            accountId={accountId}
-            dealId={dealId}
-            proposalId={proposalId}
-            products={products.map((p) => ({
-              ...p,
-              is_parent_only: parentIdsWithChildren.has(p.id),
-            }))}
-            submitAction={addLineItemAction}
-            isAlternate={false}
-            isLabor={true}
-          />
+          {canEditLines && (
+            <AddLineItemForm
+              accountId={accountId}
+              dealId={dealId}
+              proposalId={proposalId}
+              products={products.map((p) => ({
+                ...p,
+                is_parent_only: parentIdsWithChildren.has(p.id),
+              }))}
+              submitAction={addLineItemAction}
+              isAlternate={false}
+              isLabor={true}
+            />
+          )}
         </div>
       </EditorSection>
 
@@ -1875,7 +1887,7 @@ export default async function ProposalEditorPage({
         <div className="space-y-4">
           {alternates.length === 0 ? (
             <p className="text-[13px] text-ppp-charcoal-500 italic">No alternates.</p>
-          ) : (
+          ) : canEditLines ? (
             <LineItemsTable
               rows={alternates}
               accountId={accountId}
@@ -1884,18 +1896,22 @@ export default async function ProposalEditorPage({
               updateAction={updateLineItemAction}
               deleteAction={deleteLineItemAction}
             />
+          ) : (
+            <ReadOnlyLineItems rows={alternates} />
           )}
-          <AddLineItemForm
-            accountId={accountId}
-            dealId={dealId}
-            proposalId={proposalId}
-            products={products.map((p) => ({
-              ...p,
-              is_parent_only: parentIdsWithChildren.has(p.id),
-            }))}
-            submitAction={addLineItemAction}
-            isAlternate={true}
-          />
+          {canEditLines && (
+            <AddLineItemForm
+              accountId={accountId}
+              dealId={dealId}
+              proposalId={proposalId}
+              products={products.map((p) => ({
+                ...p,
+                is_parent_only: parentIdsWithChildren.has(p.id),
+              }))}
+              submitAction={addLineItemAction}
+              isAlternate={true}
+            />
+          )}
         </div>
       </EditorSection>
 
@@ -2029,6 +2045,32 @@ function LineItemsTable({
           </form>
         </li>
       ))}
+    </ul>
+  );
+}
+
+/** Read-only line-item list for a locked (non-draft) proposal — shows the scope
+ *  without any editable inputs or Save/Remove/Add controls (R4 #2). */
+function ReadOnlyLineItems({ rows }: { rows: CommercialProposalLineItem[] }) {
+  return (
+    <ul className="space-y-2">
+      {rows.map((r) => {
+        const lineCents = Math.round(Number(r.quantity) * r.unit_price_cents);
+        return (
+          <li key={r.id} className="rounded-xl border border-ppp-charcoal-200 bg-surface p-4 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {r.product_name && (
+                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-ppp-charcoal-100 text-ppp-navy mb-1">{r.product_name}</span>
+              )}
+              {r.description && <p className="text-[13px] text-ppp-charcoal-700 whitespace-pre-wrap">{r.description}</p>}
+              <p className="text-[11.5px] text-ppp-charcoal-500 mt-1 tabular-nums">
+                {Number(r.quantity)}{r.unit ? ` ${r.unit}` : ""} × {formatDollars(r.unit_price_cents)}
+              </p>
+            </div>
+            <span className="shrink-0 text-[13px] font-semibold tabular-nums text-ppp-charcoal">{r.show_price === false ? "—" : formatDollars(lineCents)}</span>
+          </li>
+        );
+      })}
     </ul>
   );
 }

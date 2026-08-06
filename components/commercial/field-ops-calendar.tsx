@@ -376,7 +376,7 @@ function DayPanel({
                     <span className="text-[13px] font-semibold text-ppp-charcoal truncate">{c.name}</span>
                     <span className="text-[11px] text-ppp-charcoal-500 shrink-0">{c.start ? `${fmtTime12(c.start)}${c.end ? ` – ${fmtTime12(c.end)}` : ""}` : `${c.hours}h`}</span>
                   </div>
-                  <div className="text-[11.5px] text-ppp-charcoal-600 truncate mt-0.5">{c.job_name}{c.prevailing_wage && <span className="ml-1 text-[9px] font-bold text-amber-700">PW</span>}</div>
+                  <div className="text-[11.5px] text-ppp-charcoal-600 truncate mt-0.5">{c.job_name}{c.prevailing_wage && <span className="ml-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">PW</span>}</div>
                 </button>
               </li>
             ))}

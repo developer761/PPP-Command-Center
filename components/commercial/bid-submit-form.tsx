@@ -12,7 +12,7 @@ import { DateField } from "@/components/commercial/date-field";
 
 const LABEL = "block text-[12.5px] font-semibold text-ppp-charcoal-700 mb-1";
 const INPUT =
-  "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 text-[14px] text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
+  "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 text-base sm:text-[14px] text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
 
 export function BidSubmitForm({ turnstileSiteKey }: { turnstileSiteKey?: string }) {
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");

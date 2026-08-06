@@ -185,7 +185,7 @@ export default async function FieldOpsJobsPage({
               <details>
                 <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer list-none min-h-[52px]">
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{j.name} {j.prevailing_wage && <span className="ml-1 text-[10px] font-bold text-amber-700">PW</span>}</div>
+                    <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{j.name} {j.prevailing_wage && <span className="ml-1 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">PW</span>}</div>
                     <div className="text-[11.5px] text-ppp-charcoal-500 truncate font-mono">{j.job_code} · {jobStatusLabel(j.status)}{j.division_tag ? ` · ${divisionLabel(j.division_tag)}` : ""}{j.customer_name ? ` · ${j.customer_name}` : ""}</div>
                   </div>
                   <span className="text-[11px] text-ppp-charcoal-400 shrink-0">Edit</span>

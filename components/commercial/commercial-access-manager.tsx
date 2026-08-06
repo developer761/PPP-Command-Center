@@ -11,7 +11,7 @@ import { useState } from "react";
 import type { ManagedUser } from "@/lib/auth/user-management";
 
 const INPUT =
-  "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 text-sm text-ppp-charcoal focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
+  "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 text-base sm:text-sm text-ppp-charcoal focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
 
 function genPassword(): string {
   // Readable-ish: avoids ambiguous chars, always mixes classes. No Math.random

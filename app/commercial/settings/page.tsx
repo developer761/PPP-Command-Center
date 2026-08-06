@@ -45,6 +45,7 @@ const CARDS: Card[] = [
     blurb:
       "The competitor dictionary used on win/loss debriefs — who you're bidding against, so the Win/Loss report can aggregate by competitor.",
     icon: <IconUsers />,
+    adminOnly: true,
   },
   {
     href: "/commercial/settings/tax",
@@ -52,6 +53,7 @@ const CARDS: Card[] = [
     blurb:
       "Default sales-tax rate + per-jurisdiction overrides applied to invoices. Tax is pass-through (never counted as revenue).",
     icon: <IconDollar />,
+    adminOnly: true,
   },
   {
     href: "/commercial/settings/health",
@@ -59,6 +61,7 @@ const CARDS: Card[] = [
     blurb:
       "Live status of every dependency — env vars, migrations, brand assets, email. Green/amber/red so you can spot a misconfig before it bites.",
     icon: <IconHeart />,
+    adminOnly: true,
   },
   {
     href: "/commercial/settings/archived",
@@ -66,6 +69,7 @@ const CARDS: Card[] = [
     blurb:
       "Opportunities you've archived out of the pipeline. Restore one to bring it back, or leave it filed away — nothing is deleted.",
     icon: <IconArchive />,
+    adminOnly: true,
   },
   {
     href: "/commercial/settings/access",

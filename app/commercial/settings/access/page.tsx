@@ -175,7 +175,7 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
               {scheduleRecipients.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-2 py-2">
                   <div className="min-w-0"><span className="text-[13px] font-medium text-ppp-charcoal">{r.label ? `${r.label} · ` : ""}</span><span className="text-[12.5px] text-ppp-charcoal-600">{r.email}</span></div>
-                  <form action={removeRecipientAction}><input type="hidden" name="id" value={r.id} /><button type="submit" className="text-[12px] font-semibold text-rose-600 hover:text-rose-700 min-h-[36px]">Remove</button></form>
+                  <form action={removeRecipientAction}><input type="hidden" name="id" value={r.id} /><button type="submit" className="inline-flex items-center px-2 rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 min-h-[44px] touch-manipulation">Remove</button></form>
                 </li>
               ))}
             </ul>
@@ -204,7 +204,7 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
                       <form action={toggleOptOutAction} className="shrink-0">
                         <input type="hidden" name="id" value={e.id} />
                         <input type="hidden" name="opt_out" value={on ? "1" : "0"} />
-                        <button type="submit" className={`inline-flex items-center px-3 rounded-lg text-[12px] font-semibold min-h-[40px] ${on ? "bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100" : "bg-ppp-charcoal-50 text-ppp-charcoal-500 hover:bg-ppp-charcoal-100"}`}>{on ? "Email: on" : "Email: off"}</button>
+                        <button type="submit" className={`inline-flex items-center px-3 rounded-lg text-[12px] font-semibold min-h-[44px] touch-manipulation ${on ? "bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100" : "bg-ppp-charcoal-50 text-ppp-charcoal-500 hover:bg-ppp-charcoal-100"}`}>{on ? "Email: on" : "Email: off"}</button>
                       </form>
                     )}
                   </li>
