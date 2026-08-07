@@ -43,7 +43,7 @@ Residential Command Center (`/dashboard/materials`). Every item built to Katie's
 - ✅ **21 · Bug ✓** — Adjusting gallons doesn't update the TOTAL (line 1 gal but TOTAL 3 gal).
 - ✅ **22 · Layout** — Move primer options out of the product-line dropdown into the **Extras** area.
 - ✅ **23 · Bug** — Line selected but email still shows "⚠ Paint product line not specified".
-- ⬜ **24 · Layout** — Add **Fulfillment Date** → populates "Required by: …" in email. Default = start date; if past, next day.
+- ✅ **24 · Layout** — Add **Fulfillment Date** → populates "Required by: …" in email. Default = start date; if past, next day.
 - ⬜ **25 · Layout** — Add **"Color Notes"** field under "Order — what to buy"; move Customer Notes + "Customer is not painting" out of email body into it; rename "Special Instructions" → **"Fulfilment instructions"**; move Fulfilment below "Add custom item (not in catalog)".
 
 ## Edge cases

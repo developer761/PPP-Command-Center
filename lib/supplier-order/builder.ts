@@ -283,6 +283,17 @@ function computeRequiredByDate(workOrder: SnapshotWorkOrder, override?: string):
   if (override) return override;
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
+  // Kate round-2 #24: default the "Required by" to the job's START date; if the
+  // start date is already in the past, fall back to the following day (so we
+  // never ask a vendor to deliver in the past).
+  const start = workOrder.startDate || workOrder.desiredStartDate;
+  if (start) {
+    const startDate = new Date(start.slice(0, 10) + "T00:00:00Z");
+    if (!isNaN(startDate.getTime())) {
+      if (startDate.getTime() >= today.getTime()) return startDate.toISOString().split("T")[0];
+      return new Date(today.getTime() + 86_400_000).toISOString().split("T")[0];
+    }
+  }
   const threeDaysOut = new Date(today.getTime() + 3 * 86_400_000);
   if (workOrder.closeDate) {
     // SF closeDate may come back as a Date field ("2025-06-16") or a

@@ -137,6 +137,9 @@ export default function SupplierOrderModal({
   const [useCustomAddress, setUseCustomAddress] = useState(false);
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [extras, setExtras] = useState<Map<string, SelectedExtra>>(new Map());
+  // Kate round-2 #24: the estimator can override the "Required by" fulfillment
+  // date. Empty = use the computed default (job start date, or next day if past).
+  const [requiredByDateOverride, setRequiredByDateOverride] = useState("");
   const [editedBody, setEditedBody] = useState<string | null>(null); // null = use draft.body unchanged
   // Per-color quantity overrides — Katie 2026-06-03 wanted +/- buttons to
   // tweak the recommended gallon count before sending. Keyed by
@@ -258,6 +261,7 @@ export default function SupplierOrderModal({
             extras: Array.from(extras.values()),
             specialInstructions: specialInstructions.trim() || undefined,
             manualSupplier,
+            requiredByDate: requiredByDateOverride.trim() || undefined,
             materialType: mainMaterialType.trim() || undefined,
             materialTypeOverrides:
               materialTypeOverrides.size > 0
@@ -298,7 +302,7 @@ export default function SupplierOrderModal({
       }
     }, 120); // Was 250ms — reduced to 120ms so extras-toggle feels snappy.
     return () => { cancelled = true; clearTimeout(timeout); };
-  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier, mainMaterialType, materialTypeOverrides]);
+  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier, requiredByDateOverride, mainMaterialType, materialTypeOverrides]);
 
   // Reset the "admin touched fulfillment" guard whenever a different WO
   // becomes the modal's target. Without this, admin manually picking
@@ -310,6 +314,7 @@ export default function SupplierOrderModal({
     adminTouchedFulfillment.current = false;
     setMaterialTypeOverrides(new Map());
     setMainMaterialType("");
+    setRequiredByDateOverride("");
   }, [workOrderId, supplierAccountId]);
 
   // Pickup default — three sources, descending priority:
@@ -907,6 +912,25 @@ export default function SupplierOrderModal({
                           );
                         })}
                       </ul>
+                    </div>
+                  )}
+
+                  {/* Kate round-2 #24: fulfillment date → the email's "Required
+                      by:" line. Defaults to the job start date (next day if
+                      that's past); the estimator can change it here. */}
+                  {draft && (
+                    <div className="bg-white border border-ppp-charcoal-100 rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-ppp-charcoal">Required by</div>
+                        <div className="text-[10px] text-ppp-charcoal-500">When the vendor needs to fulfill it. Shows on the order email.</div>
+                      </div>
+                      <input
+                        type="date"
+                        value={requiredByDateOverride || (draft.requiredByDate ?? "").slice(0, 10)}
+                        onChange={(e) => setRequiredByDateOverride(e.target.value)}
+                        aria-label="Required-by fulfillment date"
+                        className="ml-auto rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[40px]"
+                      />
                     </div>
                   )}
 
