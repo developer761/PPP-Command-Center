@@ -94,12 +94,15 @@ export type DayCrew = {
   prevailing_wage: boolean;
 };
 
+export type DayOff = { id: string; employee_id: string; name: string; type: string; short: string };
+
 export type MonthDay = {
   date: string;
   inMonth: boolean;
   crew: DayCrew[]; // who's scheduled, sorted by start time
   headcount: number;
   hours: number;
+  off: DayOff[]; // who's marked absent (PTO/Sick/…) that day
 };
 
 /**
@@ -117,6 +120,8 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
   const dates = Array.from({ length: 42 }, (_, i) => addDaysIso(gridStart, i));
 
   const sb = commercialDb();
+  const { getAbsencesForRange, absenceShort } = await import("./absences");
+  const absencesByDate = await getAbsencesForRange(dates[0], dates[41]);
   const { data: aRows } = await sb
     .from("commercial_assignments")
     .select("job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time")
@@ -167,12 +172,20 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
       hours += a.scheduled_hours;
     }
     crew.sort((x, y2) => (x.start ?? "99:99").localeCompare(y2.start ?? "99:99") || x.name.localeCompare(y2.name));
+    const off: DayOff[] = (absencesByDate.get(date) ?? []).map((a) => ({
+      id: a.id,
+      employee_id: a.employee_id,
+      name: a.employee_name,
+      type: a.type,
+      short: absenceShort(a.type),
+    }));
     return {
       date,
       inMonth: date.slice(0, 7) === monthPrefix,
       crew,
       headcount: emps.size,
       hours,
+      off,
     };
   });
 
@@ -335,6 +348,81 @@ export async function upsertAssignment(input: {
   }
 
   return { ok: true, assignmentId };
+}
+
+/**
+ * Copy a whole week's schedule forward one week. Duplicates every non-cancelled
+ * assignment in [sourceMonday .. +5] (Mon–Sat) to the same weekday next week.
+ * Bulk, so it does NOT email — the scheduler reviews the copied week and any
+ * edit re-notifies that person. Skips, never doubles or double-books:
+ *   - a target shift that already exists (same job+person+day),
+ *   - a person marked OFF (absence) on the target day,
+ *   - a job that's been soft-deleted.
+ * Returns counts so the UI can say exactly what happened.
+ */
+export async function copyWeekForward(
+  sourceMondayIso: string,
+  actorUserId: string,
+): Promise<{ ok: true; copied: number; skippedExisting: number; skippedAbsent: number; skippedDeletedJob: number; targetMonday: string } | { ok: false; error: string }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceMondayIso)) return { ok: false, error: "Invalid week." };
+  const srcMon = mondayOf(sourceMondayIso);
+  const srcSat = addDaysIso(srcMon, 5);
+  const tgtMon = addDaysIso(srcMon, 7);
+  const tgtSat = addDaysIso(srcSat, 7);
+  const sb = commercialDb();
+
+  // Source week assignments (Mon–Sat, live).
+  const { data: srcRows } = await sb
+    .from("commercial_assignments")
+    .select("job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time, note")
+    .gte("work_date", srcMon)
+    .lte("work_date", srcSat)
+    .neq("status", "cancelled");
+  const src = (srcRows ?? []) as {
+    job_id: string; employee_id: string; work_date: string; scheduled_hours: number;
+    scheduled_start_time: string | null; scheduled_end_time: string | null; note: string | null;
+  }[];
+  if (src.length === 0) return { ok: true, copied: 0, skippedExisting: 0, skippedAbsent: 0, skippedDeletedJob: 0, targetMonday: tgtMon };
+
+  // Target-week existing assignments (to dedup), absences (to skip), + live jobs.
+  const [{ data: tgtRows }, { data: absRows }, { data: jobRows }] = await Promise.all([
+    sb.from("commercial_assignments").select("job_id, employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSat).neq("status", "cancelled"),
+    sb.from("commercial_absences").select("employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSat),
+    sb.from("commercial_jobs").select("id").is("deleted_at", null).in("id", [...new Set(src.map((s) => s.job_id))]),
+  ]);
+  const existing = new Set(((tgtRows ?? []) as { job_id: string; employee_id: string; work_date: string }[]).map((r) => `${r.job_id}|${r.employee_id}|${String(r.work_date).slice(0, 10)}`));
+  const absent = new Set(((absRows ?? []) as { employee_id: string; work_date: string }[]).map((r) => `${r.employee_id}|${String(r.work_date).slice(0, 10)}`));
+  const liveJobs = new Set(((jobRows ?? []) as { id: string }[]).map((r) => r.id));
+
+  let copied = 0, skippedExisting = 0, skippedAbsent = 0, skippedDeletedJob = 0;
+  const toInsert: Record<string, unknown>[] = [];
+  for (const s of src) {
+    const tgtDate = addDaysIso(String(s.work_date).slice(0, 10), 7);
+    if (!liveJobs.has(s.job_id)) { skippedDeletedJob += 1; continue; }
+    if (existing.has(`${s.job_id}|${s.employee_id}|${tgtDate}`)) { skippedExisting += 1; continue; }
+    if (absent.has(`${s.employee_id}|${tgtDate}`)) { skippedAbsent += 1; continue; }
+    toInsert.push({
+      job_id: s.job_id,
+      employee_id: s.employee_id,
+      work_date: tgtDate,
+      scheduled_hours: s.scheduled_hours,
+      scheduled_start_time: s.scheduled_start_time,
+      scheduled_end_time: s.scheduled_end_time,
+      note: s.note,
+      status: "planned",
+      created_by_user_id: actorUserId,
+    });
+  }
+
+  if (toInsert.length > 0) {
+    const { data: inserted, error } = await sb.from("commercial_assignments").insert(toInsert).select("id");
+    if (error) return { ok: false, error: error.message };
+    copied = (inserted ?? []).length;
+    for (const r of (inserted ?? []) as { id: string }[]) {
+      await logInsert("commercial_assignments", r.id, { bulk: "copy_week_forward" }, actorUserId);
+    }
+  }
+  return { ok: true, copied, skippedExisting, skippedAbsent, skippedDeletedJob, targetMonday: tgtMon };
 }
 
 /** Remove one assignment (by id). Used by the Calendar day panel. */

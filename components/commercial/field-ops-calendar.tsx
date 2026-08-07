@@ -14,7 +14,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
-import type { MonthDay, DayCrew } from "@/lib/commercial/field-ops/schedule";
+import type { MonthDay, DayCrew, DayOff } from "@/lib/commercial/field-ops/schedule";
+import { ABSENCE_TYPES } from "@/lib/commercial/field-ops/absence-constants";
 
 type EmployeeOpt = { id: string; display_name: string; email: string | null };
 type JobOpt = { id: string; name: string; job_code: string; customer_name: string | null; site_city: string | null };
@@ -110,6 +111,9 @@ export function FieldOpsCalendar({
   const [msg, setMsg] = useState<Msg>(null);
   const [formKey, setFormKey] = useState(0);
   const [nowMs, setNowMs] = useState(0);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
+  const [copyMsg, setCopyMsg] = useState<Msg>(null);
   // A11y focus management for the day/person slide-out (R7-a11y #6): move focus
   // into the panel on open, restore it to the triggering element on close.
   const panelRef = useRef<HTMLDivElement>(null);
@@ -134,6 +138,37 @@ export function FieldOpsCalendar({
     router.push(`/commercial/field-ops/calendar?month=${month}`, { scroll: false });
   }
   const dayCrew = (date: string): DayCrew[] => grid.find((d) => d.date === date)?.crew ?? [];
+  const dayOff = (date: string): DayOff[] => grid.find((d) => d.date === date)?.off ?? [];
+
+  async function handleCopyWeek(sourceMonday: string) {
+    setCopyBusy(true);
+    setCopyMsg(null);
+    try {
+      const r = await fetch("/api/commercial/field-ops/copy-week", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_monday: sourceMonday }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setCopyMsg({ tone: "err", text: d.detail || "Couldn't copy — try again." }); return; }
+      const skips: string[] = [];
+      if (d.skippedExisting) skips.push(`${d.skippedExisting} already there`);
+      if (d.skippedAbsent) skips.push(`${d.skippedAbsent} off`);
+      if (d.skippedDeletedJob) skips.push(`${d.skippedDeletedJob} closed WO`);
+      const tail = skips.length ? ` · skipped ${skips.join(", ")}` : "";
+      setCopyMsg({
+        tone: "ok",
+        text: d.copied > 0
+          ? `Copied ${d.copied} shift${d.copied === 1 ? "" : "s"} to the week of ${d.targetMonday}${tail}. Crew aren't emailed — open a day to review; editing a shift notifies that person.`
+          : `Nothing to copy${tail || " — that week has no shifts"}.`,
+      });
+      refresh();
+    } catch {
+      setCopyMsg({ tone: "err", text: "Network error — try again." });
+    } finally {
+      setCopyBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!person) return;
@@ -259,6 +294,55 @@ export function FieldOpsCalendar({
     }
   }
 
+  async function handleAddAbsence(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!addDay) return;
+    const fd = new FormData(e.currentTarget);
+    const body = {
+      op: "upsert",
+      employee_id: String(fd.get("employee_id") ?? ""),
+      work_date: addDay,
+      type: String(fd.get("type") ?? ""),
+      hours: String(fd.get("hours") ?? ""),
+      note: String(fd.get("note") ?? ""),
+    };
+    if (!body.employee_id) { setMsg({ tone: "err", text: "Pick a crew member." }); return; }
+    if (!body.type) { setMsg({ tone: "err", text: "Pick a reason." }); return; }
+    setSaving(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/commercial/field-ops/absence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) setMsg({ tone: "err", text: d.detail || "Couldn't mark off — try again." });
+      else { setMsg({ tone: "ok", text: "Marked off." }); setFormKey((k) => k + 1); refresh(); }
+    } catch {
+      setMsg({ tone: "err", text: "Network error — try again." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemoveAbsence(absenceId: string) {
+    setSaving(true);
+    try {
+      const r = await fetch("/api/commercial/field-ops/absence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "delete", absence_id: absenceId }),
+      });
+      if (r.ok) { setMsg({ tone: "ok", text: "Cleared." }); refresh(); }
+      else { const d = await r.json().catch(() => ({})); setMsg({ tone: "err", text: d.detail || "Couldn't clear — try again." }); }
+    } catch {
+      setMsg({ tone: "err", text: "Network error — try again." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const crewOptions: Opt[] = employees.map((e) => ({ value: e.id, label: e.display_name, hint: e.email ? undefined : "no email — won't be notified" }));
   const jobOptions: Opt[] = jobs.map((j) => ({ value: j.id, label: j.name, hint: [j.job_code, j.customer_name, j.site_city].filter(Boolean).join(" · ") }));
   const maxHead = Math.max(1, ...grid.map((d) => d.headcount));
@@ -273,7 +357,13 @@ export function FieldOpsCalendar({
         </div>
         <h2 className="text-[15px] font-bold text-ppp-charcoal">{monthLabel(monthStart)}</h2>
         {pending && <span className="text-[11px] text-ppp-charcoal-400">updating…</span>}
-        <span className="text-[11.5px] text-ppp-charcoal-400 ml-auto hidden sm:inline">Click a day to schedule · a name for details</span>
+        <button
+          onClick={() => { setCopyMsg(null); setCopyOpen(true); }}
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12.5px] font-semibold hover:bg-ppp-charcoal-50 min-h-[40px]"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+          Copy week
+        </button>
       </div>
 
       <div className="hidden sm:grid grid-cols-7 gap-1 mb-1">
@@ -320,6 +410,11 @@ export function FieldOpsCalendar({
                   </button>
                 ))}
                 {day.crew.length > CHIP_CAP && <div className="text-[9.5px] text-ppp-charcoal-400 px-1">+{day.crew.length - CHIP_CAP} more</div>}
+                {day.off.length > 0 && (
+                  <div className="text-[9.5px] font-medium text-amber-700 px-1 truncate" title={day.off.map((o) => `${o.name} (${o.short})`).join(", ")}>
+                    {day.off.length === 1 ? `${day.off[0].name} off` : `${day.off.length} off`}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -341,9 +436,24 @@ export function FieldOpsCalendar({
                 {day.crew.map((c, i) => <span key={`${c.employee_id}-${i}`} className="text-[10.5px] font-medium rounded px-1.5 py-0.5 bg-cc-brand-50 text-cc-brand-800">{c.name}{c.start ? ` ${fmtTimeShort(c.start)}` : ""}</span>)}
               </div>
             )}
+            {day.off.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {day.off.map((o) => <span key={o.employee_id} className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-amber-50 text-amber-700">{o.name} · {o.short}</span>)}
+              </div>
+            )}
           </button>
         ))}
       </div>
+
+      {copyOpen && (
+        <CopyWeekModal
+          monthStart={monthStart}
+          busy={copyBusy}
+          msg={copyMsg}
+          onCopy={handleCopyWeek}
+          onClose={() => setCopyOpen(false)}
+        />
+      )}
 
       {(addDay || person) && (
         <div className="fixed inset-0 z-40">
@@ -376,7 +486,7 @@ export function FieldOpsCalendar({
             {person ? (
               <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} />
             ) : addDay ? (
-              <DayPanel date={addDay} crew={dayCrew(addDay)} crewOptions={crewOptions} jobOptions={jobOptions} formKey={formKey} saving={saving} msg={msg} onClose={closeAll} onAdd={handleAdd} onOpenPerson={(id, name) => openPerson(id, name, addDay)} />
+              <DayPanel date={addDay} crew={dayCrew(addDay)} off={dayOff(addDay)} crewOptions={crewOptions} jobOptions={jobOptions} formKey={formKey} saving={saving} msg={msg} onClose={closeAll} onAdd={handleAdd} onAddAbsence={handleAddAbsence} onRemoveAbsence={handleRemoveAbsence} onOpenPerson={(id, name) => openPerson(id, name, addDay)} />
             ) : null}
           </div>
         </div>
@@ -387,10 +497,11 @@ export function FieldOpsCalendar({
 
 /* ── panels (module-level so they never remount mid-entry) ────────────────── */
 function DayPanel({
-  date, crew, crewOptions, jobOptions, formKey, saving, msg, onClose, onAdd, onOpenPerson,
+  date, crew, off, crewOptions, jobOptions, formKey, saving, msg, onClose, onAdd, onAddAbsence, onRemoveAbsence, onOpenPerson,
 }: {
   date: string;
   crew: DayCrew[];
+  off: DayOff[];
   crewOptions: Opt[];
   jobOptions: Opt[];
   formKey: number;
@@ -398,15 +509,23 @@ function DayPanel({
   msg: Msg;
   onClose: () => void;
   onAdd: (e: React.FormEvent<HTMLFormElement>) => void;
+  onAddAbsence: (e: React.FormEvent<HTMLFormElement>) => void;
+  onRemoveAbsence: (absenceId: string) => void;
   onOpenPerson: (id: string, name: string) => void;
 }) {
+  const [mode, setMode] = useState<"schedule" | "off">("schedule");
   const totalHours = crew.reduce((s, c) => s + c.hours, 0);
+  // Warn (never block) if you try to schedule someone already marked off today.
+  const offNames = new Set(off.map((o) => o.name));
   return (
     <>
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3 shrink-0">
         <div>
           <div className="text-[15px] font-bold text-ppp-charcoal">{dayHeading(date)}</div>
-          <div className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">{crew.length === 0 ? "Nobody scheduled yet" : `${crew.length} on · ${totalHours}h scheduled`}</div>
+          <div className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
+            {crew.length === 0 ? "Nobody scheduled yet" : `${crew.length} on · ${totalHours}h scheduled`}
+            {off.length > 0 && <span className="text-amber-700"> · {off.length} off</span>}
+          </div>
         </div>
         <button onClick={onClose} className="text-ppp-charcoal-400 hover:text-ppp-charcoal text-xl leading-none px-1 min-h-[44px] inline-flex items-center" aria-label="Close">&times;</button>
       </div>
@@ -420,7 +539,7 @@ function DayPanel({
               <li key={`${c.employee_id}-${c.job_id}-${i}`}>
                 <button onClick={() => onOpenPerson(c.employee_id, c.name)} className="w-full text-left border border-ppp-charcoal-100 rounded-lg p-3 hover:border-cc-brand-300 hover:bg-cc-brand-50/30 transition-colors">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-semibold text-ppp-charcoal truncate">{c.name}</span>
+                    <span className="text-[13px] font-semibold text-ppp-charcoal truncate">{c.name}{offNames.has(c.name) && <span className="ml-1.5 align-middle text-[9px] font-bold uppercase text-amber-700 bg-amber-50 rounded px-1 py-0.5">also off</span>}</span>
                     <span className="text-[11px] text-ppp-charcoal-500 shrink-0">{c.start ? `${fmtTime12(c.start)}${c.end ? ` – ${fmtTime12(c.end)}` : ""}` : `${c.hours}h`}</span>
                   </div>
                   <div className="text-[11.5px] text-ppp-charcoal-600 truncate mt-0.5">{c.job_name}{c.prevailing_wage && <span className="ml-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">PW</span>}</div>
@@ -430,33 +549,104 @@ function DayPanel({
           </ul>
         )}
 
-        <form key={formKey} onSubmit={onAdd} className="space-y-3 border-t border-ppp-charcoal-50 pt-4">
-          <h3 className="text-[12px] font-bold uppercase tracking-wide text-ppp-charcoal-500">Add to this day</h3>
-          {crewOptions.length === 0 ? (
-            <p className="text-[12px] text-ppp-charcoal-500">No crew yet — <Link href="/commercial/field-ops/employees" className="font-semibold text-cc-brand-700 underline">add a crew member</Link> first.</p>
-          ) : jobOptions.length === 0 ? (
-            <p className="text-[12px] text-ppp-charcoal-500">No work orders yet — <Link href="/commercial/field-ops/jobs" className="font-semibold text-cc-brand-700 underline">add a work order</Link> first.</p>
+        {/* Who's off today */}
+        {off.length > 0 && (
+          <div className="border border-amber-100 bg-amber-50/40 rounded-lg p-3">
+            <h3 className="text-[11px] font-bold uppercase tracking-wide text-amber-700 mb-2">Off today</h3>
+            <ul className="space-y-1.5">
+              {off.map((o) => (
+                <li key={o.employee_id} className="flex items-center justify-between gap-2 text-[12.5px]">
+                  <span className="text-ppp-charcoal-800 truncate"><span className="font-semibold">{o.name}</span> <span className="text-amber-700">· {o.type.replace("_", " ").toLowerCase()}</span></span>
+                  <button onClick={() => onRemoveAbsence(o.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 shrink-0 min-h-[32px] px-1.5 disabled:opacity-50">Clear</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Schedule / Mark-off toggle */}
+        <div className="border-t border-ppp-charcoal-50 pt-4">
+          <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden mb-3">
+            <button onClick={() => setMode("schedule")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[36px] ${mode === "schedule" ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Schedule</button>
+            <button onClick={() => setMode("off")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[36px] border-l border-ppp-charcoal-200 ${mode === "off" ? "bg-amber-500 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Mark off</button>
+          </div>
+
+          {mode === "schedule" ? (
+            crewOptions.length === 0 ? (
+              <p className="text-[12px] text-ppp-charcoal-500">No crew yet — <Link href="/commercial/field-ops/employees" className="font-semibold text-cc-brand-700 underline">add a crew member</Link> first.</p>
+            ) : jobOptions.length === 0 ? (
+              <p className="text-[12px] text-ppp-charcoal-500">No work orders yet — <Link href="/commercial/field-ops/jobs" className="font-semibold text-cc-brand-700 underline">add a work order</Link> first.</p>
+            ) : (
+              <form key={`sch-${formKey}`} onSubmit={onAdd} className="space-y-3">
+                <label className="block"><span className={LABEL_CLS}>Crew member</span>
+                  <SearchableSelect name="employee_id" options={crewOptions} placeholder="Search crew…" ariaLabel="Crew member" />
+                </label>
+                <label className="block"><span className={LABEL_CLS}>Work order</span>
+                  <SearchableSelect name="job_id" options={jobOptions} placeholder="Search work orders…" ariaLabel="Work order" />
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block"><span className={LABEL_CLS}>Start time</span><input type="time" name="start_time" step={300} className={INPUT_CLS} /></label>
+                  <label className="block"><span className={LABEL_CLS}>End time</span><input type="time" name="end_time" step={300} className={INPUT_CLS} /></label>
+                </div>
+                <p className="text-[11px] text-ppp-charcoal-400 -mt-1">Hours come from start &amp; end. Leave both blank for a full 8h day.{off.length > 0 && <span className="text-amber-700"> Someone marked off can still be scheduled — check &ldquo;Off today&rdquo; above.</span>}</p>
+                <label className="block"><span className={LABEL_CLS}>Note for the crew (goes in their email)</span>
+                  <textarea name="note" rows={2} placeholder="Gate code 1234, park in rear lot…" className={INPUT_CLS} /></label>
+                <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{saving ? "Scheduling…" : "Schedule & email"}</button>
+              </form>
+            )
           ) : (
-            <>
-              <label className="block"><span className={LABEL_CLS}>Crew member</span>
-                <SearchableSelect name="employee_id" options={crewOptions} placeholder="Search crew…" ariaLabel="Crew member" />
-              </label>
-              <label className="block"><span className={LABEL_CLS}>Work order</span>
-                <SearchableSelect name="job_id" options={jobOptions} placeholder="Search work orders…" ariaLabel="Work order" />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block"><span className={LABEL_CLS}>Start time</span><input type="time" name="start_time" step={300} className={INPUT_CLS} /></label>
-                <label className="block"><span className={LABEL_CLS}>End time</span><input type="time" name="end_time" step={300} className={INPUT_CLS} /></label>
-              </div>
-              <p className="text-[11px] text-ppp-charcoal-400 -mt-1">Hours come from start &amp; end. Leave both blank for a full 8h day.</p>
-              <label className="block"><span className={LABEL_CLS}>Note for the crew (goes in their email)</span>
-                <textarea name="note" rows={2} placeholder="Gate code 1234, park in rear lot…" className={INPUT_CLS} /></label>
-              <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{saving ? "Scheduling…" : "Schedule & email"}</button>
-            </>
+            crewOptions.length === 0 ? (
+              <p className="text-[12px] text-ppp-charcoal-500">No crew yet — <Link href="/commercial/field-ops/employees" className="font-semibold text-cc-brand-700 underline">add a crew member</Link> first.</p>
+            ) : (
+              <form key={`off-${formKey}`} onSubmit={onAddAbsence} className="space-y-3">
+                <label className="block"><span className={LABEL_CLS}>Crew member</span>
+                  <SearchableSelect name="employee_id" options={crewOptions} placeholder="Search crew…" ariaLabel="Crew member to mark off" />
+                </label>
+                <label className="block"><span className={LABEL_CLS}>Reason</span>
+                  <select name="type" className={INPUT_CLS} defaultValue="">
+                    <option value="" disabled>Pick a reason…</option>
+                    {ABSENCE_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+                  </select>
+                </label>
+                <label className="block"><span className={LABEL_CLS}>Hours <span className="font-normal text-ppp-charcoal-400">(optional — blank = full day)</span></span>
+                  <input name="hours" inputMode="decimal" placeholder="e.g. 4 for a half day" className={INPUT_CLS} /></label>
+                <label className="block"><span className={LABEL_CLS}>Note <span className="font-normal text-ppp-charcoal-400">(ops only — not shown to crew)</span></span>
+                  <textarea name="note" rows={2} placeholder="Optional" className={INPUT_CLS} /></label>
+                <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-500 text-white text-[13px] font-semibold hover:bg-amber-600 disabled:opacity-60 min-h-[44px]">{saving ? "Saving…" : "Mark off"}</button>
+              </form>
+            )
           )}
-        </form>
+        </div>
       </div>
     </>
+  );
+}
+
+/* Copy Week Forward — pick a source week (any date snaps to its Monday) and
+   duplicate it into the following week. No emails (bulk). */
+function CopyWeekModal({ monthStart, busy, msg, onCopy, onClose }: { monthStart: string; busy: boolean; msg: Msg; onCopy: (mondayIso: string) => void; onClose: () => void }) {
+  const [srcDate, setSrcDate] = useState(monthStart);
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-ppp-charcoal-900/30" onClick={onClose} aria-hidden />
+      <div role="dialog" aria-modal="true" aria-label="Copy a week's schedule forward" className="absolute inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-md bg-surface border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-xl p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-[15px] font-bold text-ppp-charcoal">Copy a week forward</h3>
+            <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">Duplicates every shift from the chosen week into the next week. Skips anyone off or already scheduled. Crew aren&rsquo;t emailed — you review, then edits notify them.</p>
+          </div>
+          <button onClick={onClose} className="text-ppp-charcoal-400 hover:text-ppp-charcoal text-xl leading-none px-1 min-h-[44px] inline-flex items-center" aria-label="Close">&times;</button>
+        </div>
+        {msg && <div role={msg.tone === "err" ? "alert" : "status"} aria-live="polite" className={`rounded-lg px-3 py-2 text-[12.5px] mb-3 ${msg.tone === "err" ? "bg-rose-50 border border-rose-200 text-rose-700" : "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-700"}`}>{msg.text}</div>}
+        <label className="block mb-3"><span className={LABEL_CLS}>Week to copy <span className="font-normal text-ppp-charcoal-400">(any day in it)</span></span>
+          <input type="date" value={srcDate} onChange={(e) => setSrcDate(e.target.value)} className={INPUT_CLS} />
+        </label>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onCopy(srcDate)} disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(srcDate)} className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{busy ? "Copying…" : "Copy to next week"}</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-ppp-charcoal-200 text-[13px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Close</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
