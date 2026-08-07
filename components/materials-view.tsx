@@ -471,6 +471,16 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     return () => window.removeEventListener("focus", onFocus);
   }, [focusMode, router]);
 
+  // Kate round-2 #02/#06: opening a work order must land at the TOP of the page
+  // (the progress bar was getting cut off — the WO page was inheriting the
+  // list's scroll position). Force the WO page to the top on mount / when the
+  // focused WO changes. Instant (not smooth) so there's no visible jump.
+  useEffect(() => {
+    if (!focusMode) return;
+    if (typeof window === "undefined") return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [focusMode, resolvedFocusId]);
+
   // On mobile (single-column layout), the JobDetail panel renders BELOW the
   // full WO list — tapping a row appears to do nothing until the user scrolls
   // down. Auto-scroll the JobDetail into view on mobile when activeWoId
@@ -670,6 +680,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         }
       />
 
+      {/* Account-wide snapshot (stat strip + needs-attention + customer-form
+          pipeline). Kate round-2 #01: this whole band is the admin overview of
+          the entire board — an Account Manager working one job doesn't need it,
+          so it's gated to admins. AMs land straight on the work-order list. */}
+      {viewer?.isAdmin && (<>
       {/* Top stat strip */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
@@ -803,6 +818,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           </div>
         </section>
       )}
+      </>)}
 
       {/* Admin-only diagnostic — always visible (not collapsed) so the numbers
           are right there. Hidden from non-admins entirely. */}
