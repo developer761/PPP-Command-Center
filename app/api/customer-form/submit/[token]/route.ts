@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { validateToken, markSubmitted, markResubmitted } from "@/lib/customer-form/tokens";
 import { loadFormRenderData, invalidateFormRenderData } from "@/lib/customer-form/render-data";
 import { writeSfBatch, type SfWriteAttempt } from "@/lib/salesforce/writeback";
+import { getSalesforceClient } from "@/lib/salesforce/client";
 import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
@@ -347,11 +348,15 @@ export async function POST(
       sfFinish: string | null;
       rawFinish: string | null;
     }[] = [];
+    // Kate round-2 #09: surfaces the customer explicitly chose NOT to paint —
+    // recorded as a note in ColorNotes__c so the crew knows it was deliberate.
+    const skippedSurfaces: string[] = [];
 
     for (const s of surfaces) {
       // Per-element shape guard — a malformed surface element (null, or
       // missing `surface` string) would otherwise crash on `.toLowerCase()`.
       if (!s || typeof s !== "object" || typeof (s as { surface?: unknown }).surface !== "string") continue;
+      if (s.skipped) skippedSurfaces.push(s.surface.trim());
       const key = s.surface.toLowerCase().trim();
       const std = STANDARD_SURFACE_FIELDS[key];
       const isOrphan = !std && ORPHAN_SURFACES.has(key);
@@ -440,10 +445,20 @@ export async function POST(
     if (orphanNoteParts.length > 0) {
       noteLines.push(orphanNoteParts.join(", "));
     }
-    const submittedNotes = typeof submitted.notes === "string" ? submitted.notes : "";
-    if (submittedNotes.trim()) {
+    // Kate #09: record each "Don't paint this surface" pick as an explicit note.
+    for (const surf of skippedSurfaces) {
+      if (!surf) continue;
       if (noteLines.length > 0) noteLines.push("");
-      noteLines.push(`Customer notes: ${submittedNotes.trim()}`);
+      noteLines.push(`Customer selected "Don't paint this surface" on ${surf}.`);
+    }
+    // Kate #11: strip any existing "Customer notes:" prefix(es) before adding one,
+    // so re-submits (which pre-fill from the prior ColorNotes__c) don't stack it
+    // into "Customer notes: Customer notes: …".
+    const rawSubmittedNotes = typeof submitted.notes === "string" ? submitted.notes : "";
+    const submittedNotes = rawSubmittedNotes.replace(/^(?:\s*Customer notes:\s*)+/i, "").trim();
+    if (submittedNotes) {
+      if (noteLines.length > 0) noteLines.push("");
+      noteLines.push(`Customer notes: ${submittedNotes}`);
     }
     if (noteLines.length > 0) {
       // ColorNotes__c is a Long Text Area in PPP's org (32k cap), but a Long
@@ -503,6 +518,32 @@ export async function POST(
         recordId: status.token.work_order_id,
         fields: { MaterialType__c: customerMaterialType },
       });
+    }
+  }
+
+  // Kate round-2 #10: append the customer's "Anything else we should know?"
+  // (globalNotes) to the TOP of WorkOrder.Scheduling_Notes__c so it reaches the
+  // crew's scheduling context. Read-then-prepend; a stamp + startsWith guard
+  // stops an unchanged re-submit from stacking the same note.
+  const globalNotesText = sanitizeNotesField(body.globalNotes).trim();
+  if (globalNotesText) {
+    try {
+      const conn = await getSalesforceClient();
+      const woRes = await conn.query<{ Scheduling_Notes__c?: string | null }>(
+        `SELECT Scheduling_Notes__c FROM WorkOrder WHERE Id = '${status.token.work_order_id}' LIMIT 1`
+      );
+      const existing = String(woRes.records?.[0]?.Scheduling_Notes__c ?? "");
+      const stamp = `Customer (color form): ${globalNotesText}`;
+      if (!existing.trimStart().startsWith(stamp)) {
+        const combined = existing.trim() ? `${stamp}\n\n${existing}` : stamp;
+        attempts.push({
+          sObject: "WorkOrder",
+          recordId: status.token.work_order_id,
+          fields: { Scheduling_Notes__c: combined.slice(0, 25_000) },
+        });
+      }
+    } catch (err) {
+      console.warn("[customer-form] scheduling-notes prepend read failed:", err);
     }
   }
 
