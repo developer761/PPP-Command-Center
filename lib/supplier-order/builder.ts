@@ -601,7 +601,9 @@ function formatOrderSummaryBlock(
     const mt = effective[i];
     const code = e.colorCode ? ` ${e.colorCode}` : "";
     const finish = e.finish ? ` · ${e.finish}` : "";
-    const where = e.surfaces.length ? ` (${e.surfaces.join(", ")})` : "";
+    // Kate round-2 #18: the "(Surfaces)" suffix is redundant for the vendor — the
+    // per-room placement block below already lists which surface each color goes
+    // on. Dropped from the order line.
     // Prefix the per-line material type when the job is mixed; suppress when
     // every line already shares the header value (no value in repeating it).
     const matPrefix = !sharedMaterial && mt ? `[${mt}] ` : "";
@@ -613,9 +615,9 @@ function formatOrderSummaryBlock(
     // honest because manualOnly is checked explicitly here.
     const isManualPlaceholder = e.manualOnly || (e.buckets === 0 && e.cans === 0);
     if (!isManualPlaceholder) {
-      lines.push(`  ${matPrefix}${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}${where}`);
+      lines.push(`  ${matPrefix}${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}`);
     } else {
-      lines.push(`  ${matPrefix}___ — ${e.colorName}${code}${finish}${where} (PPP to confirm quantity)`);
+      lines.push(`  ${matPrefix}___ — ${e.colorName}${code}${finish} (PPP to confirm quantity)`);
     }
   }
   // Job total line — a quick cross-check for purchasing ("grab this many total").

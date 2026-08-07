@@ -37,9 +37,9 @@ Residential Command Center (`/dashboard/materials`). Every item built to Katie's
 - ⬜ **15 · Layout ✓** — Replace `___ (PPP to confirm)` placeholder with ⚠️ / red `*`.
 - ⬜ **16 · Decision ✓** — Estimator selects the paint line on this page; per-color selectable, default every color to the main selected line.
 - ⬜ **17 · Bug ✓** — "Manual quantity required" banner won't clear when qty typed (driven by SF flag). Clear/soften once every manual-only color has a qty.
-- ⬜ **18 · Layout ✓** — Drop redundant "(Surfaces)" in the vendor/order line.
+- ✅ **18 · Layout ✓** — Drop redundant "(Surfaces)" in the vendor/order line.
 - ⬜ **19 · Decision ✓** — Fulfillment address: PICKUP blank → pull vendor account address; DELIVERY missing → "DELIVERY — address TBD (admin will confirm before send)".
-- ⬜ **20 · Bug ✓** — Order pop-up taller than page, can't scroll to buttons. Remove pop-up scroll, add page scroll.
+- ✅ **20 · Bug ✓** — Order pop-up taller than page, can't scroll to buttons. Remove pop-up scroll, add page scroll.
 - ⬜ **21 · Bug ✓** — Adjusting gallons doesn't update the TOTAL (line 1 gal but TOTAL 3 gal).
 - ⬜ **22 · Layout** — Move primer options out of the product-line dropdown into the **Extras** area.
 - ⬜ **23 · Bug** — Line selected but email still shows "⚠ Paint product line not specified".

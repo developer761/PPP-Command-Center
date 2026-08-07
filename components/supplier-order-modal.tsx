@@ -557,13 +557,18 @@ export default function SupplierOrderModal({
     // modal box keeps its own single internal scroll (max-h-[94vh] +
     // overflow-y-auto body) so there's no second page scrollbar. Mobile stays a
     // bottom sheet (items-end).
-    <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center p-0 sm:p-4">
+    // Kate round-2 #20: the pop-up was capped at 94vh with its own internal
+    // scroll, so on a tall order you could see the top OR the Send buttons but
+    // not both, with no way to scroll between them. Now the OVERLAY scrolls
+    // (overflow-y-auto) and the modal box flows at its natural height, so the
+    // whole thing scrolls as one column and the buttons are always reachable.
+    <div className="fixed inset-0 z-50 overflow-y-auto flex items-end sm:items-start justify-center p-0 sm:p-4">
       <div
-        className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm animate-fade-in"
+        className="fixed inset-0 bg-ppp-navy/40 backdrop-blur-sm animate-fade-in"
         onClick={() => !sending && onClose()}
         aria-hidden
       />
-      <div className="relative z-10 w-full sm:max-w-4xl max-h-[94vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col animate-fade-up">
+      <div className="relative z-10 w-full sm:max-w-4xl sm:my-4 bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 flex flex-col animate-fade-up">
         {/* Header */}
         <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 shrink-0">
           <div className="min-w-0">
@@ -598,8 +603,8 @@ export default function SupplierOrderModal({
           </button>
         </div>
 
-        {/* Body — scrollable */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Body — flows at natural height; the overlay scrolls (Kate #20). */}
+        <div className="flex-1">
           {/* Success state */}
           {sendResult?.ok === true && (
             <div className="p-6 sm:p-8 text-center">
