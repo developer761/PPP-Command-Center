@@ -1350,8 +1350,6 @@ function JobDetailImpl({
 }) {
   const [showDraft, setShowDraft] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
-  // Kate #2: Customer / Materials / Reference tabs for the action toolbar.
-  const [actionTab, setActionTab] = useState<"customer" | "materials" | "reference">("customer");
 
   // Pre-fill data for the Send Color Form modal — pull the customer Account
   // from parent-built indexes. Empty when not in snapshot (vendor WO or
@@ -1616,8 +1614,9 @@ function JobDetailImpl({
             backend (builder.ts + send route) so existing sent orders
             still render correctly in Mail Hub history; it's just no
             longer reachable from the worker UI. */}
-        <div className="mt-5 rounded-xl border border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 p-3 sm:p-4">
-          {/* Three sections. On mobile they stack with subtle divider
+        <div className="mt-5">
+          {/* Kate #03 button bar — Colors + Materials sections (was tabs). */}
+          {/* (legacy note) Three sections. On mobile they stack with subtle divider
               lines so the eye doesn't merge them into one big blob;
               on md+ they grid to 3 columns with the divider lines
               becoming vertical borders. Karan 2026-07-01: too much
@@ -1628,38 +1627,17 @@ function JobDetailImpl({
           {/* Kate #2: the three action groups are TABS now (Customer /
               Materials / Reference). Mail history moved to the right-side
               activity stream, so Reference holds the WO's reference notes. */}
-          <div role="tablist" aria-label="Work order actions" className="flex items-center gap-1 mb-3 border-b border-ppp-charcoal-100">
-            {([
-              { id: "customer", label: "Customer" },
-              { id: "materials", label: "Materials" },
-              { id: "reference", label: "Reference" },
-            ] as const).map((t) => {
-              const on = actionTab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  id={`wo-tab-${t.id}`}
-                  aria-controls={`wo-panel-${t.id}`}
-                  aria-selected={on}
-                  onClick={() => setActionTab(t.id)}
-                  className={`relative px-3 py-2 min-h-[44px] text-sm font-medium transition-colors ${
-                    on ? "text-ppp-navy" : "text-ppp-charcoal-500 hover:text-ppp-charcoal-700"
-                  }`}
-                >
-                  {t.label}
-                  {on && <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-ppp-navy" aria-hidden />}
-                </button>
-              );
-            })}
-          </div>
+          {/* Kate round-2 #03: the Customer / Materials / Reference TABS are now
+              a single BUTTON BAR with two labeled sections — Colors (blue) and
+              Materials (green). The Reference tab was removed; Mail Hub opens
+              from the Activity History panel on the right. */}
 
-          {/* CUSTOMER tab: collect color picks from the homeowner. Entering
-              colors is admin/AM only — reps get a read-only note instead of
-              buttons that would 403 (audit 2026-07-22). */}
-          {actionTab === "customer" && (
-            <div role="tabpanel" id="wo-panel-customer" aria-labelledby="wo-tab-customer" className="flex flex-col gap-1.5">
+          {/* ── Colors: collect color picks from the homeowner, or enter them
+              yourself (Internal Entry). Admin/AM only — reps get a read-only
+              note instead of buttons that would 403. */}
+          <div className="rounded-lg border border-ppp-blue-100 bg-ppp-blue-50/30 p-3 mb-3">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-ppp-blue-700 mb-2">Colors</div>
+            <div className="flex flex-col gap-1.5">
               {canEnterColors ? (
                 <>
                   {/* key forces a fresh instance when the worker switches WOs so
@@ -1682,6 +1660,15 @@ function JobDetailImpl({
                       </p>
                     </div>
                   )}
+                  {/* Kate #03: Internal Entry now sits in the Colors button bar
+                      (was buried in the Send-form modal). Enter colors on the
+                      customer's behalf — writes to Salesforce, no email sent. */}
+                  <div className="mt-1">
+                    <PreviewColorFormButton workOrderId={job.wo.id} />
+                    <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5 mt-1">
+                      Enter colors yourself on the customer&apos;s behalf — saved to Salesforce, no email sent.
+                    </p>
+                  </div>
                 </>
               ) : (
                 <p className="text-sm text-ppp-charcoal-500 leading-snug px-0.5 py-2">
@@ -1690,11 +1677,12 @@ function JobDetailImpl({
                 </p>
               )}
             </div>
-          )}
+          </div>
 
-          {/* MATERIALS tab: turn colors into a real supplier order. */}
-          {actionTab === "materials" && (
-            <div role="tabpanel" id="wo-panel-materials" aria-labelledby="wo-tab-materials" className="flex flex-col gap-1.5">
+          {/* ── Materials: turn colors into a real supplier order. */}
+          <div className="rounded-lg border border-ppp-green-100 bg-ppp-green-50/30 p-3">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-ppp-green-700 mb-2">Materials</div>
+            <div className="flex flex-col gap-1.5">
               {/* Enable only when the viewer can order AND the WO has line items
                   — ordering with 0 rooms produces a blank paint order (matches
                   the mobile sticky bar + pb-24 gate). */}
@@ -1722,7 +1710,7 @@ function JobDetailImpl({
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
                 </svg>
-                Order materials
+                Order Materials
               </button>
               <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
                 {!canOrderMaterials
@@ -1749,7 +1737,7 @@ function JobDetailImpl({
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
                       </svg>
-                      Preview colors
+                      Preview Materials Order
                     </button>
                     <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
                       {hasSubmission
@@ -1760,36 +1748,7 @@ function JobDetailImpl({
                 );
               })()}
             </div>
-          )}
-
-          {/* REFERENCE tab: the WO's reference notes. Mail history is the
-              right-side stream now; this links to the full Mail Hub. */}
-          {actionTab === "reference" && (
-            <div role="tabpanel" id="wo-panel-reference" aria-labelledby="wo-tab-reference" className="flex flex-col gap-3">
-              {job.wo.subject?.trim() ? (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">
-                    Subject
-                  </div>
-                  <p className="text-sm text-ppp-charcoal whitespace-pre-line">{job.wo.subject.trim()}</p>
-                </div>
-              ) : (
-                <p className="text-sm text-ppp-charcoal-400">No reference notes on this work order yet.</p>
-              )}
-              <Link
-                href={`/dashboard/inbox?wo=${encodeURIComponent(job.wo.id)}`}
-                className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
-                </svg>
-                Open full Mail Hub
-              </Link>
-              <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                Recent emails for this WO are in the Mail history panel.
-              </p>
-            </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -1924,7 +1883,7 @@ function JobDetailImpl({
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z M3 6h18 M16 10a4 4 0 0 1-8 0" />
             </svg>
-            Order materials
+            Order Materials
           </button>
         </div>
       )}
