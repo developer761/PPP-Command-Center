@@ -162,6 +162,10 @@ export default function SupplierOrderModal({
   // string value treated as "no override" (admin picked the default). Cleared
   // on WO/supplier change so different jobs don't carry stale overrides.
   const [materialTypeOverrides, setMaterialTypeOverrides] = useState<Map<string, string>>(new Map());
+  // Kate round-2 #16: the estimator's MAIN paint line for the whole order (the
+  // job-level value). Every color defaults to it; per-color overrides below can
+  // still differ. Empty = fall back to the customer/WO value.
+  const [mainMaterialType, setMainMaterialType] = useState("");
   const setMaterialTypeForColor = (colorId: string, finish: string | null, value: string) => {
     const key = `${colorId}::${finish ?? ""}`;
     setMaterialTypeOverrides((prev) => {
@@ -245,6 +249,7 @@ export default function SupplierOrderModal({
             extras: Array.from(extras.values()),
             specialInstructions: specialInstructions.trim() || undefined,
             manualSupplier,
+            materialType: mainMaterialType.trim() || undefined,
             materialTypeOverrides:
               materialTypeOverrides.size > 0
                 ? Object.fromEntries(materialTypeOverrides)
@@ -284,7 +289,7 @@ export default function SupplierOrderModal({
       }
     }, 120); // Was 250ms — reduced to 120ms so extras-toggle feels snappy.
     return () => { cancelled = true; clearTimeout(timeout); };
-  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier, materialTypeOverrides]);
+  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier, mainMaterialType, materialTypeOverrides]);
 
   // Reset the "admin touched fulfillment" guard whenever a different WO
   // becomes the modal's target. Without this, admin manually picking
@@ -295,6 +300,7 @@ export default function SupplierOrderModal({
   useEffect(() => {
     adminTouchedFulfillment.current = false;
     setMaterialTypeOverrides(new Map());
+    setMainMaterialType("");
   }, [workOrderId, supplierAccountId]);
 
   // Pickup default — three sources, descending priority:
@@ -538,6 +544,7 @@ export default function SupplierOrderModal({
           // at draft time. Forwarded here so the send route's audit row has
           // the structured data alongside the rendered email body (future
           // re-renders / audit replays can reproduce the email).
+          materialType: mainMaterialType.trim() || undefined,
           materialTypeOverrides:
             materialTypeOverrides.size > 0
               ? Object.fromEntries(materialTypeOverrides)
@@ -684,6 +691,33 @@ export default function SupplierOrderModal({
                       Settings → Suppliers, or use Copy-to-Clipboard below and paste into Gmail.
                     </div>
                   )}
+                  {/* Kate round-2 #16: the estimator picks the MAIN paint line
+                      right here on the Order Materials page. Every color defaults
+                      to it (per-color overrides below can still differ), and once
+                      it's set the vendor email never warns "not specified". */}
+                  {draft.gallonEstimates.length > 0 && (
+                    <div className="bg-white border border-ppp-charcoal-100 rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-ppp-charcoal">Paint product line</div>
+                        <div className="text-[10px] text-ppp-charcoal-500">Applies to every color — override per color below if a job mixes lines.</div>
+                      </div>
+                      <div className="max-w-[240px] w-full sm:w-auto sm:ml-auto">
+                        <MaterialTypePicker
+                          id="main-material-type"
+                          value={mainMaterialType}
+                          onChange={setMainMaterialType}
+                          placeholder="— pick a paint line —"
+                          allowClear
+                          availableValues={
+                            (draft.allowedMaterialTypeValues ?? []).length > 0
+                              ? new Set<string>(draft.allowedMaterialTypeValues)
+                              : undefined
+                          }
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Kate round-2 #14 + #17: the "Manual quantity required"
                       banners now render ABOVE the "Order — what to buy" list so
                       it's clear what they refer to, and they clear as soon as

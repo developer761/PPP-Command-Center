@@ -120,6 +120,10 @@ export type BuildSupplierOrderInput = {
    *  WO.MaterialType__c). Mixed-product jobs drop the "Paint product line"
    *  header and prefix each line with its product instead. */
   materialTypeOverrides?: Record<string, string>;
+  /** Kate round-2 #16: the estimator's MAIN paint line chosen on the Order
+   *  Materials page — the top-priority job-level value (beats the customer/WO
+   *  value). Every color defaults to it unless a per-color override differs. */
+  materialType?: string | null;
   /** True when the worker MANUALLY picked this supplier (a store), vs the
    *  supplier being auto-derived from a color's manufacturer. PPP buys paint of
    *  any brand from stores (Aboffs sells BM, SW, etc.), so a hand-picked store
@@ -815,6 +819,10 @@ export async function buildSupplierOrderDraft(
   // silently ignored and the vendor warning fired on every order even when
   // admin had set the paint line.)
   const materialType =
+    // Kate round-2 #16: the estimator can set the MAIN paint line on the Order
+    // Materials page — it's the top-priority job-level value, so every color
+    // defaults to it and the vendor email never warns "not specified" (#23).
+    (input.materialType ?? "").trim() ||
     (input.customerSubmittedPayload?.materialType ?? "").trim() ||
     input.workOrder.materialType ||
     null;

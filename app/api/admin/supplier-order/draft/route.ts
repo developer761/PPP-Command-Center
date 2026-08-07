@@ -73,6 +73,7 @@ export async function POST(request: Request) {
     manualDeliveryAddress?: { street: string; city: string; state: string; postalCode: string };
     /** Per-color Material Type overrides keyed by `${colorId}::${finish ?? ""}`.
      *  Plain object (not Map) for JSON serialization. */
+    materialType?: string;
     materialTypeOverrides?: Record<string, string>;
   };
   try {
@@ -241,6 +242,7 @@ export async function POST(request: Request) {
     requiredByDate: body.requiredByDate,
     includeAllColors: body.manualSupplier ?? false,
     manualDeliveryAddress: body.manualDeliveryAddress,
+    materialType: body.materialType, // Kate #16: estimator's main paint line
     materialTypeOverrides: body.materialTypeOverrides,
   });
 
