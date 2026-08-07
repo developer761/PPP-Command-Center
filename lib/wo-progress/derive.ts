@@ -117,7 +117,7 @@ export async function getProgressByWO(
   try {
     const { data: tokenRows, error: tokenErr } = await sb
       .from("customer_form_tokens")
-      .select("work_order_id, work_order_number, sent_at, opened_at, submitted_at, created_at, kind")
+      .select("work_order_id, work_order_number, sent_at, opened_at, submitted_at, created_at, kind, created_by_user_id")
       .in("work_order_id", workOrderIds)
       .order("created_at", { ascending: false });
     if (tokenErr) throw tokenErr;
@@ -129,8 +129,9 @@ export async function getProgressByWO(
       if (r.opened_at) return 2;
       return 1;
     };
-    const bestByWo = new Map<string, TokenRow>();
-    for (const row of (tokenRows ?? []) as (TokenRow & { kind?: string | null })[]) {
+    type TokenRowX = TokenRow & { kind?: string | null; created_by_user_id?: string | null };
+    const bestByWo = new Map<string, TokenRowX>();
+    for (const row of (tokenRows ?? []) as TokenRowX[]) {
       // Preview tokens never count toward customer-facing progress.
       if (row.kind === "preview") continue;
       const cur = bestByWo.get(row.work_order_id);
@@ -138,6 +139,10 @@ export async function getProgressByWO(
         bestByWo.set(row.work_order_id, row);
       }
     }
+    // Kate #04: when the winning submitted token is an INTERNAL entry, the
+    // submission was an AM acting for the customer — collect the staffer's user
+    // id so we can label the bar "[AM] Submitted" instead of "Customer Submitted".
+    const internalSubmitterByWo = new Map<string, string>();
     for (const row of bestByWo.values()) {
       const existing = out.get(row.work_order_id);
       if (!existing) continue;
@@ -145,6 +150,28 @@ export async function getProgressByWO(
       existing.formSentAt = row.sent_at;
       existing.formOpenedAt = row.opened_at;
       existing.formSubmittedAt = row.submitted_at;
+      if (row.kind === "internal" && row.submitted_at && row.created_by_user_id) {
+        internalSubmitterByWo.set(row.work_order_id, row.created_by_user_id);
+      }
+    }
+    // Resolve the AM display names in one query.
+    if (internalSubmitterByWo.size > 0) {
+      const userIds = [...new Set(internalSubmitterByWo.values())];
+      const { data: profs } = await sb
+        .from("profiles")
+        .select("user_id, sf_user_name, email")
+        .in("user_id", userIds);
+      const nameById = new Map<string, string>();
+      for (const p of (profs ?? []) as { user_id: string; sf_user_name: string | null; email: string | null }[]) {
+        const full = (p.sf_user_name ?? "").trim() || (p.email ?? "").split("@")[0] || "";
+        // First name only ("Amy Mariano" → "Amy") to match Katie's example.
+        const first = full.split(/\s+/)[0] || full;
+        if (first) nameById.set(p.user_id, first);
+      }
+      for (const [woId, userId] of internalSubmitterByWo) {
+        const existing = out.get(woId);
+        if (existing) existing.submittedByName = nameById.get(userId) ?? "Internal entry";
+      }
     }
   } catch (err) {
     console.warn("[wo-progress] tokens query failed:", err);

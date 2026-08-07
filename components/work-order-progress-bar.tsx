@@ -167,6 +167,21 @@ export default function WorkOrderProgressBar({
 }) {
   const states = computeStates(progress);
 
+  // Kate #04: when an AM entered colors via Internal Entry, the Opened/Submitted
+  // stages read "[AM] Opened" / "[AM] Submitted" instead of "Customer …".
+  const amName = progress.submittedByName?.trim() || null;
+  const labelFor = (stage: StageDef): string => {
+    if (!amName) return stage.label;
+    if (stage.key === "formOpenedAt") return `${amName} Opened`;
+    if (stage.key === "formSubmittedAt") return `${amName} Submitted`;
+    return stage.label;
+  };
+  const shortLabelFor = (stage: StageDef): string => {
+    if (!amName) return stage.shortLabel;
+    if (stage.key === "formOpenedAt" || stage.key === "formSubmittedAt") return `${amName} ${stage.shortLabel}`;
+    return stage.shortLabel;
+  };
+
   if (variant === "compact") {
     return (
       <div className="flex items-center gap-0.5" aria-label="Work order progress">
@@ -191,7 +206,7 @@ export default function WorkOrderProgressBar({
 
   return (
     <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-4 sm:px-5 sm:py-5">
-      <div className="font-condensed text-[10px] uppercase tracking-wider text-ppp-charcoal-500 mb-3">
+      <div className="font-condensed text-[12px] uppercase tracking-wider text-ppp-charcoal-500 mb-3.5">
         Progress · Work Order {progress.workOrderNumber ?? progress.workOrderId.slice(-6)}
       </div>
 
@@ -213,8 +228,8 @@ export default function WorkOrderProgressBar({
                   )}
                 </span>
                 <span
-                  className={`h-7 w-7 rounded-full border-2 flex items-center justify-center text-[11px] font-bold shrink-0 ${cls.dot}`}
-                  aria-label={`Stage ${i + 1}: ${stage.label}, status ${state}`}
+                  className={`h-9 w-9 rounded-full border-2 flex items-center justify-center text-[15px] font-bold shrink-0 ${cls.dot}`}
+                  aria-label={`Stage ${i + 1}: ${labelFor(stage)}, status ${state}`}
                 >
                   {state === "done" ? "✓" : i + 1}
                 </span>
@@ -226,10 +241,10 @@ export default function WorkOrderProgressBar({
                   )}
                 </span>
               </div>
-              <div className="mt-2 text-center px-0.5 min-h-[2rem]">
-                <div className={`text-[10px] leading-tight ${cls.label}`}>{stage.label}</div>
+              <div className="mt-2.5 text-center px-0.5 min-h-[2.25rem]">
+                <div className={`text-[12px] leading-tight ${cls.label}`}>{labelFor(stage)}</div>
                 {ts && (
-                  <div className={`text-[9px] leading-tight mt-0.5 ${cls.time}`}>
+                  <div className={`text-[10.5px] leading-tight mt-0.5 tabular-nums ${cls.time}`}>
                     {formatStepTime(ts)}
                   </div>
                 )}
@@ -260,8 +275,8 @@ export default function WorkOrderProgressBar({
             <li key={stage.key} className="flex items-start gap-2.5">
               <div className="flex flex-col items-center shrink-0">
                 <span
-                  className={`h-6 w-6 rounded-full border-2 flex items-center justify-center text-[10px] font-bold ${cls.dot}`}
-                  aria-label={`Stage ${i + 1}: ${stage.label}, status ${state}`}
+                  className={`h-8 w-8 rounded-full border-2 flex items-center justify-center text-[13px] font-bold ${cls.dot}`}
+                  aria-label={`Stage ${i + 1}: ${labelFor(stage)}, status ${state}`}
                 >
                   {state === "done" ? "✓" : i + 1}
                 </span>
@@ -273,9 +288,9 @@ export default function WorkOrderProgressBar({
                 )}
               </div>
               <div className="flex-1 min-w-0 pb-2">
-                <div className={`text-xs leading-tight ${cls.label}`}>{stage.shortLabel}</div>
+                <div className={`text-[13.5px] leading-tight ${cls.label}`}>{shortLabelFor(stage)}</div>
                 {ts && (
-                  <div className={`text-[10px] leading-tight mt-0.5 ${cls.time}`}>
+                  <div className={`text-[11px] leading-tight mt-0.5 tabular-nums ${cls.time}`}>
                     {formatStepTime(ts)}
                   </div>
                 )}

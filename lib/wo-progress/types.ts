@@ -24,6 +24,11 @@ export type WoProgress = {
    *  jobCompletedAt timestamp. Cancelled/voided/abandoned WOs do NOT count
    *  as complete. See lib/wo-progress/completion.ts. */
   jobCompletedAt: string | null;
+  /** Kate round-2 #04: when colors were submitted via INTERNAL ENTRY (an AM
+   *  entering on the customer's behalf, token kind='internal'), this is that
+   *  staffer's display name so the bar reads "Amy Submitted" instead of
+   *  "Customer Submitted". Null for a real customer submission. */
+  submittedByName?: string | null;
   /** Per-supplier breakdown for stages 3-6 (when multi-supplier WO). */
   perSupplier?: Array<{
     supplierAccountId: string;
