@@ -23,13 +23,13 @@ Residential Command Center (`/dashboard/materials`). Every item built to Katie's
 - ✅ **07 · Layout** — Advanced filtering/sorting: by sender + status (opened/expired/sent/submitted) + by opened/expired/last-activity/follow-up date. Example queries in the brief. (Decide: build into Mail Hub or a separate Activity History Hub.)
 
 ## Internal Entry page (`/f/[token]` internal AM)
-- ⬜ **08 · Layout** — Rewrite copy for internal AM use: first section keep only "Internal entry — you're entering colors on the customer's behalf; saved on submit, no email sent"; remove "Need help picking colors?" + "From your PPP team"; keep paint-line selection; keep Delivery Address but remove its red alert; final block: keep button only, relabel **"Submit colors"**; submitted screen: remove the subtext.
+- ✅ **08 · Layout** — Rewrite copy for internal AM use: first section keep only "Internal entry — you're entering colors on the customer's behalf; saved on submit, no email sent"; remove "Need help picking colors?" + "From your PPP team"; keep paint-line selection; keep Delivery Address but remove its red alert; final block: keep button only, relabel **"Submit colors"**; submitted screen: remove the subtext.
 
 ## Both entry pages (Internal + Customer Color Entry)
 - ⬜ **09 · Process** — "Don't paint this surface" → write to that line item's **Color Notes** in SF: `Customer selected "Don't paint this surface" on [surface].`
 - ⬜ **10 · Process** — Append "Anything else we should know?" to the **top of Scheduling Notes** in SF.
 - ⬜ **11 · Bug** — Stop prepending "Customer notes:" on every submission (it stacks). Idempotent.
-- ⬜ **12 · Layout** — Remove "What we have noted for your job" section entirely.
+- ✅ **12 · Layout** — Remove "What we have noted for your job" section entirely.
 - ⬜ **13 · Bug** — Rooms repeated on line items ("Interior Painting: Living Room: Living Room · Living Room"). Dedupe.
 
 ## Order Materials page (`supplier-order-modal.tsx` + `builder.ts`)

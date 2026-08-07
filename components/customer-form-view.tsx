@@ -283,9 +283,6 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // sfDescription intentionally NOT computed — WorkOrder.Description on
   // PPP's org is the standard scope template (PRICING DETAILS / ABOUT US /
   // financing), NOT per-WO notes (Karan confirmed 2026-06-10). Showing it
-  // anywhere would surface template boilerplate as "context" to customers
-  // and admins, which is misleading. Only Subject — workers actually edit it.
-  const sfSubject = (formData.workOrderSubject ?? "").trim();
   const hasLineItems = formData.lineItems.length > 0;
   // Seed state. When re-editing, pre-fill each surface from the customer's
   // prior submission (colors + finishes + skipped + notes) so they tweak what
@@ -456,17 +453,22 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           ✓
         </div>
         <h1 className="text-xl sm:text-2xl font-bold text-ppp-navy">
-          {isEditing ? "Your changes are saved!" : copy.thankyouTitle}
+          {isEditing ? "Your changes are saved!" : isInternal ? "Colors saved" : copy.thankyouTitle}
         </h1>
-        <p className="mt-3 text-sm sm:text-base text-ppp-charcoal-500 max-w-md mx-auto whitespace-pre-line">
-          {isEditing
-            ? (postSubmitNote
-                // Order already went out — don't tell them they can freely adjust
-                // again; the orange note below explains they must contact us.
-                ? "We've saved your updated color selections."
-                : "We've updated your color selections. You can come back and adjust them again any time before your job starts.")
-            : copy.thankyouBody}
-        </p>
+        {/* Kate round-2 #08: the thank-you subtext ("Your color picks are with
+            our team…") is customer copy — an AM doing Internal Entry just needs
+            the confirmation, no subtext. */}
+        {!isInternal && (
+          <p className="mt-3 text-sm sm:text-base text-ppp-charcoal-500 max-w-md mx-auto whitespace-pre-line">
+            {isEditing
+              ? (postSubmitNote
+                  // Order already went out — don't tell them they can freely adjust
+                  // again; the orange note below explains they must contact us.
+                  ? "We've saved your updated color selections."
+                  : "We've updated your color selections. You can come back and adjust them again any time before your job starts.")
+              : copy.thankyouBody}
+          </p>
+        )}
         {postSubmitNote && (
           <p className="mt-4 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 max-w-md mx-auto">
             {postSubmitNote}
@@ -784,7 +786,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           customer has somewhere to research before they start picking. Both
           links open in a new tab (target=_blank + rel=noopener,noreferrer)
           so the customer doesn't lose their place in the form. */}
-      {formData.lineItems.length > 0 && (
+      {/* Kate round-2 #08: the "Need help picking colors?" card is customer-only
+          — an AM doing Internal Entry doesn't need palette links. */}
+      {!isInternal && formData.lineItems.length > 0 && (
         <div className="bg-ppp-blue-50/40 border border-ppp-blue-100 rounded-2xl p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <div className="shrink-0 h-9 w-9 rounded-full bg-white border border-ppp-blue-100 flex items-center justify-center text-ppp-blue-700">
@@ -838,29 +842,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           the WOLI breakdown is sparse (Katie 2026-06-05: "workers only put
           it into the notes section" for exterior). Customers reading the
           form know what their PPP team has written down for them. */}
-      {/* "From your PPP team" card — Subject only. WorkOrder.Description
-          turned out to be PPP's standard scope template (Pricing Details /
-          ABOUT US / 0% financing), NOT context for THIS customer (Karan
-          2026-06-09). Showing it here labeled as "what we have noted for
-          your job" would confuse the customer. Subject is short + usually
-          edited per-job so keep it. Trim guard handles whitespace-only. */}
-      {sfSubject.trim() && (
-        <div className="bg-ppp-blue-50/40 border border-ppp-blue-100 rounded-2xl p-5 sm:p-6">
-          <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
-            From your PPP team
-          </div>
-          <h2 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy mt-1">
-            What we have noted for your job
-          </h2>
-          <p className="text-sm sm:text-base font-semibold text-ppp-charcoal mt-2 leading-relaxed">
-            {sfSubject.trim()}
-          </p>
-          <p className="text-[11px] text-ppp-charcoal-500 mt-3 leading-relaxed italic">
-            If anything above is wrong or missing, just describe it in the notes section below — we&apos;ll
-            sort it out with you before we order materials.
-          </p>
-        </div>
-      )}
+      {/* Kate round-2 #12: the "From your PPP team / What we have noted for your
+          job" card was removed entirely (both customer + internal entry). The WO
+          Subject text was more confusing than helpful here; scope context stays
+          in the notes field + the per-room breakdown below. */}
 
       {/* Per-line-item sections */}
       {hasLineItems ? (
@@ -948,11 +933,15 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               </div>
             )}
           </div>
-          <p className="mt-3 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 leading-relaxed">
-            If this delivery address is incorrect, please reach out to our team
-            right away so we can update it before your materials are ordered —
-            it can&apos;t be changed from this form.
-          </p>
+          {/* Kate round-2 #08: the red "address incorrect" alert is customer-only
+              — an AM entering internally handles the address directly. */}
+          {!isInternal && (
+            <p className="mt-3 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 leading-relaxed">
+              If this delivery address is incorrect, please reach out to our team
+              right away so we can update it before your materials are ordered —
+              it can&apos;t be changed from this form.
+            </p>
+          )}
         </div>
       )}
 
@@ -998,6 +987,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
 
       {(hasLineItems || globalNotes.trim().length > 0) && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          {/* Kate round-2 #08: for Internal Entry, drop the "once you submit we'll
+              order materials" customer copy — keep just the button. */}
+          {!isInternal && (
           <div className="text-[11px] sm:text-xs text-ppp-charcoal-500">
             {isPreview ? (
               "Preview only — nothing will be saved when you click. This is to let our team test the form."
@@ -1019,6 +1011,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                 : "Once you submit, we'll order the materials. You can still come back and update your colors up to 24 hours prior to your start date."
             )}
           </div>
+          )}
           <button
             type="submit"
             disabled={submitting}
@@ -1028,6 +1021,8 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               ? "Saving…"
               : isPreview
               ? "Submit (preview only)"
+              : isInternal
+              ? "Submit colors"
               : isEditing
               ? "Save changes"
               : "Submit my colors"}
