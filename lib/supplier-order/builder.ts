@@ -675,10 +675,14 @@ function formatExtrasBlock(extras: SupplierOrderExtra[]): string {
 function formatFulfillmentBlock(
   fulfillmentMethod: FulfillmentMethod,
   address: DeliveryAddress | null,
-  pickupLocation?: string
+  pickupLocation?: string,
+  supplierPickupFallback?: string,
 ): string {
   if (fulfillmentMethod === "pickup") {
-    return `PICKUP at ${pickupLocation ?? "(branch TBD — please confirm)"}`;
+    // Kate round-2 #19: when no branch is typed, PICKUP was left blank. Fall
+    // back to the vendor's own account address so it's never empty.
+    const loc = (pickupLocation ?? "").trim() || (supplierPickupFallback ?? "").trim() || "(branch TBD — please confirm)";
+    return `PICKUP at ${loc}`;
   }
   if (!address) {
     return "DELIVERY — address TBD (admin will confirm before send)";
@@ -845,7 +849,16 @@ export async function buildSupplierOrderDraft(
     wo_number: input.workOrder.workOrderNumber ?? "",
     required_by_date: readableDate(requiredByDate),
     fulfillment_method: input.fulfillmentMethod,
-    fulfillment_block: formatFulfillmentBlock(input.fulfillmentMethod, deliveryAddress, input.pickupLocation),
+    // Kate #19: vendor's own address (SF billing) as the pickup fallback, else a
+    // configured pickup branch — so "PICKUP at" is never blank.
+    fulfillment_block: formatFulfillmentBlock(
+      input.fulfillmentMethod,
+      deliveryAddress,
+      input.pickupLocation,
+      [input.supplierAccount.billingStreet, input.supplierAccount.billingCity].filter(Boolean).join(", ")
+        || settings.pickupLocations?.[0]?.address
+        || "",
+    ),
     delivery_address_block: deliveryAddress ? formatAddressBlock(deliveryAddress) : "",
     pickup_location: input.pickupLocation ?? "",
     // For templates that inline {{line_items_block}}: the buy-list ONLY.
