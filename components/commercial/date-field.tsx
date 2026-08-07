@@ -232,7 +232,7 @@ export function DateField({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={ariaLabel}
-        className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2 min-h-[44px] text-left text-[13.5px] transition-colors ${
+        className={`w-full flex items-center gap-2 rounded-lg border pl-3 ${value && !disabled ? "pr-9" : "pr-3"} py-2 min-h-[44px] text-left text-[13.5px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 ${
           disabled
             ? "border-ppp-charcoal-100 bg-ppp-charcoal-50 text-ppp-charcoal-400 cursor-not-allowed"
             : open
@@ -247,21 +247,20 @@ export function DateField({
         <span className={`flex-1 ${value ? "" : "text-ppp-charcoal-400"}`}>
           {value ? fmtDisplay(value) : placeholder}
         </span>
-        {value && !disabled && (
-          <span
-            role="button"
-            tabIndex={-1}
-            aria-label="Clear date"
-            onClick={(e) => {
-              e.stopPropagation();
-              commit("");
-            }}
-            className="shrink-0 text-ppp-charcoal-400 hover:text-rose-600 leading-none text-[15px] px-0.5"
-          >
-            ×
-          </span>
-        )}
       </button>
+      {/* Clear is a REAL sibling button (not nested inside the trigger button —
+          invalid + keyboard-unreachable). Absolutely positioned over the field's
+          right edge; keyboard-focusable with a visible ring (R7-a11y #15). */}
+      {value && !disabled && (
+        <button
+          type="button"
+          aria-label="Clear date"
+          onClick={() => commit("")}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-7 w-7 rounded text-ppp-charcoal-400 hover:text-rose-600 hover:bg-ppp-charcoal-50 text-[15px] leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 touch-manipulation"
+        >
+          ×
+        </button>
+      )}
 
       {open && mounted && pos && createPortal(
         <div

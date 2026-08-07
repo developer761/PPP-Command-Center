@@ -102,7 +102,7 @@
   --color-ppp-charcoal-100: #e5e5e6;
   --color-ppp-charcoal-200: #c8c8ca;
   --color-ppp-charcoal-300: #a8a7aa;
-  --color-ppp-charcoal-400: #88878a;
+  --color-ppp-charcoal-400: #737276; /* muted text — darkened to ~4.7:1 on white for WCAG AA (was #88878a ~3.6:1) */
   --color-ppp-charcoal-500: #6f6e71;
   --color-ppp-charcoal-600: #575658;
   --color-ppp-charcoal-700: #3f3e40;
@@ -170,7 +170,7 @@ body {
   --color-ppp-charcoal-100: #34343c;   /* borders — visible, so cards/columns don't blend */
   --color-ppp-charcoal-200: #46464f;
   --color-ppp-charcoal-300: #5a5a63;
-  --color-ppp-charcoal-400: #71717a;   /* muted text */
+  --color-ppp-charcoal-400: #8f8f98;   /* muted text — lightened to ~4.7:1 on the dark surface for WCAG AA (was #71717a ~3.5:1) */
   --color-ppp-charcoal-500: #a1a1aa;   /* secondary text */
   --color-ppp-charcoal-600: #d4d4d8;
   --color-ppp-charcoal-700: #e4e4e7;
