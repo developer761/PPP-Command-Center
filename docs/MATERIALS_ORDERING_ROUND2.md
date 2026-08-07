@@ -20,7 +20,7 @@ Residential Command Center (`/dashboard/materials`). Every item built to Katie's
 - 🔨 **06 · Bug** — Anchoring: materials→WO lands at TOP ✅ (same fix as #02); WO→pop-ups land at pop-up anchor ⬜ (handled with the Order Materials modal, #20).
 
 ## Mail Hub
-- ⬜ **07 · Layout** — Advanced filtering/sorting: by sender + status (opened/expired/sent/submitted) + by opened/expired/last-activity/follow-up date. Example queries in the brief. (Decide: build into Mail Hub or a separate Activity History Hub.)
+- ✅ **07 · Layout** — Advanced filtering/sorting: by sender + status (opened/expired/sent/submitted) + by opened/expired/last-activity/follow-up date. Example queries in the brief. (Decide: build into Mail Hub or a separate Activity History Hub.)
 
 ## Internal Entry page (`/f/[token]` internal AM)
 - ⬜ **08 · Layout** — Rewrite copy for internal AM use: first section keep only "Internal entry — you're entering colors on the customer's behalf; saved on submit, no email sent"; remove "Need help picking colors?" + "From your PPP team"; keep paint-line selection; keep Delivery Address but remove its red alert; final block: keep button only, relabel **"Submit colors"**; submitted screen: remove the subtext.

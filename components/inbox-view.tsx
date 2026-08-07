@@ -132,6 +132,14 @@ export default function InboxView() {
   type SentKind = "all" | "form_invite" | "supplier_order" | "needs_followup";
   const [sentKind, setSentKind] = useState<SentKind>("all");
   const [search, setSearch] = useState("");
+  // Kate round-2 #07: advanced Sent filtering — by delivery/engagement status
+  // and by a sent-date range. Sender filtering is the viewer scope ("sent by
+  // me" is the default for non-admins); status + date cover the rest.
+  type SentStatus = "all" | "opened" | "submitted" | "not_opened" | "delivered" | "bounced";
+  const [sentStatus, setSentStatus] = useState<SentStatus>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sentSort, setSentSort] = useState<"newest" | "oldest">("newest");
 
   const needsFollowupSet = useMemo(() => {
     const now = Date.now();
@@ -172,8 +180,29 @@ export default function InboxView() {
         return hay.includes(q);
       });
     }
+    // Status filter (Kate #07) — derived from the delivery/engagement flags.
+    if (sentStatus !== "all") {
+      list = list.filter((m) => {
+        switch (sentStatus) {
+          case "opened": return !!m.opened;
+          case "submitted": return !!m.submitted;
+          case "not_opened": return !m.opened;
+          case "delivered": return !!m.delivered;
+          case "bounced": return m.deliveryStatus === "bounced" || m.deliveryStatus === "soft_bounce";
+          default: return true;
+        }
+      });
+    }
+    // Sent-date range (Kate #07) — inclusive, on the sent day.
+    if (dateFrom) list = list.filter((m) => m.sentAt.slice(0, 10) >= dateFrom);
+    if (dateTo) list = list.filter((m) => m.sentAt.slice(0, 10) <= dateTo);
+    // Sort by sent date.
+    list = [...list].sort((a, b) => {
+      const d = new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime();
+      return sentSort === "newest" ? d : -d;
+    });
     return list;
-  }, [sentMessages, sentKind, search, needsFollowupSet]);
+  }, [sentMessages, sentKind, search, needsFollowupSet, sentStatus, dateFrom, dateTo, sentSort]);
 
   // Client-side tab filter for INBOX mode + same search box. Inbox search
   // matches sender + subject + body so admin can scan a long thread list.
@@ -413,6 +442,51 @@ export default function InboxView() {
               />
             </div>
             <SearchBox value={search} onChange={setSearch} placeholder="Search recipient / PO# / WO#…" />
+          </div>
+
+          {/* Kate #07: advanced filters — status + sent-date range + sort. */}
+          <div className="flex items-center gap-2 flex-wrap mt-2 text-[12px]">
+            <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
+              Status
+              <select
+                value={sentStatus}
+                onChange={(e) => setSentStatus(e.target.value as SentStatus)}
+                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]"
+              >
+                <option value="all">Any status</option>
+                <option value="opened">Opened</option>
+                <option value="submitted">Submitted</option>
+                <option value="not_opened">Not opened</option>
+                <option value="delivered">Delivered</option>
+                <option value="bounced">Bounced</option>
+              </select>
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
+              Sent
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="Sent from date" className="rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]" />
+              <span className="text-ppp-charcoal-400">→</span>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="Sent to date" className="rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]" />
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
+              Sort
+              <select
+                value={sentSort}
+                onChange={(e) => setSentSort(e.target.value as "newest" | "oldest")}
+                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </label>
+            {(sentStatus !== "all" || dateFrom || dateTo || sentSort !== "newest") && (
+              <button
+                type="button"
+                onClick={() => { setSentStatus("all"); setDateFrom(""); setDateTo(""); setSentSort("newest"); }}
+                className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px]"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
 
           {/* List */}
