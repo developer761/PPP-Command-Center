@@ -11,6 +11,7 @@ import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { pickContractBaseCents } from "@/lib/commercial/aia/constants";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { costBreakdownByOpp, emptyCostBreakdown, type CostBreakdown } from "@/lib/commercial/purchases/db";
+import { fieldOpsLaborByOpp } from "@/lib/commercial/field-ops/labor-cost";
 import type { CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 
 export type ProjectRow = {
@@ -62,10 +63,20 @@ export type ProjectRow = {
   submittalTotal: number;
   submittalAwaiting: number;
   // ── Costs / Job P&L (Phase 2) ──
-  /** Σ live project purchases (materials/labor/subs/equipment/permits). */
+  /** TOTAL job cost = live purchases + field-ops crew labor. This is what
+   *  drives margin + every rollup, so deal ⊂ account ⊂ platform ties out. */
   costsCents: number;
-  /** Per-category cost breakdown for the P&L. */
+  /** Σ live project purchases only (materials/subcontract-labor/subs/equipment/
+   *  permits) — the manual side. `costsCents − purchasesCents = crew labor`. */
+  purchasesCents: number;
+  /** Per-category purchase breakdown for the P&L (purchases only). */
   costs: CostBreakdown;
+  /** Option A — burdened cost of in-house crew hours (approved time-entries ×
+   *  effective cost rate), from Field Ops. Included in costsCents. */
+  fieldOpsLaborCents: number;
+  /** Approved crew hours with no cost rate on file (cost $0 → margin
+   *  understated until a rate is set). Surfaced as a data-quality nudge. */
+  laborUnratedHours: number;
   /** Contract to date − total costs = projected gross profit (negative = over budget). */
   grossMarginCents: number;
   /** grossMargin ÷ contract, whole %, null when contract is 0. */
@@ -202,6 +213,12 @@ export async function listProjects(opts: {
   // purchases (costBreakdownByOpp filters deleted_at IS NULL — audit C2). ──
   const costsByOpp = await costBreakdownByOpp(oppIds);
 
+  // ── Batch: field-ops crew labor cost per opp (Option A). Σ approved
+  // time-entries × effective cost rate, keyed by opp. Folded into total cost so
+  // margin + every rollup (account, platform) includes real crew labor, not
+  // just purchases — deal ⊂ account ⊂ platform still reconciles. ──
+  const laborByOpp = await fieldOpsLaborByOpp(oppIds);
+
   // ── Batch: proposals per opp — the WON one is the signed contract; if none
   // is won, the LATEST (highest revision) proposal drives the contract so a deal
   // never shows its first/oldest quote (Karan 2026-08 smoke-test fix). ──
@@ -337,7 +354,11 @@ export async function listProjects(opts: {
     // Job P&L (Phase 2): margin vs the SAME contractToDate used everywhere else
     // (base + net-approved COs), so the card ties out with the deal P&L (audit C1).
     const costs = costsByOpp.get(o.id) ?? emptyCostBreakdown();
-    const grossMarginCents = contractToDate - costs.total;
+    const labor = laborByOpp.get(o.id) ?? { cents: 0, ratedHours: 0, unratedHours: 0 };
+    const purchasesCents = costs.total;
+    const fieldOpsLaborCents = labor.cents;
+    const costsCents = purchasesCents + fieldOpsLaborCents;
+    const grossMarginCents = contractToDate - costsCents;
     const grossMarginPct = hasContract ? Math.round((grossMarginCents / contractToDate) * 100) : null;
     return {
       opp: o as CommercialOpportunity,
@@ -370,8 +391,11 @@ export async function listProjects(opts: {
       isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",
       submittalTotal: submittalCounts.get(o.id)?.total ?? 0,
       submittalAwaiting: submittalCounts.get(o.id)?.awaiting_response ?? 0,
-      costsCents: costs.total,
+      costsCents,
+      purchasesCents,
       costs,
+      fieldOpsLaborCents,
+      laborUnratedHours: labor.unratedHours,
       grossMarginCents,
       grossMarginPct,
     };
@@ -408,8 +432,14 @@ export type ProductionSummary = {
   /** Invoiced − paid. Outstanding AR across these projects. */
   outstandingCents: number;
   // ── Job P&L (Phase 2) ──
-  /** Σ project costs across these projects. */
+  /** Σ TOTAL project costs (purchases + crew labor) across these projects. */
   costsCents: number;
+  /** Σ purchases only (materials/subs/etc.) — the manual side of costs. */
+  purchasesCents: number;
+  /** Σ field-ops crew labor cost (Option A) — the auto side of costs. */
+  fieldOpsLaborCents: number;
+  /** Σ approved crew hours with no cost rate on file (understates labor). */
+  laborUnratedHours: number;
   /** Σ contract − Σ costs = portfolio projected gross profit. */
   grossMarginCents: number;
 };
@@ -436,6 +466,9 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
   let overBilledCents = 0;
   let overBilledProjects = 0;
   let costsCents = 0;
+  let purchasesCents = 0;
+  let fieldOpsLaborCents = 0;
+  let laborUnratedHours = 0;
   let outstandingCents = 0;
   for (const r of rows) {
     contractValueCents += r.contractToDateCents;
@@ -447,6 +480,9 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     billedContractCents += r.billedContractCents;
     paidCents += r.paidCents;
     costsCents += r.costsCents;
+    purchasesCents += r.purchasesCents;
+    fieldOpsLaborCents += r.fieldOpsLaborCents;
+    laborUnratedHours += r.laborUnratedHours;
     // Sum each project's already-per-invoice-clamped outstanding (not
     // Σinvoiced − Σpaid) so a credit on one deal can't net down another's AR.
     outstandingCents += r.outstandingCents;
@@ -480,6 +516,9 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     overBilledProjects,
     outstandingCents,
     costsCents,
+    purchasesCents,
+    fieldOpsLaborCents,
+    laborUnratedHours,
     grossMarginCents: contractValueCents - costsCents,
     // remaining now means "left to bill" (contract − invoiced), the number
     // operators actually expect when they invoice.

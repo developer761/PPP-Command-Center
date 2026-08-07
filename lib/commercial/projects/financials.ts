@@ -19,6 +19,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { costBreakdownForProject, type CostBreakdown } from "@/lib/commercial/purchases/db";
+import { fieldOpsLaborForOpp } from "@/lib/commercial/field-ops/labor-cost";
 
 export type ProjectFinancials = {
   /** Pre-tax contract to date = base ladder + net-approved COs. */
@@ -36,7 +37,16 @@ export type ProjectFinancials = {
   /** Σ per-invoice max(0, −balance) — overpayment credits, surfaced separately
    *  so an overpaid deal shows a credit, not a hidden $0 balance. */
   creditCents: number;
+  /** Purchases only (materials, subs, equipment, permits, subcontract labor…). */
   costs: CostBreakdown;
+  /** Option A — burdened cost of in-house crew hours (approved time-entries ×
+   *  effective cost rate), computed from Field Ops, NOT a purchase row. */
+  fieldOpsLaborCents: number;
+  /** Approved crew hours with no cost rate on file → they cost $0 here, so a
+   *  value > 0 means labor cost (and margin) is understated until a rate is set. */
+  laborUnratedHours: number;
+  /** Purchases + field-ops labor = the deal's total cost. */
+  totalCostCents: number;
   /** Contract − total costs = projected gross profit. Negative = over budget. */
   grossMarginCents: number;
   /** margin / contract, whole %, null when contract is 0 (no divide-by-zero). */
@@ -53,10 +63,11 @@ type InvRow = {
 
 export async function getProjectFinancials(oppId: string): Promise<ProjectFinancials> {
   const sb = commercialDb();
-  const [base, netCo, costs, invRes] = await Promise.all([
+  const [base, netCo, costs, labor, invRes] = await Promise.all([
     getEffectiveContractBaseCents(oppId),
     netApprovedChangeOrderCents(oppId),
     costBreakdownForProject(oppId),
+    fieldOpsLaborForOpp(oppId),
     sb
       .from("commercial_invoices")
       .select("status, total_cents, subtotal_cents, paid_cents, balance_cents")
@@ -84,7 +95,9 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     creditCents += Math.max(0, -bal);
   }
 
-  const grossMarginCents = contractCents - costs.total;
+  const fieldOpsLaborCents = labor.cents;
+  const totalCostCents = costs.total + fieldOpsLaborCents;
+  const grossMarginCents = contractCents - totalCostCents;
   const grossMarginPct = hasContract ? Math.round((grossMarginCents / contractCents) * 100) : null;
 
   return {
@@ -96,6 +109,9 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     openBalanceCents,
     creditCents,
     costs,
+    fieldOpsLaborCents,
+    laborUnratedHours: labor.unratedHours,
+    totalCostCents,
     grossMarginCents,
     grossMarginPct,
   };

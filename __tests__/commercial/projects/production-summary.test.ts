@@ -41,7 +41,10 @@ describe("summarizeProduction", () => {
       submittalTotal: 0,
       submittalAwaiting: 0,
       costsCents: 0,
+      purchasesCents: 0,
       costs: { materials: 0, labor: 0, subcontractor: 0, equipment: 0, permit: 0, other: 0, total: 0, count: 0 },
+      fieldOpsLaborCents: 0,
+      laborUnratedHours: 0,
       grossMarginCents: 0,
       grossMarginPct: null,
       ...rest,
@@ -108,6 +111,9 @@ describe("summarizeProduction", () => {
       overBilledProjects: 0,
       outstandingCents: 0,
       costsCents: 0,
+      purchasesCents: 0,
+      fieldOpsLaborCents: 0,
+      laborUnratedHours: 0,
       grossMarginCents: 0,
     });
   });
@@ -143,5 +149,22 @@ describe("summarizeProduction", () => {
     // Portfolio margin nets: 14M contract − 11M cost = 3M (one job's overrun is
     // absorbed at the portfolio level, but each project row keeps its own sign).
     expect(s.grossMarginCents).toBe(3_000_000);
+  });
+
+  it("aggregates field-ops crew labor + purchases + unrated hours (Option A)", () => {
+    // costsCents is the TOTAL (purchases + crew labor) on each row; margin uses
+    // it. purchasesCents / fieldOpsLaborCents / laborUnratedHours are carried for
+    // display. Deal ⊂ account ⊂ platform holds because every level sums the same
+    // per-row totals.
+    const s = summarizeProduction([
+      row({ contractToDateCents: 10_000_000, costsCents: 7_000_000, purchasesCents: 4_000_000, fieldOpsLaborCents: 3_000_000, laborUnratedHours: 8 }),
+      row({ contractToDateCents: 5_000_000, costsCents: 2_000_000, purchasesCents: 1_500_000, fieldOpsLaborCents: 500_000, laborUnratedHours: 0 }),
+    ]);
+    expect(s.costsCents).toBe(9_000_000); // 7M + 2M (purchases + crew, both rows)
+    expect(s.purchasesCents).toBe(5_500_000); // 4M + 1.5M
+    expect(s.fieldOpsLaborCents).toBe(3_500_000); // 3M + 0.5M
+    expect(s.laborUnratedHours).toBe(8);
+    // Portfolio margin uses the labor-inclusive total: 15M − 9M = 6M.
+    expect(s.grossMarginCents).toBe(6_000_000);
   });
 });

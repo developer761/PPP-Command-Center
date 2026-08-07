@@ -15,6 +15,7 @@ import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/oppor
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents, formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { getProjectFinancials } from "@/lib/commercial/projects/financials";
+import { fieldOpsLaborByWorkerForOpp } from "@/lib/commercial/field-ops/labor-cost";
 import {
   listPurchasesForProject,
   addPurchase,
@@ -35,8 +36,11 @@ import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import Link from "next/link";
 
 const COST_CATEGORY_TONE: Record<string, ChartTone> = {
-  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
+  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
 };
+// Field-ops crew labor (Option A) — its own donut slice, distinct from the
+// manual "Subcontract labor" purchase category.
+const CREW_LABOR_TONE: ChartTone = "emerald";
 
 export type CostsSP = {
   cost_ok?: string;
@@ -256,33 +260,45 @@ export async function ProjectCostsTool({
   if (opp.account_id !== id) notFound();
 
   const dealName = derivedOppName(opp, account.company_name);
-  const [fin, purchases, recentVendors, recentWorkers, laborByWorker] = await Promise.all([
+  const [fin, purchases, recentVendors, recentWorkers, laborByWorker, crewLabor] = await Promise.all([
     getProjectFinancials(dealId),
     listPurchasesForProject(dealId),
     recentVendorsForAccount(id),
     recentWorkersForAccount(id),
     laborByWorkerForProject(dealId),
+    fieldOpsLaborByWorkerForOpp(dealId),
   ]);
+  const crewLaborTotalCents = fin.fieldOpsLaborCents;
+  const crewLaborHours = crewLabor.reduce((s, w) => s + w.hours, 0);
   // Receipt docs for the purchases that have one (one batched query).
   const receiptDocs = await getDocumentsByIds(
     purchases.map((p) => p.receipt_document_id).filter((x): x is string => !!x),
   );
 
   const editId = sp.edit_purchase ?? null;
+  // Total cost = purchases (fin.costs.total) + field-ops crew labor (Option A).
+  // Everything below (margin, %-of-contract, net, donut) uses the TOTAL so this
+  // tab reconciles with the deal Overview, account rollup, and platform P&L.
+  const totalCostCents = fin.totalCostCents;
   // True % (may exceed 100 when over budget) for the label; bar width clamps.
-  const truePctOfContract = fin.hasContract ? Math.round((fin.costs.total / fin.contractCents) * 100) : 0;
+  const truePctOfContract = fin.hasContract ? Math.round((totalCostCents / fin.contractCents) * 100) : 0;
   const barPctOfContract = Math.min(100, truePctOfContract);
   const mt = marginTone(fin.grossMarginPct);
   const laborTotalHours = laborByWorker.reduce((s, w) => s + w.hours, 0);
   // Revenue framing (Gross = billed, Net = billed − costs) — matches the Revenue page.
-  const netProfitCents = fin.billedPreTaxCents - fin.costs.total;
+  const netProfitCents = fin.billedPreTaxCents - totalCostCents;
   const billedMarginPct = fin.billedPreTaxCents > 0 ? Math.round((netProfitCents / fin.billedPreTaxCents) * 100) : null;
-  const costSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
-    label: PURCHASE_CATEGORY_META[c].label,
-    value: fin.costs[c],
-    tone: COST_CATEGORY_TONE[c] ?? "neutral",
-    valueLabel: formatCentsCompact(fin.costs[c]),
-  }));
+  const costSegments: DonutSegment[] = [
+    ...PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
+      label: PURCHASE_CATEGORY_META[c].label,
+      value: fin.costs[c],
+      tone: COST_CATEGORY_TONE[c] ?? "neutral",
+      valueLabel: formatCentsCompact(fin.costs[c]),
+    })),
+    ...(crewLaborTotalCents > 0
+      ? [{ label: "Crew labor", value: crewLaborTotalCents, tone: CREW_LABOR_TONE, valueLabel: formatCentsCompact(crewLaborTotalCents) }]
+      : []),
+  ];
 
   const panel = (
     <div className="space-y-3">
@@ -320,7 +336,7 @@ export async function ProjectCostsTool({
           <PLTile label="Contract" value={fin.hasContract ? formatCentsFull(fin.contractCents) : "—"} hint={fin.hasContract ? undefined : "Set a proposal/bid"} />
           <PLTile label="Invoiced" value={formatCentsFull(fin.invoicedCents)} />
           <PLTile label="Collected" value={formatCentsFull(fin.collectedCents)} tone="emerald" />
-          <PLTile label="Costs" value={formatCentsFull(fin.costs.total)} tone={fin.costs.total > 0 ? "rose" : "neutral"} />
+          <PLTile label="Costs" value={formatCentsFull(totalCostCents)} tone={totalCostCents > 0 ? "rose" : "neutral"} />
           <PLTile
             label={fin.grossMarginCents < 0 ? "Margin (loss)" : "Gross margin"}
             value={formatCentsFull(fin.grossMarginCents)}
@@ -340,23 +356,31 @@ export async function ProjectCostsTool({
             </div>
           </div>
         )}
-        {/* Per-category cost breakdown — where the money went. */}
-        {fin.costs.total > 0 && (
+        {/* Per-category cost breakdown — where the money went (purchases + the
+            auto crew-labor line). % is of TOTAL cost so the chips sum to 100. */}
+        {totalCostCents > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => (
               <span key={c} className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-1 text-[11px]">
                 <span className="font-semibold text-ppp-charcoal-600">{PURCHASE_CATEGORY_META[c].label}</span>
                 <span className="tabular-nums font-bold text-ppp-charcoal">{formatCentsFull(fin.costs[c])}</span>
-                <span className="text-ppp-charcoal-400 tabular-nums">{Math.round((fin.costs[c] / fin.costs.total) * 100)}%</span>
+                <span className="text-ppp-charcoal-400 tabular-nums">{Math.round((fin.costs[c] / totalCostCents) * 100)}%</span>
               </span>
             ))}
+            {crewLaborTotalCents > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px]">
+                <span className="font-semibold text-emerald-800">Crew labor</span>
+                <span className="tabular-nums font-bold text-ppp-charcoal">{formatCentsFull(crewLaborTotalCents)}</span>
+                <span className="text-ppp-charcoal-400 tabular-nums">{Math.round((crewLaborTotalCents / totalCostCents) * 100)}%</span>
+              </span>
+            )}
           </div>
         )}
       </section>
 
       {/* ── Revenue & margin ── cost-by-category donut + billed-based margin gauge
           (Gross = billed, Net = billed − costs — matches the Revenue page). */}
-      {(fin.costs.total > 0 || fin.billedPreTaxCents > 0) && (
+      {(totalCostCents > 0 || fin.billedPreTaxCents > 0) && (
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
           <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
             <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
@@ -365,7 +389,7 @@ export async function ProjectCostsTool({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
             <div className="flex items-center justify-center">
               {costSegments.length > 0 ? (
-                <DonutChart size={148} segments={costSegments} centerValue={formatCentsCompact(fin.costs.total)} centerLabel="job costs" />
+                <DonutChart size={148} segments={costSegments} centerValue={formatCentsCompact(totalCostCents)} centerLabel="job costs" />
               ) : (
                 <p className="text-[12px] text-ppp-charcoal-400 text-center">No costs logged yet — add one below.</p>
               )}
@@ -374,7 +398,7 @@ export async function ProjectCostsTool({
               <GaugeRing pct={billedMarginPct ?? 0} tone={billedMarginPct === null ? "neutral" : billedMarginPct < 0 ? "rose" : billedMarginPct < 15 ? "amber" : "emerald"} value={billedMarginPct === null ? "—" : `${billedMarginPct}%`} label="margin" size={112} />
               <div className="min-w-0 text-[12px] space-y-1">
                 <div><span className="text-ppp-charcoal-500">Gross (billed): </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(fin.billedPreTaxCents)}</strong></div>
-                <div><span className="text-ppp-charcoal-500">Costs: </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(fin.costs.total)}</strong></div>
+                <div><span className="text-ppp-charcoal-500">Costs: </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(totalCostCents)}</strong></div>
                 <div className="pt-1 border-t border-ppp-charcoal-100"><span className="text-ppp-charcoal-500">Net profit: </span><strong className={`tabular-nums ${netProfitCents < 0 ? "text-rose-700" : "text-emerald-700"}`}>{netProfitCents < 0 ? "−" : ""}{formatCentsCompact(Math.abs(netProfitCents))}</strong></div>
               </div>
             </div>
@@ -382,11 +406,56 @@ export async function ProjectCostsTool({
         </section>
       )}
 
-      {/* ── Labor by worker (deal-scoped overview) ── */}
+      {/* ── Crew labor by worker (Option A — auto, from approved time entries) ──
+          The in-house W-2 crew cost, computed from Field Ops (hours × burdened
+          cost rate). Distinct from "Subcontract labor" below, which is manual
+          1099/sub purchases. */}
+      {crewLabor.length > 0 && (
+        <section className="bg-surface border border-emerald-100 rounded-xl p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-2 mb-1.5">
+            <div>
+              <h3 className="text-[13px] font-bold text-ppp-charcoal flex items-center gap-1.5">
+                <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                Crew labor
+              </h3>
+              <p className="text-[11px] text-ppp-charcoal-400 leading-snug mt-0.5">Auto from approved time entries — no re-typing.</p>
+            </div>
+            <span className="text-[11px] text-ppp-charcoal-500 tabular-nums text-right shrink-0">
+              {formatCentsFull(crewLaborTotalCents)} total
+              {crewLaborHours > 0 ? ` · ${crewLaborHours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs` : ""}
+            </span>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {crewLabor.map((w) => (
+              <li key={w.employeeId} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{w.name}</div>
+                  <div className="text-[11px] text-ppp-charcoal-400 tabular-nums">
+                    {w.hours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs
+                    {w.currentRateCents != null ? ` · ${formatCentsFull(w.currentRateCents)}/hr` : ""}
+                    {w.unratedHours > 0 && (
+                      <span className="text-amber-700"> · {w.unratedHours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs unrated</span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-[13px] font-bold tabular-nums text-ppp-charcoal shrink-0">{formatCentsFull(w.costCents)}</div>
+              </li>
+            ))}
+          </ul>
+          {crewLabor.some((w) => w.unratedHours > 0) && (
+            <p className="mt-2.5 text-[11.5px] text-amber-700 leading-snug">
+              Some crew hours have no cost rate set, so labor cost and margin are understated. Set rates on the{" "}
+              <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ── Subcontract labor by worker (manual "labor" purchases) ── */}
       {laborByWorker.length > 0 && (
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
           <div className="flex items-center justify-between gap-2 mb-2.5">
-            <h3 className="text-[13px] font-bold text-ppp-charcoal">Labor by worker</h3>
+            <h3 className="text-[13px] font-bold text-ppp-charcoal">Subcontract labor by worker</h3>
             <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
               {formatCentsFull(fin.costs.labor)} total
               {laborTotalHours > 0 ? ` · ${laborTotalHours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs` : ""}

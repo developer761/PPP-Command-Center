@@ -112,7 +112,7 @@ export default function PurchaseForm({
           </select>
         </div>
         <div>
-          <label className={LABEL_CLS} htmlFor="pu-amount">{isLabor ? "Labor cost" : "Amount"}</label>
+          <label className={LABEL_CLS} htmlFor="pu-amount">{isLabor ? "Subcontract labor cost" : "Amount"}</label>
           <input
             id="pu-amount"
             name="amount"
@@ -129,7 +129,7 @@ export default function PurchaseForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className={LABEL_CLS} htmlFor="pu-vendor">
-            {isLabor ? "Worker / crew" : "Store / vendor"} <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+            {isLabor ? "Worker / sub" : "Store / vendor"} <span className="font-normal text-ppp-charcoal-400">(optional)</span>
           </label>
           <input
             id="pu-vendor"
@@ -138,7 +138,7 @@ export default function PurchaseForm({
             maxLength={200}
             defaultValue={purchase?.vendor ?? preserve?.vendor ?? ""}
             className={INPUT_CLS}
-            placeholder={isLabor ? "Worker or crew name" : "Sherwin-Williams"}
+            placeholder={isLabor ? "Worker or sub name" : "Sherwin-Williams"}
           />
           <datalist id="pu-vendor-list">
             {recentVendors.map((v) => (<option key={v} value={v} />))}

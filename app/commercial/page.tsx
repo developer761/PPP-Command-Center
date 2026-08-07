@@ -43,8 +43,11 @@ import TrendChart from "@/components/trend-chart";
 import { DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
-  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
+  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
 };
+// Field-ops crew labor (Option A) is a cost source alongside purchases; it gets
+// its own donut slice so "where the money goes" shows in-house labor distinctly.
+const CREW_LABOR_TONE: ChartTone = "emerald";
 
 export const dynamic = "force-dynamic";
 
@@ -216,8 +219,15 @@ export default async function CommercialDashboardPage() {
     for (const c of PURCHASE_CATEGORIES) costs[c] += b[c];
     costs.total += b.total;
   }
+  // Field-ops crew labor (Option A) — the auto cost source. Each project row
+  // already carries its labor (folded into p.costsCents), so summing the rows'
+  // labor keeps the portfolio total identical to Σ per-deal P&L (deal ⊂
+  // portfolio). totalCostCents = purchases + crew labor drives Net/Margin.
+  const crewLaborCents = allProjectRows.reduce((acc, p) => acc + p.fieldOpsLaborCents, 0);
+  const laborUnratedHours = allProjectRows.reduce((acc, p) => acc + p.laborUnratedHours, 0);
+  const totalCostCents = costs.total + crewLaborCents;
   const grossRevenueCents = allProjectRows.reduce((acc, p) => acc + p.billedContractCents, 0);
-  const netProfitCents = grossRevenueCents - costs.total;
+  const netProfitCents = grossRevenueCents - totalCostCents;
   const revMarginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
   const revMarginTone: ChartTone = revMarginPct === null ? "neutral" : revMarginPct < 0 ? "rose" : revMarginPct < 15 ? "amber" : "emerald";
   // Monthly billed revenue ($K) — shared ET-bucketed, pre-tax, issued-only
@@ -238,12 +248,17 @@ export default async function CommercialDashboardPage() {
     lastMonthBilledCents > 0
       ? Math.round(((thisMonthBilledCents - lastMonthBilledCents) / lastMonthBilledCents) * 100)
       : null;
-  const revCostSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => costs[c] > 0).map((c) => ({
-    label: PURCHASE_CATEGORY_META[c].label,
-    value: costs[c],
-    tone: DASH_COST_TONE[c] ?? "neutral",
-    valueLabel: formatCentsCompact(costs[c]),
-  }));
+  const revCostSegments: DonutSegment[] = [
+    ...PURCHASE_CATEGORIES.filter((c) => costs[c] > 0).map((c) => ({
+      label: PURCHASE_CATEGORY_META[c].label,
+      value: costs[c],
+      tone: DASH_COST_TONE[c] ?? "neutral",
+      valueLabel: formatCentsCompact(costs[c]),
+    })),
+    ...(crewLaborCents > 0
+      ? [{ label: "Crew labor", value: crewLaborCents, tone: CREW_LABOR_TONE, valueLabel: formatCentsCompact(crewLaborCents) }]
+      : []),
+  ];
   const revProjectBars = allProjectRows
     .filter((p) => p.billedContractCents > 0)
     .map((p) => {
@@ -295,7 +310,7 @@ export default async function CommercialDashboardPage() {
         {/* Calm zero-state on a brand-new workspace — one line, not four "$0"
             tiles + a flat chart that read as "is this broken?" (2026-08 first-run
             walk). */}
-        {(grossRevenueCents > 0 || allProjectRows.length > 0 || costs.total > 0) ? (
+        {(grossRevenueCents > 0 || allProjectRows.length > 0 || totalCostCents > 0) ? (
         <>
         {/* Lead with the "are we making money" answer: Net profit + Margin
             first & biggest; Gross (only-goes-up) demoted; Job costs last. Plain
@@ -304,7 +319,7 @@ export default async function CommercialDashboardPage() {
           <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="after job costs" />
           <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : revMarginPct < 0 ? "losing money" : revMarginPct < 15 ? "thin" : "healthy"} />
           <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
-          <StatCard label="Job costs" value={formatCentsCompact(costs.total)} tone="amber" sub={costs.total === 0 ? "none logged" : "materials · labor · subs"} />
+          <StatCard label="Job costs" value={formatCentsCompact(totalCostCents)} tone="amber" sub={totalCostCents === 0 ? "none logged" : crewLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
         </div>
         <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
           <div className="flex items-baseline justify-between gap-2 mb-2 flex-wrap">
@@ -330,9 +345,14 @@ export default async function CommercialDashboardPage() {
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
               <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3">Where the money goes</h3>
               {revCostSegments.length > 0 ? (
-                <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(costs.total)} centerLabel="job costs" />
+                <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(totalCostCents)} centerLabel="job costs" />
               ) : (
                 <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">No job costs logged yet. Add them on any project&rsquo;s Costs &amp; P&amp;L tab.</p>
+              )}
+              {laborUnratedHours > 0 && (
+                <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
+                  <span className="font-semibold">{laborUnratedHours.toLocaleString()} crew hours</span> have no cost rate set, so labor cost (and profit) is understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+                </p>
               )}
             </div>
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">

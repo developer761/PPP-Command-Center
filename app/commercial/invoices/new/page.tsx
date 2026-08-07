@@ -101,9 +101,9 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
         />
         <MoneyTile
           label="Margin"
-          value={fin.costs.total === 0 ? "—" : `${fin.grossMarginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(fin.grossMarginCents))}`}
-          sub={fin.grossMarginPct == null || fin.costs.total === 0 ? undefined : `${fin.grossMarginPct}%`}
-          tone={fin.costs.total === 0 ? "neutral" : fin.grossMarginPct != null && fin.grossMarginPct < 0 ? "rose" : "emerald"}
+          value={fin.totalCostCents === 0 ? "—" : `${fin.grossMarginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(fin.grossMarginCents))}`}
+          sub={fin.grossMarginPct == null || fin.totalCostCents === 0 ? undefined : `${fin.grossMarginPct}%`}
+          tone={fin.totalCostCents === 0 ? "neutral" : fin.grossMarginPct != null && fin.grossMarginPct < 0 ? "rose" : "emerald"}
           href={`/commercial/accounts/${opp!.account_id}/costs/${opp!.id}?back=${encodeURIComponent(returnTo)}`}
         />
       </div>

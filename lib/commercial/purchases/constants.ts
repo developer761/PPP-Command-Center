@@ -26,7 +26,10 @@ export const PURCHASE_CATEGORY_META: Record<
   { label: string; plural: string; tone: "cc-brand" | "ppp-blue" | "amber" | "emerald" | "charcoal" }
 > = {
   materials: { label: "Materials", plural: "Materials", tone: "cc-brand" },
-  labor: { label: "Labor", plural: "Labor", tone: "ppp-blue" },
+  // "labor" = manual 1099 / day-labor purchases (individual workers). In-house
+  // W-2 crew cost is the separate auto "Crew labor" line (Option A, from time
+  // entries), so this is disambiguated as "Subcontract labor".
+  labor: { label: "Subcontract labor", plural: "Subcontract labor", tone: "ppp-blue" },
   subcontractor: { label: "Subcontractor", plural: "Subcontractors", tone: "amber" },
   equipment: { label: "Equipment", plural: "Equipment", tone: "emerald" },
   permit: { label: "Permit", plural: "Permits", tone: "charcoal" },

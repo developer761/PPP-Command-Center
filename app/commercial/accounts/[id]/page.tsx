@@ -1086,7 +1086,9 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   const dealTotalHours = laborRows.reduce((s, w) => s + w.hours, 0);
   const dealMaterialsCents = dealFin.costs.materials;
   const dealLaborOutCents = dealFin.costs.labor;
-  const dealCostsTotalCents = dealFin.costs.total;
+  // Total cost = purchases + field-ops crew labor (Option A) — so this deal's
+  // Net/Margin match the P&L tab, the account rollup, and the platform.
+  const dealCostsTotalCents = dealFin.totalCostCents;
   // Deal P&L — the SAME definitions as the account + dashboard levels: Gross =
   // billed (pre-tax), Net = gross − costs, Margin = net ÷ gross. Kept identical so
   // a deal's numbers reconcile up to its GC (account) and the whole platform.
@@ -1105,12 +1107,17 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // the GC + platform levels): monthly billed line + margin gauge + cost donut.
   const dealRevenueMonthly = monthlyBilledSeries(dealInvoices);
   const dealMarginTone: ChartTone = dealMarginPct === null ? "neutral" : dealMarginPct < 0 ? "rose" : dealMarginPct < 15 ? "amber" : "emerald";
-  const dealCostSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => dealFin.costs[c] > 0).map((c) => ({
-    label: PURCHASE_CATEGORY_META[c].label,
-    value: dealFin.costs[c],
-    tone: PNL_COST_TONE[c] ?? "neutral",
-    valueLabel: formatCentsCompact(dealFin.costs[c]),
-  }));
+  const dealCostSegments: DonutSegment[] = [
+    ...PURCHASE_CATEGORIES.filter((c) => dealFin.costs[c] > 0).map((c) => ({
+      label: PURCHASE_CATEGORY_META[c].label,
+      value: dealFin.costs[c],
+      tone: PNL_COST_TONE[c] ?? "neutral",
+      valueLabel: formatCentsCompact(dealFin.costs[c]),
+    })),
+    ...(dealFin.fieldOpsLaborCents > 0
+      ? [{ label: "Crew labor", value: dealFin.fieldOpsLaborCents, tone: CREW_LABOR_TONE, valueLabel: formatCentsCompact(dealFin.fieldOpsLaborCents) }]
+      : []),
+  ];
   const dealProposals = await listProposalsForOpp(p.opp.id);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
   // Milestones (2026-08): an invoice can be broken into a schedule of milestones
@@ -1278,7 +1285,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard label="Gross revenue" value={formatCentsCompact(dealGrossCents)} tone="brand" sub="billed to date · pre-tax" spark={dealRevenueMonthly.map((r) => r.value)} sparkLabels={dealRevenueMonthly.map((r) => r.label)} />
-            <StatCard label="Job costs" value={formatCentsCompact(dealCostsTotalCents)} tone="amber" sub={dealCostsTotalCents === 0 ? "none logged" : "materials · labor · subs"} />
+            <StatCard label="Job costs" value={formatCentsCompact(dealCostsTotalCents)} tone="amber" sub={dealCostsTotalCents === 0 ? "none logged" : dealFin.fieldOpsLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
             <StatCard label="Net profit" value={`${dealNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
             <StatCard label="Margin" value={dealMarginPct === null ? "—" : `${dealMarginPct}%`} tone={dealMarginTone} sub={dealMarginPct === null ? "log costs to see" : "net ÷ gross"} />
           </div>
@@ -1296,6 +1303,11 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
               )}
             </div>
           </div>
+          {dealFin.laborUnratedHours > 0 && (
+            <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
+              <span className="font-semibold">{dealFin.laborUnratedHours.toLocaleString()} approved crew hours</span> have no cost rate set, so labor cost and margin are understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+            </p>
+          )}
           {/* Contract billing progress — deal-specific (a GC/company has no single
               contract), kept as a slim strip, not big blocks. */}
           {hasContract && (
@@ -2187,25 +2199,35 @@ function monthlyBilledSeries(invoices: { status: string; created_at: string | nu
  *  Revenue page use, so a deal's P&L reconciles at every level. Gross = billed,
  *  Net = billed − costs (Karan's definitions). */
 const PNL_COST_TONE: Record<string, ChartTone> = {
-  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
+  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
 };
+// Field-ops crew labor (Option A) — an auto cost source alongside purchases, its
+// own donut slice so "where the money goes" shows in-house labor distinctly.
+const CREW_LABOR_TONE: ChartTone = "emerald";
 async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: string }) {
   const [fin, dealInvoices] = await Promise.all([
     getProjectFinancials(oppId),
     listCommercialInvoices({ opportunityId: oppId }),
   ]);
   const grossRevenueCents = fin.billedPreTaxCents;
-  const costsCents = fin.costs.total;
+  // Total cost = purchases + field-ops crew labor (Option A), so Net/Margin here
+  // match the deal Overview, the account rollup, and the platform P&L.
+  const costsCents = fin.totalCostCents;
   const netProfitCents = grossRevenueCents - costsCents;
   const marginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
   const collectedPct = fin.invoicedCents > 0 ? Math.min(100, Math.round((fin.collectedCents / fin.invoicedCents) * 100)) : 0;
   const revenueMonthly = monthlyBilledSeries(dealInvoices);
-  const costSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
-    label: PURCHASE_CATEGORY_META[c].label,
-    value: fin.costs[c],
-    tone: PNL_COST_TONE[c] ?? "neutral",
-    valueLabel: formatCentsCompact(fin.costs[c]),
-  }));
+  const costSegments: DonutSegment[] = [
+    ...PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
+      label: PURCHASE_CATEGORY_META[c].label,
+      value: fin.costs[c],
+      tone: PNL_COST_TONE[c] ?? "neutral",
+      valueLabel: formatCentsCompact(fin.costs[c]),
+    })),
+    ...(fin.fieldOpsLaborCents > 0
+      ? [{ label: "Crew labor", value: fin.fieldOpsLaborCents, tone: CREW_LABOR_TONE, valueLabel: formatCentsCompact(fin.fieldOpsLaborCents) }]
+      : []),
+  ];
   const overdueCount = dealInvoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
   // Split the open balance into overdue vs current so the Collections donut
   // labels only the overdue portion "Overdue" (2026-08 UI/UX audit).
@@ -2242,7 +2264,7 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
-          <StatCard label="Job costs" value={formatCentsCompact(costsCents)} tone="amber" sub={costsCents === 0 ? "none logged" : "materials · labor · subs"} />
+          <StatCard label="Job costs" value={formatCentsCompact(costsCents)} tone="amber" sub={costsCents === 0 ? "none logged" : fin.fieldOpsLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
           <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
           <StatCard label="Margin" value={marginPct === null ? "—" : `${marginPct}%`} tone={marginTone} sub={marginPct === null ? "no revenue yet" : "net ÷ gross"} />
         </div>
@@ -2260,6 +2282,11 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
             )}
           </div>
         </div>
+        {fin.laborUnratedHours > 0 && (
+          <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
+            <span className="font-semibold">{fin.laborUnratedHours.toLocaleString()} approved crew hours</span> have no cost rate set, so labor cost and margin are understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+          </p>
+        )}
       </section>
 
       {/* ── Collections ── */}
@@ -6931,16 +6958,26 @@ async function AccountKpisTab({
   // ── Account-wide P&L (all this GC's deals combined) — Gross = billed pre-tax,
   // Net = billed − costs. Same definitions as the deal P&L + Revenue page. ──
   const acctGrossCents = pnlRows.reduce((acc, p) => acc + p.billedContractCents, 0);
-  const acctCostsCents = accountCosts.total;
+  // Field-ops crew labor (Option A) is folded into each row's costsCents, so
+  // summing the rows' labor gives the account crew-labor total — Σ p.costsCents =
+  // purchases (accountCosts.total) + crew labor, keeping deal ⊂ account exact.
+  const acctCrewLaborCents = pnlRows.reduce((acc, p) => acc + p.fieldOpsLaborCents, 0);
+  const acctLaborUnratedHours = pnlRows.reduce((acc, p) => acc + p.laborUnratedHours, 0);
+  const acctCostsCents = accountCosts.total + acctCrewLaborCents;
   const acctNetCents = acctGrossCents - acctCostsCents;
   const acctMarginPct = acctGrossCents > 0 ? Math.round((acctNetCents / acctGrossCents) * 100) : null;
   const acctRevenueMonthly = monthlyBilledSeries(accountInvoices);
-  const acctCostSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => accountCosts[c] > 0).map((c) => ({
-    label: PURCHASE_CATEGORY_META[c].label,
-    value: accountCosts[c],
-    tone: PNL_COST_TONE[c] ?? "neutral",
-    valueLabel: formatCentsCompact(accountCosts[c]),
-  }));
+  const acctCostSegments: DonutSegment[] = [
+    ...PURCHASE_CATEGORIES.filter((c) => accountCosts[c] > 0).map((c) => ({
+      label: PURCHASE_CATEGORY_META[c].label,
+      value: accountCosts[c],
+      tone: PNL_COST_TONE[c] ?? "neutral",
+      valueLabel: formatCentsCompact(accountCosts[c]),
+    })),
+    ...(acctCrewLaborCents > 0
+      ? [{ label: "Crew labor", value: acctCrewLaborCents, tone: CREW_LABOR_TONE, valueLabel: formatCentsCompact(acctCrewLaborCents) }]
+      : []),
+  ];
 
   // winRate() returns a 0..1 decimal — ×100 for display.
   const winRateRaw = overview ? winRate(overview) : null;
@@ -7008,7 +7045,7 @@ async function AccountKpisTab({
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Gross revenue" value={formatCentsCompact(acctGrossCents)} tone="brand" sub="billed to date" spark={acctRevenueMonthly.map((r) => r.value)} sparkLabels={acctRevenueMonthly.map((r) => r.label)} />
-          <StatCard label="Job costs" value={formatCentsCompact(acctCostsCents)} tone="amber" sub={acctCostsCents === 0 ? "none logged" : "materials · labor · subs"} />
+          <StatCard label="Job costs" value={formatCentsCompact(acctCostsCents)} tone="amber" sub={acctCostsCents === 0 ? "none logged" : acctCrewLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
           <StatCard label="Net profit" value={`${acctNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(acctNetCents))}`} tone={acctNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
           <StatCard label="Margin" value={acctMarginPct === null ? "—" : `${acctMarginPct}%`} tone={acctMarginPct === null ? "neutral" : acctMarginPct < 0 ? "rose" : acctMarginPct < 15 ? "amber" : "emerald"} sub={acctMarginPct === null ? "no revenue yet" : "net ÷ gross"} />
         </div>
@@ -7026,6 +7063,11 @@ async function AccountKpisTab({
             )}
           </div>
         </div>
+        {acctLaborUnratedHours > 0 && (
+          <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
+            <span className="font-semibold">{acctLaborUnratedHours.toLocaleString()} approved crew hours</span> have no cost rate set, so labor cost and margin are understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+          </p>
+        )}
       </section>
 
       {/* ── Collections ── KPI row + Paid/Balance donut + monthly billing trend.
