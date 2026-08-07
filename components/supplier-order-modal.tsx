@@ -144,6 +144,18 @@ export default function SupplierOrderModal({
   // narrow regex (matches by color name + code + finish + surfaces — admin
   // can still edit the body manually). Cleared on draft refetch.
   const [quantityOverrides, setQuantityOverrides] = useState<Map<string, { buckets: number; cans: number }>>(new Map());
+  // Kate round-2 #17 + #21: the "what to buy" TOTAL and the "manual quantity
+  // required" banners must reflect the admin's typed quantities, not just the
+  // raw SF estimate. Fold the +/- overrides into each estimate — an explicit
+  // override RESOLVES the color (no longer manual-only) and carries its qty. */
+  const effectiveEstimates = useMemo<GallonEstimate[]>(() => {
+    if (!draft) return [];
+    return draft.gallonEstimates.map((e) => {
+      const o = quantityOverrides.get(`${e.colorId}::${e.finish ?? ""}`);
+      if (!o) return e;
+      return { ...e, buckets: o.buckets, cans: o.cans, manualOnly: false };
+    });
+  }, [draft, quantityOverrides]);
   // Per-color Material Type overrides — Katie 2026-06-05: "we will want to be
   // able to adjust per surface in case we mix product lines." Keyed by
   // `${colorId}::${finish ?? ""}` to match the +/- override map shape. Empty
@@ -672,6 +684,39 @@ export default function SupplierOrderModal({
                       Settings → Suppliers, or use Copy-to-Clipboard below and paste into Gmail.
                     </div>
                   )}
+                  {/* Kate round-2 #14 + #17: the "Manual quantity required"
+                      banners now render ABOVE the "Order — what to buy" list so
+                      it's clear what they refer to, and they clear as soon as
+                      every flagged color has a typed quantity (effectiveEstimates
+                      folds in the +/- overrides). */}
+                  {(() => {
+                    const manualOnlyEstimates = effectiveEstimates.filter((e) => e.manualOnly);
+                    const otherZeroEstimates = effectiveEstimates.filter(
+                      (e) => !e.manualOnly && e.buckets === 0 && e.cans === 0
+                    );
+                    if (manualOnlyEstimates.length === 0 && otherZeroEstimates.length === 0) return null;
+                    return (
+                      <div className="space-y-2 mb-1">
+                        {manualOnlyEstimates.length > 0 && (
+                          <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700 flex items-start gap-2">
+                            <span aria-hidden>⚠</span>
+                            <span>
+                              <strong>Manual quantity required</strong> — {manualOnlyEstimates.length === 1 ? "1 color" : `${manualOnlyEstimates.length} colors`} have no measurements in Salesforce. Type in the gallons with the +/- buttons below.
+                            </span>
+                          </div>
+                        )}
+                        {otherZeroEstimates.length > 0 && (
+                          <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700 flex items-start gap-2">
+                            <span aria-hidden>⚠</span>
+                            <span>
+                              <strong>Manual quantity required</strong> — {otherZeroEstimates.length === 1 ? "1 color" : `${otherZeroEstimates.length} colors`} (cabinets, accent walls, etc.) we can&apos;t size from the data. Type in the gallons before sending.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* The clean "what to buy" shopping list — per color, whole
                       gallons. Mirrors the ORDER section of the email so the
                       worker eyeballs quantities without scanning the body.
@@ -690,7 +735,8 @@ export default function SupplierOrderModal({
                           </span>
                         </div>
                         {(() => {
-                          const t = summarizeOrder(draft.gallonEstimates);
+                          // Kate #21: total reflects the admin's typed quantities.
+                          const t = summarizeOrder(effectiveEstimates);
                           if (t.buckets === 0 && t.cans === 0) return null;
                           return (
                             <span className="text-[11px] text-ppp-charcoal-500">
@@ -709,9 +755,11 @@ export default function SupplierOrderModal({
                           const effective = override ?? { buckets: e.buckets, cans: e.cans };
                           const hasOverride = !!override;
                           const totalCans = effective.buckets * 5 + effective.cans;
+                          // Kate round-2 #15: the empty placeholder now reads as a
+                          // clear ⚠️ alert instead of "___ (PPP to confirm)".
                           const displayQty = effective.buckets > 0 || effective.cans > 0
                             ? formatOrderQuantity({ ...e, buckets: effective.buckets, cans: effective.cans })
-                            : "___ (PPP to confirm)";
+                            : "⚠️ set qty";
 
                           return (
                             <li key={`${e.colorId}-${e.finish ?? ""}-${i}`} className="px-4 py-2 text-xs">
@@ -812,52 +860,6 @@ export default function SupplierOrderModal({
                       </ul>
                     </div>
                   )}
-
-                  {/* Surface any color we couldn't size. Split into TWO banners
-                      so the worker sees the right cause + remediation:
-                       - manualOnly: WO has ZERO measurement data on SF (every
-                         contributing room is bare). Stronger red banner — the
-                         worker MUST set quantities, no auto-estimate possible.
-                         Karan 2026-06-09: "no auto-calculation whatsoever".
-                       - unsized only: SOME surface (cabinets, accent walls,
-                         etc.) can't be sized — milder orange banner. */}
-                  {(() => {
-                    const manualOnlyEstimates = draft.gallonEstimates.filter((e) => e.manualOnly);
-                    const otherZeroEstimates = draft.gallonEstimates.filter(
-                      (e) => !e.manualOnly && e.buckets === 0 && e.cans === 0
-                    );
-                    return (
-                      <>
-                        {/* Consistency 2026-06-13: was red + 🛑 (inconsistent
-                            with the orange + ⚠ used everywhere else). Now
-                            matches WO-list pill ("⚠ Manual qty"), per-room
-                            pill ("⚠ No sq ft"), and JobDetail callout. Same
-                            shape + language across surfaces. */}
-                        {manualOnlyEstimates.length > 0 && (
-                          <div
-                            className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700 flex items-start gap-2"
-                            title={`${manualOnlyEstimates.length === 1 ? "1 color" : `${manualOnlyEstimates.length} colors`} on this WO have zero square footage, wall area, AND perimeter in Salesforce — we can't estimate gallons. Type in the quantity yourself with the +/- buttons above. (Or fix the WOLI sqft in Salesforce, refresh, and re-open this modal.)`}
-                          >
-                            <span aria-hidden>⚠</span>
-                            <span>
-                              <strong>Manual quantity required</strong> — {manualOnlyEstimates.length === 1 ? "1 color" : `${manualOnlyEstimates.length} colors`} have no measurements in Salesforce. Type in the gallons with the +/- buttons above.
-                            </span>
-                          </div>
-                        )}
-                        {otherZeroEstimates.length > 0 && (
-                          <div
-                            className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700 flex items-start gap-2"
-                            title={`${otherZeroEstimates.length === 1 ? "1 color" : `${otherZeroEstimates.length} colors`} cover surfaces the data can't size (cabinets, accent walls, edge strips, etc.). The supplier email will show "___ (PPP to confirm)" for these — type in the gallons before sending.`}
-                          >
-                            <span aria-hidden>⚠</span>
-                            <span>
-                              <strong>Manual quantity required</strong> — {otherZeroEstimates.length === 1 ? "1 color" : `${otherZeroEstimates.length} colors`} (cabinets, accent walls, etc.) we can&apos;t size from the data. Type in the gallons before sending.
-                            </span>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
 
                   {/* Fulfillment */}
                   <Section title="Fulfillment">
