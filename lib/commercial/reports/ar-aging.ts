@@ -33,6 +33,9 @@ export type ArAging = {
   totals: ArAgingBuckets;
   invoiceCount: number;
   customerCount: number;
+  /** Balance-weighted average age of the open book, in days past due — a DSO-like
+   *  health number (Σ balance × max(0, daysPastDue) ÷ Σ balance). */
+  weightedAvgAgeDays: number;
 };
 
 function emptyBuckets(): ArAgingBuckets {
@@ -83,11 +86,13 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
 
   const byAccount = new Map<string, ArAgingRow>();
   const totals = emptyBuckets();
+  let ageWeightSum = 0; // Σ balance × max(0, daysPastDue)
 
   for (const inv of open) {
     const days = daysPastDue(inv.due_at, nowMs);
     const bucket = bucketOf(days);
     const bal = inv.balance_cents;
+    ageWeightSum += bal * Math.max(0, days);
 
     let row = byAccount.get(inv.account_id);
     if (!row) {
@@ -115,5 +120,6 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
     totals,
     invoiceCount: open.length,
     customerCount: rows.length,
+    weightedAvgAgeDays: totals.total > 0 ? Math.round(ageWeightSum / totals.total) : 0,
   };
 }

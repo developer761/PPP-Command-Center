@@ -21,11 +21,22 @@ export type PipelineStageRow = {
   count: number;
   bidCents: number;
   weightedCents: number;
+  /** bid ÷ count — the average open deal size at this stage. */
+  avgDealCents: number;
+  /** weighted ÷ bid — the blended win probability the pipeline is priced at. */
+  probabilityPct: number | null;
 };
 
 export type PipelineReport = {
   rows: PipelineStageRow[];
-  totals: { count: number; bidCents: number; weightedCents: number };
+  totals: {
+    count: number;
+    bidCents: number;
+    weightedCents: number;
+    avgDealCents: number;
+    /** Blended win probability across the open book (weighted ÷ bid). */
+    probabilityPct: number | null;
+  };
 };
 
 const STAGE_ORDER: { status: string; label: string }[] = [
@@ -48,9 +59,9 @@ export async function getPipelineReport(): Promise<PipelineReport> {
   const open = opps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
 
   const acc = new Map<string, PipelineStageRow>();
-  for (const s of STAGE_ORDER) acc.set(s.status, { ...s, count: 0, bidCents: 0, weightedCents: 0 });
+  for (const s of STAGE_ORDER) acc.set(s.status, { ...s, count: 0, bidCents: 0, weightedCents: 0, avgDealCents: 0, probabilityPct: null });
 
-  const totals = { count: 0, bidCents: 0, weightedCents: 0 };
+  let count = 0, bidCents = 0, weightedCents = 0;
   for (const o of open) {
     const row = acc.get(o.status);
     if (!row) continue; // status outside the open-stage set (defensive)
@@ -59,10 +70,26 @@ export async function getPipelineReport(): Promise<PipelineReport> {
     row.count += 1;
     row.bidCents += bid;
     row.weightedCents += weighted;
-    totals.count += 1;
-    totals.bidCents += bid;
-    totals.weightedCents += weighted;
+    count += 1;
+    bidCents += bid;
+    weightedCents += weighted;
   }
 
-  return { rows: STAGE_ORDER.map((s) => acc.get(s.status)!), totals };
+  const rows = STAGE_ORDER.map((s) => {
+    const r = acc.get(s.status)!;
+    r.avgDealCents = r.count > 0 ? Math.round(r.bidCents / r.count) : 0;
+    r.probabilityPct = r.bidCents > 0 ? Math.round((r.weightedCents / r.bidCents) * 100) : null;
+    return r;
+  });
+
+  return {
+    rows,
+    totals: {
+      count,
+      bidCents,
+      weightedCents,
+      avgDealCents: count > 0 ? Math.round(bidCents / count) : 0,
+      probabilityPct: bidCents > 0 ? Math.round((weightedCents / bidCents) * 100) : null,
+    },
+  };
 }

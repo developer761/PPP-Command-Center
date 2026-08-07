@@ -150,12 +150,26 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
   const sp = await searchParams;
   const range = parseRange(sp);
 
-  const [summary, competitors, factors, lessons] = await Promise.all([
+  // Immediately-preceding window of EQUAL length, so every range (preset or
+  // custom) gets an apples-to-apples "vs prior period" comparison.
+  const fromMs = new Date(range.fromIso).getTime();
+  const toMs = new Date(range.toIso).getTime();
+  const durationMs = Math.max(0, toMs - fromMs);
+  const prevRange = { fromIso: new Date(fromMs - durationMs).toISOString(), toIso: range.fromIso };
+
+  const [summary, prevSummary, competitors, factors, lessons] = await Promise.all([
     getWinLossSummary(range),
+    getWinLossSummary(prevRange),
     getCompetitorBreakdown(range, 10),
     getDecidingFactorBreakdown(range),
     getLessonsLearnedFeed(range, 20),
   ]);
+
+  // Win-rate delta vs prior period (only meaningful when both periods had
+  // head-to-heads). Points, not %-of-%, so "45% → 52%" reads as "+7".
+  const hadHeadToHead = summary.wonCount + summary.lostCount > 0;
+  const prevHadHeadToHead = prevSummary.wonCount + prevSummary.lostCount > 0;
+  const winRateDelta = hadHeadToHead && prevHadHeadToHead ? summary.winRatePct - prevSummary.winRatePct : null;
 
   const totalCompetitorMentions = competitors.reduce((sum, c) => sum + c.total_count, 0);
   const totalFactorMentions = factors.reduce((sum, f) => sum + f.count, 0);
@@ -269,10 +283,12 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
         <KpiTile
           tone="emerald"
           label="Win rate"
-          value={summary.wonCount + summary.lostCount > 0 ? `${summary.winRatePct}%` : "—"}
+          value={hadHeadToHead ? `${summary.winRatePct}%` : "—"}
           sub={
-            summary.wonCount + summary.lostCount > 0
-              ? `${summary.wonCount} won · ${summary.lostCount} lost`
+            hadHeadToHead
+              ? winRateDelta !== null && winRateDelta !== 0
+                ? `${summary.wonCount}W · ${summary.lostCount}L · ${winRateDelta > 0 ? "▲" : "▼"}${Math.abs(winRateDelta)}pt vs prior`
+                : `${summary.wonCount} won · ${summary.lostCount} lost`
               : "no head-to-heads yet"
           }
         />
