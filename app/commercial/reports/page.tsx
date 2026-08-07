@@ -8,8 +8,17 @@ import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getGeographyReport } from "@/lib/commercial/reports/geography";
 import { getWinLossSummary, currentQuarterRange } from "@/lib/commercial/win-loss/reports";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
+import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
+import { COST_BUCKET_COLUMNS, type CostBuckets } from "@/lib/commercial/reports/job-costs";
+import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
+import TrendChart from "@/components/trend-chart";
 
 export const dynamic = "force-dynamic";
+
+const BUCKET_TONE: Record<keyof CostBuckets, ChartTone> = {
+  materials: "brand", crewLabor: "emerald", subLabor: "blue", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
+};
 
 type Tone = "brand" | "navy" | "amber" | "emerald" | "rose" | "neutral";
 const toneText: Record<Tone, string> = {
@@ -37,6 +46,15 @@ export default async function ReportsOverviewPage() {
     getGeographyReport(),
   ]);
   const topTown = geo.byCity[0] ?? null;
+
+  // Snapshot visuals for the landing: company billing trend (line) + cost mix (pie).
+  const allOppIds = new Set(jobCosts.groups.flatMap((g) => g.deals.map((d) => d.oppId)));
+  const invoices = await listCommercialInvoices({});
+  const billingTrend = monthlyBilledSeries(invoices, { months: 6, oppIds: allOppIds, nowIso: new Date().toISOString() });
+  const hasTrend = billingTrend.some((p) => p.value > 0);
+  const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
+    .filter((c) => jobCosts.totals.buckets[c.key] > 0)
+    .map((c) => ({ label: c.label, value: jobCosts.totals.buckets[c.key], tone: BUCKET_TONE[c.key], valueLabel: formatCentsCompact(jobCosts.totals.buckets[c.key]) }));
 
   const overdue = aging.totals.total - aging.totals.current;
   const marginTone: Tone = jobCosts.totals.marginPct === null ? "neutral" : jobCosts.totals.marginPct < 0 ? "rose" : jobCosts.totals.marginPct < 15 ? "amber" : "emerald";
@@ -98,6 +116,27 @@ export default async function ReportsOverviewPage() {
         <h2 className="text-lg font-bold text-ppp-charcoal">Reports</h2>
         <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">The whole company at a glance — sales pipeline, job profitability, receivables, and win/loss. Open any report to drill in and export.</p>
       </div>
+
+      {/* Snapshot visuals — billing trend (line) + cost mix (pie). */}
+      {(hasTrend || costSegments.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {hasTrend && (
+            <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+              <div className="flex items-baseline justify-between gap-2 mb-2">
+                <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed / month</h3>
+                <span className="text-[11px] text-ppp-charcoal-400">last 6 months</span>
+              </div>
+              <TrendChart data={billingTrend} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px]" />
+            </div>
+          )}
+          {costSegments.length > 0 && (
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal mb-2">Cost mix</h3>
+              <DonutChart size={132} segments={costSegments} centerValue={formatCentsCompact(jobCosts.totals.totalCostCents)} centerLabel="total cost" legend={false} />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {cards.map((c) => (

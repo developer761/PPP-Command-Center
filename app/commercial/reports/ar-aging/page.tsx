@@ -3,16 +3,17 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getArAging, type ArAgingBuckets } from "@/lib/commercial/reports/ar-aging";
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-const BUCKETS: { key: keyof Omit<ArAgingBuckets, "total">; label: string; color: string; danger?: boolean }[] = [
-  { key: "current", label: "Current", color: "bg-emerald-500" },
-  { key: "d1_30", label: "1–30", color: "bg-ppp-blue-500" },
-  { key: "d31_60", label: "31–60", color: "bg-amber-400" },
-  { key: "d61_90", label: "61–90", color: "bg-amber-600", danger: true },
-  { key: "d90_plus", label: "90+", color: "bg-rose-500", danger: true },
+const BUCKETS: { key: keyof Omit<ArAgingBuckets, "total">; label: string; color: string; tone: ChartTone; danger?: boolean }[] = [
+  { key: "current", label: "Current", color: "bg-emerald-500", tone: "emerald" },
+  { key: "d1_30", label: "1–30", color: "bg-ppp-blue-500", tone: "blue" },
+  { key: "d31_60", label: "31–60", color: "bg-amber-400", tone: "amber" },
+  { key: "d61_90", label: "61–90", color: "bg-amber-600", tone: "navy", danger: true },
+  { key: "d90_plus", label: "90+", color: "bg-rose-500", tone: "rose", danger: true },
 ];
 
 export default async function ArAgingReportPage() {
@@ -25,6 +26,9 @@ export default async function ArAgingReportPage() {
   const aging = await getArAging();
   const overdue = aging.totals.total - aging.totals.current;
   const overduePct = aging.totals.total > 0 ? Math.round((overdue / aging.totals.total) * 100) : 0;
+  const bucketSegments: DonutSegment[] = BUCKETS
+    .filter((b) => aging.totals[b.key] > 0)
+    .map((b) => ({ label: b.label, value: aging.totals[b.key], tone: b.tone, valueLabel: formatCentsCompact(aging.totals[b.key]) }));
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
@@ -68,22 +72,27 @@ export default async function ArAgingReportPage() {
               <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
               Balance by age
             </h3>
-            <div className="flex h-3.5 rounded-full overflow-hidden bg-ppp-charcoal-100" role="img" aria-label="Open balance by aging bucket">
-              {BUCKETS.map((b) => {
-                const v = aging.totals[b.key];
-                if (v <= 0) return null;
-                return <div key={b.key} className={b.color} style={{ width: `${(v / aging.totals.total) * 100}%` }} title={`${b.label}: ${formatCentsFull(v)}`} />;
-              })}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {BUCKETS.filter((b) => aging.totals[b.key] > 0).map((b) => (
-                <span key={b.key} className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-1 text-[11px]">
-                  <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${b.color}`} />
-                  <span className="font-semibold text-ppp-charcoal-600">{b.label}</span>
-                  <span className="tabular-nums font-bold text-ppp-charcoal">{formatCentsFull(aging.totals[b.key])}</span>
-                  <span className="text-ppp-charcoal-400 tabular-nums">{Math.round((aging.totals[b.key] / aging.totals.total) * 100)}%</span>
-                </span>
-              ))}
+            <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-5 items-center">
+              <DonutChart size={168} segments={bucketSegments} centerValue={formatCentsCompact(aging.totals.total)} centerLabel="open AR" legend={false} />
+              <div>
+                <div className="flex h-3.5 rounded-full overflow-hidden bg-ppp-charcoal-100" role="img" aria-label="Open balance by aging bucket">
+                  {BUCKETS.map((b) => {
+                    const v = aging.totals[b.key];
+                    if (v <= 0) return null;
+                    return <div key={b.key} className={b.color} style={{ width: `${(v / aging.totals.total) * 100}%` }} title={`${b.label}: ${formatCentsFull(v)}`} />;
+                  })}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {BUCKETS.filter((b) => aging.totals[b.key] > 0).map((b) => (
+                    <span key={b.key} className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-1 text-[11px]">
+                      <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${b.color}`} />
+                      <span className="font-semibold text-ppp-charcoal-600">{b.label}</span>
+                      <span className="tabular-nums font-bold text-ppp-charcoal">{formatCentsFull(aging.totals[b.key])}</span>
+                      <span className="text-ppp-charcoal-400 tabular-nums">{Math.round((aging.totals[b.key] / aging.totals.total) * 100)}%</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
 

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getPipelineReport, type PipelineStageRow } from "@/lib/commercial/reports/pipeline";
 import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/format";
+import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,11 @@ const STAGE_ACCENT: Record<string, string> = {
   qualifying: "bg-ppp-blue-500",
   estimating: "bg-cc-brand-500",
   proposal: "bg-emerald-500",
+};
+const STAGE_TONE: Record<string, ChartTone> = {
+  qualifying: "blue",
+  estimating: "brand",
+  proposal: "emerald",
 };
 
 export default async function PipelineReportPage() {
@@ -23,6 +29,9 @@ export default async function PipelineReportPage() {
   const report = await getPipelineReport();
   const t = report.totals;
   const maxBid = Math.max(1, ...report.rows.map((r) => r.bidCents));
+  const weightedSegments: DonutSegment[] = report.rows
+    .filter((r) => r.weightedCents > 0)
+    .map((r) => ({ label: r.label, value: r.weightedCents, tone: STAGE_TONE[r.status] ?? "neutral", valueLabel: formatCentsCompact(r.weightedCents) }));
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
@@ -60,16 +69,23 @@ export default async function PipelineReportPage() {
             <Tile label="Blended win prob." value={t.probabilityPct === null ? "—" : `${t.probabilityPct}%`} tone="neutral" sub="weighted ÷ bid" />
           </div>
 
-          {/* Funnel — bid value at each stage, narrowing toward the close. */}
+          {/* Funnel (bars) + weighted-value pie, side by side. */}
           <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
             <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
               <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
               Pipeline funnel
             </h3>
-            <div className="space-y-3">
-              {report.rows.map((r) => (
-                <StageBar key={r.status} r={r} maxBid={maxBid} accent={STAGE_ACCENT[r.status] ?? "bg-cc-brand-500"} />
-              ))}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-center">
+              <div className="space-y-3">
+                {report.rows.map((r) => (
+                  <StageBar key={r.status} r={r} maxBid={maxBid} accent={STAGE_ACCENT[r.status] ?? "bg-cc-brand-500"} />
+                ))}
+              </div>
+              {weightedSegments.length > 0 && (
+                <div className="justify-self-center">
+                  <DonutChart size={168} segments={weightedSegments} centerValue={formatCentsCompact(t.weightedCents)} centerLabel="weighted" />
+                </div>
+              )}
             </div>
           </section>
 

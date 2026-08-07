@@ -4,8 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getGeographyReport, type GeoRow } from "@/lib/commercial/reports/geography";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 
 export const dynamic = "force-dynamic";
+
+// Palette cycled across dynamic groupings (states/towns) for the pie.
+const PIE_TONES: ChartTone[] = ["brand", "emerald", "navy", "amber", "blue", "neutral"];
 
 export default async function GeographyReportPage() {
   const supabase = await createClient();
@@ -16,6 +20,13 @@ export default async function GeographyReportPage() {
 
   const geo = await getGeographyReport();
   const t = geo.totals;
+  // Jobs-by-town pie (top 5 towns + "Other") — a quick read on concentration.
+  const topTowns = geo.byCity.slice(0, 5);
+  const townOtherCount = geo.byCity.slice(5).reduce((s, r) => s + r.dealCount, 0);
+  const townSegments: DonutSegment[] = [
+    ...topTowns.map((r, i) => ({ label: r.label, value: r.dealCount, tone: PIE_TONES[i % PIE_TONES.length], valueLabel: `${r.dealCount}` })),
+    ...(townOtherCount > 0 ? [{ label: "Other towns", value: townOtherCount, tone: "neutral" as ChartTone, valueLabel: `${townOtherCount}` }] : []),
+  ];
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
@@ -61,6 +72,16 @@ export default async function GeographyReportPage() {
             <p className="text-[11.5px] text-amber-700 leading-snug bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               <span className="font-semibold">{t.unspecifiedCount} {t.unspecifiedCount === 1 ? "deal has" : "deals have"} no site address</span> — they&rsquo;re counted in totals but can&rsquo;t be placed on the map below. Add a property city/zip on each deal to include it.
             </p>
+          )}
+
+          {townSegments.length > 0 && (
+            <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+                <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+                Jobs by town
+              </h3>
+              <DonutChart size={168} segments={townSegments} centerValue={String(t.locatedCount)} centerLabel="located jobs" />
+            </section>
           )}
 
           <RankSection title="Top towns" caption="by number of jobs" rows={geo.byCity} accent="bg-cc-brand-500" limit={12} />

@@ -5,6 +5,10 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets, type JobCostRow } from "@/lib/commercial/reports/job-costs";
 import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/format";
 import { opportunityStatusLabelV2 } from "@/lib/commercial/opportunities/constants";
+import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
+import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
+import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
+import TrendChart from "@/components/trend-chart";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +22,16 @@ const BUCKET_COLOR: Record<keyof CostBuckets, string> = {
   permit: "bg-ppp-charcoal-400",
   other: "bg-ppp-charcoal-300",
 };
+// Same buckets mapped to the donut's ChartTone palette (pie chart).
+const BUCKET_TONE: Record<keyof CostBuckets, ChartTone> = {
+  materials: "brand",
+  crewLabor: "emerald",
+  subLabor: "blue",
+  subcontractor: "navy",
+  equipment: "amber",
+  permit: "neutral",
+  other: "neutral",
+};
 
 export default async function JobCostsReportPage() {
   const supabase = await createClient();
@@ -29,6 +43,17 @@ export default async function JobCostsReportPage() {
   const report = await getJobCostsReport();
   const t = report.totals;
   const marginTone = t.marginPct === null ? "neutral" : t.marginPct < 0 ? "rose" : t.marginPct < 15 ? "amber" : "emerald";
+
+  // Cost composition as a pie (donut) — the seven buckets, non-zero only.
+  const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
+    .filter((c) => t.buckets[c.key] > 0)
+    .map((c) => ({ label: c.label, value: t.buckets[c.key], tone: BUCKET_TONE[c.key], valueLabel: formatCentsCompact(t.buckets[c.key]) }));
+
+  // Monthly billed-revenue trend (line) across every deal in the report — the
+  // same pre-tax, ET-bucketed helper the dashboard uses, so it ties out.
+  const allOppIds = new Set(report.groups.flatMap((g) => g.deals.map((d) => d.oppId)));
+  const invoices = await listCommercialInvoices({});
+  const billingTrend = monthlyBilledSeries(invoices, { months: 6, oppIds: allOppIds, nowIso: new Date().toISOString() });
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
@@ -67,14 +92,37 @@ export default async function JobCostsReportPage() {
             <Tile label="Projected margin" value={t.marginPct === null ? "—" : `${t.marginPct}%`} tone={marginTone} sub={`${t.marginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(t.marginCents))} · contract − cost`} />
           </div>
 
-          {/* ── Company-wide cost composition ── */}
+          {/* ── Monthly billing trend (line) ── */}
+          {billingTrend.some((p) => p.value > 0) && (
+            <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+              <div className="flex items-baseline justify-between gap-2 mb-2">
+                <h3 className="text-[13px] font-bold text-ppp-charcoal flex items-center gap-2">
+                  <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+                  Revenue billed / month
+                </h3>
+                <span className="text-[11px] text-ppp-charcoal-400">last 6 months · pre-tax</span>
+              </div>
+              <TrendChart data={billingTrend} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
+            </section>
+          )}
+
+          {/* ── Company-wide cost composition (pie + chips) ── */}
           <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
             <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
               <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
               Where the money goes · whole company
             </h3>
-            <CompositionBar buckets={t.buckets} total={t.totalCostCents} />
-            <BucketChips buckets={t.buckets} total={t.totalCostCents} className="mt-3" />
+            {t.totalCostCents > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-5 items-center">
+                <DonutChart size={168} segments={costSegments} centerValue={formatCentsCompact(t.totalCostCents)} centerLabel="total cost" legend={false} />
+                <div>
+                  <CompositionBar buckets={t.buckets} total={t.totalCostCents} />
+                  <BucketChips buckets={t.buckets} total={t.totalCostCents} className="mt-3" />
+                </div>
+              </div>
+            ) : (
+              <p className="text-[12px] text-ppp-charcoal-400 py-4 text-center">No job costs logged yet.</p>
+            )}
             {t.laborUnratedHours > 0 && (
               <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
                 <span className="font-semibold">{t.laborUnratedHours.toLocaleString()} crew hours</span> have no cost rate set, so crew labor (and profit) is understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
