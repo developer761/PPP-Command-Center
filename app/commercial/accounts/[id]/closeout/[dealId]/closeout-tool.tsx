@@ -526,7 +526,7 @@ export async function CloseoutTool({
                     {CLOSEOUT_TRANSMITTED_AS.map((t) => <option key={t} value={t}>{CLOSEOUT_TRANSMITTED_AS_LABEL[t]}</option>)}
                   </select>
                 </label>
-                <div><span className={LABEL_CLS}>Substantial completion</span><DateField name="substantial_completion_date" defaultValue={activePkg.substantial_completion_date ?? ""} placeholder="Pick a date" className="mt-1" /></div>
+                <div><span className={LABEL_CLS}>Substantial completion</span><DateField ariaLabel="Substantial completion date" name="substantial_completion_date" defaultValue={activePkg.substantial_completion_date ?? ""} placeholder="Pick a date" className="mt-1" /></div>
                 <label className="block"><span className={LABEL_CLS}>Warranty (years)</span><input type="text" inputMode="numeric" name="warranty_years" defaultValue={String(activePkg.warranty_years)} className={INPUT_CLS} /></label>
                 <label className="block sm:col-span-2"><span className={LABEL_CLS}>Remarks</span><textarea name="remarks" defaultValue={activePkg.remarks ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="Optional note on the cover." /></label>
               </div>

@@ -138,7 +138,7 @@ export default async function FieldOpsJobsPage({
         {dealOptions.length > 0 && (
           <div>
             <span className={LABEL_CLS}>Connect to a deal (optional)</span>
-            <SearchableSelect name="opportunity_id" options={dealOptions} placeholder="Search a deal / GC to link it" />
+            <SearchableSelect name="opportunity_id" ariaLabel="Connect to a deal" options={dealOptions} placeholder="Search a deal / GC to link it" />
             <p className="text-[11px] text-ppp-charcoal-400 mt-1">Links this work order to that account + deal, like a real WO. Leave blank for PPP / prevailing-wage / one-off jobs.</p>
           </div>
         )}
@@ -160,8 +160,8 @@ export default async function FieldOpsJobsPage({
               {JOB_STATUSES.map((s) => <option key={s} value={s}>{jobStatusLabel(s)}</option>)}
             </select></label>
           <label className="block"><span className={LABEL_CLS}>Est. labor hours</span><input name="estimated_labor_hours" type="number" min="0" step="1" placeholder="0" className={INPUT_CLS} /></label>
-          <div><span className={LABEL_CLS}>Target start</span><DateField name="target_start" placeholder="Pick a date" /></div>
-          <div><span className={LABEL_CLS}>Target end</span><DateField name="target_end" placeholder="Pick a date" /></div>
+          <div><span className={LABEL_CLS}>Target start</span><DateField ariaLabel="Target start date" name="target_start" placeholder="Pick a date" /></div>
+          <div><span className={LABEL_CLS}>Target end</span><DateField ariaLabel="Target end date" name="target_end" placeholder="Pick a date" /></div>
         </div>
         <label className="flex items-center gap-2 text-[13px] text-ppp-charcoal-700"><input type="checkbox" name="prevailing_wage" className="h-4 w-4" /> Prevailing wage (PW)</label>
         <label className="block"><span className={LABEL_CLS}>Notes</span><textarea name="notes" rows={2} className={TEXTAREA_CLS} /></label>
@@ -201,8 +201,8 @@ export default async function FieldOpsJobsPage({
                     <label className="block"><span className={LABEL_CLS}>Status</span><select name="status" defaultValue={j.status} className={SELECT_CLS} style={SELECT_BG_STYLE}>{JOB_STATUSES.map((s) => <option key={s} value={s}>{jobStatusLabel(s)}</option>)}</select></label>
                     <label className="block"><span className={LABEL_CLS}>Est. labor hours</span><input name="estimated_labor_hours" type="number" min="0" step="1" defaultValue={j.estimated_labor_hours ?? ""} className={INPUT_CLS} /></label>
                     <label className="block sm:col-span-2"><span className={LABEL_CLS}>Site address</span><input name="site_address" defaultValue={j.site_address ?? ""} className={INPUT_CLS} /></label>
-                    <div><span className={LABEL_CLS}>Target start</span><DateField name="target_start" defaultValue={j.target_start ?? ""} placeholder="Pick a date" /></div>
-                    <div><span className={LABEL_CLS}>Target end</span><DateField name="target_end" defaultValue={j.target_end ?? ""} placeholder="Pick a date" /></div>
+                    <div><span className={LABEL_CLS}>Target start</span><DateField ariaLabel="Target start date" name="target_start" defaultValue={j.target_start ?? ""} placeholder="Pick a date" /></div>
+                    <div><span className={LABEL_CLS}>Target end</span><DateField ariaLabel="Target end date" name="target_end" defaultValue={j.target_end ?? ""} placeholder="Pick a date" /></div>
                   </div>
                   <label className="flex items-center gap-2 text-[13px] text-ppp-charcoal-700"><input type="checkbox" name="prevailing_wage" defaultChecked={j.prevailing_wage} className="h-4 w-4" /> Prevailing wage (PW)</label>
                   <label className="block"><span className={LABEL_CLS}>Notes</span><textarea name="notes" rows={2} defaultValue={j.notes ?? ""} className={TEXTAREA_CLS} /></label>

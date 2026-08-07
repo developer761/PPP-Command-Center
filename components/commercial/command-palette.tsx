@@ -193,6 +193,24 @@ export function CommandPalette() {
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
+      onKeyDown={(e) => {
+        // Trap Tab within the palette so focus can't slip to the obscured page
+        // behind the modal (R7-a11y #14).
+        if (e.key !== "Tab") return;
+        const foc = Array.from(
+          e.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')
+        ).filter((el) => el.offsetParent !== null);
+        if (foc.length === 0) return;
+        const first = foc[0];
+        const last = foc[foc.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }}
     >
       <button
         type="button"

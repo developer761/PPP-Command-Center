@@ -1291,7 +1291,7 @@ export default async function SubmittalDetailPage({
                         </div>
                         <div>
                           <label className={LABEL_CLS}>Date</label>
-                          <DateField name="item_date" defaultValue={item.item_date ?? ""} placeholder="Pick a date" className="mt-1" />
+                          <DateField ariaLabel="Item date" name="item_date" defaultValue={item.item_date ?? ""} placeholder="Pick a date" className="mt-1" />
                         </div>
                         <div>
                           <label className={LABEL_CLS}>Ref #</label>

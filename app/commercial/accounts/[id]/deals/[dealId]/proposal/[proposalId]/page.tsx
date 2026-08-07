@@ -1016,7 +1016,7 @@ export default async function ProposalEditorPage({
             <AutosaveProposalName
               initialValue={proposal.header_json.project_name ?? ""}
               placeholder={`Name this revision (e.g. "Warehouse Repaint")`}
-              inputClassName="text-lg font-bold text-ppp-charcoal bg-transparent border-b border-dashed border-ppp-charcoal-200 focus:border-cc-brand-400 focus:outline-none py-0.5 min-w-0 flex-1 placeholder:text-ppp-charcoal-300 placeholder:italic placeholder:font-normal"
+              inputClassName="text-lg font-bold text-ppp-charcoal bg-transparent border-b border-dashed border-ppp-charcoal-200 focus:border-cc-brand-400 focus:outline-none py-0.5 min-w-0 flex-1 placeholder:text-ppp-charcoal-500 placeholder:italic placeholder:font-normal"
               disabled={proposal.status !== "draft"}
             />
           </form>
@@ -1346,7 +1346,7 @@ export default async function ProposalEditorPage({
       )}
       {sp.outcome === "won" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
-          <IconTrophy size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+          <IconTrophy size={16} className="text-emerald-700 shrink-0 mt-0.5" />
           <span><strong>Marked won.</strong> Opportunity flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</span>
         </div>
       )}
@@ -1531,11 +1531,11 @@ export default async function ProposalEditorPage({
                 </label>
                 <div>
                   <span className={LABEL_CLS}>Proposal date</span>
-                  <DateField name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} placeholder="Pick a date" className="mt-1" />
+                  <DateField ariaLabel="Proposal date" name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} placeholder="Pick a date" className="mt-1" />
                 </div>
                 <div>
                   <span className={LABEL_CLS}>Bid Set date <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
-                  <DateField name="bid_set_date" defaultValue={proposal.bid_set_date ?? ""} placeholder="Pick a date" className="mt-1" />
+                  <DateField ariaLabel="Bid set date" name="bid_set_date" defaultValue={proposal.bid_set_date ?? ""} placeholder="Pick a date" className="mt-1" />
                 </div>
                 <label className="block sm:col-span-2">
                   <span className={LABEL_CLS}>GC address (one line per row)</span>

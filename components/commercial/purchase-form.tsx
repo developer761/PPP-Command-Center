@@ -166,7 +166,7 @@ export default function PurchaseForm({
         ) : (
           <div>
             <span className={LABEL_CLS}>Date</span>
-            <DateField name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
+            <DateField ariaLabel="Purchase date" name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
           </div>
         )}
       </div>
@@ -175,7 +175,7 @@ export default function PurchaseForm({
       {isLabor && (
         <div className="sm:max-w-[calc(50%-0.375rem)]">
           <span className={LABEL_CLS}>Date</span>
-          <DateField name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
+          <DateField ariaLabel="Purchase date" name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
         </div>
       )}
 
@@ -189,7 +189,7 @@ export default function PurchaseForm({
             field crew member can snap the receipt in one tap (2026-08 field
             walk). HEIC/HEIF accepted so iPhone photos aren't greyed out. */}
         <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif" capture="environment" className="block w-full text-[13px] text-ppp-charcoal-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-[13px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:min-h-[44px]" />
-        {purchase?.receipt_document_id && <p className="text-[11px] text-emerald-600 mt-1">A receipt is on file — uploading a new one replaces it.</p>}
+        {purchase?.receipt_document_id && <p className="text-[11px] text-emerald-700 mt-1">A receipt is on file — uploading a new one replaces it.</p>}
       </div>
       <div className="flex items-center gap-2">
         <PendingSubmitButton pendingLabel="Saving…" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30">{submitLabel}</PendingSubmitButton>

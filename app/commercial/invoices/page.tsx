@@ -640,7 +640,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
           </Link>
-          <h1 className="text-[15px] font-bold text-ppp-charcoal truncate">{focusTitle}</h1>
+          <h2 className="text-[15px] font-bold text-ppp-charcoal truncate">{focusTitle}</h2>
           <span className="text-[10.5px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 rounded px-1.5 py-0.5 shrink-0">
             {scopedInvoiceCount} invoice{scopedInvoiceCount === 1 ? "" : "s"}
           </span>
@@ -661,7 +661,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             </svg>
           </Link>
           {(scopedIsOrphan || scopedAccountIsDeleted) && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600 shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-700 shrink-0">
               <path d="M12 9v4M12 17h.01" />
               <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
             </svg>
@@ -1399,7 +1399,7 @@ function GroupedByOpp({
                   <span className={`font-semibold text-[14px] truncate ${isOrphan ? "text-ppp-charcoal-500" : "text-ppp-charcoal group-hover/oppInv:text-ppp-blue-800"}`}>
                     {opp ? derivedOppName(opp, account?.company_name ?? null) : (
                       <span className="inline-flex items-center gap-1.5">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-700">
                           <path d="M12 9v4M12 17h.01" />
                           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                         </svg>
@@ -1582,7 +1582,7 @@ function GroupedByOpp({
                     className="block hover:bg-amber-50/30 -mx-4 -my-3 px-4 py-3 touch-manipulation"
                   >
                     <div className="text-[13px] font-semibold text-ppp-charcoal-500 italic flex items-center gap-1.5">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-700">
                         <path d="M12 9v4M12 17h.01" />
                         <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                       </svg>
@@ -1895,7 +1895,7 @@ function FullDetailByOpp({
                       </Link>
                     ) : (
                       <span className="inline-flex items-center gap-2 text-[15px] font-bold">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600 shrink-0">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-700 shrink-0">
                           <path d="M12 9v4M12 17h.01" />
                           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                         </svg>
@@ -2137,7 +2137,7 @@ function FullDetailByOpp({
                           </label>
                           <div>
                             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Paid on</span>
-                            <DateField name="paid_at" defaultValue={todayEtIso} placeholder="Pick a date" />
+                            <DateField ariaLabel="Payment date" name="paid_at" defaultValue={todayEtIso} placeholder="Pick a date" />
                           </div>
                           <label className="block">
                             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Method</span>

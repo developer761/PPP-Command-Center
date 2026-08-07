@@ -109,11 +109,11 @@ export function AiaSettingsForm({
     <div ref={rootRef} onBlur={onBlurCapture} className="px-4 pb-4 pt-1 grid sm:grid-cols-2 gap-3">
       <label className="block">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period from</span>
-        <DateField value={vals.period_from} onValueChange={(v) => set("period_from", v)} placeholder="Pick a date" />
+        <DateField ariaLabel="Period from date" value={vals.period_from} onValueChange={(v) => set("period_from", v)} placeholder="Pick a date" />
       </label>
       <label className="block">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
-        <DateField value={vals.period_to} onValueChange={(v) => set("period_to", v)} placeholder="Pick a date" />
+        <DateField ariaLabel="Period to date" value={vals.period_to} onValueChange={(v) => set("period_to", v)} placeholder="Pick a date" />
       </label>
       <label className="block">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Original contract ($)</span>
@@ -130,7 +130,7 @@ export function AiaSettingsForm({
       <div className="sm:col-span-2 flex items-center gap-2 min-h-[20px]" aria-live="polite">
         {status === "saving" && <span className="text-[11px] text-ppp-charcoal-400">Saving…</span>}
         {status === "saved" && (
-          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
             Saved
           </span>

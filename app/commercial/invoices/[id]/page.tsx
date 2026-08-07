@@ -886,43 +886,43 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       )}
       {savedTarget === "details" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span aria-hidden className="shrink-0 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>Details saved.</span>
         </div>
       )}
       {savedTarget === "created" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span aria-hidden className="shrink-0 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>Invoice created.</span>
         </div>
       )}
       {pickFirst(sp.co_billed) === "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span aria-hidden className="shrink-0 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>Draft invoice created for this change order. Review the terms and send it when you&rsquo;re ready.</span>
         </div>
       )}
       {savedTarget === "status" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span aria-hidden className="shrink-0 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>Status updated.</span>
         </div>
       )}
       {savedTarget === "milestone" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span aria-hidden className="shrink-0 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>Milestones updated.</span>
         </div>
       )}
       {(savedTarget === "notes" || savedTarget === "due") && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span aria-hidden className="shrink-0 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>{savedTarget === "due" ? "Due date saved." : "Notes saved."}</span>
         </div>
       )}
       {savedTarget === "payment" && pickFirst(sp.capped) !== "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span aria-hidden className="shrink-0 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>Payment recorded.</span>
         </div>
       )}
@@ -1401,7 +1401,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11px] font-semibold min-h-[44px] select-none text-ppp-charcoal-500 hover:text-ppp-charcoal">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/pw:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
                       Partial lien waiver
-                      {pw ? <span className="text-emerald-600 font-bold">· on file</span> : <span className="text-amber-600 font-bold">· none</span>}
+                      {pw ? <span className="text-emerald-700 font-bold">· on file</span> : <span className="text-amber-700 font-bold">· none</span>}
                     </summary>
                     <div className="mt-1.5 max-w-md">
                       <LienWaiverUpload
@@ -1568,7 +1568,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                             </div>
                             <div>
                               <span className={LABEL_CLS}>Paid on</span>
-                              <DateField name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Pick a date" className="mt-1" />
+                              <DateField ariaLabel="Payment date" name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Pick a date" className="mt-1" />
                             </div>
                             <div>
                               <label className={LABEL_CLS} htmlFor={`mp-method-${m.id}`}>Method</label>
@@ -1646,7 +1646,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                             </div>
                             <div>
                               <span className={LABEL_CLS}>Due date</span>
-                              <DateField name="due_at" defaultValue={m.due_at ? m.due_at.slice(0, 10) : ""} placeholder="Pick a date" className="mt-1" />
+                              <DateField ariaLabel="Due date" name="due_at" defaultValue={m.due_at ? m.due_at.slice(0, 10) : ""} placeholder="Pick a date" className="mt-1" />
                             </div>
                             <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">Save</button>
                           </form>
@@ -1698,7 +1698,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               </div>
               <div>
                 <span className={LABEL_CLS}>Due date</span>
-                <DateField name="due_at" placeholder="Pick a date" className="mt-1" />
+                <DateField ariaLabel="Due date" name="due_at" placeholder="Pick a date" className="mt-1" />
               </div>
               <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-ppp-blue-600 text-white text-[12px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation">Add</button>
             </form>

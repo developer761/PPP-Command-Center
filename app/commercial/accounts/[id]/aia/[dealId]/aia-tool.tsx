@@ -604,7 +604,7 @@ async function AiaApplicationList({
           <input type="hidden" name="origin" value={origin} />
           <div>
             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
-            <DateField name="period_to" placeholder="Pick a date" />
+            <DateField ariaLabel="Period to date" name="period_to" placeholder="Pick a date" />
           </div>
           <label className="block">
             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Retainage (%)</span>

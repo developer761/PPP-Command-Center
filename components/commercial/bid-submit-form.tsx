@@ -129,7 +129,7 @@ export function BidSubmitForm({ turnstileSiteKey }: { turnstileSiteKey?: string 
           </div>
           <div>
             <span className={LABEL}>Bid due</span>
-            <DateField name="bid_due_date" placeholder="Pick a date" />
+            <DateField ariaLabel="Bid due date" name="bid_due_date" placeholder="Pick a date" />
           </div>
         </div>
         <div>

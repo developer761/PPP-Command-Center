@@ -73,10 +73,10 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
           job under contract). */}
       {activeSummary.activeProjects > 0 && (
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-          <h3 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
             <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
             Portfolio
-          </h3>
+          </h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-center">
             <div className="flex items-center justify-center">
               <DonutChart

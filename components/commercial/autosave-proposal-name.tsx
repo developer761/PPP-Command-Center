@@ -130,7 +130,11 @@ export function AutosaveProposalName({
         className={inputClassName}
         aria-label={disabled ? "Proposal name (frozen — read-only)" : "Proposal name (autosaves)"}
       />
-      {!disabled && <StatusPill status={status} onManualSave={submit} />}
+      {!disabled && (
+        <span role="status" aria-live="polite">
+          <StatusPill status={status} onManualSave={submit} />
+        </span>
+      )}
     </>
   );
 }

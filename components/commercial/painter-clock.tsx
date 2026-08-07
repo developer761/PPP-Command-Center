@@ -122,7 +122,7 @@ export function PainterClock({
       {error && <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[13px] text-rose-700" role="alert">{error}</div>}
 
       {open ? (
-        <div className="rounded-2xl bg-ppp-green-50 border border-ppp-green-100 p-5 text-center">
+        <div role="status" aria-live="polite" className="rounded-2xl bg-ppp-green-50 border border-ppp-green-100 p-5 text-center">
           <div className="text-[13px] font-semibold text-ppp-green-700">{L.clockedIn}</div>
           <div className="text-lg font-bold text-ppp-charcoal mt-0.5">{open.job_name}</div>
           <div className="text-[12.5px] text-ppp-charcoal-500">{L.since} {fmtTime(open.clock_in_at)}</div>

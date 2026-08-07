@@ -1605,16 +1605,16 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                             {mIsCredit ? (
                               <span className="text-rose-600 shrink-0 font-semibold uppercase tracking-wide">credit</span>
                             ) : mFullyPaid ? (
-                              <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title="Paid"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>paid</span>
+                              <span className="inline-flex items-center gap-0.5 text-emerald-700 shrink-0" title="Paid"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>paid</span>
                             ) : mPartial ? (
                               <span className="text-ppp-blue-600 shrink-0 tabular-nums" title="Partially paid">{formatCentsCompact(mPaid)} paid</span>
                             ) : m.due_at ? (
                               <span className="text-ppp-charcoal-400 shrink-0">· due {fmtEtDate(m.due_at)}</span>
                             ) : null}
                             {!mIsCredit && (m.lien_waiver_document_id ? (
-                              <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title="Lien waiver on file"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg></span>
+                              <span className="inline-flex items-center gap-0.5 text-emerald-700 shrink-0" title="Lien waiver on file"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg></span>
                             ) : (
-                              <span className="text-amber-600 shrink-0" title="Lien waiver missing">waiver ×</span>
+                              <span className="text-amber-700 shrink-0" title="Lien waiver missing">waiver ×</span>
                             ))}
                           </span>
                           <span className={`tabular-nums font-semibold shrink-0 ${mIsCredit ? "text-rose-700" : "text-ppp-charcoal-700"}`}>{mIsCredit ? `−${formatCentsFull(Math.abs(m.amount_cents))}` : formatCentsFull(m.amount_cents)}</span>
@@ -6073,7 +6073,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
           maxLength={5000}
           required
           placeholder="Type your note…"
-          className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 resize-y min-h-[80px] transition-colors"
+          className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-500 resize-y min-h-[80px] transition-colors"
         />
         <div className="flex items-center justify-end">
           <button
@@ -6262,7 +6262,7 @@ function EditableField({
         required={required}
         defaultValue={defaultValue ?? ""}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface hover:border-ppp-charcoal-300 focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 placeholder:italic min-h-[44px] text-ppp-charcoal transition-colors"
+        className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface hover:border-ppp-charcoal-300 focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-500 placeholder:italic min-h-[44px] text-ppp-charcoal transition-colors"
       />
     </label>
   );
@@ -6807,7 +6807,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
                     <span className="text-[12px] font-semibold text-ppp-charcoal-700">Date</span>
-                    <DateField name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Pick a date" className="mt-0.5" />
+                    <DateField ariaLabel="Payment date" name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Pick a date" className="mt-0.5" />
                   </label>
                   <label className="block">
                     <span className="text-[12px] font-semibold text-ppp-charcoal-700">Method</span>

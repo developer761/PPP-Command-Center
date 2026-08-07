@@ -884,7 +884,7 @@ export default async function CommercialOpportunitiesPage({
         {presaleOpenOpps.length > 0 && stageBars.length > 0 && (
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 mt-3">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <h3 className="text-[13px] font-bold text-ppp-charcoal">Pipeline by stage</h3>
+              <h2 className="text-[13px] font-bold text-ppp-charcoal">Pipeline by stage</h2>
               <span className="text-[10px] text-ppp-charcoal-400 uppercase tracking-wider">weighted $</span>
             </div>
             <HBars items={stageBars} />
@@ -1957,7 +1957,7 @@ function CustomerBoardRow({
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-ppp-charcoal-50/70 text-ppp-charcoal-600 text-[11px] font-medium hover:bg-ppp-charcoal-100 max-w-[220px] truncate"
                   title={`${derivedOppName(o, account.company_name)} — ${opportunityStatusLabel(o.status)}`}
                 >
-                  <span aria-hidden className={`shrink-0 ${o.sub_status === "won" ? "text-emerald-600" : "text-rose-500"}`}>
+                  <span aria-hidden className={`shrink-0 ${o.sub_status === "won" ? "text-emerald-700" : "text-rose-500"}`}>
                     {o.sub_status === "won" ? (
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
                     ) : (
@@ -2543,7 +2543,7 @@ function KanbanCard({
       : days > 14
       ? "text-rose-600"
       : days > 7
-      ? "text-amber-600"
+      ? "text-amber-700"
       : "text-cc-brand-600";
   const leadFirst = primaryLead
     ? primaryLead.user_full_name?.split(" ")[0] ?? primaryLead.user_email.split("@")[0]

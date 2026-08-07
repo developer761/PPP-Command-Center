@@ -63,7 +63,7 @@ export function SegmentedMeter({
                 {isCredit ? (
                   <span className="text-rose-600 font-bold uppercase tracking-wide">Credit</span>
                 ) : fullyPaid ? (
-                  <span className="inline-flex items-center gap-0.5 text-emerald-600 font-bold uppercase tracking-wide"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Paid</span>
+                  <span className="inline-flex items-center gap-0.5 text-emerald-700 font-bold uppercase tracking-wide"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Paid</span>
                 ) : partial ? (
                   <span className="text-ppp-blue-700 font-semibold tabular-nums">{pct}%</span>
                 ) : (

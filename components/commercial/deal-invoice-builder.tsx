@@ -142,7 +142,7 @@ export function DealInvoiceBuilder({
             </div>
             <div>
               <span className={LABEL_CLS}>Due date</span>
-              <DateField name="due_at" placeholder="Pick a date" className="mt-1" />
+              <DateField ariaLabel="Due date" name="due_at" placeholder="Pick a date" className="mt-1" />
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="dni-waiver" className={LABEL_CLS}>Signed lien waiver (optional)</label>

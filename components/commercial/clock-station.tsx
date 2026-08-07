@@ -65,7 +65,7 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
 
   if (done) {
     return (
-      <div className="max-w-sm mx-auto text-center py-16">
+      <div role="status" aria-live="polite" className="max-w-sm mx-auto text-center py-16">
         <div className="mx-auto mb-4 inline-flex items-center justify-center h-16 w-16 rounded-full bg-ppp-green-50 text-ppp-green-700">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
         </div>
@@ -108,7 +108,7 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
           autoFocus
           className="w-40 mx-auto text-center text-3xl tracking-[0.5em] font-bold rounded-xl border-2 border-ppp-charcoal-200 py-3 outline-none focus:border-cc-brand-500"
         />
-        {error && <div className="text-[13px] text-rose-600 mt-2">{error}</div>}
+        {error && <div role="alert" className="text-[13px] text-rose-600 mt-2">{error}</div>}
         <button onClick={enterPin} disabled={busy || pin.length !== 4} className="mt-4 w-full inline-flex items-center justify-center rounded-xl bg-cc-brand-600 text-white text-[16px] font-bold min-h-[56px] hover:bg-cc-brand-700 disabled:opacity-50">{busy ? "…" : "Enter"}</button>
       </div>
     );
@@ -119,7 +119,7 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
   return (
     <div className="max-w-sm mx-auto">
       <button onClick={reset} className="inline-flex items-center min-h-[44px] px-2 -ml-2 text-[12px] font-semibold text-ppp-charcoal-500 mb-3 touch-manipulation">&larr; Not you? Go back</button>
-      {error && <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[13px] text-rose-700 mb-3">{error}</div>}
+      {error && <div role="alert" className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[13px] text-rose-700 mb-3">{error}</div>}
       {open ? (
         <div className="rounded-2xl bg-ppp-green-50 border border-ppp-green-100 p-5 text-center">
           <div className="text-[13px] font-semibold text-ppp-green-700">Clocked in on</div>

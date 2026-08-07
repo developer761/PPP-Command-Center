@@ -2266,7 +2266,7 @@ async function OpportunityInvoicesPanel({
                           <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
                             Paid on
                           </span>
-                          <DateField name="paid_at" defaultValue={todayEtIso} placeholder="Pick a date" className="mt-0.5" />
+                          <DateField ariaLabel="Payment date" name="paid_at" defaultValue={todayEtIso} placeholder="Pick a date" className="mt-0.5" />
                         </label>
                         <label className="block">
                           <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
@@ -2429,7 +2429,7 @@ async function OpportunityInvoicesPanel({
                   </div>
                   <label className="block">
                     <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Due date</span>
-                    <DateField name="due_at" defaultValue={dueDefault} placeholder="Pick a date" className="mt-1" />
+                    <DateField ariaLabel="Due date" name="due_at" defaultValue={dueDefault} placeholder="Pick a date" className="mt-1" />
                   </label>
                   <label className="block">
                     <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Payment terms</span>
@@ -3493,7 +3493,7 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
               <label htmlFor="task_due" className={LABEL_CLS}>
                 Due date
               </label>
-              <DateField name="due_at" placeholder="Pick a date" className="mt-1" />
+              <DateField ariaLabel="Due date" name="due_at" placeholder="Pick a date" className="mt-1" />
             </div>
             <div>
               <label htmlFor="task_assignee" className={LABEL_CLS}>
@@ -3688,6 +3688,7 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
           <input type="hidden" name="opportunity_id" value={oppId} />
           <MentionTextarea
             name="body"
+            ariaLabel="Note"
             required
             maxLength={5000}
             rows={3}

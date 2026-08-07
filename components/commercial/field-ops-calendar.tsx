@@ -9,7 +9,7 @@
  * soft-refresh the grid. On-brand (blue/green/navy), mobile bottom-sheet.
  */
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
@@ -110,6 +110,19 @@ export function FieldOpsCalendar({
   const [msg, setMsg] = useState<Msg>(null);
   const [formKey, setFormKey] = useState(0);
   const [nowMs, setNowMs] = useState(0);
+  // A11y focus management for the day/person slide-out (R7-a11y #6): move focus
+  // into the panel on open, restore it to the triggering element on close.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!addDay) return;
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    const t = setTimeout(() => panelRef.current?.focus(), 0);
+    return () => {
+      clearTimeout(t);
+      restoreFocusRef.current?.focus?.();
+    };
+  }, [addDay]);
 
   const prevMonth = addDays(monthStart, -1).slice(0, 7) + "-01";
   const [my, mm] = monthStart.split("-").map(Number);
@@ -276,8 +289,18 @@ export function FieldOpsCalendar({
           return (
             <div
               key={day.date}
+              role="button"
+              tabIndex={0}
+              aria-label={`Schedule crew on ${dayHeading(day.date)}${day.headcount > 0 ? ` — ${day.headcount} scheduled` : ""}`}
               onClick={() => openDay(day.date)}
-              className={`group cursor-pointer min-h-[110px] rounded-lg border p-1.5 transition-colors ${day.inMonth ? "bg-surface border-ppp-charcoal-100 hover:border-cc-brand-300" : "bg-ppp-charcoal-50/40 border-transparent"} ${isToday ? "ring-2 ring-cc-brand-400" : ""} ${isOpen ? "ring-2 ring-ppp-navy-500" : ""}`}
+              onKeyDown={(e) => {
+                // Only the cell itself, not a bubbled key from an inner crew button.
+                if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  openDay(day.date);
+                }
+              }}
+              className={`group cursor-pointer min-h-[110px] rounded-lg border p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-500 ${day.inMonth ? "bg-surface border-ppp-charcoal-100 hover:border-cc-brand-300" : "bg-ppp-charcoal-50/40 border-transparent"} ${isToday ? "ring-2 ring-cc-brand-400" : ""} ${isOpen ? "ring-2 ring-ppp-navy-500" : ""}`}
               style={day.headcount > 0 ? { backgroundColor: `rgba(43,170,225,${heat})` } : undefined}
             >
               <div className="flex items-center justify-between">
@@ -325,7 +348,7 @@ export function FieldOpsCalendar({
       {(addDay || person) && (
         <div className="fixed inset-0 z-40">
           <div className="absolute inset-0 bg-ppp-charcoal-900/30" onClick={closeAll} aria-hidden />
-          <div role="dialog" aria-modal="true" className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none">
+          <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={person ? "Crew member shift details" : "Schedule crew for the day"} className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none focus:outline-none">
             {person ? (
               <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} />
             ) : addDay ? (
@@ -365,7 +388,7 @@ function DayPanel({
       </div>
 
       <div className="overflow-y-auto p-4 space-y-4">
-        {msg && <div className={`rounded-lg px-3 py-2 text-[12.5px] ${msg.tone === "err" ? "bg-rose-50 border border-rose-200 text-rose-700" : "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-700"}`}>{msg.text}</div>}
+        {msg && <div role={msg.tone === "err" ? "alert" : "status"} aria-live={msg.tone === "err" ? "assertive" : "polite"} className={`rounded-lg px-3 py-2 text-[12.5px] ${msg.tone === "err" ? "bg-rose-50 border border-rose-200 text-rose-700" : "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-700"}`}>{msg.text}</div>}
 
         {crew.length > 0 && (
           <ul className="space-y-2">
@@ -439,7 +462,7 @@ function PersonPanel({
       </div>
 
       <div className="overflow-y-auto p-4 space-y-4">
-        {msg && msg.tone === "err" && <div className="rounded-lg px-3 py-2 text-[12.5px] bg-rose-50 border border-rose-200 text-rose-700">{msg.text}</div>}
+        {msg && msg.tone === "err" && <div role="alert" className="rounded-lg px-3 py-2 text-[12.5px] bg-rose-50 border border-rose-200 text-rose-700">{msg.text}</div>}
         {clock && (
           <div className={`rounded-lg px-3 py-2.5 text-[12.5px] flex items-center gap-2 ${clock.open ? "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-800" : "bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-ppp-charcoal-600"}`}>
             <span aria-hidden className={`h-2 w-2 rounded-full shrink-0 ${clock.open ? "bg-ppp-green-500" : "bg-ppp-charcoal-300"}`} />

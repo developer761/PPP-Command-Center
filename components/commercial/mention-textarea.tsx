@@ -44,11 +44,14 @@ export default function MentionTextarea({
   className = "",
   candidates,
   helperText,
+  ariaLabel,
 }: {
   name: string;
   defaultValue?: string;
   placeholder?: string;
   required?: boolean;
+  /** Accessible name for the textarea (no visible <label> at the call site). */
+  ariaLabel?: string;
   maxLength?: number;
   rows?: number;
   className?: string;
@@ -160,6 +163,7 @@ export default function MentionTextarea({
       <textarea
         ref={taRef}
         name={name}
+        aria-label={ariaLabel}
         value={value}
         onChange={onChange}
         onKeyDown={onKeyDown}

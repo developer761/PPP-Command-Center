@@ -109,7 +109,7 @@ function SaveStatus({ status, errMsg, onRetry }: { status: "idle" | "saving" | "
   if (status === "saving") return <span className="text-[10px] text-ppp-charcoal-400 w-12">Saving…</span>;
   if (status === "saved")
     return (
-      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 w-12" title="Saved">
+      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-700 w-12" title="Saved">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
         Saved
       </span>

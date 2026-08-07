@@ -115,6 +115,10 @@ export function DateField({
   useEffect(() => {
     if (!open) return;
     reposition();
+    // Move focus INTO the portaled popover so keyboard/SR users land on the
+    // calendar (it renders at end of <body>), and restore focus to the trigger
+    // when it closes (a11y focus management — R7-a11y #2).
+    const focusTimer = setTimeout(() => popRef.current?.focus(), 0);
     function onDoc(e: MouseEvent) {
       const t = e.target as Node;
       if (rootRef.current?.contains(t)) return; // clicks on the trigger
@@ -122,7 +126,24 @@ export function DateField({
       setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") { setOpen(false); return; }
+      // Trap Tab within the popover so focus can't slip behind it to the page.
+      if (e.key === "Tab" && popRef.current) {
+        const foc = Array.from(
+          popRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex]:not([tabindex="-1"])')
+        );
+        if (foc.length === 0) return;
+        const first = foc[0];
+        const last = foc[foc.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || active === popRef.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     }
     function onReflow() {
       reposition();
@@ -133,10 +154,14 @@ export function DateField({
     // capture:true so a scroll in ANY ancestor container repositions the popover.
     window.addEventListener("scroll", onReflow, true);
     return () => {
+      clearTimeout(focusTimer);
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onReflow);
       window.removeEventListener("scroll", onReflow, true);
+      // Restore focus to the trigger when the popover closes (unless the field
+      // itself is gone, e.g. on navigation).
+      btnRef.current?.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -242,8 +267,11 @@ export function DateField({
         <div
           ref={popRef}
           role="dialog"
+          aria-modal="true"
+          aria-label={ariaLabel ? `${ariaLabel} — choose a date` : "Choose a date"}
+          tabIndex={-1}
           style={{ position: "fixed", top: pos.top, bottom: pos.bottom, left: pos.left, width: POP_W }}
-          className="z-[60] rounded-xl border border-ppp-charcoal-200 bg-surface shadow-xl p-3"
+          className="z-[60] rounded-xl border border-ppp-charcoal-200 bg-surface shadow-xl p-3 focus:outline-none"
         >
           <div className="flex items-center justify-between mb-2">
             <button type="button" onClick={() => shiftMonth(-1)} aria-label="Previous month" className="h-11 w-11 sm:h-9 sm:w-9 inline-flex items-center justify-center rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">

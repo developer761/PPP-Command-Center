@@ -753,7 +753,7 @@ export default async function ProductDetailPage({
                 <span className="block text-[11.5px] font-semibold text-ppp-charcoal-700 mb-1">
                   Effective from
                 </span>
-                <DateField name="effective_from" placeholder="Pick a date" />
+                <DateField ariaLabel="Effective from date" name="effective_from" placeholder="Pick a date" />
                 <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                   Leave blank for &ldquo;always.&rdquo;
                 </span>
