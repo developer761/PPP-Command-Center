@@ -30,7 +30,7 @@ Residential Command Center (`/dashboard/materials`). Every item built to Katie's
 - ✅ **10 · Process** — Append "Anything else we should know?" to the **top of Scheduling Notes** in SF.
 - ✅ **11 · Bug** — Stop prepending "Customer notes:" on every submission (it stacks). Idempotent.
 - ✅ **12 · Layout** — Remove "What we have noted for your job" section entirely.
-- ⬜ **13 · Bug** — Rooms repeated on line items ("Interior Painting: Living Room: Living Room · Living Room"). Dedupe.
+- ✅ **13 · Bug** — Rooms repeated on line items ("Interior Painting: Living Room: Living Room · Living Room"). Dedupe.
 
 ## Order Materials page (`supplier-order-modal.tsx` + `builder.ts`)
 - ⬜ **14 · Layout ✓** — Move "Manual quantity required" error ABOVE the "Order — what to buy" area.

@@ -186,11 +186,31 @@ function defaultFinishForSurface(surface: string): string {
   return "Eggshell";
 }
 
+/** Kate round-2 #13: SF's ProductName__c sometimes already embeds the room name
+ *  (e.g. "Interior Painting: Living Room: Living Room"), which combined with the
+ *  Area Label repeated the room 3-4× ("… Living Room · Living Room"). Split the
+ *  title on ":" and "·", trim, and drop duplicate tokens (case-insensitive,
+ *  first wins) so each room name shows once: "Interior Painting · Living Room". */
+function dedupeTitle(raw: string, fallback: string): string {
+  const seen = new Set<string>();
+  const tokens = raw
+    .split(/[:·]/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .filter((t) => {
+      const k = t.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  return tokens.length > 0 ? tokens.join(" · ") : fallback;
+}
+
 /** Room/section title: Product Name · Area Label, with fallbacks. Shared by
  *  the section header + the submit-validation message so they always match. */
 function roomTitle(li: FormLineItem, oneBasedIndex: number): string {
-  const parts = [li.productName?.trim() || "", li.areaLabel?.trim() || ""].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : li.productFamily?.trim() || `Section ${oneBasedIndex}`;
+  const raw = [li.productName?.trim() || "", li.areaLabel?.trim() || ""].filter(Boolean).join(" · ");
+  return dedupeTitle(raw, li.productFamily?.trim() || `Section ${oneBasedIndex}`);
 }
 
 type EditDeadline =
@@ -1083,8 +1103,8 @@ function LineItemSection({
   const rawArea = lineItem.areaLabel?.trim() || "";
   const rawProduct = lineItem.productName?.trim() || "";
   const rawFamily = lineItem.productFamily?.trim() || "";
-  const titleParts = [rawProduct, rawArea].filter(Boolean);
-  const title = titleParts.length > 0 ? titleParts.join(" · ") : rawFamily || `Section ${index}`;
+  // Kate #13: dedupe repeated room tokens (see dedupeTitle).
+  const title = dedupeTitle([rawProduct, rawArea].filter(Boolean).join(" · "), rawFamily || `Section ${index}`);
   // Show the scope family as a caption only when it isn't already in the title.
   const showFamilyCaption = !!rawFamily && !title.toLowerCase().includes(rawFamily.toLowerCase());
   const surfaces = lineItem.surfaces.length > 0 ? lineItem.surfaces : ["Walls"];
