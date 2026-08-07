@@ -73,6 +73,17 @@ export const VALID_MATERIAL_TYPE_VALUES: ReadonlySet<string> = new Set(
   MATERIAL_TYPES.map((m) => m.value)
 );
 
+/** Kate round-2 #22: primers are a separate purchase from the topcoat product
+ *  line — they belong in Extras, not the color's "product line" dropdown.
+ *  Exported so the Order Materials modal can filter them out of the line
+ *  pickers and offer them as add-on extras instead. */
+export const PRIMER_MATERIAL_VALUES: ReadonlySet<string> = new Set(
+  MATERIAL_TYPES.filter((m) => /primer/i.test(m.group)).map((m) => m.value)
+);
+export const PRIMER_MATERIAL_TYPES: ReadonlyArray<MaterialType> = MATERIAL_TYPES.filter(
+  (m) => /primer/i.test(m.group)
+);
+
 /** True when this WO has any interior surfaces. Used to filter exterior-only
  *  products out of the picker when there's no exterior work on the job.
  *  Heuristic: WO.WorkType.Name OR WOLI.ProductName__c contains "interior". */

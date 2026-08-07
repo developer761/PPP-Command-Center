@@ -5,6 +5,7 @@ import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { formatOrderQuantity, formatBucketsCans, summarizeOrder, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 import { isNycAddress } from "@/lib/supplier-order/nyc-zips";
 import MaterialTypePicker from "@/components/material-type-picker";
+import { PRIMER_MATERIAL_VALUES, PRIMER_MATERIAL_TYPES, VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
 
 /**
  * Supplier Order Modal — the full draft → review → send experience for one
@@ -156,6 +157,14 @@ export default function SupplierOrderModal({
       return { ...e, buckets: o.buckets, cans: o.cans, manualOnly: false };
     });
   }, [draft, quantityOverrides]);
+  // Kate round-2 #22: the product-line dropdowns (main + per-color) exclude
+  // primers — primers are add-on Extras, not a topcoat product line.
+  const lineMaterialValues = useMemo<ReadonlySet<string>>(() => {
+    const base = (draft?.allowedMaterialTypeValues ?? []).length > 0
+      ? draft!.allowedMaterialTypeValues!
+      : [...VALID_MATERIAL_TYPE_VALUES];
+    return new Set(base.filter((v) => !PRIMER_MATERIAL_VALUES.has(v)));
+  }, [draft]);
   // Per-color Material Type overrides — Katie 2026-06-05: "we will want to be
   // able to adjust per surface in case we mix product lines." Keyed by
   // `${colorId}::${finish ?? ""}` to match the +/- override map shape. Empty
@@ -391,6 +400,17 @@ export default function SupplierOrderModal({
     setCustomName("");
     setCustomQty("1");
     setCustomUnit("each");
+  };
+  // Kate round-2 #22: primers are add-on Extras now — toggle one on/off (1 gal
+  // default; qty adjustable like any extra). Keyed "primer-<value>".
+  const togglePrimer = (value: string) => {
+    const id = `primer-${value.toLowerCase().replace(/\s+/g, "-")}`;
+    setExtras((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) next.delete(id);
+      else next.set(id, { extraId: id, name: value, unit: "gal", qty: 1 });
+      return next;
+    });
   };
   const removeExtra = (extraId: string) => {
     setExtras((prev) => {
@@ -708,11 +728,7 @@ export default function SupplierOrderModal({
                           onChange={setMainMaterialType}
                           placeholder="— pick a paint line —"
                           allowClear
-                          availableValues={
-                            (draft.allowedMaterialTypeValues ?? []).length > 0
-                              ? new Set<string>(draft.allowedMaterialTypeValues)
-                              : undefined
-                          }
+                          availableValues={lineMaterialValues}
                         />
                       </div>
                     </div>
@@ -862,10 +878,9 @@ export default function SupplierOrderModal({
                                 // Pass the WO-filtered allowlist so admin can't pick
                                 // an interior product for an exterior WO (or vice
                                 // versa). Empty array = no filtering (mixed/unknown).
-                                const allowed: ReadonlySet<string> | undefined =
-                                  (draft.allowedMaterialTypeValues ?? []).length > 0
-                                    ? new Set<string>(draft.allowedMaterialTypeValues)
-                                    : undefined;
+                                // Kate #22: exclude primers from the per-color
+                                // line picker too (they're Extras now).
+                                const allowed: ReadonlySet<string> = lineMaterialValues;
                                 return (
                                   <div className="flex items-center justify-end gap-2 mt-1.5">
                                     <label className="text-[10px] text-ppp-charcoal-500 shrink-0" htmlFor={`mt-${mtKey}`}>
@@ -1051,6 +1066,28 @@ export default function SupplierOrderModal({
                       → Rollers). Each row has explicit +/- buttons (Karan
                       2026-06-10) matching the per-color pattern. */}
                   <Section title={`Extras (${extras.size > 0 ? `${extras.size} selected` : "none selected"})`}>
+                    {/* Kate round-2 #22: primers live here (Extras), not the
+                        product-line dropdown. Tap to add a gallon; adjust the qty
+                        in the selected list below like any extra. */}
+                    <div className="mb-3">
+                      <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1.5">Primer <span className="font-normal normal-case text-ppp-charcoal-400">— add if the job needs it</span></div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {PRIMER_MATERIAL_TYPES.map((p) => {
+                          const id = `primer-${p.value.toLowerCase().replace(/\s+/g, "-")}`;
+                          const on = extras.has(id);
+                          return (
+                            <button
+                              key={p.value}
+                              type="button"
+                              onClick={() => togglePrimer(p.value)}
+                              className={`text-[11px] px-2.5 py-1.5 rounded-lg border min-h-[36px] touch-manipulation transition-colors ${on ? "bg-ppp-blue-600 text-white border-ppp-blue-700" : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"}`}
+                            >
+                              {on ? "✓ " : "+ "}{p.value}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <input
                       type="search"
                       inputMode="search"
