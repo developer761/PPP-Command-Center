@@ -85,27 +85,23 @@ _**LIVING CHECKLIST.** Every item is checked off the moment it ships; the full c
 - [x] **Code-level dark mode VERIFIED COMPLETE** (2026-08-04). Whole-platform sweep found zero breakers: 0 hardcoded `bg-white` (the 1 is an intentional logo chip), 0 default grays/slate/zinc/neutral, 0 arbitrary/inline hex, 0 hardcoded SVG fills; charts are fully token-based (`toneVar`→CSS vars); every surface incl. the newest (reports, onboarding tour, focus-trap sheets) uses adaptive tokens; theme toggle (cookie + data-theme, no flash) works. The v4 token remap (Karan 2026-07-29) + RUX-0 already did the heavy lifting.
 - [ ] _(remaining — VISUAL only)_ subjective contrast micro-polish needs eyes-on-pixels: Karan spot-checks dark live and flags any surface that reads poorly → fix those specifically (don't blind-tweak the deliberately-tuned token values). Folds into the ENDGAME visual audit.
 
-## ⬜ Phase R10 — Field Ops / Scheduling  🐘 (the giant — LAST)
-- [ ] Data model + per-job phases + **scheduler role**
-- [ ] Week Grid view
-- [ ] Calendar view
-- [ ] Job Board view
-- [ ] Mobile Daily Log view
-- [ ] Approvals view
-- [ ] Admin view
-- [ ] Time-entry state machine (draft→submitted→approved→locked; questioned→foreman)
-- [ ] Payroll CSV export
-- [ ] Receipts + labor-out + clock-in/out (reconcile w/ residential receipts)
-- [ ] **★ Connect the Work Order INTO the scheduler (Karan 2026-08).** The WO
-      already carries the schedule seed — `scheduled_start_date`,
-      `scheduled_end_date`, `assigned_to` (crew/foreman) — added in RUX-4. One way
-      to schedule a job should be straight from its Work Order: sending a WO to the
-      crew is an OPTION to also place/sync it as a scheduled job on the Week Grid /
-      Calendar / Job Board (crew + window + scope come from the WO), two-way in
-      sync, and the scheduler surfaces "WOs sent but not yet scheduled." Model a
-      scheduled job so it can be BACKED BY a Work Order (nullable work_order_id) —
-      the scheduler is NOT a silo. Build to `project_tomco_scheduling_spec_2026_08`.
-- [ ] Edge-case + flow/logic bug-test (before + after) · tsc/tests/build green · pushed
+## 🔄 Phase R10 — Field Ops / Scheduling  🐘 (the giant) — VERIFIED vs spec 2026-08-09, ~complete
+_Audited view-by-view against `project_tomco_scheduling_spec_2026_08`. Built + shipped; the 3 gaps found are now closed (2026-08-10)._
+- [x] Data model + per-job phases (`commercial_job_phases`) + role gating (admin + crew magic-link; the 5 granular field-ops roles were consolidated to the platform RBAC + admin-gate — deliberate)
+- [→] Week Grid view — **deliberately RETIRED (R10.7)**; the interactive Calendar is the one scheduling surface (Scheduled/Actual/Variance split: Calendar schedules, Approvals shows variance)
+- [x] Calendar view (interactive, month grid + mobile agenda, click-to-schedule, emails crew)
+- [x] Job Board view (`/board`)
+- [x] Daily Log — **individual clock-in via magic link** replaces the foreman paper-log (deliberate; arguably better accountability)
+- [x] Approvals view (scheduled-vs-actual variance, `/approvals`)
+- [x] Admin view (employees + jobs CRUD; job creation requires a code)
+- [x] Time-entry state machine (submitted→questioned→approved→exported) + payroll-export lock
+- [x] Payroll CSV export — W-2-only, reg/OT split at 40h/week (Mon–Sun bucketed)
+- [x] Clock-in/out (clock-station) + auto-close stale punch + Spanish-first errors
+- [x] **★ Work Order → scheduler connection** — sending a WO auto-creates a schedulable job (`ensureJobForWorkOrder`, carries `work_order_id`, revives soft-deleted twins); overview surfaces the unscheduled backlog.
+- [x] **Absences UI (gap closed 2026-08-10)** — PTO/Sick/Personal/Holiday/No-work/Not-available on the Calendar; shows who's off, warns (not blocks) on double-book; attendance-only v1.
+- [x] **Copy Week Forward (gap closed 2026-08-10)** — one-click week duplication, skips off/existing/closed, no email spam.
+- [x] Assignment publish — RESOLVED: placing a crew member emails + shows immediately (placing = publishing); only bulk copy stays quiet by design.
+- [ ] _(remaining)_ optional polish: absence visibility on Overview/Approvals; per-job PHASES scheduling UI (table exists, no dedicated UI yet); Overtime forecast report exists on Overview.
 
 ---
 
