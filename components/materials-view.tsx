@@ -1640,6 +1640,24 @@ function JobDetailImpl({
             <div className="text-[10px] uppercase tracking-wider font-bold text-ppp-blue-700 mb-2">Colors</div>
             <div className="flex flex-col gap-1.5">
               {canEnterColors ? (
+                (() => {
+                  // Kate round-2 #26: when the WO has line items but NONE has a
+                  // surface selected in Salesforce, the customer form would show
+                  // a phantom "Walls" surface. Block sending + tell the user to
+                  // fix Salesforce first.
+                  const noSurfacesSelected =
+                    job.lineItems.length > 0 &&
+                    job.lineItems.every(
+                      (li) => (li.raw.surfaces ?? "").split(";").map((s) => s.trim()).filter(Boolean).length === 0
+                    );
+                  if (noSurfacesSelected) {
+                    return (
+                      <div role="alert" className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2.5 text-[12px] text-ppp-orange-700 leading-snug">
+                        <strong>No surfaces are selected</strong> — update Salesforce to collect colors. The color form can&rsquo;t be sent until at least one surface is set on this work order.
+                      </div>
+                    );
+                  }
+                  return (
                 <>
                   {/* key forces a fresh instance when the worker switches WOs so
                       per-WO local state (looked-up email, sent-result) can't leak. */}
@@ -1671,6 +1689,8 @@ function JobDetailImpl({
                     </p>
                   </div>
                 </>
+                  );
+                })()
               ) : (
                 <p className="text-sm text-ppp-charcoal-500 leading-snug px-0.5 py-2">
                   Sending the color form and entering colors is handled by admins
@@ -1920,14 +1940,28 @@ function LineItemRow({
   /** Admin/AM only. Reps are read-only (server route gates the same way). */
   canEnterColors: boolean;
 }) {
-  const surfaces = (item.raw.surfaces ?? "").split(";").filter(Boolean);
+  const surfaces = (item.raw.surfaces ?? "").split(";").map((s) => s.trim()).filter(Boolean);
+  // Kate round-2 #27: surfaces selected in Salesforce that aren't one of the
+  // standard color fields (Cabinets, Door, accent walls, …) used to vanish from
+  // Rooms & Colors because the display only mapped Walls/Ceiling/Trim/Floor/Other.
+  // Now those named surfaces show with their real label (carrying the shared
+  // ColorOther__c value), so nothing selected in SF is silently dropped.
+  const STANDARD_SURFACES = ["Walls", "Ceiling", "Trim", "Floor"];
+  const orphanSurfaces = surfaces.filter((s) => !STANDARD_SURFACES.includes(s) && s !== "Other");
   const slots: Array<{ label: string; surface: string; color: SnapshotPaintColor | null; finish: string | null }> = [
     { label: "Walls", surface: "Walls", color: item.wall, finish: item.raw.finishWall },
     { label: "Ceiling", surface: "Ceiling", color: item.ceiling, finish: item.raw.finishCeiling },
     { label: "Trim", surface: "Trim", color: item.trim, finish: item.raw.finishTrim },
     { label: "Floor", surface: "Floor", color: item.floor, finish: item.raw.finishFloor },
-    { label: "Other", surface: "Other", color: item.other, finish: item.raw.finishOther },
+    // Generic "Other" slot only when SF didn't name specific orphan surfaces —
+    // otherwise the named ones below carry the Other color.
+    ...(orphanSurfaces.length === 0
+      ? [{ label: "Other", surface: "Other", color: item.other, finish: item.raw.finishOther }]
+      : []),
   ].filter((s) => surfaces.includes(s.surface) || s.color);
+  for (const s of orphanSurfaces) {
+    slots.push({ label: s, surface: s, color: item.other, finish: item.raw.finishOther });
+  }
 
   const hasEffectiveSqft = effectiveSqftValue > 0;
 
