@@ -1241,6 +1241,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                         workOrderId={activeJob.wo.id}
                         workOrderNumber={activeJob.wo.workOrderNumber}
                         refreshKey={pastOrdersRefreshKey}
+                        progress={progressByWO.get(activeJob.wo.id) ?? null}
                       />
                     </div>
                   )}

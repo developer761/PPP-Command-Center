@@ -1,21 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import type { WoProgress } from "@/lib/wo-progress/types";
 
 /**
- * Mail-history activity stream for a single work order (Kate #2). A
- * Salesforce-style vertical feed of every email SENT (color-form invites +
- * supplier orders) and RECEIVED (customer/supplier replies) for this WO,
- * merged and sorted newest-first. Renders down the right side of the WO page.
+ * Activity History for a single work order (Kate round-2 #05). A Salesforce-
+ * style vertical feed that merges every email SENT (color-form invites +
+ * supplier orders) and RECEIVED (replies) with the WO's lifecycle EVENTS (form
+ * opened, colors submitted, order drafted), sorted newest-first. Renders down
+ * the right side of the WO page.
  *
- * Data: /api/admin/sent + /api/admin/inbox, both filtered by workOrderId and
- * both scope-gated (Account Managers see all WOs, so they can read it too).
+ * Data: /api/admin/sent + /api/admin/inbox (both filtered by workOrderId, both
+ * scope-gated) + the server-derived `progress` timeline for the lifecycle events.
  */
 
 type Item = {
   at: string;
-  dir: "out" | "in";
+  dir: "out" | "in" | "event";
   title: string;
   who: string;
   snippet?: string | null;
@@ -26,13 +28,35 @@ export default function WoMailStream({
   workOrderId,
   workOrderNumber,
   refreshKey = 0,
+  progress = null,
 }: {
   workOrderId: string;
   workOrderNumber: string | null;
   refreshKey?: number;
+  progress?: WoProgress | null;
 }) {
   const [items, setItems] = useState<Item[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+
+  // Kate #05: granular lifecycle events from the progress timeline, merged into
+  // the email feed so the history reads form-sent → opened → submitted →
+  // drafted → sent-to-supplier. AM attribution ("Amy") flows from submittedByName.
+  const events = useMemo<Item[]>(() => {
+    if (!progress) return [];
+    const by = progress.submittedByName?.trim() || null;
+    const out: Item[] = [];
+    if (progress.formOpenedAt)
+      out.push({ at: progress.formOpenedAt, dir: "event", title: "Color form opened", who: by ? `by ${by} (internal)` : "by the customer" });
+    if (progress.formSubmittedAt)
+      out.push({ at: progress.formSubmittedAt, dir: "event", title: "Colors submitted", who: by ? `by ${by} (internal entry)` : "by the customer" });
+    if (progress.supplierDraftedAt)
+      out.push({ at: progress.supplierDraftedAt, dir: "event", title: "Materials order drafted", who: "in the Command Center" });
+    return out;
+  }, [progress]);
+
+  const allItems = useMemo(() => {
+    return [...items, ...events].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  }, [items, events]);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -103,13 +127,13 @@ export default function WoMailStream({
     <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
-          Mail history
+          Activity History
         </span>
         <Link
-          href={`/dashboard/inbox?wo=${encodeURIComponent(workOrderId)}`}
+          href={`/dashboard/inbox`}
           className="inline-flex items-center min-h-[44px] text-[11px] font-medium text-ppp-blue-700 hover:text-ppp-blue-800 whitespace-nowrap"
         >
-          Open in Mail Hub
+          Open Mail Hub
         </Link>
       </div>
 
@@ -132,27 +156,31 @@ export default function WoMailStream({
             Retry
           </button>
         </p>
-      ) : items.length === 0 ? (
+      ) : allItems.length === 0 ? (
         <p className="px-4 py-8 text-center text-xs text-ppp-charcoal-400">
-          No emails sent or received yet for{" "}
+          No activity yet for{" "}
           {workOrderNumber ? `WO ${workOrderNumber}` : "this work order"}.
         </p>
       ) : (
         <ol className="divide-y divide-ppp-charcoal-50 max-h-[520px] overflow-y-auto">
-          {items.map((m, i) => (
+          {allItems.map((m, i) => (
             <li key={`${m.at}-${i}`} className="px-4 py-3 flex gap-3">
               <span
                 className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
                   m.dir === "out"
                     ? "bg-ppp-blue-50 text-ppp-blue-700"
-                    : "bg-ppp-green-50 text-ppp-green-700"
+                    : m.dir === "in"
+                    ? "bg-ppp-green-50 text-ppp-green-700"
+                    : "bg-ppp-charcoal-50 text-ppp-charcoal-500"
                 }`}
               >
-                <span className="sr-only">{m.dir === "out" ? "Sent:" : "Received:"}</span>
+                <span className="sr-only">{m.dir === "out" ? "Sent:" : m.dir === "in" ? "Received:" : "Event:"}</span>
                 {m.dir === "out" ? (
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13 M22 2l-7 20-4-9-9-4 20-7z" /></svg>
-                ) : (
+                ) : m.dir === "in" ? (
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16v16H4z M22 6l-10 7L2 6" /></svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 8v4l2.5 2.5" /></svg>
                 )}
               </span>
               <div className="min-w-0 flex-1">
