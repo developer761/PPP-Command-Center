@@ -1,6 +1,13 @@
 # Materials Ordering Hub — Round 2 (Katie, Aug 2026) · 27-item build tracker
 
-Residential Command Center (`/dashboard/materials`). Every item built to Katie's screenshots/mockups. Status: ⬜ todo · 🔨 in progress · ✅ done. Anchor files: `components/materials-view.tsx` (main list + WO page + entry render), `components/supplier-order-modal.tsx` + `lib/supplier-order/builder.ts` (Order Materials + email), `components/wo-mail-stream.tsx` (mail/activity history), `app/select/[token]` + `app/f/[token]` + `lib/customer-form/*` (entry forms), `lib/salesforce/materials.ts` (SF writeback).
+Residential Command Center (`/dashboard/materials`). Every item built to Katie's screenshots/mockups. Status: ⬜ todo · 🔨 in progress · ✅ done. Anchor files: `components/materials-view.tsx` (main list + WO page + entry render), `components/supplier-order-modal.tsx` + `lib/supplier-order/builder.ts` (Order Materials + email), `components/wo-mail-stream.tsx` (mail/activity history), `app/select/[token]` + `app/f/[token]` + `lib/customer-form/*` (entry forms), `lib/salesforce/writeback.ts` (`writeSf`/`writeSfBatch` — SF writeback).
+
+### Confirmed SF field mapping (from `ppp-salesforce-reference/salesforce/DATA_DICTIONARY.md`)
+- **WorkOrder**: `FollowupDate__c` (Date) — #03 Follow-up Date. `Scheduling_Notes__c` (Text Area 25000) — #10 append. Already read into the snapshot as `schedulingNotes` in `queries.ts:2095`; add `followupDate` similarly.
+- **WorkOrderLineItem**: `ColorNotes__c` (Text) — #09 "Don't paint this surface" note + #11 stop-stacking "Customer notes:". Already read as `colorNotes` (`queries.ts:1583`).
+- Writeback pattern: `writeSf({ sObject, recordId, fields })` from `lib/salesforce/writeback.ts`.
+- ⚠️ Confirm exact casing `FollowupDate__c` vs `FollowUpDate__c` against the live sandbox before the #03 writeback goes out (DATA_DICTIONARY shows both — WorkOrder section uses `FollowupDate__c`).
+- Internal Entry button + Send Color Form live in `materials-view.tsx` (the "Internal Entry" opener component ~L2520); the #03 button bar reuses both.
 
 ## Main materials page — `/dashboard/materials`
 - ✅ **01 · Layout** — Snapshot band (stat strip + needs-attention + customer-forms strip) gated to `viewer?.isAdmin`; AMs land straight on the WO list. `materials-view.tsx` ~673.
