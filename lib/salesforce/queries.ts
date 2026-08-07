@@ -641,6 +641,9 @@ export type SnapshotWorkOrder = {
   schedulingNotes: string | null;
   reviewNotes: string | null;
   balanceOwedNotes: string | null;
+  /** WorkOrder.FollowupDate__c (Kate #03) — "YYYY-MM-DD" or null. Editable on
+   *  the Materials WO page + written back to SF. */
+  followupDate: string | null;
 };
 
 /**
@@ -1892,6 +1895,11 @@ export async function loadSalesforceSnapshot(
       const hasSchedNotes = woMeta.fields.some((f) => f.name === "Scheduling_Notes__c");
       const hasReviewNotes = woMeta.fields.some((f) => f.name === "Review_Notes__c");
       const hasBalanceNotes = woMeta.fields.some((f) => f.name === "BalanceOwedNotes__c");
+      // Follow-up date (Kate round-2 #03) — the Materials WO page shows + writes
+      // this back to SF. Probe both casings PPP's org might use.
+      const followupDateField = ["FollowupDate__c", "FollowUpDate__c"].find((name) =>
+        woMeta.fields.some((f) => f.name === name)
+      );
       // Start date — Katie 2026-06-12 wants Materials list sorted by
       // scheduled start. Probe in order of likelihood for PPP's org; first
       // one found wins.
@@ -1929,6 +1937,7 @@ export async function loadSalesforceSnapshot(
         hasSchedNotes ? "Scheduling_Notes__c" : null,
         hasReviewNotes ? "Review_Notes__c" : null,
         hasBalanceNotes ? "BalanceOwedNotes__c" : null,
+        followupDateField ?? null,
         startDateField ?? null,
         desiredStartField ?? null,
         // Standard SF geocoding fields — 20k+ WOs have these populated
@@ -2085,6 +2094,15 @@ export async function loadSalesforceSnapshot(
           for (const name of ["Desired_Start_Date__c", "Customer_Requested_Start_Date__c", "Customer_Desired_Start_Date__c", "Requested_Start_Date__c"]) {
             const v = w[name];
             if (typeof v === "string") return v;
+          }
+          return null;
+        })(),
+        // Follow-up date (Kate #03) — SF stores a Date as "YYYY-MM-DD"; accept
+        // either casing the org uses.
+        followupDate: (() => {
+          for (const name of ["FollowupDate__c", "FollowUpDate__c"]) {
+            const v = w[name];
+            if (typeof v === "string" && v) return v.slice(0, 10);
           }
           return null;
         })(),

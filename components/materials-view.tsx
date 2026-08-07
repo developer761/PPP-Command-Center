@@ -1749,6 +1749,12 @@ function JobDetailImpl({
               })()}
             </div>
           </div>
+
+          {/* Kate #03: Follow-up date — mirrors WorkOrder.FollowupDate__c and
+              writes back to Salesforce. Admin/AM only (same as color entry). */}
+          {canEnterColors && (
+            <FollowUpDateField key={`fu-${job.wo.id}`} workOrderId={job.wo.id} initial={job.wo.followupDate ?? null} />
+          )}
         </div>
       </div>
 
@@ -2564,6 +2570,76 @@ function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
         </div>
       )}
     </>
+  );
+}
+
+/* ─── Follow-up date (Kate #03) — mirrors WorkOrder.FollowupDate__c + SF writeback ─── */
+
+function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; initial: string | null }) {
+  const [value, setValue] = useState(initial ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string | null>(initial ?? null); // last-saved value
+  const [error, setError] = useState<string | null>(null);
+  const dirty = value !== (saved ?? "");
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dashboard/materials/followup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderId, date: value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        setError(data.detail || data.error || "Couldn't save to Salesforce.");
+      } else {
+        setSaved(value || null);
+      }
+    } catch {
+      setError("Network error — try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-ppp-charcoal-100 bg-white p-3">
+      <div className="text-[10px] uppercase tracking-wider font-bold text-ppp-charcoal-500 mb-1.5">
+        Follow-up date <span className="font-normal normal-case text-ppp-charcoal-400">· syncs to Salesforce</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => { setValue(e.target.value); setError(null); }}
+          aria-label="Work order follow-up date"
+          className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[40px]"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving || !dirty}
+          className="inline-flex items-center px-3 py-1.5 min-h-[40px] rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => { setValue(""); setError(null); }}
+            className="text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal-700 px-1 min-h-[40px]"
+          >
+            Clear
+          </button>
+        )}
+        {!dirty && saved && !error && (
+          <span className="text-[11px] text-ppp-green-700" role="status">✓ Saved to Salesforce</span>
+        )}
+      </div>
+      {error && <p className="text-[11px] text-ppp-orange-700 mt-1.5" role="alert">{error}</p>}
+    </div>
   );
 }
 
