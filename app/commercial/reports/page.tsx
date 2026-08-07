@@ -5,6 +5,7 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
 import { getJobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
+import { getGeographyReport } from "@/lib/commercial/reports/geography";
 import { getWinLossSummary, currentQuarterRange } from "@/lib/commercial/win-loss/reports";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 
@@ -28,12 +29,14 @@ export default async function ReportsOverviewPage() {
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
 
   const quarter = currentQuarterRange();
-  const [pipeline, jobCosts, aging, winLoss] = await Promise.all([
+  const [pipeline, jobCosts, aging, winLoss, geo] = await Promise.all([
     getPipelineReport(),
     getJobCostsReport(),
     getArAging(),
     getWinLossSummary(quarter),
+    getGeographyReport(),
   ]);
+  const topTown = geo.byCity[0] ?? null;
 
   const overdue = aging.totals.total - aging.totals.current;
   const marginTone: Tone = jobCosts.totals.marginPct === null ? "neutral" : jobCosts.totals.marginPct < 0 ? "rose" : jobCosts.totals.marginPct < 15 ? "amber" : "emerald";
@@ -62,6 +65,14 @@ export default async function ReportsOverviewPage() {
       icon: <path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />,
       primary: { label: "Projected margin", value: jobCosts.totals.marginPct === null ? "—" : `${jobCosts.totals.marginPct}%`, tone: marginTone },
       secondary: { label: "Total cost", value: formatCentsCompact(jobCosts.totals.totalCostCents), tone: "amber" },
+    },
+    {
+      href: "/commercial/reports/geography",
+      title: "Where the work is",
+      blurb: "Jobs by town, zip, and state — where the work concentrates.",
+      icon: <><path d="M12 21s-6-5.686-6-10a6 6 0 1 1 12 0c0 4.314-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></>,
+      primary: { label: "Towns", value: String(geo.totals.cityCount), tone: "navy" },
+      secondary: { label: "Top town", value: topTown ? `${topTown.label} · ${topTown.dealCount}` : "—" },
     },
     {
       href: "/commercial/reports/ar-aging",

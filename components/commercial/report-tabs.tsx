@@ -15,6 +15,7 @@ const REPORTS: { href: string; label: string; exact?: boolean }[] = [
   { href: "/commercial/reports", label: "Overview", exact: true },
   { href: "/commercial/reports/pipeline", label: "Pipeline" },
   { href: "/commercial/reports/job-costs", label: "Job costs" },
+  { href: "/commercial/reports/geography", label: "Geography" },
   { href: "/commercial/reports/ar-aging", label: "AR Aging" },
   { href: "/commercial/reports/win-loss", label: "Win / Loss" },
 ];
