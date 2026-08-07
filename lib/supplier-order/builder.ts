@@ -124,6 +124,11 @@ export type BuildSupplierOrderInput = {
    *  Materials page — the top-priority job-level value (beats the customer/WO
    *  value). Every color defaults to it unless a per-color override differs. */
   materialType?: string | null;
+  /** Kate round-2 #25: the editable "Color Notes" value from the modal. When
+   *  provided it becomes the COLOR NOTES email section (replacing the old
+   *  Customer-Notes + Not-Painting blocks); when omitted the builder falls back
+   *  to the default built from the customer's notes + opted-out surfaces. */
+  colorNotes?: string | null;
   /** True when the worker MANUALLY picked this supplier (a store), vs the
    *  supplier being auto-derived from a color's manufacturer. PPP buys paint of
    *  any brand from stores (Aboffs sells BM, SW, etc.), so a hand-picked store
@@ -184,6 +189,9 @@ export type SupplierOrderDraft = {
    *  ceiling" vs "customer forgot to pick a ceiling color" — these used
    *  to be silently dropped from the order, leaving suppliers guessing. */
   skippedSurfaces: Array<{ roomLabel: string; surface: string }>;
+  /** Kate round-2 #25: default Color Notes text (customer notes + opted-out
+   *  surfaces) the modal pre-fills its editable Color Notes field with. */
+  colorNotesDefault: string;
   /** When the WO has 0 customer-picked colors yet (no form submission),
    *  this is true and the worker should be warned. */
   noColorsPicked: boolean;
@@ -943,29 +951,26 @@ export async function buildSupplierOrderDraft(
       perLineNotes.push({ roomLabel: woliRoomLabel.get(item.id) ?? "Room", note });
     }
   }
-  if (customerGlobalNotes || perLineNotes.length > 0) {
-    sections.push("");
-    sections.push("CUSTOMER NOTES");
-    if (customerGlobalNotes) {
-      sections.push(customerGlobalNotes);
-    }
-    for (const { roomLabel, note } of perLineNotes) {
-      sections.push(`  - ${roomLabel}: ${note}`);
-    }
+  // Kate round-2 #25: the "CUSTOMER NOTES" + "CUSTOMER IS NOT PAINTING" blocks
+  // are consolidated into ONE editable "COLOR NOTES" section. The default text is
+  // built from the customer's notes + opted-out surfaces so the estimator sees
+  // (and can edit) what might be missing; if the modal sends an edited value
+  // (`input.colorNotes`), that wins.
+  const colorNotesDefaultParts: string[] = [];
+  if (customerGlobalNotes) colorNotesDefaultParts.push(customerGlobalNotes);
+  for (const { roomLabel, note } of perLineNotes) {
+    colorNotesDefaultParts.push(`- ${roomLabel}: ${note}`);
   }
-  // Katie 2026-06-03: COLOR PLACEMENT (where each color goes) removed from
-  // the default email — vendor doesn't need PPP's internal room mapping.
-  // Still rendered by templates that explicitly reference {{placement_block}}.
-  // Customer-opted-out surfaces — surface explicitly so the supplier knows
-  // the intent. Without this block the supplier would just see paint for
-  // walls + trim and wonder if the ceiling color was forgotten. Only render
-  // when at least one surface was actually opted out.
   if (skippedSurfaces.length > 0) {
+    colorNotesDefaultParts.push("Not painting:");
+    for (const s of skippedSurfaces) colorNotesDefaultParts.push(`- ${s.roomLabel} · ${s.surface}`);
+  }
+  const colorNotesDefault = colorNotesDefaultParts.join("\n");
+  const colorNotes = (input.colorNotes ?? colorNotesDefault).trim();
+  if (colorNotes) {
     sections.push("");
-    sections.push("CUSTOMER IS NOT PAINTING");
-    for (const s of skippedSurfaces) {
-      sections.push(`  - ${s.roomLabel} · ${s.surface}`);
-    }
+    sections.push("COLOR NOTES");
+    sections.push(colorNotes);
   }
   const extrasBlock = formatExtrasBlock(input.extras);
   if (extrasBlock) {
@@ -974,7 +979,7 @@ export async function buildSupplierOrderDraft(
   }
   if (vars.special_instructions) {
     sections.push("");
-    sections.push("SPECIAL INSTRUCTIONS");
+    sections.push("FULFILMENT INSTRUCTIONS"); // Kate #25 rename
     sections.push(vars.special_instructions);
   }
   sections.push("");
@@ -1002,6 +1007,9 @@ export async function buildSupplierOrderDraft(
     lineItems,
     gallonEstimates,
     skippedSurfaces,
+    // Kate #25: default Color Notes text (customer notes + opted-out surfaces) —
+    // the modal pre-fills its editable Color Notes field with this.
+    colorNotesDefault,
     noColorsPicked: lineItems.length === 0,
     unresolvedAddress: input.fulfillmentMethod === "delivery" && !deliveryAddress,
     deliveryAddress,

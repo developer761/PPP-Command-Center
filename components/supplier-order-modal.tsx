@@ -77,6 +77,7 @@ type Draft = {
    *  06-10: NYC suppliers don't generally deliver). */
   pickupDefault?: boolean;
   skippedSurfaces?: Array<{ roomLabel: string; surface: string }>;
+  colorNotesDefault?: string; // Kate #25
   /** WO-context-filtered Material Type allowlist. Empty array = no filter
    *  (mixed/unknown WO). Passed to the per-color override picker so an
    *  admin can't pick "Aura Interior" for an exterior WO. */
@@ -136,6 +137,9 @@ export default function SupplierOrderModal({
   // address WINS in the email body. Per-order only, never persisted.
   const [useCustomAddress, setUseCustomAddress] = useState(false);
   const [specialInstructions, setSpecialInstructions] = useState("");
+  // Kate round-2 #25: editable Color Notes. null = untouched (show the draft's
+  // default built from customer notes + opted-out surfaces); a string = edited.
+  const [colorNotes, setColorNotes] = useState<string | null>(null);
   const [extras, setExtras] = useState<Map<string, SelectedExtra>>(new Map());
   // Kate round-2 #24: the estimator can override the "Required by" fulfillment
   // date. Empty = use the computed default (job start date, or next day if past).
@@ -262,6 +266,7 @@ export default function SupplierOrderModal({
             specialInstructions: specialInstructions.trim() || undefined,
             manualSupplier,
             requiredByDate: requiredByDateOverride.trim() || undefined,
+            colorNotes: colorNotes ?? undefined,
             materialType: mainMaterialType.trim() || undefined,
             materialTypeOverrides:
               materialTypeOverrides.size > 0
@@ -302,7 +307,7 @@ export default function SupplierOrderModal({
       }
     }, 120); // Was 250ms — reduced to 120ms so extras-toggle feels snappy.
     return () => { cancelled = true; clearTimeout(timeout); };
-  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier, requiredByDateOverride, mainMaterialType, materialTypeOverrides]);
+  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, colorNotes, manualSupplier, requiredByDateOverride, mainMaterialType, materialTypeOverrides]);
 
   // Reset the "admin touched fulfillment" guard whenever a different WO
   // becomes the modal's target. Without this, admin manually picking
@@ -315,6 +320,7 @@ export default function SupplierOrderModal({
     setMaterialTypeOverrides(new Map());
     setMainMaterialType("");
     setRequiredByDateOverride("");
+    setColorNotes(null);
   }, [workOrderId, supplierAccountId]);
 
   // Pickup default — three sources, descending priority:
@@ -915,6 +921,26 @@ export default function SupplierOrderModal({
                     </div>
                   )}
 
+                  {/* Kate round-2 #25: Color Notes — pre-filled with the
+                      customer's notes + any surfaces they opted out of, so the
+                      estimator can see (and fix) what might be missing. Replaces
+                      the old "Customer Notes" + "Customer is not painting" email
+                      blocks; whatever's here becomes the email's COLOR NOTES. */}
+                  {draft && (
+                    <div className="bg-white border border-ppp-charcoal-100 rounded-lg px-4 py-3">
+                      <label className="text-xs font-semibold text-ppp-charcoal block mb-1" htmlFor="order-color-notes">Color Notes</label>
+                      <p className="text-[10px] text-ppp-charcoal-500 mb-2">Customer notes + surfaces they&rsquo;re not painting, plus anything missing (colors not in the system, surfaces not selected). Goes on the order email.</p>
+                      <textarea
+                        id="order-color-notes"
+                        value={colorNotes ?? draft.colorNotesDefault ?? ""}
+                        onChange={(e) => setColorNotes(e.target.value)}
+                        rows={3}
+                        placeholder="e.g. Deck: Gray Minwax · Not painting: Living Room · Trim"
+                        className="w-full px-3 py-2 text-xs border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
+                      />
+                    </div>
+                  )}
+
                   {/* Kate round-2 #24: fulfillment date → the email's "Required
                       by:" line. Defaults to the job start date (next day if
                       that's past); the estimator can change it here. */}
@@ -1279,8 +1305,9 @@ export default function SupplierOrderModal({
                     </div>
                   </Section>
 
-                  {/* Special instructions */}
-                  <Section title="Special instructions">
+                  {/* Kate round-2 #25: "Special instructions" → "Fulfilment
+                      instructions" (matches the renamed email section). */}
+                  <Section title="Fulfilment instructions">
                     <textarea
                       value={specialInstructions}
                       onChange={(e) => setSpecialInstructions(e.target.value)}
