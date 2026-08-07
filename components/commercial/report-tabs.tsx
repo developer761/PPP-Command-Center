@@ -9,7 +9,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const REPORTS: { href: string; label: string }[] = [
+const REPORTS: { href: string; label: string; exact?: boolean }[] = [
+  // Overview is the index — exact-match only, else it'd read active on every
+  // sub-report (they all start with /commercial/reports).
+  { href: "/commercial/reports", label: "Overview", exact: true },
   { href: "/commercial/reports/pipeline", label: "Pipeline" },
   { href: "/commercial/reports/job-costs", label: "Job costs" },
   { href: "/commercial/reports/ar-aging", label: "AR Aging" },
@@ -21,7 +24,7 @@ export function ReportTabs() {
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {REPORTS.map((r) => {
-        const active = pathname.startsWith(r.href);
+        const active = r.exact ? pathname === r.href : pathname.startsWith(r.href);
         return (
           <Link
             key={r.href}
