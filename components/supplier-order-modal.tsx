@@ -960,155 +960,6 @@ export default function SupplierOrderModal({
                     </div>
                   )}
 
-                  {/* Fulfillment */}
-                  <Section title="Fulfillment">
-                    {/* NYC-pickup chip — surfaces WHY the default is pickup when
-                        the delivery address is in NYC's 5 boroughs (Katie
-                        2026-06-04). Admin can still toggle to delivery; the
-                        chip just explains the default. Hidden once admin
-                        actually picks delivery so they don't get nagged. */}
-                    {isNycDelivery && fulfillment === "pickup" && (
-                      <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ppp-blue-50 border border-ppp-blue-100 text-[11px] font-medium text-ppp-blue-700">
-                        <span aria-hidden>🗽</span>
-                        NYC address — defaulted to pickup (delivery often unavailable in the city)
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <FulfillmentChoice
-                        selected={fulfillment === "delivery"}
-                        onSelect={() => {
-                          adminTouchedFulfillment.current = true;
-                          setFulfillment("delivery");
-                        }}
-                        title="Deliver to customer"
-                        description={
-                          draft.deliveryAddress
-                            ? `${draft.deliveryAddress.street}, ${draft.deliveryAddress.city}${draft.deliveryAddress.state ? ", " + draft.deliveryAddress.state : ""}`
-                            : "No address on file — edit body manually before send"
-                        }
-                        sourceLabel={
-                          draft.deliveryAddress?.source === "customer_form" ? "From customer form" :
-                          draft.deliveryAddress?.source === "sf_account"     ? "From SF Account" :
-                          undefined
-                        }
-                      />
-                      <FulfillmentChoice
-                        selected={fulfillment === "pickup"}
-                        onSelect={() => {
-                          adminTouchedFulfillment.current = true;
-                          setFulfillment("pickup");
-                        }}
-                        title="Pickup at supplier"
-                        description="PPP staff will pick up"
-                      />
-                    </div>
-                    {fulfillment === "pickup" && (
-                      <PickupLocationPicker
-                        locations={draft?.pickupLocations ?? []}
-                        value={pickupLocation}
-                        onChange={setPickupLocation}
-                      />
-                    )}
-                    {/* "Deliver to a different address" toggle — Katie
-                        2026-06-05. When the SF address is fine, admin
-                        leaves this off. When the crew wants the supplier
-                        to drop off at their location instead, they tap
-                        this and the manual form expands. The typed-in
-                        address overrides SF in the email body. Per-order
-                        only — never saved.
-                        Clears deliveryAddr when toggled OFF so a stale
-                        crew address doesn't keep the form visible
-                        (edge-case audit 2026-06-05). */}
-                    {fulfillment === "delivery" && !draft.unresolvedAddress && (
-                      <div className="mt-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setUseCustomAddress((v) => {
-                              const next = !v;
-                              if (!next) {
-                                // Toggling OFF — wipe any typed value so the
-                                // form actually hides + the draft regenerates
-                                // using the SF address.
-                                setDeliveryAddr({ street: "", city: "", state: "", postalCode: "" });
-                              }
-                              return next;
-                            });
-                          }}
-                          className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 font-medium underline-offset-2 hover:underline px-2 py-1 -mr-2 touch-manipulation"
-                        >
-                          {useCustomAddress
-                            ? "↺ Use the customer address instead"
-                            : "Deliver to a different address (e.g. crew location) →"}
-                        </button>
-                      </div>
-                    )}
-
-                    {/* No address on file → type it here; it flows straight into
-                        the email's DELIVERY block (same as extras / special
-                        instructions). Stays open while you fill it. Also opens
-                        when admin chose "different address" above.
-                        Dropped the `deliveryAddr.street.trim() !== ""` clause
-                        — it was making the form stick after admin toggled off
-                        (edge-case audit 2026-06-05). useCustomAddress is now
-                        the single explicit signal for "show the manual form
-                        even though SF has an address." */}
-                    {fulfillment === "delivery" && (draft.unresolvedAddress || useCustomAddress) && (
-                      <div className="mt-3 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/60 p-3">
-                        <div className="text-[11px] font-semibold text-ppp-orange-700 mb-2">
-                          {useCustomAddress
-                            ? "Manual delivery address — overrides the customer address for this order only."
-                            : "No delivery address on file — enter it and it'll drop into the email."}
-                        </div>
-                        <div className="space-y-2">
-                          {/* autoFocus only when SF returned no address — admin
-                              has to type something before they can send, so
-                              taking focus is appropriate. We don't autofocus
-                              when admin TOGGLED useCustomAddress (they may have
-                              just been clicking around without intending to
-                              type yet). Karan walkthrough audit 2026-06-08. */}
-                          <input
-                            type="text"
-                            value={deliveryAddr.street}
-                            onChange={(e) => setDeliveryAddr((a) => ({ ...a, street: e.target.value }))}
-                            placeholder="Street address"
-                            autoFocus={draft.unresolvedAddress && !useCustomAddress}
-                            className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
-                          />
-                          <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto] gap-2">
-                            <input
-                              type="text"
-                              value={deliveryAddr.city}
-                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, city: e.target.value }))}
-                              placeholder="City"
-                              autoCapitalize="words"
-                              className="px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
-                            />
-                            <input
-                              type="text"
-                              value={deliveryAddr.state}
-                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, state: e.target.value }))}
-                              placeholder="State"
-                              maxLength={4}
-                              autoCapitalize="characters"
-                              autoCorrect="off"
-                              className="w-20 px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
-                            />
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={deliveryAddr.postalCode}
-                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, postalCode: e.target.value }))}
-                              placeholder="ZIP"
-                              maxLength={10}
-                              autoCorrect="off"
-                              className="w-24 px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </Section>
 
                   {/* Extras dropdown — Katie's 20-item product list seeded via
                       migration 017. Search bar at top, categorized + sorted by
@@ -1303,6 +1154,155 @@ export default function SupplierOrderModal({
                         Examples: &ldquo;1 gallon Behr primer&rdquo;, &ldquo;painter&apos;s plastic (12&apos; x 400&apos;)&rdquo;.
                       </p>
                     </div>
+                  </Section>
+                  {/* Fulfillment */}
+                  <Section title="Fulfillment">
+                    {/* NYC-pickup chip — surfaces WHY the default is pickup when
+                        the delivery address is in NYC's 5 boroughs (Katie
+                        2026-06-04). Admin can still toggle to delivery; the
+                        chip just explains the default. Hidden once admin
+                        actually picks delivery so they don't get nagged. */}
+                    {isNycDelivery && fulfillment === "pickup" && (
+                      <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ppp-blue-50 border border-ppp-blue-100 text-[11px] font-medium text-ppp-blue-700">
+                        <span aria-hidden>🗽</span>
+                        NYC address — defaulted to pickup (delivery often unavailable in the city)
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <FulfillmentChoice
+                        selected={fulfillment === "delivery"}
+                        onSelect={() => {
+                          adminTouchedFulfillment.current = true;
+                          setFulfillment("delivery");
+                        }}
+                        title="Deliver to customer"
+                        description={
+                          draft.deliveryAddress
+                            ? `${draft.deliveryAddress.street}, ${draft.deliveryAddress.city}${draft.deliveryAddress.state ? ", " + draft.deliveryAddress.state : ""}`
+                            : "No address on file — edit body manually before send"
+                        }
+                        sourceLabel={
+                          draft.deliveryAddress?.source === "customer_form" ? "From customer form" :
+                          draft.deliveryAddress?.source === "sf_account"     ? "From SF Account" :
+                          undefined
+                        }
+                      />
+                      <FulfillmentChoice
+                        selected={fulfillment === "pickup"}
+                        onSelect={() => {
+                          adminTouchedFulfillment.current = true;
+                          setFulfillment("pickup");
+                        }}
+                        title="Pickup at supplier"
+                        description="PPP staff will pick up"
+                      />
+                    </div>
+                    {fulfillment === "pickup" && (
+                      <PickupLocationPicker
+                        locations={draft?.pickupLocations ?? []}
+                        value={pickupLocation}
+                        onChange={setPickupLocation}
+                      />
+                    )}
+                    {/* "Deliver to a different address" toggle — Katie
+                        2026-06-05. When the SF address is fine, admin
+                        leaves this off. When the crew wants the supplier
+                        to drop off at their location instead, they tap
+                        this and the manual form expands. The typed-in
+                        address overrides SF in the email body. Per-order
+                        only — never saved.
+                        Clears deliveryAddr when toggled OFF so a stale
+                        crew address doesn't keep the form visible
+                        (edge-case audit 2026-06-05). */}
+                    {fulfillment === "delivery" && !draft.unresolvedAddress && (
+                      <div className="mt-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUseCustomAddress((v) => {
+                              const next = !v;
+                              if (!next) {
+                                // Toggling OFF — wipe any typed value so the
+                                // form actually hides + the draft regenerates
+                                // using the SF address.
+                                setDeliveryAddr({ street: "", city: "", state: "", postalCode: "" });
+                              }
+                              return next;
+                            });
+                          }}
+                          className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 font-medium underline-offset-2 hover:underline px-2 py-1 -mr-2 touch-manipulation"
+                        >
+                          {useCustomAddress
+                            ? "↺ Use the customer address instead"
+                            : "Deliver to a different address (e.g. crew location) →"}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* No address on file → type it here; it flows straight into
+                        the email's DELIVERY block (same as extras / special
+                        instructions). Stays open while you fill it. Also opens
+                        when admin chose "different address" above.
+                        Dropped the `deliveryAddr.street.trim() !== ""` clause
+                        — it was making the form stick after admin toggled off
+                        (edge-case audit 2026-06-05). useCustomAddress is now
+                        the single explicit signal for "show the manual form
+                        even though SF has an address." */}
+                    {fulfillment === "delivery" && (draft.unresolvedAddress || useCustomAddress) && (
+                      <div className="mt-3 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/60 p-3">
+                        <div className="text-[11px] font-semibold text-ppp-orange-700 mb-2">
+                          {useCustomAddress
+                            ? "Manual delivery address — overrides the customer address for this order only."
+                            : "No delivery address on file — enter it and it'll drop into the email."}
+                        </div>
+                        <div className="space-y-2">
+                          {/* autoFocus only when SF returned no address — admin
+                              has to type something before they can send, so
+                              taking focus is appropriate. We don't autofocus
+                              when admin TOGGLED useCustomAddress (they may have
+                              just been clicking around without intending to
+                              type yet). Karan walkthrough audit 2026-06-08. */}
+                          <input
+                            type="text"
+                            value={deliveryAddr.street}
+                            onChange={(e) => setDeliveryAddr((a) => ({ ...a, street: e.target.value }))}
+                            placeholder="Street address"
+                            autoFocus={draft.unresolvedAddress && !useCustomAddress}
+                            className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                          />
+                          <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto] gap-2">
+                            <input
+                              type="text"
+                              value={deliveryAddr.city}
+                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, city: e.target.value }))}
+                              placeholder="City"
+                              autoCapitalize="words"
+                              className="px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                            />
+                            <input
+                              type="text"
+                              value={deliveryAddr.state}
+                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, state: e.target.value }))}
+                              placeholder="State"
+                              maxLength={4}
+                              autoCapitalize="characters"
+                              autoCorrect="off"
+                              className="w-20 px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                            />
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={deliveryAddr.postalCode}
+                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, postalCode: e.target.value }))}
+                              placeholder="ZIP"
+                              maxLength={10}
+                              autoCorrect="off"
+                              className="w-24 px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </Section>
 
                   {/* Kate round-2 #25: "Special instructions" → "Fulfilment

@@ -44,7 +44,7 @@ Residential Command Center (`/dashboard/materials`). Every item built to Katie's
 - ✅ **22 · Layout** — Move primer options out of the product-line dropdown into the **Extras** area.
 - ✅ **23 · Bug** — Line selected but email still shows "⚠ Paint product line not specified".
 - ✅ **24 · Layout** — Add **Fulfillment Date** → populates "Required by: …" in email. Default = start date; if past, next day.
-- 🔨 **25 · Layout** (core done: Color Notes + email consolidation + rename; Fulfilment-below-custom-item reorder pending) — Add **"Color Notes"** field under "Order — what to buy"; move Customer Notes + "Customer is not painting" out of email body into it; rename "Special Instructions" → **"Fulfilment instructions"**; move Fulfilment below "Add custom item (not in catalog)".
+- ✅ **25 · Layout** — Color Notes field + email consolidation + "Fulfilment instructions" rename + Fulfilment moved below "Add custom item".".
 
 ## Edge cases
 - ✅ **26 · Bug** — No surfaces in SF but form shows one (WO 00307841) → alert "No surfaces are selected, update Salesforce to collect colors." + **block** sending the color form.
