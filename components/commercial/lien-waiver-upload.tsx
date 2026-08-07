@@ -94,6 +94,7 @@ export function LienWaiverUpload({
             <input
               ref={fileRef}
               type="file"
+          aria-label="Upload signed lien waiver"
               accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif"
               disabled={busy}
               onChange={(e) => {

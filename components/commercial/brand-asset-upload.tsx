@@ -59,6 +59,7 @@ export function BrandAssetUpload({
         <input
           ref={fileRef}
           type="file"
+          aria-label="Upload brand asset"
           accept="image/png,image/jpeg,image/webp"
           disabled={busy}
           onChange={(e) => {

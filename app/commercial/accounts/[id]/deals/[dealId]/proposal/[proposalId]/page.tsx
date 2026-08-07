@@ -1332,26 +1332,26 @@ export default async function ProposalEditorPage({
       )}
 
       {sp.saved === "1" && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-emerald-800">Saved.</div>
+        <div role="status" className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-emerald-800">Saved.</div>
       )}
       {sp.created === "1" && (
-        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-2.5 text-sm text-cc-brand-800">
+        <div role="status" className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-2.5 text-sm text-cc-brand-800">
           Proposal created. Header prefilled from the opportunity — start with inclusions below.
         </div>
       )}
       {sp.sent === "1" && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
+        <div role="status" className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
           <strong>Proposal sent.</strong> PDF snapshot saved to Files, opportunity flipped to <em>Proposal · Sent</em>, and the team was notified.
         </div>
       )}
       {sp.outcome === "won" && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
+        <div role="status" className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
           <IconTrophy size={16} className="text-emerald-700 shrink-0 mt-0.5" />
           <span><strong>Marked won.</strong> Opportunity flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</span>
         </div>
       )}
       {sp.outcome === "lost" && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-900 flex items-start justify-between gap-4 flex-wrap">
+        <div role="status" className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-900 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <strong>Marked lost.</strong> Opportunity flipped to <em>Pre-Sale Closed · Lost</em>. Please add the loss reason so the Win/Loss report is accurate.
           </div>
@@ -1364,12 +1364,12 @@ export default async function ProposalEditorPage({
         </div>
       )}
       {sp.outcome === "reopened" && (
-        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-900">
+        <div role="status" className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-900">
           <strong>Reopened.</strong> Proposal is back to Sent and the parent opportunity is back to <em>Proposal · Sent</em>.
         </div>
       )}
       {sp.outcome === "reopened_solo" && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900">
+        <div role="status" className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900">
           <strong>Reopened proposal only.</strong> The parent opportunity already moved forward (past Pre-Sale Closed) so it was left as-is. Move it back manually on the pipeline kanban if you meant to reopen the whole opportunity.
         </div>
       )}
@@ -1749,6 +1749,7 @@ export default async function ProposalEditorPage({
               <span className="text-ppp-charcoal-500 text-[13px]">$</span>
               <input
                 type="text"
+                aria-label="Final price override"
                 inputMode="decimal"
                 name="final_price_override"
                 defaultValue={proposal.final_price_override_cents != null ? centsToDollarInput(proposal.final_price_override_cents) : ""}

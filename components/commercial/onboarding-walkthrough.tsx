@@ -113,6 +113,14 @@ export function OnboardingWalkthrough({
   const [i, setI] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const targetElRef = useRef<HTMLElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // Move focus into the tour card on open + each step so keyboard/SR users
+  // follow the walkthrough (a11y #7).
+  useEffect(() => {
+    if (!active) return;
+    const t = setTimeout(() => cardRef.current?.focus(), 40);
+    return () => clearTimeout(t);
+  }, [active, i]);
 
   // Auto-start for first-timers (unless the localStorage guard says a prior
   // dismissal's mark-seen may have failed) + resume the step after a mid-tour
@@ -259,11 +267,24 @@ export function OnboardingWalkthrough({
 
   const card = (
     <div
-      className="absolute w-[calc(100vw-24px)] sm:w-80 max-w-[320px] bg-surface rounded-2xl shadow-2xl overflow-hidden pointer-events-auto"
+      ref={cardRef}
+      tabIndex={-1}
+      className="absolute w-[calc(100vw-24px)] sm:w-80 max-w-[320px] bg-surface rounded-2xl shadow-2xl overflow-hidden pointer-events-auto focus:outline-none"
       style={cardStyle}
       role="dialog"
       aria-modal="true"
       aria-labelledby="cc-onb-title"
+      onKeyDown={(e) => {
+        if (e.key !== "Tab") return;
+        const foc = Array.from(
+          e.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')
+        ).filter((el) => el.offsetParent !== null);
+        if (foc.length === 0) return;
+        const first = foc[0];
+        const last = foc[foc.length - 1];
+        if (e.shiftKey && (document.activeElement === first || document.activeElement === e.currentTarget)) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }}
     >
       <div className="flex items-center justify-between px-5 pt-4">
         <span className="text-[11px] font-semibold uppercase tracking-widest text-ppp-charcoal-400">

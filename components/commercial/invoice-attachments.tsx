@@ -84,6 +84,7 @@ export function InvoiceAttachments({
           <input
             ref={fileRef}
             type="file"
+          aria-label="Attach file to invoice"
             accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif"
             disabled={busy}
             onChange={(e) => {

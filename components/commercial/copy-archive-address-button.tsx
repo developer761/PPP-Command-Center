@@ -87,11 +87,12 @@ export default function CopyArchiveAddressButton({
         {address}
       </p>
       {fallback && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <div role="status" aria-live="polite" className="rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs text-amber-900 mb-2">
             Your browser blocked auto-copy. Tap and hold to select, then copy:
           </p>
           <input
+            aria-label="Archive email address (select and copy)"
             type="text"
             readOnly
             value={address}

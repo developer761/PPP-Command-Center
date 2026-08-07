@@ -99,6 +99,7 @@ export default function ProposalMarkupUpload({
       <input
         ref={inputRef}
         type="file"
+        aria-label="Upload marked-up plan set"
         accept={ACCEPTED_MIME.join(",")}
         onChange={onFileChange}
         className="hidden"

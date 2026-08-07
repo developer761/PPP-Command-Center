@@ -130,7 +130,7 @@ export function UndoToast() {
             : displayLabel}
         </span>
         {status === "idle" && freedCo > 0 && (
-          <span className="text-[11px] text-ppp-charcoal-300 mt-0.5 leading-snug">
+          <span className="text-[11px] text-white/70 mt-0.5 leading-snug">
             {freedCo} change-order {freedCo === 1 ? "charge was" : "charges were"} freed to re-bill — undo won&apos;t restore {freedCo === 1 ? "it" : "them"}.
           </span>
         )}

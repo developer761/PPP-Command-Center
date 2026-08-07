@@ -106,6 +106,7 @@ export default function SubmittalDirectUpload({
       <input
         ref={inputRef}
         type="file"
+        aria-label="Attach spec sheet"
         accept={ACCEPTED_MIME.join(",")}
         onChange={onFileChange}
         className="hidden"

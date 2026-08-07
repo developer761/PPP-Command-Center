@@ -1607,7 +1607,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                               <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                               <input type="hidden" name="payment_id" value={pp.id} />
-                              <ConfirmSubmitButton message="Remove this recorded payment? This permanently deletes it — the balance recalculates." pendingLabel="…" className="inline-flex items-center justify-center text-ppp-charcoal-300 hover:text-rose-600 min-h-[44px] sm:min-h-[28px] px-1 touch-manipulation" ariaLabel="Remove payment">×</ConfirmSubmitButton>
+                              <ConfirmSubmitButton message="Remove this recorded payment? This permanently deletes it — the balance recalculates." pendingLabel="…" className="inline-flex items-center justify-center text-ppp-charcoal-500 hover:text-rose-600 min-h-[44px] sm:min-h-[28px] px-1 touch-manipulation" ariaLabel="Remove payment">×</ConfirmSubmitButton>
                             </form>
                           </li>
                         ))}

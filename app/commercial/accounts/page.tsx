@@ -1231,7 +1231,7 @@ function AccountRow({
                   )}
                 </div>
               ) : (
-                <span className="text-[11px] text-ppp-charcoal-300 italic">No open bids</span>
+                <span className="text-[11px] text-ppp-charcoal-500 italic">No open bids</span>
               )}
 
               {activity && (

@@ -495,6 +495,7 @@ export default async function NewCommercialAccountPage({
                   id={`doc_${c}`}
                   name={`doc_${c}`}
                   type="file"
+          aria-label="Attach compliance document"
                   accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.doc,.docx,.xls,.xlsx"
                   className="block w-full text-[12px] text-ppp-charcoal-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:cursor-pointer min-h-[44px] touch-manipulation"
                 />

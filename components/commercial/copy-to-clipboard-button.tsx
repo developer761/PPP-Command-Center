@@ -60,6 +60,8 @@ export function CopyToClipboardButton({
     }
   };
   return (
+    <>
+    <span className="sr-only" role="status" aria-live="polite">{copied ? label : ""}</span>
     <button
       type="button"
       onClick={onClick}
@@ -77,5 +79,6 @@ export function CopyToClipboardButton({
         </svg>
       )}
     </button>
+    </>
   );
 }

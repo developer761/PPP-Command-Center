@@ -6356,7 +6356,7 @@ function Field({
           <span className="text-ppp-charcoal break-words">{value}</span>
         )
       ) : (
-        <span className="text-ppp-charcoal-300 italic text-[12px]">not set</span>
+        <span className="text-ppp-charcoal-500 italic text-[12px]">not set</span>
       )}
     </div>
   );
@@ -7835,6 +7835,7 @@ async function DealEditSheet({
               </div>
               <input
                 name="property_street"
+                aria-label="Property street"
                 type="text"
                 maxLength={200}
                 defaultValue={deal.property_street ?? ""}
@@ -7842,9 +7843,9 @@ async function DealEditSheet({
                 className={inputCls}
               />
               <div className="grid grid-cols-3 gap-2 mt-2">
-                <input name="property_city" type="text" maxLength={80} defaultValue={deal.property_city ?? ""} placeholder="City" className={inputCls} />
-                <input name="property_state" type="text" maxLength={2} defaultValue={deal.property_state ?? ""} placeholder="ST" className={inputCls} />
-                <input name="property_zip" type="text" maxLength={10} defaultValue={deal.property_zip ?? ""} placeholder="ZIP" className={inputCls} />
+                <input name="property_city" aria-label="Property city" type="text" maxLength={80} defaultValue={deal.property_city ?? ""} placeholder="City" className={inputCls} />
+                <input name="property_state" aria-label="Property state" type="text" maxLength={2} defaultValue={deal.property_state ?? ""} placeholder="ST" className={inputCls} />
+                <input name="property_zip" aria-label="Property ZIP" type="text" maxLength={10} defaultValue={deal.property_zip ?? ""} placeholder="ZIP" className={inputCls} />
               </div>
             </div>
             <div>

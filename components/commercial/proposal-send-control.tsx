@@ -73,6 +73,16 @@ export function ProposalSendControl({
   const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const firstFieldRef = useRef<HTMLElement>(null);
+  // Restore focus to the trigger when the modal closes (a11y #6). Keyed on [open]
+  // only so a status change (idle→sending→success) doesn't re-capture.
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    return () => {
+      restoreFocusRef.current?.focus?.();
+    };
+  }, [open]);
 
   // Focus the first field + Esc-to-close when the sheet opens.
   useEffect(() => {
@@ -146,7 +156,23 @@ export function ProposalSendControl({
       )}
 
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="send-proposal-title">
+        <div
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="send-proposal-title"
+          onKeyDown={(e) => {
+            if (e.key !== "Tab") return;
+            const foc = Array.from(
+              e.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+            ).filter((el) => el.offsetParent !== null);
+            if (foc.length === 0) return;
+            const first = foc[0];
+            const last = foc[foc.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+          }}
+        >
           <div
             className="absolute inset-0 bg-ppp-navy-900/40 backdrop-blur-sm"
             onClick={() => status !== "sending" && setOpen(false)}
@@ -154,7 +180,7 @@ export function ProposalSendControl({
           />
           <div className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto bg-surface rounded-t-2xl sm:rounded-2xl shadow-2xl">
             {status === "success" ? (
-              <div className="text-center py-12 px-6">
+              <div role="status" aria-live="polite" className="text-center py-12 px-6">
                 <div className="mx-auto mb-4 inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-green-50 text-ppp-green-700">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
                 </div>

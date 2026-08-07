@@ -100,6 +100,7 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
         <p className="text-[15px] font-bold text-ppp-charcoal mb-3">{sel.display_name} — enter your PIN</p>
         <input
           type="password"
+          aria-label="Enter your 4-digit PIN"
           inputMode="numeric"
           pattern="\d{4}"
           maxLength={4}

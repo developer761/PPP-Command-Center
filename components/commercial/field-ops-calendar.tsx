@@ -348,7 +348,31 @@ export function FieldOpsCalendar({
       {(addDay || person) && (
         <div className="fixed inset-0 z-40">
           <div className="absolute inset-0 bg-ppp-charcoal-900/30" onClick={closeAll} aria-hidden />
-          <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={person ? "Crew member shift details" : "Schedule crew for the day"} className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none focus:outline-none">
+          <div
+            ref={panelRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label={person ? "Crew member shift details" : "Schedule crew for the day"}
+            onKeyDown={(e) => {
+              // Trap Tab within the panel (a11y #5). Escape is handled globally.
+              if (e.key !== "Tab") return;
+              const foc = Array.from(
+                e.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+              ).filter((el) => el.offsetParent !== null);
+              if (foc.length === 0) return;
+              const first = foc[0];
+              const last = foc[foc.length - 1];
+              if (e.shiftKey && (document.activeElement === first || document.activeElement === e.currentTarget)) {
+                e.preventDefault();
+                last.focus();
+              } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+              }
+            }}
+            className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none focus:outline-none"
+          >
             {person ? (
               <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} />
             ) : addDay ? (

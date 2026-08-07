@@ -382,7 +382,7 @@ export default async function ProposalsIndexPage({
             <DonutChart size={128} segments={proposalMix} centerValue={String(totalProposalCount)} centerLabel="proposals" />
           ) : (
             <div className="text-center">
-              <div className="font-condensed text-2xl font-black text-ppp-charcoal-300">0</div>
+              <div className="font-condensed text-2xl font-black text-ppp-charcoal-500">0</div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mt-1">proposals</div>
             </div>
           )}

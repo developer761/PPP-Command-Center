@@ -593,6 +593,7 @@ function UserRow({
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
             type="text"
+            aria-label="New password (min 8 characters)"
             value={newPw}
             onChange={(e) => setNewPw(e.target.value)}
             placeholder="New password (min 8)"
