@@ -1653,7 +1653,7 @@ function JobDetailImpl({
                   if (noSurfacesSelected) {
                     return (
                       <div role="alert" className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2.5 text-[12px] text-ppp-orange-700 leading-snug">
-                        <strong>No surfaces are selected</strong> — update Salesforce to collect colors. The color form can&rsquo;t be sent until at least one surface is set on this work order.
+                        No surfaces are selected, update Salesforce to collect colors. <span className="block mt-1 text-[11px] text-ppp-orange-700/90">Sending the color form is blocked until a surface is set on this work order.</span>
                       </div>
                     );
                   }
@@ -1858,6 +1858,9 @@ function JobDetailImpl({
           <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
             {job.lineItems.length === 0
               ? "No rooms on this WO — customer will type a project description on the form."
+              : !job.lineItems.some((li) => li.wall || li.ceiling || li.trim || li.floor || li.other)
+              // Kate round-2 #03: rooms exist but no colors picked yet.
+              ? "Colors not entered yet"
               : `${job.lineItems.length} line item${job.lineItems.length === 1 ? "" : "s"} on this WO`}
           </p>
         </div>

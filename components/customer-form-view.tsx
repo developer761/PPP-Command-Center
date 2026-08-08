@@ -694,17 +694,24 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   return (
     <CatalogContext.Provider value={catalog}>
     <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
-      {/* Greeting + WO header — all text editable via /dashboard/settings/templates */}
+      {/* Greeting + WO header — all text editable via /dashboard/settings/templates.
+          Kate round-2 #08: for Internal Entry (an AM entering on the customer's
+          behalf) the customer-facing eyebrow/title/subtitle is stripped — this
+          first section keeps ONLY the "Internal entry" banner below. */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
-        <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
-          {copy.headerEyebrow}
-        </div>
-        <h1 className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy mt-1">
-          {copy.headerTitle}
-        </h1>
-        <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed whitespace-pre-line">
-          {copy.headerSubtitle}
-        </p>
+        {!isInternal && (
+          <>
+            <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
+              {copy.headerEyebrow}
+            </div>
+            <h1 className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy mt-1">
+              {copy.headerTitle}
+            </h1>
+            <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed whitespace-pre-line">
+              {copy.headerSubtitle}
+            </p>
+          </>
+        )}
         {isEditing && !isStaffEntry && (
           <div className="mt-4 text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
             You&apos;ve already submitted these colors — feel free to update anything below
@@ -730,7 +737,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             colors themselves. This SAVES on submit (the writeback banners below
             add the Salesforce-sync caveat when the WO isn't yet enabled). */}
         {isInternal && (
-          <div className="mt-4 text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
+          <div className="text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
             <strong>Internal entry.</strong> You&apos;re entering colors on the customer&apos;s behalf. This is saved when you submit — no email is sent to the customer.
           </div>
         )}

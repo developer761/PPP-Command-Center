@@ -50,6 +50,7 @@ type SentMessage = {
   submitted?: boolean;
   acknowledged?: boolean;
   delivered?: boolean;
+  expired?: boolean; // Kate #07 — form invite past expiry, not submitted
 };
 
 export default function InboxView() {
@@ -135,7 +136,7 @@ export default function InboxView() {
   // Kate round-2 #07: advanced Sent filtering — by delivery/engagement status
   // and by a sent-date range. Sender filtering is the viewer scope ("sent by
   // me" is the default for non-admins); status + date cover the rest.
-  type SentStatus = "all" | "opened" | "submitted" | "not_opened" | "delivered" | "bounced";
+  type SentStatus = "all" | "opened" | "submitted" | "not_opened" | "expired" | "delivered" | "bounced";
   const [sentStatus, setSentStatus] = useState<SentStatus>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -187,6 +188,7 @@ export default function InboxView() {
           case "opened": return !!m.opened;
           case "submitted": return !!m.submitted;
           case "not_opened": return !m.opened;
+          case "expired": return !!m.expired;
           case "delivered": return !!m.delivered;
           case "bounced": return m.deliveryStatus === "bounced" || m.deliveryStatus === "soft_bounce";
           default: return true;
@@ -457,6 +459,7 @@ export default function InboxView() {
                 <option value="opened">Opened</option>
                 <option value="submitted">Submitted</option>
                 <option value="not_opened">Not opened</option>
+                <option value="expired">Expired</option>
                 <option value="delivered">Delivered</option>
                 <option value="bounced">Bounced</option>
               </select>

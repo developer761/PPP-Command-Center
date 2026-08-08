@@ -57,6 +57,7 @@ export type SentMessage = {
   submitted?: boolean;    // form was submitted
   acknowledged?: boolean; // supplier acked
   delivered?: boolean;    // materials delivered
+  expired?: boolean;      // Kate #07 — form invite past expiry, not submitted
 };
 
 export async function GET(request: Request) {
@@ -111,7 +112,7 @@ export async function GET(request: Request) {
 
     let tokenQuery = sb
       .from("customer_form_tokens")
-      .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, resend_message_id_invite, kind")
+      .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, expires_at, resend_message_id_invite, kind")
       .not("sent_at", "is", null)
       // Exclude preview tokens — they shouldn't show as "sent emails" in
       // Mail Hub (admin spun them up to test, no real email went out).
@@ -154,7 +155,7 @@ export async function GET(request: Request) {
     if (tokensRes.error) {
       const retry = await sb
         .from("customer_form_tokens")
-        .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at")
+        .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, expires_at")
         .not("sent_at", "is", null)
         .order("sent_at", { ascending: false })
         .limit(limit);
@@ -172,7 +173,7 @@ export async function GET(request: Request) {
         token: string; work_order_id: string; work_order_number: string | null;
         customer_email: string; customer_name: string | null; sent_at: string;
         resend_message_id_invite?: string | null; delivery_status: string | null;
-        opened_at: string | null; submitted_at: string | null;
+        opened_at: string | null; submitted_at: string | null; expires_at?: string | null;
       }>) {
         messages.push({
           id: `form:${t.token}`,
@@ -188,6 +189,9 @@ export async function GET(request: Request) {
           formUrl: baseUrl ? `${baseUrl}/select/${t.token}` : null,
           opened: !!t.opened_at,
           submitted: !!t.submitted_at,
+          // Kate round-2 #07: form invite is "expired" when its link timed out
+          // without a submission — powers the Sent view's Expired status filter.
+          expired: !t.submitted_at && !!t.expires_at && new Date(t.expires_at).getTime() < Date.now(),
         });
       }
     }
