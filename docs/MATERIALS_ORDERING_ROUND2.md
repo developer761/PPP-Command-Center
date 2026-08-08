@@ -17,7 +17,7 @@ Residential Command Center (`/dashboard/materials`). Every item built to Katie's
 - ✅ **03 · Layout** — Reference tab removed; tabs → Button Bar (Colors/Materials sections); Internal Entry in the Colors bar; "Preview Materials Order" + "Order Materials" renames (desktop + mobile); Rooms-and-colors preview kept; **Follow-up Date** shipped — reads `WorkOrder.FollowupDate__c` (probe both casings, deploy-safe retry) + editable field + `/api/dashboard/materials/followup` writeback via `writeSf` (admin/AM gate). `queries.ts` + `materials-view.tsx` + new route.
 - ✅ **04 · Layout** — Status/progress bar: bigger text + numbers; **AM attribution** — when AM enters via Internal Entry show "[AM name] Submitted" (e.g. "Amy Submitted") not "Customer Opened/Submitted".
 - ✅ **05 · Layout** — "Mail History" → **"Activity History"**; make granular (form sent · opened by customer · colors submitted · form opened by AM · email drafted · sent to supplier…); "Open in Mail Hub" → **"Open Mail Hub"**.
-- 🔨 **06 · Bug** — Anchoring: materials→WO lands at TOP ✅ (same fix as #02); WO→pop-ups land at pop-up anchor ⬜ (handled with the Order Materials modal, #20).
+- ✅ **06 · Bug** — Anchoring: materials→WO lands at TOP (scroll-to-top on mount); WO→pop-ups reachable via the #20 pop-up-scroll fix.
 
 ## Mail Hub
 - ✅ **07 · Layout** — Advanced filtering/sorting: by sender + status (opened/expired/sent/submitted) + by opened/expired/last-activity/follow-up date. Example queries in the brief. (Decide: build into Mail Hub or a separate Activity History Hub.)
