@@ -20,7 +20,7 @@ Residential Command Center (`/dashboard/materials`). Every item built to Katie's
 - ✅ **06 · Bug** — Anchoring: materials→WO lands at TOP (scroll-to-top on mount); WO→pop-ups reachable via the #20 pop-up-scroll fix.
 
 ## Mail Hub
-- 🔨 **07 · Layout** — DONE: Sent view filters by status (opened·submitted·not-opened·EXPIRED·delivered·bounced) + sent-date range + sort; "sent by me" = viewer scope. FLAGGED to Katie (her own "separate Activity History Hub?" offer): a sender dropdown for admins + opened/expired/last-activity/follow-up-date filters need the sent feed to carry those dates + a WO FollowupDate join — best as a focused Activity History Hub build.
+- ✅ **07 · Layout** — Activity History built into the Mail Hub Sent view: filter by SENDER + STATUS (opened·submitted·not-opened·expired·delivered·bounced) + a DATE DIMENSION (sent/opened/submitted/expired/last-activity/follow-up) × PRESET (today/yesterday/last-7/this-month/custom) + sort + result count + clear-all. Covers every example query. Sent feed carries sender name + lifecycle dates + WO FollowupDate__c (SF, best-effort). Rows show "sent by [name]" + follow-up date.
 
 ## Internal Entry page (`/f/[token]` internal AM)
 - ✅ **08 · Layout** — Rewrite copy for internal AM use: first section keep only "Internal entry — you're entering colors on the customer's behalf; saved on submit, no email sent"; remove "Need help picking colors?" + "From your PPP team"; keep paint-line selection; keep Delivery Address but remove its red alert; final block: keep button only, relabel **"Submit colors"**; submitted screen: remove the subtext.

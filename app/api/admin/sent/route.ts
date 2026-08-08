@@ -35,6 +35,65 @@ function adminClient() {
   );
 }
 
+/** Kate #07 — resolve staff sender ids → first name (matches the progress-bar
+ *  attribution style). Best-effort; a miss just leaves the name null. */
+async function resolveSenderNames(
+  sb: ReturnType<typeof adminClient>,
+  userIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (userIds.length === 0) return out;
+  try {
+    const { data } = await sb.from("profiles").select("user_id, sf_user_name, email").in("user_id", userIds);
+    for (const p of (data ?? []) as { user_id: string; sf_user_name: string | null; email: string | null }[]) {
+      const full = (p.sf_user_name ?? "").trim() || (p.email ?? "").split("@")[0] || "";
+      const first = full.split(/\s+/)[0] || full;
+      if (first) out.set(p.user_id, first);
+    }
+  } catch (err) {
+    console.warn("[sent] sender-name resolve failed:", err);
+  }
+  return out;
+}
+
+/** Kate #07 — each WO's Salesforce FollowupDate__c (YYYY-MM-DD), for the
+ *  follow-up-date activity filter. Best-effort + isolated so a slow/failed SF
+ *  call never blocks the sent feed. Tries both org casings. */
+async function resolveFollowupDates(woIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (woIds.length === 0) return out;
+  try {
+    const { getSalesforceClient } = await import("@/lib/salesforce/client");
+    const conn = await getSalesforceClient();
+    const ids = woIds.filter((id) => /^[a-zA-Z0-9]{15,18}$/.test(id)).map((id) => `'${id}'`);
+    if (ids.length === 0) return out;
+    // Try the likely casing first; on an invalid-field error fall back to the
+    // other — cheaper than a describe() on every Mail Hub load.
+    const run = async (field: string) =>
+      conn.query<Record<string, unknown>>(`SELECT Id, ${field} FROM WorkOrder WHERE Id IN (${ids.join(",")})`);
+    let field = "FollowupDate__c";
+    let res;
+    try {
+      res = await run(field);
+    } catch (e) {
+      if (/INVALID_FIELD|No such column/i.test(e instanceof Error ? e.message : String(e))) {
+        field = "FollowUpDate__c";
+        res = await run(field);
+      } else {
+        throw e;
+      }
+    }
+    for (const r of res.records ?? []) {
+      const id = String(r.Id);
+      const v = r[field];
+      if (typeof v === "string" && v) out.set(id, v.slice(0, 10));
+    }
+  } catch (err) {
+    console.warn("[sent] follow-up-date resolve failed:", err);
+  }
+  return out;
+}
+
 export type SentMessage = {
   id: string;                       // Composite id: "form:<token>" or "order:<uuid>"
   kind: "form_invite" | "supplier_order";
@@ -58,6 +117,14 @@ export type SentMessage = {
   acknowledged?: boolean; // supplier acked
   delivered?: boolean;    // materials delivered
   expired?: boolean;      // Kate #07 — form invite past expiry, not submitted
+  // Kate round-2 #07 — Activity History dimensions.
+  senderId?: string | null;      // staffer who sent it (created_by_user_id)
+  senderName?: string | null;    // resolved display name
+  openedAt?: string | null;      // form opened timestamp
+  submittedAt?: string | null;   // colors submitted timestamp
+  expiresAt?: string | null;     // form link expiry
+  followupDate?: string | null;  // WorkOrder.FollowupDate__c (YYYY-MM-DD)
+  lastActivityAt?: string | null;// most recent of sent/opened/submitted
 };
 
 export async function GET(request: Request) {
@@ -112,7 +179,7 @@ export async function GET(request: Request) {
 
     let tokenQuery = sb
       .from("customer_form_tokens")
-      .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, expires_at, resend_message_id_invite, kind")
+      .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, expires_at, created_by_user_id, resend_message_id_invite, kind")
       .not("sent_at", "is", null)
       // Exclude preview tokens — they shouldn't show as "sent emails" in
       // Mail Hub (admin spun them up to test, no real email went out).
@@ -155,7 +222,7 @@ export async function GET(request: Request) {
     if (tokensRes.error) {
       const retry = await sb
         .from("customer_form_tokens")
-        .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, expires_at")
+        .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, expires_at, created_by_user_id")
         .not("sent_at", "is", null)
         .order("sent_at", { ascending: false })
         .limit(limit);
@@ -174,7 +241,12 @@ export async function GET(request: Request) {
         customer_email: string; customer_name: string | null; sent_at: string;
         resend_message_id_invite?: string | null; delivery_status: string | null;
         opened_at: string | null; submitted_at: string | null; expires_at?: string | null;
+        created_by_user_id?: string | null;
       }>) {
+        const lastActivityAt = [t.sent_at, t.opened_at, t.submitted_at]
+          .filter((d): d is string => !!d)
+          .sort()
+          .at(-1) ?? t.sent_at;
         messages.push({
           id: `form:${t.token}`,
           kind: "form_invite",
@@ -192,6 +264,11 @@ export async function GET(request: Request) {
           // Kate round-2 #07: form invite is "expired" when its link timed out
           // without a submission — powers the Sent view's Expired status filter.
           expired: !t.submitted_at && !!t.expires_at && new Date(t.expires_at).getTime() < Date.now(),
+          senderId: t.created_by_user_id ?? null,
+          openedAt: t.opened_at,
+          submittedAt: t.submitted_at,
+          expiresAt: t.expires_at ?? null,
+          lastActivityAt,
         });
       }
     }
@@ -239,6 +316,10 @@ export async function GET(request: Request) {
           supplierName: o.supplier_name,
           acknowledged: !!o.acknowledged_at,
           delivered: !!o.delivered_at,
+          lastActivityAt: [o.sent_at, o.acknowledged_at, o.delivered_at]
+            .filter((d): d is string => !!d)
+            .sort()
+            .at(-1) ?? o.sent_at,
         });
       }
     }
@@ -246,6 +327,20 @@ export async function GET(request: Request) {
     // Merge sort by sentAt desc, cap at limit
     messages.sort((a, b) => (b.sentAt < a.sentAt ? -1 : b.sentAt > a.sentAt ? 1 : 0));
     const capped = messages.slice(0, limit);
+
+    // Kate round-2 #07 (Activity History) — resolve sender display names + attach
+    // each WO's Salesforce follow-up date. Both best-effort + parallel so the
+    // feed never blocks on them.
+    const senderIds = [...new Set(capped.map((m) => m.senderId).filter((x): x is string => !!x))];
+    const woIds = [...new Set(capped.map((m) => m.workOrderId).filter((x): x is string => !!x))];
+    const [nameById, followupByWo] = await Promise.all([
+      resolveSenderNames(sb, senderIds),
+      resolveFollowupDates(woIds),
+    ]);
+    for (const m of capped) {
+      if (m.senderId) m.senderName = nameById.get(m.senderId) ?? null;
+      if (m.workOrderId) m.followupDate = followupByWo.get(m.workOrderId) ?? null;
+    }
 
     return NextResponse.json({
       ok: true,

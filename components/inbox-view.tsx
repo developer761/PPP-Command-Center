@@ -51,6 +51,14 @@ type SentMessage = {
   acknowledged?: boolean;
   delivered?: boolean;
   expired?: boolean; // Kate #07 — form invite past expiry, not submitted
+  // Kate round-2 #07 — Activity History dimensions.
+  senderId?: string | null;
+  senderName?: string | null;
+  openedAt?: string | null;
+  submittedAt?: string | null;
+  expiresAt?: string | null;
+  followupDate?: string | null;
+  lastActivityAt?: string | null;
 };
 
 export default function InboxView() {
@@ -133,14 +141,55 @@ export default function InboxView() {
   type SentKind = "all" | "form_invite" | "supplier_order" | "needs_followup";
   const [sentKind, setSentKind] = useState<SentKind>("all");
   const [search, setSearch] = useState("");
-  // Kate round-2 #07: advanced Sent filtering — by delivery/engagement status
-  // and by a sent-date range. Sender filtering is the viewer scope ("sent by
-  // me" is the default for non-admins); status + date cover the rest.
+  // Kate round-2 #07 — Activity History: filter the Sent feed by SENDER, STATUS,
+  // and a DATE DIMENSION (sent / opened / submitted / expired / last-activity /
+  // follow-up) crossed with a PRESET (today / yesterday / last-7 / this-month /
+  // custom range). One model that covers every example query Katie listed.
   type SentStatus = "all" | "opened" | "submitted" | "not_opened" | "expired" | "delivered" | "bounced";
+  type DateDim = "sent" | "opened" | "submitted" | "expired" | "last_activity" | "followup";
+  type DatePreset = "any" | "today" | "yesterday" | "last7" | "month" | "custom";
   const [sentStatus, setSentStatus] = useState<SentStatus>("all");
+  const [sentSender, setSentSender] = useState<string>(""); // "" = all senders
+  const [dateDim, setDateDim] = useState<DateDim>("sent");
+  const [datePreset, setDatePreset] = useState<DatePreset>("any");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sentSort, setSentSort] = useState<"newest" | "oldest">("newest");
+
+  // ET "today" so today/yesterday match how the rest of Materials buckets days.
+  const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const shiftDay = (iso: string, n: number) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + n);
+    return dt.toISOString().slice(0, 10);
+  };
+  const dateBounds = useMemo<[string, string] | null>(() => {
+    switch (datePreset) {
+      case "any": return null;
+      case "today": return [todayEt, todayEt];
+      case "yesterday": { const y = shiftDay(todayEt, -1); return [y, y]; }
+      case "last7": return [shiftDay(todayEt, -6), todayEt];
+      case "month": return [`${todayEt.slice(0, 7)}-01`, todayEt];
+      case "custom": return [dateFrom || "0000-01-01", dateTo || "9999-12-31"];
+      default: return null;
+    }
+  }, [datePreset, dateFrom, dateTo, todayEt]);
+  const dimDate = useCallback((m: SentMessage): string | null => {
+    switch (dateDim) {
+      case "sent": return m.sentAt ?? null;
+      case "opened": return m.openedAt ?? null;
+      case "submitted": return m.submittedAt ?? null;
+      case "expired": return m.expired ? (m.expiresAt ?? null) : null;
+      case "last_activity": return m.lastActivityAt ?? m.sentAt ?? null;
+      case "followup": return m.followupDate ?? null;
+      default: return null;
+    }
+  }, [dateDim]);
+  const senderOptions = useMemo(
+    () => [...new Set(sentMessages.map((m) => m.senderName).filter((x): x is string => !!x))].sort(),
+    [sentMessages]
+  );
 
   const needsFollowupSet = useMemo(() => {
     const now = Date.now();
@@ -181,6 +230,8 @@ export default function InboxView() {
         return hay.includes(q);
       });
     }
+    // Sender filter (Kate #07 — "sent by …").
+    if (sentSender) list = list.filter((m) => m.senderName === sentSender);
     // Status filter (Kate #07) — derived from the delivery/engagement flags.
     if (sentStatus !== "all") {
       list = list.filter((m) => {
@@ -195,16 +246,28 @@ export default function InboxView() {
         }
       });
     }
-    // Sent-date range (Kate #07) — inclusive, on the sent day.
-    if (dateFrom) list = list.filter((m) => m.sentAt.slice(0, 10) >= dateFrom);
-    if (dateTo) list = list.filter((m) => m.sentAt.slice(0, 10) <= dateTo);
-    // Sort by sent date.
+    // Date dimension × preset (Kate #07) — e.g. "submitted yesterday",
+    // "expired between 7/20–7/28", "follow-up date = today". A message with no
+    // date on the chosen dimension (e.g. never opened) drops out when a date
+    // filter is active.
+    if (dateBounds) {
+      const [from, to] = dateBounds;
+      list = list.filter((m) => {
+        const d = dimDate(m);
+        if (!d) return false;
+        const day = d.slice(0, 10);
+        return day >= from && day <= to;
+      });
+    }
+    // Sort by the active date dimension (falls back to sent date).
     list = [...list].sort((a, b) => {
-      const d = new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime();
-      return sentSort === "newest" ? d : -d;
+      const da = dimDate(a) ?? a.sentAt ?? "";
+      const db = dimDate(b) ?? b.sentAt ?? "";
+      const cmp = db < da ? -1 : db > da ? 1 : 0;
+      return sentSort === "newest" ? cmp : -cmp;
     });
     return list;
-  }, [sentMessages, sentKind, search, needsFollowupSet, sentStatus, dateFrom, dateTo, sentSort]);
+  }, [sentMessages, sentKind, search, needsFollowupSet, sentSender, sentStatus, dateBounds, dimDate, sentSort]);
 
   // Client-side tab filter for INBOX mode + same search box. Inbox search
   // matches sender + subject + body so admin can scan a long thread list.
@@ -230,6 +293,9 @@ export default function InboxView() {
   // (or unified Inbox) — keeping the filter across modes was confusing.
   useEffect(() => {
     setSearch("");
+    // Kate #07: reset the Activity History filters too, so a stale sender/date
+    // filter doesn't silently hide everything after a mode switch.
+    setSentSender(""); setSentStatus("all"); setDateDim("sent"); setDatePreset("any"); setDateFrom(""); setDateTo(""); setSentSort("newest");
     if (woFilter) clearWoFilter();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
@@ -446,51 +512,80 @@ export default function InboxView() {
             <SearchBox value={search} onChange={setSearch} placeholder="Search recipient / PO# / WO#…" />
           </div>
 
-          {/* Kate #07: advanced filters — status + sent-date range + sort. */}
-          <div className="flex items-center gap-2 flex-wrap mt-2 text-[12px]">
-            <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
-              Status
-              <select
-                value={sentStatus}
-                onChange={(e) => setSentStatus(e.target.value as SentStatus)}
-                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]"
-              >
-                <option value="all">Any status</option>
-                <option value="opened">Opened</option>
-                <option value="submitted">Submitted</option>
-                <option value="not_opened">Not opened</option>
-                <option value="expired">Expired</option>
-                <option value="delivered">Delivered</option>
-                <option value="bounced">Bounced</option>
-              </select>
-            </label>
-            <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
-              Sent
-              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="Sent from date" className="rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]" />
-              <span className="text-ppp-charcoal-400">→</span>
-              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="Sent to date" className="rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]" />
-            </label>
-            <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
-              Sort
-              <select
-                value={sentSort}
-                onChange={(e) => setSentSort(e.target.value as "newest" | "oldest")}
-                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]"
-              >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-              </select>
-            </label>
-            {(sentStatus !== "all" || dateFrom || dateTo || sentSort !== "newest") && (
-              <button
-                type="button"
-                onClick={() => { setSentStatus("all"); setDateFrom(""); setDateTo(""); setSentSort("newest"); }}
-                className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px]"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+          {/* Kate #07 — Activity History filter bar: sender · status · date
+              dimension × preset (+ custom range) · sort. Covers every example
+              query ("submitted yesterday", "expired 7/20–7/28", "follow-up =
+              today", …). */}
+          {(() => {
+            const SEL = "rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]";
+            const active = !!(sentSender || sentStatus !== "all" || datePreset !== "any" || sentSort !== "newest");
+            const clearAll = () => { setSentSender(""); setSentStatus("all"); setDateDim("sent"); setDatePreset("any"); setDateFrom(""); setDateTo(""); setSentSort("newest"); };
+            return (
+              <div className="mt-2 rounded-lg border border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 p-2.5 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap text-[12px]">
+                  {senderOptions.length > 0 && (
+                    <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
+                      Sender
+                      <select value={sentSender} onChange={(e) => setSentSender(e.target.value)} className={SEL} aria-label="Filter by sender">
+                        <option value="">Anyone</option>
+                        {senderOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
+                    Status
+                    <select value={sentStatus} onChange={(e) => setSentStatus(e.target.value as SentStatus)} className={SEL} aria-label="Filter by status">
+                      <option value="all">Any status</option>
+                      <option value="opened">Opened</option>
+                      <option value="submitted">Submitted</option>
+                      <option value="not_opened">Not opened</option>
+                      <option value="expired">Expired</option>
+                      <option value="delivered">Delivered</option>
+                      <option value="bounced">Bounced</option>
+                    </select>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
+                    Sort
+                    <select value={sentSort} onChange={(e) => setSentSort(e.target.value as "newest" | "oldest")} className={SEL} aria-label="Sort order">
+                      <option value="newest">Newest first</option>
+                      <option value="oldest">Oldest first</option>
+                    </select>
+                  </label>
+                  {active && (
+                    <button type="button" onClick={clearAll} className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px]">Clear all</button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap text-[12px]">
+                  <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
+                    Date
+                    <select value={dateDim} onChange={(e) => setDateDim(e.target.value as DateDim)} className={SEL} aria-label="Date dimension">
+                      <option value="sent">Sent</option>
+                      <option value="opened">Opened</option>
+                      <option value="submitted">Submitted</option>
+                      <option value="expired">Expired</option>
+                      <option value="last_activity">Last activity</option>
+                      <option value="followup">Follow-up date</option>
+                    </select>
+                    <select value={datePreset} onChange={(e) => setDatePreset(e.target.value as DatePreset)} className={SEL} aria-label="Date range">
+                      <option value="any">Any time</option>
+                      <option value="today">Today</option>
+                      <option value="yesterday">Yesterday</option>
+                      <option value="last7">Last 7 days</option>
+                      <option value="month">This month</option>
+                      <option value="custom">Custom range…</option>
+                    </select>
+                  </label>
+                  {datePreset === "custom" && (
+                    <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
+                      <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="From date" className={SEL} />
+                      <span className="text-ppp-charcoal-400">→</span>
+                      <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="To date" className={SEL} />
+                    </label>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* List */}
           {loading && (
@@ -520,15 +615,21 @@ export default function InboxView() {
               woFiltered={!!woFilter}
               scopeNote={sentSummary.scopeNote ?? null}
               searchActive={!!search.trim()}
-              filterActive={sentKind !== "all"}
+              filterActive={sentKind !== "all" || !!sentSender || sentStatus !== "all" || datePreset !== "any"}
             />
           )}
           {!loading && !error && visibleSent.length > 0 && (
-            <ul className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden divide-y divide-ppp-charcoal-100">
+            <>
+            <div className="text-[11px] text-ppp-charcoal-500 px-0.5">
+              {visibleSent.length} {visibleSent.length === 1 ? "result" : "results"}
+              {(sentSender || sentStatus !== "all" || datePreset !== "any" || search.trim()) ? " · filtered" : ""}
+            </div>
+            <ul className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden divide-y divide-ppp-charcoal-100 mt-1">
               {visibleSent.map((m) => (
                 <SentRow key={m.id} message={m} onResent={load} />
               ))}
             </ul>
+            </>
           )}
         </>
       )}
@@ -835,6 +936,8 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
               </a>
             )}
             <span>· {formatRelative(new Date(message.sentAt))}</span>
+            {message.senderName && <span className="text-ppp-charcoal-400">· sent by {message.senderName}</span>}
+            {message.followupDate && <span className="text-ppp-charcoal-400">· follow-up {message.followupDate}</span>}
             {lifecycle && (
               <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${lifecycle.tone}`}>
                 {lifecycle.label}
