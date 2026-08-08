@@ -51,6 +51,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
 import { resolveSwatchHex } from "@/lib/customer-form/color-swatch";
 import { classifySurface, denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
+import { extractCustomerFreeText } from "@/lib/customer-form/notes";
 
 /** Surface label → the WOLI slot holding its existing SF color/finish.
  *  Used to pre-fill the form from colors already saved in Salesforce when
@@ -351,7 +352,12 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             return [s, emptyPick()];
           })
         ),
-        notes: priorNotesByLine.get(li.id) ?? li.existingNotes ?? "",
+        // Prior in-app draft notes are already clean human text; the SF fallback
+        // (li.existingNotes) is raw ColorNotes__c, so strip the machine preamble
+        // the form itself writes back (orphan colors + "don't paint" lines +
+        // "Customer notes:" wrapper) — the customer edits only what they typed,
+        // and re-submit stays idempotent (Kate #09/#11/#27).
+        notes: priorNotesByLine.get(li.id) ?? extractCustomerFreeText(li.existingNotes),
       };
     }
     return state;

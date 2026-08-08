@@ -64,7 +64,7 @@ export default async function GeographyReportPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Tile label="Towns" value={String(t.cityCount)} tone="brand" sub={`${t.zipCount} zip${t.zipCount === 1 ? "" : "s"}`} />
             <Tile label="Located deals" value={String(t.locatedCount)} tone="navy" sub={t.unspecifiedCount > 0 ? `${t.unspecifiedCount} missing address` : "all mapped"} />
-            <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="emerald" sub="all located jobs" />
+            <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="emerald" sub="across all deals" />
             <Tile label="States" value={String(t.stateCount)} tone="neutral" sub={geo.byState.slice(0, 3).map((s) => s.label).join(" · ") || undefined} />
           </div>
 
