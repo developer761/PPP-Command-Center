@@ -451,11 +451,17 @@ export async function POST(
       if (noteLines.length > 0) noteLines.push("");
       noteLines.push(`Customer selected "Don't paint this surface" on ${surf}.`);
     }
-    // Kate #11: strip any existing "Customer notes:" prefix(es) before adding one,
-    // so re-submits (which pre-fill from the prior ColorNotes__c) don't stack it
-    // into "Customer notes: Customer notes: …".
+    // Kate #11 (+ #09 interaction): the notes field pre-fills from the prior
+    // ColorNotes__c, so a re-sent form's re-submit would otherwise re-embed the
+    // machine-generated lines we regenerate fresh below. Make reassembly
+    // idempotent: strip any prior "Don't paint this surface" lines (regenerated
+    // from skippedSurfaces above) AND any stacked "Customer notes:" prefix, so
+    // only the customer's own free-text survives to be re-wrapped once.
     const rawSubmittedNotes = typeof submitted.notes === "string" ? submitted.notes : "";
-    const submittedNotes = rawSubmittedNotes.replace(/^(?:\s*Customer notes:\s*)+/i, "").trim();
+    const submittedNotes = rawSubmittedNotes
+      .replace(/Customer selected "Don't paint this surface" on [^\n]*?\.\s*/gi, "")
+      .replace(/^(?:\s*Customer notes:\s*)+/i, "")
+      .trim();
     if (submittedNotes) {
       if (noteLines.length > 0) noteLines.push("");
       noteLines.push(`Customer notes: ${submittedNotes}`);
