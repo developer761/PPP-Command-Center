@@ -190,16 +190,19 @@ async function syncTimeEntry(
 
   if (existing) {
     const cur = existing as { id: string; status: string; source: string; approved_by_user_id: string | null };
-    // Never clobber a human decision: a manually-set (source='manual'),
-    // human-approved (approved_by set), or questioned entry keeps BOTH its hours
-    // and its status — a later clock-out must not silently overwrite a manager's
-    // correction. Only system-auto/still-submitted clocked entries are recomputed.
-    const humanTouched =
+    // Never clobber a SETTLED entry: a paid/exported entry (terminal — recomputing
+    // it would flip it back to approved and re-pay it on the next export, a
+    // double-pay; audit round 9), a manually-set (source='manual'), human-approved
+    // (approved_by set), or questioned entry keeps BOTH its hours and its status —
+    // a later clock-out must not silently overwrite it. Only system-auto/
+    // still-submitted clocked entries are recomputed.
+    const settled =
+      cur.status === "exported" ||
       cur.source === "manual" ||
       cur.status === "questioned" ||
       (cur.status === "approved" && !!cur.approved_by_user_id);
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (!humanTouched) {
+    if (!settled) {
       patch.actual_hours = rounded;
       patch.source = "clocked";
       if (withinThreshold) {
