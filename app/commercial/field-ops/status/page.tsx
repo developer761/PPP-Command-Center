@@ -51,8 +51,9 @@ async function moveStatusAction(formData: FormData) {
   const status = String(formData.get("status") ?? "") as JobStatus;
   if (!id || !JOB_STATUSES.includes(status)) return;
   const res = await updateJob(id, { status }, userId);
-  // Status flows through to the Calendar + Work Orders tab + the deal, so
-  // revalidate broadly. A rejected value (e.g. migration 118 not applied yet)
+  // Status flows through to the Calendar + Work Orders tab (it's a Field-Ops
+  // axis, distinct from the deal WO's draft/sent axis), so revalidate those.
+  // A rejected value (e.g. migration 118 not applied yet)
   // surfaces as ?error so the board doesn't silently swallow it.
   revalidatePath(BASE);
   revalidatePath("/commercial/field-ops/calendar");
@@ -78,7 +79,7 @@ export default async function FieldOpsStatusPage({
     <div className="pb-8">
       <div className="mb-5">
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Status</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">Move every work order through its stages. Changing a status here updates it everywhere — the Calendar (shown next to the crew) and the deal it&rsquo;s linked to.</p>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">Move every work order through its stages. Changing a status here updates it across Field Ops — the Work Orders tab and the Calendar (shown next to the crew).</p>
       </div>
 
       {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error} — this status may need migration 118 applied.</div>}

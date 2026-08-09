@@ -290,9 +290,6 @@ export async function upsertAssignment(input: {
   const sb = commercialDb();
   const start = (input.start_time ?? "").trim() || null;
   const end = (input.end_time ?? "").trim() || null;
-  if (start && end && hoursBetween(start, end) == null) {
-    return { ok: false, error: "End time must be after start time." };
-  }
   const note = (input.note ?? "").trim().slice(0, 500) || null;
 
   const { data: existing } = await sb
@@ -310,6 +307,12 @@ export async function upsertAssignment(input: {
   // nothing to preserve, so blanks fall through to the 8h default.
   const finalStart = start ?? ex?.scheduled_start_time ?? null;
   const finalEnd = end ?? ex?.scheduled_end_time ?? null;
+  // Validate the COALESCED pair, not just raw inputs — editing only ONE side
+  // could otherwise persist a backwards start>end range with stale hours (audit
+  // round 4).
+  if (finalStart && finalEnd && hoursBetween(finalStart, finalEnd) == null) {
+    return { ok: false, error: "End time must be after start time." };
+  }
   let hours: number;
   const derived = finalStart && finalEnd ? hoursBetween(finalStart, finalEnd) : null;
   if (derived != null) hours = derived;
@@ -445,6 +448,25 @@ export async function copyWeekForward(
     copied = (inserted ?? []).length;
     for (const r of (inserted ?? []) as { id: string }[]) {
       await logInsert("commercial_assignments", r.id, { bulk: "copy_week_forward" }, actorUserId);
+    }
+    // Schedule clock-in nudges for any copied shift landing TODAY or TOMORROW —
+    // the daily cron only nudges today+tomorrow and may have already run (e.g. a
+    // Sunday-afternoon copy where tomorrow=Monday), so those early shifts would
+    // otherwise get no reminder. resync is claim-dedup-safe with the cron and
+    // sends no shift email (audit round 4). Later days are covered by the cron.
+    const today = todayEtIso();
+    const tomorrow = addDaysIso(today, 1);
+    const nudgePairs = new Set<string>();
+    for (const r of toInsert) {
+      const wd = String((r as { work_date: string }).work_date);
+      if (wd === today || wd === tomorrow) nudgePairs.add(`${(r as { employee_id: string }).employee_id}|${wd}`);
+    }
+    if (nudgePairs.size > 0) {
+      const { resyncClockReminder } = await import("./schedule-email-send");
+      for (const p of nudgePairs) {
+        const [emp, day] = p.split("|");
+        await resyncClockReminder(emp, day).catch(() => undefined);
+      }
     }
   }
   return { ok: true, copied, skippedExisting, skippedAbsent, skippedDeletedJob, targetMonday: tgtMon };

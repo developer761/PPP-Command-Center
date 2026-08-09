@@ -333,6 +333,10 @@ export async function clockIn(input: {
     return { ok: false, error: error.message, code: "clock_failed" };
   }
   await logInsert("commercial_time_punches", (data as { id: string }).id, data, input.employee_id);
+  // They've clocked in — cancel today's queued 10-min "time to clock in" nudge so
+  // an already-punched-in painter doesn't get pinged to clock in (audit round 4).
+  const { resetClockReminder } = await import("./schedule-email-send");
+  await resetClockReminder(input.employee_id, etDate(new Date().toISOString())).catch(() => undefined);
   return { ok: true, punchId: (data as { id: string }).id };
 }
 
