@@ -22,6 +22,7 @@ import "server-only";
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { etTodayIso } from "@/lib/date-et";
 
 // A settled labor cost = an APPROVED entry, INCLUDING those already exported to
@@ -89,24 +90,29 @@ export async function fieldOpsLaborByOpp(oppIds: string[]): Promise<Map<string, 
   if (ids.length === 0) return out;
   const sb = commercialDb();
 
-  // Deal jobs (work orders) → their ids, mapped back to the opp.
+  // Deal jobs (work orders) → their ids, mapped back to the opp. Include
+  // soft-deleted jobs: their SETTLED (approved/exported) hours were still PAID,
+  // so they must stay in the deal P&L — otherwise deleting a job silently zeroes
+  // real crew cost while Payroll + Hours Log still count it (audit 2026-08).
   const { data: jobRows } = await sb
     .from("commercial_jobs")
     .select("id, opportunity_id")
-    .in("opportunity_id", ids)
-    .is("deleted_at", null);
+    .in("opportunity_id", ids);
   const jobs = (jobRows ?? []) as { id: string; opportunity_id: string | null }[];
   if (jobs.length === 0) return out;
   const oppByJob = new Map<string, string>();
   for (const j of jobs) if (j.opportunity_id) oppByJob.set(j.id, j.opportunity_id);
 
-  // Approved time entries on those jobs.
-  const { data: entryRows } = await sb
-    .from("commercial_time_entries")
-    .select("employee_id, job_id, work_date, actual_hours, status")
-    .in("job_id", [...oppByJob.keys()])
-    .in("status", SETTLED_STATUSES as unknown as string[]);
-  const entries = (entryRows ?? []) as { employee_id: string; job_id: string; work_date: string; actual_hours: number; status: string }[];
+  // Approved/exported time entries on those jobs. Paginated — a long-running
+  // deal can exceed Supabase's silent 1000-row cap.
+  const entries = await paginateAll<{ employee_id: string; job_id: string; work_date: string; actual_hours: number; status: string }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("employee_id, job_id, work_date, actual_hours, status")
+      .in("job_id", [...oppByJob.keys()])
+      .in("status", SETTLED_STATUSES as unknown as string[])
+      .order("work_date")
+  );
   if (entries.length === 0) return out;
 
   const rates = await loadRates(entries.map((e) => e.employee_id));
@@ -161,20 +167,22 @@ export type CrewLaborWorker = {
  */
 export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLaborWorker[]> {
   const sb = commercialDb();
+  // Include soft-deleted jobs — their settled hours were paid (audit 2026-08).
   const { data: jobRows } = await sb
     .from("commercial_jobs")
     .select("id")
-    .eq("opportunity_id", oppId)
-    .is("deleted_at", null);
+    .eq("opportunity_id", oppId);
   const jobIds = ((jobRows ?? []) as { id: string }[]).map((j) => j.id);
   if (jobIds.length === 0) return [];
 
-  const { data: entryRows } = await sb
-    .from("commercial_time_entries")
-    .select("employee_id, work_date, actual_hours, status")
-    .in("job_id", jobIds)
-    .in("status", SETTLED_STATUSES as unknown as string[]);
-  const entries = (entryRows ?? []) as { employee_id: string; work_date: string; actual_hours: number }[];
+  const entries = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("employee_id, work_date, actual_hours, status")
+      .in("job_id", jobIds)
+      .in("status", SETTLED_STATUSES as unknown as string[])
+      .order("work_date")
+  );
   if (entries.length === 0) return [];
 
   const rates = await loadRates(entries.map((e) => e.employee_id));

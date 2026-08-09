@@ -371,17 +371,17 @@ export async function copyWeekForward(
 ): Promise<{ ok: true; copied: number; skippedExisting: number; skippedAbsent: number; skippedDeletedJob: number; targetMonday: string } | { ok: false; error: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceMondayIso)) return { ok: false, error: "Invalid week." };
   const srcMon = mondayOf(sourceMondayIso);
-  const srcSat = addDaysIso(srcMon, 5);
+  const srcSun = addDaysIso(srcMon, 6); // full Mon–Sun week (Sunday is a real work day — PW crews)
   const tgtMon = addDaysIso(srcMon, 7);
-  const tgtSat = addDaysIso(srcSat, 7);
+  const tgtSun = addDaysIso(srcSun, 7);
   const sb = commercialDb();
 
-  // Source week assignments (Mon–Sat, live).
+  // Source week assignments (Mon–Sun, live).
   const { data: srcRows } = await sb
     .from("commercial_assignments")
     .select("job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time, note")
     .gte("work_date", srcMon)
-    .lte("work_date", srcSat)
+    .lte("work_date", srcSun)
     .neq("status", "cancelled");
   const src = (srcRows ?? []) as {
     job_id: string; employee_id: string; work_date: string; scheduled_hours: number;
@@ -391,8 +391,8 @@ export async function copyWeekForward(
 
   // Target-week existing assignments (to dedup), absences (to skip), + live jobs.
   const [{ data: tgtRows }, { data: absRows }, { data: jobRows }] = await Promise.all([
-    sb.from("commercial_assignments").select("job_id, employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSat).neq("status", "cancelled"),
-    sb.from("commercial_absences").select("employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSat),
+    sb.from("commercial_assignments").select("job_id, employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSun).neq("status", "cancelled"),
+    sb.from("commercial_absences").select("employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSun),
     sb.from("commercial_jobs").select("id").is("deleted_at", null).in("id", [...new Set(src.map((s) => s.job_id))]),
   ]);
   const existing = new Set(((tgtRows ?? []) as { job_id: string; employee_id: string; work_date: string }[]).map((r) => `${r.job_id}|${r.employee_id}|${String(r.work_date).slice(0, 10)}`));
@@ -441,13 +441,14 @@ export async function deleteAssignmentById(
   const { error } = await sb.from("commercial_assignments").delete().eq("id", assignmentId);
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_assignments", assignmentId, existing, actorUserId);
-  // Cancel the queued 10-min clock-in nudge — otherwise the crew member is still
-  // pinged to clock in for a shift that was removed (audit #3). If they still have
-  // another shift that day, the daily cron re-schedules a nudge for it.
+  // Re-sync the queued 10-min clock-in nudge: cancel it, and if the crew member
+  // still has ANOTHER shift that day, re-schedule it for the earliest remaining
+  // start. A bare cancel would drop the nudge for a still-scheduled shift, and
+  // the once-daily cron can't fix a same-day removal (audit 2026-08).
   const ex = existing as { employee_id?: string; work_date?: string };
   if (ex.employee_id && ex.work_date) {
-    const { resetClockReminder } = await import("./schedule-email-send");
-    await resetClockReminder(ex.employee_id, ex.work_date).catch(() => undefined);
+    const { resyncClockReminder } = await import("./schedule-email-send");
+    await resyncClockReminder(ex.employee_id, ex.work_date).catch(() => undefined);
   }
   return { ok: true };
 }

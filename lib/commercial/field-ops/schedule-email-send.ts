@@ -65,6 +65,16 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
     scheduled_start_time: string | null; scheduled_end_time: string | null; note: string | null;
   }[];
   if (assigns.length === 0) return [];
+  // Days this employee is marked OFF (PTO/Sick/…) — suppress the schedule email
+  // AND the clock-in nudge for those days, so someone marked off is never pinged
+  // to clock in or told "today's work" (audit 2026-08). Mirrors copy-week's skip.
+  const { data: absRows } = await sb
+    .from("commercial_absences")
+    .select("work_date")
+    .eq("employee_id", employeeId)
+    .gte("work_date", fromIso)
+    .lte("work_date", toIso);
+  const offDates = new Set(((absRows ?? []) as { work_date: string }[]).map((r) => String(r.work_date).slice(0, 10)));
   const jobIds = [...new Set(assigns.map((a) => a.job_id))];
   const jobsById = new Map<string, { name: string; site_address: string | null; site_city: string | null; prevailing_wage: boolean }>();
   const { data: jobs } = await sb.from("commercial_jobs").select("id, name, site_address, site_city, prevailing_wage").in("id", jobIds).is("deleted_at", null);
@@ -74,6 +84,7 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
   const byDate = new Map<string, UpDay>();
   for (let i = 0; i < numDays; i++) {
     const d = addDaysIso(fromIso, i);
+    if (offDates.has(d)) continue; // employee is marked off this day — no email / nudge
     const dayAssigns = assigns
       .filter((a) => a.work_date === d && jobsById.has(a.job_id)) // drop shifts for deleted work orders
       .sort((x, y) => (x.scheduled_start_time ?? "99").localeCompare(y.scheduled_start_time ?? "99"));
@@ -168,6 +179,37 @@ export async function resetClockReminder(employeeId: string, workDate: string): 
     await cancelScheduledEmail(row.resend_message_id, "commercial");
   }
   await sb.from("commercial_schedule_email_log").delete().eq("id", row.id);
+}
+
+/**
+ * Re-sync one (employee, date)'s clock-in nudge after a SAME-DAY schedule change
+ * (a shift removed, or the person marked off): cancel the queued nudge, then
+ * re-schedule it for the day's EARLIEST REMAINING shift — or leave it cancelled
+ * if nothing remains (or the day is now an absence, which getShiftsForRange
+ * already suppresses). The once-daily cron can't cover same-day edits, so a bare
+ * cancel would drop the nudge for a shift that's still on the books (audit 2026-08).
+ */
+export async function resyncClockReminder(employeeId: string, workDate: string): Promise<void> {
+  try {
+    await resetClockReminder(employeeId, workDate);
+    const shifts = await getShiftsForRange(employeeId, workDate, 1);
+    if (shifts.length === 0) return; // nothing left that day → stay cancelled
+    const firstStart = shifts[0].jobs.map((j) => j.start).filter(Boolean).sort()[0] ?? null;
+    if (!firstStart) return;
+    const sb = commercialDb();
+    const { data: e } = await sb
+      .from("commercial_employees")
+      .select("first_name, email, preferred_language, magic_link_token")
+      .eq("id", employeeId)
+      .eq("active", true)
+      .maybeSingle();
+    const emp = e as { first_name: string; email: string | null; preferred_language: "en" | "es"; magic_link_token: string | null } | null;
+    if (!emp || !emp.email) return;
+    const oc = await getOperatingCompany();
+    await scheduleClockReminder(employeeId, workDate, firstStart, emp, oc.name, magicLink(emp.magic_link_token));
+  } catch (err) {
+    console.warn("[field-ops] resyncClockReminder failed:", err);
+  }
 }
 
 /** Has (employee, date, kind) already been claimed/sent? Read-only check. */

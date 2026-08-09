@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { mondayOf, addDaysIso } from "./schedule";
 
 /**
@@ -35,12 +36,14 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
   const periodStart = mondayOf(fromIso);
   const periodEnd = addDaysIso(mondayOf(toIso), 6); // Sunday of the week containing `to`
   const sb = commercialDb();
-  const { data: eRows } = await sb
-    .from("commercial_time_entries")
-    .select("employee_id, work_date, actual_hours, status")
-    .gte("work_date", periodStart)
-    .lte("work_date", periodEnd);
-  const entries = (eRows ?? []) as { employee_id: string; work_date: string; actual_hours: number; status: string }[];
+  const entries = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number; status: string }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("employee_id, work_date, actual_hours, status")
+      .gte("work_date", periodStart)
+      .lte("work_date", periodEnd)
+      .order("work_date")
+  );
   const approved = entries.filter((e) => e.status === "approved");
   const unapprovedCount = entries.filter((e) => e.status === "submitted" || e.status === "questioned").length;
   if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd };

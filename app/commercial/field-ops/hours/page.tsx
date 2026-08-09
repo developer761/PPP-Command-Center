@@ -122,8 +122,8 @@ export default async function FieldOpsHoursPage({
         <ul className="space-y-2.5">
           {rows.map((r) => (
             <li key={r.employee_id} className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[14px] font-bold text-ppp-charcoal truncate">{r.employee_name}</span>
+              <div className="flex items-center justify-between gap-3 min-w-0">
+                <span className="text-[14px] font-bold text-ppp-charcoal truncate min-w-0">{r.employee_name}</span>
                 <span className="font-condensed text-lg font-black text-ppp-charcoal tabular-nums shrink-0">{fmtH(r.total_hours)}</span>
               </div>
               <ul className="mt-2.5 space-y-1 border-t border-ppp-charcoal-50 pt-2.5">

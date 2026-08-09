@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 
 export type HoursLogJob = { job_id: string; job_name: string; job_code: string; hours: number };
 export type HoursLogRow = {
@@ -23,12 +24,16 @@ export async function getHoursLog(
   endIso: string
 ): Promise<{ rows: HoursLogRow[]; totalHours: number }> {
   const sb = commercialDb();
-  const { data: eRows } = await sb
-    .from("commercial_time_entries")
-    .select("employee_id, job_id, actual_hours")
-    .gte("work_date", startIso)
-    .lte("work_date", endIso);
-  const entries = (eRows ?? []) as { employee_id: string; job_id: string; actual_hours: number }[];
+  // Paginated — a wide custom range across a full crew can exceed Supabase's
+  // silent 1000-row cap, which would undercount hours + drop crew (audit 2026-08).
+  const entries = await paginateAll<{ employee_id: string; job_id: string; actual_hours: number }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("employee_id, job_id, actual_hours")
+      .gte("work_date", startIso)
+      .lte("work_date", endIso)
+      .order("work_date")
+  );
 
   const byEmp = new Map<string, Map<string, number>>(); // employee → job → hours
   const empTotal = new Map<string, number>();

@@ -342,17 +342,29 @@ export async function clockOut(input: {
   const sb = commercialDb();
   const { data: open } = await sb
     .from("commercial_time_punches")
-    .select("id, job_id, clock_in_at")
+    .select("id, job_id, clock_in_at, note")
     .eq("employee_id", input.employee_id)
     .is("clock_out_at", null)
     .maybeSingle();
   if (!open) return { ok: false, error: "You're not clocked in.", code: "not_clocked_in" };
 
-  const punch = open as { id: string; job_id: string; clock_in_at: string };
-  const now = new Date().toISOString();
+  const punch = open as { id: string; job_id: string; clock_in_at: string; note: string | null };
+  const nowIso = new Date().toISOString();
+  // A forgotten clock-out from a PRIOR ET day (or an impossibly long span) must
+  // never record raw elapsed hours — that would write a ~24h shift the moment the
+  // painter taps "Clock Out" the next morning (before the daily sweep runs). Route
+  // it through the SAME capped + flagged-for-review path as the clock-in stale
+  // guard and the cron sweep, so no close path can write an uncapped >12h entry
+  // (audit 2026-08).
+  const spanHours = (Date.parse(nowIso) - Date.parse(punch.clock_in_at)) / 3_600_000;
+  if (etDate(punch.clock_in_at) !== etDate(nowIso) || spanHours > STALE_PUNCH_CAP_HOURS) {
+    await forceCloseStalePunch(sb, { ...punch, employee_id: input.employee_id });
+    return { ok: true, jobId: punch.job_id };
+  }
+
   const { data: updated, error } = await sb
     .from("commercial_time_punches")
-    .update({ clock_out_at: now })
+    .update({ clock_out_at: nowIso })
     .eq("id", punch.id)
     .select("*")
     .single();

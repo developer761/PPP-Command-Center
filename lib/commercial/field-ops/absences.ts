@@ -79,6 +79,14 @@ export async function absentEmployeeIdsOn(dateIso: string): Promise<Set<string>>
  * Mark (or update) one crew member off for one day. One absence per person per
  * day — a re-mark updates the type/hours/note in place. Returns {ok}.
  */
+// Marking someone off (or un-marking them) changes whether their clock-in nudge
+// should fire — re-sync it. getShiftsForRange is absence-aware, so on mark-off
+// this cancels the queued nudge; on delete it restores it if a shift remains.
+async function resyncNudge(employeeId: string, workDate: string): Promise<void> {
+  const { resyncClockReminder } = await import("./schedule-email-send");
+  await resyncClockReminder(employeeId, workDate).catch(() => undefined);
+}
+
 export async function upsertAbsence(input: {
   employee_id: string;
   work_date: string;
@@ -110,6 +118,7 @@ export async function upsertAbsence(input: {
       .single();
     if (error) return { ok: false, error: error.message };
     await logUpdate("commercial_absences", (data as { id: string }).id, existing, data, input.actor_user_id);
+    await resyncNudge(input.employee_id, input.work_date);
     return { ok: true, id: (data as { id: string }).id };
   }
 
@@ -120,6 +129,7 @@ export async function upsertAbsence(input: {
     .single();
   if (error) return { ok: false, error: error.message };
   await logInsert("commercial_absences", (data as { id: string }).id, data, input.actor_user_id);
+  await resyncNudge(input.employee_id, input.work_date);
   return { ok: true, id: (data as { id: string }).id };
 }
 
@@ -130,5 +140,7 @@ export async function deleteAbsence(id: string, actorUserId: string): Promise<{ 
   const { error } = await sb.from("commercial_absences").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_absences", id, existing, actorUserId);
+  const ex = existing as { employee_id?: string; work_date?: string };
+  if (ex.employee_id && ex.work_date) await resyncNudge(ex.employee_id, ex.work_date);
   return { ok: true };
 }
