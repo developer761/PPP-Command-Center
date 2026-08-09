@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { rawAccessDenied } from "@/lib/commercial/auth";
-import { buildPayrollCsv } from "@/lib/commercial/field-ops/payroll";
+import { buildPayrollCsv, markPayrollExported } from "@/lib/commercial/field-ops/payroll";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +34,11 @@ export async function GET(request: Request) {
   }
 
   const csv = await buildPayrollCsv(from, to);
+  // Close the period: mark the exported W-2 approved hours 'exported' so an
+  // overlapping/repeat export can't re-pay them (double-pay). Only flips
+  // still-approved rows, so a re-download after export yields an empty CSV
+  // (= "already paid"), not a second copy of the same hours (audit round 6).
+  await markPayrollExported(from, to, data.user.id);
   return new NextResponse(csv, {
     status: 200,
     headers: {

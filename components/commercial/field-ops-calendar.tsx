@@ -290,9 +290,20 @@ export function FieldOpsCalendar({
       const d = await r.json().catch(() => ({}));
       if (!r.ok) setMsg({ tone: "err", text: d.detail || "Couldn't schedule — try again." });
       else {
-        // Only claim "emailed" when the person actually has an email on file.
+        // Only claim "emailed" when the person actually gets one. A crew member
+        // marked OFF that day is suppressed server-side (no shift email, no
+        // clock-in nudge), so don't tell the scheduler they were emailed (audit
+        // round 6).
         const hasEmail = !!employees.find((emp) => emp.id === body.employee_id)?.email;
-        setMsg({ tone: "ok", text: hasEmail ? "Scheduled — crew member emailed." : "Scheduled. No email on file, so they weren't notified — add one on the Crew page." });
+        const isOff = dayOff(addDay).some((o) => o.employee_id === body.employee_id);
+        setMsg({
+          tone: "ok",
+          text: isOff
+            ? "Scheduled — but they're marked off this day, so no email or clock-in reminder was sent."
+            : hasEmail
+              ? "Scheduled — crew member emailed."
+              : "Scheduled. No email on file, so they weren't notified — add one on the Crew page.",
+        });
         setFormKey((k) => k + 1);
         refresh();
       }

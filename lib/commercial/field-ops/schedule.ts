@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import type { JobStatus } from "./job-constants";
 
@@ -124,16 +125,21 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
   const sb = commercialDb();
   const { getAbsencesForRange, absenceShort } = await import("./absences");
   const absencesByDate = await getAbsencesForRange(dates[0], dates[41]);
-  const { data: aRows } = await sb
-    .from("commercial_assignments")
-    .select("job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time")
-    .gte("work_date", dates[0])
-    .lte("work_date", dates[41])
-    .neq("status", "cancelled");
-  const assignments = (aRows ?? []) as {
+  // Paginated — the 42-day grid × full crew is the WIDEST assignment query in the
+  // module and can exceed Supabase's silent 1000-row cap, which would silently
+  // drop shifts (crew vanish from day cells, headcount understated) (audit round 6).
+  const assignments = await paginateAll<{
     job_id: string; employee_id: string; work_date: string; scheduled_hours: number;
     scheduled_start_time: string | null; scheduled_end_time: string | null;
-  }[];
+  }>(() =>
+    sb
+      .from("commercial_assignments")
+      .select("job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time")
+      .gte("work_date", dates[0])
+      .lte("work_date", dates[41])
+      .neq("status", "cancelled")
+      .order("work_date")
+  );
 
   const jobIds = [...new Set(assignments.map((a) => a.job_id))];
   const empIds = [...new Set(assignments.map((a) => a.employee_id))];

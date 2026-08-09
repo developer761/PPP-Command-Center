@@ -44,21 +44,25 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
       .lte("work_date", periodEnd)
       .order("work_date")
   );
-  const approved = entries.filter((e) => e.status === "approved");
-  const unapprovedCount = entries.filter((e) => e.status === "submitted" || e.status === "questioned").length;
-  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd };
-
-  const empIds = [...new Set(approved.map((e) => e.employee_id))];
+  // Resolve worker_type for EVERY entry's employee up front — the payout AND the
+  // "N approved / N waiting" counts are W-2 ONLY, so subs/temps must be excluded
+  // from the counts too, not just the CSV rows (audit round 6).
+  const allEmpIds = [...new Set(entries.map((e) => e.employee_id))];
   const { data: emps } = await sb
     .from("commercial_employees")
     .select("id, display_name, worker_type, external_ref")
-    .in("id", empIds);
+    .in("id", allEmpIds);
   const empMeta = new Map(
     (emps ?? []).map((r) => [
       (r as { id: string }).id,
       { name: (r as { display_name: string }).display_name, worker_type: (r as { worker_type: string }).worker_type, external_ref: (r as { external_ref: string | null }).external_ref },
     ])
   );
+  const isW2 = (id: string) => empMeta.get(id)?.worker_type === "w2";
+
+  const approved = entries.filter((e) => e.status === "approved" && isW2(e.employee_id));
+  const unapprovedCount = entries.filter((e) => (e.status === "submitted" || e.status === "questioned") && isW2(e.employee_id)).length;
+  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd };
 
   // employee -> week(Monday) -> hours
   const byEmpWeek = new Map<string, Map<string, number>>();
@@ -109,4 +113,60 @@ export async function buildPayrollCsv(fromIso: string, toIso: string): Promise<s
     lines.push([r.employee_name, r.external_ref ?? "", r.regHours, r.otHours, r.totalHours, periodStart, periodEnd].map(csvCell).join(","));
   }
   return lines.join("\r\n");
+}
+
+/**
+ * Close a payroll period: after the CSV is generated, mark the exported W-2
+ * approved hours 'exported' + tag them with a pay_period, so a later (possibly
+ * range-snapped, overlapping) export can't re-pay the same hours (audit round 6).
+ * Idempotent — only flips 'approved' → 'exported', so a re-run/double-click finds
+ * nothing left. labor-cost + overview already treat 'exported' as settled, so no
+ * reader changes are needed. Uses the SAME snapped Mon–Sun span as the CSV.
+ */
+export async function markPayrollExported(
+  fromIso: string,
+  toIso: string,
+  userId: string
+): Promise<{ exported: number }> {
+  const periodStart = mondayOf(fromIso);
+  const periodEnd = addDaysIso(mondayOf(toIso), 6);
+  const sb = commercialDb();
+
+  const rows = await paginateAll<{ id: string; employee_id: string }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("id, employee_id")
+      .eq("status", "approved")
+      .gte("work_date", periodStart)
+      .lte("work_date", periodEnd)
+      .order("work_date")
+  );
+  if (rows.length === 0) return { exported: 0 };
+
+  // W-2 only — subs/temps aren't paid through this export, so don't lock them.
+  const empIds = [...new Set(rows.map((r) => r.employee_id))];
+  const { data: emps } = await sb.from("commercial_employees").select("id, worker_type").in("id", empIds);
+  const w2 = new Set(((emps ?? []) as { id: string; worker_type: string }[]).filter((e) => e.worker_type === "w2").map((e) => e.id));
+  const ids = rows.filter((r) => w2.has(r.employee_id)).map((r) => r.id);
+  if (ids.length === 0) return { exported: 0 };
+
+  const { data: period, error: pErr } = await sb
+    .from("commercial_pay_periods")
+    .insert({ start_date: periodStart, end_date: periodEnd, status: "exported", exported_at: new Date().toISOString(), exported_by_user_id: userId })
+    .select("id")
+    .single();
+  if (pErr || !period) return { exported: 0 };
+  const periodId = (period as { id: string }).id;
+
+  let exported = 0;
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const { error } = await sb
+      .from("commercial_time_entries")
+      .update({ status: "exported", pay_period_id: periodId, updated_at: new Date().toISOString() })
+      .in("id", chunk)
+      .eq("status", "approved"); // race guard: only flip still-approved rows
+    if (!error) exported += chunk.length;
+  }
+  return { exported };
 }

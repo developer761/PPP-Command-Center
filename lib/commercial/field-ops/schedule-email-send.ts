@@ -22,6 +22,20 @@ import type { CommercialEmployee } from "./employees";
 
 const CLOCK_LEAD_MIN = 10;
 
+// The earliest shift start on a day whose 10-min-before nudge is still in the
+// FUTURE. Taking the earliest start OVERALL would drop the nudge entirely when
+// an earlier shift's fire time has already passed but a later shift is still
+// upcoming (audit round 6) — so a mid-day resave would leave the still-upcoming
+// shift with no reminder.
+function earliestNudgeableStart(workDate: string, starts: (string | null)[]): string | null {
+  for (const s of (starts.filter(Boolean) as string[]).sort()) {
+    const startUtc = etWallTimeToUtcIso(workDate, s);
+    if (!startUtc) continue;
+    if (Date.parse(startUtc) - CLOCK_LEAD_MIN * 60_000 > Date.now()) return s;
+  }
+  return null;
+}
+
 function baseUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://hub.precisionpaintingplus.net";
 }
@@ -194,7 +208,7 @@ export async function resyncClockReminder(employeeId: string, workDate: string):
     await resetClockReminder(employeeId, workDate);
     const shifts = await getShiftsForRange(employeeId, workDate, 1);
     if (shifts.length === 0) return; // nothing left that day → stay cancelled
-    const firstStart = shifts[0].jobs.map((j) => j.start).filter(Boolean).sort()[0] ?? null;
+    const firstStart = earliestNudgeableStart(workDate, shifts[0].jobs.map((j) => j.start));
     if (!firstStart) return;
     const sb = commercialDb();
     const { data: e } = await sb
@@ -298,7 +312,7 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
     // scheduled nudge + drop its claim so a fresh, correctly-timed one is queued
     // instead of the old one firing at the wrong time.
     await resetClockReminder(employeeId, workDate);
-    const firstStart = shifts[0].jobs.map((j) => j.start).filter(Boolean).sort()[0] ?? null;
+    const firstStart = earliestNudgeableStart(workDate, shifts[0].jobs.map((j) => j.start));
     if (firstStart) await scheduleClockReminder(employeeId, workDate, firstStart, emp, oc.name, link);
   } catch (err) {
     console.warn("[field-ops] shift assignment email failed:", err);

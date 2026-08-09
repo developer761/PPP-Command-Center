@@ -217,6 +217,9 @@ export async function createJob(
     .select(COLS)
     .single();
   if (error) {
+    if (/commercial_jobs_status_check|violates check constraint/i.test(error.message)) {
+      return { ok: false, error: "That status isn't enabled on the database yet — apply migration 118." };
+    }
     const msg = /duplicate key|unique/i.test(error.message) ? `Job code "${code}" is already in use.` : error.message;
     return { ok: false, error: msg };
   }
@@ -290,6 +293,9 @@ export async function updateJob(
   const sb = commercialDb();
   const { data, error } = await sb.from("commercial_jobs").update(next).eq("id", id).select(COLS).single();
   if (error) {
+    if (/commercial_jobs_status_check|violates check constraint/i.test(error.message)) {
+      return { ok: false, error: "That status isn't enabled on the database yet — apply migration 118." };
+    }
     const msg = /duplicate key|unique/i.test(error.message) ? "That job code is already in use." : error.message;
     return { ok: false, error: msg };
   }
