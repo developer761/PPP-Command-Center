@@ -181,20 +181,23 @@ export async function resetClockReminder(employeeId: string, workDate: string): 
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_schedule_email_log")
-    .select("id, resend_message_id")
+    .select("id, resend_message_id, sent_at")
     .eq("employee_id", employeeId)
     .eq("work_date", workDate)
     .eq("kind", "clock_reminder")
     .maybeSingle();
-  const row = data as { id: string; resend_message_id: string | null } | null;
+  const row = data as { id: string; resend_message_id: string | null; sent_at: string | null } | null;
   if (!row) return;
-  // Only clear the log row (which would let a reschedule queue a NEW nudge) once
-  // we've CONFIRMED the old scheduled send is cancelled. If the cancel fails — or
-  // the row has no cancellable Resend id but a send was accepted — keep the row so
-  // the painter doesn't get TWO nudges (the stale one + a fresh one); a later
-  // resync retries the cancel (audit round 10).
-  let safeToClear = false;
-  if (row.resend_message_id) {
+  // If the nudge's stored FIRE time is already in the past, it has delivered and
+  // cannot fire again — so clear the row unconditionally and free the day to
+  // schedule a fresh nudge for a pushed-later / second shift, even though Resend
+  // can't "cancel" a sent email (audit round 11).
+  const alreadyFired = !!row.sent_at && Date.parse(row.sent_at) < Date.now();
+  // Otherwise it's still pending: only clear (which lets a reschedule queue a NEW
+  // nudge) once the old send is CONFIRMED cancelled — else keep the row so the
+  // painter doesn't get TWO nudges; a later resync retries the cancel (audit round 10).
+  let safeToClear = alreadyFired;
+  if (!alreadyFired && row.resend_message_id) {
     const { cancelScheduledEmail } = await import("@/lib/email/resend");
     safeToClear = await cancelScheduledEmail(row.resend_message_id, "commercial");
   }
@@ -373,9 +376,14 @@ async function scheduleClockReminder(
   if (sent.ok) {
     // Store the Resend id so a later start-time change can cancel this exact
     // scheduled send (see resetClockReminder). id may be null (accepted w/o id).
-    if (sent.id) {
-      await commercialDb().from("commercial_schedule_email_log").update({ resend_message_id: sent.id }).eq("id", claimId);
-    }
+    // Also stamp sent_at = the FIRE time (this column isn't read as an
+    // actually-sent time anywhere) so resetClockReminder can tell a nudge that
+    // has already fired (can't double-send → safe to clear) from one still pending
+    // (audit round 11).
+    await commercialDb()
+      .from("commercial_schedule_email_log")
+      .update({ resend_message_id: sent.id ?? null, sent_at: fireAt })
+      .eq("id", claimId);
   } else {
     // Scheduling failed — release the claim so a later run reschedules it.
     await releaseClaim(employeeId, workDate, "clock_reminder");
