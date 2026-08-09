@@ -219,6 +219,27 @@ export async function changeWorkOrderStatus(
     const { ensureJobForWorkOrder } = await import("@/lib/commercial/field-ops/jobs");
     await ensureJobForWorkOrder(id, actorUserId);
   }
+  // Voiding the WO must tear down its Field Ops twin — otherwise the crew stay
+  // scheduled + get clock-in nudges for a cancelled work order, and a re-created
+  // WO spawns a duplicate live job (audit round 7). softDeleteJob cancels future
+  // assignments + resyncs nudges + soft-deletes the job (so no duplicate on
+  // re-send). Best-effort.
+  if (to === "voided") {
+    try {
+      const { data: jobRow } = await sb
+        .from("commercial_jobs")
+        .select("id")
+        .eq("work_order_id", id)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (jobRow) {
+        const { softDeleteJob } = await import("@/lib/commercial/field-ops/jobs");
+        await softDeleteJob((jobRow as { id: string }).id, actorUserId);
+      }
+    } catch (err) {
+      console.warn("[work-orders] void teardown failed:", err);
+    }
+  }
   return { ok: true, value: after };
 }
 

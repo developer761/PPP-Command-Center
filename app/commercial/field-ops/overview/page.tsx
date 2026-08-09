@@ -90,9 +90,9 @@ export default async function FieldOpsOverviewPage() {
           ) : (
             <ul className="space-y-2">
               {o.otForecast.map((r) => (
-                <li key={r.employee_id} className="flex items-center justify-between">
-                  <span className="text-[13px] text-ppp-charcoal truncate">{r.name}</span>
-                  <span className="text-[12.5px] font-bold tabular-nums text-amber-700">{r.scheduled}h <span className="text-[10.5px] font-semibold text-amber-700">(+{Math.round((r.scheduled - 40) * 4) / 4} OT)</span></span>
+                <li key={r.employee_id} className="flex items-center justify-between gap-2 min-w-0">
+                  <span className="text-[13px] text-ppp-charcoal truncate min-w-0">{r.name}</span>
+                  <span className="text-[12.5px] font-bold tabular-nums text-amber-700 shrink-0 whitespace-nowrap">{r.scheduled}h <span className="text-[10.5px] font-semibold text-amber-700">(+{Math.round((r.scheduled - 40) * 4) / 4} OT)</span></span>
                 </li>
               ))}
             </ul>

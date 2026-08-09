@@ -440,7 +440,7 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
     // backfills any shift whose nudge wasn't already scheduled at add-time.
     for (const d of [today, tomorrow]) {
       const shifts = await getShiftsForRange(e.id, d, 1);
-      const firstStart = shifts[0]?.jobs.map((j) => j.start).filter(Boolean).sort()[0] ?? null;
+      const firstStart = earliestNudgeableStart(d, shifts[0]?.jobs.map((j) => j.start) ?? []);
       if (!firstStart) continue;
       const alreadyScheduled = await claimExists(e.id, d, "clock_reminder");
       if (alreadyScheduled) continue;

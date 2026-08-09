@@ -67,12 +67,17 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
 
   // Scheduled hours + per-employee totals (OT forecast) + distinct crew this week.
+  // Drop assignments whose work order was soft-deleted — the Calendar already
+  // excludes them (getMonthOverview), so counting them here made the two surfaces
+  // disagree (audit round 7).
+  const liveJobIds = new Set(jobs.map((j) => j.id));
   const perEmp = new Map<string, number>();
   const crewWeek = new Set<string>();
   let scheduledHoursWeek = 0;
   const crewToday = new Set<string>();
   const jobsTodaySet = new Set<string>();
   for (const a of assigns) {
+    if (!liveJobIds.has(a.job_id)) continue;
     scheduledHoursWeek += a.scheduled_hours;
     perEmp.set(a.employee_id, (perEmp.get(a.employee_id) ?? 0) + a.scheduled_hours);
     crewWeek.add(a.employee_id);

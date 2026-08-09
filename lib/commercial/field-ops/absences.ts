@@ -127,7 +127,31 @@ export async function upsertAbsence(input: {
     .insert({ employee_id: input.employee_id, work_date: input.work_date, type: input.type, hours, note })
     .select("*")
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // Raced with a concurrent insert (unique index, migration 119) — collapse to
+    // the existing row + update it instead of compounding a duplicate (audit round 7).
+    if (/duplicate key|unique/i.test(error.message)) {
+      const { data: existRow } = await sb
+        .from("commercial_absences")
+        .select("*")
+        .eq("employee_id", input.employee_id)
+        .eq("work_date", input.work_date)
+        .maybeSingle();
+      if (existRow) {
+        const { data: upd, error: uErr } = await sb
+          .from("commercial_absences")
+          .update({ type: input.type, hours, note })
+          .eq("id", (existRow as { id: string }).id)
+          .select("*")
+          .single();
+        if (uErr) return { ok: false, error: uErr.message };
+        await logUpdate("commercial_absences", (upd as { id: string }).id, existRow, upd, input.actor_user_id);
+        await resyncNudge(input.employee_id, input.work_date);
+        return { ok: true, id: (upd as { id: string }).id };
+      }
+    }
+    return { ok: false, error: error.message };
+  }
   await logInsert("commercial_absences", (data as { id: string }).id, data, input.actor_user_id);
   await resyncNudge(input.employee_id, input.work_date);
   return { ok: true, id: (data as { id: string }).id };

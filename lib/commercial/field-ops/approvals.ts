@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
+import { addDaysIso } from "./schedule";
 import { logUpdate } from "@/lib/commercial/audit-log";
 
 /**
@@ -31,6 +32,7 @@ export type ApprovalRow = {
   status: string;
   source: string;
   questioned_reason: string | null;
+  capped: boolean; // a contributing punch was force-closed (capped guess) — never auto-approve
 };
 
 export async function listPendingApprovals(): Promise<ApprovalRow[]> {
@@ -77,6 +79,26 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
     sched.set(schedKey(a.employee_id, a.job_id, a.work_date), a.scheduled_hours);
   }
 
+  // Which entries are backed by a FORCE-CLOSED (capped-guess) punch? Those must
+  // never be bulk-auto-approved even at zero variance — a forgotten clock-out
+  // capped at the scheduled hours reads as variance 0 (audit round 7). Detected
+  // from the persisted punch note marker.
+  const capKeys = new Set<string>();
+  if (dates.length > 0) {
+    const sorted = [...dates].sort();
+    const { data: capRows } = await sb
+      .from("commercial_time_punches")
+      .select("employee_id, job_id, clock_in_at")
+      .in("employee_id", empIds)
+      .ilike("note", "%[auto-closed%")
+      .gte("clock_in_at", `${addDaysIso(sorted[0], -1)}T00:00:00Z`)
+      .lte("clock_in_at", `${addDaysIso(sorted[sorted.length - 1], 1)}T23:59:59Z`);
+    const etDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    for (const p of (capRows ?? []) as { employee_id: string; job_id: string; clock_in_at: string }[]) {
+      capKeys.add(schedKey(p.employee_id, p.job_id, etDay(p.clock_in_at)));
+    }
+  }
+
   return entries.map((e) => {
     const scheduled = sched.get(schedKey(e.employee_id, e.job_id, e.work_date)) ?? null;
     return {
@@ -92,6 +114,7 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
       status: e.status,
       source: e.source,
       questioned_reason: e.questioned_reason,
+      capped: capKeys.has(schedKey(e.employee_id, e.job_id, e.work_date)),
     };
   });
 }
@@ -147,7 +170,9 @@ export async function overrideTimeEntryHours(id: string, hours: number, actorUse
 /** Approve every submitted entry whose actual == scheduled (no variance). */
 export async function bulkApproveZeroVariance(actorUserId: string): Promise<{ approved: number }> {
   const rows = await listPendingApprovals();
-  const zero = rows.filter((r) => r.status === "submitted" && r.variance === 0);
+  // Exclude capped-guess entries — a force-closed missed-clock-out must be
+  // approved by a human, one at a time, never in the zero-variance sweep.
+  const zero = rows.filter((r) => r.status === "submitted" && r.variance === 0 && !r.capped);
   let approved = 0;
   for (const r of zero) {
     const res = await approveTimeEntry(r.id, actorUserId);

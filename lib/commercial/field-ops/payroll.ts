@@ -64,15 +64,23 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
   const unapprovedCount = entries.filter((e) => (e.status === "submitted" || e.status === "questioned") && isW2(e.employee_id)).length;
   if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd };
 
-  // employee -> week(Monday) -> hours
-  const byEmpWeek = new Map<string, Map<string, number>>();
-  for (const e of approved) {
-    const meta = empMeta.get(e.employee_id);
-    if (!meta || meta.worker_type !== "w2") continue; // W-2 only
+  // employee -> week(Monday) -> { approved: pay now, exported: already-paid baseline }.
+  // OT is computed over the FULL week (already-exported + newly-approved) so a
+  // week paid across MULTIPLE export passes still credits overtime once its total
+  // crosses 40h — then only the marginal, not-yet-exported hours are paid. Without
+  // this, late-approved hours in an already-exported week reset the 40h baseline
+  // and silently pay OT at straight time (audit round 7). W-2 only.
+  const byEmpWeek = new Map<string, Map<string, { approved: number; exported: number }>>();
+  for (const e of entries) {
+    if (!isW2(e.employee_id)) continue;
+    if (e.status !== "approved" && e.status !== "exported") continue;
     const wk = mondayOf(e.work_date);
     if (!byEmpWeek.has(e.employee_id)) byEmpWeek.set(e.employee_id, new Map());
     const wm = byEmpWeek.get(e.employee_id)!;
-    wm.set(wk, (wm.get(wk) ?? 0) + e.actual_hours);
+    const cur = wm.get(wk) ?? { approved: 0, exported: 0 };
+    if (e.status === "approved") cur.approved += e.actual_hours;
+    else cur.exported += e.actual_hours;
+    wm.set(wk, cur);
   }
 
   const rows: PayrollRow[] = [];
@@ -81,11 +89,17 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
     let reg = 0;
     let ot = 0;
     let total = 0;
-    for (const h of weeks.values()) {
-      total += h;
-      reg += Math.min(h, 40);
-      ot += Math.max(0, h - 40);
+    for (const { approved: aH, exported: xH } of weeks.values()) {
+      if (aH <= 0) continue; // nothing new to pay this week (already exported)
+      const fullReg = Math.min(xH + aH, 40);
+      const fullOt = Math.max(0, xH + aH - 40);
+      const paidReg = Math.min(xH, 40);
+      const paidOt = Math.max(0, xH - 40);
+      reg += Math.max(0, fullReg - paidReg);
+      ot += Math.max(0, fullOt - paidOt);
+      total += aH;
     }
+    if (total <= 0) continue;
     rows.push({
       employee_id: empId,
       employee_name: meta.name,
