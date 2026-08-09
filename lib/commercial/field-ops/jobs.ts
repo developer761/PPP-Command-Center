@@ -352,6 +352,33 @@ export async function ensureJobForWorkOrder(
     } | null;
     if (!wo) return { ok: false, error: "Work order not found." };
 
+    // ADOPT before inserting: a manual field-ops WO for this deal may already
+    // exist with work_order_id still null (its up-mirror hadn't linked yet, or
+    // failed transiently). Link that job to this WO instead of creating a SECOND
+    // live job on the same deal — otherwise the deal splits across two job codes
+    // (duplicate calendar cards + split payroll). The work_order_id dedupe above
+    // misses it precisely because its work_order_id is null (audit round 3).
+    if (wo.opportunity_id) {
+      const { data: adoptable } = await sb
+        .from("commercial_jobs")
+        .select("id")
+        .eq("opportunity_id", wo.opportunity_id)
+        .is("work_order_id", null)
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle();
+      if (adoptable) {
+        const adoptId = (adoptable as { id: string }).id;
+        const { error } = await sb
+          .from("commercial_jobs")
+          .update({ work_order_id: workOrderId, updated_at: new Date().toISOString() })
+          .eq("id", adoptId);
+        if (error) return { ok: false, error: error.message };
+        await logUpdate("commercial_jobs", adoptId, { work_order_id: null }, { work_order_id: workOrderId }, actorUserId);
+        return { ok: true, jobId: adoptId, created: false };
+      }
+    }
+
     const [oppRes, acctRes] = await Promise.all([
       wo.opportunity_id
         ? sb.from("commercial_opportunities").select("title, client_name, project_number").eq("id", wo.opportunity_id).maybeSingle()

@@ -573,7 +573,7 @@ function DayPanel({
               <li key={`${c.employee_id}-${c.job_id}-${i}`}>
                 <button onClick={() => onOpenPerson(c.employee_id, c.name)} className="w-full text-left border border-ppp-charcoal-100 rounded-lg p-3 hover:border-cc-brand-300 hover:bg-cc-brand-50/30 transition-colors">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-semibold text-ppp-charcoal truncate">{c.name}{offNames.has(c.name) && <span className="ml-1.5 align-middle text-[9px] font-bold uppercase text-amber-700 bg-amber-50 rounded px-1 py-0.5">also off</span>}</span>
+                    <span className="text-[13px] font-semibold text-ppp-charcoal truncate min-w-0">{c.name}{offNames.has(c.name) && <span className="ml-1.5 align-middle text-[9px] font-bold uppercase text-amber-700 bg-amber-50 rounded px-1 py-0.5">also off</span>}</span>
                     <span className="text-[11px] text-ppp-charcoal-500 shrink-0">{c.start ? `${fmtTime12(c.start)}${c.end ? ` – ${fmtTime12(c.end)}` : ""}` : `${c.hours}h`}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
@@ -593,7 +593,7 @@ function DayPanel({
             <ul className="space-y-1.5">
               {off.map((o) => (
                 <li key={o.employee_id} className="flex items-center justify-between gap-2 text-[12.5px]">
-                  <span className="text-ppp-charcoal-800 truncate"><span className="font-semibold">{o.name}</span> <span className="text-amber-700">· {o.type.replace("_", " ").toLowerCase()}</span></span>
+                  <span className="text-ppp-charcoal-800 truncate min-w-0"><span className="font-semibold">{o.name}</span> <span className="text-amber-700">· {o.type.replace("_", " ").toLowerCase()}</span></span>
                   <button onClick={() => onRemoveAbsence(o.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 shrink-0 min-h-[32px] px-1.5 disabled:opacity-50">Clear</button>
                 </li>
               ))}

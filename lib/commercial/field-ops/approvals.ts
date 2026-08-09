@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { logUpdate } from "@/lib/commercial/audit-log";
 
 /**
@@ -34,30 +35,45 @@ export type ApprovalRow = {
 
 export async function listPendingApprovals(): Promise<ApprovalRow[]> {
   const sb = commercialDb();
-  const { data: eRows } = await sb
-    .from("commercial_time_entries")
-    .select("id, employee_id, job_id, work_date, actual_hours, status, source, questioned_reason")
-    .in("status", ["submitted", "questioned"])
-    .order("work_date", { ascending: false });
-  const entries = (eRows ?? []) as {
+  // Paginated — a busy pre-payroll backlog of pending entries can exceed
+  // Supabase's silent 1000-row cap, which would drop the OLDEST entries so they
+  // never render and can never be approved → underpaid crew (audit round 3).
+  const entries = await paginateAll<{
     id: string; employee_id: string; job_id: string; work_date: string; actual_hours: number; status: string; source: string; questioned_reason: string | null;
-  }[];
+  }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("id, employee_id, job_id, work_date, actual_hours, status, source, questioned_reason")
+      .in("status", ["submitted", "questioned"])
+      .order("work_date", { ascending: false })
+  );
   if (entries.length === 0) return [];
 
   const empIds = [...new Set(entries.map((e) => e.employee_id))];
   const jobIds = [...new Set(entries.map((e) => e.job_id))];
   const dates = [...new Set(entries.map((e) => e.work_date))];
 
-  const [empRes, jobRes, assignRes] = await Promise.all([
+  const [empRes, jobRes, assigns] = await Promise.all([
     sb.from("commercial_employees").select("id, display_name").in("id", empIds),
     sb.from("commercial_jobs").select("id, name").in("id", jobIds),
-    sb.from("commercial_assignments").select("employee_id, job_id, work_date, scheduled_hours").in("work_date", dates).neq("status", "cancelled"),
+    // Scoped to these employees + paginated so the scheduled-hours baseline is
+    // complete (a wide crew × many dates otherwise trips the 1000-row cap and
+    // mislabels genuine zero-variance rows as "no schedule").
+    paginateAll<{ employee_id: string; job_id: string; work_date: string; scheduled_hours: number }>(() =>
+      sb
+        .from("commercial_assignments")
+        .select("employee_id, job_id, work_date, scheduled_hours")
+        .in("work_date", dates)
+        .in("employee_id", empIds)
+        .neq("status", "cancelled")
+        .order("work_date")
+    ),
   ]);
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
   const jobName = new Map((jobRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { name: string }).name]));
   const schedKey = (e: string, j: string, d: string) => `${e}|${j}|${d}`;
   const sched = new Map<string, number>();
-  for (const a of (assignRes.data ?? []) as { employee_id: string; job_id: string; work_date: string; scheduled_hours: number }[]) {
+  for (const a of assigns) {
     sched.set(schedKey(a.employee_id, a.job_id, a.work_date), a.scheduled_hours);
   }
 

@@ -293,9 +293,6 @@ export async function upsertAssignment(input: {
   if (start && end && hoursBetween(start, end) == null) {
     return { ok: false, error: "End time must be after start time." };
   }
-  const derived = start && end ? hoursBetween(start, end) : null;
-  let hours = derived ?? (input.hours != null && Number.isFinite(input.hours) ? input.hours : 8);
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) hours = 8;
   const note = (input.note ?? "").trim().slice(0, 500) || null;
 
   const { data: existing } = await sb
@@ -305,11 +302,25 @@ export async function upsertAssignment(input: {
     .eq("employee_id", input.employee_id)
     .eq("work_date", input.work_date)
     .maybeSingle();
+  const ex = existing as { scheduled_start_time: string | null; scheduled_end_time: string | null; scheduled_hours: number } | null;
+
+  // Coalesce BLANK time inputs to the existing row's values on an edit — so
+  // re-submitting the (always-blank) Schedule form just to change a note doesn't
+  // wipe the shift's times and snap 8.5h → 8h (audit round 3). A fresh insert has
+  // nothing to preserve, so blanks fall through to the 8h default.
+  const finalStart = start ?? ex?.scheduled_start_time ?? null;
+  const finalEnd = end ?? ex?.scheduled_end_time ?? null;
+  let hours: number;
+  const derived = finalStart && finalEnd ? hoursBetween(finalStart, finalEnd) : null;
+  if (derived != null) hours = derived;
+  else if (input.hours != null && Number.isFinite(input.hours) && input.hours > 0 && input.hours <= 24) hours = input.hours;
+  else if (ex) hours = ex.scheduled_hours; // preserve the existing hours on an edit
+  else hours = 8;
 
   const row = {
     scheduled_hours: hours,
-    scheduled_start_time: start,
-    scheduled_end_time: end,
+    scheduled_start_time: finalStart,
+    scheduled_end_time: finalEnd,
     note,
     status: "planned" as const,
     updated_at: new Date().toISOString(),

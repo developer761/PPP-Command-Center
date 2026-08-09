@@ -184,6 +184,25 @@ export async function updateEmployee(
   if (error) return { ok: false, error: error.message };
   const employee = data as CommercialEmployee;
   await logUpdate("commercial_employees", id, before, employee, actorUserId);
+
+  // Opting a crew member out (or deactivating/firing them) must cancel any
+  // clock-in nudges already queued at Resend for their upcoming shifts —
+  // otherwise the opted-out/fired worker still gets pinged (audit round 3).
+  const optedOut = patch.schedule_email_opt_out === true && !before.schedule_email_opt_out;
+  const deactivated = patch.active === false && before.active;
+  if (optedOut || deactivated) {
+    const { todayEtIso } = await import("./schedule");
+    const { resetClockReminder } = await import("./schedule-email-send");
+    const { data: logs } = await sb
+      .from("commercial_schedule_email_log")
+      .select("work_date")
+      .eq("employee_id", id)
+      .eq("kind", "clock_reminder")
+      .gte("work_date", todayEtIso());
+    for (const l of (logs ?? []) as { work_date: string }[]) {
+      await resetClockReminder(id, String(l.work_date).slice(0, 10)).catch(() => undefined);
+    }
+  }
   return { ok: true, employee };
 }
 
