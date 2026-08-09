@@ -188,10 +188,17 @@ export async function resetClockReminder(employeeId: string, workDate: string): 
     .maybeSingle();
   const row = data as { id: string; resend_message_id: string | null } | null;
   if (!row) return;
+  // Only clear the log row (which would let a reschedule queue a NEW nudge) once
+  // we've CONFIRMED the old scheduled send is cancelled. If the cancel fails — or
+  // the row has no cancellable Resend id but a send was accepted — keep the row so
+  // the painter doesn't get TWO nudges (the stale one + a fresh one); a later
+  // resync retries the cancel (audit round 10).
+  let safeToClear = false;
   if (row.resend_message_id) {
     const { cancelScheduledEmail } = await import("@/lib/email/resend");
-    await cancelScheduledEmail(row.resend_message_id, "commercial");
+    safeToClear = await cancelScheduledEmail(row.resend_message_id, "commercial");
   }
+  if (!safeToClear) return;
   await sb.from("commercial_schedule_email_log").delete().eq("id", row.id);
 }
 

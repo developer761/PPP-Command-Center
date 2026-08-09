@@ -86,15 +86,21 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
   const capKeys = new Set<string>();
   if (dates.length > 0) {
     const sorted = [...dates].sort();
-    const { data: capRows } = await sb
-      .from("commercial_time_punches")
-      .select("employee_id, job_id, clock_in_at")
-      .in("employee_id", empIds)
-      .ilike("note", "%[auto-closed%")
-      .gte("clock_in_at", `${addDaysIso(sorted[0], -1)}T00:00:00Z`)
-      .lte("clock_in_at", `${addDaysIso(sorted[sorted.length - 1], 1)}T23:59:59Z`);
+    // Paginated like the sibling queries above — a large window could otherwise
+    // drop capped punches past the 1000-row cap, letting a capped guess slip into
+    // zero-variance bulk-approve (audit round 10).
+    const capRows = await paginateAll<{ employee_id: string; job_id: string; clock_in_at: string }>(() =>
+      sb
+        .from("commercial_time_punches")
+        .select("employee_id, job_id, clock_in_at")
+        .in("employee_id", empIds)
+        .ilike("note", "%[auto-closed%")
+        .gte("clock_in_at", `${addDaysIso(sorted[0], -1)}T00:00:00Z`)
+        .lte("clock_in_at", `${addDaysIso(sorted[sorted.length - 1], 1)}T23:59:59Z`)
+        .order("clock_in_at")
+    );
     const etDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-    for (const p of (capRows ?? []) as { employee_id: string; job_id: string; clock_in_at: string }[]) {
+    for (const p of capRows) {
       capKeys.add(schedKey(p.employee_id, p.job_id, etDay(p.clock_in_at)));
     }
   }
