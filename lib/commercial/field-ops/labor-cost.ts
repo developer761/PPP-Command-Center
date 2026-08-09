@@ -115,9 +115,20 @@ export async function fieldOpsLaborByOpp(oppIds: string[]): Promise<Map<string, 
   );
   if (entries.length === 0) return out;
 
+  // W-2 ONLY — this "Crew labor" cost is the auto counterpart to the MANUAL
+  // "Subcontract labor" purchase category (1099/subs). A sub/temp who clocks via
+  // a magic link would otherwise be double-counted (here AND in that purchase
+  // bucket) and diverge from payroll, which is also W-2-only (audit round 8).
+  const { data: w2Rows } = await sb
+    .from("commercial_employees")
+    .select("id, worker_type")
+    .in("id", [...new Set(entries.map((e) => e.employee_id))]);
+  const w2 = new Set(((w2Rows ?? []) as { id: string; worker_type: string }[]).filter((r) => r.worker_type === "w2").map((r) => r.id));
+
   const rates = await loadRates(entries.map((e) => e.employee_id));
 
   for (const e of entries) {
+    if (!w2.has(e.employee_id)) continue;
     const oppId = oppByJob.get(e.job_id);
     if (!oppId) continue;
     const hours = Number(e.actual_hours ?? 0);
@@ -185,10 +196,18 @@ export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLa
   );
   if (entries.length === 0) return [];
 
+  // W-2 only, matching fieldOpsLaborByOpp + payroll (audit round 8).
+  const { data: w2Rows } = await sb
+    .from("commercial_employees")
+    .select("id, worker_type")
+    .in("id", [...new Set(entries.map((e) => e.employee_id))]);
+  const w2 = new Set(((w2Rows ?? []) as { id: string; worker_type: string }[]).filter((r) => r.worker_type === "w2").map((r) => r.id));
+
   const rates = await loadRates(entries.map((e) => e.employee_id));
   const today = etTodayIso();
   const byEmp = new Map<string, CrewLaborWorker>();
   for (const e of entries) {
+    if (!w2.has(e.employee_id)) continue;
     const hours = Number(e.actual_hours ?? 0);
     if (hours <= 0) continue;
     const workDate = String(e.work_date).slice(0, 10);

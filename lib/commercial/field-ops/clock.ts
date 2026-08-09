@@ -229,6 +229,13 @@ async function syncTimeEntry(
 
 /** Never attribute more than a long shift to a forgotten punch. */
 const STALE_PUNCH_CAP_HOURS = 12;
+// The daily cron only force-closes punches open LONGER than this — set above the
+// longest plausible real shift so a genuine after-hours / overnight shift (e.g.
+// 6pm→8:30am) is still OPEN at the morning cron and completes via the real
+// clock-out (which records true hours + flags >12h), instead of being clobbered
+// with a capped guess. A punch open past this is almost certainly forgotten
+// (audit round 8). clockIn's own stale guard still handles a re-clock-in at >12h.
+const CRON_STALE_HOURS = 18;
 
 /**
  * Force-close a punch left open (missed clock-out). Without this, the worked day
@@ -278,7 +285,7 @@ async function forceCloseStalePunch(
  */
 export async function closeStalePunches(): Promise<{ closed: number }> {
   const sb = commercialDb();
-  const cutoff = new Date(Date.now() - STALE_PUNCH_CAP_HOURS * 3_600_000).toISOString();
+  const cutoff = new Date(Date.now() - CRON_STALE_HOURS * 3_600_000).toISOString();
   const { data: rows } = await sb
     .from("commercial_time_punches")
     .select("id, employee_id, job_id, clock_in_at, note")

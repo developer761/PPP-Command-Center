@@ -220,6 +220,19 @@ export async function createJob(
     if (/commercial_jobs_status_check|violates check constraint/i.test(error.message)) {
       return { ok: false, error: "That status isn't enabled on the database yet — apply migration 118." };
     }
+    // Raced past the dupOpp pre-check — the deal already has a live job (unique
+    // index, migration 120). Return that winner instead of erroring, so the race
+    // resolves to one deterministic job (audit round 8).
+    if (input.opportunity_id && /duplicate key|unique/i.test(error.message)) {
+      const { data: raced } = await sb
+        .from("commercial_jobs")
+        .select(COLS)
+        .eq("opportunity_id", input.opportunity_id)
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle();
+      if (raced) return { ok: true, job: raced as CommercialJob };
+    }
     const msg = /duplicate key|unique/i.test(error.message) ? `Job code "${code}" is already in use.` : error.message;
     return { ok: false, error: msg };
   }
@@ -428,6 +441,24 @@ export async function ensureJobForWorkOrder(
       }
       if (error && !/duplicate key|unique/i.test(error.message)) {
         return { ok: false, error: error.message };
+      }
+    }
+    // Raced with a concurrent createJob for the same deal (unique index, migration
+    // 120) — adopt the job that won + link it, instead of failing (audit round 8).
+    if (wo.opportunity_id) {
+      const { data: raced } = await sb
+        .from("commercial_jobs")
+        .select("id, work_order_id")
+        .eq("opportunity_id", wo.opportunity_id)
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle();
+      if (raced) {
+        const r = raced as { id: string; work_order_id: string | null };
+        if (!r.work_order_id) {
+          await sb.from("commercial_jobs").update({ work_order_id: workOrderId, updated_at: new Date().toISOString() }).eq("id", r.id);
+        }
+        return { ok: true, jobId: r.id, created: false };
       }
     }
     return { ok: false, error: "Could not create a schedulable work order (code conflict)." };
