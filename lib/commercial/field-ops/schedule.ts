@@ -290,7 +290,6 @@ export async function upsertAssignment(input: {
   const sb = commercialDb();
   const start = (input.start_time ?? "").trim() || null;
   const end = (input.end_time ?? "").trim() || null;
-  const note = (input.note ?? "").trim().slice(0, 500) || null;
 
   const { data: existing } = await sb
     .from("commercial_assignments")
@@ -299,7 +298,11 @@ export async function upsertAssignment(input: {
     .eq("employee_id", input.employee_id)
     .eq("work_date", input.work_date)
     .maybeSingle();
-  const ex = existing as { scheduled_start_time: string | null; scheduled_end_time: string | null; scheduled_hours: number } | null;
+  const ex = existing as { scheduled_start_time: string | null; scheduled_end_time: string | null; scheduled_hours: number; note: string | null } | null;
+  // Coalesce a blank note to the existing one too (symmetric with the times
+  // below) — re-submitting the always-blank Schedule form to change only a time
+  // must not wipe the crew's gate code / parking instructions (audit round 5).
+  const note = ((input.note ?? "").trim().slice(0, 500) || null) ?? ex?.note ?? null;
 
   // Coalesce BLANK time inputs to the existing row's values on an edit — so
   // re-submitting the (always-blank) Schedule form just to change a note doesn't

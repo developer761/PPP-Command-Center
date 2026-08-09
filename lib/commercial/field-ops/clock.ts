@@ -141,14 +141,19 @@ async function syncTimeEntry(
   const sb = commercialDb();
   const { data: punchRows } = await sb
     .from("commercial_time_punches")
-    .select("clock_in_at, clock_out_at, assignment_id")
+    .select("clock_in_at, clock_out_at, assignment_id, note")
     .eq("employee_id", employeeId)
     .eq("job_id", jobId)
     .gte("clock_in_at", `${addDaysIso(dateIso, -1)}T00:00:00Z`)
     .lte("clock_in_at", `${addDaysIso(dateIso, 1)}T23:59:59Z`);
-  const punches = ((punchRows ?? []) as { clock_in_at: string; clock_out_at: string | null; assignment_id: string | null }[]).filter(
+  const punches = ((punchRows ?? []) as { clock_in_at: string; clock_out_at: string | null; assignment_id: string | null; note: string | null }[]).filter(
     (p) => etDate(p.clock_in_at) === dateIso
   );
+  // A DURABLE review flag: if any contributing punch was force-closed (capped
+  // guess), this day can never auto-approve — even on a later same-day clock-out
+  // that passes no forceReview. Derived from the persisted punch note so the
+  // requirement survives recompute (audit round 5).
+  const hasCappedPunch = punches.some((p) => (p.note ?? "").includes("[auto-closed"));
   let total = 0;
   let assignmentId: string | null = null;
   for (const p of punches) {
@@ -173,7 +178,7 @@ async function syncTimeEntry(
   // A force-closed (missed clock-out) entry is a CAPPED GUESS, never a real
   // clock-out — it must always land in Approvals for a manager, never auto-approve.
   const withinThreshold =
-    !opts?.forceReview && scheduled != null && Math.abs(rounded - scheduled) <= AUTO_APPROVE_THRESHOLD_HOURS;
+    !opts?.forceReview && !hasCappedPunch && scheduled != null && Math.abs(rounded - scheduled) <= AUTO_APPROVE_THRESHOLD_HOURS;
 
   const { data: existing } = await sb
     .from("commercial_time_entries")

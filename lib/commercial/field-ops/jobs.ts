@@ -525,11 +525,14 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
       .eq("status", "sent")
       .maybeSingle();
     if (woSent) {
+      // Match the canonical reopen (changeWorkOrderStatus → draft): clear sent_at
+      // AND the frozen snapshot, else the deal's WO tool shows a stale "Last sent"
+      // line + wrong header date on a WO that is no longer sent (audit round 5).
       await sb
         .from("commercial_work_orders")
-        .update({ status: "draft", updated_at: new Date().toISOString() })
+        .update({ status: "draft", sent_at: null, snapshot_document_id: null, updated_at: new Date().toISOString() })
         .eq("id", before.work_order_id);
-      await logUpdate("commercial_work_orders", before.work_order_id, { status: "sent" }, { status: "draft" }, actorUserId);
+      await logUpdate("commercial_work_orders", before.work_order_id, { status: "sent" }, { status: "draft", sent_at: null }, actorUserId);
     }
   }
   await logDelete("commercial_jobs", id, before, actorUserId);

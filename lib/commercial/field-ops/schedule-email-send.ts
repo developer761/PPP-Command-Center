@@ -320,6 +320,18 @@ async function scheduleClockReminder(
   if (!startUtc) return;
   const fireAt = new Date(Date.parse(startUtc) - CLOCK_LEAD_MIN * 60_000).toISOString();
   if (Date.parse(fireAt) <= Date.now()) return; // too late to nudge
+  // Already punched in/out that ET day? Don't nudge a painter who's already
+  // clocked in — this survives a same-day schedule re-save that would otherwise
+  // re-arm the cancelled nudge (audit round 5). Punch-existence, not the log row.
+  const sbChk = commercialDb();
+  const { data: pRows } = await sbChk
+    .from("commercial_time_punches")
+    .select("clock_in_at")
+    .eq("employee_id", employeeId)
+    .gte("clock_in_at", `${addDaysIso(workDate, -1)}T00:00:00Z`)
+    .lte("clock_in_at", `${addDaysIso(workDate, 1)}T23:59:59Z`);
+  const etDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  if (((pRows ?? []) as { clock_in_at: string }[]).some((p) => etDay(p.clock_in_at) === workDate)) return;
   const claimId = await claimSend(employeeId, workDate, "clock_reminder");
   if (!claimId) return; // already scheduled
   const es = emp.preferred_language === "es";
