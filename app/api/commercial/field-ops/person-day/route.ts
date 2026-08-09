@@ -44,6 +44,7 @@ export async function GET(request: Request) {
       assignment_id: a.assignment_id,
       job_name: a.job_name,
       job_code: a.job_code,
+      job_status: a.job_status,
       prevailing_wage: a.prevailing_wage,
       site: a.site,
       start_time: a.start_time,

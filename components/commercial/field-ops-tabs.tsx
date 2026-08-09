@@ -11,8 +11,10 @@ const TABS = [
   { label: "Overview", href: "/commercial/field-ops/overview" },
   { label: "Calendar", href: "/commercial/field-ops/calendar" },
   { label: "Work Orders", href: "/commercial/field-ops/jobs" },
+  { label: "Status", href: "/commercial/field-ops/status" },
   { label: "Crew", href: "/commercial/field-ops/employees" },
   { label: "Approvals", href: "/commercial/field-ops/approvals" },
+  { label: "Hours Log", href: "/commercial/field-ops/hours" },
   { label: "Payroll", href: "/commercial/field-ops/payroll" },
   { label: "Clock Station", href: "/commercial/field-ops/clock-station" },
 ];

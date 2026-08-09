@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
+import type { JobStatus } from "./job-constants";
 
 /**
  * R10.7 Scheduling core — powers the interactive Calendar (the one scheduling
@@ -91,6 +92,7 @@ export type DayCrew = {
   hours: number;
   job_id: string;
   job_name: string;
+  job_status: JobStatus;
   prevailing_wage: boolean;
 };
 
@@ -135,12 +137,12 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
 
   const jobIds = [...new Set(assignments.map((a) => a.job_id))];
   const empIds = [...new Set(assignments.map((a) => a.employee_id))];
-  const jobsById = new Map<string, { id: string; name: string; prevailing_wage: boolean }>();
+  const jobsById = new Map<string, { id: string; name: string; status: JobStatus; prevailing_wage: boolean }>();
   const empName = new Map<string, string>();
   await Promise.all([
     jobIds.length > 0
-      ? sb.from("commercial_jobs").select("id, name, prevailing_wage").in("id", jobIds).is("deleted_at", null).then(({ data }) => {
-          for (const j of (data ?? []) as { id: string; name: string; prevailing_wage: boolean }[]) jobsById.set(j.id, j);
+      ? sb.from("commercial_jobs").select("id, name, status, prevailing_wage").in("id", jobIds).is("deleted_at", null).then(({ data }) => {
+          for (const j of (data ?? []) as { id: string; name: string; status: JobStatus; prevailing_wage: boolean }[]) jobsById.set(j.id, j);
         })
       : Promise.resolve(),
     empIds.length > 0
@@ -166,6 +168,7 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
         hours: a.scheduled_hours,
         job_id: a.job_id,
         job_name: meta.name,
+        job_status: meta.status,
         prevailing_wage: meta.prevailing_wage,
       });
       emps.add(a.employee_id);
@@ -201,6 +204,7 @@ export type DayAssignment = {
   job_id: string;
   job_name: string;
   job_code: string;
+  job_status: JobStatus;
   prevailing_wage: boolean;
   site: string | null;
   scheduled_hours: number;
@@ -228,12 +232,12 @@ export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> 
   const jobIds = [...new Set(assigns.map((a) => a.job_id))];
   const [empRes, jobRes] = await Promise.all([
     sb.from("commercial_employees").select("id, display_name").in("id", empIds),
-    sb.from("commercial_jobs").select("id, name, job_code, prevailing_wage, site_address, site_city").in("id", jobIds).is("deleted_at", null),
+    sb.from("commercial_jobs").select("id, name, job_code, status, prevailing_wage, site_address, site_city").in("id", jobIds).is("deleted_at", null),
   ]);
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
   const jobsById = new Map(
     (jobRes.data ?? []).map((r) => {
-      const j = r as { id: string; name: string; job_code: string; prevailing_wage: boolean; site_address: string | null; site_city: string | null };
+      const j = r as { id: string; name: string; job_code: string; status: JobStatus; prevailing_wage: boolean; site_address: string | null; site_city: string | null };
       return [j.id, j];
     })
   );
@@ -249,6 +253,7 @@ export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> 
         job_id: a.job_id,
         job_name: j?.name ?? "(work order)",
         job_code: j?.job_code ?? "",
+        job_status: (j?.status ?? "ready_to_schedule") as JobStatus,
         prevailing_wage: j?.prevailing_wage ?? false,
         site: [j?.site_address, j?.site_city].filter(Boolean).join(", ") || null,
         scheduled_hours: a.scheduled_hours,

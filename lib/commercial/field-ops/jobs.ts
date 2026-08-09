@@ -13,34 +13,17 @@ import { todayEtIso } from "./schedule";
  * division_tag. job_code is required at creation (reportability discipline).
  */
 
-export const JOB_STATUSES = [
-  "estimating",
-  "ready_to_schedule",
-  "scheduled",
-  "in_progress",
-  "complete",
-  "closed",
-  "on_hold",
-] as const;
-export type JobStatus = (typeof JOB_STATUSES)[number];
-
-export function jobStatusLabel(s: JobStatus): string {
-  return {
-    estimating: "Estimating",
-    ready_to_schedule: "Ready to schedule",
-    scheduled: "Scheduled",
-    in_progress: "In progress",
-    complete: "Complete",
-    closed: "Closed",
-    on_hold: "On hold",
-  }[s];
-}
-
-export const DIVISION_TAGS = ["commercial", "ppp", "other"] as const;
-export type DivisionTag = (typeof DIVISION_TAGS)[number];
-export function divisionLabel(d: string | null): string {
-  return d === "ppp" ? "PPP" : d === "other" ? "Other" : d === "commercial" ? "Commercial" : "—";
-}
+// Pure enums/labels live in job-constants.ts (client-safe); re-export for the
+// many server callers that import them from here.
+export {
+  JOB_STATUSES,
+  jobStatusLabel,
+  DIVISION_TAGS,
+  divisionLabel,
+  type JobStatus,
+  type DivisionTag,
+} from "./job-constants";
+import type { JobStatus, DivisionTag } from "./job-constants";
 
 export type CommercialJob = {
   id: string;
@@ -74,6 +57,7 @@ const OPEN_STATUSES: JobStatus[] = [
   "ready_to_schedule",
   "scheduled",
   "in_progress",
+  "almost_done",
   "on_hold",
 ];
 
@@ -93,11 +77,17 @@ export async function listJobs(opts?: { includeClosed?: boolean }): Promise<Comm
  *  platform link a real WO has. Picking one ties the WO to that account + deal. */
 export async function listDealOptionsForWorkOrder(): Promise<{ value: string; label: string; account_id: string }[]> {
   const sb = commercialDb();
+  // Only WON + ACTIVE deals belong here — what a crew could actually be
+  // scheduled on. That's a freshly-won deal (pre_sale_closed + won) OR one in
+  // delivery (pre_construction / in_progress / billing). Excludes pre-sale bids
+  // (not won yet), lost deals, finished jobs (post_sale_closed), and — via the
+  // guards below — deleted + archived. Karan 2026-08: "current is won/active."
   const { data: opps } = await sb
     .from("commercial_opportunities")
     .select("id, title, client_name, account_id")
     .is("deleted_at", null)
     .is("archived_at", null) // archived deals are hidden from the pipeline - hide them here too
+    .or("and(status.eq.pre_sale_closed,sub_status.eq.won),status.in.(pre_construction,in_progress,billing)")
     .order("updated_at", { ascending: false })
     .limit(300);
   const rows = (opps ?? []) as { id: string; title: string | null; client_name: string | null; account_id: string }[];
@@ -207,7 +197,40 @@ export async function createJob(
   }
   const job = data as CommercialJob;
   await logInsert("commercial_jobs", job.id, job, input.actor_user_id);
+  // Connected to a deal but not already tied to a dashboard WO? Mirror it up so
+  // it also shows on that deal's Work Orders tab (reverse of the send-time twin).
+  if (job.opportunity_id && !job.work_order_id) {
+    await ensureWorkOrderForJob(job.id, input.actor_user_id);
+  }
   return { ok: true, job };
+}
+
+/**
+ * Reverse of ensureJobForWorkOrder: when a Field Ops work order is connected to
+ * a deal, make sure a dashboard Work Order (commercial_work_orders) exists for
+ * that deal and link them — so the same work order shows on the deal's Work
+ * Orders tab too, not just in Field Ops (Karan 2026-08: "if I connect a deal
+ * here it should also go in the Work Order tab on the dashboard"). A one-off job
+ * (no deal) creates nothing and stays only in Field Ops. Idempotent + never
+ * throws; dynamic import avoids a static cycle with work-orders/db.ts.
+ */
+export async function ensureWorkOrderForJob(jobId: string, actorUserId: string): Promise<void> {
+  try {
+    const job = await getJob(jobId);
+    if (!job) return;
+    if (!job.opportunity_id) return; // one-off — stays in Field Ops only
+    if (job.work_order_id) return; // already linked to a dashboard WO
+    const { createWorkOrder } = await import("@/lib/commercial/work-orders/db");
+    const res = await createWorkOrder({ opportunity_id: job.opportunity_id, created_by_user_id: actorUserId });
+    if (!res.ok) return;
+    const sb = commercialDb();
+    await sb
+      .from("commercial_jobs")
+      .update({ work_order_id: res.value.id, updated_at: new Date().toISOString() })
+      .eq("id", jobId);
+  } catch (err) {
+    console.warn("[field-ops] ensureWorkOrderForJob failed:", err);
+  }
 }
 
 export type UpdateJobInput = Partial<Omit<CreateJobInput, "actor_user_id" | "job_code">> & { job_code?: string };
@@ -373,6 +396,30 @@ export async function ensureJobsForSentWorkOrders(actorUserId: string): Promise<
     return { created, failed };
   } catch {
     return { created: 0, failed: 0 };
+  }
+}
+
+/**
+ * Reverse backfill: every LIVE deal-connected job with no dashboard WO yet gets
+ * one (so it surfaces on the deal's Work Orders tab). Run on the Work Orders /
+ * Status load alongside ensureJobsForSentWorkOrders. Cheap + idempotent — a job
+ * that already has work_order_id is skipped by ensureWorkOrderForJob.
+ */
+export async function ensureWorkOrdersForConnectedJobs(actorUserId: string): Promise<void> {
+  try {
+    const sb = commercialDb();
+    const { data: rows } = await sb
+      .from("commercial_jobs")
+      .select("id")
+      .not("opportunity_id", "is", null)
+      .is("work_order_id", null)
+      .is("deleted_at", null)
+      .limit(200);
+    for (const r of (rows ?? []) as { id: string }[]) {
+      await ensureWorkOrderForJob(r.id, actorUserId);
+    }
+  } catch (err) {
+    console.warn("[field-ops] ensureWorkOrdersForConnectedJobs failed:", err);
   }
 }
 

@@ -16,6 +16,37 @@ import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import type { MonthDay, DayCrew, DayOff } from "@/lib/commercial/field-ops/schedule";
 import { ABSENCE_TYPES } from "@/lib/commercial/field-ops/absence-constants";
+import { jobStatusLabel, type JobStatus } from "@/lib/commercial/field-ops/job-constants";
+
+// A work order's status, shown next to the crew on the calendar (Karan 2026-08).
+// Dot = the dense month/agenda chips; pill = the readable day roster + slide-out.
+const STATUS_DOT: Record<string, string> = {
+  estimating: "bg-ppp-charcoal-300",
+  ready_to_schedule: "bg-cc-brand-400",
+  scheduled: "bg-cc-brand-600",
+  in_progress: "bg-amber-500",
+  almost_done: "bg-teal-500",
+  complete: "bg-emerald-500",
+  closed: "bg-ppp-charcoal-400",
+  on_hold: "bg-rose-500",
+};
+const STATUS_BADGE: Record<string, string> = {
+  estimating: "bg-ppp-charcoal-50 text-ppp-charcoal-600",
+  ready_to_schedule: "bg-cc-brand-50 text-cc-brand-700",
+  scheduled: "bg-cc-brand-50 text-cc-brand-800",
+  in_progress: "bg-amber-50 text-amber-700",
+  almost_done: "bg-teal-50 text-teal-700",
+  complete: "bg-emerald-50 text-emerald-700",
+  closed: "bg-ppp-charcoal-100 text-ppp-charcoal-600",
+  on_hold: "bg-rose-50 text-rose-700",
+};
+function StatusPill({ status }: { status: JobStatus }) {
+  return (
+    <span className={`shrink-0 text-[10px] font-semibold rounded px-1.5 py-0.5 ${STATUS_BADGE[status] ?? "bg-ppp-charcoal-50 text-ppp-charcoal-600"}`}>
+      {jobStatusLabel(status)}
+    </span>
+  );
+}
 
 type EmployeeOpt = { id: string; display_name: string; email: string | null };
 type JobOpt = { id: string; name: string; job_code: string; customer_name: string | null; site_city: string | null };
@@ -28,6 +59,7 @@ type PersonDetail = {
     assignment_id: string;
     job_name: string;
     job_code: string;
+    job_status: JobStatus;
     prevailing_wage: boolean;
     site: string | null;
     start_time: string | null;
@@ -404,9 +436,11 @@ export function FieldOpsCalendar({
                   <button
                     key={`${c.employee_id}-${c.job_id}-${i}`}
                     onClick={(e) => { e.stopPropagation(); openPerson(c.employee_id, c.name, day.date); }}
-                    className="w-full text-left text-[10px] font-medium rounded px-1 py-0.5 truncate bg-cc-brand-50 text-cc-brand-800 hover:bg-cc-brand-100"
+                    title={`${c.name} · ${c.job_name} · ${jobStatusLabel(c.job_status)}`}
+                    className="w-full flex items-center gap-1 text-left text-[10px] font-medium rounded px-1 py-0.5 bg-cc-brand-50 text-cc-brand-800 hover:bg-cc-brand-100"
                   >
-                    {c.name}{c.start ? ` · ${fmtTimeShort(c.start)}` : ""}{c.prevailing_wage ? " · PW" : ""}
+                    <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[c.job_status] ?? "bg-ppp-charcoal-300"}`} />
+                    <span className="truncate">{c.name}{c.start ? ` · ${fmtTimeShort(c.start)}` : ""}{c.prevailing_wage ? " · PW" : ""}</span>
                   </button>
                 ))}
                 {day.crew.length > CHIP_CAP && <div className="text-[9.5px] text-ppp-charcoal-400 px-1">+{day.crew.length - CHIP_CAP} more</div>}
@@ -433,7 +467,7 @@ export function FieldOpsCalendar({
             </div>
             {day.crew.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
-                {day.crew.map((c, i) => <span key={`${c.employee_id}-${i}`} className="text-[10.5px] font-medium rounded px-1.5 py-0.5 bg-cc-brand-50 text-cc-brand-800">{c.name}{c.start ? ` ${fmtTimeShort(c.start)}` : ""}</span>)}
+                {day.crew.map((c, i) => <span key={`${c.employee_id}-${i}`} className="inline-flex items-center gap-1 text-[10.5px] font-medium rounded px-1.5 py-0.5 bg-cc-brand-50 text-cc-brand-800"><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[c.job_status] ?? "bg-ppp-charcoal-300"}`} />{c.name}{c.start ? ` ${fmtTimeShort(c.start)}` : ""}</span>)}
               </div>
             )}
             {day.off.length > 0 && (
@@ -542,7 +576,10 @@ function DayPanel({
                     <span className="text-[13px] font-semibold text-ppp-charcoal truncate">{c.name}{offNames.has(c.name) && <span className="ml-1.5 align-middle text-[9px] font-bold uppercase text-amber-700 bg-amber-50 rounded px-1 py-0.5">also off</span>}</span>
                     <span className="text-[11px] text-ppp-charcoal-500 shrink-0">{c.start ? `${fmtTime12(c.start)}${c.end ? ` – ${fmtTime12(c.end)}` : ""}` : `${c.hours}h`}</span>
                   </div>
-                  <div className="text-[11.5px] text-ppp-charcoal-600 truncate mt-0.5">{c.job_name}{c.prevailing_wage && <span className="ml-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">PW</span>}</div>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[11.5px] text-ppp-charcoal-600 truncate min-w-0">{c.job_name}{c.prevailing_wage && <span className="ml-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">PW</span>}</span>
+                    <StatusPill status={c.job_status} />
+                  </div>
                 </button>
               </li>
             ))}
@@ -699,7 +736,10 @@ function PersonPanel({
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{s.job_name}{s.prevailing_wage && <span className="ml-1 align-middle inline-flex items-center rounded px-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy">PW</span>}</div>
-                    <div className="text-[11px] font-mono text-ppp-charcoal-500 truncate">{s.job_code}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[11px] font-mono text-ppp-charcoal-500 truncate">{s.job_code}</span>
+                      <StatusPill status={s.job_status} />
+                    </div>
                   </div>
                   <button onClick={() => { if (window.confirm("Remove this shift? They'll be unscheduled and their clock-in reminder cancelled.")) onRemove(s.assignment_id); }} disabled={saving} className="inline-flex items-center text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-50 shrink-0 min-h-[44px] px-2 touch-manipulation">Remove</button>
                 </div>
