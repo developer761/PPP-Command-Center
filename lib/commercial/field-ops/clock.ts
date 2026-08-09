@@ -303,14 +303,15 @@ export async function clockIn(input: {
     .maybeSingle();
   if (open) {
     const openPunch = open as { id: string; job_id: string; clock_in_at: string; note: string | null };
-    const todayEt = etDate(new Date().toISOString());
-    if (etDate(openPunch.clock_in_at) === todayEt) {
-      // A genuine open punch from TODAY — keep the hard block.
+    // Decide on ELAPSED SPAN, not the ET calendar day — a legit cross-midnight
+    // shift (clocked in 11:50pm, still on it at 12:10am) is a real active punch,
+    // not a forgotten one (audit round 2). A recent open punch → hard block
+    // (clock out first). Only a genuinely forgotten punch (open past the cap) is
+    // force-closed so today's clock-in isn't blocked + the worked day isn't 0h.
+    const openSpanH = (Date.now() - Date.parse(openPunch.clock_in_at)) / 3_600_000;
+    if (openSpanH <= STALE_PUNCH_CAP_HOURS) {
       return { ok: false, error: "You're already clocked in - clock out first.", code: "already_clocked_in" };
     }
-    // A stale punch from a PRIOR ET day (missed clock-out). Force-close it
-    // (capped + flagged for review) so this painter can clock into today's job
-    // instead of being locked out — never leave a worked day at 0 hours.
     await forceCloseStalePunch(sb, { ...openPunch, employee_id: input.employee_id });
   }
 
@@ -350,17 +351,7 @@ export async function clockOut(input: {
 
   const punch = open as { id: string; job_id: string; clock_in_at: string; note: string | null };
   const nowIso = new Date().toISOString();
-  // A forgotten clock-out from a PRIOR ET day (or an impossibly long span) must
-  // never record raw elapsed hours — that would write a ~24h shift the moment the
-  // painter taps "Clock Out" the next morning (before the daily sweep runs). Route
-  // it through the SAME capped + flagged-for-review path as the clock-in stale
-  // guard and the cron sweep, so no close path can write an uncapped >12h entry
-  // (audit 2026-08).
   const spanHours = (Date.parse(nowIso) - Date.parse(punch.clock_in_at)) / 3_600_000;
-  if (etDate(punch.clock_in_at) !== etDate(nowIso) || spanHours > STALE_PUNCH_CAP_HOURS) {
-    await forceCloseStalePunch(sb, { ...punch, employee_id: input.employee_id });
-    return { ok: true, jobId: punch.job_id };
-  }
 
   const { data: updated, error } = await sb
     .from("commercial_time_punches")
@@ -371,8 +362,19 @@ export async function clockOut(input: {
   if (error) return { ok: false, error: error.message, code: "clock_failed" };
   await logUpdate("commercial_time_punches", punch.id, open, updated, input.employee_id);
 
-  // Roll the day's actuals for that job (ET work day, not the UTC date).
+  // A painter tapping "Clock Out" is a TRUSTWORTHY timestamp — record the REAL
+  // hours even for a long crunch day or a legit cross-midnight shift; never cap
+  // or overwrite the real clock-out time (that silently underpays, a
+  // prevailing-wage compliance problem). Only FLAG for review when the span is
+  // implausibly long (likely a forgotten clock-out), so a ~24h punch can't
+  // silently auto-approve but real worked hours are never discarded (audit round 2).
   const workDate = etDate(punch.clock_in_at);
-  await syncTimeEntry(input.employee_id, punch.job_id, workDate, "clock-out");
+  await syncTimeEntry(
+    input.employee_id,
+    punch.job_id,
+    workDate,
+    "clock-out",
+    spanHours > STALE_PUNCH_CAP_HOURS ? { forceReview: true } : undefined
+  );
   return { ok: true, jobId: punch.job_id };
 }

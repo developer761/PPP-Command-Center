@@ -51,7 +51,7 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
   const [empRes, jobRes, assignRes] = await Promise.all([
     sb.from("commercial_employees").select("id, display_name").in("id", empIds),
     sb.from("commercial_jobs").select("id, name").in("id", jobIds),
-    sb.from("commercial_assignments").select("employee_id, job_id, work_date, scheduled_hours").in("work_date", dates),
+    sb.from("commercial_assignments").select("employee_id, job_id, work_date, scheduled_hours").in("work_date", dates).neq("status", "cancelled"),
   ]);
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
   const jobName = new Map((jobRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { name: string }).name]));

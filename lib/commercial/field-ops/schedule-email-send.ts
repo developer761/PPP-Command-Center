@@ -199,12 +199,12 @@ export async function resyncClockReminder(employeeId: string, workDate: string):
     const sb = commercialDb();
     const { data: e } = await sb
       .from("commercial_employees")
-      .select("first_name, email, preferred_language, magic_link_token")
+      .select("first_name, email, preferred_language, schedule_email_opt_out, magic_link_token")
       .eq("id", employeeId)
       .eq("active", true)
       .maybeSingle();
-    const emp = e as { first_name: string; email: string | null; preferred_language: "en" | "es"; magic_link_token: string | null } | null;
-    if (!emp || !emp.email) return;
+    const emp = e as { first_name: string; email: string | null; preferred_language: "en" | "es"; schedule_email_opt_out: boolean; magic_link_token: string | null } | null;
+    if (!emp || !emp.email || emp.schedule_email_opt_out) return; // respect opt-out (audit round 2)
     const oc = await getOperatingCompany();
     await scheduleClockReminder(employeeId, workDate, firstStart, emp, oc.name, magicLink(emp.magic_link_token));
   } catch (err) {

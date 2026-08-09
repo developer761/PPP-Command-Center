@@ -420,7 +420,16 @@ export async function copyWeekForward(
   }
 
   if (toInsert.length > 0) {
-    const { data: inserted, error } = await sb.from("commercial_assignments").insert(toInsert).select("id");
+    // upsert (not insert): a source row can collide with a CANCELLED target row
+    // (a revived job's leftover) which the dedup query hides — a plain insert
+    // would violate unique(job,emp,date) and abort the ENTIRE week. On conflict,
+    // reactivate that row to 'planned' instead (audit round 2). Live planned
+    // rows are already filtered into `existing`/skippedExisting, so they're never
+    // in toInsert and can't be clobbered.
+    const { data: inserted, error } = await sb
+      .from("commercial_assignments")
+      .upsert(toInsert, { onConflict: "job_id,employee_id,work_date" })
+      .select("id");
     if (error) return { ok: false, error: error.message };
     copied = (inserted ?? []).length;
     for (const r of (inserted ?? []) as { id: string }[]) {

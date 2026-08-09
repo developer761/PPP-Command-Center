@@ -177,6 +177,21 @@ export async function createJob(
     .maybeSingle();
   if (dup) return { ok: false, error: `Job code "${code}" is already in use.` };
 
+  // A deal can only own ONE live work order here — connecting it twice would spawn
+  // a second job on the same dashboard WO, splitting payroll across two job codes
+  // and duplicating calendar cards. The picker already excludes taken deals; this
+  // backstops a stale form / direct call (audit round 2).
+  if (input.opportunity_id) {
+    const { data: dupOpp } = await sb
+      .from("commercial_jobs")
+      .select("id")
+      .eq("opportunity_id", input.opportunity_id)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (dupOpp) return { ok: false, error: "That deal already has a work order in Field Ops." };
+  }
+
   const { data, error } = await sb
     .from("commercial_jobs")
     .insert({
@@ -311,11 +326,13 @@ export async function ensureJobForWorkOrder(
     const live = all.find((r) => !r.deleted_at);
     if (live) return { ok: true, jobId: live.id, created: false };
     if (all.length > 0) {
-      // Revive the most recent soft-deleted twin.
+      // Revive the most recent soft-deleted twin — WITHOUT clobbering its status
+      // (a revive on re-send must not silently reset an in_progress job to
+      // ready_to_schedule; audit round 2).
       const reviveId = all[0].id;
       const { error } = await sb
         .from("commercial_jobs")
-        .update({ deleted_at: null, deleted_by_user_id: null, status: "ready_to_schedule", updated_at: new Date().toISOString() })
+        .update({ deleted_at: null, deleted_by_user_id: null, updated_at: new Date().toISOString() })
         .eq("id", reviveId);
       if (error) return { ok: false, error: error.message };
       await logUpdate("commercial_jobs", reviveId, { deleted_at: "set" }, { deleted_at: null }, actorUserId);
@@ -457,15 +474,35 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
     .eq("job_id", id)
     .gte("work_date", todayEtIso())
     .neq("status", "cancelled");
-  // Cancel the queued clock-in nudges for those now-dead shifts (audit #3) — one
-  // reset per distinct (employee, day); the cron re-schedules any that still have
-  // a surviving shift on another job that day.
+  // Re-sync the queued clock-in nudges for those now-dead shifts — one per
+  // distinct (employee, day). resync (not bare reset) so a crew member who still
+  // has a surviving shift on ANOTHER job that day keeps a correctly-timed nudge
+  // (audit round 2 — the once-daily cron can't fix a same-day delete).
   const pairs = new Set(((affected ?? []) as Array<{ employee_id: string; work_date: string }>).map((a) => `${a.employee_id}|${a.work_date}`));
   if (pairs.size > 0) {
-    const { resetClockReminder } = await import("./schedule-email-send");
+    const { resyncClockReminder } = await import("./schedule-email-send");
     for (const p of pairs) {
       const [emp, day] = p.split("|");
-      await resetClockReminder(emp, day).catch(() => undefined);
+      await resyncClockReminder(emp, day).catch(() => undefined);
+    }
+  }
+  // If this job was the schedulable twin of a SENT deal Work Order, reopen that
+  // WO to draft — otherwise the sent-WO backfill (ensureJobsForSentWorkOrders)
+  // resurrects this job on the next page load, so the delete never sticks (audit
+  // round 2). Re-sending the WO later revives the job intentionally.
+  if (before.work_order_id) {
+    const { data: woSent } = await sb
+      .from("commercial_work_orders")
+      .select("id")
+      .eq("id", before.work_order_id)
+      .eq("status", "sent")
+      .maybeSingle();
+    if (woSent) {
+      await sb
+        .from("commercial_work_orders")
+        .update({ status: "draft", updated_at: new Date().toISOString() })
+        .eq("id", before.work_order_id);
+      await logUpdate("commercial_work_orders", before.work_order_id, { status: "sent" }, { status: "draft" }, actorUserId);
     }
   }
   await logDelete("commercial_jobs", id, before, actorUserId);

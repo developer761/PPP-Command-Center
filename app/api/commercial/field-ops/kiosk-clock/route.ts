@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { rawAccessDenied } from "@/lib/commercial/auth";
+import { isAdminEmail } from "@/lib/auth/admin";
 import { verifyEmployeePin } from "@/lib/commercial/field-ops/employees";
 import { clockIn, clockOut, getEmployeeDay } from "@/lib/commercial/field-ops/clock";
 import { todayEtIso } from "@/lib/commercial/field-ops/schedule";
@@ -24,10 +25,16 @@ export async function POST(request: Request) {
   const sb = commercialDb();
   const { data: profile } = await sb
     .from("profiles")
-    .select("has_new_platform_access, is_active")
+    .select("has_new_platform_access, is_active, is_admin")
     .eq("user_id", data.user.id)
     .maybeSingle();
   if (rawAccessDenied(profile)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  // Kiosk = the office/shop TABLET (an admin session); crew clock via their
+  // login-less magic link, not this endpoint. Restrict to admins so a non-admin
+  // commercial user can't brute-force a 4-digit PIN to clock other people (payroll
+  // fraud) — audit round 2.
+  const isAdmin = (profile as { is_admin?: boolean } | null)?.is_admin ?? isAdminEmail(data.user.email);
+  if (!isAdmin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   let body: Record<string, unknown>;
   try {

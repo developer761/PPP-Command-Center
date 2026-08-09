@@ -28,7 +28,7 @@ export type FieldOpsOverview = {
 };
 
 const OT_WEEK_HOURS = 40;
-const OPEN_STATUSES = ["estimating", "ready_to_schedule", "scheduled", "in_progress", "on_hold"];
+const OPEN_STATUSES = ["estimating", "ready_to_schedule", "scheduled", "in_progress", "almost_done", "on_hold"];
 
 export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
   const sb = commercialDb();
