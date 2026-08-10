@@ -33,6 +33,7 @@ export async function getHoursLog(
       .gte("work_date", startIso)
       .lte("work_date", endIso)
       .order("work_date")
+      .order("id")
   );
 
   const byEmp = new Map<string, Map<string, number>>(); // employee → job → hours

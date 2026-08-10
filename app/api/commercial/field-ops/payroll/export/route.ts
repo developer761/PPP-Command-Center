@@ -33,12 +33,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "invalid_range" }, { status: 400 });
   }
 
-  const csv = await buildPayrollCsv(from, to);
-  // Close the period: mark the exported W-2 approved hours 'exported' so an
-  // overlapping/repeat export can't re-pay them (double-pay). Only flips
-  // still-approved rows, so a re-download after export yields an empty CSV
-  // (= "already paid"), not a second copy of the same hours (audit round 6).
-  await markPayrollExported(from, to, data.user.id);
+  const { csv, paidEntryIds, periodStart, periodEnd } = await buildPayrollCsv(from, to);
+  // Close the period: lock EXACTLY the entries this CSV paid (not a re-query), so
+  // an overlapping/repeat export can't re-pay them (double-pay) and a concurrent
+  // approval can't be locked-but-never-paid. Only flips still-approved rows, so a
+  // re-download yields an empty CSV = "already paid" (audit rounds 6 + 12).
+  await markPayrollExported(paidEntryIds, periodStart, periodEnd, data.user.id);
   return new NextResponse(csv, {
     status: 200,
     headers: {

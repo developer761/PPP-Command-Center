@@ -139,6 +139,7 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
       .lte("work_date", dates[41])
       .neq("status", "cancelled")
       .order("work_date")
+      .order("id")
   );
 
   const jobIds = [...new Set(assignments.map((a) => a.job_id))];

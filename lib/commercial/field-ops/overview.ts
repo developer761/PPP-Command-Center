@@ -47,11 +47,11 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
       .neq("status", "cancelled"),
     sb
       .from("commercial_time_entries")
-      .select("actual_hours, status, work_date")
+      .select("employee_id, job_id, actual_hours, status, work_date")
       .gte("work_date", weekStart)
       .lte("work_date", weekEnd),
     sb.from("commercial_jobs").select("id, status").is("deleted_at", null),
-    sb.from("commercial_employees").select("id, display_name").eq("active", true),
+    sb.from("commercial_employees").select("id, display_name, worker_type"),
     sb.from("commercial_time_entries").select("id", { count: "exact", head: true }).in("status", ["submitted", "questioned"]),
     sb
       .from("commercial_assignments")
@@ -62,9 +62,10 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
   ]);
 
   const assigns = (assignRes.data ?? []) as { employee_id: string; job_id: string; work_date: string; scheduled_hours: number }[];
-  const entries = (entryRes.data ?? []) as { actual_hours: number; status: string; work_date: string }[];
+  const entries = (entryRes.data ?? []) as { employee_id: string; job_id: string; actual_hours: number; status: string; work_date: string }[];
   const jobs = (jobRes.data ?? []) as { id: string; status: string }[];
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
+  const w2Emp = new Set(((empRes.data ?? []) as { id: string; worker_type: string }[]).filter((r) => r.worker_type === "w2").map((r) => r.id));
 
   // Scheduled hours + per-employee totals (OT forecast) + distinct crew this week.
   // Drop assignments whose work order was soft-deleted — the Calendar already
@@ -92,11 +93,15 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
     .map(([employee_id, scheduled]) => ({ employee_id, name: empName.get(employee_id) ?? "(crew)", scheduled: Math.round(scheduled * 4) / 4 }))
     .sort((a, b) => b.scheduled - a.scheduled);
 
+  // Skip soft-deleted-job entries so clocked/approved share the same job universe
+  // as scheduled above; count only W-2 toward "approved (ready for payroll)" so it
+  // matches what Payroll actually pays (audit round 12).
   let clockedHoursWeek = 0;
   let approvedHoursWeek = 0;
   for (const e of entries) {
+    if (!liveJobIds.has(e.job_id)) continue;
     clockedHoursWeek += e.actual_hours;
-    if (e.status === "approved" || e.status === "exported") approvedHoursWeek += e.actual_hours;
+    if ((e.status === "approved" || e.status === "exported") && w2Emp.has(e.employee_id)) approvedHoursWeek += e.actual_hours;
   }
 
   const jobsInProgress = jobs.filter((j) => j.status === "in_progress").length;

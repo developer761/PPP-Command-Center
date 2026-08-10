@@ -112,6 +112,7 @@ export async function fieldOpsLaborByOpp(oppIds: string[]): Promise<Map<string, 
       .in("job_id", [...oppByJob.keys()])
       .in("status", SETTLED_STATUSES as unknown as string[])
       .order("work_date")
+      .order("id")
   );
   if (entries.length === 0) return out;
 
@@ -193,6 +194,7 @@ export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLa
       .in("job_id", jobIds)
       .in("status", SETTLED_STATUSES as unknown as string[])
       .order("work_date")
+      .order("id")
   );
   if (entries.length === 0) return [];
 

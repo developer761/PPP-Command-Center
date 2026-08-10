@@ -30,19 +30,21 @@ export type PayrollSummary = {
   unapprovedCount: number;
   periodStart: string; // snapped to a Monday
   periodEnd: string; // snapped to the following Sunday
+  paidEntryIds: string[]; // the exact approved-W2 entry ids this summary pays — lock EXACTLY these
 };
 
 export async function getPayrollSummary(fromIso: string, toIso: string): Promise<PayrollSummary> {
   const periodStart = mondayOf(fromIso);
   const periodEnd = addDaysIso(mondayOf(toIso), 6); // Sunday of the week containing `to`
   const sb = commercialDb();
-  const entries = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number; status: string }>(() =>
+  const entries = await paginateAll<{ id: string; employee_id: string; work_date: string; actual_hours: number; status: string }>(() =>
     sb
       .from("commercial_time_entries")
-      .select("employee_id, work_date, actual_hours, status")
+      .select("id, employee_id, work_date, actual_hours, status")
       .gte("work_date", periodStart)
       .lte("work_date", periodEnd)
       .order("work_date")
+      .order("id")
   );
   // Resolve worker_type for EVERY entry's employee up front — the payout AND the
   // "N approved / N waiting" counts are W-2 ONLY, so subs/temps must be excluded
@@ -61,8 +63,9 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
   const isW2 = (id: string) => empMeta.get(id)?.worker_type === "w2";
 
   const approved = entries.filter((e) => e.status === "approved" && isW2(e.employee_id));
+  const paidEntryIds = approved.map((e) => e.id);
   const unapprovedCount = entries.filter((e) => (e.status === "submitted" || e.status === "questioned") && isW2(e.employee_id)).length;
-  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd };
+  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd, paidEntryIds: [] };
 
   // employee -> week(Monday) -> { approved: pay now, exported: already-paid baseline }.
   // OT is computed over the FULL week (already-exported + newly-approved) so a
@@ -110,7 +113,7 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
     });
   }
   rows.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
-  return { rows, approvedCount: approved.length, unapprovedCount, periodStart, periodEnd };
+  return { rows, approvedCount: approved.length, unapprovedCount, periodStart, periodEnd, paidEntryIds };
 }
 
 function csvCell(v: string | number): string {
@@ -118,51 +121,36 @@ function csvCell(v: string | number): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export async function buildPayrollCsv(fromIso: string, toIso: string): Promise<string> {
-  const { rows, periodStart, periodEnd } = await getPayrollSummary(fromIso, toIso);
+export async function buildPayrollCsv(
+  fromIso: string,
+  toIso: string
+): Promise<{ csv: string; paidEntryIds: string[]; periodStart: string; periodEnd: string }> {
+  const { rows, periodStart, periodEnd, paidEntryIds } = await getPayrollSummary(fromIso, toIso);
   const header = ["Employee", "External Ref", "Regular Hours", "Overtime Hours", "Total Hours", "Period Start", "Period End"];
   const lines = [header.map(csvCell).join(",")];
   for (const r of rows) {
     // Period columns use the SNAPPED full-week span so OT reconciles.
     lines.push([r.employee_name, r.external_ref ?? "", r.regHours, r.otHours, r.totalHours, periodStart, periodEnd].map(csvCell).join(","));
   }
-  return lines.join("\r\n");
+  return { csv: lines.join("\r\n"), paidEntryIds, periodStart, periodEnd };
 }
 
 /**
- * Close a payroll period: after the CSV is generated, mark the exported W-2
- * approved hours 'exported' + tag them with a pay_period, so a later (possibly
- * range-snapped, overlapping) export can't re-pay the same hours (audit round 6).
- * Idempotent — only flips 'approved' → 'exported', so a re-run/double-click finds
- * nothing left. labor-cost + overview already treat 'exported' as settled, so no
- * reader changes are needed. Uses the SAME snapped Mon–Sun span as the CSV.
+ * Close a payroll period: mark EXACTLY the entry ids the CSV paid as 'exported' +
+ * tag them with a pay_period, so a later (possibly range-snapped, overlapping)
+ * export can't re-pay the same hours (audit round 6). Takes the id set the CSV was
+ * built from — not a re-query — so a concurrent approval landing between building
+ * the CSV and locking can't be locked-but-never-paid (audit round 12). Idempotent:
+ * only flips 'approved' → 'exported', so a re-run/double-click finds nothing left.
  */
 export async function markPayrollExported(
-  fromIso: string,
-  toIso: string,
+  paidEntryIds: string[],
+  periodStart: string,
+  periodEnd: string,
   userId: string
 ): Promise<{ exported: number }> {
-  const periodStart = mondayOf(fromIso);
-  const periodEnd = addDaysIso(mondayOf(toIso), 6);
+  if (paidEntryIds.length === 0) return { exported: 0 };
   const sb = commercialDb();
-
-  const rows = await paginateAll<{ id: string; employee_id: string }>(() =>
-    sb
-      .from("commercial_time_entries")
-      .select("id, employee_id")
-      .eq("status", "approved")
-      .gte("work_date", periodStart)
-      .lte("work_date", periodEnd)
-      .order("work_date")
-  );
-  if (rows.length === 0) return { exported: 0 };
-
-  // W-2 only — subs/temps aren't paid through this export, so don't lock them.
-  const empIds = [...new Set(rows.map((r) => r.employee_id))];
-  const { data: emps } = await sb.from("commercial_employees").select("id, worker_type").in("id", empIds);
-  const w2 = new Set(((emps ?? []) as { id: string; worker_type: string }[]).filter((e) => e.worker_type === "w2").map((e) => e.id));
-  const ids = rows.filter((r) => w2.has(r.employee_id)).map((r) => r.id);
-  if (ids.length === 0) return { exported: 0 };
 
   const { data: period, error: pErr } = await sb
     .from("commercial_pay_periods")
@@ -173,8 +161,8 @@ export async function markPayrollExported(
   const periodId = (period as { id: string }).id;
 
   let exported = 0;
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
+  for (let i = 0; i < paidEntryIds.length; i += 500) {
+    const chunk = paidEntryIds.slice(i, i + 500);
     const { error } = await sb
       .from("commercial_time_entries")
       .update({ status: "exported", pay_period_id: periodId, updated_at: new Date().toISOString() })

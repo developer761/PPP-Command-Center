@@ -48,6 +48,7 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
       .select("id, employee_id, job_id, work_date, actual_hours, status, source, questioned_reason")
       .in("status", ["submitted", "questioned"])
       .order("work_date", { ascending: false })
+      .order("id")
   );
   if (entries.length === 0) return [];
 
@@ -69,6 +70,7 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
         .in("employee_id", empIds)
         .neq("status", "cancelled")
         .order("work_date")
+        .order("id")
     ),
   ]);
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
@@ -98,6 +100,7 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
         .gte("clock_in_at", `${addDaysIso(sorted[0], -1)}T00:00:00Z`)
         .lte("clock_in_at", `${addDaysIso(sorted[sorted.length - 1], 1)}T23:59:59Z`)
         .order("clock_in_at")
+        .order("id")
     );
     const etDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
     for (const p of capRows) {
@@ -125,17 +128,26 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
   });
 }
 
+// An exported entry is PAID/settled — the same terminal state clock.ts respects.
+// Changing it (approve/question/edit) from a stale Approvals tab would pull it out
+// of, or re-add it to, the paid set → double-pay or clawback (audit round 12).
+const EXPORTED_LOCKED = "This entry is already exported/paid and can't be changed.";
+const EXPORTED_RACED = "This entry was just exported/paid — reload the queue.";
+
 export async function approveTimeEntry(id: string, actorUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb.from("commercial_time_entries").select("*").eq("id", id).maybeSingle();
   if (!before) return { ok: false, error: "Entry not found." };
+  if ((before as { status?: string }).status === "exported") return { ok: false, error: EXPORTED_LOCKED };
   const { data: after, error } = await sb
     .from("commercial_time_entries")
     .update({ status: "approved", approved_by_user_id: actorUserId, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", id)
+    .neq("status", "exported") // race guard: never undo a concurrent export
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!after) return { ok: false, error: EXPORTED_RACED };
   await logUpdate("commercial_time_entries", id, before, after, actorUserId);
   return { ok: true };
 }
@@ -144,13 +156,16 @@ export async function questionTimeEntry(id: string, reason: string, actorUserId:
   const sb = commercialDb();
   const { data: before } = await sb.from("commercial_time_entries").select("*").eq("id", id).maybeSingle();
   if (!before) return { ok: false, error: "Entry not found." };
+  if ((before as { status?: string }).status === "exported") return { ok: false, error: EXPORTED_LOCKED };
   const { data: after, error } = await sb
     .from("commercial_time_entries")
     .update({ status: "questioned", questioned_reason: (reason ?? "").trim().slice(0, 300) || "Please review", updated_at: new Date().toISOString() })
     .eq("id", id)
+    .neq("status", "exported")
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!after) return { ok: false, error: EXPORTED_RACED };
   await logUpdate("commercial_time_entries", id, before, after, actorUserId);
   return { ok: true };
 }
@@ -162,13 +177,16 @@ export async function overrideTimeEntryHours(id: string, hours: number, actorUse
   const sb = commercialDb();
   const { data: before } = await sb.from("commercial_time_entries").select("*").eq("id", id).maybeSingle();
   if (!before) return { ok: false, error: "Entry not found." };
+  if ((before as { status?: string }).status === "exported") return { ok: false, error: EXPORTED_LOCKED };
   const { data: after, error } = await sb
     .from("commercial_time_entries")
     .update({ actual_hours: Math.round(hours * 4) / 4, source: "manual", status: "submitted", questioned_reason: null, updated_at: new Date().toISOString() })
     .eq("id", id)
+    .neq("status", "exported")
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!after) return { ok: false, error: EXPORTED_RACED };
   await logUpdate("commercial_time_entries", id, before, after, actorUserId);
   return { ok: true };
 }
