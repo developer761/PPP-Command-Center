@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { mondayOf, addDaysIso, todayEtIso } from "./schedule";
 
 /**
@@ -38,7 +39,7 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
   const weekEnd = weekDates[6];
   const horizon = addDaysIso(today, 13); // next 14 days for "unscheduled" backlog
 
-  const [assignRes, entryRes, jobRes, empRes, apprRes, horizonAssignRes] = await Promise.all([
+  const [assignRes, entryRes, jobs, empRes, apprRes, horizonAssignRes] = await Promise.all([
     sb
       .from("commercial_assignments")
       .select("employee_id, job_id, work_date, scheduled_hours")
@@ -50,7 +51,9 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
       .select("employee_id, job_id, actual_hours, status, work_date")
       .gte("work_date", weekStart)
       .lte("work_date", weekEnd),
-    sb.from("commercial_jobs").select("id, status").is("deleted_at", null),
+    // Paginated — commercial_jobs grows unbounded over time; a 1000-row truncation
+    // would undercount jobsInProgress / readyToSchedule (audit round 14).
+    paginateAll<{ id: string; status: string }>(() => sb.from("commercial_jobs").select("id, status").is("deleted_at", null).order("id")),
     sb.from("commercial_employees").select("id, display_name, worker_type"),
     sb.from("commercial_time_entries").select("id", { count: "exact", head: true }).in("status", ["submitted", "questioned"]),
     sb
@@ -63,7 +66,6 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
 
   const assigns = (assignRes.data ?? []) as { employee_id: string; job_id: string; work_date: string; scheduled_hours: number }[];
   const entries = (entryRes.data ?? []) as { employee_id: string; job_id: string; actual_hours: number; status: string; work_date: string }[];
-  const jobs = (jobRes.data ?? []) as { id: string; status: string }[];
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
   const w2Emp = new Set(((empRes.data ?? []) as { id: string; worker_type: string }[]).filter((r) => r.worker_type === "w2").map((r) => r.id));
 

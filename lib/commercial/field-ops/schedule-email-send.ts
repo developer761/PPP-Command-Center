@@ -193,13 +193,21 @@ export async function resetClockReminder(employeeId: string, workDate: string): 
   // schedule a fresh nudge for a pushed-later / second shift, even though Resend
   // can't "cancel" a sent email (audit round 11).
   const alreadyFired = !!row.sent_at && Date.parse(row.sent_at) < Date.now();
-  // Otherwise it's still pending: only clear (which lets a reschedule queue a NEW
-  // nudge) once the old send is CONFIRMED cancelled — else keep the row so the
-  // painter doesn't get TWO nudges; a later resync retries the cancel (audit round 10).
   let safeToClear = alreadyFired;
-  if (!alreadyFired && row.resend_message_id) {
-    const { cancelScheduledEmail } = await import("@/lib/email/resend");
-    safeToClear = await cancelScheduledEmail(row.resend_message_id, "commercial");
+  if (!alreadyFired) {
+    if (row.resend_message_id) {
+      // Still pending WITH a cancellable id — only clear (which lets a reschedule
+      // queue a NEW nudge) once the cancel is confirmed, else keep the row so the
+      // painter doesn't get TWO nudges (audit round 10).
+      const { cancelScheduledEmail } = await import("@/lib/email/resend");
+      safeToClear = await cancelScheduledEmail(row.resend_message_id, "commercial");
+    } else {
+      // Pending but NO cancellable Resend id — keeping the row only guarantees a
+      // wrong-time (or missing) nudge, because the id-less send can't be cancelled
+      // regardless. Clear it so a reschedule queues a fresh correctly-timed nudge;
+      // a rare harmless double beats a stale wrong-time one (audit round 14).
+      safeToClear = true;
+    }
   }
   if (!safeToClear) return;
   await sb.from("commercial_schedule_email_log").delete().eq("id", row.id);

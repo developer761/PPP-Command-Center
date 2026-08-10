@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { todayEtIso } from "./schedule";
 
@@ -63,14 +64,14 @@ const OPEN_STATUSES: JobStatus[] = [
 
 export async function listJobs(opts?: { includeClosed?: boolean }): Promise<CommercialJob[]> {
   const sb = commercialDb();
-  let q = sb.from("commercial_jobs").select(COLS).is("deleted_at", null);
-  if (!opts?.includeClosed) q = q.in("status", OPEN_STATUSES);
-  const { data, error } = await q.order("target_start", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false });
-  if (error) {
-    console.warn("[field-ops/jobs] list failed:", error.message);
-    return [];
-  }
-  return (data ?? []) as CommercialJob[];
+  // Paginated — commercial_jobs accumulates every closed WO over time and can
+  // exceed Supabase's silent 1000-row cap, which would drop jobs from the Status
+  // board / Work Orders list (audit round 14). `id` gives deterministic paging.
+  return paginateAll<CommercialJob>(() => {
+    let q = sb.from("commercial_jobs").select(COLS).is("deleted_at", null);
+    if (!opts?.includeClosed) q = q.in("status", OPEN_STATUSES);
+    return q.order("target_start", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }).order("id");
+  });
 }
 
 /** Deals (opportunities) to connect a manually-added work order to - the same
