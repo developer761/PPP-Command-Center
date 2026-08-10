@@ -30,7 +30,6 @@ export type PayrollSummary = {
   unapprovedCount: number;
   periodStart: string; // snapped to a Monday
   periodEnd: string; // snapped to the following Sunday
-  paidEntryIds: string[]; // the exact approved-W2 entry ids this summary pays — lock EXACTLY these
 };
 
 export async function getPayrollSummary(fromIso: string, toIso: string): Promise<PayrollSummary> {
@@ -63,9 +62,8 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
   const isW2 = (id: string) => empMeta.get(id)?.worker_type === "w2";
 
   const approved = entries.filter((e) => e.status === "approved" && isW2(e.employee_id));
-  const paidEntryIds = approved.map((e) => e.id);
   const unapprovedCount = entries.filter((e) => (e.status === "submitted" || e.status === "questioned") && isW2(e.employee_id)).length;
-  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd, paidEntryIds: [] };
+  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd };
 
   // employee -> week(Monday) -> { approved: pay now, exported: already-paid baseline }.
   // OT is computed over the FULL week (already-exported + newly-approved) so a
@@ -113,7 +111,7 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
     });
   }
   rows.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
-  return { rows, approvedCount: approved.length, unapprovedCount, periodStart, periodEnd, paidEntryIds };
+  return { rows, approvedCount: approved.length, unapprovedCount, periodStart, periodEnd };
 }
 
 function csvCell(v: string | number): string {
@@ -121,54 +119,102 @@ function csvCell(v: string | number): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export async function buildPayrollCsv(
-  fromIso: string,
-  toIso: string
-): Promise<{ csv: string; paidEntryIds: string[]; periodStart: string; periodEnd: string }> {
-  const { rows, periodStart, periodEnd, paidEntryIds } = await getPayrollSummary(fromIso, toIso);
-  const header = ["Employee", "External Ref", "Regular Hours", "Overtime Hours", "Total Hours", "Period Start", "Period End"];
-  const lines = [header.map(csvCell).join(",")];
-  for (const r of rows) {
-    // Period columns use the SNAPPED full-week span so OT reconciles.
-    lines.push([r.employee_name, r.external_ref ?? "", r.regHours, r.otHours, r.totalHours, periodStart, periodEnd].map(csvCell).join(","));
+/** Marginal reg/OT for one employee across their weeks, given each week's
+ *  already-exported baseline (xH) and the hours being paid now (aH). */
+function marginalRegOt(weeks: Map<string, { pay: number; base: number }>): { reg: number; ot: number; total: number } {
+  let reg = 0, ot = 0, total = 0;
+  for (const { pay: aH, base: xH } of weeks.values()) {
+    if (aH <= 0) continue;
+    reg += Math.max(0, Math.min(xH + aH, 40) - Math.min(xH, 40));
+    ot += Math.max(0, Math.max(0, xH + aH - 40) - Math.max(0, xH - 40));
+    total += aH;
   }
-  return { csv: lines.join("\r\n"), paidEntryIds, periodStart, periodEnd };
+  return { reg: Math.round(reg * 100) / 100, ot: Math.round(ot * 100) / 100, total: Math.round(total * 100) / 100 };
 }
 
 /**
- * Close a payroll period: mark EXACTLY the entry ids the CSV paid as 'exported' +
- * tag them with a pay_period, so a later (possibly range-snapped, overlapping)
- * export can't re-pay the same hours (audit round 6). Takes the id set the CSV was
- * built from — not a re-query — so a concurrent approval landing between building
- * the CSV and locking can't be locked-but-never-paid (audit round 12). Idempotent:
- * only flips 'approved' → 'exported', so a re-run/double-click finds nothing left.
+ * ATOMIC export: lock the approved W-2 hours (approved → exported) FIRST via a
+ * single UPDATE ... RETURNING, then build the CSV from EXACTLY the rows that
+ * locked. This closes the build-then-lock window where a row de-approved by a
+ * concurrent same-day clock-out could be paid on the CSV but never locked (→
+ * double-pay), and where a concurrent approval could be locked but never paid
+ * (audit rounds 12 + 13). The read-only getPayrollSummary above stays for the
+ * on-screen preview (no locking). One snapped Mon–Sun week is well under the
+ * 1000-row RETURNING window; export weekly.
  */
-export async function markPayrollExported(
-  paidEntryIds: string[],
-  periodStart: string,
-  periodEnd: string,
-  userId: string
-): Promise<{ exported: number }> {
-  if (paidEntryIds.length === 0) return { exported: 0 };
+export async function exportPayroll(fromIso: string, toIso: string, userId: string): Promise<string> {
+  const periodStart = mondayOf(fromIso);
+  const periodEnd = addDaysIso(mondayOf(toIso), 6);
   const sb = commercialDb();
+
+  const { data: emps } = await sb.from("commercial_employees").select("id, display_name, worker_type, external_ref");
+  const empMeta = new Map(
+    (emps ?? []).map((r) => [(r as { id: string }).id, { name: (r as { display_name: string }).display_name, external_ref: (r as { external_ref: string | null }).external_ref }])
+  );
+  const w2Ids = ((emps ?? []) as { id: string; worker_type: string }[]).filter((e) => e.worker_type === "w2").map((e) => e.id);
+
+  const header = ["Employee", "External Ref", "Regular Hours", "Overtime Hours", "Total Hours", "Period Start", "Period End"];
+  const emptyCsv = header.map(csvCell).join(",");
+  if (w2Ids.length === 0) return emptyCsv;
+
+  // Already-exported W-2 hours in range → the OT baseline for a multi-pass week.
+  const baseline = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("employee_id, work_date, actual_hours")
+      .eq("status", "exported")
+      .gte("work_date", periodStart)
+      .lte("work_date", periodEnd)
+      .in("employee_id", w2Ids)
+      .order("work_date")
+      .order("id")
+  );
 
   const { data: period, error: pErr } = await sb
     .from("commercial_pay_periods")
     .insert({ start_date: periodStart, end_date: periodEnd, status: "exported", exported_at: new Date().toISOString(), exported_by_user_id: userId })
     .select("id")
     .single();
-  if (pErr || !period) return { exported: 0 };
-  const periodId = (period as { id: string }).id;
+  if (pErr || !period) return emptyCsv;
 
-  let exported = 0;
-  for (let i = 0; i < paidEntryIds.length; i += 500) {
-    const chunk = paidEntryIds.slice(i, i + 500);
-    const { error } = await sb
-      .from("commercial_time_entries")
-      .update({ status: "exported", pay_period_id: periodId, updated_at: new Date().toISOString() })
-      .in("id", chunk)
-      .eq("status", "approved"); // race guard: only flip still-approved rows
-    if (!error) exported += chunk.length;
+  // Flip approved → exported for W-2 in range, RETURNING the rows that actually
+  // locked. Anything de-approved in the meantime simply isn't returned (and stays
+  // approved for a later honest export) — so the CSV pays exactly what locked.
+  const { data: paidData } = await sb
+    .from("commercial_time_entries")
+    .update({ status: "exported", pay_period_id: (period as { id: string }).id, updated_at: new Date().toISOString() })
+    .eq("status", "approved")
+    .gte("work_date", periodStart)
+    .lte("work_date", periodEnd)
+    .in("employee_id", w2Ids)
+    .select("employee_id, work_date, actual_hours");
+  const paid = (paidData ?? []) as { employee_id: string; work_date: string; actual_hours: number }[];
+
+  // employee -> week -> { pay: just-locked, base: already-exported }.
+  const byEmp = new Map<string, Map<string, { pay: number; base: number }>>();
+  const bucket = (empId: string, date: string, hours: number, kind: "pay" | "base") => {
+    const wk = mondayOf(date);
+    if (!byEmp.has(empId)) byEmp.set(empId, new Map());
+    const wm = byEmp.get(empId)!;
+    const cur = wm.get(wk) ?? { pay: 0, base: 0 };
+    cur[kind] += hours;
+    wm.set(wk, cur);
+  };
+  for (const e of baseline) bucket(e.employee_id, e.work_date, e.actual_hours, "base");
+  for (const e of paid) bucket(e.employee_id, e.work_date, e.actual_hours, "pay");
+
+  const lines = [emptyCsv];
+  const rows: { name: string; ref: string | null; reg: number; ot: number; total: number }[] = [];
+  for (const [empId, weeks] of byEmp) {
+    const { reg, ot, total } = marginalRegOt(weeks);
+    if (total <= 0) continue; // baseline-only employee (nothing new to pay)
+    const meta = empMeta.get(empId);
+    rows.push({ name: meta?.name ?? "(crew)", ref: meta?.external_ref ?? null, reg, ot, total });
   }
-  return { exported };
+  rows.sort((a, b) => a.name.localeCompare(b.name));
+  for (const r of rows) {
+    lines.push([r.name, r.ref ?? "", r.reg, r.ot, r.total, periodStart, periodEnd].map(csvCell).join(","));
+  }
+  return lines.join("\r\n");
 }
+

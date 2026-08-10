@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { rawAccessDenied } from "@/lib/commercial/auth";
-import { buildPayrollCsv, markPayrollExported } from "@/lib/commercial/field-ops/payroll";
+import { exportPayroll } from "@/lib/commercial/field-ops/payroll";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,12 +33,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "invalid_range" }, { status: 400 });
   }
 
-  const { csv, paidEntryIds, periodStart, periodEnd } = await buildPayrollCsv(from, to);
-  // Close the period: lock EXACTLY the entries this CSV paid (not a re-query), so
-  // an overlapping/repeat export can't re-pay them (double-pay) and a concurrent
-  // approval can't be locked-but-never-paid. Only flips still-approved rows, so a
-  // re-download yields an empty CSV = "already paid" (audit rounds 6 + 12).
-  await markPayrollExported(paidEntryIds, periodStart, periodEnd, data.user.id);
+  // ATOMIC: locks approved→exported FIRST, then builds the CSV from exactly the
+  // rows that locked — no row can be paid-but-unlocked or locked-but-unpaid, and a
+  // repeat export yields an empty CSV = "already paid" (audit rounds 6 + 12 + 13).
+  const csv = await exportPayroll(from, to, data.user.id);
   return new NextResponse(csv, {
     status: 200,
     headers: {

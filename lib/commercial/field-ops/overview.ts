@@ -93,13 +93,14 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
     .map(([employee_id, scheduled]) => ({ employee_id, name: empName.get(employee_id) ?? "(crew)", scheduled: Math.round(scheduled * 4) / 4 }))
     .sort((a, b) => b.scheduled - a.scheduled);
 
-  // Skip soft-deleted-job entries so clocked/approved share the same job universe
-  // as scheduled above; count only W-2 toward "approved (ready for payroll)" so it
-  // matches what Payroll actually pays (audit round 12).
+  // Count EVERY in-week entry (incl. soft-deleted-job hours) so clocked/approved
+  // reconcile with Payroll + Hours Log, which pay/count worked hours regardless of
+  // the job's deleted_at (audit round 13). Only "approved (ready for payroll)" is
+  // W-2, matching what Payroll pays. The liveJobIds gate stays on SCHEDULED hours
+  // above — that one exists to match the Calendar, a separate invariant.
   let clockedHoursWeek = 0;
   let approvedHoursWeek = 0;
   for (const e of entries) {
-    if (!liveJobIds.has(e.job_id)) continue;
     clockedHoursWeek += e.actual_hours;
     if ((e.status === "approved" || e.status === "exported") && w2Emp.has(e.employee_id)) approvedHoursWeek += e.actual_hours;
   }
