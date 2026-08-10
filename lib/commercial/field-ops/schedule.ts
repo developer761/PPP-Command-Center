@@ -416,11 +416,17 @@ export async function copyWeekForward(
   // Target-week existing assignments (to dedup), absences (to skip), + live jobs.
   const [{ data: tgtRows }, { data: absRows }, { data: jobRows }] = await Promise.all([
     sb.from("commercial_assignments").select("job_id, employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSun).neq("status", "cancelled"),
-    sb.from("commercial_absences").select("employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSun),
+    sb.from("commercial_absences").select("employee_id, work_date, hours").gte("work_date", tgtMon).lte("work_date", tgtSun),
     sb.from("commercial_jobs").select("id").is("deleted_at", null).in("id", [...new Set(src.map((s) => s.job_id))]),
   ]);
   const existing = new Set(((tgtRows ?? []) as { job_id: string; employee_id: string; work_date: string }[]).map((r) => `${r.job_id}|${r.employee_id}|${String(r.work_date).slice(0, 10)}`));
-  const absent = new Set(((absRows ?? []) as { employee_id: string; work_date: string }[]).map((r) => `${r.employee_id}|${String(r.work_date).slice(0, 10)}`));
+  // Only a FULL-day absence (hours == null) blocks copying a shift — a partial
+  // (half-day) absence still lets the person's other shift copy forward (round 15).
+  const absent = new Set(
+    ((absRows ?? []) as { employee_id: string; work_date: string; hours: number | null }[])
+      .filter((r) => r.hours == null)
+      .map((r) => `${r.employee_id}|${String(r.work_date).slice(0, 10)}`)
+  );
   const liveJobs = new Set(((jobRows ?? []) as { id: string }[]).map((r) => r.id));
 
   let copied = 0, skippedExisting = 0, skippedAbsent = 0, skippedDeletedJob = 0;

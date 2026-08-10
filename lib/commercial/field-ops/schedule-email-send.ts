@@ -84,11 +84,16 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
   // to clock in or told "today's work" (audit 2026-08). Mirrors copy-week's skip.
   const { data: absRows } = await sb
     .from("commercial_absences")
-    .select("work_date")
+    .select("work_date, hours")
     .eq("employee_id", employeeId)
     .gte("work_date", fromIso)
     .lte("work_date", toIso);
-  const offDates = new Set(((absRows ?? []) as { work_date: string }[]).map((r) => String(r.work_date).slice(0, 10)));
+  // Only a FULL-day absence (hours == null) suppresses the day's shift email +
+  // clock-in nudge. A PARTIAL absence (hours set — e.g. a half day) still lets an
+  // afternoon shift on the SAME day notify + nudge (audit round 15).
+  const offDates = new Set(
+    ((absRows ?? []) as { work_date: string; hours: number | null }[]).filter((r) => r.hours == null).map((r) => String(r.work_date).slice(0, 10))
+  );
   const jobIds = [...new Set(assigns.map((a) => a.job_id))];
   const jobsById = new Map<string, { name: string; site_address: string | null; site_city: string | null; prevailing_wage: boolean }>();
   const { data: jobs } = await sb.from("commercial_jobs").select("id, name, site_address, site_city, prevailing_wage").in("id", jobIds).is("deleted_at", null);

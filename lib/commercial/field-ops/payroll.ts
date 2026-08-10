@@ -170,25 +170,45 @@ export async function exportPayroll(fromIso: string, toIso: string, userId: stri
       .order("id")
   );
 
+  // Approved W-2 entry ids in range to lock — PAGINATED so a >1000-entry export
+  // isn't silently truncated (audit round 15).
+  const toLock = await paginateAll<{ id: string }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("id")
+      .eq("status", "approved")
+      .gte("work_date", periodStart)
+      .lte("work_date", periodEnd)
+      .in("employee_id", w2Ids)
+      .order("id")
+  );
+  if (toLock.length === 0) return emptyCsv; // nothing approved to pay — create no period
+
   const { data: period, error: pErr } = await sb
     .from("commercial_pay_periods")
     .insert({ start_date: periodStart, end_date: periodEnd, status: "exported", exported_at: new Date().toISOString(), exported_by_user_id: userId })
     .select("id")
     .single();
   if (pErr || !period) return emptyCsv;
+  const periodId = (period as { id: string }).id;
 
-  // Flip approved → exported for W-2 in range, RETURNING the rows that actually
-  // locked. Anything de-approved in the meantime simply isn't returned (and stays
-  // approved for a later honest export) — so the CSV pays exactly what locked.
-  const { data: paidData } = await sb
-    .from("commercial_time_entries")
-    .update({ status: "exported", pay_period_id: (period as { id: string }).id, updated_at: new Date().toISOString() })
-    .eq("status", "approved")
-    .gte("work_date", periodStart)
-    .lte("work_date", periodEnd)
-    .in("employee_id", w2Ids)
-    .select("employee_id, work_date, actual_hours");
-  const paid = (paidData ?? []) as { employee_id: string; work_date: string; actual_hours: number }[];
+  // Flip approved → exported in CHUNKS, RETURNING each locked row. A single
+  // UPDATE...RETURNING would flip ALL matching rows but return only the first 1000,
+  // leaving the overflow locked-but-unpaid; chunks of 500 stay under the RETURNING
+  // cap so the CSV pays EXACTLY what locked. The status guard means a row
+  // de-approved after the id snapshot isn't flipped and isn't paid (rounds 13 + 15).
+  const paid: { employee_id: string; work_date: string; actual_hours: number }[] = [];
+  const ids = toLock.map((r) => r.id);
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const { data } = await sb
+      .from("commercial_time_entries")
+      .update({ status: "exported", pay_period_id: periodId, updated_at: new Date().toISOString() })
+      .in("id", chunk)
+      .eq("status", "approved")
+      .select("employee_id, work_date, actual_hours");
+    if (data) paid.push(...(data as { employee_id: string; work_date: string; actual_hours: number }[]));
+  }
 
   // employee -> week -> { pay: just-locked, base: already-exported }.
   const byEmp = new Map<string, Map<string, { pay: number; base: number }>>();
