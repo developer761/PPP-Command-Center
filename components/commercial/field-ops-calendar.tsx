@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { TimeSelect } from "@/components/commercial/time-select";
-import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { INPUT_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import type { MonthDay, DayCrew, DayOff } from "@/lib/commercial/field-ops/schedule";
 import { ABSENCE_TYPES } from "@/lib/commercial/field-ops/absence-constants";
 import { jobStatusLabel, type JobStatus } from "@/lib/commercial/field-ops/job-constants";
@@ -388,6 +388,30 @@ export function FieldOpsCalendar({
     }
   }
 
+  // Mark a SCHEDULED crew member off (sick/PTO/etc.) without deleting the shift:
+  // the shift stays (crossed out on the calendar), the reason is recorded, KPIs +
+  // the hours log reflect it, and — because they were scheduled — they're emailed
+  // the reason (handled server-side in upsertAbsence). Karan 2026-08.
+  async function handleTimeOff(employeeId: string, workDate: string, type: string, hours: string) {
+    if (!type) { setMsg({ tone: "err", text: "Pick a reason." }); return; }
+    setSaving(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/commercial/field-ops/absence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "upsert", employee_id: employeeId, work_date: workDate, type, hours, note: "" }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) setMsg({ tone: "err", text: d.detail || "Couldn't mark off — try again." });
+      else { setMsg({ tone: "ok", text: "Marked off — they've been emailed the reason." }); refresh(); }
+    } catch {
+      setMsg({ tone: "err", text: "Network error — try again." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const crewOptions: Opt[] = employees.map((e) => ({ value: e.id, label: e.display_name, hint: e.email ? undefined : "no email — won't be notified" }));
   const jobOptions: Opt[] = jobs.map((j) => ({ value: j.id, label: j.name, hint: [j.job_code, j.customer_name, j.site_city].filter(Boolean).join(" · ") }));
   const maxHead = Math.max(1, ...grid.map((d) => d.headcount));
@@ -531,7 +555,7 @@ export function FieldOpsCalendar({
             className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none focus:outline-none"
           >
             {person ? (
-              <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} />
+              <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} onTimeOff={handleTimeOff} />
             ) : addDay ? (
               <DayPanel date={addDay} crew={dayCrew(addDay)} off={dayOff(addDay)} crewOptions={crewOptions} jobOptions={jobOptions} formKey={formKey} saving={saving} msg={msg} onClose={closeAll} onAdd={handleAdd} onAddAbsence={handleAddAbsence} onRemoveAbsence={handleRemoveAbsence} onOpenPerson={(id, name) => openPerson(id, name, addDay)} />
             ) : null}
@@ -655,7 +679,7 @@ function DayPanel({
                   <SearchableSelect name="employee_id" options={crewOptions} placeholder="Search crew…" ariaLabel="Crew member to mark off" />
                 </label>
                 <label className="block"><span className={LABEL_CLS}>Reason</span>
-                  <select name="type" className={INPUT_CLS} defaultValue="">
+                  <select name="type" className={SELECT_CLS} style={SELECT_BG_STYLE} defaultValue="">
                     <option value="" disabled>Pick a reason…</option>
                     {ABSENCE_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
                   </select>
@@ -703,7 +727,7 @@ function CopyWeekModal({ monthStart, busy, msg, onCopy, onClose }: { monthStart:
 }
 
 function PersonPanel({
-  person, detail, loading, error, msg, nowMs, saving, onBack, onClose, onRemove,
+  person, detail, loading, error, msg, nowMs, saving, onBack, onClose, onRemove, onTimeOff,
 }: {
   person: { employeeId: string; name: string; date: string };
   detail: PersonDetail | null;
@@ -715,8 +739,14 @@ function PersonPanel({
   onBack: () => void;
   onClose: () => void;
   onRemove: (assignmentId: string) => void;
+  onTimeOff: (employeeId: string, workDate: string, type: string, hours: string) => void;
 }) {
   const clock = detail?.clock;
+  // Inline "Time off" form state — mark this person off for the day (sick/PTO/…)
+  // without deleting their shift, so it crosses out on the calendar.
+  const [offOpen, setOffOpen] = useState(false);
+  const [offType, setOffType] = useState("");
+  const [offHours, setOffHours] = useState("");
   return (
     <>
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3 shrink-0">
@@ -745,6 +775,7 @@ function PersonPanel({
         ) : loading && !detail ? (
           <p className="text-[12.5px] text-ppp-charcoal-400">Loading…</p>
         ) : detail && detail.shifts.length > 0 ? (
+          <>
           <ul className="space-y-3">
             {detail.shifts.map((s) => (
               <li key={s.assignment_id} className="border border-ppp-charcoal-100 rounded-lg p-3">
@@ -764,6 +795,36 @@ function PersonPanel({
               </li>
             ))}
           </ul>
+          {/* Time off for the day — marks this scheduled person off (reason +
+              optional hours) WITHOUT deleting the shift, so it crosses out on the
+              calendar, the hours log shows scheduled-vs-worked, and they're
+              emailed the reason. The alternative to a hard "Remove". */}
+          <div className="border border-amber-100 bg-amber-50/40 rounded-lg p-3">
+            {!offOpen ? (
+              <button type="button" onClick={() => setOffOpen(true)} disabled={saving} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-amber-700 hover:text-amber-800 min-h-[44px] disabled:opacity-50">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                Time off (sick, PTO…)
+              </button>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Mark {person.name.split(" ")[0]} off for this day</div>
+                <label className="block"><span className={LABEL_CLS}>Reason</span>
+                  <select value={offType} onChange={(e) => setOffType(e.target.value)} className={SELECT_CLS} style={SELECT_BG_STYLE}>
+                    <option value="" disabled>Pick a reason…</option>
+                    {ABSENCE_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+                  </select>
+                </label>
+                <label className="block"><span className={LABEL_CLS}>Hours <span className="font-normal text-ppp-charcoal-400">(optional — blank = full day)</span></span>
+                  <input value={offHours} onChange={(e) => setOffHours(e.target.value)} inputMode="decimal" placeholder="e.g. 4 for a half day" className={INPUT_CLS} /></label>
+                <div className="flex items-center gap-2">
+                  <button type="button" disabled={saving || !offType} onClick={() => { onTimeOff(person.employeeId, person.date, offType, offHours); setOffOpen(false); setOffType(""); setOffHours(""); }} className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-amber-500 text-white text-[12.5px] font-semibold hover:bg-amber-600 disabled:opacity-50 min-h-[44px] touch-manipulation">Mark off</button>
+                  <button type="button" onClick={() => { setOffOpen(false); setOffType(""); setOffHours(""); }} className="text-[12px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[44px] px-2">Cancel</button>
+                </div>
+                <p className="text-[11px] text-amber-700/80 leading-snug">They stay on the calendar crossed out with the reason, and get emailed.</p>
+              </div>
+            )}
+          </div>
+          </>
         ) : (
           <p className="text-[12.5px] text-ppp-charcoal-500">No shift on this day.</p>
         )}

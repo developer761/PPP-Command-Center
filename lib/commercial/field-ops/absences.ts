@@ -87,6 +87,18 @@ async function resyncNudge(employeeId: string, workDate: string): Promise<void> 
   await resyncClockReminder(employeeId, workDate).catch(() => undefined);
 }
 
+// Email the crew member the reason IF they were already scheduled that day
+// (Karan 2026-08: "mark someone off who was scheduled → email them the reason").
+// Only on mark-off (upsert), never on un-mark (delete). Best-effort.
+async function notifyMarkedOff(employeeId: string, workDate: string, type: string, hours: number | null): Promise<void> {
+  try {
+    const { sendAbsenceNotice } = await import("./schedule-email-send");
+    await sendAbsenceNotice(employeeId, workDate, type, hours);
+  } catch (err) {
+    console.warn("[field-ops] notifyMarkedOff failed:", err);
+  }
+}
+
 export async function upsertAbsence(input: {
   employee_id: string;
   work_date: string;
@@ -119,6 +131,7 @@ export async function upsertAbsence(input: {
     if (error) return { ok: false, error: error.message };
     await logUpdate("commercial_absences", (data as { id: string }).id, existing, data, input.actor_user_id);
     await resyncNudge(input.employee_id, input.work_date);
+    await notifyMarkedOff(input.employee_id, input.work_date, input.type, hours);
     return { ok: true, id: (data as { id: string }).id };
   }
 
@@ -147,6 +160,7 @@ export async function upsertAbsence(input: {
         if (uErr) return { ok: false, error: uErr.message };
         await logUpdate("commercial_absences", (upd as { id: string }).id, existRow, upd, input.actor_user_id);
         await resyncNudge(input.employee_id, input.work_date);
+        await notifyMarkedOff(input.employee_id, input.work_date, input.type, hours);
         return { ok: true, id: (upd as { id: string }).id };
       }
     }
@@ -154,6 +168,7 @@ export async function upsertAbsence(input: {
   }
   await logInsert("commercial_absences", (data as { id: string }).id, data, input.actor_user_id);
   await resyncNudge(input.employee_id, input.work_date);
+  await notifyMarkedOff(input.employee_id, input.work_date, input.type, hours);
   return { ok: true, id: (data as { id: string }).id };
 }
 

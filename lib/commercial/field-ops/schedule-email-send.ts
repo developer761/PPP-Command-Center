@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { addDaysIso, todayEtIso, etWallTimeToUtcIso, fmtTime12 } from "./schedule";
 import { listScheduleRecipients } from "./schedule-emails";
+import { absenceLabel } from "./absence-constants";
 import type { CommercialEmployee } from "./employees";
 
 /**
@@ -424,6 +425,59 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
     await scheduleAllReminders(employeeId, workDate, shifts[0].jobs.map((j) => j.start), emp, oc.name, link);
   } catch (err) {
     console.warn("[field-ops] shift assignment email failed:", err);
+  }
+}
+
+/* ── 2b. Marked-off notice (Katie/Karan 2026-08) ──────────────────────────────
+ * When a crew member who was ALREADY SCHEDULED gets marked off (sick / PTO /
+ * etc.), email them the reason so they know not to come in. Only fires when they
+ * actually had a shift that day — pre-planning a future PTO day they weren't
+ * scheduled for stays silent. Respects opt-out + missing-email. Bilingual. */
+export async function sendAbsenceNotice(
+  employeeId: string,
+  workDate: string,
+  type: string,
+  hours: number | null
+): Promise<void> {
+  try {
+    const sb = commercialDb();
+    // Only notify if they were actually on the schedule that day.
+    const { data: assigns } = await sb
+      .from("commercial_assignments")
+      .select("id")
+      .eq("employee_id", employeeId)
+      .eq("work_date", workDate)
+      .neq("status", "cancelled")
+      .limit(1);
+    if (!assigns || assigns.length === 0) return;
+    const { data: e } = await sb
+      .from("commercial_employees")
+      .select("first_name, email, preferred_language, schedule_email_opt_out")
+      .eq("id", employeeId)
+      .eq("active", true)
+      .maybeSingle();
+    const emp = e as { first_name: string; email: string | null; preferred_language: "en" | "es"; schedule_email_opt_out: boolean } | null;
+    if (!emp || !emp.email || emp.schedule_email_opt_out) return;
+    const oc = await getOperatingCompany();
+    const es = emp.preferred_language === "es";
+    const reason = absenceLabel(type);
+    const day = dayLabel(workDate, es);
+    const partial = hours != null && hours > 0;
+    const subject = es ? `Marcado ausente — ${day}` : `You're marked off — ${day}`;
+    const text = es
+      ? `Hola ${emp.first_name},\n\nEstas marcado como ausente el ${day}${partial ? ` por ${hours} horas` : ""} (${reason}). ${partial ? "No necesitas trabajar esas horas." : "No necesitas venir ese dia."}\n\nSi crees que es un error, contacta a la oficina.\n\n- ${oc.name}`
+      : `Hi ${emp.first_name},\n\nYou're marked off for ${day}${partial ? ` for ${hours} hours` : ""} (${reason}). ${partial ? "You don't need to work those hours." : "You don't need to come in that day."}\n\nIf you think this is a mistake, contact the office.\n\n- ${oc.name}`;
+    const { sendEmail } = await import("@/lib/email/resend");
+    await sendEmail({
+      channel: "commercial",
+      to: emp.email,
+      subject,
+      text,
+      ...(fromLine(oc.name) ? { from: fromLine(oc.name) } : {}),
+      tags: [{ name: "kind", value: "crew_marked_off" }],
+    });
+  } catch (err) {
+    console.warn("[field-ops] absence notice failed:", err);
   }
 }
 
