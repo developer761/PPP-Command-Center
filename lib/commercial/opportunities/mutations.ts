@@ -381,6 +381,18 @@ export async function softDeleteCommercialOpportunity(
       .in("id", invoices.map((i) => i.id));
   }
 
+  // Cascade: tear down this deal's Field Ops work order(s) too — otherwise a
+  // deleted deal leaves an orphaned job on the Work Orders / Status / Calendar
+  // surfaces (the "Karan / k" stray-WO bug). softDeleteJob cancels future
+  // assignments + reopens a sent WO to draft, so crew aren't left scheduled on a
+  // dead deal. Dynamic import breaks the opp ↔ field-ops module cycle.
+  try {
+    const { cascadeDeleteJobsForOwner } = await import("@/lib/commercial/field-ops/jobs");
+    await cascadeDeleteJobsForOwner({ opportunity_id: id }, deletedByUserId ?? "system");
+  } catch (err) {
+    console.warn("[opportunities] field-ops cascade delete failed:", err);
+  }
+
   await logDelete("commercial_opportunities", id, before, deletedByUserId);
   void after; // logDelete captures the row
   return { ok: true };

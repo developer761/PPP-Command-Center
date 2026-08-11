@@ -367,6 +367,31 @@ export async function upsertAssignment(input: {
     assignmentId = (data as { id: string }).id;
   }
 
+  // Auto-advance the work order's status when crew is put on the calendar for it:
+  // a job still sitting at "estimating" or "ready to schedule" is, by definition,
+  // now SCHEDULED. Only nudges FORWARD from a pre-schedule stage — never regresses
+  // a job that's already in progress / almost done / complete / on hold (Karan
+  // 2026-08: "if a WO is ready-to-schedule but I schedule it, the status should
+  // change"). Best-effort — a failure here must not fail the scheduling action.
+  try {
+    const { data: job } = await sb
+      .from("commercial_jobs")
+      .select("status")
+      .eq("id", input.job_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    const cur = (job as { status: JobStatus } | null)?.status;
+    if (cur === "estimating" || cur === "ready_to_schedule") {
+      await sb
+        .from("commercial_jobs")
+        .update({ status: "scheduled", updated_at: new Date().toISOString() })
+        .eq("id", input.job_id);
+      await logUpdate("commercial_jobs", input.job_id, { status: cur }, { status: "scheduled" }, input.actor_user_id);
+    }
+  } catch (err) {
+    console.warn("[field-ops] auto-advance job status on schedule failed:", err);
+  }
+
   // Email the crew member their shift (consolidated for the day) + schedule the
   // clock-in nudge. Dynamic import breaks the schedule ↔ email-send cycle.
   try {

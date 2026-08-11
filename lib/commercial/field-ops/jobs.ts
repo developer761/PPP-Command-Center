@@ -577,3 +577,67 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
   await logDelete("commercial_jobs", id, before, actorUserId);
   return { ok: true };
 }
+
+/** Cascade teardown: soft-delete every LIVE Field Ops job that belongs to a
+ *  now-deleted deal or account. Runs the full softDeleteJob teardown per job
+ *  (cancel future assignments, re-sync clock-in nudges, reopen a sent deal WO to
+ *  draft) so a deleted deal/account can't leave crew scheduled on a dead work
+ *  order. `match` is exactly one of { opportunity_id } or { account_id }.
+ *  Returns how many jobs were torn down. Best-effort — never throws. */
+export async function cascadeDeleteJobsForOwner(
+  match: { opportunity_id: string } | { account_id: string },
+  actorUserId: string
+): Promise<number> {
+  const sb = commercialDb();
+  const col = "opportunity_id" in match ? "opportunity_id" : "account_id";
+  const val = "opportunity_id" in match ? match.opportunity_id : match.account_id;
+  const { data } = await sb.from("commercial_jobs").select("id").eq(col, val).is("deleted_at", null);
+  const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  for (const id of ids) {
+    await softDeleteJob(id, actorUserId).catch(() => undefined);
+  }
+  return ids.length;
+}
+
+/** Self-healing sweep for ORPHANED work orders: a live Field Ops job whose
+ *  owning deal OR account was deleted but the job was left behind (deletes
+ *  didn't used to cascade into Field Ops). This is what produced the stray
+ *  "Karan / k" work orders — they were connected to a deal/account Karan later
+ *  deleted, and the job lingered on the Work Orders / Status / Calendar surfaces.
+ *  Idempotent + cheap once clean; runs on Field Ops load. One-off jobs (no deal
+ *  AND no account) are never orphaned — they legitimately stand alone. */
+export async function cleanOrphanedJobs(actorUserId: string): Promise<number> {
+  try {
+    const sb = commercialDb();
+    const jobs = await paginateAll<{ id: string; opportunity_id: string | null; account_id: string | null }>(() =>
+      sb.from("commercial_jobs").select("id, opportunity_id, account_id").is("deleted_at", null).order("id")
+    );
+    const oppIds = [...new Set(jobs.map((j) => j.opportunity_id).filter(Boolean) as string[])];
+    const accIds = [...new Set(jobs.map((j) => j.account_id).filter(Boolean) as string[])];
+    const deadOpps = new Set<string>();
+    const deadAccs = new Set<string>();
+    // Only DELETED owners orphan a job — an archived deal is still a real deal.
+    if (oppIds.length) {
+      const rows = await paginateAll<{ id: string }>(() =>
+        sb.from("commercial_opportunities").select("id").in("id", oppIds).not("deleted_at", "is", null).order("id")
+      );
+      for (const r of rows) deadOpps.add(r.id);
+    }
+    if (accIds.length) {
+      const rows = await paginateAll<{ id: string }>(() =>
+        sb.from("commercial_accounts").select("id").in("id", accIds).not("deleted_at", "is", null).order("id")
+      );
+      for (const r of rows) deadAccs.add(r.id);
+    }
+    const orphans = jobs.filter(
+      (j) => (j.opportunity_id && deadOpps.has(j.opportunity_id)) || (j.account_id && deadAccs.has(j.account_id))
+    );
+    for (const j of orphans) {
+      await softDeleteJob(j.id, actorUserId).catch(() => undefined);
+    }
+    return orphans.length;
+  } catch (err) {
+    console.warn("[field-ops] cleanOrphanedJobs failed:", err);
+    return 0;
+  }
+}

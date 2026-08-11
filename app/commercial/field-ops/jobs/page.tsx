@@ -12,6 +12,7 @@ import {
   updateJob,
   softDeleteJob,
   ensureWorkOrdersForConnectedJobs,
+  cleanOrphanedJobs,
   listDealOptionsForWorkOrder,
   getOpportunityAccountId,
   jobStatusLabel,
@@ -126,7 +127,7 @@ export default async function FieldOpsJobsPage({
   const sp = await searchParams;
   // Keep both directions in sync before listing: sent deal WOs → schedulable
   // twins here, and deal-connected jobs here → a dashboard WO on the deal.
-  await Promise.all([ensureJobsForSentWorkOrders(userId), ensureWorkOrdersForConnectedJobs(userId)]);
+  await Promise.all([ensureJobsForSentWorkOrders(userId), ensureWorkOrdersForConnectedJobs(userId), cleanOrphanedJobs(userId)]);
   const [jobs, dealOptions] = await Promise.all([listJobs({ includeClosed: sp.closed === "1" }), listDealOptionsForWorkOrder()]);
 
   return (

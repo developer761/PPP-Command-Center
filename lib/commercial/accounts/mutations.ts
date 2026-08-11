@@ -147,6 +147,18 @@ export async function softDeleteCommercialAccount(
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
 
+  // Cascade: tear down any Field Ops work order(s) hanging off this account —
+  // otherwise deleting the account leaves orphaned jobs on the Work Orders /
+  // Status / Calendar surfaces (the "Karan / k" stray-WO bug Karan hit). This
+  // covers account-linked one-offs; deal-connected jobs are also torn down when
+  // their deal is deleted. Dynamic import breaks the account ↔ field-ops cycle.
+  try {
+    const { cascadeDeleteJobsForOwner } = await import("@/lib/commercial/field-ops/jobs");
+    await cascadeDeleteJobsForOwner({ account_id: id }, deletedByUserId ?? "system");
+  } catch (err) {
+    console.warn("[accounts] field-ops cascade delete failed:", err);
+  }
+
   await logDelete("commercial_accounts", id, before, deletedByUserId);
   return { ok: true };
 }

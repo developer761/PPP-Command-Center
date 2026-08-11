@@ -8,12 +8,12 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import {
   listJobs,
   ensureJobsForSentWorkOrders,
+  cleanOrphanedJobs,
   updateJob,
   jobStatusLabel,
   divisionLabel,
   JOB_STATUSES,
   type JobStatus,
-  type CommercialJob,
 } from "@/lib/commercial/field-ops/jobs";
 import { StatusMoveSelect } from "@/components/commercial/status-move-select";
 
@@ -68,67 +68,60 @@ export default async function FieldOpsStatusPage({
 }) {
   const userId = await requireAdmin();
   const sp = await searchParams;
-  await ensureJobsForSentWorkOrders(userId);
+  await Promise.all([ensureJobsForSentWorkOrders(userId), cleanOrphanedJobs(userId)]);
   const jobs = await listJobs({ includeClosed: true });
 
-  const byStatus = new Map<JobStatus, CommercialJob[]>();
-  for (const s of JOB_STATUSES) byStatus.set(s, []);
-  for (const j of jobs) byStatus.get(j.status)?.push(j);
+  // One flat list, ordered by pipeline stage (estimating → … → closed) then name,
+  // so same-stage work orders cluster without the horizontal-scroll board Karan
+  // didn't want. Each row carries an inline status control.
+  const rank = new Map<JobStatus, number>(JOB_STATUSES.map((s, i) => [s, i]));
+  const ordered = [...jobs].sort((a, b) => {
+    const ra = rank.get(a.status) ?? 99;
+    const rb = rank.get(b.status) ?? 99;
+    return ra !== rb ? ra - rb : a.name.localeCompare(b.name);
+  });
 
   return (
-    <div className="pb-8">
+    <div className="pb-8 max-w-3xl">
       <div className="mb-5">
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Status</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">Move every work order through its stages. Changing a status here updates it across Field Ops — the Work Orders tab and the Calendar (shown next to the crew).</p>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">Every work order and the stage it&rsquo;s at. Change a status here and it updates across Field Ops — the Work Orders tab and the Calendar (shown next to the crew). Scheduling a crew onto a work order moves it to <strong>Scheduled</strong> automatically.</p>
       </div>
 
       {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error} — this status may need migration 118 applied.</div>}
 
-      {jobs.length === 0 ? (
+      {ordered.length === 0 ? (
         <div className="text-center py-10 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No work orders yet</p>
           <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Add one on the <Link href="/commercial/field-ops/jobs" className="font-semibold text-cc-brand-700 hover:underline">Work Orders</Link> tab, then move it through its stages here.</p>
         </div>
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-3 -mx-4 px-4 sm:mx-0 sm:px-0">
-          {JOB_STATUSES.map((s) => {
-            const col = byStatus.get(s) ?? [];
-            return (
-              <section key={s} className="shrink-0 w-[248px] bg-ppp-charcoal-25/60 border border-ppp-charcoal-100 rounded-xl">
-                <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-                  <span aria-hidden className={`inline-block h-2.5 w-2.5 rounded-full ${STATUS_ACCENT[s]}`} />
-                  <h2 className="text-[12.5px] font-bold text-ppp-charcoal">{jobStatusLabel(s)}</h2>
-                  <span className="ml-auto text-[11px] font-semibold text-ppp-charcoal-400 tabular-nums">{col.length}</span>
+        <>
+          <h2 className="text-sm font-bold text-ppp-charcoal mb-2">{ordered.length} work order{ordered.length === 1 ? "" : "s"}</h2>
+          <ul className="space-y-2">
+            {ordered.map((j) => (
+              <li key={j.id} className="bg-surface border border-ppp-charcoal-100 rounded-xl px-3.5 py-3 flex items-center gap-3">
+                <span aria-hidden className={`shrink-0 inline-block h-2.5 w-2.5 rounded-full ${STATUS_ACCENT[j.status]}`} title={jobStatusLabel(j.status)} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px] font-semibold text-ppp-charcoal leading-snug flex items-center gap-1.5 min-w-0">
+                    <span className="truncate">{j.name}</span>
+                    {j.prevailing_wage && <span className="shrink-0 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1 py-0.5">PW</span>}
+                  </div>
+                  <div className="text-[11px] text-ppp-charcoal-500 truncate">
+                    <span className="font-mono">{j.job_code}</span>
+                    {j.customer_name ? ` · ${j.customer_name}` : ""}
+                    {j.division_tag ? ` · ${divisionLabel(j.division_tag)}` : ""}
+                    {typeof j.estimated_labor_hours === "number" && j.estimated_labor_hours > 0 ? ` · Est. ${j.estimated_labor_hours}h` : ""}
+                  </div>
                 </div>
-                <div className="px-2.5 pb-2.5 space-y-2 min-h-[40px]">
-                  {col.length === 0 ? (
-                    <p className="text-[11px] text-ppp-charcoal-300 px-1 py-2">—</p>
-                  ) : (
-                    col.map((j) => (
-                      <div key={j.id} className="bg-surface border border-ppp-charcoal-100 rounded-lg p-2.5">
-                        <div className="flex items-start gap-1.5">
-                          <p className="text-[12.5px] font-semibold text-ppp-charcoal leading-snug flex-1 min-w-0 break-words">{j.name}</p>
-                          {j.prevailing_wage && <span className="shrink-0 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1 py-0.5">PW</span>}
-                        </div>
-                        <p className="text-[10.5px] text-ppp-charcoal-500 font-mono truncate mt-0.5">{j.job_code}</p>
-                        {(j.customer_name || j.division_tag) && (
-                          <p className="text-[10.5px] text-ppp-charcoal-400 truncate">{[j.customer_name, j.division_tag ? divisionLabel(j.division_tag) : null].filter(Boolean).join(" · ")}</p>
-                        )}
-                        {typeof j.estimated_labor_hours === "number" && j.estimated_labor_hours > 0 && (
-                          <p className="text-[10.5px] text-ppp-charcoal-400 mt-0.5">Est. {j.estimated_labor_hours}h</p>
-                        )}
-                        <form action={moveStatusAction} className="mt-2">
-                          <input type="hidden" name="id" value={j.id} />
-                          <StatusMoveSelect current={j.status} />
-                        </form>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
-            );
-          })}
-        </div>
+                <form action={moveStatusAction} className="shrink-0 w-[168px]">
+                  <input type="hidden" name="id" value={j.id} />
+                  <StatusMoveSelect current={j.status} />
+                </form>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );
