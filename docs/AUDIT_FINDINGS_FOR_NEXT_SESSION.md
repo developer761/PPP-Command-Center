@@ -74,5 +74,24 @@ Removed from the account UI; the column + type remain. No invoice/tax logic read
 ## ✅ Already fixed today (context — DON'T re-audit/redo)
 Time-off feature (mark-off + email + crossed-out + hours-log scheduled-vs-worked + KPI + copy-week confirm) · orphan-delete cascades (deal/account → jobs/invoices) · 1-day/1-hour/10-min crew reminders · Katie B1/U1/U2/U3/U4/F1 · Cost→Transactions labels · auto-title · **Teams** (Settings CRUD + account + opp assignment; **migration 122 applied**) · search-bar × buttons · proposal back-button (new proposals return to the Proposals list) · Closed Won/Lost labels.
 
+---
+
+## 🟠 ROUND 2 — additional findings
+
+### 14. The two "New opportunity" forms have DRIFTED apart
+The **account** new-deal form (`accounts/[id]/page.tsx` NewDealForm) got auto-title + a **Team** field + **RFP-defaults-today**. The **pipeline** "New opportunity" sheet (`opportunities/page.tsx`, plain `<input name="title">` at L1588) did **not** — it has no auto-title, no Team selector, no RFP-default (no RFP field at all). So creating a deal from the pipeline gives a different, thinner form than from the account.
+- **Fix:** bring the pipeline sheet up to parity (auto-title via `AutoOpportunityTitle`, Team `<select>`, RFP-received default), or route both to one shared form component. (The slim-form work in the plan should consolidate these.)
+
+### 15. `/proposal/new` is the ONLY create-on-GET page — the other `/new` pages are safe
+Verified for completeness: `opportunities/new` (pure redirect), `invoices/new` (validate + redirect), `accounts/new` + `products/new` (real `<form action>` = POST). So finding #2 is isolated to the proposal flow — good, one place to fix.
+
+### 16. CORRECTION to #10 (RLS) — downgrade to non-issue
+The other `commercial_*` tables (e.g. `commercial_account_assignments`, migration 021) do **not** enable RLS — they rely on service-role access via `commercialDb()`. The new `commercial_teams` tables follow the same pattern, so there's **no RLS gap**. Disregard #10.
+
+### 17. Statuses display-layer flatten — now SHIPPED by the parallel session (commit 7253b21)
+`lib/commercial/opportunities/kanban-columns.ts` now owns the tuple↔column mapping; board reads the six pre-contract stages; Follow-Up / Pending-Approval render as tags, not columns. **Remove "display-layer status flatten" from the still-to-build list.** Worth a quick verify that all four old copy-pasted column maps were actually replaced by the new single source (the commit says they'd drifted).
+
+---
+
 ## 📋 Still to BUILD (from the meeting — see COMMERCIAL_MEETING_PLAN_2026_08.md)
 Display-layer status flatten (RFP column · single Proposal column + Follow-Up tag · pre/post picker split — NO data migration needed) · **Work-Orders-from-proposal-scope builder** (+ PDF upload · multiple WOs · unassigned-scope) · **Crew role** · shared IDs finish (PROJ/WO/TRANS) · new-opp slim form for existing builders + inline new-contact · proposals batch (revision lifecycle · Bid-Set→intro · Labor-into-Inclusions · Proposal→Won logic).
