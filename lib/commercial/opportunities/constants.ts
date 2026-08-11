@@ -604,3 +604,79 @@ export function isFollowUpDue(opp: AttentionOpp, todayEt: string): boolean {
   const at = opp.follow_up_at?.slice(0, 10);
   return !!at && at <= todayEt;
 }
+
+// ── stageRank — THE ordinal (spec §2) ──────────────────────────────────────
+
+/**
+ * Monotonic delivery-progress rank over the (status, sub_status) tuple.
+ *
+ * There was no ordinal anywhere: ALLOWED_TRANSITIONS is flat (every status
+ * reaches every other) and laneForStatus returns a lane, not an order. So
+ * "forward-only" was undefined, and the two existing status guards — the live
+ * proposal cascade and the page-load reconciler — each carried their own
+ * hand-rolled idea of what forward meant. This is the one definition; nothing
+ * should re-derive order.
+ *
+ * `null` means a TERMINAL off-ramp: never "behind" anything, never advanced
+ * automatically. Two of them, for different reasons:
+ *   - pre_sale_closed + lost — the bid is over; auto-advancing a lost deal
+ *     because someone edited its old proposal would resurrect it.
+ *   - post_sale_closed + closed — the job is finished. (Its sibling sub,
+ *     `closeout`, is rank 7: paperwork outstanding IS still progress.)
+ *
+ * Advance rule everywhere: move to T only if stageRank(current) is non-null
+ * AND strictly less than stageRank(T).
+ */
+export function stageRank(status: string, sub?: string | null): number | null {
+  switch (status) {
+    case "qualifying":
+      // solicitation / rfp / estimating all rank 0 — RFP is a display stage,
+      // not extra delivery progress.
+      return 0;
+    case "estimating":
+      return 1;
+    case "proposal":
+      return 2;
+    case "pre_sale_closed":
+      return sub === "won" ? 3 : null;
+    case "pre_construction":
+      return 4;
+    case "in_progress":
+      return 5;
+    case "billing":
+      return 6;
+    case "post_sale_closed":
+      return sub === "closed" ? null : 7;
+    default:
+      // Unknown / legacy v1 status: terminal, so nothing auto-moves a row we
+      // don't understand. Fail closed.
+      return null;
+  }
+}
+
+/** A deal that must never be auto-advanced (lost bid, or a finished job). */
+export function isTerminalOffRamp(o: StatusTuple): boolean {
+  return stageRank(o.status ?? "", o.sub_status) === null;
+}
+
+/**
+ * The three phases the deal Overview switches on.
+ *
+ * Ordered deliberately, because `isPostSaleProject` returns TRUE the moment a
+ * deal is won and FALSE for lost — using it as the switch renders a
+ * freshly-won job as a broken $0 money wall (no invoices, no costs yet) and a
+ * lost bid as live pipeline noise.
+ */
+export type DealPhase = "lost" | "won_not_started" | "in_delivery" | "pre_sale";
+
+export function dealPhase(o: StatusTuple): DealPhase {
+  if (isLost(o)) return "lost";
+  if (isWon(o) && o.status === "pre_sale_closed") return "won_not_started";
+  if (
+    o.status != null &&
+    (POST_SALE_STATUSES as readonly string[]).includes(o.status)
+  ) {
+    return "in_delivery";
+  }
+  return "pre_sale";
+}
