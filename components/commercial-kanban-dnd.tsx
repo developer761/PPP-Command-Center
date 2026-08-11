@@ -2,6 +2,7 @@
 
 import { useState, useRef, useTransition, type DragEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { resolveColumnTarget } from "@/lib/commercial/opportunities/kanban-columns";
 
 /**
  * Tiny client wrapper that adds HTML5 drag-and-drop on top of the
@@ -105,22 +106,16 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     // card back. Eliminates the 200-500ms "card sits stale" lag.
     setOptimisticMove({ oppId, toStatus });
 
-    // Karan 2026-07-15: the Kanban now surfaces "Proposal Drafted" and
-    // "Proposal Sent" as two separate visual columns instead of one
-    // "Proposal" column with a sub-status chip. Both map to real DB
-    // (status, sub_status) tuples via the mini-shim below — the API
-    // itself doesn't need to know these column keys exist.
-    //   proposal_drafted → estimating + proposal_pending_approval
-    //   proposal_sent    → proposal   + sent
-    let apiToStatus = toStatus;
-    let apiToSubStatus: string | undefined;
-    if (toStatus === "proposal_drafted") {
-      apiToStatus = "estimating";
-      apiToSubStatus = "proposal_pending_approval";
-    } else if (toStatus === "proposal_sent") {
-      apiToStatus = "proposal";
-      apiToSubStatus = "sent";
-    }
+    // Kanban columns are a DISPLAY layer over the (status, sub_status)
+    // tuple, so a drop target has to be translated before it hits the API.
+    // That mapping used to be inlined here AND in the page's server action
+    // AND in the board's bucketer — three copies that drifted. It now
+    // lives in one place (lib/commercial/opportunities/kanban-columns),
+    // and every target it returns is whitelisted by the migration
+    // 052/053 CHECK, so a drop can't write a tuple the DB rejects.
+    const target = resolveColumnTarget(toStatus);
+    const apiToStatus = target?.status ?? toStatus;
+    const apiToSubStatus = target?.sub_status;
 
     try {
       const res = await fetch(`/api/commercial/opportunities/${oppId}/move-status`, {

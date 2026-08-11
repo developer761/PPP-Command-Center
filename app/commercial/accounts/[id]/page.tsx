@@ -114,9 +114,13 @@ import { SubmittalsTool } from "./submittals/[dealId]/submittals-tool";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
-  quickFlipNextStatuses,
   changeOpportunityStatus,
 } from "@/lib/commercial/opportunities/status";
+import {
+  KANBAN_COLUMNS,
+  columnKeyForOpp,
+  resolveColumnTarget,
+} from "@/lib/commercial/opportunities/kanban-columns";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments";
@@ -2623,22 +2627,19 @@ async function quickFlipFromAccountAction(formData: FormData) {
   const opp_id = String(formData.get("opp_id") ?? "");
   const rawToStatus = String(formData.get("to_status") ?? "");
   const rawToSubStatus = String(formData.get("to_sub_status") ?? "").trim();
-  // v2 (2026-07-13): translate legacy v1 shorthand ("won"/"lost"/"no_bid")
-  // into the v2 (status, sub_status) tuple so both shapes work while the
-  // Kanban rebuild is queued (E-3).
-  let to_status = rawToStatus;
-  let to_sub_status: string | undefined = rawToSubStatus || undefined;
-  const isLostFlip = rawToStatus === "lost" || rawToStatus === "no_bid" ||
-    (rawToStatus === "pre_sale_closed" && rawToSubStatus === "lost");
-  const isWonFlip = rawToStatus === "won" ||
-    (rawToStatus === "pre_sale_closed" && rawToSubStatus === "won");
-  if (rawToStatus === "won") { to_status = "pre_sale_closed"; to_sub_status = "won"; }
-  else if (rawToStatus === "lost" || rawToStatus === "no_bid") { to_status = "pre_sale_closed"; to_sub_status = "lost"; }
-  // Karan 2026-07-16: virtual-column keys from the account-page quick-
-  // flip dropdown map to (status, sub_status) tuples, mirroring the
-  // opp-kanban MOVE_TO_COLUMNS grammar.
-  else if (rawToStatus === "proposal_drafted") { to_status = "estimating"; to_sub_status = "proposal_pending_approval"; }
-  else if (rawToStatus === "proposal_sent") { to_status = "proposal"; to_sub_status = "sent"; }
+  // This dropdown posts the same VISUAL COLUMN KEYS as the pipeline
+  // kanban, so it resolves them the same way — one shared map
+  // (lib/commercial/opportunities/kanban-columns) instead of the parallel
+  // if-chain that used to live here and drift from the pipeline's copy.
+  // `no_bid` is a retired v1 shorthand kept as a Lost alias for any stale
+  // form still posting it.
+  const rawKey = rawToStatus === "no_bid" ? "lost" : rawToStatus;
+  const columnTarget = resolveColumnTarget(rawKey);
+  const to_status = columnTarget?.status ?? rawToStatus;
+  const to_sub_status: string | undefined =
+    rawToSubStatus || columnTarget?.sub_status || undefined;
+  const isLostFlip = to_status === "pre_sale_closed" && to_sub_status === "lost";
+  const isWonFlip = to_status === "pre_sale_closed" && to_sub_status === "won";
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=deals`);
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
@@ -5149,7 +5150,13 @@ function AccountOpportunityRow({
   // DAG-filtered next statuses for inline quick-flip. Empty list →
   // dropdown hides (terminal states have no forward motion; reopened
   // is the only legal exit and that's handled on the detail page).
-  const nextStatuses = quickFlipNextStatuses(opp.status);
+  // Every column except the one this deal already sits in. (The flat DAG
+  // means every other stage is a legal move, so "not where you are" IS
+  // the option set — and unlike a status-level filter it keeps
+  // Qualifying ⇄ Request for Proposal reachable, since those two columns
+  // share the real status `qualifying`.)
+  const here = columnKeyForOpp(opp.status, opp.sub_status);
+  const moveToOptions = KANBAN_COLUMNS.filter((c) => c.key !== here);
   const isTerminal = TERMINAL_STATUSES.has(opp.status);
   const bidLabel = formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents);
   return (
@@ -5316,13 +5323,15 @@ function AccountOpportunityRow({
           the placeholder text inside the select tells the same story
           without shouting. Terminal states still route to detail for
           loss_reason + note capture.
-          Karan 2026-07-16: curated list matching MOVE_TO_COLUMNS on the
-          opp kanban. Explicit Won/Lost picks (was falling through to
+          Karan 2026-07-16: list matches the pipeline kanban's columns.
+          Explicit Won/Lost picks (was falling through to
           `pre_sale_closed` with a default-to-Won sub_status — silently
           marked deals as Won when user meant to close as Lost).
-          Also adds "Proposal Drafted" / "Proposal Sent" virtual keys so
-          sub-status refinements work from this surface too. */}
-      {nextStatuses.length > 0 && (
+          Karan 2026-08: generated from KANBAN_COLUMNS rather than
+          hand-listed, so it can't fall behind the board again — this copy
+          still said "Proposal Drafted / Proposal Sent" after the flatten.
+          Omits the column the deal is already in (no-op move). */}
+      {moveToOptions.length > 0 && (
         <form
           action={quickFlipFromAccountAction}
           className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap"
@@ -5341,15 +5350,11 @@ function AccountOpportunityRow({
             <option value="" disabled>
               Move to…
             </option>
-            <option value="qualifying">→ Qualifying</option>
-            <option value="estimating">→ Estimating</option>
-            <option value="proposal_drafted">→ Proposal Drafted</option>
-            <option value="proposal_sent">→ Proposal Sent</option>
-            <option value="won">→ Won</option>
-            <option value="lost">→ Lost</option>
-            <option value="pre_construction">→ Pre-Construction</option>
-            <option value="in_progress">→ In Progress</option>
-            <option value="billing">→ Billing</option>
+            {moveToOptions.map((col) => (
+              <option key={col.key} value={col.key}>
+                → {col.label}
+              </option>
+            ))}
           </select>
           <PendingSubmitButton
             className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-surface hover:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation disabled:hover:bg-ppp-charcoal-700"

@@ -2619,7 +2619,20 @@ async function InfoTab({
   // expose in this surface. Detail page allows ALL valid transitions,
   // including terminal ones (won/lost/no_bid) because we have room for
   // the loss-reason picker. List-page quick-flip hides terminals.
-  const nextStatuses = allowedNextStatuses(opp.status);
+  //
+  // The CURRENT status is included on purpose. ALLOWED_TRANSITIONS
+  // excludes self (it's a status-level DAG), but this picker also edits
+  // the SUB-status, and every sub-status refinement stays inside its
+  // parent: Proposal · Sent → Proposal · Follow-Up, Pre-Construction ·
+  // Coordination → Ready to Mobilize, and so on. Excluding self made
+  // every one of those unreachable — Follow-Up in particular could only
+  // ever be set at deal-creation time and never afterwards. The server
+  // already handles it: changeOpportunityStatus skips the DAG check when
+  // only the sub is moving, and no-ops when neither has.
+  const nextStatuses = [
+    opp.status,
+    ...allowedNextStatuses(opp.status),
+  ] as ReadonlyArray<OpportunityStatus>;
   // Katie 2026-07-20: lifecycle strip — 4 canonical dates + 2 derived
   // durations. fetch happens here (server component, one extra query)
   // so the Bid lifecycle card renders in the same paint. Time metrics

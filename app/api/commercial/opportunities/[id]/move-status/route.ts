@@ -9,10 +9,13 @@ import {
   type OpportunityStatus,
 } from "@/lib/commercial/opportunities/db";
 import {
-  QUICK_FLIP_BLOCKED_STATUSES,
   isTerminalOpportunityStatus,
   PRE_SALE_OPEN_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
+import {
+  columnKeyForOpp,
+  resolveColumnTarget,
+} from "@/lib/commercial/opportunities/kanban-columns";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
 /**
@@ -65,20 +68,59 @@ export async function POST(
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
   const rawToStatus = String(body.to_status ?? "");
-  let to_status = rawToStatus;
-  let to_sub_status: string | undefined = body.to_sub_status ? String(body.to_sub_status) : undefined;
-  // v2 (2026-07-13): translate legacy v1 shorthand "won"/"lost"/"no_bid"
-  // (still used as Kanban drop-target keys) into the v2 (status, sub_status)
-  // tuple. Post-migration-052, "won" alone is not a valid top-level status.
-  const isLostDrop = rawToStatus === "lost" || rawToStatus === "no_bid" ||
-    (rawToStatus === "pre_sale_closed" && to_sub_status === "lost");
-  const isWonDrop = rawToStatus === "won" ||
-    (rawToStatus === "pre_sale_closed" && to_sub_status === "won");
-  if (rawToStatus === "won") { to_status = "pre_sale_closed"; to_sub_status = "won"; }
-  else if (rawToStatus === "lost" || rawToStatus === "no_bid") { to_status = "pre_sale_closed"; to_sub_status = "lost"; }
+  const explicitSub = body.to_sub_status ? String(body.to_sub_status) : undefined;
+  // The kanban posts VISUAL COLUMN KEYS ("rfp", "proposal", "won", …), so
+  // resolve through the shared column map rather than a local if-chain —
+  // the local chain here knew only "won"/"lost"/"no_bid" and would 400 on
+  // any new column. `no_bid` is a retired v1 alias for Lost.
+  const columnKey = rawToStatus === "no_bid" ? "lost" : rawToStatus;
+  const target = resolveColumnTarget(columnKey);
+  const to_status = target?.status ?? rawToStatus;
+  const to_sub_status: string | undefined =
+    explicitSub ?? target?.sub_status ?? undefined;
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     return NextResponse.json({ error: "invalid_status" }, { status: 400 });
   }
+  // A bare `pre_sale_closed` with no sub is ambiguous — and it used to be
+  // silently resolved to WON by DEFAULT_SUB_STATUS_BY_STATUS deep inside
+  // changeOpportunityStatus. That closed the deal as a win while skipping
+  // every won-drop side effect below (placeholder auto-note, debrief
+  // redirect), so a deal could go Won with no trace of who decided it.
+  // Make the caller say which.
+  if (to_status === "pre_sale_closed" && to_sub_status !== "won" && to_sub_status !== "lost") {
+    return NextResponse.json(
+      { error: "closed_needs_won_or_lost" },
+      { status: 400 }
+    );
+  }
+  const isLostDrop = to_status === "pre_sale_closed" && to_sub_status === "lost";
+  const isWonDrop = to_status === "pre_sale_closed" && to_sub_status === "won";
+  // Snapshot the prior status BEFORE flipping so we can detect the
+  // "drag from terminal column back to active" case below and clear the
+  // win_loss_debriefed_at flag. Without this, dragging Won → Estimating
+  // via kanban left the flag set, so the amber "Debrief needed" banner
+  // wouldn't reappear on the next close.
+  const { data: priorOpp } = await sb
+    .from("commercial_opportunities")
+    .select("status, sub_status")
+    .eq("id", opp_id)
+    .maybeSingle();
+  const prior = priorOpp as { status: string; sub_status: string | null } | null;
+  const priorStatus = prior?.status ?? null;
+
+  // Dropping a card on the column it's ALREADY in is a no-op, not a
+  // rewrite. Each column has one canonical target tuple, so without this
+  // a jittery drag inside the Proposal column would rewrite
+  // (proposal, follow_up) → (proposal, sent) and silently drop the
+  // Follow-Up tag; same for a not-yet-sent proposal sitting in that
+  // column as (estimating, proposal_pending_approval), which would get
+  // promoted to Sent and then bounce back on the next reconcile. The
+  // column is the unit of intent here — the sub-status is set deliberately
+  // elsewhere (the deal's status picker), so a drag must not clobber it.
+  if (prior && columnKeyForOpp(prior.status, prior.sub_status) === columnKey) {
+    return NextResponse.json({ ok: true, redirect_url: null });
+  }
+
   // Lost REQUIRES loss_reason — bounce the user to the detail page where
   // the structured DebriefFields can capture it. Won flips immediately
   // (no reason required).
@@ -88,18 +130,6 @@ export async function POST(
       { status: 409 }
     );
   }
-
-  // Snapshot the prior status BEFORE flipping so we can detect the
-  // "drag from terminal column back to active" case below and clear the
-  // win_loss_debriefed_at flag. Without this, dragging Won → Estimating
-  // via kanban left the flag set, so the amber "Debrief needed" banner
-  // wouldn't reappear on the next close.
-  const { data: priorOpp } = await sb
-    .from("commercial_opportunities")
-    .select("status")
-    .eq("id", opp_id)
-    .maybeSingle();
-  const priorStatus = (priorOpp as { status: string } | null)?.status ?? null;
 
   const result = await changeOpportunityStatus({
     opp_id,

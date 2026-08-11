@@ -412,6 +412,59 @@ export async function updateProposal(
   return { ok: true, proposal };
 }
 
+/**
+ * Is the deal ALREADY in a state consistent with what the proposal implies?
+ *
+ * Both proposal→deal paths (the live cascade in updateProposalStatus and
+ * the drift-healer in reconcileDealStatesFromProposals) ask this before
+ * flipping a deal. Without it the healer doesn't just fail to help — it
+ * actively destroys detail the user set on purpose, on every page load,
+ * because it runs on render of /commercial/opportunities and
+ * /commercial/proposals.
+ *
+ * The two states it protects are exactly the two the deal carries that a
+ * proposal status can't express:
+ *
+ *   - A deal in Request for Proposal (qualifying · rfp) with a DRAFT
+ *     proposal. Drafting a price doesn't mean we've stopped qualifying —
+ *     RFP is upstream of Estimating, not stale relative to it. The live
+ *     cascade already had this guard (as an inline draft-at-qualifying
+ *     special case); the healer never did, so an RFP deal jumped to
+ *     Estimating the moment anyone opened the pipeline.
+ *
+ *   - A deal in Proposal · Follow-Up with a SENT proposal. Follow-Up is a
+ *     refinement OF sent ("it's out, we're chasing it"), not drift away
+ *     from it. The healer read the tuple mismatch as drift and reset the
+ *     deal to Sent, so the Follow-Up tag silently evaporated.
+ */
+function dealAlreadyConsistentWithProposal(
+  deal: { status: string; sub_status: string | null },
+  target: { status: string; sub: string }
+): boolean {
+  if (deal.status === target.status && deal.sub_status === target.sub) {
+    return true;
+  }
+  // Draft proposal (→ Estimating · Estimating) is valid anywhere in
+  // Qualifying, including its RFP stage.
+  if (
+    target.status === "estimating" &&
+    target.sub === "estimating" &&
+    deal.status === "qualifying"
+  ) {
+    return true;
+  }
+  // Follow-Up is a valid refinement of Sent.
+  if (
+    target.status === "proposal" &&
+    target.sub === "sent" &&
+    deal.status === "proposal" &&
+    deal.sub_status === "follow_up"
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export async function updateProposalStatus(input: {
   id: string;
   to_status: ProposalStatus;
@@ -545,10 +598,15 @@ export async function updateProposalStatus(input: {
             break;
           // expired / superseded fall through — no cascade.
         }
-        // Only fire if the deal isn't already at the target tuple.
+        // Only fire if the deal isn't already in a consistent state —
+        // which includes RFP-with-a-draft and Follow-Up-with-a-sent, not
+        // just an exact tuple match.
         if (
           dealStatus &&
-          !(opp.status === dealStatus && opp.sub_status === dealSub)
+          !dealAlreadyConsistentWithProposal(
+            { status: opp.status, sub_status: opp.sub_status },
+            { status: dealStatus, sub: dealSub ?? "" }
+          )
         ) {
           const { changeOpportunityStatus } = await import(
             "@/lib/commercial/opportunities/status"
@@ -2311,7 +2369,20 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     if (!bestProp) continue;
     const target = derive(bestProp);
     if (!target) continue;
-    if (deal.status === target.status && deal.sub_status === target.sub) continue;
+    // Not just an exact tuple match — RFP-with-a-draft and
+    // Follow-Up-with-a-sent are consistent too. This healer runs on every
+    // render of the pipeline and the proposals board, so treating either
+    // as drift meant the user could never keep a deal in the Request for
+    // Proposal column or hold the Follow-Up tag for longer than one page
+    // load.
+    if (
+      dealAlreadyConsistentWithProposal(
+        { status: deal.status, sub_status: deal.sub_status },
+        target
+      )
+    ) {
+      continue;
+    }
     if (deal.status === "pre_sale_closed" && target.status === "pre_sale_closed") {
       continue; // don't cross-flip won ↔ lost via auto-reconcile
     }

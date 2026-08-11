@@ -38,6 +38,7 @@
  */
 
 import {
+  OPPORTUNITY_STATUSES,
   SUB_STATUSES_BY_STATUS,
   isValidSubStatus,
   type OpportunityStatus,
@@ -140,7 +141,12 @@ export function columnKeyForOpp(
       // sent + follow_up both live here; follow_up shows as a card tag.
       return "proposal";
     case "pre_sale_closed":
-      return sub_status === "lost" ? "lost" : "won";
+      // Defaults to LOST, not Won. sub_status has no CHECK constraint
+      // behind it any more (migration 059 dropped both), so a hand-edited
+      // or legacy row can carry junk here — and a junk row rendering as a
+      // WIN silently inflates the board and every won-deal rollup. A
+      // stray Lost is visible and harmless by comparison.
+      return sub_status === "won" ? "won" : "lost";
     case "pre_construction":
     case "in_progress":
     case "billing":
@@ -191,9 +197,16 @@ export type ColumnTarget = {
  * `proposal` targets (proposal, sent) rather than preserving a card's
  * follow_up/drafted sub. Dropping a card INTO Proposal is the user
  * saying "this is a live proposal now"; if they wanted Follow-Up they
- * set it on the deal. (Dropping a card onto the column it's already in
- * is a no-op server-side, so a follow_up card can't be silently reset
- * by a jittery drag.)
+ * set it on the deal.
+ *
+ * That makes these targets LOSSY for cards already in the column, so
+ * every caller must skip the write when the card's current column equals
+ * the drop target — otherwise a jittery drag inside the Proposal column
+ * rewrites (proposal, follow_up) → (proposal, sent) and the Follow-Up tag
+ * vanishes. changeOpportunityStatus can't catch that for us: it only
+ * no-ops on an exact tuple match, and the tuples differ. The Move-to
+ * dropdowns handle it by omitting the current column from the option
+ * list; the drag-and-drop API handles it with an explicit guard.
  */
 export const COLUMN_TARGET: Record<string, ColumnTarget> = {
   qualifying: { status: "qualifying", sub_status: "solicitation" },
@@ -216,19 +229,44 @@ export const COLUMN_TARGET: Record<string, ColumnTarget> = {
 export function resolveColumnTarget(key: string): ColumnTarget | null {
   const direct = COLUMN_TARGET[key];
   if (direct) return direct;
-  // Legacy/raw-status callers: accept a bare status and pick its column's
-  // target. `pre_sale_closed` alone is ambiguous (won vs lost) — the old
-  // code silently defaulted it to Won, which read to Alex as "nothing
-  // happened". Refuse it instead so the caller must say which.
+  // Legacy/raw-status callers: accept a bare REAL status and pick its
+  // column's target. Two refusals, both deliberate:
+  //
+  //   - `pre_sale_closed` alone is ambiguous (won vs lost). The old code
+  //     silently defaulted it to Won, which read to Alex as "nothing
+  //     happened" — and skipped every won-drop side effect.
+  //   - Anything not in the status enum. columnKeyForOpp is TOTAL (it
+  //     defaults unknown input to Qualifying) which is right for
+  //     DISPLAYING a junk row, but catastrophic for a WRITE: a typo'd or
+  //     forged to_status would quietly move the deal to Qualifying
+  //     instead of erroring. Resolution must be strict where display is
+  //     forgiving.
   if (key === "pre_sale_closed") return null;
-  const viaColumn = COLUMN_TARGET[columnKeyForOpp(key, null)];
-  return viaColumn ?? null;
+  if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(key)) return null;
+  return COLUMN_TARGET[columnKeyForOpp(key, null)] ?? null;
 }
 
 /** The real top-level status behind a column key — used where a caller
  *  needs to compare against the status enum (validation, DAG hints). */
 export function columnRealStatus(key: string): string {
   return COLUMN_TARGET[key]?.status ?? key;
+}
+
+/**
+ * The single real status a column can be pre-narrowed to in a DB query,
+ * or null when the column spans more than one and the query must fetch
+ * wider and filter in memory.
+ *
+ * Only Proposal spans two: it holds both (proposal, *) and the
+ * priced-but-not-yet-sent (estimating, proposal_pending_approval).
+ * Qualifying and Request for Proposal share `qualifying`, which is fine —
+ * this is a NARROWING hint, not the filter itself. Callers must still
+ * apply columnKeyForOpp to the rows that come back, or a Qualifying
+ * filter will show RFP deals too.
+ */
+export function columnDbStatusHint(key: string): string | null {
+  if (key === "proposal") return null;
+  return COLUMN_TARGET[key]?.status ?? null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
