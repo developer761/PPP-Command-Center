@@ -115,6 +115,11 @@ export type CommercialOpportunity = {
   follow_up_notes: string | null;
   bid_value_low_cents: number | null;
   bid_value_high_cents: number | null;
+  /** Migration 122 (Teams). NULL means "inherit the account's team" — always
+   *  read it through getEffectiveOwnerTeam, never bare. The column was added
+   *  and written by the new-deal form but never declared here, so nothing
+   *  could read a deal's team back. */
+  team_id: string | null;
   probability_pct: number;
   source: OpportunitySource | null;
   proposed_start_at: string | null;

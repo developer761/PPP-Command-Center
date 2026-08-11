@@ -210,6 +210,33 @@ export async function getOwnerTeam(teamId: string | null | undefined): Promise<T
   return getTeam(teamId);
 }
 
+/**
+ * The team that actually applies to a deal: its own if set, otherwise the
+ * account's.
+ *
+ * The new-deal form offers "Account's team (default)", which stores NULL —
+ * but nothing resolved a null deal team back to the account's, so a deal
+ * labelled "default" in fact had NO team, and anything reading the deal's
+ * crew came up empty. This makes the inheritance the label promises real.
+ *
+ * `inherited` tells the UI which of the two it got, so a deal can show
+ * "Team · Coastal Crew (from customer)" rather than implying someone picked
+ * it on this deal specifically.
+ */
+export async function getEffectiveOwnerTeam(
+  ownTeamId: string | null | undefined,
+  accountTeamId: string | null | undefined
+): Promise<{ team: TeamWithMembers | null; inherited: boolean }> {
+  if (ownTeamId) {
+    const team = await getTeam(ownTeamId);
+    // A deleted team leaves a dangling id — fall through to the account's
+    // rather than reporting "no team" on a deal that has an obvious answer.
+    if (team) return { team, inherited: false };
+  }
+  if (!accountTeamId) return { team: null, inherited: false };
+  return { team: await getTeam(accountTeamId), inherited: true };
+}
+
 /** Set a member's role and/or team-admin flag. Setting a new admin clears the
  *  others so a team has exactly one admin. */
 export async function updateTeamMember(

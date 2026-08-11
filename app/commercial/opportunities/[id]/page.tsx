@@ -33,6 +33,8 @@ import {
 import { commercialDb } from "@/lib/commercial/db";
 import { fetchOpportunityLifecycle, formatDurationDays } from "@/lib/commercial/opportunities/lifecycle";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { listTeams, setOwnerTeam, getEffectiveOwnerTeam } from "@/lib/commercial/teams/db";
+import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { ProjectToolbar } from "@/components/commercial/project-toolbar";
@@ -396,6 +398,31 @@ async function changeStatusAction(formData: FormData) {
  * tab" path was hitting a 404 in some flows.) revalidatePath on the
  * destination so the deleted row is gone from the list immediately.
  */
+/**
+ * Change (or clear) the team on a deal. Until now `team_id` could only be set
+ * on the new-deal form and never touched again — a crew change meant living
+ * with it. Clearing it falls the deal back to the account's team, which is
+ * what the create form's "Account's team (default)" option always claimed to
+ * do (see getEffectiveOwnerTeam).
+ */
+async function setDealTeamAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const raw = String(formData.get("team_id") ?? "").trim();
+  const team_id = raw && UUID_RE.test(raw) ? raw : null;
+  const result = await setOwnerTeam("opportunity", opp_id, team_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
+  }
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
 async function reopenOpportunityAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -2621,6 +2648,15 @@ async function InfoTab({
   invoicesCreated?: number;
   invoiceErrors?: number;
 }) {
+  // Team data for the editable Team row below. getEffectiveOwnerTeam resolves
+  // a deal with no team of its own to the account's.
+  const [allTeams, effectiveTeam] = await Promise.all([
+    listTeams(),
+    getEffectiveOwnerTeam(opp.team_id, account?.team_id ?? null),
+  ]);
+  const accountTeamName = account?.team_id
+    ? allTeams.find((t) => t.id === account.team_id)?.name ?? null
+    : null;
   // Terminal opps now show debrief content in a dedicated Debrief tab,
   // not on Info. Info stays focused on deal facts: bid, dates, address,
   // account. The amber banner above the page header still nudges the
@@ -2715,6 +2751,50 @@ async function InfoTab({
           value={`${opp.probability_pct}%`}
           tooltip="Likelihood we win this bid. Defaults from status; override if you have a stronger read."
         />
+        {/* Team — the EFFECTIVE one. A deal with no team of its own inherits
+            the customer's, which is what the new-deal form's "Account's team
+            (default)" option always promised but nothing actually resolved.
+            Editable here because until now a deal's team could be set once on
+            the create form and never changed. */}
+        <div className="flex items-start justify-between gap-3 py-1.5 border-b border-ppp-charcoal-50 last:border-0">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 pt-2">
+            Team
+          </span>
+          <form action={setDealTeamAction} className="flex items-center gap-2 min-w-0">
+            <input type="hidden" name="opp_id" value={opp.id} />
+            <select
+              name="team_id"
+              defaultValue={opp.team_id ?? ""}
+              aria-label="Team on this opportunity"
+              className={`${SELECT_CLS} text-[12px] py-1 min-h-[36px] max-w-[190px]`}
+              style={SELECT_BG_STYLE}
+            >
+              <option value="">
+                {account?.team_id
+                  ? `Customer's team${accountTeamName ? ` (${accountTeamName})` : ""}`
+                  : "— No team —"}
+              </option>
+              {allTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <PendingSubmitButton
+              className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-surface hover:bg-ppp-charcoal-800 min-h-[36px] touch-manipulation disabled:hover:bg-ppp-charcoal-700"
+              pendingLabel="Saving…"
+            >
+              Save
+            </PendingSubmitButton>
+          </form>
+        </div>
+        {effectiveTeam.team && (
+          <p className="text-[11px] text-ppp-charcoal-500 -mt-1">
+            {effectiveTeam.team.members.length} member
+            {effectiveTeam.team.members.length === 1 ? "" : "s"}
+            {effectiveTeam.inherited ? " · inherited from the customer" : ""}
+          </p>
+        )}
       </Card>
       {/* Katie 2026-07-20: canonical bid-lifecycle card. 4 dates that
           define a bid's life + 2 derived durations. Time-to-proposal

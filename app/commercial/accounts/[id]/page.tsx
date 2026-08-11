@@ -4448,6 +4448,11 @@ async function NewDealForm({
   // the day the request lands; still editable.
   const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const teams = await listTeams();
+  // Name the account's team in the inherit option so "Customer's team" isn't a
+  // blind pick.
+  const accountTeamName = account.team_id
+    ? teams.find((t) => t.id === account.team_id)?.name ?? null
+    : null;
   return (
     <form action={createDealInlineAction} className="space-y-3">
       <input type="hidden" name="account_id" value={accountId} />
@@ -4588,13 +4593,20 @@ async function NewDealForm({
         </label>
         <label className="block">
           <span className={labelCls}>Team</span>
-          {/* Meeting 2026-08 — assign a preset team to THIS deal (defaults to the
-              account's team). Only the name shows; manage teams in Settings. */}
-          <select name="team_id" defaultValue={account.team_id ?? ""} className={SELECT_CLS} style={SELECT_BG_STYLE}>
-            <option value="">{account.team_id ? "Account's team (default)" : "— No team —"}</option>
+          {/* Meeting 2026-08 — assign a preset team to THIS deal. Blank means
+              "inherit the customer's team", which getEffectiveOwnerTeam now
+              actually resolves; before, blank stored NULL and nothing fell
+              back, so a deal labelled "default" in fact had no team at all.
+              The option names the inherited team so the choice isn't blind. */}
+          <select name="team_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+            <option value="">
+              {accountTeamName ? `Customer's team (${accountTeamName})` : "— No team —"}
+            </option>
             {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Build teams in Settings → Teams.</span>
+          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
+            Build teams in Settings → Teams. You can change this later on the deal.
+          </span>
         </label>
       </div>
       {/* Project address — hoisted out of the "optional" expando 2026-07-20
