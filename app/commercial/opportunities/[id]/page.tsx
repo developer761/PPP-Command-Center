@@ -31,6 +31,7 @@ import {
   unarchiveOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { commercialDb } from "@/lib/commercial/db";
+import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 import { fetchOpportunityLifecycle, formatDurationDays } from "@/lib/commercial/opportunities/lifecycle";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { listTeams, setOwnerTeam, getEffectiveOwnerTeam } from "@/lib/commercial/teams/db";
@@ -1304,6 +1305,12 @@ export default async function OpportunityDetailPage({
   if (!opp) notFound();
   const isDeletedDeal = !!opp.deleted_at;
   const account = await getCommercialAccount(opp.account_id);
+  // Bid low/high is gone from the create forms (2026-08); pricing lives on the
+  // proposal now. Supply the current proposal total so a bid-less deal's
+  // Weighted tile matches the dashboard instead of reading $0.
+  const pageProposalTotal = (
+    await listCurrentProposalTotalByOpp([opp.id])
+  ).get(opp.id);
 
   // Karan 2026-07-08: kill the deal-detail page as a landing surface.
   // Per user "everything in accounts" — the pipeline shouldn't route
@@ -1696,7 +1703,7 @@ export default async function OpportunityDetailPage({
         />
         <KpiTile
           label="Weighted"
-          value={formatCentsCompact(weightedPipelineCents(opp))}
+          value={formatCentsCompact(weightedPipelineCents(opp, pageProposalTotal))}
           tooltip={`Probability × midpoint bid. ${weightedTooltip(opp)} Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing.`}
         />
         <KpiTile
@@ -2650,10 +2657,15 @@ async function InfoTab({
 }) {
   // Team data for the editable Team row below. getEffectiveOwnerTeam resolves
   // a deal with no team of its own to the account's.
-  const [allTeams, effectiveTeam] = await Promise.all([
+  const [allTeams, effectiveTeam, proposalTotalByOpp] = await Promise.all([
     listTeams(),
     getEffectiveOwnerTeam(opp.team_id, account?.team_id ?? null),
+    // Bid low/high was removed from the create forms (2026-08 meeting); pricing
+    // now lives on the proposal. Without this, a bid-less deal's Weighted tile
+    // reads $0 on the detail page even though the dashboard shows it correctly.
+    listCurrentProposalTotalByOpp([opp.id]),
   ]);
+  const oppProposalTotal = proposalTotalByOpp.get(opp.id);
   const accountTeamName = account?.team_id
     ? allTeams.find((t) => t.id === account.team_id)?.name ?? null
     : null;
@@ -2859,7 +2871,7 @@ async function InfoTab({
         />
         <Field
           label="Weighted"
-          value={formatCentsCompact(weightedPipelineCents(opp))}
+          value={formatCentsCompact(weightedPipelineCents(opp, oppProposalTotal))}
           tooltip="Probability × midpoint bid. Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing."
         />
         <Field

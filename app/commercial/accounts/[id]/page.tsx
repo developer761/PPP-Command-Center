@@ -101,7 +101,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
-import { formatProposalNumber, listProposalsForOpp, getProposal } from "@/lib/commercial/proposals/db";
+import { formatProposalNumber, listProposalsForOpp, getProposal, listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 import { listDocumentsForParent } from "@/lib/commercial/documents/db";
 import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/commercial/documents/categories";
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
@@ -837,6 +837,15 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
     (o) => !postSaleIds.has(o.id) && o.status === "pre_sale_closed" && o.sub_status === "lost",
   );
   const totalDeals = allOpps.length;
+  // Weighted-$ on each deal block falls back to the proposal total when the deal
+  // has no bid range (bid low/high left the create forms in the 2026-08 meeting;
+  // pricing lives on the proposal now). Only the blocks that render Weighted —
+  // pipeline + lost — need it, so scope the lookup to those ids.
+  const blockOppIds = [...pipelineDeals, ...lostDeals].map((o) => o.id);
+  const blockProposalTotals =
+    blockOppIds.length > 0
+      ? await listCurrentProposalTotalByOpp(blockOppIds)
+      : new Map<string, number>();
   // Auto-open the folded sections when there's no active/pipeline work above
   // them, so an account whose deals are all completed/lost doesn't land on a
   // blank page + a single collapsed row (audit findings #1, #3).
@@ -878,7 +887,7 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
             <section className="space-y-2.5">
               <h2 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Pipeline · {pipelineDeals.length}</h2>
               <ul className="space-y-2.5">
-                {pipelineDeals.map((o) => <PipelineDealBlock key={o.id} accountId={account.id} opp={o} />)}
+                {pipelineDeals.map((o) => <PipelineDealBlock key={o.id} accountId={account.id} opp={o} proposalTotal={blockProposalTotals.get(o.id)} />)}
               </ul>
             </section>
           )}
@@ -900,7 +909,7 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
                 Lost / not pursued · {lostDeals.length}
               </summary>
               <ul className="space-y-2.5 mt-2">
-                {lostDeals.map((o) => <PipelineDealBlock key={o.id} accountId={account.id} opp={o} />)}
+                {lostDeals.map((o) => <PipelineDealBlock key={o.id} accountId={account.id} opp={o} proposalTotal={blockProposalTotals.get(o.id)} />)}
               </ul>
             </details>
           )}
@@ -912,14 +921,16 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
 
 /** Compact pipeline (pre-sale) deal block for the account home — the deal isn't
  *  in delivery yet, so it shows its bid + stage and drills into the deal sheet. */
-function PipelineDealBlock({ accountId, opp }: { accountId: string; opp: CommercialOpportunity }) {
+function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: string; opp: CommercialOpportunity; proposalTotal?: number | null }) {
   const name = derivedOppName(opp, null);
   const code = formatOpportunityNumber(opp.project_number);
   const lo = opp.bid_value_low_cents;
   const hi = opp.bid_value_high_cents;
   const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : "—";
   const prob = opp.probability_pct ?? 0;
-  const weighted = weightedPipelineCents(opp);
+  // Weighted falls back to the proposal total when the deal has no bid range,
+  // so a new (bid-less) deal doesn't read $0 here while the dashboard shows it.
+  const weighted = weightedPipelineCents(opp, proposalTotal);
   const location = opp.property_street?.trim() || null;
   const href = `/commercial/accounts/${accountId}?tab=projects&project=${opp.id}`;
   // Stage tone — the accent stripe + pill read the pipeline stage at a glance
@@ -7489,7 +7500,12 @@ async function DealEditSheet({
   lifecycle?: import("@/lib/commercial/opportunities/lifecycle").OpportunityLifecycleDates | null;
 }) {
   const bidLabel = formatBidRange(deal.bid_value_low_cents, deal.bid_value_high_cents);
-  const weighted = weightedPipelineCents(deal);
+  // Fall back to the proposal total when the deal has no bid range (bid low/high
+  // left the create forms in 2026-08) so Weighted here matches the dashboard.
+  const dealProposalTotal = (
+    await listCurrentProposalTotalByOpp([deal.id])
+  ).get(deal.id);
+  const weighted = weightedPipelineCents(deal, dealProposalTotal);
   const statusInfo = statusPillTone(deal.status, deal.sub_status);
   // Same derived name the list/rows show, so the drawer header is consistent
   // (was showing the raw title, which mismatched the row label).
