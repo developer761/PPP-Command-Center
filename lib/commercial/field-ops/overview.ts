@@ -39,7 +39,7 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
   const weekEnd = weekDates[6];
   const horizon = addDaysIso(today, 13); // next 14 days for "unscheduled" backlog
 
-  const [assignRes, entryRes, jobs, empRes, apprRes, horizonAssignRes] = await Promise.all([
+  const [assignRes, entryRes, jobs, empRes, apprRes, horizonAssignRes, absRes] = await Promise.all([
     sb
       .from("commercial_assignments")
       .select("employee_id, job_id, work_date, scheduled_hours")
@@ -62,6 +62,11 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
       .gte("work_date", today)
       .lte("work_date", horizon)
       .neq("status", "cancelled"),
+    sb
+      .from("commercial_absences")
+      .select("employee_id, work_date, hours")
+      .gte("work_date", weekStart)
+      .lte("work_date", weekEnd),
   ]);
 
   const assigns = (assignRes.data ?? []) as { employee_id: string; job_id: string; work_date: string; scheduled_hours: number }[];
@@ -74,20 +79,40 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
   // excludes them (getMonthOverview), so counting them here made the two surfaces
   // disagree (audit round 7).
   const liveJobIds = new Set(jobs.map((j) => j.id));
-  const perEmp = new Map<string, number>();
+  // Marked-off crew: a full-day absence (hours == null) zeroes that day's
+  // scheduled hours; a partial (hours set) subtracts those hours. So the hours
+  // KPIs + OT forecast reflect time off instead of counting hours nobody will
+  // work (Karan 2026-08). crewWeek/crewToday still count who's on the schedule.
+  const absences = (absRes.data ?? []) as { employee_id: string; work_date: string; hours: number | null }[];
+  const fullOff = new Set<string>();
+  const partialOff = new Map<string, number>();
+  for (const ab of absences) {
+    const key = `${ab.employee_id}|${String(ab.work_date).slice(0, 10)}`;
+    if (ab.hours == null) fullOff.add(key);
+    else partialOff.set(key, (partialOff.get(key) ?? 0) + Number(ab.hours));
+  }
   const crewWeek = new Set<string>();
-  let scheduledHoursWeek = 0;
   const crewToday = new Set<string>();
   const jobsTodaySet = new Set<string>();
+  const schedByEmpDate = new Map<string, number>(); // `${emp}|${date}` → scheduled
   for (const a of assigns) {
     if (!liveJobIds.has(a.job_id)) continue;
-    scheduledHoursWeek += a.scheduled_hours;
-    perEmp.set(a.employee_id, (perEmp.get(a.employee_id) ?? 0) + a.scheduled_hours);
+    schedByEmpDate.set(`${a.employee_id}|${a.work_date}`, (schedByEmpDate.get(`${a.employee_id}|${a.work_date}`) ?? 0) + a.scheduled_hours);
     crewWeek.add(a.employee_id);
     if (a.work_date === today) {
       crewToday.add(a.employee_id);
       jobsTodaySet.add(a.job_id);
     }
+  }
+  // Apply absences per (employee, day), then aggregate.
+  const perEmp = new Map<string, number>();
+  let scheduledHoursWeek = 0;
+  for (const [key, sched] of schedByEmpDate) {
+    const eff = fullOff.has(key) ? 0 : partialOff.has(key) ? Math.max(0, sched - partialOff.get(key)!) : sched;
+    if (eff <= 0) continue;
+    scheduledHoursWeek += eff;
+    const emp = key.slice(0, key.indexOf("|"));
+    perEmp.set(emp, (perEmp.get(emp) ?? 0) + eff);
   }
 
   const otForecast: OtRow[] = [...perEmp.entries()]
