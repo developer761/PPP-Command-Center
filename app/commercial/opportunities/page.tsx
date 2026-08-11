@@ -82,6 +82,7 @@ import {
   isFollowUpCard,
   isDraftedCard,
 } from "@/lib/commercial/opportunities/kanban-columns";
+import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 import { daysFromTodayEt } from "@/lib/date-et";
 import {
   changeOpportunityStatus,
@@ -536,6 +537,13 @@ export default async function CommercialOpportunitiesPage({
     listSubmittalCountByOpp(oppIds),
     listFinishCountByOpp(oppIds),
   ]);
+  // Current proposal total per deal — the fallback the $ KPIs use when a deal
+  // has no bid range. Since the meeting removed Bid low/high from the create
+  // forms, every NEW deal has none, and weighted pipeline / bid range / the
+  // stage funnel were all counting those deals as zero.
+  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(oppIds);
+  const oppValue = (o: CommercialOpportunity) =>
+    weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
 
   let opps = oppsRaw;
   if (staleFilter) {
@@ -622,7 +630,7 @@ export default async function CommercialOpportunitiesPage({
   // contract" strip (2026-07-29 re-audit: same metric showed two numbers).
   const openOpps = opps.filter((o) => (OPEN_OPP_STATUSES as readonly string[]).includes(o.status));
   const presaleOpenOpps = opps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
-  const totalPipelineCents = presaleOpenOpps.reduce((acc, o) => acc + weightedPipelineCents(o), 0);
+  const totalPipelineCents = presaleOpenOpps.reduce((acc, o) => acc + oppValue(o), 0);
   const totalBidLowCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
   const totalBidHighCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
   // Pipeline value by stage (weighted $) — a funnel of where open deals sit.
@@ -637,7 +645,7 @@ export default async function CommercialOpportunitiesPage({
       const inStage = presaleOpenOpps.filter(
         (o) => columnKeyForOpp(o.status, o.sub_status) === col.key
       );
-      const weighted = inStage.reduce((a, o) => a + weightedPipelineCents(o), 0);
+      const weighted = inStage.reduce((a, o) => a + oppValue(o), 0);
       return {
         label: col.label,
         value: weighted,
@@ -1312,12 +1320,14 @@ export default async function CommercialOpportunitiesPage({
         <CustomerBoard
           opps={opps}
           accountById={accountById}
+          proposalTotalByOpp={proposalTotalByOpp}
           sheetHref={customerSheetHref}
         />
       ) : viewMode === "kanban" ? (
         <KanbanBoard
           opps={opps}
           accountById={accountById}
+          proposalTotalByOpp={proposalTotalByOpp}
           statusEnteredAtMap={statusEnteredAtMap}
           taskStatsMap={taskStatsMap}
           primaryLeadMap={primaryLeadMap}
@@ -1729,10 +1739,16 @@ async function CustomerQuickSheetLoader({
 function CustomerBoard({
   opps,
   accountById,
+  proposalTotalByOpp,
   sheetHref,
 }: {
   opps: CommercialOpportunity[];
   accountById: Map<string, CommercialAccount>;
+  /** Fallback deal value for deals with no bid range — see
+   *  listCurrentProposalTotalByOpp. Without it this board's weighted-$
+   *  column reads 0 for every deal created since the meeting removed the
+   *  bid fields, disagreeing with the header KPI on the same screen. */
+  proposalTotalByOpp: Map<string, number>;
   sheetHref: (accountId: string, focus?: string) => string;
 }) {
   // Group opps by account_id, then compute per-account rollups.
@@ -1762,7 +1778,7 @@ function CustomerBoard({
         TERMINAL_STATUSES.has(o.status)
       );
       const weightedCents = open.reduce(
-        (sum, o) => sum + weightedPipelineCents(o),
+        (sum, o) => sum + weightedPipelineCents(o, proposalTotalByOpp.get(o.id)),
         0
       );
       const latestUpdate = oppsForAccount
@@ -2029,6 +2045,7 @@ function CustomerBoardRow({
 function KanbanBoard({
   opps,
   accountById,
+  proposalTotalByOpp,
   statusEnteredAtMap,
   taskStatsMap,
   primaryLeadMap,
@@ -2040,6 +2057,8 @@ function KanbanBoard({
 }: {
   opps: CommercialOpportunity[];
   accountById: Map<string, CommercialAccount>;
+  /** See CustomerBoard — same bid-less-deal fallback. */
+  proposalTotalByOpp: Map<string, number>;
   statusEnteredAtMap: Map<string, string>;
   taskStatsMap: Map<string, { open: number; overdue: number; due_soon: number }>;
   primaryLeadMap: Map<string, { user_email: string; user_full_name: string | null; role: string }>;
@@ -2166,7 +2185,7 @@ function KanbanBoard({
     // (single-sided value = point estimate, not halved).
     g.weightedCents = g.opps
       .filter((o) => o.status !== "pre_sale_closed" && o.status !== "post_sale_closed")
-      .reduce((sum, o) => sum + weightedPipelineCents(o), 0);
+      .reduce((sum, o) => sum + weightedPipelineCents(o, proposalTotalByOpp.get(o.id)), 0);
   }
   // Karan 2026-07-15 edge-case: if an account's opps are ALL
   // post_sale_closed, they were pushed to globalOverflow and byStatus

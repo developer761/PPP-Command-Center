@@ -29,6 +29,7 @@ import {
   weightedPipelineCents,
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
+import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 import { isPostSaleProject, isLost, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { etTodayIso } from "@/lib/date-et";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
@@ -80,6 +81,16 @@ export default async function CommercialDashboardPage() {
     listCommercialInvoices({}),
     listProjects({}),
   ]);
+  // Fallback deal value for deals with no bid range. The meeting removed Bid
+  // low/high from both create forms (pricing lives on the proposal now), so
+  // without this every deal created since then contributes ZERO to weighted
+  // pipeline and drops off "Top 5 open opportunities" entirely — the number
+  // Alex reads every morning would drift quietly low.
+  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(
+    opps.map((o) => o.id)
+  );
+  const oppWeighted = (o: CommercialOpportunity) =>
+    weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
 
   // ─── Production (post-contract) roll-up ───
   const production = summarizeProduction(projectRows);
@@ -117,7 +128,7 @@ export default async function CommercialDashboardPage() {
   const wonOpps = opps.filter((o) => isPostSaleProject(o));
   const lostOpps = opps.filter((o) => isLost(o));
   const decidedOpps = [...wonOpps, ...lostOpps]; // won + lost (win-rate basis)
-  const weightedPipeline = openOpps.reduce((acc, o) => acc + weightedPipelineCents(o), 0);
+  const weightedPipeline = openOpps.reduce((acc, o) => acc + oppWeighted(o), 0);
 
   // ─── This month ───
   const now = new Date();
@@ -193,7 +204,7 @@ export default async function CommercialDashboardPage() {
   const accountNameById = new Map(accounts.map((a) => [a.id, a.company_name]));
   const topOpenDeals = openOpps
     .slice()
-    .sort((a, b) => weightedPipelineCents(b) - weightedPipelineCents(a))
+    .sort((a, b) => oppWeighted(b) - oppWeighted(a))
     .slice(0, 5);
 
   // ─── RECENT ACTIVITY (last 5 opps by updated_at) ───
@@ -541,7 +552,7 @@ export default async function CommercialDashboardPage() {
 
       {/* ─── Two-column: Top 5 open + Recent activity ─── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <TopOpenDealsCard opps={topOpenDeals} accountNameById={accountNameById} />
+        <TopOpenDealsCard opps={topOpenDeals} accountNameById={accountNameById} proposalTotalByOpp={proposalTotalByOpp} />
         <RecentActivityCard opps={recentOpps} accountNameById={accountNameById} />
       </section>
 
@@ -713,9 +724,13 @@ function AttentionCard({
 function TopOpenDealsCard({
   opps,
   accountNameById,
+  proposalTotalByOpp,
 }: {
   opps: CommercialOpportunity[];
   accountNameById: Map<string, string>;
+  /** See listCurrentProposalTotalByOpp — without it a bid-less deal shows
+   *  "$0" in a list that is sorted by exactly that number. */
+  proposalTotalByOpp: Map<string, number>;
 }) {
   return (
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -740,7 +755,7 @@ function TopOpenDealsCard({
           {opps.map((o, idx) => {
             const acct = accountNameById.get(o.account_id) ?? null;
             const display = derivedOppName(o, acct);
-            const weighted = weightedPipelineCents(o);
+            const weighted = weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
             const oppCode = formatOpportunityNumber(o.project_number);
             return (
               <li key={o.id}>

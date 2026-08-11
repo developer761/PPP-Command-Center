@@ -6,6 +6,12 @@ import {
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
+import {
+  PRE_CONTRACT_COLUMNS,
+  OPEN_COLUMN_KEYS,
+  columnKeyForOpp,
+} from "@/lib/commercial/opportunities/kanban-columns";
+import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 
 /**
  * Pipeline report (R4) — open pre-sale opportunities grouped by stage, with the
@@ -39,17 +45,29 @@ export type PipelineReport = {
   };
 };
 
-const STAGE_ORDER: { status: string; label: string }[] = [
-  { status: "qualifying", label: "Qualifying" },
-  { status: "estimating", label: "Estimating" },
-  { status: "proposal", label: "Proposal out" },
-];
+/** Stages, in board order. Derived from the kanban columns so this report
+ *  names the same stages the pipeline shows — the hand-written three-row
+ *  version omitted Request for Proposal entirely and lumped every
+ *  priced-but-unsent deal under Estimating. */
+const STAGE_ORDER: { status: string; label: string }[] = PRE_CONTRACT_COLUMNS
+  .filter((c) => OPEN_COLUMN_KEYS.includes(c.key))
+  .map((c) => ({
+    status: c.key,
+    label: c.key === "proposal" ? "Proposal out" : c.label,
+  }));
 
-/** Unweighted mid of the bid range in cents (0 when no range set). */
-export function bidMidCents(o: CommercialOpportunity): number {
+/** Unweighted value of a deal in cents: the mid of the bid range, falling
+ *  back to the deal's current proposal total when no range is set (deals
+ *  created since the bid fields were removed from the create forms). */
+export function bidMidCents(
+  o: CommercialOpportunity,
+  proposalTotalCents?: number | null
+): number {
   const low = o.bid_value_low_cents;
   const high = o.bid_value_high_cents;
-  if ((low === null || low === undefined) && (high === null || high === undefined)) return 0;
+  if ((low === null || low === undefined) && (high === null || high === undefined)) {
+    return proposalTotalCents ?? 0;
+  }
   if (low != null && high != null) return Math.round((low + high) / 2);
   return (low ?? high) ?? 0;
 }
@@ -57,16 +75,22 @@ export function bidMidCents(o: CommercialOpportunity): number {
 export async function getPipelineReport(): Promise<PipelineReport> {
   const opps = await listCommercialOpportunities({});
   const open = opps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
+  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(
+    open.map((o) => o.id)
+  );
 
   const acc = new Map<string, PipelineStageRow>();
   for (const s of STAGE_ORDER) acc.set(s.status, { ...s, count: 0, bidCents: 0, weightedCents: 0, avgDealCents: 0, probabilityPct: null });
 
   let count = 0, bidCents = 0, weightedCents = 0;
   for (const o of open) {
-    const row = acc.get(o.status);
-    if (!row) continue; // status outside the open-stage set (defensive)
-    const bid = bidMidCents(o);
-    const weighted = weightedPipelineCents(o);
+    // Bucket by the board's COLUMN, so a deal reported under "Estimating"
+    // is the same deal sitting in the Estimating column on screen.
+    const row = acc.get(columnKeyForOpp(o.status, o.sub_status));
+    if (!row) continue; // stage outside the open set (defensive)
+    const fallback = proposalTotalByOpp.get(o.id);
+    const bid = bidMidCents(o, fallback);
+    const weighted = weightedPipelineCents(o, fallback);
     row.count += 1;
     row.bidCents += bid;
     row.weightedCents += weighted;

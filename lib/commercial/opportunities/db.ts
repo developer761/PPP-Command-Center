@@ -379,15 +379,39 @@ export function formatBidRange(low: number | null, high: number | null): string 
  *  any opp where only an upper bound was entered. Now uses null checks
  *  so the "point estimate" cases preserve their full weight.
  */
-export function weightedPipelineCents(opp: CommercialOpportunity): number {
+/**
+ * What this deal is worth, before probability weighting.
+ *
+ * Bid low/high first — a hand-entered range is the estimator's own number and
+ * always wins. Falling back to `proposalTotalCents` is what keeps the pipeline
+ * honest after the 2026-08 meeting removed Bid low/high from both create
+ * forms: pricing lives on the proposal now, so a deal created the new way has
+ * no bid range at all and every $ KPI counted it as ZERO. Callers that can
+ * cheaply supply the deal's current proposal total (see
+ * listCurrentProposalTotalByOpp) should pass it; those that can't behave
+ * exactly as before.
+ */
+export function dealValueCents(
+  opp: CommercialOpportunity,
+  proposalTotalCents?: number | null
+): number {
   const low = opp.bid_value_low_cents;
   const high = opp.bid_value_high_cents;
-  if ((low === null || low === undefined) && (high === null || high === undefined)) return 0;
-  const mid =
-    low !== null && low !== undefined && high !== null && high !== undefined
-      ? (low + high) / 2
-      : (low ?? high) ?? 0;
-  return Math.round((mid * opp.probability_pct) / 100);
+  if ((low === null || low === undefined) && (high === null || high === undefined)) {
+    return proposalTotalCents ?? 0;
+  }
+  return low !== null && low !== undefined && high !== null && high !== undefined
+    ? (low + high) / 2
+    : (low ?? high) ?? 0;
+}
+
+export function weightedPipelineCents(
+  opp: CommercialOpportunity,
+  proposalTotalCents?: number | null
+): number {
+  const value = dealValueCents(opp, proposalTotalCents);
+  if (value === 0) return 0;
+  return Math.round((value * opp.probability_pct) / 100);
 }
 
 // ────────────── Migration 065 (Phase G Q1) — deal number ──────────────
