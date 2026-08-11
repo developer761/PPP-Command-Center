@@ -183,6 +183,8 @@ type SP = Promise<{
   tab?: string;
   sub?: string;
   error?: string;
+  /** Which of a deal's work orders is open (migration 123 allows several). */
+  wo?: string;
   team_added?: string;
   /** What assigning a team just applied, e.g. "Added 4 team members". */
   team_applied?: string;
@@ -1903,7 +1905,12 @@ async function ProjectToolsPanel({
           id={accountId}
           dealId={dealId}
           variant="inline"
-          sp={{ error: sp?.error, ok: sp?.ok, emailed: sp?.emailed, emailfail: sp?.emailfail, filefail: sp?.filefail }}
+          // `wo` carries which of the deal's several work orders is open
+          // (migration 123). Dropping it here meant the sheet switcher worked
+          // on the standalone route but silently snapped back to the first
+          // sheet inside the deal drill-in — which is where people actually
+          // use it.
+          sp={{ error: sp?.error, ok: sp?.ok, emailed: sp?.emailed, emailfail: sp?.emailfail, filefail: sp?.filefail, wo: sp?.wo }}
         />
       )}
 
