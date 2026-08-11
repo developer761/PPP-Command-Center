@@ -43,6 +43,7 @@ import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
 import { DateField } from "@/components/commercial/date-field";
 import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
+import { listTeams, setOwnerTeam, getOwnerTeam } from "@/lib/commercial/teams/db";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
@@ -3959,12 +3960,30 @@ async function removeAssignmentAction(formData: FormData) {
   redirect(`/commercial/accounts/${account_id}?tab=team`);
 }
 
+async function assignTeamAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  const teamRaw = String(formData.get("team_id") ?? "").trim();
+  const teamId = teamRaw && UUID_RE.test(teamRaw) ? teamRaw : null; // "" clears it
+  const res = await setOwnerTeam("account", account_id, teamId, user.id);
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  redirect(res.ok ? `/commercial/accounts/${account_id}?tab=team` : `/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(res.error)}`);
+}
+
 async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
-  const [team, assignableStaff, allPppEmails] = await Promise.all([
+  const [team, assignableStaff, allPppEmails, allTeams, account] = await Promise.all([
     listAccountTeam(accountId),
     listAssignableStaff(),
     listAllPppProfileEmails(),
+    listTeams(),
+    getCommercialAccount(accountId),
   ]);
+  const assignedTeam = await getOwnerTeam(account?.team_id ?? null);
   const teamUserIds = new Set(team.map((t) => t.user_id));
   // Count by role so we can show "1 sales rep · 2 PMs" inline at the top
   // — gives Alex a one-glance read of the team shape without scanning.
@@ -3986,6 +4005,30 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           {errorMessage}
         </div>
       )}
+
+      {/* Assigned team (Karan meeting 2026-08) — apply a whole preset team by
+          name; the individual roles below still work as per-account overrides. */}
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-ppp-charcoal">Assigned team</h3>
+            {assignedTeam ? (
+              <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 break-words"><span className="font-semibold text-ppp-charcoal">{assignedTeam.name}</span> · {assignedTeam.members.length} member{assignedTeam.members.length === 1 ? "" : "s"}{assignedTeam.members.length ? ` — ${assignedTeam.members.map((m) => m.name).join(", ")}` : ""}</p>
+            ) : (
+              <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">No team assigned. Pick one to apply a whole crew at once.</p>
+            )}
+          </div>
+          <form action={assignTeamAction} className="flex items-end gap-2 shrink-0">
+            <input type="hidden" name="account_id" value={accountId} />
+            <select name="team_id" defaultValue={account?.team_id ?? ""} className={`${SELECT_CLS} w-[200px]`} style={SELECT_BG_STYLE}>
+              <option value="">— No team —</option>
+              {allTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <button type="submit" className="px-3 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700">Set</button>
+          </form>
+        </div>
+        {allTeams.length === 0 && <p className="text-[11px] text-ppp-charcoal-400 mt-2">No teams yet — create one in <Link href="/commercial/settings/teams" className="font-semibold text-cc-brand-700 hover:underline">Settings → Teams</Link>.</p>}
+      </div>
 
       {/* Missing-primary warning(s) — surface when someone is on the team in
           a role but no one holds primary for that role. Drives the "who's

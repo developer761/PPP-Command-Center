@@ -56,6 +56,8 @@ export type CommercialAccount = {
   created_by_user_id: string | null;
   updated_by_user_id: string | null;
   deleted_at: string | null;
+  /** Migration 122 — the Team assigned to this account (by name), or null. */
+  team_id: string | null;
 };
 
 /** Format an account's sequential id as ACC-#### (LPAD 4). Returns an
