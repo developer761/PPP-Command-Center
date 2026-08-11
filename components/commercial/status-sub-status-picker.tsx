@@ -55,15 +55,27 @@ const CREATE_ALLOWED_STATUSES = OPPORTUNITY_STATUSES.filter(
  * carries the real (status, sub_status) tuple, posted as hidden fields, so
  * the server actions parse exactly what they always did.
  */
-const CREATE_STAGES = PRE_CONTRACT_COLUMNS.filter((c) =>
-  OPEN_COLUMN_KEYS.includes(c.key)
+// "Proposal" is deliberately NOT offered at create time. Its tuple is
+// (proposal, sent) — literally "the proposal is out with the GC" — so a
+// brand-new deal picked it and immediately claimed a proposal had been sent
+// that doesn't exist: an empty Proposals tab, the sent-stage probability (65%)
+// inflating weighted pipeline on a deal thirty seconds old, and the page-load
+// reconciler pulling the deal back because no sent proposal is there to
+// justify it, so the stage didn't even stick.
+//
+// You can't have sent a proposal you haven't built. If one genuinely went out
+// already, build it and hit Send — the deal advances to Proposal on its own,
+// with an actual proposal behind it. (Karan 2026-08, option (a).)
+const CREATE_EXCLUDED_STAGES: readonly string[] = ["proposal"];
+
+const CREATE_STAGES = PRE_CONTRACT_COLUMNS.filter(
+  (c) => OPEN_COLUMN_KEYS.includes(c.key) && !CREATE_EXCLUDED_STAGES.includes(c.key)
 ).map((c) => ({ key: c.key, label: c.label, target: COLUMN_TARGET[c.key] }));
 
 const CREATE_STAGE_HINT: Record<string, string> = {
   qualifying: "They invited a bid — we're deciding whether to chase it.",
   rfp: "The formal package landed. Defaults the RFP-received date to today.",
   estimating: "We're putting a price together.",
-  proposal: "The proposal is out with the GC.",
 };
 
 export type StatusSubStatusPickerProps = {
