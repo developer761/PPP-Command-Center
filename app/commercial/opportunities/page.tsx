@@ -102,6 +102,8 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from 
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
 import { HBars } from "@/components/commercial/charts";
 import { DateField } from "@/components/commercial/date-field";
+import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
+import { listTeams } from "@/lib/commercial/teams/db";
 import { IconBulb } from "@/components/commercial/inline-icons";
 
 const MS_PER_DAY = 86_400_000;
@@ -306,10 +308,14 @@ async function createDealFromPipelineAction(formData: FormData) {
   const followUpAtRaw = String(formData.get("follow_up_at") ?? "").trim();
   const followUpNotesRaw = String(formData.get("follow_up_notes") ?? "").trim();
   const source = String(formData.get("source") ?? "").trim();
-  const bidLowRaw = String(formData.get("bid_value_low_dollars") ?? "").trim();
-  const bidHighRaw = String(formData.get("bid_value_high_dollars") ?? "").trim();
   const proposalDueRaw = String(formData.get("proposal_due_at") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
+  // Parity with the account's new-deal action (audit #14).
+  const rfpReceivedRaw = String(formData.get("rfp_received_at") ?? "").trim();
+  const rfp_received_at =
+    rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw) ? rfpReceivedRaw : null;
+  const teamRaw = String(formData.get("team_id") ?? "").trim();
+  const team_id = teamRaw && UUID_RE.test(teamRaw) ? teamRaw : null;
 
   const backHref = "/commercial/opportunities?new_deal=1#new-deal-sheet";
   if (!UUID_RE.test(account_id)) {
@@ -325,14 +331,6 @@ async function createDealFromPipelineAction(formData: FormData) {
     redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Invalid source.")}#new-deal-sheet`);
   }
 
-  const low = bidLowRaw ? parseDollarsToCents(bidLowRaw) : null;
-  const high = bidHighRaw ? parseDollarsToCents(bidHighRaw) : null;
-  if (bidLowRaw && low === null) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Bid low is not a valid dollar amount.")}#new-deal-sheet`);
-  }
-  if (bidHighRaw && high === null) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Bid high is not a valid dollar amount.")}#new-deal-sheet`);
-  }
 
   // Anchor a date-only proposal-due at noon ET (16:00 UTC) so we don't
   // race the timezone into the previous day for east-coast users.
@@ -356,9 +354,9 @@ async function createDealFromPipelineAction(formData: FormData) {
         : null,
     follow_up_notes: followUpNotesRaw ? followUpNotesRaw.slice(0, 200) : null,
     source: source ? (source as OpportunitySource) : undefined,
-    bid_value_low_cents: low,
-    bid_value_high_cents: high,
     proposal_due_at: proposalDueAt,
+    rfp_received_at,
+    team_id,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -542,6 +540,10 @@ export default async function CommercialOpportunitiesPage({
   // forms, every NEW deal has none, and weighted pipeline / bid range / the
   // stage funnel were all counting those deals as zero.
   const proposalTotalByOpp = await listCurrentProposalTotalByOpp(oppIds);
+  // For the New-opportunity sheet (audit #14 — it had drifted behind the
+  // account's form). Cheap, and only this page renders that sheet.
+  const allTeams = await listTeams();
+  const todayEtIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const oppValue = (o: CommercialOpportunity) =>
     weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
 
@@ -1521,6 +1523,8 @@ export default async function CommercialOpportunitiesPage({
       {newDealOpen && (
         <NewDealSlideOut
           accounts={accounts.filter((a) => !a.deleted_at)}
+          allTeams={allTeams}
+          todayIso={todayEtIso}
           closeHref={newDealSheetCloseHref}
           sheetError={sheetError}
           action={createDealFromPipelineAction}
@@ -1537,11 +1541,18 @@ export default async function CommercialOpportunitiesPage({
 // the interactivity is just <input list=> autocomplete + form submit.
 function NewDealSlideOut({
   accounts,
+  allTeams,
+  todayIso,
   closeHref,
   sheetError,
   action,
 }: {
   accounts: CommercialAccount[];
+  /** Teams for the Team select — parity with the account's new-deal form. */
+  allTeams: { id: string; name: string }[];
+  /** Today in ET, for the RFP-received default. Computed on the server so the
+   *  default doesn't depend on the viewer's machine clock. */
+  todayIso: string;
   closeHref: string;
   sheetError: string | null;
   action: (formData: FormData) => void | Promise<void>;
@@ -1592,17 +1603,18 @@ function NewDealSlideOut({
           />
 
           <div>
-            <label htmlFor="new-deal-title" className={LABEL_CLS}>
+            <label htmlFor="deal-title" className={LABEL_CLS}>
               Opportunity name <span className="text-rose-600">*</span>
             </label>
-            <input
-              id="new-deal-title"
-              name="title"
-              required
-              maxLength={200}
-              placeholder='e.g. "40 Wall St — Lobby repaint"'
-              className={INPUT_CLS}
-            />
+            {/* Parity with the account's new-deal form (audit #14): this sheet
+                had a plain text input, so creating a deal from the pipeline
+                produced a differently-named deal than creating the same deal
+                from the account. builderFieldId lets it read the customer the
+                picker above resolves, since that's chosen client-side here. */}
+            <AutoOpportunityTitle builderFieldId="new-deal-account" className={INPUT_CLS} />
+            <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">
+              Auto-fills as MM-DD-YYYY Builder - Client - Street. Type over it any time.
+            </p>
           </div>
 
           {/* Phase E-4: cascading status/sub-status + optional follow-up
@@ -1627,6 +1639,33 @@ function NewDealSlideOut({
           </div>
 
           {/* Bid low / high removed per the 2026-08 meeting — pricing lives on the proposal. */}
+
+          <div>
+            <label htmlFor="new-deal-rfp" className={LABEL_CLS}>RFP received</label>
+            {/* Defaults to today, matching the account form — the RFP almost
+                always lands the day it's logged, and this powers
+                time-to-proposal on the opportunity card. */}
+            <DateField
+              id="new-deal-rfp"
+              name="rfp_received_at"
+              defaultValue={todayIso}
+              placeholder="When the RFP / bid request arrived"
+              ariaLabel="RFP received date"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="new-deal-team" className={LABEL_CLS}>Team</label>
+            <select id="new-deal-team" name="team_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              <option value="">— Customer&apos;s team —</option>
+              {allTeams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">
+              Leave blank to follow the customer&apos;s team. Build teams in Settings → Teams.
+            </p>
+          </div>
 
           <div>
             <label htmlFor="new-deal-due" className={LABEL_CLS}>Proposal due</label>

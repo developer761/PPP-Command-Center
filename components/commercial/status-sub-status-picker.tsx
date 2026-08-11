@@ -27,10 +27,44 @@ import {
   opportunitySubStatusLabel,
   TERMINAL_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
+import {
+  PRE_CONTRACT_COLUMNS,
+  OPEN_COLUMN_KEYS,
+  COLUMN_TARGET,
+} from "@/lib/commercial/opportunities/kanban-columns";
 
 const CREATE_ALLOWED_STATUSES = OPPORTUNITY_STATUSES.filter(
   (s) => !TERMINAL_STATUSES.has(s)
 );
+
+/**
+ * The stages a BRAND-NEW opportunity can start at, as the flat pre-contract
+ * lane Karan named in the 2026-08 meeting:
+ *
+ *   Qualifying · Request for Proposal · Estimating · Proposal
+ *
+ * Create mode used to offer the raw status enum minus terminals, which meant
+ * a new opportunity's Status dropdown listed Pre-Construction, In Progress and
+ * Billing — post-CONTRACT delivery stages, on a bid nobody has priced yet.
+ * Karan's ask, verbatim: "Split up the Status by Pre-Contract and Post-
+ * Contract — only display the ones that are relevant."
+ *
+ * Flat, so there's no second Sub-status dropdown to reason about at create
+ * time: RFP is its own stage here, and the old sub-status choices under
+ * Qualifying (Solicitation / RFP / Estimating) collapsed into it. Each option
+ * carries the real (status, sub_status) tuple, posted as hidden fields, so
+ * the server actions parse exactly what they always did.
+ */
+const CREATE_STAGES = PRE_CONTRACT_COLUMNS.filter((c) =>
+  OPEN_COLUMN_KEYS.includes(c.key)
+).map((c) => ({ key: c.key, label: c.label, target: COLUMN_TARGET[c.key] }));
+
+const CREATE_STAGE_HINT: Record<string, string> = {
+  qualifying: "They invited a bid — we're deciding whether to chase it.",
+  rfp: "The formal package landed. Defaults the RFP-received date to today.",
+  estimating: "We're putting a price together.",
+  proposal: "The proposal is out with the GC.",
+};
 
 export type StatusSubStatusPickerProps = {
   /** Field-name prefix. "" produces `status` / `sub_status`; "to_"
@@ -126,6 +160,17 @@ export function StatusSubStatusPicker({
   );
   const showFollowUp = isFollowUpSub || followUpToggled;
 
+  // Create-mode stage state. Seeded from initialStatus when it maps onto one
+  // of the four stages, so a caller that pre-selects "estimating" still lands
+  // there.
+  const [createStage, setCreateStage] = useState<string>(() => {
+    const fromInitial = CREATE_STAGES.find((st) => st.key === initialStatus);
+    return fromInitial?.key ?? CREATE_STAGES[0]?.key ?? "qualifying";
+  });
+  const createTarget =
+    CREATE_STAGES.find((st) => st.key === createStage)?.target ??
+    COLUMN_TARGET.qualifying;
+
   const handleStatusChange = (next: string) => {
     setStatus(next);
     const nextSubs = (SUB_STATUSES_BY_STATUS as Record<string, readonly string[]>)[next] ?? [];
@@ -139,6 +184,37 @@ export function StatusSubStatusPicker({
     }
     onStatusChange?.(next);
   };
+
+  // CREATE: one flat Stage select over the pre-contract lane. See CREATE_STAGES.
+  if (mode === "create") {
+    return (
+      <div className={`space-y-3 ${className}`}>
+        <label className="block">
+          <span className={LABEL_CLS}>Stage</span>
+          <select
+            value={createStage}
+            onChange={(e) => setCreateStage(e.target.value)}
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
+            aria-label="Stage"
+            required
+          >
+            {CREATE_STAGES.map((st) => (
+              <option key={st.key} value={st.key}>
+                {st.label}
+              </option>
+            ))}
+          </select>
+          <p className={HINT_CLS}>
+            {CREATE_STAGE_HINT[createStage] ?? "Where this opportunity starts."}
+          </p>
+        </label>
+        {/* The real tuple the server action parses — unchanged contract. */}
+        <input type="hidden" name={statusField} value={createTarget.status} />
+        <input type="hidden" name={subStatusField} value={createTarget.sub_status} />
+      </div>
+    );
+  }
 
   return (
     <div className={`space-y-3 ${className}`}>
