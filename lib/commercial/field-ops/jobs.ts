@@ -95,11 +95,12 @@ export async function listDealOptionsForWorkOrder(): Promise<{ value: string; la
   // Exclude deals that ALREADY have a live field-ops work order — connecting one
   // deal twice would spawn a second job pointing at the same dashboard WO, split
   // payroll across two job codes, and show duplicate calendar cards (audit 2026-08).
-  const { data: linked } = await sb
-    .from("commercial_jobs")
-    .select("opportunity_id")
-    .not("opportunity_id", "is", null)
-    .is("deleted_at", null);
+  // Scoped to THESE candidate deals (≤300) so it can't be truncated at the silent
+  // 1000-row cap as the job table grows (audit round 17).
+  const candidateIds = all.map((o) => o.id);
+  const { data: linked } = candidateIds.length
+    ? await sb.from("commercial_jobs").select("opportunity_id").in("opportunity_id", candidateIds).is("deleted_at", null)
+    : { data: [] as { opportunity_id: string | null }[] };
   const taken = new Set(((linked ?? []) as { opportunity_id: string | null }[]).map((r) => r.opportunity_id).filter(Boolean) as string[]);
   const rows = all.filter((o) => !taken.has(o.id));
   const accIds = [...new Set(rows.map((o) => o.account_id))];
