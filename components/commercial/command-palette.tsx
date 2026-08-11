@@ -301,26 +301,31 @@ export function CommandPalette() {
         )}
         <div className="max-h-[60vh] overflow-y-auto" role="listbox" id="palette-results">
           {query.trim().length < 2 ? (
-            <div className="px-6 py-9 text-center">
-              <div className="mx-auto mb-3 inline-flex items-center justify-center h-11 w-11 rounded-full bg-cc-brand-50 text-cc-brand-600">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-                </svg>
-              </div>
-              <p className="text-[13.5px] font-semibold text-ppp-charcoal">Search everything</p>
-              <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-                Accounts · Opportunities · Proposals · Invoices · Documents
+            /* Karan 2026-08: the old empty state was a big circled magnifier, a
+               "Search everything" title, a list of five nouns, and five chips
+               reading "a name" / "PO #" — decoration that told you almost
+               nothing. This is the same space spent on what you can actually
+               TYPE, each with a real example, left-aligned so it scans as
+               instructions rather than as a splash screen. */
+            <div className="px-4 py-5">
+              <p className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
+                Search by
               </p>
-              <div className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5">
-                {["a name", "PROP-0045", "INV-113", "PO #", "$12,500"].map((ex) => (
-                  <span
-                    key={ex}
-                    className="inline-flex items-center rounded-full border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-2.5 py-1 text-[11px] font-medium text-ppp-charcoal-500"
-                  >
-                    {ex}
-                  </span>
+              <ul className="mt-2.5 space-y-2">
+                {[
+                  { ex: "Acme Drywall", what: "customer or contact" },
+                  { ex: "PROP-0045", what: "proposal, invoice or opportunity number" },
+                  { ex: "77 Windsor Pl", what: "project address" },
+                  { ex: "12500", what: "an amount" },
+                ].map((row) => (
+                  <li key={row.ex} className="flex items-baseline gap-2.5 min-w-0">
+                    <span className="shrink-0 font-mono text-[11.5px] text-ppp-navy-700 bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
+                      {row.ex}
+                    </span>
+                    <span className="text-[12px] text-ppp-charcoal-500 min-w-0">{row.what}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           ) : loading && results.length === 0 ? (
             <div className="px-4 py-8 text-center text-[13px] text-ppp-charcoal-500">
@@ -380,17 +385,19 @@ export function CommandPalette() {
             ))
           )}
         </div>
-        <div className="px-4 py-2 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/40 text-[10px] text-ppp-charcoal-500 flex items-center justify-between">
-          <span className="inline-flex items-center gap-3">
-            <span>
-              <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">↑↓</kbd> navigate
-            </span>
-            <span>
-              <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">↵</kbd> jump
-            </span>
+        {/* "Press ⌘K anywhere" removed — telling someone how to open the thing
+            they're already looking at is the definition of noise, and it was
+            competing with the two hints that DO help. Hidden on mobile
+            entirely: there's no keyboard to navigate with. */}
+        <div className="hidden sm:flex px-4 py-2 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/40 text-[10px] text-ppp-charcoal-500 items-center gap-3">
+          <span>
+            <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">↑↓</kbd> navigate
           </span>
           <span>
-            Press <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">⌘K</kbd> anywhere
+            <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">↵</kbd> open
+          </span>
+          <span>
+            <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">esc</kbd> close
           </span>
         </div>
       </div>
