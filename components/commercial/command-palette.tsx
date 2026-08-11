@@ -242,9 +242,25 @@ export function CommandPalette() {
             }
             aria-autocomplete="list"
           />
-          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-400 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
-            Esc
-          </span>
+          {query && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => { setQuery(""); inputRef.current?.focus(); }}
+              className="shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-full text-ppp-charcoal-400 hover:text-ppp-charcoal-800 hover:bg-ppp-charcoal-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 touch-manipulation"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6L6 18 M6 6l12 12" /></svg>
+            </button>
+          )}
+          <span aria-hidden className="hidden sm:inline shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-400 bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded px-1.5 py-1 leading-none">Esc</span>
+          <button
+            type="button"
+            aria-label="Close search"
+            onClick={() => setOpen(false)}
+            className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal-800 hover:bg-ppp-charcoal-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 touch-manipulation"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6L6 18 M6 6l12 12" /></svg>
+          </button>
         </div>
         {/* Entity filter chips — narrow the results to one kind. */}
         {availableKinds.length > 0 && (
