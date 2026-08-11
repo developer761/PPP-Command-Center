@@ -139,3 +139,50 @@ export function proposalOutcomeBucket(
   if (s === "lost" || s === "expired") return "not_awarded";
   return "open";
 }
+
+// ────────────── revision lifecycle (Karan meeting 2026-08) ──────────────
+
+/**
+ * Whether a proposal should show an R# at all, and what it should say.
+ *
+ * Karan, verbatim: "it should be original and the revisions only come after
+ * we send them to the client … we don't want the R1, R2 etc before we send it
+ * to the client."
+ *
+ * So a proposal nobody outside the building has seen is just "the proposal".
+ * Revision numbering starts the moment the DEAL has had something sent to the
+ * client — not when a draft is bumped internally. Estimators bump drafts while
+ * they're still pricing, and labelling those R2/R3 tells the client we've
+ * revised something they never received.
+ *
+ * `anySentOnDeal` is the deal-level fact (any sibling with a `sent_at`). Pass
+ * it wherever the caller already has the sibling list; the fallback to this
+ * proposal's own `sent_at` is correct for a single-proposal deal and errs
+ * toward hiding the label, which is the direction Karan asked for.
+ */
+export function proposalRevisionLabel(
+  proposal: { revision_number: number; sent_at?: string | null },
+  anySentOnDeal?: boolean
+): string {
+  const numberingStarted = anySentOnDeal ?? proposal.sent_at != null;
+  return numberingStarted ? `R${proposal.revision_number}` : "";
+}
+
+/**
+ * Is this proposal LOCKED against edits?
+ *
+ * Karan: "It will be locked once it's sent for approval." Two gates, both
+ * meaning "someone outside the estimator is now relying on this":
+ *   - sent for internal approval (pending_approval) or approved, and
+ *   - anything the client has seen or decided (sent / won / lost), plus the
+ *     archival states.
+ *
+ * Only `draft` is freely editable. Unlocking an approved proposal is a
+ * deliberate, audited action (unlockApprovedProposal) — this predicate is the
+ * read-side truth, not a substitute for that.
+ */
+export const EDITABLE_PROPOSAL_STATUSES: readonly ProposalStatus[] = ["draft"];
+
+export function isProposalLocked(status: ProposalStatus): boolean {
+  return !EDITABLE_PROPOSAL_STATUSES.includes(status);
+}

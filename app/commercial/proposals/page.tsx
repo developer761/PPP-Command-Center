@@ -35,6 +35,7 @@ import {
   PROPOSAL_STATUSES,
   isProposalEligibleOpp,
   proposalStatusLabel,
+  proposalRevisionLabel,
   type ProposalStatus,
 } from "@/lib/commercial/proposals/constants";
 import NewProposalPicker from "@/components/commercial/new-proposal-picker";
@@ -561,9 +562,13 @@ function renderRowsGroupedByAccount(
   // per-deal color coding needed inside a column. Just sort revs desc
   // so R11 shows above R10 above R9.
   const sorted = [...rows].sort((a, b) => b.revision_number - a.revision_number);
+  // Rows here are already scoped to ONE deal, so "has anything been sent" is a
+  // property of this whole set — which is exactly the granularity revision
+  // numbering starts at (Karan 2026-08).
+  const anySentOnDeal = rows.some((r) => r.sent_at != null);
   return sorted.map((r) => (
     <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
-      <ProposalCard row={r} accentBar={accentBar} compact={compact} />
+      <ProposalCard row={r} accentBar={accentBar} compact={compact} anySentOnDeal={anySentOnDeal} />
     </ProposalDnDCard>
   ));
 }
@@ -572,10 +577,15 @@ function ProposalCard({
   row,
   accentBar,
   compact = false,
+  anySentOnDeal = false,
 }: {
   row: ProposalRow;
   accentBar: string;
   compact?: boolean;
+  /** Has ANY proposal on this deal been sent to the client? Revision
+   *  numbering only starts then (Karan 2026-08) — a bumped draft nobody
+   *  outside the building has seen is still just "the proposal". */
+  anySentOnDeal?: boolean;
 }) {
   const oppTitle =
     row.opportunity?.title?.trim() ||
@@ -616,9 +626,13 @@ function ProposalCard({
           >
             {customName || oppTitle}
           </span>
-          <span className="text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums shrink-0">
-            R{row.revision_number}
-          </span>
+          {/* No R# before the client has seen anything on this deal — see
+              proposalRevisionLabel (Karan 2026-08). */}
+          {proposalRevisionLabel(row, anySentOnDeal) && (
+            <span className="text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums shrink-0">
+              {proposalRevisionLabel(row, anySentOnDeal)}
+            </span>
+          )}
           {/* Katie 2026-07-20 (migration 069): PROP-#### is the global
               unique identifier; R# is the per-deal revision cursor. Show
               both so Alex can copy PROP-0042 into an email + Katie can
@@ -1348,6 +1362,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                     </div>
                     <ul className="divide-y divide-ppp-charcoal-100">
                       {dealBucket.rows.map((r) => {
+                        const dealAnySent = dealBucket.rows.some((x) => x.sent_at != null);
                         const editorHref = `/commercial/accounts/${acct.account_id}/deals/${dealBucket.deal!.id}/proposal/${r.id}?back=/commercial/proposals`;
                         const customName = r.header_json?.project_name?.trim();
                         return (
@@ -1360,7 +1375,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               className="flex items-center gap-3 px-4 py-2.5 min-h-[48px] flex-1 min-w-0"
                             >
                               <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums shrink-0 w-8">
-                                R{r.revision_number}
+                                {proposalRevisionLabel(r, dealAnySent) || "—"}
                               </span>
               {/* Audit fix: align breakpoint with the kanban card
                   (hidden sm:inline) so the PROP-#### chip surfaces at

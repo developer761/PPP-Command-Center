@@ -44,6 +44,7 @@ import AccountInlineCardForm from "@/components/commercial/account-inline-card";
 import { DateField } from "@/components/commercial/date-field";
 import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
 import { listTeams, setOwnerTeam, getOwnerTeam } from "@/lib/commercial/teams/db";
+import { proposalRevisionLabel } from "@/lib/commercial/proposals/constants";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
@@ -5794,6 +5795,10 @@ async function AccountProposalsTab({
                   // row (revision + status + total + actions), caption
                   // row (project name / GC name), so the hierarchy is
                   // scannable at a glance.
+                  // Revision numbering starts only once the CLIENT has been
+                  // sent something on this deal (Karan 2026-08) — `rows` is
+                  // already scoped to one deal, so this is the right set.
+                  const dealAnySent = rows.some((x) => x.sent_at != null);
                   const renderRow = (r: typeof rows[number], isCurrent: boolean) => {
                     const projectName = r.header_json?.project_name?.trim();
                     const gcCompany = r.header_json?.gc_company?.trim();
@@ -5853,8 +5858,10 @@ async function AccountProposalsTab({
                                 to a second line on a narrow phone instead of
                                 clipping (all chips are shrink-0). */}
                             <div className="flex items-center gap-2 gap-y-1 min-w-0 flex-wrap">
+                              {/* No R# until the client has seen something on
+                                  this deal (Karan 2026-08). */}
                               <span className={`font-bold text-ppp-charcoal tabular-nums shrink-0 ${isCurrent ? "text-[15px]" : "text-[12.5px] text-ppp-charcoal-600"}`}>
-                                R{r.revision_number}
+                                {proposalRevisionLabel(r, dealAnySent) || "Proposal"}
                               </span>
                               {formatProposalNumber(r.proposal_seq) && (
                                 <span className="font-mono text-[10px] text-ppp-navy-600 shrink-0" title="Global proposal number">

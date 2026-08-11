@@ -51,12 +51,15 @@ import {
   requestProposalChanges,
   unlockApprovedProposal,
   withdrawApprovalRequest,
+  listProposalsForOpp,
   type CommercialProposalLineItem,
 } from "@/lib/commercial/proposals/db";
+import { opportunityStatusLabelV2 } from "@/lib/commercial/opportunities/constants";
 import {
   TOMCO_DEFAULT_INTRO,
   proposalStatusLabel,
   proposalTotalLabel,
+  proposalRevisionLabel,
 } from "@/lib/commercial/proposals/constants";
 import { listProducts } from "@/lib/commercial/products/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
@@ -767,8 +770,13 @@ async function markProposalOutcomeAction(formData: FormData) {
   // which was jarring ("why am I on the account page now?"). Now the
   // banner on the proposal page carries a link to the debrief so the
   // user can go if they want to — no forced navigation.
+  // When the deal was already in delivery we deliberately left it there (see
+  // markProposalOutcome). Say so — the deal not moving was the confusing part.
+  const kept = result.deal_left_in_delivery
+    ? `&deal_kept=${encodeURIComponent(result.deal_left_in_delivery)}`
+    : "";
   redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?outcome=${outcome}`
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?outcome=${outcome}${kept}`
   );
 }
 
@@ -779,7 +787,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; back?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
+  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; back?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; deal_kept?: string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -817,11 +825,17 @@ export default async function ProposalEditorPage({
   // contract, show how much of it has been billed. Contract = proposal total +
   // net APPROVED change orders tied to THIS proposal; billed = issued invoices
   // linked to it. Deducts can't push the contract below $0.
-  const [proposalInvoices, dealChangeOrders, dealDocuments] = await Promise.all([
+  const [proposalInvoices, dealChangeOrders, dealDocuments, siblingProposals] = await Promise.all([
     listCommercialInvoices({ opportunityId: dealId }),
     listChangeOrders(dealId),
     listDocumentsForParent("opportunity", dealId),
+    listProposalsForOpp(dealId),
   ]);
+  // Revision numbering starts only once the CLIENT has been sent something on
+  // this deal — see proposalRevisionLabel. Computed from the siblings, not
+  // just this row, so R2 doesn't appear on a bump of a never-sent draft.
+  const anySentOnDeal = siblingProposals.some((sp) => sp.sent_at != null);
+  const revLabel = proposalRevisionLabel(proposal, anySentOnDeal);
   // Kim: recipient list + operating-company identity + prior email-sends for the
   // "Send proposal" review sheet / "emailed to …" line.
   const [accountContacts, operatingCompany, proposalEmailSends] = await Promise.all([
@@ -979,9 +993,15 @@ export default async function ProposalEditorPage({
       <header className="sm:sticky sm:top-2 z-20 bg-surface/95 backdrop-blur-sm border border-ppp-charcoal-200 rounded-xl p-4 flex flex-col gap-3 shadow-md shadow-ppp-charcoal-900/5">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-[11px] font-bold text-ppp-charcoal-500 uppercase tracking-widest tabular-nums">
-              R{proposal.revision_number}
-            </span>
+            {/* No R# until the client has actually seen something — an
+                estimator bumping drafts internally shouldn't produce an "R3"
+                on a proposal nobody outside the building has received
+                (Karan 2026-08). */}
+            {revLabel && (
+              <span className="text-[11px] font-bold text-ppp-charcoal-500 uppercase tracking-widest tabular-nums">
+                {revLabel}
+              </span>
+            )}
             {/* Katie 2026-07-20 (migration 069): PROP-#### chip = the
                 global unique identifier for this proposal. Distinct
                 from R# (per-deal revision) and from the parent deal's
@@ -1351,13 +1371,21 @@ export default async function ProposalEditorPage({
       {sp.outcome === "won" && (
         <div role="status" className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
           <IconTrophy size={16} className="text-emerald-700 shrink-0 mt-0.5" />
-          <span><strong>Marked won.</strong> Opportunity flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</span>
+          <span>
+            <strong>Marked won.</strong>{" "}
+            {sp.deal_kept
+              ? <>The opportunity was left in <em>{opportunityStatusLabelV2(sp.deal_kept)}</em> — it&rsquo;s already past the bid stage, so pulling it back to Closed Won would have taken a live job off the board.</>
+              : <>Opportunity flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</>}
+          </span>
         </div>
       )}
       {sp.outcome === "lost" && (
         <div role="status" className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-900 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <strong>Marked lost.</strong> Opportunity flipped to <em>Pre-Sale Closed · Lost</em>. Please add the loss reason so the Win/Loss report is accurate.
+            <strong>Marked lost.</strong>{" "}
+            {sp.deal_kept
+              ? <>The opportunity was left in <em>{opportunityStatusLabelV2(sp.deal_kept)}</em> — un-winning a job that&rsquo;s already in delivery would erase real work state. Fix the proposal, or move the deal by hand if it really was lost.</>
+              : <>Opportunity flipped to <em>Pre-Sale Closed · Lost</em>. Please add the loss reason so the Win/Loss report is accurate.</>}
           </div>
           <Link
             href={`/commercial/accounts/${accountId}/debrief/${dealId}?just_closed=1`}

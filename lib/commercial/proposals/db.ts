@@ -787,7 +787,15 @@ export async function markProposalOutcome(input: {
   outcome: "won" | "lost";
   actor_user_id: string | null;
 }): Promise<
-  | { ok: true; proposal: CommercialProposal; opportunity_id: string; account_id: string }
+  | {
+      ok: true;
+      proposal: CommercialProposal;
+      opportunity_id: string;
+      account_id: string;
+      /** Non-null when the parent deal was already in delivery and was
+       *  therefore left alone — carries that status for the caller's note. */
+      deal_left_in_delivery?: string | null;
+    }
   | { ok: false; error: string }
 > {
   const sb = commercialDb();
@@ -830,23 +838,56 @@ export async function markProposalOutcome(input: {
     .eq("id", proposalBefore.opportunity_id)
     .maybeSingle();
   const accountId = (oppRow as { account_id: string } | null)?.account_id ?? null;
-  // Flip parent deal — best-effort. If it's already pre_sale_closed the
-  // change_status helper is effectively a no-op.
+  // Flip parent deal — best-effort, and NOT unconditionally.
+  //
+  // Karan 2026-08: "I tried putting the proposal into win. The logic is a bit
+  // weird." This was the weird part. The flip ran with _skipDagCheck and no
+  // guard, so marking a proposal Won on a deal that had already moved INTO
+  // DELIVERY (pre-construction / in progress / billing) yanked that deal
+  // backwards to "Closed Won" — a crew on site, and the board says the job is
+  // sitting in the closed cluster. It's also the natural thing to do: you win
+  // the job, work starts, then someone tidies up by marking the proposal Won.
+  //
+  // A deal in delivery is ALREADY won — that's what delivery means — so the
+  // correct action is to leave it exactly where it is. The proposal still
+  // flips; only the deal is left alone. Mirrors the same post-sale skip
+  // updateProposalStatus's cascade has always had.
+  //
+  // Lost gets the same treatment: marking a proposal Lost on a job already in
+  // production is a data-entry slip, not a real state change, and un-winning a
+  // live job is far more destructive than leaving a proposal mislabelled.
+  const POST_SALE = new Set([
+    "pre_construction",
+    "in_progress",
+    "billing",
+    "post_sale_closed",
+  ]);
+  let dealLeftInDelivery: string | null = null;
   try {
-    const { changeOpportunityStatus } = await import(
-      "@/lib/commercial/opportunities/status"
-    );
-    const flip = await changeOpportunityStatus({
-      opp_id: proposalBefore.opportunity_id,
-      to_status: "pre_sale_closed",
-      to_sub_status: input.outcome,
-      acting_user_id: input.actor_user_id,
-      _skipDagCheck: true,
-    });
-    if (!flip.ok) {
-      console.warn(
-        `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${flip.error}`
+    const { data: dealRow } = await sb
+      .from("commercial_opportunities")
+      .select("status")
+      .eq("id", proposalBefore.opportunity_id)
+      .maybeSingle();
+    const dealStatus = (dealRow as { status: string } | null)?.status ?? null;
+    if (dealStatus && POST_SALE.has(dealStatus)) {
+      dealLeftInDelivery = dealStatus;
+    } else {
+      const { changeOpportunityStatus } = await import(
+        "@/lib/commercial/opportunities/status"
       );
+      const flip = await changeOpportunityStatus({
+        opp_id: proposalBefore.opportunity_id,
+        to_status: "pre_sale_closed",
+        to_sub_status: input.outcome,
+        acting_user_id: input.actor_user_id,
+        _skipDagCheck: true,
+      });
+      if (!flip.ok) {
+        console.warn(
+          `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${flip.error}`
+        );
+      }
     }
   } catch (err) {
     console.warn(`[markProposalOutcome] opp flip threw:`, err);
@@ -856,6 +897,10 @@ export async function markProposalOutcome(input: {
     proposal: propResult.proposal,
     opportunity_id: proposalBefore.opportunity_id,
     account_id: accountId ?? "",
+    // Set when the deal was deliberately left in delivery. Callers surface it
+    // as a small note so the user isn't left wondering why the deal didn't
+    // move — silence here is what made the behaviour feel "weird".
+    deal_left_in_delivery: dealLeftInDelivery,
   };
 }
 

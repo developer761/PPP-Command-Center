@@ -861,8 +861,42 @@ function lineTotalCents(it: CommercialProposalLineItem): number {
   return Math.round(Number(it.quantity) * it.unit_price_cents);
 }
 
-function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) {
-  if (items.length === 0) return null;
+function InclusionsCustomer({
+  items,
+  laborItems = [],
+  hideLaborPrices = false,
+}: {
+  items: CommercialProposalLineItem[];
+  /** Karan 2026-08: "Move the Labor into Inclusions." Labor used to print as
+   *  its own section between Scope and Alternates, which read to the client as
+   *  a separate charge rather than part of the work being proposed. It now
+   *  renders inside Scope of Work, after the material lines:
+   *    Custom Time  → "description — 12 hrs @ $85.00/hr = $1,020.00"
+   *    Materials    → the flat line price (unchanged ItemLine rendering)
+   *  Same rows, same TOTAL — only where they sit on the page changes. */
+  laborItems?: CommercialProposalLineItem[];
+  /** A final-price override is active, so per-line labor money would
+   *  contradict the reconciled TOTAL — drop the rate tail. */
+  hideLaborPrices?: boolean;
+}) {
+  if (items.length === 0 && laborItems.length === 0) return null;
+  const laborLines = laborItems.map((it) => {
+    const subtotal = Math.round(Number(it.quantity) * it.unit_price_cents);
+    const hrs = Number(it.quantity);
+    const rate = it.unit_price_cents / 100;
+    const priceTail =
+      it.show_price === false || hideLaborPrices
+        ? ""
+        : ` @ $${rate.toFixed(2)}/hr = $${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return (
+      <View key={it.id} style={styles.bulletRow}>
+        <View style={styles.bulletDot} />
+        <Text style={styles.bulletBody}>
+          {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"}{priceTail}
+        </Text>
+      </View>
+    );
+  });
   // Karan 2026-07-20: reference PDF flows scope straight after the
   // intro, but our proposals mix inclusions + labor + exclusions and
   // Alex asked for section headings so each block is unmistakably
@@ -882,10 +916,14 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
           {items.map((it) => (
             <ItemLine key={it.id} item={it} />
           ))}
+          {laborLines}
         </View>
       </View>
     );
   }
+  // Phase-grouped branch below appends the labor lines after the last phase —
+  // labor spans phases, so it reads as the closing part of the scope rather
+  // than being arbitrarily filed under one of them.
   // F.6 audit fix: don't wrap={false} the whole group — a phase with
   // 30+ line items would refuse to break across pages and overflow.
   // Instead, keep just the section header + FIRST row atomic (so a
@@ -907,6 +945,9 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
           </View>
         );
       })}
+      {laborLines.length > 0 && (
+        <View style={{ marginTop: 6 }}>{laborLines}</View>
+      )}
     </View>
   );
 }
@@ -1119,56 +1160,10 @@ function ExclusionsBlock({ exclusions }: { exclusions: string[] }) {
  *  hrs @ {rate}/hr = {subtotal}". Rolls into TOTAL as part of the
  *  standard rollup (same math as inclusions). Suppressed when zero
  *  labor rows so old proposals render unchanged. */
-function LaborSection({ items, hidePrices = false }: { items: CommercialProposalLineItem[]; hidePrices?: boolean }) {
-  if (items.length === 0) return null;
-  const totalCents = items.reduce(
-    (acc, it) => acc + Math.round(Number(it.quantity) * it.unit_price_cents),
-    0
-  );
-  const totalHours = items.reduce((acc, it) => acc + Number(it.quantity), 0);
-  const renderRow = (it: CommercialProposalLineItem) => {
-    const subtotal = Math.round(Number(it.quantity) * it.unit_price_cents);
-    const hrs = Number(it.quantity);
-    const rate = it.unit_price_cents / 100;
-    // R1a: a hidden-price labor row keeps its description + hours but drops the
-    // "@ rate = subtotal" tail so its rate doesn't leak on the client PDF.
-    // hidePrices (a final-price override is active) drops the tail on EVERY row so
-    // the labor $ can't contradict the reconciled TOTAL (#4).
-    const priceTail = it.show_price === false || hidePrices
-      ? ""
-      : ` @ $${rate.toFixed(2)}/hr = $${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    return (
-      <View key={it.id} style={styles.bulletSubRow}>
-        <View style={styles.bulletSubDot} />
-        <Text style={styles.bulletSubBody}>
-          {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"}{priceTail}
-        </Text>
-      </View>
-    );
-  };
-  // 2026-07-21 audit: only keep the header + first row atomic; remaining
-  // rows flow across pages. wrap={false} on the WHOLE section (the old
-  // code) would overflow/clip a labor-heavy proposal — the same bug that
-  // was already fixed for phase groups.
-  return (
-    <View style={{ marginTop: 14 }}>
-      <View wrap={false}>
-        <Text style={styles.sectionUnderlineHeader}>Labor:</Text>
-        <View style={{ marginTop: 4 }}>{renderRow(items[0]!)}</View>
-      </View>
-      {items.length > 1 && <View>{items.slice(1).map(renderRow)}</View>}
-      {hidePrices ? (
-        <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
-          Labor: {totalHours} {totalHours === 1 ? "hr" : "hrs"} (included in the total below)
-        </Text>
-      ) : (
-        <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
-          Labor subtotal: {totalHours} {totalHours === 1 ? "hr" : "hrs"} — ${(totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </Text>
-      )}
-    </View>
-  );
-}
+// LaborSection removed 2026-08: labor now renders inside Scope of Work on the
+// customer PDF (see InclusionsCustomer's laborItems). The internal PDF still
+// prints a separate "Labor" table via InclusionsInternal, where the estimator's
+// qty x rate math is the point.
 
 function EstimatorBlock({ e }: { e: ProposalEstimatorSnapshot }) {
   if (!e.name && !e.email && !e.phone) return null;
@@ -1233,7 +1228,18 @@ export function ProposalPdfDocument({
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
   const totalLabel = proposalTotalLabel(exclusions);
-  const intro = proposal.intro_text_override?.trim() || TOMCO_DEFAULT_INTRO;
+  // Karan 2026-08: "The bid set should carry over to the proposal in the intro
+  // paragraph." The Bid Set date already printed as its own line above the
+  // intro, which read as a stray field; folding it into the sentence is how
+  // Tomco's proposals actually word it — the client sees WHICH set was priced
+  // in the same breath as what's being proposed. Only appended to the DEFAULT
+  // intro: an estimator who wrote their own paragraph owns it, and silently
+  // editing their words would be worse than a missing date.
+  const baseIntro = proposal.intro_text_override?.trim();
+  const bidSetSentence = proposal.bid_set_date
+    ? ` This proposal is based on the bid set dated ${formatDateLong(proposal.bid_set_date)}.`
+    : "";
+  const intro = baseIntro || `${TOMCO_DEFAULT_INTRO}${bidSetSentence}`;
   const dateLabel = formatDateLong(proposal.header_json.date_iso);
   // Round-3 audit fix: pdf_show_line_prices was a dead toggle — the
   // editor checkbox existed but the renderer ignored it. Now: internal
@@ -1273,8 +1279,10 @@ export function ProposalPdfDocument({
         />
         <SubmittedToBlock h={proposal.header_json} />
         <ProjectBlock h={proposal.header_json} />
-        {/* R1c: Bid Set date — customer-facing, suppressed when unset. */}
-        {proposal.bid_set_date && (
+        {/* Bid Set date. Folded into the intro sentence when we're using the
+            default intro (see above); still printed as its own line when the
+            estimator supplied a custom intro, so the date is never lost. */}
+        {proposal.bid_set_date && baseIntro && (
           <Text style={{ fontSize: 10, color: CHARCOAL, marginTop: 4 }}>
             <Text style={{ fontFamily: "Times-Bold" }}>Bid Set Date: </Text>
             {formatDateLong(proposal.bid_set_date)}
@@ -1285,7 +1293,11 @@ export function ProposalPdfDocument({
         {showLineTable ? (
           <InclusionsInternal items={inclusions} internal={mode === "internal"} groupByPhase />
         ) : (
-          <InclusionsCustomer items={inclusions} />
+          <InclusionsCustomer
+            items={inclusions}
+            laborItems={laborRows}
+            hideLaborPrices={overrideActive}
+          />
         )}
 
         {/* Migration 063 (2026-07-19, Katie): Labor:
@@ -1293,7 +1305,10 @@ export function ProposalPdfDocument({
             Inclusions and Alternates. Included in TOTAL. Internal-mode
             renders labor rows inline in the standard line-item table
             (they carry price + qty just like inclusions). */}
-        {!showLineTable && <LaborSection items={laborRows} hidePrices={overrideActive} />}
+        {/* Labor no longer prints as its own customer-facing section — it's
+            inside Scope of Work above (Karan 2026-08). Internal mode keeps the
+            separate "Labor" table below, where the estimator's qty/rate math
+            is the whole point. */}
         {showLineTable && laborRows.length > 0 && (
           <InclusionsInternal items={laborRows} internal={mode === "internal"} heading="Labor" />
         )}
