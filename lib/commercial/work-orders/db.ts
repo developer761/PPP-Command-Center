@@ -288,8 +288,33 @@ export async function changeWorkOrderStatus(
         .is("deleted_at", null)
         .maybeSingle();
       if (jobRow) {
-        const { softDeleteJob } = await import("@/lib/commercial/field-ops/jobs");
-        await softDeleteJob((jobRow as { id: string }).id, actorUserId);
+        // A deal has ONE Field Ops job (migration 120) but can now have several
+        // work orders (123), and the extra sheets deliberately REUSE that job
+        // without re-pointing work_order_id. So the job found here may still be
+        // carrying other live sheets' crews: tearing it down would cancel every
+        // future assignment on the deal because ONE sheet was voided, leaving
+        // the other crews silently unscheduled.
+        //
+        // Only tear the job down when this is the last live sheet on the deal.
+        const { data: siblings } = await sb
+          .from("commercial_work_orders")
+          .select("id")
+          .eq("opportunity_id", before.opportunity_id)
+          .is("voided_at", null)
+          .neq("id", id);
+        const othersLive = ((siblings ?? []) as { id: string }[]).length > 0;
+        if (!othersLive) {
+          const { softDeleteJob } = await import("@/lib/commercial/field-ops/jobs");
+          await softDeleteJob((jobRow as { id: string }).id, actorUserId);
+        } else {
+          // Hand the job to a surviving sheet so re-opening THAT one still
+          // controls it, and so the link doesn't dangle at a voided row.
+          const heir = ((siblings ?? []) as { id: string }[])[0];
+          await sb
+            .from("commercial_jobs")
+            .update({ work_order_id: heir.id, updated_at: new Date().toISOString() })
+            .eq("id", (jobRow as { id: string }).id);
+        }
       }
     } catch (err) {
       console.warn("[work-orders] void teardown failed:", err);

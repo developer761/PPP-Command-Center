@@ -6,6 +6,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { getWorkOrder, buildWorkOrderContent } from "@/lib/commercial/work-orders/db";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { workOrderRecordId } from "@/lib/commercial/record-ids";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
-    .select("title, title_override, client_name, property_street, property_city, property_state, account_id, status, sub_status, deleted_at")
+    .select("title, title_override, client_name, property_street, property_city, property_state, project_number, account_id, status, sub_status, deleted_at")
     .eq("id", wo.opportunity_id)
     .maybeSingle();
   const { data: acctRow } = await sb.from("commercial_accounts").select("company_name, deleted_at").eq("id", wo.account_id).maybeSingle();
@@ -51,6 +52,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const opp = (oppRow ?? {}) as {
     title: string | null; client_name: string | null;
     property_street: string | null; property_city: string | null; property_state: string | null;
+    project_number: string | null;
   };
   const dealName = oppRow ? derivedOppName(oppRow as never, account.company_name) : "Project";
   // This sheet's own scope selection (migration 123) — a downloaded PDF must
@@ -71,6 +73,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       content,
       header: {
         dealName,
+        // WO-2026-0020 · Level 3 — the whole point of the area tag is telling
+        // three sheets for one project apart, and a crew holding the DOWNLOADED
+        // pdf had no identifier at all because this route hand-built its header
+        // instead of using workOrderHeader().
+        recordId:
+          [workOrderRecordId(opp?.project_number), wo.area_label?.trim()]
+            .filter(Boolean)
+            .join(" · ") || null,
         gcCompany: account.company_name,
         projectAddress: addr || null,
         assignedTo: wo.assigned_to,

@@ -54,12 +54,19 @@ async function requireUser(): Promise<string> {
 function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
 }
-function base(id: string, dealId: string, origin?: string) {
+function base(id: string, dealId: string, origin?: string, woId?: string | null) {
   // Stay on the standalone tool page when the action came from there; only the
   // embedded Project-tab usage returns to the account page (its canonical home).
+  //
+  // `woId` keeps you on the SHEET you acted on. Without it every action landed
+  // back on sheet A: create sheet B and you'd be editing A while B's chip sat
+  // there unselected (tick "the other half" and you've just replaced A's
+  // scope); send sheet B and A would render the green "Sent to Field Ops"
+  // banner directly above its own Draft pill.
+  const woQs = woId ? `&wo=${woId}` : "";
   return origin === "route"
-    ? `/commercial/accounts/${id}/work-order/${dealId}?v=1`
-    : `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=work-order`;
+    ? `/commercial/accounts/${id}/work-order/${dealId}?v=1${woQs}`
+    : `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=work-order${woQs}`;
 }
 function revalidateWO(id: string, dealId: string) {
   revalidatePath(`/commercial/accounts/${id}/work-order/${dealId}`);
@@ -94,7 +101,7 @@ async function createWorkOrderAction(formData: FormData) {
   });
   if (!res.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   revalidateWO(id, dealId);
-  redirect(`${base(id, dealId, origin)}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, res.value.id)}${backQ(back)}`);
 }
 
 /** Autosave the editable draft fields (crew, start date, notes). */
@@ -139,7 +146,7 @@ async function changeStatusAction(formData: FormData) {
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(woId)) redirect("/commercial/accounts");
   if (!(await woBelongs(woId, id, dealId))) redirect("/commercial/accounts");
   const res = await changeWorkOrderStatus(woId, to, userId);
-  if (!res.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin, woId)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   // File the frozen PDF into Documents when the WO is sent to the crew — and, if
   // a crew email is on file, email them that exact PDF.
   let emailFlag = "";
@@ -161,8 +168,8 @@ async function changeStatusAction(formData: FormData) {
     }
   }
   revalidateWO(id, dealId);
-  if (fileFailed) redirect(`${base(id, dealId, origin)}&filefail=1${backQ(back)}`);
-  redirect(`${base(id, dealId, origin)}&ok=1${emailFlag}${backQ(back)}`);
+  if (fileFailed) redirect(`${base(id, dealId, origin, woId)}&filefail=1${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, woId)}&ok=1${emailFlag}${backQ(back)}`);
 }
 
 /** Email the crew the Work Order PDF (commercial channel). Best-effort — a
