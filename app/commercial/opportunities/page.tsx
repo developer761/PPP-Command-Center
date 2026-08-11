@@ -1812,8 +1812,14 @@ function CustomerBoard({
     .map(([accountId, oppsForAccount]) => {
       const account = accountById.get(accountId);
       if (!account) return null; // filtered by account soft-delete, skip
-      const open = oppsForAccount.filter(
-        (o) => !TERMINAL_STATUSES.has(o.status)
+      // PRE_SALE_OPEN_STATUSES, not "not terminal" — the latter sweeps in
+      // pre_construction / in_progress / billing, i.e. deals already under
+      // contract. A GC with one $400k job in progress at 100% was showing
+      // $400k on its customer card and $0 in the weighted-pipeline KPI
+      // directly above it, because the KPI (correctly) counts pre-sale only.
+      // Same double-count the shared constant exists to prevent.
+      const open = oppsForAccount.filter((o) =>
+        PRE_SALE_OPEN_STATUSES.includes(o.status)
       );
       const closed = oppsForAccount.filter((o) =>
         TERMINAL_STATUSES.has(o.status)
@@ -2224,8 +2230,11 @@ function KanbanBoard({
     // midpoint math here re-introduced the halved-bid bug (a high-only opp
     // yielded high/2), disagreeing with the header KPI which uses the helper
     // (single-sided value = point estimate, not halved).
+    // Same pre-sale-only basis as the header KPI and the customer board —
+    // excluding just the two closed statuses left delivery-stage deals in,
+    // so an account's kanban rollup disagreed with the KPI above it.
     g.weightedCents = g.opps
-      .filter((o) => o.status !== "pre_sale_closed" && o.status !== "post_sale_closed")
+      .filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status))
       .reduce((sum, o) => sum + weightedPipelineCents(o, proposalTotalByOpp.get(o.id)), 0);
   }
   // Karan 2026-07-15 edge-case: if an account's opps are ALL
