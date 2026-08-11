@@ -99,6 +99,32 @@ export const isTerminalOffRamp = (o: {status: string; sub_status: string|null}) 
 - Drop the "Decision in" countdown once decided/in-delivery (it shows "X days overdue" on a won job).
 
 ### §3b. POST-SALE tiles — use the REAL `getProjectFinancials` field names
+
+> ⚠️ **CORRECTION (build session, verified against `lib/commercial/projects/db.ts`).**
+> Five of the field names below do not exist on the object the Overview
+> actually receives (`ProjectRow`, lines 23–84). Building to them literally
+> yields `undefined` on every post-sale tile — the same class of error this
+> section was written to prevent. The real mapping:
+>
+> | Spec name | REAL field on `ProjectRow` |
+> |---|---|
+> | `contractCents` | **`contractToDateCents`** |
+> | `billedPreTaxCents` | **`billedContractCents`** (Σ non-void invoice SUBTOTALS, pre-tax) |
+> | `collectedCents` | **`paidCents`** |
+> | `openBalanceCents` | **`outstandingCents`** |
+> | `totalCostCents` | **`costsCents`** (purchases + field-ops crew labor) |
+> | `hasContract` | not exposed — derive as `contractToDateCents > 0` (matches db.ts:351) |
+> | `creditCents` | **does not exist** — no credit chip is possible without adding it |
+>
+> Unchanged and correct as written: `invoicedCents` (with tax),
+> `grossMarginCents`, `grossMarginPct` (already null when contract is 0),
+> `percentCompleteBps` (AIA-derived — the right non-money source),
+> `laborUnratedHours`, `fieldOpsLaborCents`, `overBilled`.
+>
+> One good-news correction: the doc-comment on `outstandingCents` says
+> "Invoiced − paid", which is exactly the formula §3b forbids — but the value
+> assigned (db.ts:388) is `inv.openBalance`, the per-invoice clamped sum. The
+> COMMENT is stale, the number is right. Use it; don't recompute it.
 `getProjectFinancials` returns: `contractCents, hasContract, invoicedCents` (WITH tax), `billedPreTaxCents` (PRE-tax), `collectedCents, openBalanceCents, creditCents, totalCostCents, grossMarginCents, grossMarginPct, fieldOpsLaborCents, laborUnratedHours`. **There is no `billedCents`.** Map exactly:
 
 | Tile | Source | Rule |
