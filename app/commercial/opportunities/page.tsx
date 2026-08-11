@@ -784,13 +784,20 @@ export default async function CommercialOpportunitiesPage({
   // Karan 2026-07-08 rewrite: customer-sheet URL builders.
   //   customerSheetHref(accountId, focusOppId?) — open the sheet
   //   customerSheetCloseHref — drop ?customer= and ?focus=
+  // U1 (Katie #5-7, 2026-08): clicking an OPPORTUNITY name/card anywhere in the
+  // pipeline — list, kanban, or by-customer — opens that deal's full drill-in (the
+  // one do-everything home under the account), NOT an in-page peek. When called
+  // with just an account id (no opp focus), it still opens the customer slide-out.
+  // Every opp-name link across the three views threads through here, so this one
+  // branch repoints all of them consistently. `focus` is always an opp id at the
+  // opp call sites; the account-only header link passes none.
   const customerSheetHref = (accountId: string, focus?: string): string => {
+    if (focus) return `/commercial/accounts/${accountId}?tab=projects&project=${focus}`;
     const p = new URLSearchParams(baseParams);
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
     if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
     p.set("customer", accountId);
-    if (focus) p.set("focus", focus);
     return `/commercial/opportunities?${p.toString()}#customer-sheet`;
   };
   const customerSheetCloseHref: string = (() => {
