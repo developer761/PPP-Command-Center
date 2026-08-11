@@ -30,7 +30,7 @@ import {
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
-import { isPostSaleProject, isLost, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { isPostSaleProject, isLost, wasWonInPeriod, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { etTodayIso } from "@/lib/date-et";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
@@ -137,7 +137,7 @@ export default async function CommercialDashboardPage() {
   // month-start DATE — the full-ISO monthStart sorts AFTER "2026-08-01" and
   // silently drops every deal decided on the 1st.
   const monthStartDate = `${etTodayIso().slice(0, 7)}-01`;
-  const wonThisMonth = wonOpps.filter((o) => (o.decided_at ?? "") >= monthStartDate);
+  const wonThisMonth = wonOpps.filter((o) => wasWonInPeriod(o, monthStartDate));
   const totalDecidedForMonth = decidedOpps.filter(
     (o) => (o.decided_at ?? "") >= monthStartDate
   ).length;

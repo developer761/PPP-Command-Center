@@ -1055,7 +1055,25 @@ export async function isProposalApprover(userId: string): Promise<boolean> {
   );
   const oc = await getOperatingCompany();
   const norm = normalizeEmail(email);
-  return oc.approver_emails.some((e) => normalizeEmail(e) === norm);
+  if (oc.approver_emails.some((e) => normalizeEmail(e) === norm)) return true;
+
+  // ADMIN FALLBACK. `approver_emails` defaults to '{}' (migration 104) and is
+  // never seeded, so without this NOBODY could approve on a fresh install:
+  // Kim clicks "Send for approval", the proposal locks out of draft, sendProposal
+  // refuses anything not `approved`, and the only way out is Withdraw — every
+  // proposal permanently stuck, platform-wide, with no error to explain it.
+  //
+  // Two places in the product already TELL the user this is how it works
+  // ("in addition to any admin" on the operating-company type; "admins are
+  // always approvers" on Settings → Access). The behaviour was the thing that
+  // was wrong, not the copy.
+  const { isAdminEmail } = await import("@/lib/auth/admin");
+  const { data: adminRow } = await sb
+    .from("profiles")
+    .select("is_admin")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return (adminRow as { is_admin?: boolean } | null)?.is_admin === true || isAdminEmail(email);
 }
 
 /** Resolve the set of user IDs allowed to approve proposals — the fanout target
@@ -1070,24 +1088,30 @@ export async function listProposalApproverUserIds(): Promise<string[]> {
   const oc = await getOperatingCompany();
   const { normalizeEmail } = await import("@/lib/auth/admin");
   const approverEmails = new Set(oc.approver_emails.map((e) => normalizeEmail(e)));
-  if (approverEmails.size === 0) return [];
 
   const { data: profs } = await sb
     .from("profiles")
-    .select("user_id, email, is_active, has_new_platform_access");
+    .select("user_id, email, is_active, has_new_platform_access, is_admin");
   const rows = (profs ?? []) as Array<{
     user_id: string;
     email: string | null;
     is_active: boolean | null;
     has_new_platform_access: boolean | null;
+    is_admin: boolean | null;
   }>;
 
+  // Mirrors isProposalApprover: admins always count. Without this the request
+  // notification fanned out to NOBODY when approver_emails was empty (its
+  // default), so the request was silent as well as unactionable — the early
+  // `size === 0` return made that the common case, not an edge one.
+  const { isAdminEmail } = await import("@/lib/auth/admin");
   const out = new Set<string>();
   for (const r of rows) {
     if (r.is_active === false) continue;
     if (r.has_new_platform_access === false) continue;
     const norm = normalizeEmail(r.email);
     if (norm && approverEmails.has(norm)) out.add(r.user_id);
+    else if (r.is_admin === true || isAdminEmail(r.email)) out.add(r.user_id);
   }
   return Array.from(out);
 }

@@ -417,6 +417,16 @@ export async function WorkOrderTool({
           </ul>
         </div>
       )}
+      {/* The one case seeding can't cover: a sheet added when every line is
+          already assigned lands empty, and empty still prints the whole
+          proposal. Say so rather than let a crew be handed everything. */}
+      {wo && allWorkOrders.length > 1 && (wo.scope_line_item_ids ?? []).length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-[12.5px] text-amber-900">
+          <strong>No scope picked on this sheet</strong> — it will print the
+          <strong> whole proposal</strong>, including work that&rsquo;s on the other sheets.
+          Tick the lines this crew should get.
+        </div>
+      )}
       {spv.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700" role="alert">{decodeURIComponent(spv.error)}</div>}
       {spv.ok && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800" role="status">

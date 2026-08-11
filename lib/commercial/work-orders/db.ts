@@ -107,13 +107,29 @@ export async function createWorkOrder(input: {
     if (existing) return { ok: true, value: existing };
   }
 
+  // Adding a SECOND (or third) sheet: seed it with the scope nobody has yet.
+  // That's what "split the rest across crews" means in practice, and it stops
+  // a fresh sheet defaulting to the ENTIRE proposal — which would hand crew 2
+  // all of crew 1's work if it were sent without editing.
+  let seededScope = input.scope_line_item_ids;
+  if (!seededScope?.length && !input.reuse_existing) {
+    const siblings = await listWorkOrdersForOpp(input.opportunity_id);
+    if (siblings.length > 0) {
+      const remainder = await listUnassignedScopeForOpp(input.opportunity_id);
+      // If everything is already assigned the remainder is empty; leaving the
+      // selection empty there would silently mean "print everything", so fall
+      // back to a single sentinel-free empty sheet and let the tool warn.
+      seededScope = remainder.map((l) => l.id);
+    }
+  }
+
   const { data: inserted, error } = await sb
     .from("commercial_work_orders")
     .insert({
       opportunity_id: input.opportunity_id,
       account_id: opp.account_id,
       status: "draft",
-      scope_line_item_ids: input.scope_line_item_ids ?? [],
+      scope_line_item_ids: seededScope ?? [],
       area_label: input.area_label?.trim() || null,
       created_by_user_id: input.created_by_user_id,
     })
@@ -491,10 +507,19 @@ export async function listUnassignedScopeForOpp(
     listWorkOrdersForOpp(opportunity_id),
   ]);
   if (lines.length === 0 || workOrders.length === 0) return lines;
-  const coversEverything = workOrders.some(
-    (wo) => (wo.scope_line_item_ids ?? []).length === 0
-  );
-  if (coversEverything) return [];
+  // "Empty = the whole proposal" is a BACKWARD-COMPATIBILITY rule for the era
+  // when a deal could only have one work order (migration 106's unique index,
+  // dropped by 123). It must not apply once the scope is being split, or the
+  // safety net switches itself off at exactly the moment it's needed: sheet A
+  // covers 4 of 8 lines, you click "Add another", the new sheet is empty,
+  // `some(empty)` reads as "someone has everything", and the "4 lines not on
+  // any work order" banner vanishes.
+  //
+  // Any deal with 2+ live sheets is necessarily post-123, so there an empty
+  // selection means "not chosen yet", never "everything".
+  const soleSheetCoversEverything =
+    workOrders.length === 1 && (workOrders[0].scope_line_item_ids ?? []).length === 0;
+  if (soleSheetCoversEverything) return [];
   const assigned = new Set(workOrders.flatMap((wo) => wo.scope_line_item_ids ?? []));
   return lines.filter((l) => !assigned.has(l.id));
 }

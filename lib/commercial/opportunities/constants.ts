@@ -526,3 +526,28 @@ export const HOT_DEAL_ACTIVE_STATUSES: readonly string[] = [
 
 export const STALE_OPP_DAYS = 14;
 export const STALE_ACCOUNT_OPP_COOLING_MULTIPLIER = 4;
+
+/**
+ * Was this deal WON inside the period starting `periodStartDate` (an ET
+ * "YYYY-MM-DD")?
+ *
+ * The single definition behind every "Wins this month" tile. The dashboard and
+ * the pipeline had drifted into two different answers — the dashboard counted
+ * `isPostSaleProject` (won plus every delivery stage), the pipeline counted
+ * `isWon` alone — so winning a deal and clicking Start Project made one screen
+ * say 1 and the other 0, on the same day, with the pipeline's comment claiming
+ * it "mirrors the dashboard".
+ *
+ * `post_sale_closed` is excluded on purpose. It's a TERMINAL status, so closing
+ * a job out re-stamps `decided_at` — meaning a deal won in March and closed out
+ * in August was being counted AGAIN as an August win. decided_at on a
+ * closed-out deal records the close-out, not the win.
+ */
+export function wasWonInPeriod(
+  opp: StatusTuple & { decided_at?: string | null },
+  periodStartDate: string
+): boolean {
+  if (!isPostSaleProject(opp)) return false;
+  if (opp.status === "post_sale_closed") return false;
+  return (opp.decided_at ?? "").slice(0, 10) >= periodStartDate;
+}

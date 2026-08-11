@@ -148,7 +148,7 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
       opportunity_id,
       debriefed_at,
       outcome,
-      opportunity:commercial_opportunities!inner(bid_value_low_cents, bid_value_high_cents, deleted_at)
+      opportunity:commercial_opportunities!inner(id, bid_value_low_cents, bid_value_high_cents, deleted_at)
     `)
     .gte("debriefed_at", range.fromIso)
     .lt("debriefed_at", range.toIso);
@@ -179,9 +179,27 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   let noBidCount = 0;
   let wonValueCents = 0;
   let lostValueCents = 0;
+  // The 2026-08 meeting removed Bid low/high from every opportunity form —
+  // pricing lives on the proposal now — so a deal created since then has NO
+  // bid range and midpointCents returns 0. Every other $ surface got the
+  // proposal-total fallback; this file was missed, which meant "Won $" and the
+  // $-won ratio read ZERO for exactly the deals the team is creating today,
+  // while the same deal showed its full weighted value on the dashboard the
+  // day before it closed.
+  const { listCurrentProposalTotalByOpp } = await import("@/lib/commercial/proposals/db");
+  const oppIds = Array.from(latestByOpp.values())
+    .map((r) => {
+      const o = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
+      return (o as { id?: string } | null)?.id ?? null;
+    })
+    .filter((v): v is string => !!v);
+  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(oppIds);
   for (const r of latestByOpp.values()) {
     const opp = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
-    const mid = midpointCents(opp?.bid_value_low_cents ?? null, opp?.bid_value_high_cents ?? null);
+    const oppId = (opp as { id?: string } | null)?.id ?? null;
+    const mid =
+      midpointCents(opp?.bid_value_low_cents ?? null, opp?.bid_value_high_cents ?? null) ||
+      (oppId ? proposalTotalByOpp.get(oppId) ?? 0 : 0);
     if (r.outcome === "won") {
       wonCount++;
       wonValueCents += mid;

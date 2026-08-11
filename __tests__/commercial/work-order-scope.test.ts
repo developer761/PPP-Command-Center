@@ -18,7 +18,11 @@ function scopeForWorkOrder(allIds: string[], wo: WO): string[] {
 /** Mirrors listUnassignedScopeForOpp. */
 function unassigned(allIds: string[], workOrders: WO[]): string[] {
   if (allIds.length === 0 || workOrders.length === 0) return allIds;
-  if (workOrders.some((wo) => (wo.scope_line_item_ids ?? []).length === 0)) return [];
+  // Empty-means-all is a legacy rule for the single-work-order era; with 2+
+  // sheets an empty selection means "not chosen yet".
+  const soleSheetCoversEverything =
+    workOrders.length === 1 && (workOrders[0].scope_line_item_ids ?? []).length === 0;
+  if (soleSheetCoversEverything) return [];
   const assigned = new Set(workOrders.flatMap((wo) => wo.scope_line_item_ids ?? []));
   return allIds.filter((id) => !assigned.has(id));
 }
@@ -57,11 +61,19 @@ describe("work order scope selection", () => {
     expect(unassigned(ALL, wos)).toEqual([]);
   });
 
-  it("treats a whole-proposal work order as covering everything", () => {
-    // One unselected WO means someone already has the full scope, so nothing
-    // can be outstanding even if a second WO only lists one line.
-    const wos = [{ scope_line_item_ids: [] }, { scope_line_item_ids: ["a"] }];
-    expect(unassigned(ALL, wos)).toEqual([]);
+  it("keeps warning once a SECOND sheet exists, even if it's empty", () => {
+    // The trap: sheet A covers half, you click "Add another", the new sheet is
+    // empty — and the old rule read that as "someone has everything", so the
+    // banner switched off at exactly the moment the split began. A deal can
+    // only have 2+ sheets post-migration-123, so empty there means "not chosen".
+    const wos = [{ scope_line_item_ids: ["a", "b"] }, { scope_line_item_ids: [] }];
+    expect(unassigned(ALL, wos)).toEqual(["c", "d"]);
+  });
+
+  it("still treats a LONE empty work order as covering everything", () => {
+    // Backward compatibility: every pre-123 work order has an empty array and
+    // means the whole proposal.
+    expect(unassigned(ALL, [{ scope_line_item_ids: [] }])).toEqual([]);
   });
 
   it("tolerates the same line appearing on two sheets", () => {

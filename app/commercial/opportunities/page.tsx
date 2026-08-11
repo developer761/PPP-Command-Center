@@ -64,6 +64,7 @@ import {
   TERMINAL_STATUSES,
   isTerminalOpportunityStatus,
   isWon,
+  wasWonInPeriod,
   isPostSaleProject,
   isLost,
   isFollowUp,
@@ -670,7 +671,8 @@ export default async function CommercialOpportunitiesPage({
     month: "2-digit",
   }).formatToParts(new Date());
   const monthStartDate = `${monthStartParts.find((p) => p.type === "year")?.value}-${monthStartParts.find((p) => p.type === "month")?.value}-01`;
-  const wonThisMonth = oppsRaw.filter((o) => isWon(o) && (o.decided_at ?? "").slice(0, 10) >= monthStartDate).length;
+  // Same rule as the dashboard (wasWonInPeriod) — these two disagreed.
+  const wonThisMonth = oppsRaw.filter((o) => wasWonInPeriod(o, monthStartDate)).length;
 
   // URL builders — behavior unchanged from prior file.
   const baseParams = new URLSearchParams();
