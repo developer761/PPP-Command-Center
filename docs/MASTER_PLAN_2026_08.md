@@ -47,7 +47,7 @@ is broken: 3 of 4 tiles bounce, the full 25-link sidebar renders.
 
 Migration 125 already applied.
 
-### ▶ PHASE B — Overview phase-swap + Closed column *(spec: OVERVIEW_… §2, §4)*
+### ▶ PHASE B — Overview phase-swap + Closed column *(spec: OVERVIEW_… §2 stageRank · §3 Overview · §5 Closed column)*
 Display work, no status engine. Lands the deal-Overview KPI swap (a pre-sale bid
 currently shows the delivery Profitability block with $0 across it) and the
 visible Closed column.
@@ -55,7 +55,7 @@ visible Closed column.
 Doing B before C on purpose: it's the same page as C's notifications but carries
 none of C's status-write risk, so a mistake here is visible, not silent.
 
-### ▶ PHASE C — Auto-advance engine *(spec: OVERVIEW_… §3)*
+### ▶ PHASE C — Auto-advance engine *(spec: OVERVIEW_… §4 auto-advance)*
 The riskiest item — it writes statuses. Requires the shared
 `stageRank(status, sub)` helper used by **all three** call paths (live proposal
 cascade, page-load reconciler, new auto-advance), forward-only, terminal
