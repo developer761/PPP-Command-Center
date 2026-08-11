@@ -93,43 +93,35 @@ import { IconBulb } from "@/components/commercial/inline-icons";
 
 const MS_PER_DAY = 86_400_000;
 
-/** Karan 2026-07-15: Move-to dropdown mirrors the visual kanban
- *  columns exactly — not the raw status enum. Two virtual keys
- *  (proposal_drafted / proposal_sent) map to (status, sub_status)
- *  tuples on the server side (see quickFlipStatusAction). Won and
- *  Lost stay as top-level shortcuts so Alex doesn't have to dig
- *  through "pre_sale_closed" jargon.
+/** Move-to dropdown mirrors the visual kanban columns exactly — not the
+ *  raw status enum — so the option Alex picks names the column he expects
+ *  the card to land in. Both the column list and the column→tuple map now
+ *  live in lib/commercial/opportunities/kanban-columns.ts (Karan 2026-08
+ *  flatten: Qualifying · Request for Proposal · Estimating · Proposal ·
+ *  Closed Won · Closed Lost), because they used to be duplicated here, in
+ *  the accounts page, and in the drag-and-drop shim — which is how the two
+ *  Proposal columns drifted apart.
  *
- *  The old dropdown listed the raw OPPORTUNITY_STATUSES which meant
- *  Alex would see "→ Pre-Sale Closed" and had no way to pick "Won" vs.
- *  "Lost" from the menu — the server defaulted to Won, which read to
- *  Alex as "nothing happened" because Won isn't a visual column he
- *  was expecting to see the card land in. */
-const MOVE_TO_COLUMNS: { key: string; label: string }[] = [
-  { key: "qualifying", label: "Qualifying" },
-  { key: "estimating", label: "Estimating" },
-  { key: "proposal_drafted", label: "Proposal Drafted" },
-  { key: "proposal_sent", label: "Proposal Sent" },
-  { key: "won", label: "Closed Won" },
-  { key: "lost", label: "Closed Lost" },
-  { key: "pre_construction", label: "Pre-Construction" },
-  { key: "in_progress", label: "In Progress" },
-  { key: "billing", label: "Billing" },
-  { key: "post_sale_closed", label: "Closed (post-sale)" },
-];
+ *  The old dropdown listed the raw OPPORTUNITY_STATUSES which meant Alex
+ *  would see "→ Pre-Sale Closed" and had no way to pick "Won" vs "Lost"
+ *  from the menu — the server defaulted to Won, which read to Alex as
+ *  "nothing happened" because Won isn't a visual column he was expecting
+ *  the card to land in. */
+const MOVE_TO_COLUMNS: { key: string; label: string }[] = KANBAN_COLUMNS.map(
+  (c) => ({ key: c.key, label: c.key === "post_sale_closed" ? "Closed (post-sale)" : c.label })
+);
 
-/** The REAL OpportunityStatus behind each Move-to column key — the virtual
- *  columns (proposal_drafted/sent, won, lost) carry a sub-status but transition
- *  a real status. quickFlipNextStatuses returns REAL statuses, so we must map
- *  before filtering, or the virtual columns are silently unreachable (audit R4
- *  #1) and the current stage is offered as a no-op (#4). */
-const COL_REAL_STATUS: Record<string, string> = {
-  proposal_drafted: "estimating",
-  proposal_sent: "proposal",
-  won: "pre_sale_closed",
-  lost: "pre_sale_closed",
-};
-const colRealStatus = (key: string): string => COL_REAL_STATUS[key] ?? key;
+/** Which visual column a deal is CURRENTLY sitting in. The Move-to menu
+ *  filters on this rather than on quickFlipNextStatuses' REAL statuses:
+ *  two columns (Qualifying and Request for Proposal) now share the real
+ *  status `qualifying`, so a status-level filter would hide RFP from every
+ *  Qualifying deal — i.e. make it unreachable from the menu. Filtering by
+ *  column also drops the no-op "move to where you already are" option,
+ *  which is what the status-level filter was doing for us before. */
+const currentColumnKey = (opp: {
+  status: string;
+  sub_status?: string | null;
+}): string => columnKeyForOpp(opp.status, opp.sub_status ?? null);
 
 /**
  * Deterministic per-account color tone for the pipeline list-view group
