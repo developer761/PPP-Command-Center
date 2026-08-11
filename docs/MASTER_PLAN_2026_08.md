@@ -65,6 +65,15 @@ Also fixes a **live** bug: the reconciler is bidirectional today, so advancing a
 deal and then opening an R2 draft yanks it back to Estimating. Making it
 forward-only ends that ping-pong.
 
+### ▶ PHASE C.5 — Consistency punch-list *(doc: CONSISTENCY_PUNCHLIST_2026_08.md)*
+27 verified cross-surface inconsistencies from a 6-dimension consistency sweep —
+same metric showing two numbers (win rate, margin, "Invoiced" pre-tax vs
+with-tax), a "needs debrief" badge that can't reach zero, one deal naming
+different stages on different surfaces, proposal IDs outside the shared family,
+and confusing empty-states/flow. **Surgical items (H3, M1, M4–M6, L2–L9) batch
+immediately**; five items (H1/H2/H4/H6/M7) gate on Karan's D1–D5 answers in that
+doc. Do the surgical batch alongside B/C; the gated ones after Karan answers.
+
 ### ▶ PHASE D — Full re-audit
 Fresh persona + adversarial agents over everything from A–C. Non-negotiable:
 this round's audits caught a live security leak and two bugs in code written
