@@ -1285,7 +1285,15 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
-            {oppCode && <div className="text-[10px] font-mono text-ppp-navy-600 mb-0.5">{oppCode}</div>}
+            {(oppCode || isPostSale) && (
+              <div className="text-[10px] font-mono text-ppp-navy-600 mb-0.5">
+                {oppCode}
+                {/* U4 (Katie #11, 2026-08): subtle "Project" cue once a deal is
+                    Won / in delivery — reinforces that THIS page is the project
+                    (its WO / COs / AIA / Closeout tabs are live). Small on purpose. */}
+                {isPostSale && <span className="font-sans font-semibold text-ppp-charcoal-400 uppercase tracking-[0.08em]">{oppCode ? " · " : ""}Project</span>}
+              </div>
+            )}
             <h2 className="text-lg sm:text-xl font-bold text-ppp-charcoal leading-tight break-words">{name}</h2>
             {location && <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 truncate">{location}</div>}
           </div>
