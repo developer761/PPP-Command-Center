@@ -58,12 +58,12 @@ export type CommercialEmployee = {
 
 // user_id MUST be in this list — without it the column comes back undefined and
 // every scoped crew query silently resolves to "no employee linked".
-const COLS =
+export const EMPLOYEE_COLS =
   "id, first_name, last_name, display_name, worker_type, role, pay_type, default_daily_hours, phone, email, sort_order, active, start_date, end_date, schedule_email_opt_out, preferred_language, external_ref, user_id, created_at, updated_at";
 
 export async function listEmployees(opts?: { includeInactive?: boolean }): Promise<CommercialEmployee[]> {
   const sb = commercialDb();
-  let q = sb.from("commercial_employees").select(COLS).order("sort_order").order("display_name");
+  let q = sb.from("commercial_employees").select(EMPLOYEE_COLS).order("sort_order").order("display_name");
   if (!opts?.includeInactive) q = q.eq("active", true);
   const { data, error } = await q;
   if (error) {
@@ -75,7 +75,7 @@ export async function listEmployees(opts?: { includeInactive?: boolean }): Promi
 
 export async function getEmployee(id: string): Promise<CommercialEmployee | null> {
   const sb = commercialDb();
-  const { data } = await sb.from("commercial_employees").select(COLS).eq("id", id).maybeSingle();
+  const { data } = await sb.from("commercial_employees").select(EMPLOYEE_COLS).eq("id", id).maybeSingle();
   return (data as CommercialEmployee | null) ?? null;
 }
 
@@ -130,7 +130,7 @@ export async function createEmployee(
       preferred_language: input.preferred_language ?? "en",
       magic_link_token: globalThis.crypto.randomUUID().replace(/-/g, ""),
     })
-    .select(COLS)
+    .select(EMPLOYEE_COLS)
     .single();
   if (error) return { ok: false, error: error.message };
   const employee = data as CommercialEmployee;
@@ -186,7 +186,7 @@ export async function updateEmployee(
   if (patch.active !== undefined) next.active = patch.active;
 
   const sb = commercialDb();
-  const { data, error } = await sb.from("commercial_employees").update(next).eq("id", id).select(COLS).single();
+  const { data, error } = await sb.from("commercial_employees").update(next).eq("id", id).select(EMPLOYEE_COLS).single();
   if (error) return { ok: false, error: error.message };
   const employee = data as CommercialEmployee;
   await logUpdate("commercial_employees", id, before, employee, actorUserId);

@@ -23,4 +23,4 @@ create unique index if not exists commercial_employees_user_id_key
   where user_id is not null;
 
 comment on column public.commercial_employees.user_id is
-  'Commercial login this employee signs in as (crew self-service). NULL for the majority who have no login. Resolved via getEmployeeForUser, which falls back to an email match when unset.';
+  'Commercial login this employee signs in as (crew self-service). NULL for the majority who have no login. Resolved ONLY via getEmployeeForUser by this column - NEVER by email match: employee email is nullable, can differ from the login, and is not unique, so matching on it would silently attach one person''s hours and schedule to another.';

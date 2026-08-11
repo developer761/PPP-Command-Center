@@ -180,20 +180,29 @@ export async function getMyHoursLog(
   if (!employeeId) return { days: [], totalScheduled: 0, totalWorked: 0 };
   const sb = commercialDb();
 
-  const [{ data: entries }, { data: assigns }] = await Promise.all([
-    sb
-      .from("commercial_time_entries")
-      .select("work_date, job_id, actual_hours")
-      .eq("employee_id", employeeId)
-      .gte("work_date", startIso)
-      .lte("work_date", endIso),
-    sb
-      .from("commercial_assignments")
-      .select("work_date, job_id, scheduled_hours")
-      .eq("employee_id", employeeId)
-      .neq("status", "cancelled")
-      .gte("work_date", startIso)
-      .lte("work_date", endIso),
+  // Paginated with an order tiebreak, like getHoursLog above: Supabase caps a
+  // bare select at 1000 rows SILENTLY, and a crew member with a long history
+  // would quietly under-report their own hours — the one number they check.
+  const [entries, assigns] = await Promise.all([
+    paginateAll<{ work_date: string; job_id: string | null; actual_hours: number | null }>(() =>
+      sb
+        .from("commercial_time_entries")
+        .select("work_date, job_id, actual_hours")
+        .eq("employee_id", employeeId)
+        .gte("work_date", startIso)
+        .lte("work_date", endIso)
+        .order("id", { ascending: true })
+    ),
+    paginateAll<{ work_date: string; job_id: string | null; scheduled_hours: number | null }>(() =>
+      sb
+        .from("commercial_assignments")
+        .select("work_date, job_id, scheduled_hours")
+        .eq("employee_id", employeeId)
+        .neq("status", "cancelled")
+        .gte("work_date", startIso)
+        .lte("work_date", endIso)
+        .order("id", { ascending: true })
+    ),
   ]);
 
   const key = (d: string, j: string | null) => `${d}|${j ?? ""}`;
@@ -207,10 +216,10 @@ export async function getMyHoursLog(
     }
     return row;
   };
-  for (const a of (assigns ?? []) as { work_date: string; job_id: string | null; scheduled_hours: number | null }[]) {
+  for (const a of assigns) {
     touch(a.work_date, a.job_id).scheduled_hours += Number(a.scheduled_hours ?? 0);
   }
-  for (const e of (entries ?? []) as { work_date: string; job_id: string | null; actual_hours: number | null }[]) {
+  for (const e of entries) {
     touch(e.work_date, e.job_id).worked_hours += Number(e.actual_hours ?? 0);
   }
 

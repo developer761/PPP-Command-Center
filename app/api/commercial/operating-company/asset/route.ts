@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { denyCrewApi } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { uploadBrandAsset, clearBrandAsset, MAX_BRAND_BYTES } from "@/lib/commercial/operating-company/assets";
@@ -12,6 +13,9 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Crew logins are page-allowlisted only; this API tree is not covered by
+  // that gate, so deny here (see denyCrewApi).
+  { const denied = await denyCrewApi(user.id); if (denied) return denied; }
   const profile = await getProfileByUserId(user.id);
   if (!profile?.has_new_platform_access || profile?.is_active === false) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 

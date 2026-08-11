@@ -110,3 +110,35 @@ export async function apiAccessDenied(
   const { isCrewOnlyUser } = await import("@/lib/commercial/crew-access");
   return await isCrewOnlyUser(userId);
 }
+
+/**
+ * Deny a crew-only login on an API route. Returns a 403 Response to return, or
+ * null to continue.
+ *
+ * A second entry point alongside apiAccessDenied because roughly two dozen
+ * commercial API routes never funnelled through that helper — they hand-rolled
+ * `has_new_platform_access && is_active`, which EVERY crew login satisfies by
+ * definition (the layout requires it to let them in at all). So the crew
+ * allowlist, which only governs page renders, left the whole /api tree open:
+ * the accounts export (the entire book of business as CSV), the opportunities
+ * export, AIA workbooks with contract sums, every document and attachment
+ * download, and mutations like move-status.
+ *
+ * Two lines at the top of a handler, no restructuring of its existing gate:
+ *
+ *   const denied = await denyCrewApi(userId);
+ *   if (denied) return denied;
+ */
+export async function denyCrewApi(
+  userId: string | null | undefined
+): Promise<Response | null> {
+  if (!userId) return null; // the route's own auth gate owns the anonymous case
+  const { isCrewOnlyUser } = await import("@/lib/commercial/crew-access");
+  if (await isCrewOnlyUser(userId)) {
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return null;
+}

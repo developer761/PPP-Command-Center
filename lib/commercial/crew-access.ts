@@ -1,7 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "./db";
-import type { CommercialEmployee } from "./field-ops/employees";
+import { EMPLOYEE_COLS, type CommercialEmployee } from "./field-ops/employees";
 
 /**
  * Crew role — a scoped, self-service login for the people doing the work.
@@ -138,9 +138,14 @@ export async function getEmployeeForUser(
 ): Promise<CommercialEmployee | null> {
   if (!userId) return null;
   const sb = commercialDb();
+  // NOT select("*") — commercial_employees carries `clock_pin_hash` and
+  // `magic_link_token`, and every scoped crew page calls this first. Passing
+  // that row to a client component (or letting it into an RSC payload) would
+  // ship the crew member's own PIN hash and a login-less auth token to the
+  // browser; magic_link_token resolves an employee with no other check.
   const { data } = await sb
     .from("commercial_employees")
-    .select("*")
+    .select(EMPLOYEE_COLS)
     .eq("user_id", userId)
     .eq("active", true)
     .limit(1)
@@ -163,13 +168,45 @@ export async function linkEmployeeToUser(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { logUpdate } = await import("@/lib/commercial/audit-log");
-  // Release the previous holder so re-pointing a login is never a constraint
-  // error the admin has to decipher.
+
+  if (employeeId) {
+    // Refuse to take an employee another login already holds. Without this the
+    // update just overwrites user_id: the previous login silently resolves to
+    // null forever ("ask an admin to link you") with nothing logged against the
+    // row that lost its link, and the admin sees success. A named error is the
+    // whole point — a 23505 tells you something failed, not which of two
+    // people the admin meant.
+    const { data: target } = await sb
+      .from("commercial_employees")
+      .select("id, display_name, active, user_id")
+      .eq("id", employeeId)
+      .maybeSingle();
+    const t = target as { display_name: string; active: boolean; user_id: string | null } | null;
+    if (!t) return { ok: false, error: "That crew member no longer exists." };
+    if (!t.active) return { ok: false, error: `${t.display_name} is inactive — reactivate them first.` };
+    if (t.user_id && t.user_id !== userId) {
+      return {
+        ok: false,
+        error: `${t.display_name} is already linked to another login. Unlink that one first.`,
+      };
+    }
+  }
+
+  // Release this login's previous employee so re-pointing it is never a
+  // constraint error. Audited, so the row that LOST its link is traceable.
+  const { data: prior } = await sb
+    .from("commercial_employees")
+    .select("id")
+    .eq("user_id", userId)
+    .neq("id", employeeId ?? "00000000-0000-0000-0000-000000000000");
   const { error: clearErr } = await sb
     .from("commercial_employees")
     .update({ user_id: null })
     .eq("user_id", userId);
   if (clearErr) return { ok: false, error: clearErr.message };
+  for (const row of ((prior ?? []) as { id: string }[])) {
+    await logUpdate("commercial_employees", row.id, { user_id: userId }, { user_id: null }, actorUserId).catch(() => undefined);
+  }
   if (!employeeId) return { ok: true };
   const { error } = await sb
     .from("commercial_employees")

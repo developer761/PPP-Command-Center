@@ -10,9 +10,9 @@ describe("crew route allowlist", () => {
   it("allows the crew's own surfaces", () => {
     for (const p of [
       "/commercial/crew",
-      "/commercial/field-ops/schedule",
-      "/commercial/field-ops/calendar",
-      "/commercial/field-ops/hours",
+      "/commercial/crew/schedule",
+      "/commercial/crew/hours",
+      "/commercial/crew/jobs",
       "/commercial/field-ops/clock-station",
     ]) {
       expect(isCrewAllowedPath(p), p).toBe(true);
@@ -20,8 +20,22 @@ describe("crew route allowlist", () => {
   });
 
   it("allows nested paths under an allowed prefix", () => {
-    expect(isCrewAllowedPath("/commercial/field-ops/schedule/2026-08-11")).toBe(true);
-    expect(isCrewAllowedPath("/commercial/field-ops/hours/abc")).toBe(true);
+    expect(isCrewAllowedPath("/commercial/crew/schedule/2026-08-11")).toBe(true);
+    expect(isCrewAllowedPath("/commercial/crew/hours/abc")).toBe(true);
+  });
+
+  it("DENIES the company-wide field-ops pages", () => {
+    // These were briefly allowlisted, which granted access to pages that then
+    // self-gate to admins — three tiles that bounced the crew member back with
+    // no message. They're also company-wide (every employee, every job, all
+    // hours), so allowlisting them is a leak waiting for one gate to relax.
+    for (const p of [
+      "/commercial/field-ops/schedule",
+      "/commercial/field-ops/calendar",
+      "/commercial/field-ops/hours",
+    ]) {
+      expect(isCrewAllowedPath(p), p).toBe(false);
+    }
   });
 
   it("denies the money and admin surfaces", () => {
@@ -47,14 +61,14 @@ describe("crew route allowlist", () => {
     // The classic prefix-matching hole: startsWith("/commercial/crew") would
     // wave these through.
     expect(isCrewAllowedPath("/commercial/crewpayroll")).toBe(false);
-    expect(isCrewAllowedPath("/commercial/field-ops/schedule-admin")).toBe(false);
-    expect(isCrewAllowedPath("/commercial/field-ops/hours-export")).toBe(false);
+    expect(isCrewAllowedPath("/commercial/crew-payroll")).toBe(false);
+    expect(isCrewAllowedPath("/commercial/field-ops/clock-station-admin")).toBe(false);
   });
 
   it("ignores query strings, hashes and trailing slashes", () => {
-    expect(isCrewAllowedPath("/commercial/field-ops/schedule?week=2026-08-11")).toBe(true);
+    expect(isCrewAllowedPath("/commercial/crew/schedule?week=2026-08-11")).toBe(true);
     expect(isCrewAllowedPath("/commercial/crew/")).toBe(true);
-    expect(isCrewAllowedPath("/commercial/field-ops/hours#today")).toBe(true);
+    expect(isCrewAllowedPath("/commercial/crew/hours#today")).toBe(true);
     // …and can't be tricked into allowing a denied route via a query.
     expect(isCrewAllowedPath("/commercial/reports?x=/commercial/crew")).toBe(false);
   });

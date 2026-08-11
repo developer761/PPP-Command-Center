@@ -16,7 +16,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
-import { commercialAccessDenied } from "@/lib/commercial/auth";
+import { commercialAccessDenied, denyCrewApi } from "@/lib/commercial/auth";
 import { getProduct } from "@/lib/commercial/products/db";
 import { resolveProductPrice } from "@/lib/commercial/products/pricing";
 
@@ -31,6 +31,9 @@ export async function GET(req: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Crew logins are page-allowlisted only; this API tree is not covered by
+  // that gate, so deny here (see denyCrewApi).
+  { const denied = await denyCrewApi(user.id); if (denied) return denied; }
   const profile = await getProfileByUserId(user.id);
   if (commercialAccessDenied(profile))
     return NextResponse.json({ error: "forbidden" }, { status: 403 });

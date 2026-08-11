@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { denyCrewApi } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getDocument, getDocumentDownloadUrl } from "@/lib/commercial/documents/db";
 import { commercialDb } from "@/lib/commercial/db";
@@ -25,6 +26,9 @@ export async function GET(
     if (!authData?.user) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
+    // Crew logins are page-allowlisted only; this API tree isn't covered by
+    // that gate, so deny here (see denyCrewApi).
+    { const denied = await denyCrewApi(authData?.user?.id); if (denied) return denied; }
 
     const { id: documentId } = await params;
     if (!documentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentId)) {

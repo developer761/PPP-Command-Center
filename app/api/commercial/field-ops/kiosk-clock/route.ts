@@ -35,9 +35,19 @@ export async function POST(request: Request) {
   // commercial user can't brute-force a 4-digit PIN to clock other people (payroll
   // fraud) — audit round 2.
   const isAdmin = (profile as { is_admin?: boolean } | null)?.is_admin ?? isAdminEmail(data.user.email);
-  // …and the Crew role (Karan 2026-08). Must mirror the clock-station PAGE gate
-  // exactly — a page a user can open but whose API rejects them is a dead
-  // button, and the reverse is an open door.
+  // Crew may use the kiosk (Karan 2026-08), but ONLY for themselves.
+  //
+  // This endpoint takes `employee_id` from the request BODY. Opening it to crew
+  // without binding that id to the caller re-created precisely the hole the
+  // original admin-only gate existed to close: a crew login could pass a
+  // co-worker's id (visible in the picker) plus a guessed 4-digit PIN and clock
+  // that person in or out, or read their jobs, sites and hours via
+  // action:"day". 10,000 possibilities, no rate limit, no lockout, nothing
+  // logged. That's payroll fraud with a shrug.
+  //
+  // So: an admin session (the shop tablet) may still clock anyone — that's what
+  // a kiosk IS. A crew session may only ever clock the employee its own login
+  // resolves to, whatever the body says.
   const isCrew = await isCrewOnlyUser(data.user.id);
   if (!isAdmin && !isCrew) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
@@ -47,7 +57,18 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
-  const employeeId = String(body.employee_id ?? "");
+  let employeeId = String(body.employee_id ?? "");
+  if (!isAdmin && isCrew) {
+    // Bind to the caller. Ignore the body entirely rather than comparing and
+    // erroring — there is no legitimate reason for a crew session to name a
+    // different employee, and silently scoping is one less branch to get wrong.
+    const { getEmployeeForUser } = await import("@/lib/commercial/crew-access");
+    const me = await getEmployeeForUser(data.user.id);
+    if (!me) {
+      return NextResponse.json({ error: "not_linked" }, { status: 403 });
+    }
+    employeeId = me.id;
+  }
   const pin = String(body.pin ?? "");
   const action = String(body.action ?? "");
   if (!UUID_RE.test(employeeId)) return NextResponse.json({ error: "invalid_employee" }, { status: 400 });

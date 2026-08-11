@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { denyCrewApi } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { finalizeDocumentUpload } from "@/lib/commercial/documents/large-upload";
@@ -24,6 +25,9 @@ export async function POST(
     const supabase = await createClient();
     const { data } = await supabase.auth.getUser();
     if (!data?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Crew logins are page-allowlisted only; this API tree is not covered by
+  // that gate, so deny here (see denyCrewApi).
+  { const denied = await denyCrewApi(data?.user?.id); if (denied) return denied; }
 
     const { id: opportunity_id } = await params;
     if (!opportunity_id || !UUID_RE.test(opportunity_id)) {

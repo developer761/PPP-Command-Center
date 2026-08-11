@@ -677,12 +677,20 @@ export async function listMyUpcomingShifts(
   const jobIds = Array.from(new Set(rows.map((r) => r.job_id).filter(Boolean)));
   const jobById = new Map<string, { name: string; code: string; site: string | null }>();
   if (jobIds.length > 0) {
-    const { data: jobs } = await sb
+    // Narrow column list on purpose — commercial_jobs also carries internal
+    // notes, customer_name and estimated_labor_hours, none of which a crew
+    // member should receive. Address is site_address/site_city (there is no
+    // `site` column; selecting one 42703s and, because the error was ignored,
+    // silently rendered every shift as "Job" with no location).
+    const { data: jobs, error } = await sb
       .from("commercial_jobs")
-      .select("id, name, job_code, site")
-      .in("id", jobIds);
-    for (const j of (jobs ?? []) as { id: string; name: string | null; job_code: string | null; site: string | null }[]) {
-      jobById.set(j.id, { name: j.name ?? "Job", code: j.job_code ?? "", site: j.site ?? null });
+      .select("id, name, job_code, site_address, site_city")
+      .in("id", jobIds)
+      .is("deleted_at", null);
+    if (error) console.warn("[listMyUpcomingShifts] job lookup failed:", error.message);
+    for (const j of (jobs ?? []) as { id: string; name: string | null; job_code: string | null; site_address: string | null; site_city: string | null }[]) {
+      const site = [j.site_address, j.site_city].filter(Boolean).join(", ") || null;
+      jobById.set(j.id, { name: j.name ?? "Job", code: j.job_code ?? "", site });
     }
   }
   return rows.map((r) => {
@@ -710,12 +718,19 @@ export async function listMyAbsences(
 ): Promise<{ work_date: string; reason: string | null }[]> {
   if (!employeeId) return [];
   const sb = commercialDb();
-  const { data } = await sb
+  const { absenceLabel } = await import("./absence-constants");
+  // The column is `type` (enum), not `reason` — selecting `reason` 42703s and,
+  // with the error ignored, time-off silently never rendered at all.
+  const { data, error } = await sb
     .from("commercial_absences")
-    .select("work_date, reason")
+    .select("work_date, type")
     .eq("employee_id", employeeId)
     .gte("work_date", fromIso)
     .lte("work_date", toIso)
     .order("work_date", { ascending: true });
-  return (data ?? []) as { work_date: string; reason: string | null }[];
+  if (error) console.warn("[listMyAbsences] failed:", error.message);
+  return ((data ?? []) as { work_date: string; type: string }[]).map((a) => ({
+    work_date: a.work_date,
+    reason: absenceLabel(a.type as Parameters<typeof absenceLabel>[0]),
+  }));
 }

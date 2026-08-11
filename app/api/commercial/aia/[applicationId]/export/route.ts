@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { assertCommercialAccess } from "@/lib/commercial/auth";
+import { assertCommercialAccess, denyCrewApi } from "@/lib/commercial/auth";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
@@ -24,6 +24,9 @@ export async function GET(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Crew logins are page-allowlisted only; this API tree is not covered by
+  // that gate, so deny here (see denyCrewApi).
+  { const denied = await denyCrewApi(user.id); if (denied) return denied; }
   await assertCommercialAccess(user.id);
 
   const application = await getAiaApplication(applicationId);

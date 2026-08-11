@@ -26,7 +26,16 @@ export default async function ClockStationPage() {
   if (!isAdmin && !isCrew) redirect("/commercial/field-ops/overview");
 
   const [employees, pinned] = await Promise.all([listEmployees(), listClockablePins()]);
-  const list = employees.map((e) => ({ id: e.id, display_name: e.display_name, has_pin: pinned.has(e.id) }));
+  // The shop tablet (admin session) shows the whole roster — that's the point of
+  // a kiosk. A CREW session gets only themselves: handing a painter's personal
+  // phone the full staff list, with who does and doesn't have a PIN set, is a
+  // roster leak and a map of which 4-digit codes are worth guessing. The API
+  // binds crew to their own employee regardless, so this keeps the UI honest
+  // about what it can actually do.
+  const { getEmployeeForUser } = await import("@/lib/commercial/crew-access");
+  const me = isCrew && !isAdmin ? await getEmployeeForUser(data.user.id) : null;
+  const visible = me ? employees.filter((e) => e.id === me.id) : employees;
+  const list = visible.map((e) => ({ id: e.id, display_name: e.display_name, has_pin: pinned.has(e.id) }));
 
   return (
     <div className="pb-8">
