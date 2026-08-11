@@ -181,6 +181,19 @@ export default async function EditCommercialAccountPage({
   const errorMsg = sp.error;
   const confirmDelete = sp.confirm_delete === "1";
 
+  // Count the live deals under this account so the delete confirmation can warn
+  // that they (and everything under them — invoices, work orders, field-ops
+  // schedule) get removed too. Cheap head-count; only shown in the danger zone.
+  let dealCount = 0;
+  if (confirmDelete) {
+    const { count } = await commercialDb()
+      .from("commercial_opportunities")
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", id)
+      .is("deleted_at", null);
+    dealCount = count ?? 0;
+  }
+
   // Near-duplicate warning (Karan 2026-07-27 audit): the rename hit an existing
   // account name. Show the candidates + a "Save anyway" confirmation.
   const duplicateIds = sp.duplicate?.split(",").filter(Boolean) ?? [];
@@ -375,6 +388,11 @@ export default async function EditCommercialAccountPage({
             <p className="text-sm text-ppp-charcoal-700">
               Delete <strong>{account.company_name}</strong>?
             </p>
+            {dealCount > 0 && (
+              <p className="text-[12.5px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                This also removes {dealCount} deal{dealCount === 1 ? "" : "s"} under this account and everything on them — invoices, work orders, and any Field Ops schedule. There&rsquo;s no undo on account delete.
+              </p>
+            )}
             <div className="flex flex-col sm:flex-row gap-2">
               <Link
                 href={`/commercial/accounts/${account.id}/edit#danger-zone`}

@@ -147,11 +147,37 @@ export async function softDeleteCommercialAccount(
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
 
-  // Cascade: tear down any Field Ops work order(s) hanging off this account —
-  // otherwise deleting the account leaves orphaned jobs on the Work Orders /
-  // Status / Calendar surfaces (the "Karan / k" stray-WO bug Karan hit). This
-  // covers account-linked one-offs; deal-connected jobs are also torn down when
-  // their deal is deleted. Dynamic import breaks the account ↔ field-ops cycle.
+  // Cascade: an account is the top-level container — deleting it means the whole
+  // relationship is gone, so its DEALS must go too. Otherwise the deals only
+  // disappear from the pipeline (which filters on account.deleted_at) but linger
+  // on every surface that filters just the deal's OWN deleted_at — dashboards,
+  // reports, AR, and the global Invoices list — showing stale revenue for a
+  // company that no longer exists. Soft-deleting each deal in turn cascades that
+  // deal's unpaid invoices + Field Ops work orders, so this one loop cleans
+  // deals + invoices + jobs across the whole platform. The account-level paid-
+  // invoice guard above already ran, so no per-deal delete can be blocked here.
+  // Dynamic import breaks the account ↔ opportunity module cycle.
+  try {
+    const { data: deals } = await sb
+      .from("commercial_opportunities")
+      .select("id")
+      .eq("account_id", id)
+      .is("deleted_at", null);
+    const dealIds = ((deals ?? []) as { id: string }[]).map((d) => d.id);
+    if (dealIds.length > 0) {
+      const { softDeleteCommercialOpportunity } = await import("@/lib/commercial/opportunities/mutations");
+      for (const dealId of dealIds) {
+        await softDeleteCommercialOpportunity(dealId, deletedByUserId).catch(() => undefined);
+      }
+    }
+  } catch (err) {
+    console.warn("[accounts] deal cascade delete failed:", err);
+  }
+
+  // Belt-and-braces: tear down any Field Ops work order tied straight to the
+  // ACCOUNT (a one-off with no deal) — the deal cascade above already handles
+  // deal-connected jobs. Together they leave no orphan on Work Orders / Status /
+  // Calendar (the "Karan / k" stray-WO bug). Dynamic import breaks the cycle.
   try {
     const { cascadeDeleteJobsForOwner } = await import("@/lib/commercial/field-ops/jobs");
     await cascadeDeleteJobsForOwner({ account_id: id }, deletedByUserId ?? "system");
