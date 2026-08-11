@@ -61,6 +61,8 @@ export type CreateOpportunityInput = {
   // override. Both nullable; NULL is the default state.
   rfp_received_at?: string | null;
   title_override?: string | null;
+  // Migration 122 — a deal can carry its own team (distinct from the GC's).
+  team_id?: string | null;
   created_by_user_id?: string | null;
 };
 
@@ -155,6 +157,7 @@ export async function createCommercialOpportunity(
       // Migration 069 — new nullable fields, insert as-supplied.
       rfp_received_at: input.rfp_received_at ?? null,
       title_override: input.title_override?.trim() || null,
+      team_id: input.team_id ?? null,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
     })

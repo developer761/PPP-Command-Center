@@ -2802,6 +2802,9 @@ async function createDealInlineAction(formData: FormData) {
     const accountContacts = await listAccountContacts(account_id);
     if (accountContacts.some((r) => r.contact.id === contactRaw)) primary_contact_id = contactRaw;
   }
+  // Team on the deal (meeting 2026-08) — "" = none. Validated live in the mutation.
+  const teamRaw = String(formData.get("team_id") ?? "").trim();
+  const team_id = teamRaw && UUID_RE.test(teamRaw) ? teamRaw : null;
 
   const result = await createCommercialOpportunity({
     account_id,
@@ -2827,6 +2830,7 @@ async function createDealInlineAction(formData: FormData) {
     estimator_name,
     rfp_received_at,
     primary_contact_id,
+    team_id,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -4400,7 +4404,7 @@ async function restoreDocumentAction(formData: FormData) {
  *  a <details>). Two required rows visible immediately (title, status)
  *  plus optional bid/due/source. Property + description behind a
  *  progressive-disclosure <details>. Zero page jumps. */
-function NewDealForm({
+async function NewDealForm({
   accountId,
   estimators,
   contactOptions,
@@ -4426,6 +4430,7 @@ function NewDealForm({
     site_city: string | null;
     site_state: string | null;
     site_zip: string | null;
+    team_id: string | null;
   };
 }) {
   const inputCls =
@@ -4440,6 +4445,7 @@ function NewDealForm({
   // RFP Received defaults to today (Karan meeting 2026-08) — most bids are logged
   // the day the request lands; still editable.
   const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const teams = await listTeams();
   return (
     <form action={createDealInlineAction} className="space-y-3">
       <input type="hidden" name="account_id" value={accountId} />
@@ -4577,6 +4583,16 @@ function NewDealForm({
               ? "No contacts yet — the GC’s primary will be used once added."
               : "Blank uses the GC’s default primary contact."}
           </span>
+        </label>
+        <label className="block">
+          <span className={labelCls}>Team</span>
+          {/* Meeting 2026-08 — assign a preset team to THIS deal (defaults to the
+              account's team). Only the name shows; manage teams in Settings. */}
+          <select name="team_id" defaultValue={account.team_id ?? ""} className={SELECT_CLS} style={SELECT_BG_STYLE}>
+            <option value="">{account.team_id ? "Account's team (default)" : "— No team —"}</option>
+            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Build teams in Settings → Teams.</span>
         </label>
       </div>
       {/* Project address — hoisted out of the "optional" expando 2026-07-20
