@@ -79,6 +79,14 @@ const CARDS: Card[] = [
     icon: <IconKey />,
     adminOnly: true,
   },
+  {
+    href: "/commercial/settings/teams",
+    label: "Teams",
+    blurb:
+      "Build reusable teams — a name, a team admin, and members with roles — then assign a whole team to an account or opportunity by name. Admin-only.",
+    icon: <IconUsers />,
+    adminOnly: true,
+  },
 ];
 
 export default async function CommercialSettingsHubPage() {
