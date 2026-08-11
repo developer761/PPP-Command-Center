@@ -92,6 +92,10 @@ export default async function CreateProposalRoute({
     opportunity_id: dealId,
     parent_proposal_id: parentProposalId,
     created_by_user_id: user.id,
+    // Pass the name hydration WOULD stamp so the guard can tell an untouched
+    // fresh draft (name still == default) from a renamed one. Without this the
+    // guard never matched and browser-back kept minting duplicates.
+    hydrated_project_name: ctx.header.project_name ?? null,
   });
   if (reusable) {
     redirect(

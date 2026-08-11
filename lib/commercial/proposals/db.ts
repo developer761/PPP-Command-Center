@@ -179,6 +179,17 @@ export async function findReusableDraftProposal(input: {
   opportunity_id: string;
   parent_proposal_id: string | null;
   created_by_user_id: string | null;
+  /**
+   * The project_name hydration WOULD stamp onto a fresh proposal
+   * (`ctx.header.project_name`). `header_json.project_name` is auto-populated at
+   * create time (`title_override || client_name || derivedOppName`) and is
+   * essentially NEVER empty for a real deal, so testing it for mere presence
+   * made every fresh draft look "touched" and the back-button duplicate bug
+   * survived (audit 2026-08 re-check). We instead treat the draft as untouched
+   * only while its name still equals the hydration default — a user rename is a
+   * real touch and correctly yields a new proposal on the next visit.
+   */
+  hydrated_project_name?: string | null;
 }): Promise<CommercialProposal | null> {
   if (!input.created_by_user_id) return null;
   const sb = commercialDb();
@@ -206,14 +217,20 @@ export async function findReusableDraftProposal(input: {
 
   if (input.parent_proposal_id) return candidate;
 
-  // Fresh-proposal path: only reuse if nothing has been entered yet.
+  // Fresh-proposal path: only reuse if nothing has been entered yet. The
+  // project_name is auto-hydrated at create time, so "untouched" means the name
+  // still MATCHES the hydration default (not merely "is empty" — it never is).
+  // A rename diverges from the default and correctly counts as a touch.
+  const nameStillDefault =
+    (candidate.header_json?.project_name ?? null) ===
+    (input.hydrated_project_name ?? null);
   const untouched =
     !candidate.intro_text_override &&
     !candidate.alternate_notes &&
     !candidate.bid_notes &&
     !candidate.bid_set_date &&
     candidate.final_price_override_cents == null &&
-    !candidate.header_json?.project_name &&
+    nameStillDefault &&
     candidate.total_cents === 0;
   if (!untouched) return null;
 
