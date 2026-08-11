@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { ASSIGNMENT_ROLES, type AssignmentRole } from "@/lib/commercial/accounts/assignment-roles";
 
@@ -32,28 +33,38 @@ function isRole(r: string): r is AssignmentRole {
 /** Users who can be team members — active commercial-platform profiles. */
 export async function listAssignableUsers(): Promise<{ user_id: string; name: string; email: string }[]> {
   const sb = commercialDb();
-  const { data } = await sb
-    .from("profiles")
-    .select("user_id, email, sf_user_name, is_active, has_new_platform_access")
-    .eq("has_new_platform_access", true)
-    .neq("is_active", false);
-  return ((data ?? []) as { user_id: string; email: string | null; sf_user_name: string | null }[])
+  // paginateAll + a stable order: Supabase silently caps a bare select at
+  // 1000 rows, and this one selects EVERY profile with platform access — the
+  // most likely of the team queries to hit it. A truncated list here doesn't
+  // error, it just quietly hides people from the add-member picker.
+  const data = await paginateAll<{ user_id: string; email: string | null; sf_user_name: string | null }>(() =>
+    sb
+      .from("profiles")
+      .select("user_id, email, sf_user_name, is_active, has_new_platform_access")
+      .eq("has_new_platform_access", true)
+      .neq("is_active", false)
+      .order("user_id", { ascending: true })
+  );
+  return (data ?? [])
     .map((p) => ({ user_id: p.user_id, name: displayName(p.email, p.sf_user_name), email: (p.email ?? "").trim() }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function listTeams(): Promise<TeamSummary[]> {
   const sb = commercialDb();
-  const { data: teams } = await sb.from("commercial_teams").select("id, name").is("deleted_at", null).order("name");
-  const rows = (teams ?? []) as { id: string; name: string }[];
+  const rows = await paginateAll<{ id: string; name: string }>(() =>
+    sb.from("commercial_teams").select("id, name").is("deleted_at", null).order("name").order("id")
+  );
   if (rows.length === 0) return [];
   const ids = rows.map((t) => t.id);
-  const { data: members } = await sb
-    .from("commercial_team_members")
-    .select("team_id, user_id, is_team_admin")
-    .in("team_id", ids)
-    .is("removed_at", null);
-  const mem = (members ?? []) as { team_id: string; user_id: string; is_team_admin: boolean }[];
+  const mem = await paginateAll<{ team_id: string; user_id: string; is_team_admin: boolean }>(() =>
+    sb
+      .from("commercial_team_members")
+      .select("team_id, user_id, is_team_admin")
+      .in("team_id", ids)
+      .is("removed_at", null)
+      .order("id", { ascending: true })
+  );
   const countByTeam = new Map<string, number>();
   const adminUserByTeam = new Map<string, string>();
   for (const m of mem) {
@@ -81,12 +92,14 @@ export async function getTeam(id: string): Promise<TeamWithMembers | null> {
   const { data: team } = await sb.from("commercial_teams").select("id, name").eq("id", id).is("deleted_at", null).maybeSingle();
   if (!team) return null;
   const t = team as { id: string; name: string };
-  const { data: members } = await sb
-    .from("commercial_team_members")
-    .select("id, user_id, role, is_team_admin")
-    .eq("team_id", id)
-    .is("removed_at", null);
-  const mem = (members ?? []) as { id: string; user_id: string; role: AssignmentRole; is_team_admin: boolean }[];
+  const mem = await paginateAll<{ id: string; user_id: string; role: AssignmentRole; is_team_admin: boolean }>(() =>
+    sb
+      .from("commercial_team_members")
+      .select("id, user_id, role, is_team_admin")
+      .eq("team_id", id)
+      .is("removed_at", null)
+      .order("id", { ascending: true })
+  );
   const userIds = mem.map((m) => m.user_id);
   const nameByUser = new Map<string, { name: string; email: string }>();
   if (userIds.length) {
@@ -176,12 +189,75 @@ export async function addTeamMember(
   return { ok: true };
 }
 
-export async function removeTeamMember(memberId: string, actorUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+/**
+ * A team must always have exactly one admin. If the current one just left (or
+ * was demoted), hand the flag to the longest-standing remaining member.
+ *
+ * Auto-promote rather than refuse the removal: blocking "you can't remove the
+ * last admin" makes the user fight the tool to do something reasonable, and
+ * an admin-less team is a silently broken one. Returns the name of whoever
+ * was promoted so the caller can mention it — a small heads-up, not a wall.
+ */
+async function ensureTeamHasAdmin(
+  teamId: string,
+  actorUserId: string
+): Promise<string | null> {
   const sb = commercialDb();
+  const { data: rows } = await sb
+    .from("commercial_team_members")
+    .select("id, user_id, is_team_admin, created_at")
+    .eq("team_id", teamId)
+    .is("removed_at", null)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  const members = (rows ?? []) as {
+    id: string;
+    user_id: string;
+    is_team_admin: boolean;
+    created_at: string;
+  }[];
+  if (members.length === 0) return null; // empty team — nothing to promote
+  if (members.some((m) => m.is_team_admin)) return null; // still has one
+  const heir = members[0];
+  const { error } = await sb
+    .from("commercial_team_members")
+    .update({ is_team_admin: true })
+    .eq("id", heir.id);
+  if (error) return null;
+  await logUpdate(
+    "commercial_team_members",
+    heir.id,
+    { is_team_admin: false },
+    { is_team_admin: true },
+    actorUserId
+  );
+  const { data: prof } = await sb
+    .from("profiles")
+    .select("email, sf_user_name")
+    .eq("user_id", heir.user_id)
+    .maybeSingle();
+  const p = prof as { email: string | null; sf_user_name: string | null } | null;
+  return displayName(p?.email ?? null, p?.sf_user_name ?? null);
+}
+
+export async function removeTeamMember(
+  memberId: string,
+  actorUserId: string
+): Promise<{ ok: true; promotedAdmin?: string | null } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  // Read the team BEFORE the soft-delete — afterwards we'd have to hunt for
+  // it through a removed row.
+  const { data: before } = await sb
+    .from("commercial_team_members")
+    .select("team_id")
+    .eq("id", memberId)
+    .maybeSingle();
+  const teamId = (before as { team_id: string } | null)?.team_id ?? null;
   const { error } = await sb.from("commercial_team_members").update({ removed_at: new Date().toISOString() }).eq("id", memberId);
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_team_members", memberId, { id: memberId }, actorUserId);
-  return { ok: true };
+  const promotedAdmin = teamId ? await ensureTeamHasAdmin(teamId, actorUserId) : null;
+  return { ok: true, promotedAdmin };
 }
 
 /** Assign (or clear, with null) the team on an account or opportunity — the
@@ -243,7 +319,7 @@ export async function updateTeamMember(
   memberId: string,
   patch: { role?: string; is_team_admin?: boolean },
   actorUserId: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; promotedAdmin?: string | null } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: row } = await sb.from("commercial_team_members").select("team_id, role, is_team_admin").eq("id", memberId).maybeSingle();
   if (!row) return { ok: false, error: "Member not found." };
@@ -258,5 +334,11 @@ export async function updateTeamMember(
   const { error } = await sb.from("commercial_team_members").update(update).eq("id", memberId);
   if (error) return { ok: false, error: error.message };
   await logUpdate("commercial_team_members", memberId, cur, update, actorUserId);
-  return { ok: true };
+  // Demoting the only admin would leave the team without one — hand it on
+  // rather than refusing the edit.
+  const promotedAdmin =
+    update.is_team_admin === false
+      ? await ensureTeamHasAdmin(cur.team_id, actorUserId)
+      : null;
+  return { ok: true, promotedAdmin };
 }
