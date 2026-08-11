@@ -78,13 +78,19 @@ export async function getEmployeeDay(employeeId: string, dateIso: string): Promi
     (p) => etDate(p.clock_in_at) === dateIso
   );
 
-  // Any open punch (from any day) - a painter can't have two open at once.
-  const { data: openRow } = await sb
+  // Any open punch (from any day) - a painter can't have two open at once. But
+  // only attribute the live "clocked in" status to the day it belongs to: today,
+  // or the ET day the open punch started on. Otherwise clicking a crew member on a
+  // PAST/FUTURE calendar cell falsely showed "Clocked in … so far" (audit round 16).
+  const { data: openRaw } = await sb
     .from("commercial_time_punches")
     .select("id, job_id, clock_in_at")
     .eq("employee_id", employeeId)
     .is("clock_out_at", null)
     .maybeSingle();
+  const openTyped = openRaw as { id: string; job_id: string; clock_in_at: string } | null;
+  const openRow =
+    openTyped && (dateIso === etDate(new Date().toISOString()) || etDate(openTyped.clock_in_at) === dateIso) ? openTyped : null;
 
   const jobIds = [...new Set([...assigns.map((a) => a.job_id), ...punches.map((p) => p.job_id), ...(openRow ? [(openRow as { job_id: string }).job_id] : [])])];
   const jobsById = new Map<string, { id: string; name: string; job_code: string; prevailing_wage: boolean; site_address: string | null; site_city: string | null }>();
@@ -310,6 +316,19 @@ export async function clockIn(input: {
   actor_note?: string;
 }): Promise<{ ok: true; punchId: string } | { ok: false; error: string; code?: string }> {
   const sb = commercialDb();
+  // The job must exist + not be soft-deleted. Both clock endpoints only validate
+  // that job_id is a well-formed UUID, so a raw API call could otherwise clock
+  // hours onto a garbage / deleted / arbitrary work order (audit round 16). We
+  // don't require an assignment here — unplanned work is legitimate and the crew
+  // is trusted — just that the WO is real + live.
+  const { data: job } = await sb
+    .from("commercial_jobs")
+    .select("id")
+    .eq("id", input.job_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!job) return { ok: false, error: "That work order isn't available to clock into.", code: "invalid_job" };
+
   const { data: open } = await sb
     .from("commercial_time_punches")
     .select("id, job_id, clock_in_at, note")
