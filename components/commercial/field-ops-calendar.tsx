@@ -187,6 +187,7 @@ export function FieldOpsCalendar({
       if (d.skippedExisting) skips.push(`${d.skippedExisting} already there`);
       if (d.skippedAbsent) skips.push(`${d.skippedAbsent} off`);
       if (d.skippedDeletedJob) skips.push(`${d.skippedDeletedJob} closed WO`);
+      if (d.skippedInactive) skips.push(`${d.skippedInactive} inactive crew`);
       const tail = skips.length ? ` · skipped ${skips.join(", ")}` : "";
       setCopyMsg({
         tone: "ok",
@@ -561,7 +562,9 @@ function DayPanel({
   const [mode, setMode] = useState<"schedule" | "off">("schedule");
   const totalHours = crew.reduce((s, c) => s + c.hours, 0);
   // Warn (never block) if you try to schedule someone already marked off today.
-  const offNames = new Set(off.map((o) => o.name));
+  // Match by employee_id, not display name — two crew sharing a name (common on
+  // the crew) would otherwise cross-flag each other as "also off" (audit round 18).
+  const offIds = new Set(off.map((o) => o.employee_id));
   return (
     <>
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3 shrink-0">
@@ -584,7 +587,7 @@ function DayPanel({
               <li key={`${c.employee_id}-${c.job_id}-${i}`}>
                 <button onClick={() => onOpenPerson(c.employee_id, c.name)} className="w-full text-left border border-ppp-charcoal-100 rounded-lg p-3 hover:border-cc-brand-300 hover:bg-cc-brand-50/30 transition-colors">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-semibold text-ppp-charcoal truncate min-w-0">{c.name}{offNames.has(c.name) && <span className="ml-1.5 align-middle text-[9px] font-bold uppercase text-amber-700 bg-amber-50 rounded px-1 py-0.5">also off</span>}</span>
+                    <span className="text-[13px] font-semibold text-ppp-charcoal truncate min-w-0">{c.name}{offIds.has(c.employee_id) && <span className="ml-1.5 align-middle text-[9px] font-bold uppercase text-amber-700 bg-amber-50 rounded px-1 py-0.5">also off</span>}</span>
                     <span className="text-[11px] text-ppp-charcoal-500 shrink-0">{c.start ? `${fmtTime12(c.start)}${c.end ? ` – ${fmtTime12(c.end)}` : ""}` : `${c.hours}h`}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">

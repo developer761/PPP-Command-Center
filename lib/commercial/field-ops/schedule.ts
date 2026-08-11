@@ -392,7 +392,7 @@ export async function upsertAssignment(input: {
 export async function copyWeekForward(
   sourceMondayIso: string,
   actorUserId: string,
-): Promise<{ ok: true; copied: number; skippedExisting: number; skippedAbsent: number; skippedDeletedJob: number; targetMonday: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; copied: number; skippedExisting: number; skippedAbsent: number; skippedDeletedJob: number; skippedInactive: number; targetMonday: string } | { ok: false; error: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceMondayIso)) return { ok: false, error: "Invalid week." };
   const srcMon = mondayOf(sourceMondayIso);
   const srcSun = addDaysIso(srcMon, 6); // full Mon–Sun week (Sunday is a real work day — PW crews)
@@ -411,13 +411,15 @@ export async function copyWeekForward(
     job_id: string; employee_id: string; work_date: string; scheduled_hours: number;
     scheduled_start_time: string | null; scheduled_end_time: string | null; note: string | null;
   }[];
-  if (src.length === 0) return { ok: true, copied: 0, skippedExisting: 0, skippedAbsent: 0, skippedDeletedJob: 0, targetMonday: tgtMon };
+  if (src.length === 0) return { ok: true, copied: 0, skippedExisting: 0, skippedAbsent: 0, skippedDeletedJob: 0, skippedInactive: 0, targetMonday: tgtMon };
 
-  // Target-week existing assignments (to dedup), absences (to skip), + live jobs.
-  const [{ data: tgtRows }, { data: absRows }, { data: jobRows }] = await Promise.all([
+  // Target-week existing assignments (to dedup), absences (to skip), live jobs +
+  // active employees (don't re-schedule a terminated crew member — active=false).
+  const [{ data: tgtRows }, { data: absRows }, { data: jobRows }, { data: empRows }] = await Promise.all([
     sb.from("commercial_assignments").select("job_id, employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSun).neq("status", "cancelled"),
     sb.from("commercial_absences").select("employee_id, work_date, hours").gte("work_date", tgtMon).lte("work_date", tgtSun),
     sb.from("commercial_jobs").select("id").is("deleted_at", null).in("id", [...new Set(src.map((s) => s.job_id))]),
+    sb.from("commercial_employees").select("id").eq("active", true).in("id", [...new Set(src.map((s) => s.employee_id))]),
   ]);
   const existing = new Set(((tgtRows ?? []) as { job_id: string; employee_id: string; work_date: string }[]).map((r) => `${r.job_id}|${r.employee_id}|${String(r.work_date).slice(0, 10)}`));
   // Only a FULL-day absence (hours == null) blocks copying a shift — a partial
@@ -428,12 +430,14 @@ export async function copyWeekForward(
       .map((r) => `${r.employee_id}|${String(r.work_date).slice(0, 10)}`)
   );
   const liveJobs = new Set(((jobRows ?? []) as { id: string }[]).map((r) => r.id));
+  const liveEmps = new Set(((empRows ?? []) as { id: string }[]).map((r) => r.id));
 
-  let copied = 0, skippedExisting = 0, skippedAbsent = 0, skippedDeletedJob = 0;
+  let copied = 0, skippedExisting = 0, skippedAbsent = 0, skippedDeletedJob = 0, skippedInactive = 0;
   const toInsert: Record<string, unknown>[] = [];
   for (const s of src) {
     const tgtDate = addDaysIso(String(s.work_date).slice(0, 10), 7);
     if (!liveJobs.has(s.job_id)) { skippedDeletedJob += 1; continue; }
+    if (!liveEmps.has(s.employee_id)) { skippedInactive += 1; continue; } // terminated crew — don't re-schedule
     if (existing.has(`${s.job_id}|${s.employee_id}|${tgtDate}`)) { skippedExisting += 1; continue; }
     if (absent.has(`${s.employee_id}|${tgtDate}`)) { skippedAbsent += 1; continue; }
     toInsert.push({
@@ -485,7 +489,7 @@ export async function copyWeekForward(
       }
     }
   }
-  return { ok: true, copied, skippedExisting, skippedAbsent, skippedDeletedJob, targetMonday: tgtMon };
+  return { ok: true, copied, skippedExisting, skippedAbsent, skippedDeletedJob, skippedInactive, targetMonday: tgtMon };
 }
 
 /** Remove one assignment (by id). Used by the Calendar day panel. */
