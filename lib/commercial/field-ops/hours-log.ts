@@ -2,90 +2,152 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
+import { absenceLabel } from "./absence-constants";
 
-export type HoursLogJob = { job_id: string; job_name: string; job_code: string; hours: number };
+export type HoursLogJob = {
+  job_id: string;
+  job_name: string;
+  job_code: string;
+  scheduled_hours: number;
+  worked_hours: number;
+};
+export type HoursLogAbsence = { work_date: string; reason: string; hours: number | null };
 export type HoursLogRow = {
   employee_id: string;
   employee_name: string;
-  total_hours: number;
-  jobs: HoursLogJob[]; // per-work-order breakdown, most hours first
+  scheduled_hours: number;
+  worked_hours: number;
+  jobs: HoursLogJob[];
+  absences: HoursLogAbsence[]; // days marked off in the window (reason + hours)
 };
 
 /**
- * Per-crew-member hours for a date range [startIso, endIso] inclusive, with a
- * per-work-order breakdown (Karan 2026-08 Hours Log tab). Sourced from
- * time_entries.actual_hours — the SAME actuals Payroll + Approvals read — so the
- * numbers always agree. Counts every logged status (submitted / questioned /
- * approved / exported): it's a record of hours worked, not an approval gate.
- * Deleted work orders still resolve their name (worked hours are worked hours).
+ * Per-crew-member hours for a date range [startIso, endIso] inclusive (Karan
+ * 2026-08 Hours Log). Now shows SCHEDULED vs WORKED per work order:
+ *   - worked  = time_entries.actual_hours (the SAME actuals Payroll + Approvals
+ *     read, so the numbers always agree; every logged status counts — it's a
+ *     record of hours worked, not an approval gate).
+ *   - scheduled = commercial_assignments.scheduled_hours (non-cancelled).
+ * Plus any days the crew member was marked OFF in the window, with the reason —
+ * so "scheduled 40 / worked 32 · Off: Sick (Wed)" reads at a glance. The row set
+ * is the UNION of anyone who worked, was scheduled, or was marked off (so a
+ * scheduled no-show still appears with worked = 0). Deleted work orders still
+ * resolve their name.
  */
 export async function getHoursLog(
   startIso: string,
   endIso: string
-): Promise<{ rows: HoursLogRow[]; totalHours: number }> {
+): Promise<{ rows: HoursLogRow[]; totalScheduled: number; totalWorked: number }> {
   const sb = commercialDb();
-  // Paginated — a wide custom range across a full crew can exceed Supabase's
-  // silent 1000-row cap, which would undercount hours + drop crew (audit 2026-08).
-  const entries = await paginateAll<{ employee_id: string; job_id: string; actual_hours: number }>(() =>
-    sb
-      .from("commercial_time_entries")
-      .select("employee_id, job_id, actual_hours")
-      .gte("work_date", startIso)
-      .lte("work_date", endIso)
-      .order("work_date")
-      .order("id")
-  );
+  // All three sources paginated — a wide range across a full crew can exceed
+  // Supabase's silent 1000-row cap, which would undercount + drop crew.
+  const [entries, assigns, absences] = await Promise.all([
+    paginateAll<{ employee_id: string; job_id: string; actual_hours: number }>(() =>
+      sb
+        .from("commercial_time_entries")
+        .select("employee_id, job_id, actual_hours")
+        .gte("work_date", startIso)
+        .lte("work_date", endIso)
+        .order("work_date")
+        .order("id")
+    ),
+    paginateAll<{ employee_id: string; job_id: string; scheduled_hours: number }>(() =>
+      sb
+        .from("commercial_assignments")
+        .select("employee_id, job_id, scheduled_hours")
+        .gte("work_date", startIso)
+        .lte("work_date", endIso)
+        .neq("status", "cancelled")
+        .order("work_date")
+        .order("id")
+    ),
+    paginateAll<{ employee_id: string; work_date: string; type: string; hours: number | null }>(() =>
+      sb
+        .from("commercial_absences")
+        .select("employee_id, work_date, type, hours")
+        .gte("work_date", startIso)
+        .lte("work_date", endIso)
+        .order("work_date")
+        .order("id")
+    ),
+  ]);
 
-  const byEmp = new Map<string, Map<string, number>>(); // employee → job → hours
-  const empTotal = new Map<string, number>();
-  let grand = 0;
+  // employee → job → { scheduled, worked }
+  const byEmpJob = new Map<string, Map<string, { sched: number; worked: number }>>();
+  const empSched = new Map<string, number>();
+  const empWorked = new Map<string, number>();
+  let grandSched = 0;
+  let grandWorked = 0;
+  const slot = (emp: string, job: string) => {
+    if (!byEmpJob.has(emp)) byEmpJob.set(emp, new Map());
+    const jm = byEmpJob.get(emp)!;
+    if (!jm.has(job)) jm.set(job, { sched: 0, worked: 0 });
+    return jm.get(job)!;
+  };
   for (const e of entries) {
     const h = Number(e.actual_hours ?? 0);
     if (h <= 0) continue;
-    if (!byEmp.has(e.employee_id)) byEmp.set(e.employee_id, new Map());
-    const jm = byEmp.get(e.employee_id)!;
-    jm.set(e.job_id, (jm.get(e.job_id) ?? 0) + h);
-    empTotal.set(e.employee_id, (empTotal.get(e.employee_id) ?? 0) + h);
-    grand += h;
+    slot(e.employee_id, e.job_id).worked += h;
+    empWorked.set(e.employee_id, (empWorked.get(e.employee_id) ?? 0) + h);
+    grandWorked += h;
   }
-  if (byEmp.size === 0) return { rows: [], totalHours: 0 };
+  for (const a of assigns) {
+    const h = Number(a.scheduled_hours ?? 0);
+    if (h <= 0) continue;
+    slot(a.employee_id, a.job_id).sched += h;
+    empSched.set(a.employee_id, (empSched.get(a.employee_id) ?? 0) + h);
+    grandSched += h;
+  }
+  const absByEmp = new Map<string, HoursLogAbsence[]>();
+  for (const ab of absences) {
+    const list = absByEmp.get(ab.employee_id) ?? [];
+    list.push({
+      work_date: String(ab.work_date).slice(0, 10),
+      reason: absenceLabel(ab.type),
+      hours: ab.hours == null ? null : Number(ab.hours),
+    });
+    absByEmp.set(ab.employee_id, list);
+  }
 
-  const empIds = [...byEmp.keys()];
-  const jobIds = [...new Set(entries.map((e) => e.job_id))];
+  const empIds = [...new Set([...byEmpJob.keys(), ...absByEmp.keys()])];
+  if (empIds.length === 0) return { rows: [], totalScheduled: 0, totalWorked: 0 };
+  const jobIds = [...new Set([...entries.map((e) => e.job_id), ...assigns.map((a) => a.job_id)])];
   const [empRes, jobRes] = await Promise.all([
     sb.from("commercial_employees").select("id, display_name").in("id", empIds),
-    sb.from("commercial_jobs").select("id, name, job_code").in("id", jobIds),
+    jobIds.length
+      ? sb.from("commercial_jobs").select("id, name, job_code").in("id", jobIds)
+      : Promise.resolve({ data: [] as { id: string; name: string | null; job_code: string | null }[] }),
   ]);
   const empName = new Map(
     (empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string | null }).display_name])
   );
   const jobMeta = new Map(
-    (jobRes.data ?? []).map((r) => {
-      const j = r as { id: string; name: string | null; job_code: string | null };
-      return [j.id, j];
-    })
+    ((jobRes.data ?? []) as { id: string; name: string | null; job_code: string | null }[]).map((j) => [j.id, j])
   );
 
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const rows: HoursLogRow[] = empIds
     .map((id) => {
-      const jm = byEmp.get(id)!;
+      const jm = byEmpJob.get(id) ?? new Map<string, { sched: number; worked: number }>();
       const jobs: HoursLogJob[] = [...jm.entries()]
-        .map(([jid, hours]) => ({
+        .map(([jid, v]) => ({
           job_id: jid,
           job_name: (jobMeta.get(jid)?.name ?? "").trim() || "(work order)",
           job_code: jobMeta.get(jid)?.job_code ?? "",
-          hours: round2(hours),
+          scheduled_hours: round2(v.sched),
+          worked_hours: round2(v.worked),
         }))
-        .sort((a, b) => b.hours - a.hours || a.job_name.localeCompare(b.job_name));
+        .sort((a, b) => b.worked_hours - a.worked_hours || b.scheduled_hours - a.scheduled_hours || a.job_name.localeCompare(b.job_name));
       return {
         employee_id: id,
         employee_name: (empName.get(id) ?? "").trim() || "(crew)",
-        total_hours: round2(empTotal.get(id) ?? 0),
+        scheduled_hours: round2(empSched.get(id) ?? 0),
+        worked_hours: round2(empWorked.get(id) ?? 0),
         jobs,
+        absences: (absByEmp.get(id) ?? []).sort((a, b) => a.work_date.localeCompare(b.work_date)),
       };
     })
-    .sort((a, b) => b.total_hours - a.total_hours || a.employee_name.localeCompare(b.employee_name));
+    .sort((a, b) => b.worked_hours - a.worked_hours || b.scheduled_hours - a.scheduled_hours || a.employee_name.localeCompare(b.employee_name));
 
-  return { rows, totalHours: round2(grand) };
+  return { rows, totalScheduled: round2(grandSched), totalWorked: round2(grandWorked) };
 }

@@ -61,7 +61,7 @@ export default async function FieldOpsHoursPage({
   const sp = await searchParams;
   const range: Range = sp.range === "today" || sp.range === "month" || sp.range === "custom" ? sp.range : "week";
   const { from, to, label } = resolveRange(range, sp.from, sp.to);
-  const { rows, totalHours } = await getHoursLog(from, to);
+  const { rows, totalScheduled, totalWorked } = await getHoursLog(from, to);
 
   const PRESETS: { key: Range; label: string }[] = [
     { key: "today", label: "Today" },
@@ -108,15 +108,15 @@ export default async function FieldOpsHoursPage({
           <div className="text-[13.5px] font-semibold text-ppp-charcoal">{label}</div>
         </div>
         <div className="text-right">
-          <div className="font-condensed text-2xl font-black text-ppp-charcoal tabular-nums leading-none">{fmtH(totalHours)}</div>
-          <div className="text-[11px] text-ppp-charcoal-400 mt-0.5">{rows.length} {rows.length === 1 ? "crew member" : "crew members"}</div>
+          <div className="font-condensed text-2xl font-black text-ppp-charcoal tabular-nums leading-none">{fmtH(totalWorked)} <span className="text-ppp-charcoal-400 font-bold text-base">worked</span></div>
+          <div className="text-[11px] text-ppp-charcoal-400 mt-0.5">{fmtH(totalScheduled)} scheduled · {rows.length} {rows.length === 1 ? "crew member" : "crew members"}</div>
         </div>
       </div>
 
       {rows.length === 0 ? (
         <div className="text-center py-10 bg-surface border border-ppp-charcoal-100 rounded-xl">
-          <p className="text-sm font-semibold text-ppp-charcoal">No hours logged</p>
-          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">No crew clocked time in this window. Try a wider range, or check the <Link href="/commercial/field-ops/approvals" className="font-semibold text-cc-brand-700 hover:underline">Approvals</Link> queue.</p>
+          <p className="text-sm font-semibold text-ppp-charcoal">Nothing in this window</p>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">No crew scheduled, clocked, or marked off in this range. Try a wider range, or check the <Link href="/commercial/field-ops/approvals" className="font-semibold text-cc-brand-700 hover:underline">Approvals</Link> queue.</p>
         </div>
       ) : (
         <ul className="space-y-2.5">
@@ -124,19 +124,34 @@ export default async function FieldOpsHoursPage({
             <li key={r.employee_id} className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
               <div className="flex items-center justify-between gap-3 min-w-0">
                 <span className="text-[14px] font-bold text-ppp-charcoal truncate min-w-0">{r.employee_name}</span>
-                <span className="font-condensed text-lg font-black text-ppp-charcoal tabular-nums shrink-0">{fmtH(r.total_hours)}</span>
+                <span className="shrink-0 text-right">
+                  <span className="font-condensed text-lg font-black text-ppp-charcoal tabular-nums">{fmtH(r.worked_hours)}</span>
+                  <span className="text-[11px] text-ppp-charcoal-400"> worked</span>
+                  <span className="block text-[11px] text-ppp-charcoal-400 tabular-nums leading-none -mt-0.5">{fmtH(r.scheduled_hours)} scheduled</span>
+                </span>
               </div>
-              <ul className="mt-2.5 space-y-1 border-t border-ppp-charcoal-50 pt-2.5">
-                {r.jobs.map((j) => (
-                  <li key={j.job_id} className="flex items-center justify-between gap-3 text-[12.5px]">
-                    <span className="text-ppp-charcoal-600 truncate min-w-0">
-                      {j.job_name}
-                      {j.job_code && <span className="text-ppp-charcoal-400 font-mono text-[11px]"> · {j.job_code}</span>}
-                    </span>
-                    <span className="text-ppp-charcoal-500 tabular-nums shrink-0">{fmtH(j.hours)}</span>
+              {r.absences.length > 0 && (
+                <div className="mt-2 text-[11.5px] text-amber-700 leading-snug">
+                  Off: {r.absences.map((a) => `${a.reason}${a.hours != null ? ` (${fmtH(a.hours)})` : ""} · ${new Date(a.work_date + "T12:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })}`).join(" · ")}
+                </div>
+              )}
+              {r.jobs.length > 0 && (
+                <ul className="mt-2.5 space-y-1 border-t border-ppp-charcoal-50 pt-2.5">
+                  <li className="flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-300">
+                    <span>Work order</span>
+                    <span className="shrink-0 tabular-nums">sched · worked</span>
                   </li>
-                ))}
-              </ul>
+                  {r.jobs.map((j) => (
+                    <li key={j.job_id} className="flex items-center justify-between gap-3 text-[12.5px]">
+                      <span className="text-ppp-charcoal-600 truncate min-w-0">
+                        {j.job_name}
+                        {j.job_code && <span className="text-ppp-charcoal-400 font-mono text-[11px]"> · {j.job_code}</span>}
+                      </span>
+                      <span className="text-ppp-charcoal-500 tabular-nums shrink-0">{fmtH(j.scheduled_hours)} · <span className="font-semibold text-ppp-charcoal-700">{fmtH(j.worked_hours)}</span></span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>
