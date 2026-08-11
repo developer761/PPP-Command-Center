@@ -145,6 +145,7 @@ import {
   isLost,
   isPostSale,
   isPostSaleProject,
+  dealPhase,
 } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
 import { BidLifecycleTimeline } from "@/components/commercial/bid-lifecycle-timeline";
@@ -1164,7 +1165,18 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // Show the P&L for any real project: won/post-sale, under contract, billed, or
   // with costs logged — so a won deal shows its Profitability (prompting costs)
   // even before anything's billed.
-  const dealShowPnl = dealHasRollup || p.contractToDateCents > 0 || p.invoicedCents > 0 || isPostSaleProject(p.opp);
+  // PHASE — the 3-way switch (spec §3). NOT isPostSaleProject: that returns true
+  // the moment a deal is won, so a freshly-won job with no invoices and no costs
+  // rendered a wall of $0; and false for lost, so a dead bid rendered live
+  // pipeline content.
+  const phase = dealPhase(p.opp);
+  // Delivery money belongs to a job in delivery. It also stays visible on ANY
+  // deal that has real money against it whatever its current status (spec §3e):
+  // a deal reopened or dragged back into pre-sale must not make its invoices
+  // and costs vanish from the page.
+  const hasDeliveryActivity =
+    dealHasRollup || p.invoicedCents > 0 || dealFin.collectedCents > 0;
+  const dealShowPnl = phase === "in_delivery" || hasDeliveryActivity;
   // Account-style Profitability visuals for THIS deal (same components + defs as
   // the GC + platform levels): monthly billed line + margin gauge + cost donut.
   const dealRevenueMonthly = monthlyBilledSeries(dealInvoices);
@@ -1389,7 +1401,18 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                 Closeout {p.closeoutStatus}
               </span>
             ) : null}
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+            {/* Toned by PHASE. This was hardcoded emerald with no status branch,
+                so a LOST deal wore a green "Lost" badge — the one status where
+                the colour is the whole message. */}
+            <span
+              className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[11px] font-bold uppercase tracking-wide ${
+                phase === "lost"
+                  ? "bg-rose-50 border-rose-200 text-rose-700"
+                  : phase === "pre_sale"
+                    ? "bg-ppp-blue-50 border-ppp-blue-200 text-ppp-blue-700"
+                    : "bg-emerald-50 border-emerald-200 text-emerald-700"
+              }`}
+            >
               {oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}
             </span>
           </div>
@@ -1419,7 +1442,10 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             company-wide. Same definitions everywhere, so it reconciles up a level.
             Only on the Overview tab — the dedicated P&L tab (DealPnLView) renders
             an identical block, so ungated it showed twice on that tab (R6 #1). */}
-        {dealTab === "overview" && (
+        {/* dealShowPnl was computed and NEVER READ — zero references — so this
+            delivery P&L rendered on every deal, including a lost bid and a
+            brand-new $0 one. That empty money wall is the thing Karan flagged. */}
+        {dealTab === "overview" && dealShowPnl && (
         <section className="mt-4 rounded-xl border border-ppp-charcoal-100 p-4 sm:p-5">
           <div className="flex items-center justify-between gap-2 mb-3">
             <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Profitability</h3>
