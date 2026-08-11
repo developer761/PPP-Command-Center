@@ -548,3 +548,55 @@ export async function listUnassignedScopeForOpp(
   const assigned = new Set(workOrders.flatMap((wo) => wo.scope_line_item_ids ?? []));
   return lines.filter((l) => !assigned.has(l.id));
 }
+
+/**
+ * Re-point every work order's stored scope at a new set of line-item ids.
+ *
+ * A proposal revision copies the parent's line items as BRAND-NEW rows with
+ * brand-new ids. Work orders store the ids they were built from, so after a
+ * bump every stored id matched nothing: buildWorkOrderContent filtered down to
+ * zero and printed a sheet with no scope of work on it, while the tool's
+ * "5 of 8 lines" label — computed from the raw array length — still said 5.
+ * Re-open a sent work order, re-send it, and that's what the crew received.
+ *
+ * `idRemap` is old id -> new id. Ids with no mapping are DROPPED rather than
+ * kept: a line the estimator deleted during the revision genuinely isn't in
+ * the scope any more, and keeping a dangling id would quietly re-add it if a
+ * future line ever reused the id.
+ *
+ * Best-effort and never throws — a failed remap must not fail the revision.
+ */
+export async function remapWorkOrderScopeForOpp(
+  opportunity_id: string,
+  idRemap: Map<string, string>,
+  actorUserId: string
+): Promise<number> {
+  if (idRemap.size === 0) return 0;
+  const sb = commercialDb();
+  const workOrders = await listWorkOrdersForOpp(opportunity_id);
+  let updated = 0;
+  for (const wo of workOrders) {
+    const current = wo.scope_line_item_ids ?? [];
+    // Empty means "the whole proposal" — there's nothing to re-point, and
+    // writing ids here would silently convert it to a partial sheet.
+    if (current.length === 0) continue;
+    const next = current
+      .map((id) => idRemap.get(id))
+      .filter((v): v is string => !!v);
+    if (next.length === current.length && next.every((v, i) => v === current[i])) continue;
+    const { error } = await sb
+      .from("commercial_work_orders")
+      .update({ scope_line_item_ids: next, updated_at: new Date().toISOString() })
+      .eq("id", wo.id);
+    if (error) continue;
+    await logUpdate(
+      "commercial_work_orders",
+      wo.id,
+      { scope_line_item_ids: current },
+      { scope_line_item_ids: next },
+      actorUserId
+    ).catch(() => undefined);
+    updated += 1;
+  }
+  return updated;
+}

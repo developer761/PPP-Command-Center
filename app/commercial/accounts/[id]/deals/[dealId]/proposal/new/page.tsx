@@ -23,6 +23,7 @@ import {
   createLineItem,
   updateProposal,
 } from "@/lib/commercial/proposals/db";
+import { remapWorkOrderScopeForOpp } from "@/lib/commercial/work-orders/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
 export const dynamic = "force-dynamic";
@@ -130,6 +131,7 @@ export default async function CreateProposalRoute({
   if (parentProposalId) {
     const parentItems = await listLineItemsForProposal(parentProposalId);
     const failed: string[] = [];
+    const idRemap = new Map<string, string>();
     for (const item of parentItems) {
       const copyResult = await createLineItem(
         {
@@ -156,7 +158,23 @@ export default async function CreateProposalRoute({
       );
       if (!copyResult.ok) {
         failed.push(item.description);
+      } else {
+        // Old line id -> new line id, for the work-order remap below.
+        idRemap.set(item.id, copyResult.item.id);
       }
+    }
+    // Re-point any work order's stored scope at the NEW line ids.
+    //
+    // A bump copies the parent's items as brand-new rows with brand-new ids,
+    // so a work order's scope_line_item_ids matched nothing afterwards and
+    // buildWorkOrderContent printed an EMPTY sheet — while the tool's
+    // "5 of 8 lines" label (computed from the raw array length) still said 5.
+    // Re-open a sent WO, re-send it, and the crew got a work order with no
+    // scope of work on it.
+    if (idRemap.size > 0) {
+      await remapWorkOrderScopeForOpp(dealId, idRemap, user.id).catch((err) => {
+        console.warn("[proposal/new] work-order scope remap failed:", err);
+      });
     }
     // R1b/R1c: carry the final-price override + bid-set date forward. Done AFTER
     // the line copy so recomputeProposalTotal (inside updateProposal) pins
