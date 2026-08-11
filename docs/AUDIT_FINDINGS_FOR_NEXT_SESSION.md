@@ -1,6 +1,12 @@
-# Audit findings — for the next session (2026-08)
+# Audit findings (2026-08)
 
-Direct sweep of everything shipped today + the same **classes** of bug elsewhere. **No fixes applied** — this is the to-do list. Ordered by severity. Each has a file:line + what to do.
+Direct sweep of everything shipped + the same **classes** of bug elsewhere.
+
+> **STATUS 2026-08-11:** items **1–4, 6, 8, 9, 10, 15, 17 are FIXED and pushed.**
+> Two further audit passes on the status flatten found 10 more (incl. two money
+> bugs) — also fixed. See "FIXED" at the bottom for the full list and commits.
+> What genuinely remains: **#5** (a decision), **#7**, **#11**, **#12**, **#13**,
+> **#14**, plus the blocked items.
 
 ---
 
@@ -126,3 +132,45 @@ For completeness (proposals aren't cascaded on deal-delete either): the global p
 
 ## 📋 Still to BUILD (from the meeting — see COMMERCIAL_MEETING_PLAN_2026_08.md)
 Display-layer status flatten (RFP column · single Proposal column + Follow-Up tag · pre/post picker split — NO data migration needed) · **Work-Orders-from-proposal-scope builder** (+ PDF upload · multiple WOs · unassigned-scope) · **Crew role** · shared IDs finish (PROJ/WO/TRANS) · new-opp slim form for existing builders + inline new-contact · proposals batch (revision lifecycle · Bid-Set→intro · Labor-into-Inclusions · Proposal→Won logic).
+
+
+---
+
+## ✅ FIXED + PUSHED (2026-08-11)
+
+| # | Item | Commit |
+|---|---|---|
+| 1 | Autosave form-reset in `autosave-form`, `autosave-proposal-name`, `account-inline-card` — all three now call the action directly instead of `requestSubmit()` | `0c537e0` |
+| 2 | `/proposal/new` duplicating on browser-back — `findReusableDraftProposal` idempotency guard | `0c537e0` |
+| 3 | Weighted-pipeline / bid / funnel / Top-5 counting bid-less deals as ZERO — now falls back to the deal's current proposal total (`listCurrentProposalTotalByOpp`) | `79086d9` |
+| 4 | "Account's team (default)" storing null with no fallback — `getEffectiveOwnerTeam` makes the inheritance real; option names the inherited team | `3428f8a` |
+| 6 | No way to change a deal's team after creation — editable Team row on the deal's Info tab | `3428f8a` |
+| 8 | Teams queries unpaginated (`listAssignableUsers` could silently drop members past 1000) | `a724d85` |
+| 9 | A team could end up admin-less — auto-promotes the longest-standing member instead of blocking the removal | `a724d85` |
+| 10 | RLS — confirmed non-issue (matches every other `commercial_*` table) | — |
+| 15 | `/proposal/new` confirmed the only create-on-GET page | — |
+| 17 | Status display-layer flatten | `7253b21` |
+
+**Also found + fixed by the two follow-up audits on the flatten** (`0c537e0`):
+`CommercialOpportunity` never declared `team_id` (write-only column) ·
+"→ Closed Lost" opened the form on Closed·**WON** so one click booked a loss as
+a win · the status picker defaulted to **Qualifying** on every deal (`??` vs
+`||`), one click demoting the deal and reverting its proposal to draft · debrief
+fields ignored the sub-status select, so choosing Lost rendered the WIN debrief
+then failed server-side · **CSV export dropped the filter entirely** for the
+rfp/won/lost columns (exported the whole pipeline) · "→ Closed Lost" on a Won
+card was a silent dead end · sub-status edits emailed the team "moved status
+from Proposal → Proposal" · `columnDbStatusHint("qualifying")` re-introduced the
+silent row-drop · "Closed" vs "Closed (post-sale)" label drift.
+
+### Still open, and why
+- **#5 (team → assignments)** — needs Karan's call: should assigning a team to
+  an account also expand its members into `commercial_account_assignments` so
+  role-based PM/rep lookups see them, or is the team_id link enough?
+- **#7 / #11 / #12 / #13** — polish (Transactions terminology sweep + TRANS-####
+  IDs, auto-title SSR flash, two-× spacing, orphaned `tax_exempt`).
+- **#14** — the two New-opportunity forms have drifted; folded into the
+  slim-form work in the plan doc.
+- Note: the "dead bid validation" in #3 was left in place deliberately — it is
+  correct defensive parsing that no-ops when the field is absent, and would be
+  live again if the field ever returns.
