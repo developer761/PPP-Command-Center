@@ -236,6 +236,11 @@ type SP = Promise<{
    *  for display. */
   dup_id?: string;
   dup_label?: string;
+  /** Values typed before the duplicate warning fired, echoed back so
+   *  "Create anyway" doesn't mean "retype everything". */
+  d_title?: string; d_client?: string; d_street?: string; d_city?: string;
+  d_state?: string; d_zip?: string; d_desc?: string; d_source?: string;
+  d_due?: string; d_rfp?: string; d_contact?: string; d_team?: string;
   /** Karan 2026-07-15: bulk-delete-all-proposals toast after the action
    *  redirects back to ?tab=proposals. `bulk_deleted` is the count of
    *  drafts nuked; `bulk_skipped` is the count of Sent/Won/Lost/
@@ -759,6 +764,12 @@ export default async function CommercialAccountDetailPage({
               : null
           }
           includeArchived={sp.archived === "1"}
+          keptValues={{
+            title: sp.d_title, client_name: sp.d_client, property_street: sp.d_street,
+            property_city: sp.d_city, property_state: sp.d_state, property_zip: sp.d_zip,
+            description: sp.d_desc, source: sp.d_source, proposal_due_at: sp.d_due,
+            rfp_received_at: sp.d_rfp, primary_contact_id: sp.d_contact, team_id: sp.d_team,
+          }}
         />
       )}
       {tab === "documents" && (
@@ -2852,8 +2863,31 @@ async function createDealInlineAction(formData: FormData) {
     if (dups.length > 0) {
       const first = dups[0];
       const label = formatOpportunityNumber(first.project_number) || first.title;
+      // Carry the typed values back. The redirect used to send only dup_id, so
+      // the form re-rendered from account defaults and everything the user had
+      // entered — title, address, notes, source, dates — was gone. "Create
+      // anyway" then meant "retype the whole form", which is a strong nudge to
+      // just not report the duplicate.
+      const keep = new URLSearchParams();
+      for (const [k, field] of [
+        ["d_title", "title"],
+        ["d_client", "client_name"],
+        ["d_street", "property_street"],
+        ["d_city", "property_city"],
+        ["d_state", "property_state"],
+        ["d_zip", "property_zip"],
+        ["d_desc", "description"],
+        ["d_source", "source"],
+        ["d_due", "proposal_due_at"],
+        ["d_rfp", "rfp_received_at"],
+        ["d_contact", "primary_contact_id"],
+        ["d_team", "team_id"],
+      ] as const) {
+        const v = String(formData.get(field) ?? "").trim();
+        if (v) keep.set(k, v.slice(0, 300));
+      }
       redirect(
-        `/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&dup_id=${first.id}&dup_label=${encodeURIComponent(label)}#new-deal`
+        `/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&dup_id=${first.id}&dup_label=${encodeURIComponent(label)}&${keep.toString()}#new-deal`
       );
     }
   }
@@ -4496,12 +4530,15 @@ async function NewDealForm({
   contactOptions,
   duplicateWarning,
   account,
+  keptValues,
 }: {
   accountId: string;
   estimators: EligibleEstimator[];
   /** Katie gap #1 — this GC's contacts, for the Attention-contact picker. */
   contactOptions: Array<{ value: string; label: string; hint?: string }>;
   duplicateWarning: { id: string; label: string } | null;
+  /** Values typed before a duplicate warning, echoed back into the form. */
+  keptValues?: Record<string, string | undefined>;
   /** F.6+ (Katie 2026-07-19): new-deal form now pre-fills client_name
    *  and property_* defaults from the parent account so Alex isn't
    *  retyping the same address every deal. Alex can override for
@@ -4569,7 +4606,7 @@ async function NewDealForm({
       )}
       <div>
         <label className={labelCls} htmlFor="deal-title">Opportunity title <span className="font-normal text-ppp-charcoal-400">(auto-fills from date · builder · client · address — edit freely)</span></label>
-        <AutoOpportunityTitle builder={account.company_name ?? ""} className={inputCls} />
+        <AutoOpportunityTitle builder={account.company_name ?? ""} defaultValue={keptValues?.title} className={inputCls} />
       </div>
       {/* Phase E-4 (2026-07-13): status + sub-status now cascade via a
           shared client picker (also exposes optional follow-up date +
@@ -4770,7 +4807,7 @@ async function NewDealForm({
           type="text"
           name="property_street"
           maxLength={200}
-          defaultValue={account.site_street ?? ""}
+          defaultValue={keptValues?.property_street ?? account.site_street ?? ""}
           placeholder="Street"
           className={inputCls}
         />
@@ -4779,7 +4816,7 @@ async function NewDealForm({
             type="text"
             name="property_city"
             maxLength={80}
-            defaultValue={account.site_city ?? ""}
+            defaultValue={keptValues?.property_city ?? account.site_city ?? ""}
             placeholder="City"
             className={inputCls}
           />
@@ -4787,7 +4824,7 @@ async function NewDealForm({
             type="text"
             name="property_state"
             maxLength={2}
-            defaultValue={account.site_state ?? ""}
+            defaultValue={keptValues?.property_state ?? account.site_state ?? ""}
             placeholder="State"
             className={inputCls}
           />
@@ -4795,7 +4832,7 @@ async function NewDealForm({
             type="text"
             name="property_zip"
             maxLength={10}
-            defaultValue={account.site_zip ?? ""}
+            defaultValue={keptValues?.property_zip ?? account.site_zip ?? ""}
             placeholder="ZIP"
             className={inputCls}
           />
@@ -4869,6 +4906,7 @@ async function OpportunitiesTab({
   duplicateWarning,
   projectStartedOppId,
   includeArchived = false,
+  keptValues,
 }: {
   accountId: string;
   /** Katie 2026-07-19: new-deal form pre-fills client_name + property
@@ -4895,6 +4933,9 @@ async function OpportunitiesTab({
    *  an existing non-deleted opp on this account. The NewDealForm
    *  renders a "Create anyway" resubmit path when this is populated. */
   duplicateWarning?: { id: string; label: string } | null;
+  /** Values typed before the duplicate warning fired, echoed back so
+   *  "Create anyway" doesn't mean "retype the whole form". */
+  keptValues?: Record<string, string | undefined>;
   /** Katie 2026-07-20: per-account "Include archived" toggle. URL
    *  param ?archived=1 on ?tab=opportunities. When true, listing
    *  fetches archived opps too — otherwise they're hidden (matches
@@ -4983,7 +5024,7 @@ async function OpportunitiesTab({
               </p>
             </div>
           </div>
-          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} />
+          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
         </div>
       </div>
     );
@@ -5163,7 +5204,7 @@ async function OpportunitiesTab({
           <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
         </summary>
         <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
-          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} />
+          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
         </div>
       </details>
 

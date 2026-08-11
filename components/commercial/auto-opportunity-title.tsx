@@ -29,21 +29,26 @@ function todayMMDDYYYY(): string {
 export function AutoOpportunityTitle({
   builder = "",
   builderFieldId,
+  defaultValue,
   className,
 }: {
   builder?: string;
+  /** Pre-existing title to restore (e.g. echoed back after a duplicate
+   *  warning). Treated as user-authored, so auto-composition stops and their
+   *  wording isn't silently overwritten. */
+  defaultValue?: string;
   /** Id of a client-side account input to read the builder name from when
    *  `builder` isn't known at render time (the pipeline sheet's picker). */
   builderFieldId?: string;
   className?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
-  const touchedRef = useRef(false);
+  const touchedRef = useRef(Boolean(defaultValue));
   // Seeded with the date on the FIRST render, not "" — the previous version
   // rendered an empty input on the server and composed in useEffect, so the
   // field visibly flashed blank before filling in. The date is the one part
   // that never depends on other fields, so it can be there from the start.
-  const [value, setValue] = useState(() => todayMMDDYYYY());
+  const [value, setValue] = useState(() => defaultValue || todayMMDDYYYY());
 
   useEffect(() => {
     const input = ref.current;
