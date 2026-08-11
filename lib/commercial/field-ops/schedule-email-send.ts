@@ -10,30 +10,87 @@ import type { CommercialEmployee } from "./employees";
  * R10.7 - painter schedule emails. Cadence:
  *   1. WELCOME — instant on add (their magic link, so they can clock in day one).
  *   2. SHIFT — instant whenever they're placed on the Calendar (the day's shifts
- *      + times + the note the scheduler wrote), and schedules their clock-in nudge.
+ *      + times + the note the scheduler wrote), and schedules their reminders.
  *   3. DAY-OF — each morning, today's shift (a change is never missed).
- *   4. CLOCK-IN NUDGE — 10 min before their first start time, via Resend's
- *      scheduled send (no minute-by-minute cron needed).
+ *   4. PRE-SHIFT REMINDERS — 1 DAY, 1 HOUR, and 10 MIN before their first start
+ *      time, each an independent Resend scheduled send carrying that crew member's
+ *      personal clock-in/out magic link (no minute-by-minute cron needed). All
+ *      three are cancelled + rescheduled together if the start time changes, and
+ *      suppressed once the painter has clocked in.
  *   5. WEEKLY — every Sunday, the full week ahead.
  * Office recipients get a daily "who's on today" digest + the Sunday week-ahead.
  * All crew mail is bilingual (en/es) and respects schedule_email_opt_out.
  * A per-(employee, date, kind) log makes the daily run idempotent.
  */
 
-const CLOCK_LEAD_MIN = 10;
+// Crew reminder cadence before a shift's start. Each is an INDEPENDENT Resend
+// scheduled send carrying that crew member's personal clock-in/out magic link, so
+// no minute-by-minute cron is needed. Karan 2026-08: "1 day, 1 hour, and 10
+// minutes before." Deduped per (employee, work_date, kind); all three are
+// cancelled + rescheduled together when a shift's start time changes.
+type ReminderKind = "reminder_1day" | "reminder_1hour" | "clock_reminder";
+type EmailKind = "day_of" | "weekly" | ReminderKind;
+const REMINDERS: { kind: ReminderKind; leadMin: number }[] = [
+  { kind: "reminder_1day", leadMin: 24 * 60 },
+  { kind: "reminder_1hour", leadMin: 60 },
+  { kind: "clock_reminder", leadMin: 10 },
+];
 
-// The earliest shift start on a day whose 10-min-before nudge is still in the
-// FUTURE. Taking the earliest start OVERALL would drop the nudge entirely when
-// an earlier shift's fire time has already passed but a later shift is still
-// upcoming (audit round 6) — so a mid-day resave would leave the still-upcoming
-// shift with no reminder.
-function earliestNudgeableStart(workDate: string, starts: (string | null)[]): string | null {
+// The earliest shift start on a day whose (start − leadMin) fire time is still in
+// the FUTURE. Taking the earliest start OVERALL would drop the reminder when an
+// earlier shift's fire time has already passed but a later shift is still upcoming
+// (audit round 6) — so a mid-day resave would leave the still-upcoming shift with
+// no reminder. Per-lead so each of the three reminders targets the right shift.
+function earliestNudgeableStart(workDate: string, starts: (string | null)[], leadMin: number): string | null {
   for (const s of (starts.filter(Boolean) as string[]).sort()) {
     const startUtc = etWallTimeToUtcIso(workDate, s);
     if (!startUtc) continue;
-    if (Date.parse(startUtc) - CLOCK_LEAD_MIN * 60_000 > Date.now()) return s;
+    if (Date.parse(startUtc) - leadMin * 60_000 > Date.now()) return s;
   }
   return null;
+}
+
+/** Bilingual copy for each reminder kind. All three carry the same personal
+ *  clock-in/out magic link. */
+function reminderCopy(
+  kind: ReminderKind,
+  firstName: string,
+  workDate: string,
+  startTime: string,
+  link: string,
+  ocName: string,
+  es: boolean
+): { subject: string; text: string } {
+  const t = fmtTime12(startTime);
+  const day = dayLabel(workDate, es);
+  if (kind === "reminder_1day") {
+    return es
+      ? { subject: `Recordatorio - trabajas manana (${day})`, text: `Hola ${firstName},\n\nRecordatorio: estas programado manana, ${day}, empezando a las ${t}. Marca entrada/salida aqui cuando llegues:\n\n${link}\n\n- ${ocName}` }
+      : { subject: `Reminder - you work tomorrow (${day})`, text: `Hi ${firstName},\n\nReminder: you're scheduled tomorrow, ${day}, starting at ${t}. Clock in/out here when you arrive:\n\n${link}\n\n- ${ocName}` };
+  }
+  if (kind === "reminder_1hour") {
+    return es
+      ? { subject: `Tu turno empieza pronto - ${t}`, text: `Hola ${firstName},\n\nTu turno empieza en aproximadamente una hora, a las ${t}. Toca aqui para marcar entrada (y salida cuando termines):\n\n${link}\n\n- ${ocName}` }
+      : { subject: `Your shift starts soon - ${t}`, text: `Hi ${firstName},\n\nYour shift starts in about an hour, at ${t}. Tap here to clock in (and clock out when you finish):\n\n${link}\n\n- ${ocName}` };
+  }
+  // clock_reminder — 10 minutes before.
+  return es
+    ? { subject: `Marca entrada - empieza a las ${t}`, text: `Hola ${firstName},\n\nTu turno empieza a las ${t}. Toca aqui para marcar entrada (y salida cuando termines):\n\n${link}\n\n- ${ocName}` }
+    : { subject: `Clock in - shift starts at ${t}`, text: `Hi ${firstName},\n\nYour shift starts at ${t}. Tap here to clock in (and clock out when you finish):\n\n${link}\n\n- ${ocName}` };
+}
+
+/** Did this crew member already punch in on `workDate` (ET day)? Then no reminder
+ *  is needed — don't nudge someone who's already clocked in. */
+async function hasPunchedThatDay(employeeId: string, workDate: string): Promise<boolean> {
+  const sb = commercialDb();
+  const { data: pRows } = await sb
+    .from("commercial_time_punches")
+    .select("clock_in_at")
+    .eq("employee_id", employeeId)
+    .gte("clock_in_at", `${addDaysIso(workDate, -1)}T00:00:00Z`)
+    .lte("clock_in_at", `${addDaysIso(workDate, 1)}T23:59:59Z`);
+  const etDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  return ((pRows ?? []) as { clock_in_at: string }[]).some((p) => etDay(p.clock_in_at) === workDate);
 }
 
 function baseUrl(): string {
@@ -156,7 +213,7 @@ function buildBody(firstName: string, upcoming: UpDay[], link: string, ocName: s
 /** Atomically claim (employee, date, kind). Returns true if WE claimed it (so we
  *  should send), false if it was already claimed. The UNIQUE constraint is the
  *  real guard — safe even if two cron runs overlap. */
-async function claimSend(employeeId: string, workDate: string, kind: "day_of" | "clock_reminder" | "weekly"): Promise<string | null> {
+async function claimSend(employeeId: string, workDate: string, kind: EmailKind): Promise<string | null> {
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_schedule_email_log")
@@ -170,7 +227,7 @@ async function claimSend(employeeId: string, workDate: string, kind: "day_of" | 
 /** Roll back a claim so a later run/edit can re-fire — used when the send fails
  *  (transient Resend error) so a claim-before-send never permanently suppresses
  *  a notification. */
-async function releaseClaim(employeeId: string, workDate: string, kind: "day_of" | "clock_reminder" | "weekly"): Promise<void> {
+async function releaseClaim(employeeId: string, workDate: string, kind: EmailKind): Promise<void> {
   const sb = commercialDb();
   await sb
     .from("commercial_schedule_email_log")
@@ -180,37 +237,39 @@ async function releaseClaim(employeeId: string, workDate: string, kind: "day_of"
     .eq("kind", kind);
 }
 
-/** Cancel a scheduled clock-in nudge + drop its claim so a start-time change
- *  reschedules a fresh, correctly-timed nudge (and the stale one doesn't fire). */
-export async function resetClockReminder(employeeId: string, workDate: string): Promise<void> {
+/** Cancel ONE reminder kind's scheduled send + drop its claim so a start-time
+ *  change reschedules a fresh, correctly-timed one (and the stale one doesn't
+ *  fire). Same fired/pending-with-id/pending-without-id handling proven on the
+ *  10-min nudge, now applied per kind. */
+async function resetReminderKind(employeeId: string, workDate: string, kind: ReminderKind): Promise<void> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_schedule_email_log")
     .select("id, resend_message_id, sent_at")
     .eq("employee_id", employeeId)
     .eq("work_date", workDate)
-    .eq("kind", "clock_reminder")
+    .eq("kind", kind)
     .maybeSingle();
   const row = data as { id: string; resend_message_id: string | null; sent_at: string | null } | null;
   if (!row) return;
-  // If the nudge's stored FIRE time is already in the past, it has delivered and
-  // cannot fire again — so clear the row unconditionally and free the day to
-  // schedule a fresh nudge for a pushed-later / second shift, even though Resend
+  // If the reminder's stored FIRE time is already in the past, it has delivered
+  // and cannot fire again — clear the row unconditionally and free the day to
+  // schedule a fresh one for a pushed-later / second shift, even though Resend
   // can't "cancel" a sent email (audit round 11).
   const alreadyFired = !!row.sent_at && Date.parse(row.sent_at) < Date.now();
   let safeToClear = alreadyFired;
   if (!alreadyFired) {
     if (row.resend_message_id) {
       // Still pending WITH a cancellable id — only clear (which lets a reschedule
-      // queue a NEW nudge) once the cancel is confirmed, else keep the row so the
-      // painter doesn't get TWO nudges (audit round 10).
+      // queue a NEW one) once the cancel is confirmed, else keep the row so the
+      // painter doesn't get TWO reminders (audit round 10).
       const { cancelScheduledEmail } = await import("@/lib/email/resend");
       safeToClear = await cancelScheduledEmail(row.resend_message_id, "commercial");
     } else {
       // Pending but NO cancellable Resend id — keeping the row only guarantees a
-      // wrong-time (or missing) nudge, because the id-less send can't be cancelled
-      // regardless. Clear it so a reschedule queues a fresh correctly-timed nudge;
-      // a rare harmless double beats a stale wrong-time one (audit round 14).
+      // wrong-time (or missing) reminder, because the id-less send can't be
+      // cancelled regardless. Clear it so a reschedule queues a fresh correctly-
+      // timed one; a rare harmless double beats a stale wrong-time one (round 14).
       safeToClear = true;
     }
   }
@@ -218,21 +277,48 @@ export async function resetClockReminder(employeeId: string, workDate: string): 
   await sb.from("commercial_schedule_email_log").delete().eq("id", row.id);
 }
 
+/** Cancel ALL of a (employee, date)'s pending reminders (1-day, 1-hour, 10-min).
+ *  Called on a schedule change, on clock-in, and on employee deactivation so no
+ *  stale reminder fires. Keeps the original name/signature its callers rely on. */
+export async function resetClockReminder(employeeId: string, workDate: string): Promise<void> {
+  for (const r of REMINDERS) await resetReminderKind(employeeId, workDate, r.kind);
+}
+
+/** Schedule whichever of the three reminders are still in the future for a
+ *  (employee, date), each targeting the earliest shift start ahead of its own
+ *  lead. Shared by the add-shift path, the same-day resync, and the daily cron. */
+async function scheduleAllReminders(
+  employeeId: string,
+  workDate: string,
+  starts: (string | null)[],
+  emp: { first_name: string; email: string | null; preferred_language: "en" | "es" },
+  ocName: string,
+  link: string
+): Promise<number> {
+  let n = 0;
+  for (const r of REMINDERS) {
+    const s = earliestNudgeableStart(workDate, starts, r.leadMin);
+    if (!s) continue;
+    await scheduleReminder(employeeId, workDate, s, emp, ocName, link, r.kind, r.leadMin);
+    n++;
+  }
+  return n;
+}
+
 /**
- * Re-sync one (employee, date)'s clock-in nudge after a SAME-DAY schedule change
- * (a shift removed, or the person marked off): cancel the queued nudge, then
- * re-schedule it for the day's EARLIEST REMAINING shift — or leave it cancelled
- * if nothing remains (or the day is now an absence, which getShiftsForRange
- * already suppresses). The once-daily cron can't cover same-day edits, so a bare
- * cancel would drop the nudge for a shift that's still on the books (audit 2026-08).
+ * Re-sync a (employee, date)'s reminders after a SAME-DAY schedule change (a
+ * shift removed, or the person marked off): cancel all queued reminders, then
+ * re-schedule them for the day's EARLIEST REMAINING shift — or leave them
+ * cancelled if nothing remains (or the day is now an absence, which
+ * getShiftsForRange already suppresses). The once-daily cron can't cover same-day
+ * edits, so a bare cancel would drop reminders for a shift that's still on the
+ * books (audit 2026-08).
  */
 export async function resyncClockReminder(employeeId: string, workDate: string): Promise<void> {
   try {
     await resetClockReminder(employeeId, workDate);
     const shifts = await getShiftsForRange(employeeId, workDate, 1);
     if (shifts.length === 0) return; // nothing left that day → stay cancelled
-    const firstStart = earliestNudgeableStart(workDate, shifts[0].jobs.map((j) => j.start));
-    if (!firstStart) return;
     const sb = commercialDb();
     const { data: e } = await sb
       .from("commercial_employees")
@@ -243,14 +329,14 @@ export async function resyncClockReminder(employeeId: string, workDate: string):
     const emp = e as { first_name: string; email: string | null; preferred_language: "en" | "es"; schedule_email_opt_out: boolean; magic_link_token: string | null } | null;
     if (!emp || !emp.email || emp.schedule_email_opt_out) return; // respect opt-out (audit round 2)
     const oc = await getOperatingCompany();
-    await scheduleClockReminder(employeeId, workDate, firstStart, emp, oc.name, magicLink(emp.magic_link_token));
+    await scheduleAllReminders(employeeId, workDate, shifts[0].jobs.map((j) => j.start), emp, oc.name, magicLink(emp.magic_link_token));
   } catch (err) {
     console.warn("[field-ops] resyncClockReminder failed:", err);
   }
 }
 
 /** Has (employee, date, kind) already been claimed/sent? Read-only check. */
-async function claimExists(employeeId: string, workDate: string, kind: "day_of" | "clock_reminder" | "weekly"): Promise<boolean> {
+async function claimExists(employeeId: string, workDate: string, kind: EmailKind): Promise<boolean> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_schedule_email_log")
@@ -330,61 +416,51 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
       tags: [{ name: "kind", value: "crew_shift" }],
     });
 
-    // Schedule the 10-min-before clock-in nudge for the day's earliest start.
+    // Schedule the 1-day / 1-hour / 10-min reminders for the day's earliest start.
     // Reset first: if this is an EDIT (start time moved), cancel the previously
-    // scheduled nudge + drop its claim so a fresh, correctly-timed one is queued
-    // instead of the old one firing at the wrong time.
+    // scheduled reminders + drop their claims so fresh, correctly-timed ones are
+    // queued instead of the old ones firing at the wrong time.
     await resetClockReminder(employeeId, workDate);
-    const firstStart = earliestNudgeableStart(workDate, shifts[0].jobs.map((j) => j.start));
-    if (firstStart) await scheduleClockReminder(employeeId, workDate, firstStart, emp, oc.name, link);
+    await scheduleAllReminders(employeeId, workDate, shifts[0].jobs.map((j) => j.start), emp, oc.name, link);
   } catch (err) {
     console.warn("[field-ops] shift assignment email failed:", err);
   }
 }
 
-/* ── 4. Clock-in nudge (10 min before, Resend scheduled send) ──────────────── */
+/* ── 4. Pre-shift reminders (1 day / 1 hour / 10 min before, Resend scheduled) ── */
 
-async function scheduleClockReminder(
+async function scheduleReminder(
   employeeId: string,
   workDate: string,
   startTime: string,
   emp: { first_name: string; email: string | null; preferred_language: "en" | "es" },
   ocName: string,
-  link: string
+  link: string,
+  kind: ReminderKind,
+  leadMin: number
 ): Promise<void> {
   if (!emp.email) return;
   const startUtc = etWallTimeToUtcIso(workDate, startTime);
   if (!startUtc) return;
-  const fireAt = new Date(Date.parse(startUtc) - CLOCK_LEAD_MIN * 60_000).toISOString();
-  if (Date.parse(fireAt) <= Date.now()) return; // too late to nudge
-  // Already punched in/out that ET day? Don't nudge a painter who's already
-  // clocked in — this survives a same-day schedule re-save that would otherwise
-  // re-arm the cancelled nudge (audit round 5). Punch-existence, not the log row.
-  const sbChk = commercialDb();
-  const { data: pRows } = await sbChk
-    .from("commercial_time_punches")
-    .select("clock_in_at")
-    .eq("employee_id", employeeId)
-    .gte("clock_in_at", `${addDaysIso(workDate, -1)}T00:00:00Z`)
-    .lte("clock_in_at", `${addDaysIso(workDate, 1)}T23:59:59Z`);
-  const etDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  if (((pRows ?? []) as { clock_in_at: string }[]).some((p) => etDay(p.clock_in_at) === workDate)) return;
-  const claimId = await claimSend(employeeId, workDate, "clock_reminder");
+  const fireAt = new Date(Date.parse(startUtc) - leadMin * 60_000).toISOString();
+  if (Date.parse(fireAt) <= Date.now()) return; // too late for this lead
+  // Already punched in that ET day? Don't remind a painter who's already clocked
+  // in — this survives a same-day schedule re-save that would otherwise re-arm a
+  // cancelled reminder (audit round 5). Punch-existence, not the log row.
+  if (await hasPunchedThatDay(employeeId, workDate)) return;
+  const claimId = await claimSend(employeeId, workDate, kind);
   if (!claimId) return; // already scheduled
   const es = emp.preferred_language === "es";
-  const t = fmtTime12(startTime);
-  const body = es
-    ? `Hola ${emp.first_name},\n\nTu turno empieza a las ${t}. Toca aqui para marcar entrada (y salida cuando termines):\n\n${link}\n\n- ${ocName}`
-    : `Hi ${emp.first_name},\n\nYour shift starts at ${t}. Tap here to clock in (and clock out when you finish):\n\n${link}\n\n- ${ocName}`;
+  const { subject, text } = reminderCopy(kind, emp.first_name, workDate, startTime, link, ocName, es);
   const { sendEmail } = await import("@/lib/email/resend");
   const sent = await sendEmail({
     channel: "commercial",
     to: emp.email,
-    subject: es ? `Marca entrada - empieza a las ${t}` : `Clock in - shift starts at ${t}`,
-    text: body,
+    subject,
+    text,
     scheduledAt: fireAt,
     ...(fromLine(ocName) ? { from: fromLine(ocName) } : {}),
-    tags: [{ name: "kind", value: "crew_clock_reminder" }],
+    tags: [{ name: "kind", value: `crew_${kind}` }],
   });
   if (sent.ok) {
     // Store the Resend id so a later start-time change can cancel this exact
@@ -399,7 +475,7 @@ async function scheduleClockReminder(
       .eq("id", claimId);
   } else {
     // Scheduling failed — release the claim so a later run reschedules it.
-    await releaseClaim(employeeId, workDate, "clock_reminder");
+    await releaseClaim(employeeId, workDate, kind);
   }
 }
 
@@ -463,19 +539,23 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
       }
     }
 
-    // CLOCK-IN NUDGES: today's remaining + tomorrow's shifts. scheduleClockReminder
-    // claims (employee, date, 'clock_reminder') and only sends if unclaimed, so this
-    // backfills any shift whose nudge wasn't already scheduled at add-time.
+    // PRE-SHIFT REMINDERS: today's + tomorrow's shifts, all three leads (1-day,
+    // 1-hour, 10-min). scheduleReminder claims (employee, date, kind) and only
+    // sends if unclaimed, so this backfills any reminder not already scheduled at
+    // add-time (e.g. a shift created before this feature, or whose add-time send
+    // failed). Each kind's earliestNudgeableStart honors its own lead, and the
+    // (start − lead ≤ now) skip lives inside scheduleReminder.
     for (const d of [today, tomorrow]) {
       const shifts = await getShiftsForRange(e.id, d, 1);
-      const firstStart = earliestNudgeableStart(d, shifts[0]?.jobs.map((j) => j.start) ?? []);
-      if (!firstStart) continue;
-      const alreadyScheduled = await claimExists(e.id, d, "clock_reminder");
-      if (alreadyScheduled) continue;
-      const startUtc = etWallTimeToUtcIso(d, firstStart);
-      if (!startUtc || Date.parse(startUtc) - CLOCK_LEAD_MIN * 60_000 <= Date.now()) continue;
-      await scheduleClockReminder(e.id, d, firstStart, e, oc.name, link).catch(() => undefined);
-      reminders++;
+      if (shifts.length === 0) continue;
+      const starts = shifts[0].jobs.map((j) => j.start);
+      for (const r of REMINDERS) {
+        if (await claimExists(e.id, d, r.kind)) continue;
+        const s = earliestNudgeableStart(d, starts, r.leadMin);
+        if (!s) continue;
+        await scheduleReminder(e.id, d, s, e, oc.name, link, r.kind, r.leadMin).catch(() => undefined);
+        reminders++;
+      }
     }
 
     // WEEKLY (Sundays): the week ahead (Mon-Sat), deduped on next Monday's date.
