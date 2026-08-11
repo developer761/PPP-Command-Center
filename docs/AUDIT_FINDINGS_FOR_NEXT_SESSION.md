@@ -93,5 +93,36 @@ The other `commercial_*` tables (e.g. `commercial_account_assignments`, migratio
 
 ---
 
+## 🟠 ROUND 3 — additional findings
+
+### 18. `CommercialOpportunity` type is MISSING `team_id` — the account type has it, the opp type doesn't
+Migration 122 added `team_id` to **both** `commercial_accounts` AND `commercial_opportunities`, and the opp create mutation writes it (`opportunities/mutations.ts:65` input field + L160 insert). But the `CommercialOpportunity` **TypeScript type** in `lib/commercial/opportunities/db.ts` was never given a `team_id` field (grep for `team_id` in that file returns nothing). The account type WAS updated (I added `team_id: string \| null` to `CommercialAccount`), so the two drifted.
+- **Why it compiles today:** nothing yet *reads* `opp.team_id` in typed code, so `tsc` stays green. The runtime data has it (the list queries use `.select("*")`, so the column IS returned).
+- **Why it bites next:** the moment the next session builds the opp-team display / resolves `opp.team_id ?? account.team_id` (findings #4 + #6), `opp.team_id` is a **type error** — the field they need to read isn't on the type.
+- **Fix:** add `team_id: string | null;` to the `CommercialOpportunity` type. One line; do it alongside #4/#6.
+
+### 19. `?back=` is NOT an open redirect — verified safe
+For completeness (this is a redirect built from a query param, which is the classic open-redirect shape): `proposal/new/page.tsx:42` and `proposal/[proposalId]/page.tsx:929` both **whitelist** `back` to the exact literal `"/commercial/proposals"` (`sp.back === "/commercial/proposals" ? … : ""`). Any other value is dropped. So a crafted `?back=https://evil.com` can't redirect anywhere. **No action** — noting it so the next session doesn't "fix" a non-bug or copy an unsafe pattern; if they add more back-targets, keep the strict-equality whitelist (don't switch to `startsWith("/")`, which re-opens `//evil.com` protocol-relative redirects).
+
+### 20. New Teams/auto-title code is clean — verified
+No `TODO`/`FIXME`/`@ts-ignore`/`eslint-disable` in `lib/commercial/teams`, `components/commercial/auto-opportunity-title.tsx`, or `app/commercial/settings/teams`. Noting so the next session doesn't re-sweep these; the open Teams items are the behavioral ones already listed (#5 assignments, #6 change-team, #8 pagination, #9 last-admin).
+
+---
+
+## 🟠 ROUND 4 — cascade / restore integrity
+
+### 21. Deal-delete tears down field-ops jobs, but deal-RESTORE doesn't rebuild them — asymmetric undo
+`deleteCommercialOpportunity` (`opportunities/mutations.ts:392-397`) cascades: it calls `cascadeDeleteJobsForOwner` which **soft-deletes the WO, cancels future crew assignments, and reopens a sent WO to draft**. But `restoreCommercialOpportunity` (L438-460) only cascade-restores **invoices** (`commercial_invoices` in the ±2s window) — it does **nothing** for field-ops jobs. So the undo-toast after deleting a deal brings the deal + its invoices back, but the **work order stays deleted and the crew assignments stay cancelled**. Alex clicks "Undo," thinks everything's back, and the scheduled crew silently isn't.
+- **Fix:** give restore a `cascadeRestoreJobsForOwner` mirror (re-open the jobs deleted in the same window; ideally re-instate the cancelled assignments). Same batch-window approach the invoice restore uses, or the batch-id tag the code comment already wishes for (L436-438).
+
+### 22. Deal-delete does NOT cascade to `commercial_project_purchases` (transactions) — latent zombie-cost risk
+The delete cascade covers invoices + jobs but **not purchases/transactions**. A deleted deal's purchase rows keep `deleted_at = null`. Today this is **masked** — every viewer/aggregator (`listPurchasesForProject(oppId)`, `purchaseTotalsByOpp(ids)`, the dashboard/job-costs report) drives off an **active-opp id list** (`listCommercialOpportunities({})` filters `deleted_at`), so a dead deal's costs are never fetched or summed. But it's a fragility, not a guarantee: the moment anyone adds a report that sums `commercial_project_purchases` directly (all-purchases, or by date range) without inner-joining the parent opp's `deleted_at`, **zombie costs from deleted deals leak into company P&L**. Invoices don't have this problem *because* they're cascaded/tombstoned.
+- **Fix (consistency):** mirror the invoice cascade for purchases — tombstone the deal's purchases on delete, restore them in the same window (and see #21). Cheap insurance vs. a P&L bug that'd be near-impossible to spot later.
+
+### 23. Verified SAFE: global proposals list already filters deleted-deal/account orphans
+For completeness (proposals aren't cascaded on deal-delete either): the global proposals page **defensively** `!inner`-joins the deal + account and drops any row whose `opportunity.deleted_at` or `account.deleted_at` is set (`app/commercial/proposals/page.tsx:247-267`). So orphaned proposals don't surface there. **No action** — but the underlying proposals still aren't tombstoned, so treat #22's "mirror the cascade" as covering proposals too if the next session standardizes cascade behavior.
+
+---
+
 ## 📋 Still to BUILD (from the meeting — see COMMERCIAL_MEETING_PLAN_2026_08.md)
 Display-layer status flatten (RFP column · single Proposal column + Follow-Up tag · pre/post picker split — NO data migration needed) · **Work-Orders-from-proposal-scope builder** (+ PDF upload · multiple WOs · unassigned-scope) · **Crew role** · shared IDs finish (PROJ/WO/TRANS) · new-opp slim form for existing builders + inline new-contact · proposals batch (revision lifecycle · Bid-Set→intro · Labor-into-Inclusions · Proposal→Won logic).
