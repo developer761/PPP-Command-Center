@@ -37,7 +37,18 @@ export async function POST(request: Request) {
   const source_monday = String(body.source_monday ?? "");
   if (!DATE_RE.test(source_monday)) return NextResponse.json({ error: "invalid_date" }, { status: 400 });
 
-  const res = await copyWeekForward(source_monday, data.user.id);
+  // Confirm step (Karan 2026-08): the first call returns needsConfirm + the crew
+  // who were off this week; the client re-calls with acknowledge_off_crew=true and
+  // an optional exclude_employee_ids for anyone NOT working next week.
+  const acknowledge_off_crew = body.acknowledge_off_crew === true;
+  const exclude_employee_ids = Array.isArray(body.exclude_employee_ids)
+    ? (body.exclude_employee_ids as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+
+  const res = await copyWeekForward(source_monday, data.user.id, {
+    acknowledgeOffCrew: acknowledge_off_crew,
+    excludeEmployeeIds: exclude_employee_ids,
+  });
   if (!res.ok) return NextResponse.json({ error: "copy_failed", detail: res.error }, { status: 400 });
   return NextResponse.json(res);
 }

@@ -147,6 +147,9 @@ export function FieldOpsCalendar({
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
   const [copyMsg, setCopyMsg] = useState<Msg>(null);
+  // Confirm step when copying a week forward: crew who were off THIS week, and
+  // which of them the user says are working next week (checked = copy them).
+  const [copyConfirm, setCopyConfirm] = useState<{ sourceMonday: string; offCrew: { employee_id: string; name: string }[]; working: Set<string> } | null>(null);
   // A11y focus management for the day/person slide-out (R7-a11y #6): move focus
   // into the panel on open, restore it to the triggering element on close.
   const panelRef = useRef<HTMLDivElement>(null);
@@ -173,20 +176,27 @@ export function FieldOpsCalendar({
   const dayCrew = (date: string): DayCrew[] => grid.find((d) => d.date === date)?.crew ?? [];
   const dayOff = (date: string): DayOff[] => grid.find((d) => d.date === date)?.off ?? [];
 
-  async function handleCopyWeek(sourceMonday: string) {
+  async function handleCopyWeek(sourceMonday: string, opts?: { acknowledge?: boolean; exclude?: string[] }) {
     setCopyBusy(true);
     setCopyMsg(null);
     try {
       const r = await fetch("/api/commercial/field-ops/copy-week", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_monday: sourceMonday }),
+        body: JSON.stringify({ source_monday: sourceMonday, acknowledge_off_crew: opts?.acknowledge ?? false, exclude_employee_ids: opts?.exclude ?? [] }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setCopyMsg({ tone: "err", text: d.detail || "Couldn't copy — try again." }); return; }
+      // First pass found crew who were off this week — ask before copying them.
+      if (d.needsConfirm) {
+        setCopyConfirm({ sourceMonday, offCrew: d.offCrew ?? [], working: new Set() });
+        return;
+      }
+      setCopyConfirm(null);
       const skips: string[] = [];
       if (d.skippedExisting) skips.push(`${d.skippedExisting} already there`);
-      if (d.skippedAbsent) skips.push(`${d.skippedAbsent} off`);
+      if (d.skippedAbsent) skips.push(`${d.skippedAbsent} off next week`);
+      if (d.skippedOffCrew) skips.push(`${d.skippedOffCrew} you skipped (off this week)`);
       if (d.skippedDeletedJob) skips.push(`${d.skippedDeletedJob} closed WO`);
       if (d.skippedInactive) skips.push(`${d.skippedInactive} inactive crew`);
       const tail = skips.length ? ` · skipped ${skips.join(", ")}` : "";
@@ -202,6 +212,25 @@ export function FieldOpsCalendar({
     } finally {
       setCopyBusy(false);
     }
+  }
+
+  // User answered the "who's working next week?" confirm → copy, skipping anyone
+  // they DIDN'T check (they were off this week and aren't coming back next week).
+  function confirmCopyWeek() {
+    if (!copyConfirm) return;
+    const exclude = copyConfirm.offCrew.filter((c) => !copyConfirm.working.has(c.employee_id)).map((c) => c.employee_id);
+    const src = copyConfirm.sourceMonday;
+    setCopyConfirm(null);
+    void handleCopyWeek(src, { acknowledge: true, exclude });
+  }
+  function toggleCopyWorking(employeeId: string) {
+    setCopyConfirm((c) => {
+      if (!c) return c;
+      const working = new Set(c.working);
+      if (working.has(employeeId)) working.delete(employeeId);
+      else working.add(employeeId);
+      return { ...c, working };
+    });
   }
 
   useEffect(() => {
@@ -529,8 +558,12 @@ export function FieldOpsCalendar({
           monthStart={monthStart}
           busy={copyBusy}
           msg={copyMsg}
-          onCopy={handleCopyWeek}
-          onClose={() => setCopyOpen(false)}
+          onCopy={(m) => handleCopyWeek(m)}
+          onClose={() => { setCopyOpen(false); setCopyConfirm(null); }}
+          confirm={copyConfirm}
+          onToggleWorking={toggleCopyWorking}
+          onConfirm={confirmCopyWeek}
+          onCancelConfirm={() => setCopyConfirm(null)}
         />
       )}
 
@@ -717,27 +750,62 @@ function DayPanel({
 
 /* Copy Week Forward — pick a source week (any date snaps to its Monday) and
    duplicate it into the following week. No emails (bulk). */
-function CopyWeekModal({ monthStart, busy, msg, onCopy, onClose }: { monthStart: string; busy: boolean; msg: Msg; onCopy: (mondayIso: string) => void; onClose: () => void }) {
+function CopyWeekModal({ monthStart, busy, msg, onCopy, onClose, confirm, onToggleWorking, onConfirm, onCancelConfirm }: {
+  monthStart: string; busy: boolean; msg: Msg; onCopy: (mondayIso: string) => void; onClose: () => void;
+  confirm: { sourceMonday: string; offCrew: { employee_id: string; name: string }[]; working: Set<string> } | null;
+  onToggleWorking: (employeeId: string) => void;
+  onConfirm: () => void;
+  onCancelConfirm: () => void;
+}) {
   const [srcDate, setSrcDate] = useState(monthStart);
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-ppp-charcoal-900/30" onClick={onClose} aria-hidden />
       <div role="dialog" aria-modal="true" aria-label="Copy a week's schedule forward" className="absolute inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-md bg-surface border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-xl p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h3 className="text-[15px] font-bold text-ppp-charcoal">Copy a week forward</h3>
-            <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">Duplicates every shift from the chosen week into the next week. Skips anyone off or already scheduled. Crew aren&rsquo;t emailed — you review, then edits notify them.</p>
-          </div>
-          <button onClick={onClose} className="text-ppp-charcoal-400 hover:text-ppp-charcoal text-xl leading-none px-1 min-h-[44px] inline-flex items-center" aria-label="Close">&times;</button>
-        </div>
-        {msg && <div role={msg.tone === "err" ? "alert" : "status"} aria-live="polite" className={`rounded-lg px-3 py-2 text-[12.5px] mb-3 ${msg.tone === "err" ? "bg-rose-50 border border-rose-200 text-rose-700" : "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-700"}`}>{msg.text}</div>}
-        <label className="block mb-3"><span className={LABEL_CLS}>Week to copy <span className="font-normal text-ppp-charcoal-400">(any day in it)</span></span>
-          <input type="date" value={srcDate} onChange={(e) => setSrcDate(e.target.value)} className={INPUT_CLS} />
-        </label>
-        <div className="flex items-center gap-2">
-          <button onClick={() => onCopy(srcDate)} disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(srcDate)} className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{busy ? "Copying…" : "Copy to next week"}</button>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-ppp-charcoal-200 text-[13px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Close</button>
-        </div>
+        {confirm ? (
+          <>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-[15px] font-bold text-ppp-charcoal">Who&rsquo;s working next week?</h3>
+                <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">These crew were <strong>marked off this week</strong>. Check anyone who <strong>is</strong> working next week to copy their shifts forward — leave the rest unchecked and they&rsquo;ll be skipped.</p>
+              </div>
+              <button onClick={onCancelConfirm} className="text-ppp-charcoal-400 hover:text-ppp-charcoal text-xl leading-none px-1 min-h-[44px] inline-flex items-center" aria-label="Back">&times;</button>
+            </div>
+            <ul className="space-y-1.5 mb-4 max-h-[40vh] overflow-y-auto">
+              {confirm.offCrew.map((c) => (
+                <li key={c.employee_id}>
+                  <label className="flex items-center gap-2.5 rounded-lg border border-ppp-charcoal-100 px-3 py-2.5 cursor-pointer hover:bg-ppp-charcoal-50 min-h-[44px]">
+                    <input type="checkbox" checked={confirm.working.has(c.employee_id)} onChange={() => onToggleWorking(c.employee_id)} className="h-4 w-4" />
+                    <span className="text-[13px] font-semibold text-ppp-charcoal">{c.name}</span>
+                    <span className="ml-auto text-[11px] font-medium text-ppp-charcoal-400">{confirm.working.has(c.employee_id) ? "working — copy" : "skip"}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center gap-2">
+              <button onClick={onConfirm} disabled={busy} className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{busy ? "Copying…" : "Continue copy"}</button>
+              <button onClick={onCancelConfirm} className="px-4 py-2 rounded-lg border border-ppp-charcoal-200 text-[13px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Back</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-[15px] font-bold text-ppp-charcoal">Copy a week forward</h3>
+                <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">Duplicates every shift from the chosen week into the next week. Skips anyone off next week or already scheduled. If someone was off THIS week, we&rsquo;ll ask before carrying them forward. Crew aren&rsquo;t emailed — you review, then edits notify them.</p>
+              </div>
+              <button onClick={onClose} className="text-ppp-charcoal-400 hover:text-ppp-charcoal text-xl leading-none px-1 min-h-[44px] inline-flex items-center" aria-label="Close">&times;</button>
+            </div>
+            {msg && <div role={msg.tone === "err" ? "alert" : "status"} aria-live="polite" className={`rounded-lg px-3 py-2 text-[12.5px] mb-3 ${msg.tone === "err" ? "bg-rose-50 border border-rose-200 text-rose-700" : "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-700"}`}>{msg.text}</div>}
+            <label className="block mb-3"><span className={LABEL_CLS}>Week to copy <span className="font-normal text-ppp-charcoal-400">(any day in it)</span></span>
+              <input type="date" value={srcDate} onChange={(e) => setSrcDate(e.target.value)} className={INPUT_CLS} />
+            </label>
+            <div className="flex items-center gap-2">
+              <button onClick={() => onCopy(srcDate)} disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(srcDate)} className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{busy ? "Copying…" : "Copy to next week"}</button>
+              <button onClick={onClose} className="px-4 py-2 rounded-lg border border-ppp-charcoal-200 text-[13px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Close</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
