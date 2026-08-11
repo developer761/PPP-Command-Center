@@ -320,6 +320,11 @@ async function createDealFromPipelineAction(formData: FormData) {
     rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw) ? rfpReceivedRaw : null;
   const teamRaw = String(formData.get("team_id") ?? "").trim();
   const team_id = teamRaw && UUID_RE.test(teamRaw) ? teamRaw : null;
+  const client_name = String(formData.get("client_name") ?? "").trim() || null;
+  const property_street = String(formData.get("property_street") ?? "").trim() || null;
+  const property_city = String(formData.get("property_city") ?? "").trim() || null;
+  const property_state = String(formData.get("property_state") ?? "").trim() || null;
+  const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
 
   const backHref = "/commercial/opportunities?new_deal=1#new-deal-sheet";
   if (!UUID_RE.test(account_id)) {
@@ -346,6 +351,27 @@ async function createDealFromPipelineAction(formData: FormData) {
     proposalDueAt = `${proposalDueRaw}T16:00:00Z`;
   }
 
+  // Duplicate check, matching the account form. The pipeline path had none, so
+  // logging the same RFP from here silently created a second deal — and the two
+  // fields it keys on are exactly the two just added above, which is why both
+  // halves ship together.
+  const forceCreate = String(formData.get("confirm_duplicate") ?? "") === "1";
+  if (!forceCreate && client_name && property_street) {
+    const { findDuplicateOpportunities } = await import("@/lib/commercial/opportunities/duplicates");
+    const dups = await findDuplicateOpportunities({
+      accountId: account_id,
+      clientName: client_name,
+      propertyStreet: property_street,
+    });
+    if (dups.length > 0) {
+      const first = dups[0];
+      const label = formatOpportunityNumber(first.project_number) || first.title;
+      redirect(
+        `/commercial/opportunities?new_deal=1&dup_id=${first.id}&dup_label=${encodeURIComponent(label)}#new-deal-sheet`
+      );
+    }
+  }
+
   const result = await createCommercialOpportunity({
     account_id,
     title,
@@ -361,6 +387,11 @@ async function createDealFromPipelineAction(formData: FormData) {
     proposal_due_at: proposalDueAt,
     rfp_received_at,
     team_id,
+    client_name,
+    property_street,
+    property_city,
+    property_state,
+    property_zip,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -1510,6 +1541,11 @@ export default async function CommercialOpportunitiesPage({
           todayIso={todayEtIso}
           closeHref={newDealSheetCloseHref}
           sheetError={sheetError}
+          duplicateWarning={
+            typeof sp.dup_id === "string" && UUID_RE.test(sp.dup_id)
+              ? { id: sp.dup_id, label: typeof sp.dup_label === "string" ? sp.dup_label : "" }
+              : null
+          }
           action={createDealFromPipelineAction}
         />
       )}
@@ -1528,6 +1564,7 @@ function NewDealSlideOut({
   todayIso,
   closeHref,
   sheetError,
+  duplicateWarning,
   action,
 }: {
   accounts: CommercialAccount[];
@@ -1538,6 +1575,8 @@ function NewDealSlideOut({
   todayIso: string;
   closeHref: string;
   sheetError: string | null;
+  /** Set when the create action bounced back on a duplicate match. */
+  duplicateWarning: { id: string; label: string } | null;
   action: (formData: FormData) => void | Promise<void>;
 }) {
   return (
@@ -1585,6 +1624,25 @@ function NewDealSlideOut({
             accounts={accounts.map((a) => ({ id: a.id, company_name: a.company_name }))}
           />
 
+          {/* Duplicate match. Without a "Create anyway" path the check would be
+              a dead end — the user would resubmit identical values forever. */}
+          {duplicateWarning && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-900 space-y-1.5">
+              <div className="font-semibold">Possible duplicate</div>
+              <div>
+                This customer already has{" "}
+                <Link
+                  href={`/commercial/opportunities/${duplicateWarning.id}`}
+                  className="font-semibold underline hover:no-underline"
+                >
+                  {duplicateWarning.label || "a matching opportunity"}
+                </Link>{" "}
+                at the same client and address. Open it, or create this one anyway.
+              </div>
+              <input type="hidden" name="confirm_duplicate" value="1" />
+            </div>
+          )}
+
           <div>
             <label htmlFor="deal-title" className={LABEL_CLS}>
               Opportunity name <span className="text-rose-600">*</span>
@@ -1622,6 +1680,40 @@ function NewDealSlideOut({
           </div>
 
           {/* Bid low / high removed per the 2026-08 meeting — pricing lives on the proposal. */}
+
+          {/* Client + project address. The slide-out never collected these, so a
+              deal created from the pipeline was materially thinner than the
+              same deal created from the account — and it shows downstream:
+              hydrateProposalContext builds the proposal's project_name from
+              client_name and its project_address from property_street, so a
+              proposal started on a pipeline-created deal had a BLANK address on
+              the PDF. They're also the two fields the duplicate check keys on. */}
+          <div>
+            <label htmlFor="new-deal-client" className={LABEL_CLS}>Client name</label>
+            <input
+              id="new-deal-client"
+              name="client_name"
+              maxLength={200}
+              placeholder="Who the work is for (the GC's customer)"
+              className={INPUT_CLS}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="new-deal-street" className={LABEL_CLS}>Project address</label>
+            <input
+              id="new-deal-street"
+              name="property_street"
+              maxLength={200}
+              placeholder="Street"
+              className={INPUT_CLS}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+              <input name="property_city" maxLength={80} placeholder="City" className={INPUT_CLS} />
+              <input name="property_state" maxLength={40} placeholder="State" className={INPUT_CLS} />
+              <input name="property_zip" maxLength={20} placeholder="ZIP" className={INPUT_CLS} />
+            </div>
+          </div>
 
           <div>
             <label htmlFor="new-deal-rfp" className={LABEL_CLS}>RFP received</label>
