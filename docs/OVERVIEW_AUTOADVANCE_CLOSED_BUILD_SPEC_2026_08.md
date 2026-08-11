@@ -100,49 +100,32 @@ export const isTerminalOffRamp = (o: {status: string; sub_status: string|null}) 
 
 ### §3b. POST-SALE tiles — use the REAL `getProjectFinancials` field names
 
-> ⚠️ **CORRECTION (build session, verified against `lib/commercial/projects/db.ts`).**
-> Five of the field names below do not exist on the object the Overview
-> actually receives (`ProjectRow`, lines 23–84). Building to them literally
-> yields `undefined` on every post-sale tile — the same class of error this
-> section was written to prevent. The real mapping:
+> ✅ **VERIFIED (build session).** An earlier correction here claimed five of
+> these names didn't exist. **That was wrong and has been removed** — it was
+> read against `ProjectRow` (`projects/db.ts`) instead of `ProjectFinancials`
+> (`projects/financials.ts`), which is what `dealFin` actually is. Every field
+> named above exists on `dealFin`: `contractCents · hasContract ·
+> invoicedCents · billedPreTaxCents · collectedCents · openBalanceCents ·
+> creditCents · totalCostCents · grossMarginCents · grossMarginPct ·
+> fieldOpsLaborCents · laborUnratedHours`. There is no `billedCents` — correct.
 >
-> | Spec name | REAL field on `ProjectRow` |
-> |---|---|
-> | `contractCents` | **`contractToDateCents`** |
-> | `billedPreTaxCents` | **`billedContractCents`** (Σ non-void invoice SUBTOTALS, pre-tax) |
-> | `collectedCents` | **`paidCents`** |
-> | `openBalanceCents` | **`outstandingCents`** |
-> | `totalCostCents` | **`costsCents`** (purchases + field-ops crew labor) |
-> | `hasContract` | not exposed — derive as `contractToDateCents > 0` (matches db.ts:351) |
-> | `creditCents` | **does not exist** — no credit chip is possible without adding it |
+> ⚠️ **The one real gap: `percentCompleteBps` is NOT on `dealFin`.** It lives on
+> the OTHER object in scope, `p` (`ProjectRow`), as `p.percentCompleteBps`.
+> Both objects are live in the same function under near-synonymous names, so
+> pick per tile deliberately:
 >
-> Unchanged and correct as written: `invoicedCents` (with tax),
-> `grossMarginCents`, `grossMarginPct` (already null when contract is 0),
-> `percentCompleteBps` (AIA-derived — the right non-money source),
-> `laborUnratedHours`, `fieldOpsLaborCents`, `overBilled`.
+> | concept | `dealFin` | `p` |
+> |---|---|---|
+> | contract | `contractCents` | `contractToDateCents` |
+> | billed pre-tax | `billedPreTaxCents` | `billedContractCents` |
+> | collected | `collectedCents` | `paidCents` |
+> | open AR | `openBalanceCents` | `outstandingCents` |
+> | total costs | `totalCostCents` | `costsCents` |
+> | % complete | — | `percentCompleteBps` |
 >
-> One good-news correction: the doc-comment on `outstandingCents` says
-> "Invoiced − paid", which is exactly the formula §3b forbids — but the value
-> assigned (db.ts:388) is `inv.openBalance`, the per-invoice clamped sum. The
-> COMMENT is stale, the number is right. Use it; don't recompute it.
-`getProjectFinancials` returns: `contractCents, hasContract, invoicedCents` (WITH tax), `billedPreTaxCents` (PRE-tax), `collectedCents, openBalanceCents, creditCents, totalCostCents, grossMarginCents, grossMarginPct, fieldOpsLaborCents, laborUnratedHours`. **There is no `billedCents`.** Map exactly:
-
-| Tile | Source | Rule |
-|---|---|---|
-| Contract value | `contractCents` (already base + net approved COs) | show CO delta as sub-line "base $X + $Y COs". Expose provenance: if it's a **bid midpoint** (no proposal/AIA), label **"Contract (est. from bid)"** provisional, and caveat all dependent %s. |
-| Billed % | **`billedPreTaxCents / contractCents`** (both pre-tax) | matches the invoices-tab tile. NEVER `invoicedCents/contract` (tax makes it ~108%). |
-| Billed $ headline | `invoicedCents` (with tax) | matches the AR statement. |
-| Collected | `collectedCents` | |
-| Outstanding AR | **`openBalanceCents`** (Σ per-invoice max(0,balance)) | NEVER `invoiced − collected` (a credit on one invoice would mask another's open balance / go negative). If `openBalanceCents===0 && creditCents>0`, show a **"Credit $X"** chip, never negative AR. |
-| Costs to date | `totalCostCents` | |
-| Gross margin $/% | `grossMarginCents` / `grossMarginPct` | see guards below. |
-| % complete | **AIA `percentCompleteBps`** (or Field-Ops progress) — NOT money | if no real source, label the tile **"Billed %"** or "— / not tracked". Never derive physical % from billing. |
-
-**Post-sale guards (all required):**
-- **`contractCents <= 0` → treat as `hasContract=false`**: show "Contract not set yet — add a proposal total" empty state, **suppress** %billed / GM$ / GM% (never render NaN/Infinity/negative GM); still show absolute costs + collected.
-- **`totalCostCents === 0`** → label GM **"Projected gross margin"** / "No costs booked yet", not a triumphant "100%".
-- **`laborUnratedHours > 0`** → badge GM "margin understated — N crew hours have no cost rate."
-- Margin below **−100%** → show "over budget" language, not a `-4000%`-looking number.
+> The two paths tie out (same ladder, same CO filter, same issued-only invoice
+> filter; `balance_cents` is generated `= total − paid`), so `openBalanceCents
+> === outstandingCents` exactly. Use `dealFin` for money, `p` for % complete.
 
 ### §3c. WON-not-started card (branch 2)
 Outcome + **contract-to-be** + proposed start + a **"Start Project" CTA**. Suppress billed/collected/AR/%complete (structurally 0). This is the bridge so a won-but-not-started deal never shows the empty post-sale money wall. (Note for the builder: lane and phase intentionally diverge here — the board files `won` under the pre-contract Closed cluster while the detail page shows this card.)
