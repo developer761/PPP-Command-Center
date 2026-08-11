@@ -166,7 +166,7 @@ export default function PurchaseForm({
         ) : (
           <div>
             <span className={LABEL_CLS}>Date</span>
-            <DateField ariaLabel="Purchase date" name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
+            <DateField ariaLabel="Transaction date" name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
           </div>
         )}
       </div>
@@ -175,13 +175,13 @@ export default function PurchaseForm({
       {isLabor && (
         <div className="sm:max-w-[calc(50%-0.375rem)]">
           <span className={LABEL_CLS}>Date</span>
-          <DateField ariaLabel="Purchase date" name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
+          <DateField ariaLabel="Transaction date" name="purchased_at" defaultValue={defDate} placeholder="Pick a date" className="mt-1" />
         </div>
       )}
 
       <div>
         <label className={LABEL_CLS} htmlFor="pu-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-        <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={purchase?.description ?? preserve?.desc ?? ""} className={TEXTAREA_CLS} placeholder={isLabor ? "Scope of work / notes" : "What was purchased"} />
+        <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={purchase?.description ?? preserve?.desc ?? ""} className={TEXTAREA_CLS} placeholder={isLabor ? "Scope of work / notes" : "What this was for"} />
       </div>
       <div>
         <label className={LABEL_CLS} htmlFor="pu-receipt">Receipt photo <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>

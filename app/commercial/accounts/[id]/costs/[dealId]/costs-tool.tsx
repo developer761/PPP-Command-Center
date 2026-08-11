@@ -147,7 +147,7 @@ async function addPurchaseAction(formData: FormData) {
   const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000) };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
-    costsRedirect(account_id, opp_id, { error: "Enter a purchase amount greater than $0.", ...preserve }, back, origin);
+    costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", ...preserve }, back, origin);
   }
   // Blank date → today's ET date at 16:00Z (stable, matches the edit prefill).
   const purchased_at = new Date(`${rawDate || etToday()}T16:00:00Z`).toISOString();
@@ -192,7 +192,7 @@ async function updatePurchaseAction(formData: FormData) {
   const description = String(formData.get("description") ?? "");
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
-    costsRedirect(account_id, opp_id, { error: "Enter a purchase amount greater than $0.", edit_purchase: purchase_id }, back, origin);
+    costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", edit_purchase: purchase_id }, back, origin);
   }
   const res = await updatePurchase(
     purchase_id,
@@ -492,10 +492,10 @@ export async function ProjectCostsTool({
               reads unmistakably as THE button to tap (2026-08 field walk). */}
           <summary className="cursor-pointer list-none px-4 py-3 min-h-[48px] flex items-center justify-center gap-2 text-[14px] font-bold text-white bg-cc-brand-600 hover:bg-cc-brand-700 rounded-lg select-none touch-manipulation shadow-sm shadow-cc-brand-600/30">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform"><path d="M12 5v14 M5 12h14" /></svg>
-            <span className="group-open:hidden">Log a purchase / receipt</span>
+            <span className="group-open:hidden">Log a transaction</span>
             <span className="hidden group-open:inline">Close</span>
           </summary>
-          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add purchase" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc }} />
+          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add transaction" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc }} />
         </details>
 
         {purchases.length > 0 && (
@@ -552,7 +552,7 @@ export async function ProjectCostsTool({
                             <input type="hidden" name="back" value={sp.back ?? ""} />
                             <input type="hidden" name="origin" value={variant} />
                             <input type="hidden" name="purchase_id" value={pu.id} />
-                            <ConfirmSubmitButton message={`Delete this ${purchaseCategoryLabel(pu.category).toLowerCase()} purchase? This can't be undone.`} pendingLabel="Deleting…" className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[44px]">Delete</ConfirmSubmitButton>
+                            <ConfirmSubmitButton message={`Delete this ${purchaseCategoryLabel(pu.category).toLowerCase()} transaction? This can't be undone.`} pendingLabel="Deleting…" className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[44px]">Delete</ConfirmSubmitButton>
                           </form>
                         </div>
                       </div>

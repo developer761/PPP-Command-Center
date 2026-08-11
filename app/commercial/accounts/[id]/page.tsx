@@ -993,12 +993,19 @@ function PipelineDealBlock({ accountId, opp }: { accountId: string; opp: Commerc
  */
 // The six delivery-tool keys, in canonical order (RUX-2). Shared by the deal
 // tab normalizer + dispatch so a `dt=<tool>` value is recognized in both.
-const DEAL_TOOL_KEYS = ["work-order", "submittals", "change-orders", "aia", "costs", "closeout"];
+// "transactions" is an alias for "costs": the surface was renamed in the
+// 2026-08 meeting but the URL key stayed `costs`, so links written to the new
+// name would 404. Both resolve; `costs` remains canonical so every existing
+// bookmark, bell link and back-href keeps working.
+const DEAL_TOOL_KEYS = ["work-order", "submittals", "change-orders", "aia", "costs", "transactions", "closeout"];
 
 async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = "overview", projectTool: projectToolRaw = "change-orders", sp }: { accountId: string; projectId: string | null; dealTab?: string; projectTool?: string; sp?: SPShape }) {
   // Normalize the Project tool key first (still consumed by old ?pt= links).
   const TOOL_KEYS = DEAL_TOOL_KEYS;
-  const projectTool = TOOL_KEYS.includes(projectToolRaw) ? projectToolRaw : "change-orders";
+  const projectToolResolved = TOOL_KEYS.includes(projectToolRaw) ? projectToolRaw : "change-orders";
+  // Same alias collapse as dealTab below — an old ?pt=transactions link must
+  // land on the costs panel, not a blank one.
+  const projectTool = projectToolResolved === "transactions" ? "costs" : projectToolResolved;
   // Normalize the deal tab (RUX-2). The six delivery tools are now first-class
   // `dt=` values alongside the primary tabs. Back-compat: an old
   // `dt=project&pt=<tool>` link resolves to `dt=<tool>`; an unknown value falls
@@ -1006,6 +1013,9 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
   const PRIMARY_DT = ["overview", "proposals", "invoices", "documents", "pnl"];
   let dealTab = dealTabRaw === "project" ? projectTool : dealTabRaw;
   if (![...PRIMARY_DT, ...TOOL_KEYS].includes(dealTab)) dealTab = "overview";
+  // Collapse the alias onto the canonical key so every downstream
+  // `dealTab === "costs"` check keeps working unchanged.
+  if (dealTab === "transactions") dealTab = "costs";
   // Drill-in: one deal's home, folded under the account. EVERY deal — a bid or
   // a Won job — opens the same full project view (allDeals:true), so the tools
   // + invoicing are never gated on Won. Nothing is locked.
@@ -1267,23 +1277,43 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
       <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {(() => {
           const dealBase = `${base}?tab=projects&project=${p.opp.id}`;
-          const primary = [
-            { key: "overview", label: "Overview", href: dealBase },
-            { key: "proposals", label: "Proposals", href: `${dealBase}&dt=proposals` },
-            { key: "invoices", label: "Invoices", href: `${dealBase}&dt=invoices` },
-            { key: "pnl", label: "P&L", href: `${dealBase}&dt=pnl` },
-            { key: "documents", label: "Documents", href: `${dealBase}&dt=documents` },
-          ];
+          // Karan 2026-08: "Pre-Contract Tabs should be different from
+          // Post-Contract Tabs." Before the contract there is nothing to
+          // submit, invoice, bill or close out — showing eight delivery tools
+          // on a bid we haven't won is eight dead ends, and it buries the two
+          // things that DO matter (the proposal, and the plans/specs).
+          //   Pre-contract  → Proposals · Documents
+          //   Post-contract → the full delivery set
+          // A won deal keeps Proposals so the signed one stays one click away.
+          const isPostContract = isPostSaleProject(p.opp);
+          const primary = isPostContract
+            ? [
+                { key: "overview", label: "Overview", href: dealBase },
+                { key: "proposals", label: "Proposals", href: `${dealBase}&dt=proposals` },
+                { key: "invoices", label: "Invoices", href: `${dealBase}&dt=invoices` },
+                { key: "pnl", label: "P&L", href: `${dealBase}&dt=pnl` },
+                { key: "documents", label: "Documents", href: `${dealBase}&dt=documents` },
+              ]
+            : [
+                { key: "overview", label: "Overview", href: dealBase },
+                { key: "proposals", label: "Proposals", href: `${dealBase}&dt=proposals` },
+                { key: "documents", label: "Documents", href: `${dealBase}&dt=documents` },
+              ];
           // Delivery tools — same canonical order + labels as the sidebar's
           // "Delivery Tools" group so the two surfaces read identically.
-          const tools = [
-            { key: "work-order", label: "Work Order" },
-            { key: "submittals", label: "Submittals" },
-            { key: "change-orders", label: "Change Orders" },
-            { key: "aia", label: "AIA Billing" },
-            { key: "costs", label: "Transactions" },
-            { key: "closeout", label: "Closeout & Warranty" },
-          ].map((t) => ({ ...t, href: `${dealBase}&dt=${t.key}` }));
+          // Hidden entirely pre-contract; the URLs still resolve, so an old
+          // bookmark or a deal that gets un-won doesn't 404.
+          const tools = (isPostContract
+            ? [
+                { key: "work-order", label: "Work Order" },
+                { key: "submittals", label: "Submittals" },
+                { key: "change-orders", label: "Change Orders" },
+                { key: "aia", label: "AIA Billing" },
+                { key: "costs", label: "Transactions" },
+                { key: "closeout", label: "Closeout & Warranty" },
+              ]
+            : []
+          ).map((t) => ({ ...t, href: `${dealBase}&dt=${t.key}` }));
           const tabClass = (active: boolean) =>
             `shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${active ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`;
           return (
@@ -1293,8 +1323,11 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                   {t.label}
                 </Link>
               ))}
-              {/* Divider separating deal-level tabs from the delivery tools. */}
-              <span aria-hidden className="shrink-0 self-center mx-1 h-5 w-px bg-ppp-charcoal-200" />
+              {/* Divider separating deal-level tabs from the delivery tools —
+                  only when there ARE delivery tools (post-contract). */}
+              {tools.length > 0 && (
+                <span aria-hidden className="shrink-0 self-center mx-1 h-5 w-px bg-ppp-charcoal-200" />
+              )}
               {tools.map((t) => (
                 <Link key={t.key} href={t.href} aria-current={t.key === dealTab ? "page" : undefined} className={tabClass(t.key === dealTab)}>
                   {t.label}
