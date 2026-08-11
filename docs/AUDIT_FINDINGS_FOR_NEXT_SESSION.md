@@ -174,3 +174,40 @@ silent row-drop · "Closed" vs "Closed (post-sale)" label drift.
 - Note: the "dead bid validation" in #3 was left in place deliberately — it is
   correct defensive parsing that no-ops when the field is absent, and would be
   live again if the field ever returns.
+
+
+---
+
+## ✅ ROUND 3 CLOSE-OUT (2026-08-11) — the list is now EMPTY except the blocked items
+
+| # | Item | Commit |
+|---|---|---|
+| 3 (tail) | Bid low/high removed from the deal EDIT sheet + standalone edit page; dead parsing/validation cleaned from all three actions | `ed95716` |
+| 5 | Assigning a team now EXPANDS into `commercial_account_assignments` (Karan: yes). Additive, idempotent, names anyone it couldn't assign | `ed95716` |
+| 7 | Transactions rename finished ("Log a purchase / receipt", "Add purchase", "Purchase date", "What was purchased", delete copy) + `dt=transactions` / `?pt=transactions` aliases | `5c63779` |
+| 11 | Auto-title SSR flash fixed (seeded on first render) + now listens for `change` as well as `input` so a picker/autofill can't leave it stale | `d30e331` |
+| 12 | Palette's two X buttons separated on mobile (the Esc chip that divides them on desktop is hidden there) | `bcc648e` |
+| 13 | tax_exempt — see the CORRECTION below | `bcc648e` |
+| 14 | The two New-opportunity forms brought to parity (auto-title, Team, RFP-received default) | `d30e331` |
+| 21 | `cascadeRestoreJobsForOwner` — Undo now rebuilds the work orders AND un-cancels the crew's future shifts | `805cc70` |
+| 22 | Deal-delete tombstones `commercial_project_purchases`; restore brings them back in the same window | `805cc70` |
+
+**Also fixed, found while working the list:**
+- **The account Team tab was DEAD CODE.** `?tab=team` fell into a legacy remap to Documents, so the whole "assign a team to this customer" flow was unreachable — and the assign action redirected to `?tab=team`, landing the user on Documents with no feedback. (`ed95716`)
+- **The tax-exemption card was still on the account DETAIL page.** The 2026-08 removal covered the create and edit forms only. (`bcc648e`)
+- **Create-mode status picker offered post-contract stages** (Pre-Construction / In Progress / Billing) on a brand-new bid. Now one flat pre-contract Stage select: Qualifying · Request for Proposal · Estimating · Proposal. (`d30e331`)
+- **Pre/post-contract deal tabs** split (meeting item). Pre = Overview · Proposals · Documents; post = the full delivery set. (`5c63779`)
+- **Shared record IDs** PROJ-#### / WO-#### / TRANS-#### all deriving from the deal's number, with 7 tests pinning the shared-suffix property. (`8d133aa`)
+
+### ⚠️ CORRECTION to #13
+The note said "No invoice/tax logic reads `account.tax_exempt` (verified safe)".
+**It does** — `AccountProjectsTab` defaults the deal invoice's tax rate to 0% for
+an exempt customer. That behaviour is correct and is NOT invisible (the invoice
+builder already prints why), but the claim that nothing reads it was wrong, and
+acting on it without checking would have been a silent mis-bill.
+
+### Still open
+Only the ⛔ BLOCKED items above (Brendan's screen · Katie #3/#8/F2 · Stephanie's
+page order) and the STILL-TO-BUILD list: **Work-Orders-from-proposal-scope
+builder**, **Crew role**, and the **proposals batch** (revision lifecycle ·
+Bid-Set→intro · Labor-into-Inclusions · Proposal→Won logic).
