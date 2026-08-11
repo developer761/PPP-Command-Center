@@ -445,6 +445,10 @@ export function FieldOpsCalendar({
           const isToday = day.date === todayIso;
           const isOpen = day.date === addDay;
           const heat = day.headcount > 0 ? Math.min(0.14, 0.03 + (day.headcount / maxHead) * 0.11) : 0;
+          // A scheduled crew member who's marked off shows CROSSED OUT in place with
+          // the reason; the "off" summary only lists crew who aren't scheduled.
+          const offByEmpG = new Map(day.off.map((o) => [o.employee_id, o] as const));
+          const offOnlyG = day.off.filter((o) => !day.crew.some((c) => c.employee_id === o.employee_id));
           return (
             <div
               key={day.date}
@@ -477,13 +481,13 @@ export function FieldOpsCalendar({
                     className="w-full flex items-center gap-1 text-left text-[10px] font-medium rounded px-1 py-0.5 bg-cc-brand-50 text-cc-brand-800 hover:bg-cc-brand-100"
                   >
                     <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[c.job_status] ?? "bg-ppp-charcoal-300"}`} />
-                    <span className="truncate">{c.name}{c.start ? ` · ${fmtTimeShort(c.start)}` : ""}{c.prevailing_wage ? " · PW" : ""}</span>
+                    <span className="truncate"><span className={offByEmpG.has(c.employee_id) ? "line-through" : ""}>{c.name}</span>{offByEmpG.get(c.employee_id) ? ` · ${offByEmpG.get(c.employee_id)!.short}` : `${c.start ? ` · ${fmtTimeShort(c.start)}` : ""}${c.prevailing_wage ? " · PW" : ""}`}</span>
                   </button>
                 ))}
                 {day.crew.length > CHIP_CAP && <div className="text-[9.5px] text-ppp-charcoal-400 px-1">+{day.crew.length - CHIP_CAP} more</div>}
-                {day.off.length > 0 && (
-                  <div className="text-[9.5px] font-medium text-amber-700 px-1 truncate" title={day.off.map((o) => `${o.name} (${o.short})`).join(", ")}>
-                    {day.off.length === 1 ? `${day.off[0].name} off` : `${day.off.length} off`}
+                {offOnlyG.length > 0 && (
+                  <div className="text-[9.5px] font-medium text-amber-700 px-1 truncate" title={offOnlyG.map((o) => `${o.name} (${o.short})`).join(", ")}>
+                    {offOnlyG.length === 1 ? `${offOnlyG[0].name} off` : `${offOnlyG.length} off`}
                   </div>
                 )}
               </div>
@@ -494,7 +498,10 @@ export function FieldOpsCalendar({
 
       {/* Mobile agenda */}
       <div className="sm:hidden space-y-2">
-        {grid.filter((d) => d.inMonth).map((day) => (
+        {grid.filter((d) => d.inMonth).map((day) => {
+          const offByEmpG = new Map(day.off.map((o) => [o.employee_id, o] as const));
+          const offOnlyG = day.off.filter((o) => !day.crew.some((c) => c.employee_id === o.employee_id));
+          return (
           <button key={day.date} onClick={() => openDay(day.date)} className={`w-full text-left bg-surface border rounded-lg p-3 ${day.date === addDay ? "border-ppp-navy-500" : "border-ppp-charcoal-100"}`}>
             <div className="flex items-center justify-between">
               <span className="text-[13px] font-bold text-ppp-charcoal">{new Date(day.date + "T12:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })}{day.date === todayIso && <span className="ml-1.5 text-[9px] font-bold uppercase text-cc-brand-700">today</span>}</span>
@@ -504,16 +511,17 @@ export function FieldOpsCalendar({
             </div>
             {day.crew.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
-                {day.crew.map((c, i) => <span key={`${c.employee_id}-${i}`} className="inline-flex items-center gap-1 text-[10.5px] font-medium rounded px-1.5 py-0.5 bg-cc-brand-50 text-cc-brand-800"><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[c.job_status] ?? "bg-ppp-charcoal-300"}`} />{c.name}{c.start ? ` ${fmtTimeShort(c.start)}` : ""}</span>)}
+                {day.crew.map((c, i) => <span key={`${c.employee_id}-${i}`} className="inline-flex items-center gap-1 text-[10.5px] font-medium rounded px-1.5 py-0.5 bg-cc-brand-50 text-cc-brand-800"><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[c.job_status] ?? "bg-ppp-charcoal-300"}`} /><span className={offByEmpG.has(c.employee_id) ? "line-through" : ""}>{c.name}</span>{offByEmpG.get(c.employee_id) ? <span className="text-amber-700"> · {offByEmpG.get(c.employee_id)!.short}</span> : c.start ? ` ${fmtTimeShort(c.start)}` : ""}</span>)}
               </div>
             )}
-            {day.off.length > 0 && (
+            {offOnlyG.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1">
-                {day.off.map((o) => <span key={o.employee_id} className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-amber-50 text-amber-700">{o.name} · {o.short}</span>)}
+                {offOnlyG.map((o) => <span key={o.employee_id} className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-amber-50 text-amber-700">{o.name} · {o.short}</span>)}
               </div>
             )}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {copyOpen && (
@@ -555,7 +563,7 @@ export function FieldOpsCalendar({
             className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none focus:outline-none"
           >
             {person ? (
-              <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} onTimeOff={handleTimeOff} />
+              <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} onTimeOff={handleTimeOff} offInfo={dayOff(person.date).find((o) => o.employee_id === person.employeeId) ?? null} onClearOff={handleRemoveAbsence} />
             ) : addDay ? (
               <DayPanel date={addDay} crew={dayCrew(addDay)} off={dayOff(addDay)} crewOptions={crewOptions} jobOptions={jobOptions} formKey={formKey} saving={saving} msg={msg} onClose={closeAll} onAdd={handleAdd} onAddAbsence={handleAddAbsence} onRemoveAbsence={handleRemoveAbsence} onOpenPerson={(id, name) => openPerson(id, name, addDay)} />
             ) : null}
@@ -589,7 +597,12 @@ function DayPanel({
   // Warn (never block) if you try to schedule someone already marked off today.
   // Match by employee_id, not display name — two crew sharing a name (common on
   // the crew) would otherwise cross-flag each other as "also off" (audit round 18).
-  const offIds = new Set(off.map((o) => o.employee_id));
+  // Reason per off crew member, so a scheduled person who's marked off crosses out
+  // in place with the reason (instead of showing twice — once scheduled, once off).
+  const offByEmp = new Map(off.map((o) => [o.employee_id, o] as const));
+  // The separate "Off today" list is for people who AREN'T scheduled that day —
+  // the scheduled-and-off ones already show crossed out in the roster above.
+  const offOnly = off.filter((o) => !crew.some((c) => c.employee_id === o.employee_id));
   return (
     <>
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3 shrink-0">
@@ -612,7 +625,10 @@ function DayPanel({
               <li key={`${c.employee_id}-${c.job_id}-${i}`}>
                 <button onClick={() => onOpenPerson(c.employee_id, c.name)} className="w-full text-left border border-ppp-charcoal-100 rounded-lg p-3 hover:border-cc-brand-300 hover:bg-cc-brand-50/30 transition-colors">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-semibold text-ppp-charcoal truncate min-w-0">{c.name}{offIds.has(c.employee_id) && <span className="ml-1.5 align-middle text-[9px] font-bold uppercase text-amber-700 bg-amber-50 rounded px-1 py-0.5">also off</span>}</span>
+                    <span className="text-[13px] font-semibold truncate min-w-0">
+                      <span className={offByEmp.has(c.employee_id) ? "line-through text-ppp-charcoal-400" : "text-ppp-charcoal"}>{c.name}</span>
+                      {offByEmp.get(c.employee_id) && <span className="ml-1.5 align-middle text-[10px] font-semibold text-amber-700">· {offByEmp.get(c.employee_id)!.short}</span>}
+                    </span>
                     <span className="text-[11px] text-ppp-charcoal-500 shrink-0">{c.start ? `${fmtTime12(c.start)}${c.end ? ` – ${fmtTime12(c.end)}` : ""}` : `${c.hours}h`}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
@@ -625,12 +641,13 @@ function DayPanel({
           </ul>
         )}
 
-        {/* Who's off today */}
-        {off.length > 0 && (
+        {/* Who's off today — only crew who AREN'T scheduled (the scheduled-and-off
+            show crossed out in the roster above, cleared from their person panel). */}
+        {offOnly.length > 0 && (
           <div className="border border-amber-100 bg-amber-50/40 rounded-lg p-3">
             <h3 className="text-[11px] font-bold uppercase tracking-wide text-amber-700 mb-2">Off today</h3>
             <ul className="space-y-1.5">
-              {off.map((o) => (
+              {offOnly.map((o) => (
                 <li key={o.employee_id} className="flex items-center justify-between gap-2 text-[12.5px]">
                   <span className="text-ppp-charcoal-800 truncate min-w-0"><span className="font-semibold">{o.name}</span> <span className="text-amber-700">· {o.type.replace("_", " ").toLowerCase()}</span></span>
                   <button onClick={() => onRemoveAbsence(o.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 shrink-0 min-h-[32px] px-1.5 disabled:opacity-50">Clear</button>
@@ -727,7 +744,7 @@ function CopyWeekModal({ monthStart, busy, msg, onCopy, onClose }: { monthStart:
 }
 
 function PersonPanel({
-  person, detail, loading, error, msg, nowMs, saving, onBack, onClose, onRemove, onTimeOff,
+  person, detail, loading, error, msg, nowMs, saving, onBack, onClose, onRemove, onTimeOff, offInfo, onClearOff,
 }: {
   person: { employeeId: string; name: string; date: string };
   detail: PersonDetail | null;
@@ -740,6 +757,8 @@ function PersonPanel({
   onClose: () => void;
   onRemove: (assignmentId: string) => void;
   onTimeOff: (employeeId: string, workDate: string, type: string, hours: string) => void;
+  offInfo: DayOff | null;
+  onClearOff: (absenceId: string) => void;
 }) {
   const clock = detail?.clock;
   // Inline "Time off" form state — mark this person off for the day (sick/PTO/…)
@@ -800,7 +819,12 @@ function PersonPanel({
               calendar, the hours log shows scheduled-vs-worked, and they're
               emailed the reason. The alternative to a hard "Remove". */}
           <div className="border border-amber-100 bg-amber-50/40 rounded-lg p-3">
-            {!offOpen ? (
+            {offInfo ? (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12.5px] text-amber-800 truncate min-w-0"><span className="font-semibold">Marked off</span> · {offInfo.short} <span className="text-amber-700/70">(crossed out on the calendar; they were emailed)</span></span>
+                <button type="button" onClick={() => onClearOff(offInfo.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 shrink-0 min-h-[44px] px-2 disabled:opacity-50 touch-manipulation">Clear</button>
+              </div>
+            ) : !offOpen ? (
               <button type="button" onClick={() => setOffOpen(true)} disabled={saving} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-amber-700 hover:text-amber-800 min-h-[44px] disabled:opacity-50">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
                 Time off (sick, PTO…)
