@@ -84,11 +84,11 @@ Tile shows a real proposal-derived `$12.5k` but the tooltip says "No bid value s
 
 ---
 
-## 🧭 DECISIONS FOR KARAN (these gate H1/H2/H4/H6/M7)
-- **D1 — Win rate:** one definition everywhere. Recommend **won ÷ (won+lost) by `decided_at`, not debrief-gated**, same period on tile + report. OK?
-- **D2 — Margin basis:** standardize on **billed-based (margin to date)** as the headline (matches the dashboard + P&L cards), and only ever show contract-based as an explicitly-labeled "vs budget" line? OK?
-- **D3 — Needs-debrief scope:** simplest that reaches zero = **pre-sale-closed won/lost only** (a debrief happens at the win/loss moment; advancing to delivery clears the badge). OK, or do you want post-sale wins to still owe a debrief?
-- **D4 — Proposal ID:** join the shared family (**`PROP-2026-0042`, `-R2`**, matching OPP/WO/TRANS — your "same ending numbers") and retire the global `PROP-####`? OK?
-- **D5 — Open a deal:** make a deal-click **always open the drill-in** and kill the auto-pop edit sheet? OK?
+## 🧭 DECISIONS — ✅ ANSWERED BY KARAN 2026-08 (build to these)
+- **D1 — Win rate:** ✅ ONE definition everywhere = **won ÷ (won+lost) by `decided_at`, NOT debrief-gated**, same period on the tile and the report it links to. Apply to H1 + M1.
+- **D2 — Margin basis:** ✅ Headline everything on **billed-based (margin to date)** (matches the dashboard + P&L cards). Contract-based may appear ONLY as an explicitly-labeled "vs budget / vs contract" secondary line — never under the bare word "margin." Apply to H2.
+- **D3 — Needs-debrief scope:** ✅ **pre-sale-closed won/lost only** — the debrief is a win/loss-moment thing; advancing into delivery clears the badge. Align count + filing UI + cron to this one set. Apply to H4.
+- **D4 — Proposal ID:** ✅ **join the shared family — `PROP-2026-0042`, revisions `-R2`** — matching OPP/WO/TRANS. Render via `proposalRecordId(project_number, revision)`; retire `formatProposalNumber` + the dead duplicate helpers. Apply to H6.
+- **D5 — Open a deal:** ✅ a deal-click **always opens the drill-in** (`?tab=projects&project=`); kill the auto-pop `&edit=` sheet everywhere. Apply to M7.
 
-The **surgical** items (H3, M1, M4, M5, M6, L2–L9) need no decision — the build session can batch them straight away.
+The **surgical** items (H3, M4, M5, M6, L2–L9) need no decision — batch immediately.
