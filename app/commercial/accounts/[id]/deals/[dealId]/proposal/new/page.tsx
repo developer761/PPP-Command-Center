@@ -31,11 +31,15 @@ export default async function CreateProposalRoute({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string }>;
-  searchParams: Promise<{ bump?: string }>;
+  searchParams: Promise<{ bump?: string; back?: string }>;
 }) {
   const { id: accountId, dealId } = await params;
   const sp = await searchParams;
   if (!UUID_RE.test(accountId) || !UUID_RE.test(dealId)) notFound();
+  // Carry the back-target onto the new proposal so its arrow returns where you
+  // came from (e.g. the global Proposals list), not the account. Whitelisted so
+  // ?back can't be an open redirect (Karan meeting 2026-08 — recurring nav bug).
+  const backQs = sp.back === "/commercial/proposals" ? `&back=${encodeURIComponent("/commercial/proposals")}` : "";
 
   const supabase = await createClient();
   const {
@@ -149,12 +153,12 @@ export default async function CreateProposalRoute({
       // Alex sees exactly which items didn't copy.
       const msg = `Copied ${parentItems.length - failed.length} of ${parentItems.length} line items forward. Failed: ${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}. Add the rest manually or delete this revision and retry.`;
       redirect(
-        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?error=${encodeURIComponent(msg)}`
+        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?error=${encodeURIComponent(msg)}${backQs}`
       );
     }
   }
 
   redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?created=1`
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?created=1${backQs}`
   );
 }

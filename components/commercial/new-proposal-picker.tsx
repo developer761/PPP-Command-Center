@@ -113,8 +113,11 @@ export default function NewProposalPicker({
     // timeout so if the redirect takes >8s the button re-enables +
     // shows an inline error, and Alex can retry.
     try {
+      // Carry back=/commercial/proposals so the new proposal's back arrow returns
+      // to the Proposals list (where this picker lives), not the account — the
+      // recurring nav bug Karan hit (meeting 2026-08).
       router.push(
-        `/commercial/accounts/${pickedAccount}/deals/${dealId}/proposal/new`
+        `/commercial/accounts/${pickedAccount}/deals/${dealId}/proposal/new?back=/commercial/proposals`
       );
     } catch (err) {
       setErrMsg(err instanceof Error ? err.message : "Something went wrong. Try again.");

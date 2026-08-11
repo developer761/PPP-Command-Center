@@ -1093,7 +1093,7 @@ function DealMiniKanban({
           </span>
         </div>
         <Link
-          href={`/commercial/accounts/${accountId}/deals/${deal.dealId}/proposal/new?bump=${deal.rows[0]?.id ?? ""}`}
+          href={`/commercial/accounts/${accountId}/deals/${deal.dealId}/proposal/new?bump=${deal.rows[0]?.id ?? ""}&back=/commercial/proposals`}
           className="text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 shrink-0 inline-flex items-center min-h-[44px] px-1 -mr-1 touch-manipulation"
           title="Bump R+1: copies the current revision forward for edits"
         >
