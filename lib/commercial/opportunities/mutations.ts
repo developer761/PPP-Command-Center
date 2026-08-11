@@ -384,6 +384,30 @@ export async function softDeleteCommercialOpportunity(
       .in("id", invoices.map((i) => i.id));
   }
 
+  // Cascade: tombstone this deal's transactions (purchases) too. Masked today
+  // — every viewer/aggregator drives off an ACTIVE-opp id list, so dead-deal
+  // costs aren't summed — but that's an invariant living in the callers, not
+  // the data. The first report that sums commercial_project_purchases directly
+  // (all-purchases, or by date range) without joining the parent's deleted_at
+  // leaks zombie costs into company P&L, and a wrong number nobody can see the
+  // source of is the worst kind. Invoices are already tombstoned; this makes
+  // costs consistent with them.
+  {
+    const now = new Date().toISOString();
+    const { data: purchases } = await sb
+      .from("commercial_project_purchases")
+      .select("id")
+      .eq("opportunity_id", id)
+      .is("deleted_at", null);
+    const purchaseIds = ((purchases ?? []) as { id: string }[]).map((p) => p.id);
+    if (purchaseIds.length > 0) {
+      await sb
+        .from("commercial_project_purchases")
+        .update({ deleted_at: now })
+        .in("id", purchaseIds);
+    }
+  }
+
   // Cascade: tear down this deal's Field Ops work order(s) too — otherwise a
   // deleted deal leaves an orphaned job on the Work Orders / Status / Calendar
   // surfaces (the "Karan / k" stray-WO bug). softDeleteJob cancels future
@@ -456,6 +480,30 @@ export async function restoreCommercialOpportunity(
     .eq("opportunity_id", id)
     .gte("deleted_at", cascadeWindowStart)
     .lte("deleted_at", cascadeWindowEnd);
+
+  // …and the transactions tombstoned in the same batch.
+  await sb
+    .from("commercial_project_purchases")
+    .update({ deleted_at: null })
+    .eq("opportunity_id", id)
+    .gte("deleted_at", cascadeWindowStart)
+    .lte("deleted_at", cascadeWindowEnd);
+
+  // …and the Field Ops work orders + the crew shifts the teardown cancelled.
+  // Without this the undo was asymmetric: the deal and its invoices came back
+  // but the work order stayed deleted and the crew stayed unscheduled, so Alex
+  // clicked Undo, saw the deal return, and reasonably assumed the crew was
+  // back on the calendar.
+  try {
+    const { cascadeRestoreJobsForOwner } = await import("@/lib/commercial/field-ops/jobs");
+    await cascadeRestoreJobsForOwner(
+      { opportunity_id: id },
+      beforeRow.deleted_at,
+      restoredByUserId ?? "system"
+    );
+  } catch (err) {
+    console.warn("[opportunities] field-ops cascade restore failed:", err);
+  }
 
   await logUpdate("commercial_opportunities", id, before, after, restoredByUserId);
   return { ok: true };

@@ -578,6 +578,87 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
   return { ok: true };
 }
 
+/**
+ * Cascade RESTORE — the mirror of cascadeDeleteJobsForOwner.
+ *
+ * Deleting a deal tore down its work orders and cancelled the crew's future
+ * shifts, but Undo only ever brought back the deal and its invoices. So Alex
+ * clicked Undo, saw the deal return, and assumed the crew was back on the
+ * calendar — they weren't, and nothing said so. Asymmetric undo is worse than
+ * no undo: it looks like it worked.
+ *
+ * Same batch-window approach the invoice restore uses: only jobs deleted
+ * within `windowMs` of the owner's delete are revived, so a job the user had
+ * deliberately deleted earlier stays deleted.
+ *
+ * Also un-cancels the FUTURE assignments that the teardown cancelled, and
+ * re-queues those crew members' clock-in nudges. Past assignments were never
+ * touched on the way down, so they need nothing on the way back. Best-effort:
+ * a failure to revive one job must not fail the deal restore.
+ */
+export async function cascadeRestoreJobsForOwner(
+  match: { opportunity_id: string } | { account_id: string },
+  deletedAtIso: string,
+  actorUserId: string,
+  windowMs = 2000
+): Promise<number> {
+  try {
+    const sb = commercialDb();
+    const col = "opportunity_id" in match ? "opportunity_id" : "account_id";
+    const val = "opportunity_id" in match ? match.opportunity_id : match.account_id;
+    const t = new Date(deletedAtIso).getTime();
+    if (!Number.isFinite(t)) return 0;
+    const from = new Date(t - windowMs).toISOString();
+    const to = new Date(t + windowMs).toISOString();
+    const { data } = await sb
+      .from("commercial_jobs")
+      .select("id")
+      .eq(col, val)
+      .not("deleted_at", "is", null)
+      .gte("deleted_at", from)
+      .lte("deleted_at", to);
+    const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+    if (ids.length === 0) return 0;
+    await sb
+      .from("commercial_jobs")
+      .update({ deleted_at: null, deleted_by_user_id: null })
+      .in("id", ids);
+    // Put the crew back on the calendar. Only FUTURE shifts were cancelled, so
+    // only future shifts come back — reviving a past cancelled shift would
+    // invent labour that never happened.
+    const { data: revived } = await sb
+      .from("commercial_assignments")
+      .select("employee_id, work_date")
+      .in("job_id", ids)
+      .gte("work_date", todayEtIso())
+      .eq("status", "cancelled");
+    await sb
+      .from("commercial_assignments")
+      .update({ status: "scheduled", updated_at: new Date().toISOString() })
+      .in("job_id", ids)
+      .gte("work_date", todayEtIso())
+      .eq("status", "cancelled");
+    const pairs = new Set(
+      ((revived ?? []) as Array<{ employee_id: string; work_date: string }>).map(
+        (a) => `${a.employee_id}|${a.work_date}`
+      )
+    );
+    if (pairs.size > 0) {
+      const { resyncClockReminder } = await import("./schedule-email-send");
+      for (const pair of pairs) {
+        const [emp, day] = pair.split("|");
+        await resyncClockReminder(emp, day).catch(() => undefined);
+      }
+    }
+    for (const id of ids) {
+      await logUpdate("commercial_jobs", id, { deleted_at: deletedAtIso }, { deleted_at: null }, actorUserId).catch(() => undefined);
+    }
+    return ids.length;
+  } catch {
+    return 0;
+  }
+}
+
 /** Cascade teardown: soft-delete every LIVE Field Ops job that belongs to a
  *  now-deleted deal or account. Runs the full softDeleteJob teardown per job
  *  (cancel future assignments, re-sync clock-in nudges, reopen a sent deal WO to
