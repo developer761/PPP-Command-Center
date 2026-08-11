@@ -312,7 +312,7 @@ export async function GET(request: Request) {
         // the whole dump. Standard SF system fields + the ones we know
         // about already are noisy — caller wants to find content they
         // didn't know about.
-        let nonNullFields: Array<{ name: string; value: unknown }> = [];
+        const nonNullFields: Array<{ name: string; value: unknown }> = [];
         if (row) {
           for (const [k, v] of Object.entries(row)) {
             if (k === "attributes") continue;
