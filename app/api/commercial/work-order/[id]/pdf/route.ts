@@ -53,7 +53,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     property_street: string | null; property_city: string | null; property_state: string | null;
   };
   const dealName = oppRow ? derivedOppName(oppRow as never, account.company_name) : "Project";
-  const content = await buildWorkOrderContent(wo.opportunity_id);
+  // This sheet's own scope selection (migration 123) — a downloaded PDF must
+  // show exactly what the crew holding it was given, not the whole proposal.
+  const content = await buildWorkOrderContent(wo.opportunity_id, wo.scope_line_item_ids);
 
   const addr = [opp.property_street, [opp.property_city, opp.property_state].filter(Boolean).join(", ")]
     .filter(Boolean)

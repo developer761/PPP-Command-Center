@@ -23,12 +23,18 @@ export type WorkOrder = {
   crew_emailed_at: string | null;
   voided_at: string | null;
   snapshot_document_id: string | null;
+  /** Proposal line items this WO covers. EMPTY means the WHOLE proposal —
+   *  that's what every pre-selection work order means, so it stays the
+   *  backward-compatible default rather than "no scope" (migration 123). */
+  scope_line_item_ids: string[];
+  /** Optional area/phase tag for the crew sheet, e.g. "Level 3". */
+  area_label: string | null;
   created_at: string;
   updated_at: string;
 };
 
 const WO_COLS =
-  "id, opportunity_id, account_id, status, work_notes, assigned_to, crew_email, scheduled_start_date, scheduled_end_date, sent_at, crew_emailed_at, voided_at, snapshot_document_id, created_at, updated_at";
+  "id, opportunity_id, account_id, status, work_notes, assigned_to, crew_email, scheduled_start_date, scheduled_end_date, sent_at, crew_emailed_at, voided_at, snapshot_document_id, scope_line_item_ids, area_label, created_at, updated_at";
 
 /** Load a deal's account context, or null if the deal is missing/deleted. No
  *  Won-gate (like closeout — a Work Order can be started on any live deal; the
@@ -48,15 +54,30 @@ async function loadOppContext(
 }
 
 /** The single live (non-voided) Work Order for a deal, or null. */
-export async function getWorkOrderForOpp(opportunity_id: string): Promise<WorkOrder | null> {
+/** Every live work order on a deal, oldest first — that's the order they were
+ *  handed out in, and it's what the A/B/C suffix on WO-#### follows. */
+export async function listWorkOrdersForOpp(opportunity_id: string): Promise<WorkOrder[]> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_work_orders")
     .select(WO_COLS)
     .eq("opportunity_id", opportunity_id)
     .is("voided_at", null)
-    .maybeSingle();
-  return (data as WorkOrder | null) ?? null;
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  return (data as WorkOrder[] | null) ?? [];
+}
+
+/** The FIRST live work order on a deal.
+ *
+ *  Since migration 123 a deal can have several (scope split across crews), so
+ *  this is no longer "the" work order — it's the primary/earliest one. Kept
+ *  for the callers that legitimately want just one: the Field Ops job link
+ *  (one job per deal, migration 120) and the deal's summary tiles. Anything
+ *  showing the user their work orders should use listWorkOrdersForOpp. */
+export async function getWorkOrderForOpp(opportunity_id: string): Promise<WorkOrder | null> {
+  const all = await listWorkOrdersForOpp(opportunity_id);
+  return all[0] ?? null;
 }
 
 export async function getWorkOrder(id: string): Promise<WorkOrder | null> {
@@ -68,15 +89,23 @@ export async function getWorkOrder(id: string): Promise<WorkOrder | null> {
 export async function createWorkOrder(input: {
   opportunity_id: string;
   created_by_user_id: string;
+  /** Proposal line items for THIS sheet. Omit/empty = the whole proposal. */
+  scope_line_item_ids?: string[];
+  area_label?: string | null;
+  /** Migration 123 allows several per deal. Callers that just want to land on
+   *  a deal's work order (the tool's "open it" path) pass true so a second
+   *  visit doesn't quietly mint an extra empty sheet; the explicit
+   *  "Add another work order" button passes false. */
+  reuse_existing?: boolean;
 }): Promise<Result<WorkOrder>> {
   const sb = commercialDb();
   const opp = await loadOppContext(input.opportunity_id);
   if (!opp) return { ok: false, error: "opportunity_not_found" };
 
-  // Guard the one-live-per-opp rule at the app layer too (the partial unique
-  // index is the backstop) so we return a friendly error, not a 23505.
-  const existing = await getWorkOrderForOpp(input.opportunity_id);
-  if (existing) return { ok: true, value: existing };
+  if (input.reuse_existing) {
+    const existing = await getWorkOrderForOpp(input.opportunity_id);
+    if (existing) return { ok: true, value: existing };
+  }
 
   const { data: inserted, error } = await sb
     .from("commercial_work_orders")
@@ -84,16 +113,13 @@ export async function createWorkOrder(input: {
       opportunity_id: input.opportunity_id,
       account_id: opp.account_id,
       status: "draft",
+      scope_line_item_ids: input.scope_line_item_ids ?? [],
+      area_label: input.area_label?.trim() || null,
       created_by_user_id: input.created_by_user_id,
     })
     .select(WO_COLS)
     .maybeSingle();
   if (error || !inserted) {
-    // Race with the partial-unique index (one live WO per opp): a concurrent
-    // create won. Re-fetch and return the existing one instead of surfacing a
-    // raw 23505 to the user.
-    const raced = await getWorkOrderForOpp(input.opportunity_id);
-    if (raced) return { ok: true, value: raced };
     return { ok: false, error: "Couldn't create the work order — please reload and try again." };
   }
   const wo = inserted as WorkOrder;
@@ -121,6 +147,9 @@ export async function updateWorkOrder(
     crew_email?: string | null;
     scheduled_start_date?: string | null;
     scheduled_end_date?: string | null;
+    /** Migration 123 — which proposal lines this sheet covers. EMPTY = all. */
+    scope_line_item_ids?: string[];
+    area_label?: string | null;
   },
   actorUserId: string
 ): Promise<Result<WorkOrder>> {
@@ -133,6 +162,16 @@ export async function updateWorkOrder(
   // Cap lengths so a long unbroken string can't degrade the PDF layout.
   if (patch.work_notes !== undefined) row.work_notes = patch.work_notes?.trim().slice(0, 2000) || null;
   if (patch.assigned_to !== undefined) row.assigned_to = patch.assigned_to?.trim().slice(0, 200) || null;
+  if (patch.area_label !== undefined) row.area_label = patch.area_label?.trim().slice(0, 120) || null;
+  if (patch.scope_line_item_ids !== undefined) {
+    // De-dupe and drop anything that isn't a uuid — the form posts one value
+    // per checked box, and a hand-crafted POST shouldn't be able to stuff
+    // arbitrary text into the column.
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    row.scope_line_item_ids = Array.from(
+      new Set((patch.scope_line_item_ids ?? []).filter((v) => UUID.test(v)))
+    );
+  }
   // One OR MORE crew emails (comma/semicolon/whitespace-separated) — each
   // shape-guarded; invalid tokens are dropped (they'd just bounce on send).
   // Stored as a clean comma-joined list; the send action splits it back out.
@@ -303,7 +342,14 @@ export type WorkOrderContent = {
  *  alternates + exclusions) from the accepted proposal — or the latest proposal
  *  if none is won yet — plus the Room Finish Schedule. Degrades gracefully:
  *  empty finishes and/or no proposal both return empty sections, never throw. */
-export async function buildWorkOrderContent(opportunity_id: string): Promise<WorkOrderContent> {
+export async function buildWorkOrderContent(
+  opportunity_id: string,
+  /** Restrict the scope to these proposal line items (migration 123). EMPTY or
+   *  omitted = the whole proposal, which is what every work order created
+   *  before scope selection existed means — so the default can never silently
+   *  blank an existing crew sheet. */
+  scopeLineItemIds?: string[] | null
+): Promise<WorkOrderContent> {
   const [{ getAcceptedProposalForOpp, listProposalsForOpp, listLineItemsForProposal }, { listExclusions }, { listOpportunityFinishes }] =
     await Promise.all([
       import("@/lib/commercial/proposals/db"),
@@ -343,7 +389,12 @@ export async function buildWorkOrderContent(opportunity_id: string): Promise<Wor
     };
   }
 
-  const lines = await listLineItemsForProposal(proposal.id);
+  const allLines = await listLineItemsForProposal(proposal.id);
+  // Filter to this sheet's selection. An id that no longer resolves (the line
+  // was deleted from the proposal after the WO was built) simply drops out —
+  // the rest of the sheet stands, which is why this isn't a foreign key.
+  const selected = new Set(scopeLineItemIds ?? []);
+  const lines = selected.size > 0 ? allLines.filter((l) => selected.has(l.id)) : allLines;
   const toScope = (l: (typeof lines)[number]): WorkOrderScopeLine => ({
     product_name: l.product_name ?? null,
     description: l.description,
@@ -377,4 +428,73 @@ export async function buildWorkOrderContent(opportunity_id: string): Promise<Wor
     finishes,
     no_proposal: false,
   };
+}
+
+// ────────────── scope selection (migration 123) ──────────────
+
+export type PickableScopeLine = {
+  id: string;
+  label: string;
+  is_alternate: boolean;
+  is_labor: boolean;
+  phase: string | null;
+};
+
+/**
+ * The proposal line items a work order can be built from, for THIS deal.
+ *
+ * Same proposal-choosing rule as buildWorkOrderContent (accepted proposal
+ * preferred, else the latest), so the picker and the printed sheet can never
+ * disagree about which revision they're working from.
+ */
+export async function listPickableScopeForOpp(
+  opportunity_id: string
+): Promise<{ proposalId: string | null; lines: PickableScopeLine[] }> {
+  const { getAcceptedProposalForOpp, listProposalsForOpp, listLineItemsForProposal } =
+    await import("@/lib/commercial/proposals/db");
+  const accepted = await getAcceptedProposalForOpp(opportunity_id);
+  let proposal = accepted?.proposal ?? null;
+  if (!proposal) {
+    const all = await listProposalsForOpp(opportunity_id);
+    proposal = all.length > 0 ? all[0]! : null;
+  }
+  if (!proposal) return { proposalId: null, lines: [] };
+  const items = await listLineItemsForProposal(proposal.id);
+  return {
+    proposalId: proposal.id,
+    lines: items.map((l) => ({
+      id: l.id,
+      label: (l.description?.trim() || l.product_name?.trim() || "(untitled line)").slice(0, 200),
+      is_alternate: !!l.is_alternate,
+      is_labor: !!l.is_labor,
+      phase: l.phase ?? null,
+    })),
+  };
+}
+
+/**
+ * Scope on the proposal that no live work order covers yet.
+ *
+ * This is the "nothing gets quietly dropped" check Karan asked for: splitting a
+ * job across crews is exactly when a line goes missing, because each sheet
+ * looks complete on its own. Anything nobody has been handed shows up here.
+ *
+ * A work order with an EMPTY selection covers the whole proposal (see migration
+ * 123), so if any live WO is unselected there is by definition nothing
+ * unassigned — every line is already on someone's sheet.
+ */
+export async function listUnassignedScopeForOpp(
+  opportunity_id: string
+): Promise<PickableScopeLine[]> {
+  const [{ lines }, workOrders] = await Promise.all([
+    listPickableScopeForOpp(opportunity_id),
+    listWorkOrdersForOpp(opportunity_id),
+  ]);
+  if (lines.length === 0 || workOrders.length === 0) return lines;
+  const coversEverything = workOrders.some(
+    (wo) => (wo.scope_line_item_ids ?? []).length === 0
+  );
+  if (coversEverything) return [];
+  const assigned = new Set(workOrders.flatMap((wo) => wo.scope_line_item_ids ?? []));
+  return lines.filter((l) => !assigned.has(l.id));
 }

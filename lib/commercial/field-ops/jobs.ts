@@ -398,6 +398,30 @@ export async function ensureJobForWorkOrder(
         await logUpdate("commercial_jobs", adoptId, { work_order_id: null }, { work_order_id: workOrderId }, actorUserId);
         return { ok: true, jobId: adoptId, created: false };
       }
+
+      // A deal can have SEVERAL work orders since migration 123 (scope split
+      // across crews), but still exactly ONE Field Ops job (migration 120's
+      // unique index). A work order is the paper a crew is handed; the job is
+      // the deal's schedulable unit, and who works when is already expressed by
+      // crew assignments.
+      //
+      // So if this deal already has a live job — owned by the FIRST work order
+      // that was sent — the second WO reuses it. Without this the insert below
+      // hits the unique index, fails, and ensureJobsForSentWorkOrders just
+      // increments `failed` silently: the second crew's work order would send
+      // with nothing appearing on the schedule.
+      const { data: dealJob } = await sb
+        .from("commercial_jobs")
+        .select("id")
+        .eq("opportunity_id", wo.opportunity_id)
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle();
+      if (dealJob) {
+        // Deliberately does NOT re-point work_order_id — the first sheet keeps
+        // the link, so reopening THAT work order still reopens the job.
+        return { ok: true, jobId: (dealJob as { id: string }).id, created: false };
+      }
     }
 
     const [oppRes, acctRes] = await Promise.all([

@@ -16,7 +16,9 @@ import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants"
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
-  getWorkOrderForOpp,
+  listWorkOrdersForOpp,
+  listPickableScopeForOpp,
+  listUnassignedScopeForOpp,
   getWorkOrder,
   createWorkOrder,
   updateWorkOrder,
@@ -40,7 +42,7 @@ import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
-export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; filefail?: string; back?: string };
+export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; filefail?: string; back?: string; /** Which of the deal's work orders to show (migration 123 allows several). */ wo?: string };
 
 async function requireUser(): Promise<string> {
   const supabase = await createClient();
@@ -82,7 +84,14 @@ async function createWorkOrderAction(formData: FormData) {
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId)) redirect("/commercial/accounts");
-  const res = await createWorkOrder({ opportunity_id: dealId, created_by_user_id: userId });
+  // "Open the work order" reuses the deal's existing sheet; "Add another work
+  // order" deliberately makes a second one (migration 123 allows several).
+  const another = String(formData.get("another") ?? "") === "1";
+  const res = await createWorkOrder({
+    opportunity_id: dealId,
+    created_by_user_id: userId,
+    reuse_existing: !another,
+  });
   if (!res.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   revalidateWO(id, dealId);
   redirect(`${base(id, dealId, origin)}${backQ(back)}`);
@@ -105,6 +114,12 @@ async function autosaveWorkOrderAction(formData: FormData) {
       scheduled_start_date: ymd(String(formData.get("scheduled_start_date") ?? "")),
       scheduled_end_date: ymd(String(formData.get("scheduled_end_date") ?? "")),
       work_notes: String(formData.get("work_notes") ?? "").trim() || null,
+      area_label: String(formData.get("area_label") ?? "").trim() || null,
+      // One value per checked box. An empty selection means "the whole
+      // proposal" (migration 123), which is exactly what you want when the
+      // user unticks everything — the sheet falls back to full scope rather
+      // than printing nothing.
+      scope_line_item_ids: formData.getAll("scope_ids").map(String),
     },
     userId
   );
@@ -195,7 +210,7 @@ async function autoFileWorkOrder(
     const [opp, account, content] = await Promise.all([
       getCommercialOpportunity(dealId),
       getCommercialAccount(accountId),
-      buildWorkOrderContent(dealId),
+      buildWorkOrderContent(dealId, wo.scope_line_item_ids),
     ]);
     if (!opp || !account) return null;
     const dealName = derivedOppName(opp, account.company_name);
@@ -237,7 +252,7 @@ async function autoFileWorkOrder(
 /** Compose the PDF header block from the WO + deal. Exported so the download
  *  route reuses the exact same header. */
 export function workOrderHeader(
-  wo: { work_notes: string | null; assigned_to: string | null; scheduled_start_date: string | null; scheduled_end_date: string | null; sent_at: string | null; created_at: string },
+  wo: { work_notes: string | null; assigned_to: string | null; scheduled_start_date: string | null; scheduled_end_date: string | null; sent_at: string | null; created_at: string; area_label?: string | null },
   opp: { title: string | null; client_name: string | null; property_street: string | null; property_city: string | null; property_state: string | null; project_number?: string | null },
   account: { company_name: string },
   dealName: string
@@ -247,7 +262,12 @@ export function workOrderHeader(
     .join(" · ");
   return {
     dealName,
-    recordId: workOrderRecordId(opp.project_number) || null,
+    // WO-#### plus the area tag, so a crew holding one of several sheets for
+    // the same project can tell at a glance which one it is.
+    recordId:
+      [workOrderRecordId(opp.project_number), wo.area_label?.trim()]
+        .filter(Boolean)
+        .join(" · ") || null,
     gcCompany: account.company_name,
     projectAddress: addr || null,
     assignedTo: wo.assigned_to,
@@ -289,8 +309,16 @@ export async function WorkOrderTool({
   if (opp.account_id !== id) notFound();
 
   const dealName = derivedOppName(opp, account.company_name);
-  const wo = await getWorkOrderForOpp(dealId);
-  const content = await buildWorkOrderContent(dealId);
+  // A deal can have several work orders now (scope split across crews) — ?wo=
+  // picks which sheet you're on, defaulting to the first.
+  const allWorkOrders = await listWorkOrdersForOpp(dealId);
+  const wo =
+    (spv.wo && allWorkOrders.find((w) => w.id === spv.wo)) || allWorkOrders[0] || null;
+  const [content, pickable, unassigned] = await Promise.all([
+    buildWorkOrderContent(dealId, wo?.scope_line_item_ids ?? null),
+    listPickableScopeForOpp(dealId),
+    listUnassignedScopeForOpp(dealId),
+  ]);
   const editable = wo ? isWorkOrderEditable(wo.status) : false;
   const scopeCount = content.inclusions.length + content.alternates.length;
   // Quick-links so the empty/partial hints aren't dead-ends (RUX-4): finishes
@@ -335,6 +363,60 @@ export async function WorkOrderTool({
         </>
       )}
 
+      {/* Work-order switcher. A project's scope can be split across several
+          sheets — one per crew — so this is how you move between them and add
+          the next one. Hidden when there's only one and nothing to split. */}
+      {allWorkOrders.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {allWorkOrders.map((w, i) => {
+            const label = workOrderRecordId(opp.project_number, i, allWorkOrders.length) || `Sheet ${i + 1}`;
+            const active = wo?.id === w.id;
+            return (
+              <Link
+                key={w.id}
+                href={`${base(id, dealId, variant)}&wo=${w.id}${backQ(spv.back ?? "")}`}
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[36px] touch-manipulation ${
+                  active
+                    ? "border-cc-brand-600 bg-cc-brand-50 text-cc-brand-800"
+                    : "border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                }`}
+              >
+                <span className="font-mono text-[11px]">{label}</span>
+                {w.area_label && <span className="font-normal">· {w.area_label}</span>}
+              </Link>
+            );
+          })}
+          <form action={createWorkOrderAction} className="inline">
+            <input type="hidden" name="account_id" value={id} />
+            <input type="hidden" name="opp_id" value={dealId} />
+            <input type="hidden" name="origin" value={variant} />
+            <input type="hidden" name="back" value={spv.back ?? ""} />
+            <input type="hidden" name="another" value="1" />
+            <PendingSubmitButton
+              className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-300 text-[12px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[36px] touch-manipulation"
+              pendingLabel="Adding…"
+            >
+              + Add another work order
+            </PendingSubmitButton>
+          </form>
+        </div>
+      )}
+      {/* Nothing gets quietly dropped: splitting a job across crews is exactly
+          when a line goes missing, because each sheet looks complete on its
+          own. */}
+      {unassigned.length > 0 && allWorkOrders.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-[12.5px] text-amber-900">
+          <strong>{unassigned.length} scope line{unassigned.length === 1 ? "" : "s"} not on any work order yet.</strong>{" "}
+          Tick them on a sheet below so a crew actually gets the work.
+          <ul className="mt-1.5 list-disc pl-5 space-y-0.5 text-[11.5px]">
+            {unassigned.slice(0, 6).map((l) => (
+              <li key={l.id}>{l.label}</li>
+            ))}
+            {unassigned.length > 6 && <li>…and {unassigned.length - 6} more</li>}
+          </ul>
+        </div>
+      )}
       {spv.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700" role="alert">{decodeURIComponent(spv.error)}</div>}
       {spv.ok && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800" role="status">
@@ -447,6 +529,60 @@ export async function WorkOrderTool({
                   <DateField name="scheduled_end_date" defaultValue={wo.scheduled_end_date ?? ""} min={wo.scheduled_start_date ?? undefined} placeholder="Pick a finish date" className="mt-1" />
                 </div>
               </div>
+              <label className="block">
+                <span className={LABEL_CLS}>Area <span className="text-ppp-charcoal-400 font-normal">· optional, prints on the sheet</span></span>
+                <input name="area_label" defaultValue={wo.area_label ?? ""} maxLength={120} placeholder='e.g. "Level 3" or "East wing"' className={INPUT_CLS} />
+              </label>
+              {/* Scope selection (migration 123). Untick-everything deliberately
+                  means "the whole proposal" rather than an empty sheet — that's
+                  also what every work order created before this existed means,
+                  so legacy sheets keep printing in full. */}
+              {pickable.lines.length > 0 && (
+                <div>
+                  <span className={LABEL_CLS}>
+                    Scope on this sheet{" "}
+                    <span className="text-ppp-charcoal-400 font-normal">
+                      · {(wo.scope_line_item_ids ?? []).length === 0
+                        ? "all of it — tick lines to split the job across crews"
+                        : `${wo.scope_line_item_ids.length} of ${pickable.lines.length} lines`}
+                    </span>
+                  </span>
+                  <div className="mt-1 max-h-64 overflow-y-auto rounded-lg border border-ppp-charcoal-200 divide-y divide-ppp-charcoal-100">
+                    {pickable.lines.map((l) => {
+                      const checked = (wo.scope_line_item_ids ?? []).includes(l.id);
+                      const onAnother =
+                        !checked &&
+                        allWorkOrders.some(
+                          (w) => w.id !== wo.id && (w.scope_line_item_ids ?? []).includes(l.id)
+                        );
+                      return (
+                        <label
+                          key={l.id}
+                          className="flex items-start gap-2 px-3 py-2 text-[12.5px] hover:bg-ppp-charcoal-50/60 cursor-pointer min-h-[44px]"
+                        >
+                          <input
+                            type="checkbox"
+                            name="scope_ids"
+                            value={l.id}
+                            defaultChecked={checked}
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-cc-brand-600"
+                          />
+                          <span className="min-w-0">
+                            <span className="text-ppp-charcoal">{l.label}</span>
+                            {l.is_labor && <span className="ml-1.5 text-[10px] font-semibold text-ppp-blue-700">LABOR</span>}
+                            {l.is_alternate && <span className="ml-1.5 text-[10px] font-semibold text-amber-700">ALT</span>}
+                            {/* Say who already has it, so two crews don't get
+                                handed the same line by accident. */}
+                            {onAnother && (
+                              <span className="ml-1.5 text-[10px] font-semibold text-ppp-charcoal-400">on another sheet</span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <label className="block">
                 <span className={LABEL_CLS}>Crew notes <span className="text-ppp-charcoal-400 font-normal">· prints under the scope</span></span>
                 <textarea name="work_notes" defaultValue={wo.work_notes ?? ""} rows={3} placeholder="Site access, staging, sequence, safety…" className={TEXTAREA_CLS} />
