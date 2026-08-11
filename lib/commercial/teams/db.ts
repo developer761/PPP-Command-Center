@@ -184,6 +184,32 @@ export async function removeTeamMember(memberId: string, actorUserId: string): P
   return { ok: true };
 }
 
+/** Assign (or clear, with null) the team on an account or opportunity — the
+ *  "add a Team by name" flow. `parent` is 'account' or 'opportunity'. */
+export async function setOwnerTeam(
+  parent: "account" | "opportunity",
+  ownerId: string,
+  teamId: string | null,
+  actorUserId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const table = parent === "account" ? "commercial_accounts" : "commercial_opportunities";
+  if (teamId) {
+    const { data: t } = await sb.from("commercial_teams").select("id").eq("id", teamId).is("deleted_at", null).maybeSingle();
+    if (!t) return { ok: false, error: "Team not found." };
+  }
+  const { error } = await sb.from(table).update({ team_id: teamId }).eq("id", ownerId).is("deleted_at", null);
+  if (error) return { ok: false, error: error.message };
+  await logUpdate(table, ownerId, {}, { team_id: teamId }, actorUserId);
+  return { ok: true };
+}
+
+/** Team assigned to an account/opportunity (with members), or null. */
+export async function getOwnerTeam(teamId: string | null | undefined): Promise<TeamWithMembers | null> {
+  if (!teamId) return null;
+  return getTeam(teamId);
+}
+
 /** Set a member's role and/or team-admin flag. Setting a new admin clears the
  *  others so a team has exactly one admin. */
 export async function updateTeamMember(
