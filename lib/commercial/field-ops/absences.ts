@@ -131,7 +131,10 @@ export async function upsertAbsence(input: {
     if (error) return { ok: false, error: error.message };
     await logUpdate("commercial_absences", (data as { id: string }).id, existing, data, input.actor_user_id);
     await resyncNudge(input.employee_id, input.work_date);
-    await notifyMarkedOff(input.employee_id, input.work_date, input.type, hours);
+    // NOT notifyMarkedOff here — this is a RE-mark of an existing absence (e.g.
+    // fixing the reason). They were already emailed the first time; re-emailing on
+    // an edit would just spam them (audit 2026-08). New mark-offs (insert + the
+    // race-collapse below) still notify.
     return { ok: true, id: (data as { id: string }).id };
   }
 
@@ -160,7 +163,7 @@ export async function upsertAbsence(input: {
         if (uErr) return { ok: false, error: uErr.message };
         await logUpdate("commercial_absences", (upd as { id: string }).id, existRow, upd, input.actor_user_id);
         await resyncNudge(input.employee_id, input.work_date);
-        await notifyMarkedOff(input.employee_id, input.work_date, input.type, hours);
+        // No notify — the concurrent insert that won the race already emailed.
         return { ok: true, id: (upd as { id: string }).id };
       }
     }
