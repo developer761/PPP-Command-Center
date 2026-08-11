@@ -260,14 +260,68 @@ export async function removeTeamMember(
   return { ok: true, promotedAdmin };
 }
 
+/**
+ * Write a team's members into the account's role-based assignments.
+ *
+ * Karan 2026-08, asked directly: "should assigning a team also expand into
+ * commercial_account_assignments so PM/rep lookups see them?" — YES. Picking a
+ * team by name is meant to APPLY those people, not just label the account.
+ * Without this, `team_id` was a decoration: every role lookup (primary PM,
+ * sales rep, foreman, billing contact) reads assignments and saw nobody.
+ *
+ * ADDITIVE, never destructive. It does not remove anyone who was assigned
+ * individually — those stay as overrides, which is exactly what the account
+ * Team tab already tells the user. Re-applying the same team is a no-op
+ * because addAssignment restores/dedupes on (account, user, role).
+ *
+ * Best-effort per member: one member who can't be assigned (deactivated
+ * between page load and submit, no platform access) must not abort the rest.
+ * Returns counts so the caller can give a small, honest heads-up instead of
+ * silently doing half the job.
+ */
+export async function applyTeamToAccountAssignments(
+  accountId: string,
+  teamId: string,
+  actorUserId: string
+): Promise<{ added: number; alreadyThere: number; skipped: string[] }> {
+  const team = await getTeam(teamId);
+  if (!team) return { added: 0, alreadyThere: 0, skipped: [] };
+  const { addAssignment } = await import("@/lib/commercial/accounts/assignments");
+  let added = 0;
+  let alreadyThere = 0;
+  const skipped: string[] = [];
+  for (const m of team.members) {
+    const res = await addAssignment({
+      account_id: accountId,
+      user_id: m.user_id,
+      role: m.role,
+      assigned_by_user_id: actorUserId,
+    });
+    if (res.ok) {
+      added += 1;
+    } else if (res.error.toLowerCase().includes("already assigned")) {
+      // Idempotent: the person already holds that role here.
+      alreadyThere += 1;
+    } else {
+      skipped.push(`${m.name} (${res.error})`);
+    }
+  }
+  return { added, alreadyThere, skipped };
+}
+
 /** Assign (or clear, with null) the team on an account or opportunity — the
- *  "add a Team by name" flow. `parent` is 'account' or 'opportunity'. */
+ *  "add a Team by name" flow. `parent` is 'account' or 'opportunity'.
+ *
+ *  Assigning to an ACCOUNT also expands the team into that account's
+ *  role-based assignments (see applyTeamToAccountAssignments). Opportunities
+ *  don't have their own assignment table — a deal's crew is the account's —
+ *  so setting a team there is the label + the getEffectiveOwnerTeam lookup. */
 export async function setOwnerTeam(
   parent: "account" | "opportunity",
   ownerId: string,
   teamId: string | null,
   actorUserId: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; applied?: { added: number; alreadyThere: number; skipped: string[] } } | { ok: false; error: string }> {
   const sb = commercialDb();
   const table = parent === "account" ? "commercial_accounts" : "commercial_opportunities";
   if (teamId) {
@@ -277,7 +331,15 @@ export async function setOwnerTeam(
   const { error } = await sb.from(table).update({ team_id: teamId }).eq("id", ownerId).is("deleted_at", null);
   if (error) return { ok: false, error: error.message };
   await logUpdate(table, ownerId, {}, { team_id: teamId }, actorUserId);
-  return { ok: true };
+  // Clearing a team deliberately leaves the people in place: they may have
+  // been doing the work for weeks, and silently un-assigning a whole crew
+  // because someone blanked a dropdown is a far worse surprise than a stale
+  // name on the roster (which the user can remove individually).
+  const applied =
+    parent === "account" && teamId
+      ? await applyTeamToAccountAssignments(ownerId, teamId, actorUserId)
+      : undefined;
+  return { ok: true, applied };
 }
 
 /** Team assigned to an account/opportunity (with members), or null. */

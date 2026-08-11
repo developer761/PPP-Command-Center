@@ -67,14 +67,9 @@ async function updateAction(formData: FormData) {
     if (!Number.isFinite(n) || n < 0) return "invalid";
     return Math.round(n * 100);
   };
-  const lowParsed = parseDollars(String(formData.get("bid_low") ?? ""));
-  const highParsed = parseDollars(String(formData.get("bid_high") ?? ""));
-  if (lowParsed === "invalid") {
-    redirect(`/commercial/opportunities/${id}/edit?error=${encodeURIComponent("Bid low must be a non-negative dollar amount.")}`);
-  }
-  if (highParsed === "invalid") {
-    redirect(`/commercial/opportunities/${id}/edit?error=${encodeURIComponent("Bid high must be a non-negative dollar amount.")}`);
-  }
+  // Bid low/high were removed from every opportunity form in the 2026-08
+  // meeting — pricing lives on the proposal. Parsing/validating fields that no
+  // form posts any more just made this action look like it still owned them.
 
   const probabilityRaw = String(formData.get("probability_pct") ?? "").trim();
   let probability: number | null | undefined = undefined;
@@ -92,8 +87,6 @@ async function updateAction(formData: FormData) {
     description: (formData.get("description") as string)?.trim() || null,
     // status intentionally omitted — see comment above.
     source: sourceRaw ? (sourceRaw as OpportunitySource) : null,
-    bid_value_low_cents: lowParsed as number | null,
-    bid_value_high_cents: highParsed as number | null,
     probability_pct: probability,
     proposal_due_at: (formData.get("proposal_due_at") as string) || null,
     proposed_start_at: (formData.get("proposed_start_at") as string) || null,

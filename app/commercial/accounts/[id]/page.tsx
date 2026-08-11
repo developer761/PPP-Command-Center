@@ -183,6 +183,8 @@ type SP = Promise<{
   sub?: string;
   error?: string;
   team_added?: string;
+  /** What assigning a team just applied, e.g. "Added 4 team members". */
+  team_applied?: string;
   team_skipped?: string;
   /** Karan 2026-07-08: on-create tags + docs flashes from /new. */
   tags_added?: string;
@@ -367,7 +369,12 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   if (raw === "home") return { primary: "deals", sub: null }; // old Summary → Deals list
   if (raw === "opportunities") return { primary: "deals", sub: null };
   if (raw === "contacts") return { primary: "people", sub: null }; // legacy → the Contacts leaf
-  if (raw === "info" || raw === "team" || raw === "notes") return { primary: "documents", sub: null };
+  // NOT "team" — it's a reachable (if unlinked-from-the-top-nav) leaf, same
+  // treatment as ?tab=opportunities. It used to fall into this legacy remap,
+  // which meant the account Team tab was unreachable and the whole
+  // "assign a team to this customer" flow was dead code: the action even
+  // redirected to ?tab=team and landed the user on Documents.
+  if (raw === "info" || raw === "notes") return { primary: "documents", sub: null };
   return { primary: "overview", sub: null };
 }
 
@@ -401,6 +408,8 @@ export default async function CommercialAccountDetailPage({
     // ?tab=opportunities stays a reachable (unlinked) create/manage surface so
     // the "New opportunity" flow keeps working after the nav slimmed to 3 tabs.
     rawTab === "opportunities" ? "opportunities"
+    // ?tab=team — the account's staff roster + "assign a whole team" surface.
+    : rawTab === "team" ? "team"
     : primaryTab === "overview" ? "kpis"
     : primaryTab === "deals" ? "home"
     : primaryTab === "documents" ? "documents"
@@ -779,6 +788,13 @@ export default async function CommercialAccountDetailPage({
           paymentApplied={typeof sp.applied === "string" ? Number(sp.applied) || null : null}
           paymentHeadsUp={typeof sp.heads_up === "string" ? sp.heads_up : null}
           errorMessage={sp.error}
+        />
+      )}
+      {tab === "team" && (
+        <TeamTab
+          accountId={account.id}
+          errorMessage={typeof sp.error === "string" ? sp.error : undefined}
+          appliedNote={typeof sp.team_applied === "string" ? sp.team_applied : undefined}
         />
       )}
       {tab === "projects" && (
@@ -2725,11 +2741,6 @@ async function createDealInlineAction(formData: FormData) {
     ? (sourceRaw as (typeof OPPORTUNITY_SOURCES)[number])
     : null;
 
-  const bidLowRaw = String(formData.get("bid_low") ?? "").trim();
-  const bidHighRaw = String(formData.get("bid_high") ?? "").trim();
-  const bid_value_low_cents = bidLowRaw ? parseDollarsToCents(bidLowRaw) : null;
-  const bid_value_high_cents = bidHighRaw ? parseDollarsToCents(bidHighRaw) : null;
-
   const proposalDueRaw = String(formData.get("proposal_due_at") ?? "").trim();
   const proposal_due_at = proposalDueRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposalDueRaw)
     ? `${proposalDueRaw}T16:00:00.000Z`
@@ -2816,8 +2827,6 @@ async function createDealInlineAction(formData: FormData) {
     follow_up_at,
     follow_up_notes,
     source,
-    bid_value_low_cents,
-    bid_value_high_cents,
     proposal_due_at,
     proposed_start_at,
     proposed_end_at,
@@ -2877,20 +2886,11 @@ async function editDealFromAccountAction(formData: FormData) {
     ? (sourceRaw as (typeof OPPORTUNITY_SOURCES)[number])
     : null;
 
-  // Dollar parser mirrors the New Deal action + standalone edit page
-  // so users get the same "50,000" / "$50000" / "50000.50" flexibility.
-  const parseDollarsSheet = (raw: string): number | null | "invalid" => {
-    const cleaned = raw.trim().replace(/[$,\s]/g, "");
-    if (cleaned === "") return null;
-    if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return "invalid";
-    const n = parseFloat(cleaned);
-    if (!Number.isFinite(n) || n < 0) return "invalid";
-    return Math.round(n * 100);
-  };
-  const lowParsed = parseDollarsSheet(String(formData.get("bid_low") ?? ""));
-  const highParsed = parseDollarsSheet(String(formData.get("bid_high") ?? ""));
-  if (lowParsed === "invalid") redirect(`${back}&error=${encodeURIComponent("Bid low must be a non-negative dollar amount.")}#deal-edit-sheet`);
-  if (highParsed === "invalid") redirect(`${back}&error=${encodeURIComponent("Bid high must be a non-negative dollar amount.")}#deal-edit-sheet`);
+  // Bid low/high parsing removed with the fields (2026-08 meeting — pricing
+  // lives on the proposal). The patch simply omits them now, so an existing
+  // range on a legacy deal is left untouched rather than being cleared by
+  // every save. (updateCommercialOpportunity maps null -> undefined anyway,
+  // so this was already a no-op; the code was just misleading.)
 
   const probRaw = String(formData.get("probability_pct") ?? "").trim();
   let probability_pct: number | null | undefined = undefined;
@@ -2956,8 +2956,6 @@ async function editDealFromAccountAction(formData: FormData) {
     title,
     source,
     primary_contact_id,
-    bid_value_low_cents: lowParsed as number | null,
-    bid_value_high_cents: highParsed as number | null,
     probability_pct,
     proposal_due_at,
     proposed_start_at,
@@ -3611,7 +3609,11 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
         <h2 className="text-sm font-bold text-ppp-charcoal">Add contact</h2>
         <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 mt-0.5 leading-snug">
           People at the <strong>account&apos;s (GC) company</strong> — decision-maker, PM, estimator, AP contact, etc.
-          For PPP staff working this account, use the <strong>Team</strong> tab under Overview.
+          For our own staff on this customer, use{" "}
+          <Link href={`/commercial/accounts/${accountId}?tab=team`} className="font-semibold text-cc-brand-700 hover:underline">
+            Team
+          </Link>
+          .
         </p>
         <form action={addContactAction} className="space-y-3">
           <input type="hidden" name="account_id" value={accountId} />
@@ -3978,10 +3980,35 @@ async function assignTeamAction(formData: FormData) {
   const teamId = teamRaw && UUID_RE.test(teamRaw) ? teamRaw : null; // "" clears it
   const res = await setOwnerTeam("account", account_id, teamId, user.id);
   revalidatePath(`/commercial/accounts/${account_id}`);
-  redirect(res.ok ? `/commercial/accounts/${account_id}?tab=team` : `/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(res.error)}`);
+  if (!res.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(res.error)}`);
+  }
+  // Small, honest heads-up about what applying the team actually did — the
+  // members are now real role assignments, and any member we couldn't assign
+  // (deactivated, no platform access) is named rather than silently dropped.
+  const ap = res.applied;
+  let note = "";
+  if (ap && (ap.added > 0 || ap.skipped.length > 0)) {
+    const bits: string[] = [];
+    if (ap.added > 0) bits.push(`Added ${ap.added} team member${ap.added === 1 ? "" : "s"} to this customer`);
+    if (ap.alreadyThere > 0) bits.push(`${ap.alreadyThere} already assigned`);
+    if (ap.skipped.length > 0) bits.push(`couldn't add ${ap.skipped.join(", ")}`);
+    note = `&team_applied=${encodeURIComponent(bits.join(" · "))}`;
+  }
+  redirect(`/commercial/accounts/${account_id}?tab=team${note}`);
 }
 
-async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
+async function TeamTab({
+  accountId,
+  errorMessage,
+  appliedNote,
+}: {
+  accountId: string;
+  errorMessage?: string;
+  /** What assigning a team just did, e.g. "Added 4 team members to this
+   *  customer". Rendered as a quiet confirmation strip, not a banner. */
+  appliedNote?: string;
+}) {
   const [team, assignableStaff, allPppEmails, allTeams, account] = await Promise.all([
     listAccountTeam(accountId),
     listAssignableStaff(),
@@ -4010,6 +4037,11 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
           {errorMessage}
         </div>
+      )}
+      {appliedNote && (
+        <p className="text-[12px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+          {appliedNote}
+        </p>
       )}
 
       {/* Assigned team (Karan meeting 2026-08) — apply a whole preset team by
@@ -7755,34 +7787,15 @@ async function DealEditSheet({
           {/* ─── Section: Pricing ─── */}
           <SheetSection
             title="Pricing"
-            hint="Rough bid range + your best guess on close probability."
+            hint="Your best guess on close probability. The dollar value comes from this deal's proposal."
           >
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="edit-bid-low" className={labelCls}>Bid low ($)</label>
-                <input
-                  id="edit-bid-low"
-                  name="bid_low"
-                  type="text"
-                  inputMode="decimal"
-                  defaultValue={deal.bid_value_low_cents ? (deal.bid_value_low_cents / 100).toFixed(2) : ""}
-                  placeholder="0.00"
-                  className={`${inputCls} tabular-nums`}
-                />
-              </div>
-              <div>
-                <label htmlFor="edit-bid-high" className={labelCls}>Bid high ($)</label>
-                <input
-                  id="edit-bid-high"
-                  name="bid_high"
-                  type="text"
-                  inputMode="decimal"
-                  defaultValue={deal.bid_value_high_cents ? (deal.bid_value_high_cents / 100).toFixed(2) : ""}
-                  placeholder="0.00"
-                  className={`${inputCls} tabular-nums`}
-                />
-              </div>
-            </div>
+            {/* Bid low / Bid high removed per the 2026-08 meeting — pricing lives
+                on the proposal. They were dropped from both CREATE forms then but
+                left here, so the one surface that could still set them was the
+                edit sheet; Karan's ask was to remove them from the Opportunity
+                full stop. Existing values are preserved in the DB and still feed
+                the $ KPIs, which now fall back to the deal's proposal total when
+                there's no range (see listCurrentProposalTotalByOpp). */}
             <div>
               <label htmlFor="edit-prob" className={labelCls}>Probability (%)</label>
               {/* Karan 2026-07-10: type="text" + inputMode="numeric"
