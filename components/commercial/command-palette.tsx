@@ -246,6 +246,7 @@ export function CommandPalette() {
             <button
               type="button"
               aria-label="Clear search"
+              title="Clear what you typed"
               onClick={() => { setQuery(""); inputRef.current?.focus(); }}
               className="shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-full text-ppp-charcoal-400 hover:text-ppp-charcoal-800 hover:bg-ppp-charcoal-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 touch-manipulation"
             >
@@ -253,9 +254,17 @@ export function CommandPalette() {
             </button>
           )}
           <span aria-hidden className="hidden sm:inline shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-400 bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded px-1.5 py-1 leading-none">Esc</span>
+          {/* Divider so the two X glyphs don't read as one control. The Esc
+              chip separates them on desktop but is hidden on mobile, which is
+              exactly where they'd sit shoulder to shoulder — clear-the-text and
+              close-the-whole-thing look identical and do very different things. */}
+          {query && (
+            <span aria-hidden className="sm:hidden shrink-0 self-center h-4 w-px bg-ppp-charcoal-200 mx-0.5" />
+          )}
           <button
             type="button"
             aria-label="Close search"
+            title="Close search"
             onClick={() => setOpen(false)}
             className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal-800 hover:bg-ppp-charcoal-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 touch-manipulation"
           >

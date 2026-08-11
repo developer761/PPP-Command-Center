@@ -2132,7 +2132,7 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
       oppId={oppId}
       returnTo={returnTo}
       defaultTax={defaultTax}
-      taxNote={taxExempt ? "This customer is tax-exempt — tax defaulted to 0%." : taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
+      taxNote={taxExempt ? "This customer is flagged tax-exempt, so tax defaulted to 0%. Type a rate here if this job is taxable." : taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
       proposals={wonProposals.map((pr) => {
         const billed = billedByProposal.get(pr.id) ?? 0;
         const remaining = Math.max(0, pr.total_cents - billed);
@@ -3511,14 +3511,14 @@ function InfoCards({ account }: { account: CommercialAccount }) {
           upload COI + prequal certs as Files (category "Insurance") on
           the opp detail. DB columns preserved for audit trail. */}
 
-      <Card title="Tax" section="tax" accountId={account.id}>
-        <EditableCheckbox name="tax_exempt" label="Tax exempt" defaultChecked={account.tax_exempt} />
-        <EditableField
-          name="tax_exempt_cert_number"
-          label="Tax exempt certificate #"
-          defaultValue={account.tax_exempt_cert_number}
-        />
-      </Card>
+      {/* Tax-exemption card removed per the 2026-08 meeting ("No tax exemption
+          on the Account page") — exemption is decided per JOB, from the
+          property's ZIP jurisdiction, not held as a customer-level flag. The
+          create and edit forms dropped it then; this card was missed, so the
+          field was still editable here — i.e. the setting Karan asked us to
+          remove was still on the page he was looking at.
+          DB columns preserved for audit trail; nothing reads them for tax
+          maths (Settings → Sales tax by ZIP owns that). */}
 
       {account.notes && (
         <Card title="Notes" className="lg:col-span-2">
