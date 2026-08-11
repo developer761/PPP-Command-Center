@@ -39,8 +39,12 @@ Only show relevant statuses per phase — create form, edit, pickers, filters, k
 Today's list shipped (B1/U1/U2/U3/U4/F1); parked #3 (typo), #8 ($8k proposal), F2 (submittal send). Prior open: CO lines on invoice, AIA templated-Excel, Kim proposal-build + Resend, Tomco Warranty/Work-Order doc formats.
 
 ## DONE (committed + pushed)
-- Remove Bid low/high (both forms) · RFP defaults today · remove tax exemption (preserve existing) · Alternate→Qualifications · proposal input glitch (React 19 form-reset on autosave) · **Cost→Transactions** nav labels + heading · **auto-title** (MM-DD-YYYY Builder - Client - Street).
-- **Status analysis:** POST-contract tree already matches Karan's spec exactly. PRE-contract needs the flatten (RFP→top-level, Closed Won/Lost split) + a decision on where Follow-Up & Proposal-Pending-Approval go — awaiting Karan's specifics + a migration map for review.
+- Remove Bid low/high (both forms) · RFP defaults today · remove tax exemption (preserve existing) · Alternate→Qualifications · proposal input glitch (React 19 form-reset on autosave) · **Cost→Transactions** nav labels + heading · **auto-title** (MM-DD-YYYY Builder - Client - Street) · **Teams feature** (Settings CRUD + data + account assignment; migration 122).
+- **Already existed (no build needed):** global All-Active-Projects list (`/commercial/projects`) · the entire POST-contract status tree.
+- **Status analysis:** PRE-contract needs the flatten (RFP→top-level, Closed Won/Lost split) + a decision on where Follow-Up & Proposal-Pending-Approval go — awaiting Karan's specifics + a migration map for review.
+
+## MIGRATIONS TO PASTE
+- **122** (Teams) — commercial_teams + commercial_team_members + team_id on accounts/opportunities.
 
 ## AWAITING KARAN'S SPECIFICS
 - **Statuses** (the "do together" item): confirm the flat pre-contract list + where Follow-Up / Proposal-Pending-Approval map → then I write the migration + do the pre/post UI split.
