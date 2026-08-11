@@ -81,3 +81,32 @@ export async function requireCommercialUser(): Promise<string> {
   await assertCommercialAccess(user.id);
   return user.id;
 }
+
+/**
+ * API-route gate that ALSO denies crew-only logins.
+ *
+ * The crew allowlist in lib/commercial/crew-access.ts is enforced in the
+ * /commercial LAYOUT — which never runs for /api/* routes, and proxy.ts only
+ * matches page paths. So a crew login could call the palette search, the
+ * job-costs export, the AR-aging export, account-summary, document downloads
+ * … and get full company financials by pasting a URL. That is exactly the
+ * fail-open the allowlist design was written to prevent; the design was right
+ * and the enforcement was incomplete (persona audit 2026-08).
+ *
+ * This is the choke point every commercial API route already funnels through,
+ * so denying here closes the whole class at once rather than route by route.
+ *
+ * `allowCrew` opts a route back IN — only for endpoints a crew member must be
+ * able to call (the PIN clock). Keep that list tiny and obvious.
+ */
+export async function apiAccessDenied(
+  userId: string | null | undefined,
+  row: unknown,
+  opts?: { allowCrew?: boolean }
+): Promise<boolean> {
+  if (rawAccessDenied(row)) return true;
+  if (opts?.allowCrew) return false;
+  if (!userId) return true;
+  const { isCrewOnlyUser } = await import("@/lib/commercial/crew-access");
+  return await isCrewOnlyUser(userId);
+}

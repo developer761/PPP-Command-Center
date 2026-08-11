@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
-import { rawAccessDenied } from "@/lib/commercial/auth";
+import { apiAccessDenied } from "@/lib/commercial/auth";
 import { isAdminEmail, normalizeEmail } from "@/lib/auth/admin";
 import { normalizeRole } from "@/lib/auth/roles";
 import {
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   const p = prof as { role?: string | null; is_admin?: boolean | null } | null;
   const isAdmin =
     normalizeRole(p?.role ?? null, p?.is_admin === true || isAdminEmail(email)) === "admin";
-  if (rawAccessDenied(prof) || !isAdmin) {
+  if ((await apiAccessDenied(auth?.user?.id, prof)) || !isAdmin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

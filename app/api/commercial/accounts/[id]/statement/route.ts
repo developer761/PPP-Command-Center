@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { rawAccessDenied } from "@/lib/commercial/auth";
+import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getOpenInvoiceStatementForAccount } from "@/lib/commercial/invoices/statement";
@@ -35,7 +35,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .select("has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
     .maybeSingle();
-  if (rawAccessDenied(prof)) {
+  if ((await apiAccessDenied(auth?.user?.id, prof))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

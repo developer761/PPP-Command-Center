@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
-import { rawAccessDenied } from "@/lib/commercial/auth";
+import { apiAccessDenied } from "@/lib/commercial/auth";
 import { upsertAbsence, deleteAbsence } from "@/lib/commercial/field-ops/absences";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     .select("has_new_platform_access, is_active, is_admin")
     .eq("user_id", data.user.id)
     .maybeSingle();
-  if (rawAccessDenied(profile)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if ((await apiAccessDenied(data?.user?.id, profile))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   if (!(profile as { is_admin?: boolean } | null)?.is_admin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

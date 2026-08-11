@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
-import { rawAccessDenied } from "@/lib/commercial/auth";
+import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getArAging, type ArAgingRow } from "@/lib/commercial/reports/ar-aging";
 import { etTodayIso } from "@/lib/date-et";
 
@@ -25,7 +25,7 @@ export async function GET() {
     .select("has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
     .maybeSingle();
-  if (rawAccessDenied(prof)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if ((await apiAccessDenied(auth?.user?.id, prof))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const aging = await getArAging();
   const header = ["Customer", "Current", "1-30", "31-60", "61-90", "90+", "Total", "Open invoices", "Oldest days"];

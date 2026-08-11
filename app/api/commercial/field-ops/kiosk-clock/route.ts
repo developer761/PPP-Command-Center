@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
-import { rawAccessDenied } from "@/lib/commercial/auth";
+import { apiAccessDenied } from "@/lib/commercial/auth";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { isCrewOnlyUser } from "@/lib/commercial/crew-access";
 import { verifyEmployeePin } from "@/lib/commercial/field-ops/employees";
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     .select("has_new_platform_access, is_active, is_admin")
     .eq("user_id", data.user.id)
     .maybeSingle();
-  if (rawAccessDenied(profile)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if ((await apiAccessDenied(data?.user?.id, profile, { allowCrew: true }))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   // Kiosk = the office/shop TABLET (an admin session); crew clock via their
   // login-less magic link, not this endpoint. Restrict to admins so a non-admin
   // commercial user can't brute-force a 4-digit PIN to clock other people (payroll

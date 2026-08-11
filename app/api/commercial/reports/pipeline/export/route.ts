@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
-import { rawAccessDenied } from "@/lib/commercial/auth";
+import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
 import { etTodayIso } from "@/lib/date-et";
 
@@ -24,7 +24,7 @@ export async function GET() {
     .select("has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
     .maybeSingle();
-  if (rawAccessDenied(prof)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if ((await apiAccessDenied(auth?.user?.id, prof))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const report = await getPipelineReport();
   const header = ["Stage", "Opportunities", "Bid value", "Weighted value"];
