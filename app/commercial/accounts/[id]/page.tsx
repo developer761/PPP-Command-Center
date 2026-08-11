@@ -1258,7 +1258,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             { key: "submittals", label: "Submittals" },
             { key: "change-orders", label: "Change Orders" },
             { key: "aia", label: "AIA Billing" },
-            { key: "costs", label: "Costs" },
+            { key: "costs", label: "Transactions" },
             { key: "closeout", label: "Closeout & Warranty" },
           ].map((t) => ({ ...t, href: `${dealBase}&dt=${t.key}` }));
           const tabClass = (active: boolean) =>
@@ -1480,7 +1480,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         </ToolMiniCard>
 
         {/* Costs — total job cost + projected gross margin (full picture on the P&L tab) */}
-        <ToolMiniCard label="Costs" href={`${base}?tab=projects&project=${p.opp.id}&dt=costs`} iconBg="bg-cc-brand-600" icon={<path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />} chip={p.costsCents === 0 ? null : p.grossMarginPct == null ? { label: "no contract", tone: "neutral" } : { label: `${p.grossMarginPct}% margin`, tone: p.grossMarginPct < 0 ? "rose" : p.grossMarginPct < 15 ? "amber" : "emerald" }}>
+        <ToolMiniCard label="Transactions" href={`${base}?tab=projects&project=${p.opp.id}&dt=costs`} iconBg="bg-cc-brand-600" icon={<path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />} chip={p.costsCents === 0 ? null : p.grossMarginPct == null ? { label: "no contract", tone: "neutral" } : { label: `${p.grossMarginPct}% margin`, tone: p.grossMarginPct < 0 ? "rose" : p.grossMarginPct < 15 ? "amber" : "emerald" }}>
           {p.costsCents === 0 ? (
             <p className="text-[11.5px] text-ppp-charcoal-500">No job costs logged yet — add materials, labor &amp; subs to see margin.</p>
           ) : (
@@ -1750,7 +1750,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
 const PROJECT_TOOLS: { key: string; label: string; docCategory: string; docLabel: string }[] = [
   { key: "change-orders", label: "Change Orders", docCategory: "change_order", docLabel: "Change order" },
   { key: "aia", label: "AIA Billing", docCategory: "aia_billing", docLabel: "AIA billing" },
-  { key: "costs", label: "Costs", docCategory: "receipt", docLabel: "Receipt" },
+  { key: "costs", label: "Transactions", docCategory: "receipt", docLabel: "Receipt" },
   { key: "submittals", label: "Submittals", docCategory: "submittal", docLabel: "Submittal" },
   { key: "closeout", label: "Closeout & Warranty", docCategory: "closeout", docLabel: "Closeout" },
   { key: "work-order", label: "Work Order", docCategory: "work_order", docLabel: "Work order" },

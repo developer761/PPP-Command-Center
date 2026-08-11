@@ -562,7 +562,7 @@ export async function ProjectCostsTool({
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
       <ToolBackHeader accountId={id} dealId={dealId} accountName={account.company_name} dealName={dealName} back={sp.back} />
       <div>
-        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Costs &amp; Job P&amp;L</h1>
+        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Transactions &amp; Job P&amp;L</h1>
         <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">{dealName}</p>
       </div>
       {panel}
