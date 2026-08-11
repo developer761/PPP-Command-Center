@@ -552,10 +552,39 @@ export async function deleteAssignmentById(
   // the crew member still has ANOTHER shift that day, re-schedule for the earliest
   // remaining start. A bare cancel would drop reminders for a still-scheduled
   // shift, and the once-daily cron can't fix a same-day removal (audit 2026-08).
-  const ex = existing as { employee_id?: string; work_date?: string };
+  const ex = existing as { employee_id?: string; work_date?: string; job_id?: string };
   if (ex.employee_id && ex.work_date) {
     const { resyncClockReminder } = await import("./schedule-email-send");
     await resyncClockReminder(ex.employee_id, ex.work_date).catch(() => undefined);
+  }
+
+  // Reverse the auto-status when that was the work order's LAST crew: scheduled →
+  // ready_to_schedule. Mirrors the forward advance on scheduling, so a work order
+  // doesn't keep showing "Scheduled" on the Status board with nothing on the
+  // calendar (Karan 2026-08 — the stuck "k · Scheduled" case). Only walks back the
+  // auto 'scheduled' state; never touches a manually-advanced in_progress /
+  // almost_done / complete / on_hold job.
+  if (ex.job_id) {
+    const { count } = await sb
+      .from("commercial_assignments")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", ex.job_id)
+      .neq("status", "cancelled");
+    if ((count ?? 0) === 0) {
+      const { data: job } = await sb
+        .from("commercial_jobs")
+        .select("status")
+        .eq("id", ex.job_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if ((job as { status: string } | null)?.status === "scheduled") {
+        await sb
+          .from("commercial_jobs")
+          .update({ status: "ready_to_schedule", updated_at: new Date().toISOString() })
+          .eq("id", ex.job_id);
+        await logUpdate("commercial_jobs", ex.job_id, { status: "scheduled" }, { status: "ready_to_schedule" }, actorUserId);
+      }
+    }
   }
   return { ok: true };
 }
