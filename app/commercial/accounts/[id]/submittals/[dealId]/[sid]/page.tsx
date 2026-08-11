@@ -1413,7 +1413,7 @@ export default async function SubmittalDetailPage({
             </div>
             <p className="text-[12px] text-ppp-charcoal-500 mt-1">
               {canLinkAttachments ? (
-                <>Click <strong className="text-ppp-charcoal">Upload PDF</strong> above to add a file directly.{" "}
+                <>Click <strong className="text-ppp-charcoal">Upload files</strong> above to add one or more directly.{" "}
                 {unlinkedAttachments.length > 0 && (
                   <>Or pick from {unlinkedAttachments.length} file{unlinkedAttachments.length === 1 ? "" : "s"} already on Plans &amp; Specs below.</>
                 )}</>
