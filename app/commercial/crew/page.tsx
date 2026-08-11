@@ -35,16 +35,19 @@ export default async function CrewHomePage() {
   const firstName =
     (profile?.sf_user_name ?? user.email ?? "").split(/[\s@]/)[0] || "there";
 
+  // These point at the SCOPED /commercial/crew/* views, not the company-wide
+  // field-ops pages. Those are admin-only and would have bounced the crew
+  // member straight back with no message — three dead tiles out of four.
   const tiles: { href: string; title: string; body: string }[] = [
     {
-      href: "/commercial/field-ops/schedule",
+      href: "/commercial/crew/schedule",
       title: "My schedule",
-      body: "The jobs you're on, and when.",
+      body: "Where you're working, and when.",
     },
     {
-      href: "/commercial/field-ops/calendar",
-      title: "Calendar",
-      body: "The week at a glance.",
+      href: "/commercial/crew/jobs",
+      title: "My jobs",
+      body: "What you're on over the next few months.",
     },
     {
       href: "/commercial/field-ops/clock-station",
@@ -52,9 +55,9 @@ export default async function CrewHomePage() {
       body: "Punch in with your PIN.",
     },
     {
-      href: "/commercial/field-ops/hours",
+      href: "/commercial/crew/hours",
       title: "My hours",
-      body: "What you've worked and what's been approved.",
+      body: "Your scheduled and worked hours.",
     },
   ];
 

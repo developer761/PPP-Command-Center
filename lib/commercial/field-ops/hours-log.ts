@@ -151,3 +151,86 @@ export async function getHoursLog(
 
   return { rows, totalScheduled: round2(grandSched), totalWorked: round2(grandWorked) };
 }
+
+// ── Crew self-service (scoped to ONE employee) ─────────────────────────────
+
+export type MyHoursDay = {
+  work_date: string;
+  job_name: string;
+  scheduled_hours: number;
+  worked_hours: number;
+};
+
+/**
+ * One crew member's own hours for a window.
+ *
+ * A separate query rather than a filter over getHoursLog: that one builds the
+ * whole company's rows (every employee, all totals) and handing a crew member a
+ * filtered slice of it puts the entire payroll one dropped filter away. Here
+ * employee_id is in the WHERE clause of both reads.
+ *
+ * Returns their scheduled-vs-worked per day per job. No company totals, no
+ * other people, no approval controls — those live on the admin Hours Log.
+ */
+export async function getMyHoursLog(
+  employeeId: string,
+  startIso: string,
+  endIso: string
+): Promise<{ days: MyHoursDay[]; totalScheduled: number; totalWorked: number }> {
+  if (!employeeId) return { days: [], totalScheduled: 0, totalWorked: 0 };
+  const sb = commercialDb();
+
+  const [{ data: entries }, { data: assigns }] = await Promise.all([
+    sb
+      .from("commercial_time_entries")
+      .select("work_date, job_id, actual_hours")
+      .eq("employee_id", employeeId)
+      .gte("work_date", startIso)
+      .lte("work_date", endIso),
+    sb
+      .from("commercial_assignments")
+      .select("work_date, job_id, scheduled_hours")
+      .eq("employee_id", employeeId)
+      .neq("status", "cancelled")
+      .gte("work_date", startIso)
+      .lte("work_date", endIso),
+  ]);
+
+  const key = (d: string, j: string | null) => `${d}|${j ?? ""}`;
+  const acc = new Map<string, MyHoursDay & { job_id: string | null }>();
+  const touch = (work_date: string, job_id: string | null) => {
+    const k = key(work_date, job_id);
+    let row = acc.get(k);
+    if (!row) {
+      row = { work_date, job_id, job_name: "", scheduled_hours: 0, worked_hours: 0 };
+      acc.set(k, row);
+    }
+    return row;
+  };
+  for (const a of (assigns ?? []) as { work_date: string; job_id: string | null; scheduled_hours: number | null }[]) {
+    touch(a.work_date, a.job_id).scheduled_hours += Number(a.scheduled_hours ?? 0);
+  }
+  for (const e of (entries ?? []) as { work_date: string; job_id: string | null; actual_hours: number | null }[]) {
+    touch(e.work_date, e.job_id).worked_hours += Number(e.actual_hours ?? 0);
+  }
+
+  const jobIds = Array.from(new Set(Array.from(acc.values()).map((r) => r.job_id).filter(Boolean) as string[]));
+  if (jobIds.length > 0) {
+    // Deleted work orders still resolve their name, same as the admin log —
+    // a crew member shouldn't see a blank row for a job that was torn down.
+    const { data: jobs } = await sb.from("commercial_jobs").select("id, name").in("id", jobIds);
+    const nameById = new Map((((jobs ?? []) as { id: string; name: string | null }[])).map((j) => [j.id, j.name ?? "Job"]));
+    for (const r of acc.values()) r.job_name = r.job_id ? nameById.get(r.job_id) ?? "Job" : "—";
+  } else {
+    for (const r of acc.values()) r.job_name = "—";
+  }
+
+  const days = Array.from(acc.values())
+    .map(({ job_id: _job_id, ...rest }) => rest)
+    .sort((a, b) => a.work_date.localeCompare(b.work_date) || a.job_name.localeCompare(b.job_name));
+  return {
+    days,
+    totalScheduled: days.reduce((s, d) => s + d.scheduled_hours, 0),
+    totalWorked: days.reduce((s, d) => s + d.worked_hours, 0),
+  };
+}

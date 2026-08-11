@@ -48,12 +48,18 @@ export type CommercialEmployee = {
   schedule_email_opt_out: boolean;
   preferred_language: "en" | "es";
   external_ref: string | null;
+  /** Migration 125 — the Commercial login this employee signs in as (crew
+   *  self-service). NULL for the majority, who have no login. Resolved ONLY
+   *  via getEmployeeForUser; never matched by email. */
+  user_id: string | null;
   created_at: string;
   updated_at: string;
 };
 
+// user_id MUST be in this list — without it the column comes back undefined and
+// every scoped crew query silently resolves to "no employee linked".
 const COLS =
-  "id, first_name, last_name, display_name, worker_type, role, pay_type, default_daily_hours, phone, email, sort_order, active, start_date, end_date, schedule_email_opt_out, preferred_language, external_ref, created_at, updated_at";
+  "id, first_name, last_name, display_name, worker_type, role, pay_type, default_daily_hours, phone, email, sort_order, active, start_date, end_date, schedule_email_opt_out, preferred_language, external_ref, user_id, created_at, updated_at";
 
 export async function listEmployees(opts?: { includeInactive?: boolean }): Promise<CommercialEmployee[]> {
   const sb = commercialDb();

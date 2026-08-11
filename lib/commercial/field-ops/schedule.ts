@@ -618,3 +618,104 @@ export async function deleteAssignmentById(
   return { ok: true };
 }
 
+
+// ── Crew self-service (scoped to ONE employee) ─────────────────────────────
+
+export type MyShift = {
+  assignment_id: string;
+  work_date: string;
+  job_id: string;
+  job_name: string;
+  job_code: string;
+  site: string | null;
+  scheduled_hours: number;
+  start_time: string | null;
+  end_time: string | null;
+  note: string | null;
+};
+
+/**
+ * One crew member's upcoming shifts.
+ *
+ * Written as its own query rather than filtering getMonthOverview/getDaySchedule
+ * ON PURPOSE. Those are company-wide — every employee, every job — and building
+ * a personal view by fetching everyone and filtering in memory means the leak is
+ * one dropped `.filter()` away, with nothing to catch it. Here the employee id
+ * is in the WHERE clause, so the query cannot return another person's row.
+ *
+ * Selects only what a crew member needs to show up in the right place at the
+ * right time: no pay rates, no other crew on the job, no deal money.
+ */
+export async function listMyUpcomingShifts(
+  employeeId: string,
+  fromIso: string,
+  toIso: string
+): Promise<MyShift[]> {
+  if (!employeeId) return [];
+  const sb = commercialDb();
+  const rows = await paginateAll<{
+    id: string;
+    work_date: string;
+    job_id: string;
+    scheduled_hours: number | null;
+    scheduled_start_time: string | null;
+    scheduled_end_time: string | null;
+    note: string | null;
+  }>(() =>
+    sb
+      .from("commercial_assignments")
+      .select("id, work_date, job_id, scheduled_hours, scheduled_start_time, scheduled_end_time, note")
+      .eq("employee_id", employeeId)
+      .neq("status", "cancelled")
+      .gte("work_date", fromIso)
+      .lte("work_date", toIso)
+      .order("work_date", { ascending: true })
+      .order("id", { ascending: true })
+  );
+  if (rows.length === 0) return [];
+
+  const jobIds = Array.from(new Set(rows.map((r) => r.job_id).filter(Boolean)));
+  const jobById = new Map<string, { name: string; code: string; site: string | null }>();
+  if (jobIds.length > 0) {
+    const { data: jobs } = await sb
+      .from("commercial_jobs")
+      .select("id, name, job_code, site")
+      .in("id", jobIds);
+    for (const j of (jobs ?? []) as { id: string; name: string | null; job_code: string | null; site: string | null }[]) {
+      jobById.set(j.id, { name: j.name ?? "Job", code: j.job_code ?? "", site: j.site ?? null });
+    }
+  }
+  return rows.map((r) => {
+    const j = jobById.get(r.job_id);
+    return {
+      assignment_id: r.id,
+      work_date: r.work_date,
+      job_id: r.job_id,
+      job_name: j?.name ?? "Job",
+      job_code: j?.code ?? "",
+      site: j?.site ?? null,
+      scheduled_hours: Number(r.scheduled_hours ?? 0),
+      start_time: r.scheduled_start_time,
+      end_time: r.scheduled_end_time,
+      note: r.note,
+    };
+  });
+}
+
+/** Days this crew member is marked off in the window — their own only. */
+export async function listMyAbsences(
+  employeeId: string,
+  fromIso: string,
+  toIso: string
+): Promise<{ work_date: string; reason: string | null }[]> {
+  if (!employeeId) return [];
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_absences")
+    .select("work_date, reason")
+    .eq("employee_id", employeeId)
+    .gte("work_date", fromIso)
+    .lte("work_date", toIso)
+    .order("work_date", { ascending: true });
+  return (data ?? []) as { work_date: string; reason: string | null }[];
+}

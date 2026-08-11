@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "./db";
+import type { CommercialEmployee } from "./field-ops/employees";
 
 /**
  * Crew role — a scoped, self-service login for the people doing the work.
@@ -27,16 +28,20 @@ import { commercialDb } from "./db";
  * member's schedule/hours are keyed to their employee record).
  */
 
-/** Exact paths, or prefixes, a crew-only login may reach under /commercial. */
+/** Exact paths, or prefixes, a crew-only login may reach under /commercial.
+ *
+ *  The field-ops schedule/calendar/hours pages are NOT here: they're the
+ *  company-wide ADMIN pages (every employee, every job, all hours) and they
+ *  self-gate to admins anyway — so allowlisting them produced three tiles that
+ *  bounced the crew member straight back with no message. Crew get their own
+ *  scoped /commercial/crew/* versions instead.
+ *
+ *  `/commercial/crew` covers every child by segment-boundary match. */
 const CREW_ALLOWED_PREFIXES: readonly string[] = [
-  // Their own schedule + assigned work.
-  "/commercial/field-ops/schedule",
-  "/commercial/field-ops/calendar",
-  "/commercial/field-ops/hours",
-  // Clock in/out, including the shared shop tablet.
-  "/commercial/field-ops/clock-station",
-  // The crew landing page.
+  // Landing + all scoped crew views (schedule, hours, jobs, clock).
   "/commercial/crew",
+  // The shared shop tablet — PIN-gated, deliberately not under /crew.
+  "/commercial/field-ops/clock-station",
 ];
 
 /**
@@ -107,5 +112,76 @@ export async function setCrewRole(
     if (error) return { ok: false, error: error.message };
     await logDelete("commercial_user_roles", userId, { user_id: userId, role: "crew" }, actorUserId).catch(() => undefined);
   }
+  return { ok: true };
+}
+
+// ── Login → employee resolution ────────────────────────────────────────────
+
+/**
+ * The employee record a login IS, or null.
+ *
+ * THE single choke-point every scoped crew view calls first. Resolution is by
+ * the explicit `user_id` link ONLY (migration 125) — deliberately never by
+ * email. An employee email is nullable, can differ from the login address, and
+ * two rows can carry the same one; matching on it would silently attach one
+ * person's hours, schedule and jobs to another, which is the exact class of
+ * leak this whole role exists to prevent. Email may pre-select the admin's
+ * picker (a convenience); it must never resolve identity.
+ *
+ * Returns null for a crew login whose employee hasn't been picked yet. That's a
+ * real state between "granted crew" and "linked", so callers render the
+ * "ask an admin to link you" empty state — never a crash, never a redirect
+ * (which would loop against the layout gate).
+ */
+export async function getEmployeeForUser(
+  userId: string | null | undefined
+): Promise<CommercialEmployee | null> {
+  if (!userId) return null;
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_employees")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+  return (data as CommercialEmployee | null) ?? null;
+}
+
+/**
+ * Point a login at an employee (or clear it with null).
+ *
+ * Clears any OTHER employee currently holding this user_id first: the partial
+ * unique index would otherwise 23505, and the spec is explicit that this is
+ * handled here rather than by catching the error — a caught 23505 tells you
+ * something failed, not which of two employees the admin meant.
+ */
+export async function linkEmployeeToUser(
+  userId: string,
+  employeeId: string | null,
+  actorUserId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { logUpdate } = await import("@/lib/commercial/audit-log");
+  // Release the previous holder so re-pointing a login is never a constraint
+  // error the admin has to decipher.
+  const { error: clearErr } = await sb
+    .from("commercial_employees")
+    .update({ user_id: null })
+    .eq("user_id", userId);
+  if (clearErr) return { ok: false, error: clearErr.message };
+  if (!employeeId) return { ok: true };
+  const { error } = await sb
+    .from("commercial_employees")
+    .update({ user_id: userId })
+    .eq("id", employeeId);
+  if (error) return { ok: false, error: error.message };
+  await logUpdate(
+    "commercial_employees",
+    employeeId,
+    { user_id: null },
+    { user_id: userId },
+    actorUserId
+  ).catch(() => undefined);
   return { ok: true };
 }
