@@ -30,7 +30,7 @@ import {
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
-import { isPostSaleProject, isLost, wasWonInPeriod, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { isPostSaleProject, isLost, wasWonInPeriod, isOverdueProposal, isColdRfp, isFollowUpDue, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { etTodayIso } from "@/lib/date-et";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
@@ -175,6 +175,8 @@ export default async function CommercialDashboardPage() {
 
   // ─── NEEDS ATTENTION signals ───
   const nowIso = new Date().toISOString();
+  // One read of the ET calendar day for every needs-attention predicate below.
+  const attentionToday = etTodayIso();
   const todayEt = new Date(
     new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
   );
@@ -183,20 +185,15 @@ export default async function CommercialDashboardPage() {
   // no proposal was ever sent (heuristic: status still in Proposal-*
   // or earlier). We approximate by counting any open opp whose
   // proposal_due_at is past-due.
-  const overdueProposals = openOpps.filter(
-    // proposal_due_at is a DATE column; a proposal due TODAY (ET) is not overdue.
-    (o) => o.proposal_due_at && o.proposal_due_at.slice(0, 10) < etTodayIso()
-  );
+  // Shared predicates (constants.ts) so the pipeline list this card links to
+  // counts the SAME deals — they'd drifted on both the status set and the date
+  // comparison, so "3 overdue" could open a list of 4.
+  const overdueProposals = openOpps.filter((o) => isOverdueProposal(o, attentionToday));
   // Cold RFPs: RFP received > 7 days ago, deal still open. Signal
   // that we're sitting on a request without responding.
-  const coldRfps = openOpps.filter((o) => {
-    const days = daysBetween(o.rfp_received_at, nowIso);
-    return days !== null && days > 7;
-  });
+  const coldRfps = openOpps.filter((o) => isColdRfp(o, attentionToday));
   // Follow-ups due today or overdue: follow_up_at ≤ today.
-  const followupsDue = openOpps.filter(
-    (o) => o.follow_up_at && o.follow_up_at <= todayEtIso
-  );
+  const followupsDue = openOpps.filter((o) => isFollowUpDue(o, attentionToday));
   // Wins awaiting debrief: terminal + won + win_loss_debriefed_at NULL.
   const winsAwaitingDebrief = wonOpps.filter((o) => !o.win_loss_debriefed_at);
 

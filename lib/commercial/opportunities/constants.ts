@@ -551,3 +551,56 @@ export function wasWonInPeriod(
   if (opp.status === "post_sale_closed") return false;
   return (opp.decided_at ?? "").slice(0, 10) >= periodStartDate;
 }
+
+// ── "Needs attention" predicates ───────────────────────────────────────────
+//
+// The dashboard cards and the pipeline's deep-link filters had drifted into
+// different answers, so clicking "3 overdue" opened a list of 4. Two causes,
+// both here now so there's one definition:
+//
+//   1. Status set — the dashboard counted PRE_SALE_OPEN_STATUSES (deals still
+//      being SOLD), the pipeline counted OPEN_OPP_STATUSES (which also includes
+//      pre_construction / in_progress / billing). A job already on site isn't
+//      "an overdue proposal".
+//   2. Date comparison — the dashboard compared DATE strings, the pipeline
+//      parsed to a timestamp. `proposal_due_at` is a DATE column, so parsing it
+//      yields midnight UTC, which is in the past for anyone in ET: a proposal
+//      due TODAY read as overdue on the pipeline and not on the dashboard.
+//
+// All three take `todayEt` ("YYYY-MM-DD") so the caller owns the clock and the
+// two surfaces can't disagree about what day it is either.
+
+type AttentionOpp = {
+  status: string;
+  proposal_due_at?: string | null;
+  rfp_received_at?: string | null;
+  follow_up_at?: string | null;
+};
+
+function stillSelling(opp: AttentionOpp): boolean {
+  return PRE_SALE_OPEN_STATUSES.includes(opp.status);
+}
+
+/** Proposal due date has PASSED. Due today is not overdue — you still have the day. */
+export function isOverdueProposal(opp: AttentionOpp, todayEt: string): boolean {
+  if (!stillSelling(opp)) return false;
+  const due = opp.proposal_due_at?.slice(0, 10);
+  return !!due && due < todayEt;
+}
+
+/** RFP landed more than 7 days ago and we still haven't decided — we're sitting on it. */
+export function isColdRfp(opp: AttentionOpp, todayEt: string, days = 7): boolean {
+  if (!stillSelling(opp)) return false;
+  const received = opp.rfp_received_at?.slice(0, 10);
+  if (!received) return false;
+  const ms = Date.parse(`${todayEt}T00:00:00Z`) - Date.parse(`${received}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return false;
+  return Math.floor(ms / 86_400_000) > days;
+}
+
+/** A scheduled follow-up that's due today or already passed. */
+export function isFollowUpDue(opp: AttentionOpp, todayEt: string): boolean {
+  if (!stillSelling(opp)) return false;
+  const at = opp.follow_up_at?.slice(0, 10);
+  return !!at && at <= todayEt;
+}

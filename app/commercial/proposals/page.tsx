@@ -639,7 +639,7 @@ function ProposalCard({
               still see this is R2 vs R1. */}
           {row.proposal_seq != null && (
             <span
-              className="hidden sm:inline text-[9.5px] font-mono text-ppp-charcoal-400 shrink-0"
+              className="text-[9.5px] font-mono text-ppp-charcoal-400 shrink-0"
               title="Unique proposal ID"
             >
               PROP-{String(row.proposal_seq).padStart(4, "0")}
@@ -1384,7 +1384,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                   can show at sm, list can too. */}
                               {r.proposal_seq != null && (
                                 <span
-                                  className="text-[10.5px] font-mono text-ppp-charcoal-400 shrink-0 hidden sm:inline"
+                                  className="text-[10.5px] font-mono text-ppp-charcoal-400 shrink-0"
                                   title="Unique proposal ID"
                                 >
                                   PROP-{String(r.proposal_seq).padStart(4, "0")}

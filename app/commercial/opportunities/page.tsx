@@ -65,6 +65,9 @@ import {
   isTerminalOpportunityStatus,
   isWon,
   wasWonInPeriod,
+  isOverdueProposal,
+  isColdRfp,
+  isFollowUpDue,
   isPostSaleProject,
   isLost,
   isFollowUp,
@@ -570,35 +573,13 @@ export default async function CommercialOpportunitiesPage({
   // Dashboard "Needs attention" deep-link filters — mirror the exact
   // subset logic on app/commercial/page.tsx so the pipeline count matches
   // the card the user clicked.
-  if (overdueFilter) {
-    const nowMs = Date.now();
-    opps = opps.filter(
-      (o) =>
-        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
-        o.proposal_due_at != null &&
-        new Date(o.proposal_due_at).getTime() < nowMs
-    );
-  }
-  if (coldRfpFilter) {
-    const nowMs = Date.now();
-    opps = opps.filter((o) => {
-      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
-      if (!o.rfp_received_at) return false;
-      const days = Math.floor((nowMs - new Date(o.rfp_received_at).getTime()) / MS_PER_DAY);
-      return Number.isFinite(days) && days > 7;
-    });
-  }
-  if (followupFilter) {
-    const todayEtIso = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
-    ).toISOString();
-    opps = opps.filter(
-      (o) =>
-        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
-        o.follow_up_at != null &&
-        o.follow_up_at <= todayEtIso
-    );
-  }
+  // Shared predicates (see constants) so the pipeline list matches the
+  // dashboard card that linked here — these had drifted on BOTH the status set
+  // and the date comparison, so "3 overdue" could open a list of 4.
+  const attentionToday = todayEtIso; // computed above, ET calendar day
+  if (overdueFilter) opps = opps.filter((o) => isOverdueProposal(o, attentionToday));
+  if (coldRfpFilter) opps = opps.filter((o) => isColdRfp(o, attentionToday));
+  if (followupFilter) opps = opps.filter((o) => isFollowUpDue(o, attentionToday));
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => o.source && sourceSet.has(o.source));
   }
@@ -3780,18 +3761,20 @@ function CustomerQuickSheet({
             <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2">
               Financials
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            {/* 2-up at base: three tiles of "$123,456.00" at ~86px each
+                collided and the right one clipped on any 6-figure account. */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-2">
                 <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Invoiced</div>
-                <div className="text-sm font-bold text-ppp-charcoal mt-0.5">{formatCentsFull(rollup.invoiced_cents)}</div>
+                <div className="text-sm font-bold text-ppp-charcoal mt-0.5 tabular-nums break-all">{formatCentsFull(rollup.invoiced_cents)}</div>
               </div>
               <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2.5 py-2">
                 <div className="text-[9.5px] text-emerald-800 font-medium uppercase tracking-wide">Paid</div>
-                <div className="text-sm font-bold text-emerald-800 mt-0.5">{formatCentsFull(rollup.paid_cents)}</div>
+                <div className="text-sm font-bold text-emerald-800 mt-0.5 tabular-nums break-all">{formatCentsFull(rollup.paid_cents)}</div>
               </div>
               <div className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-surface"}`}>
                 <div className={`text-[9.5px] font-medium uppercase tracking-wide ${rollup.overdue_count > 0 ? "text-rose-800" : "text-ppp-charcoal-500"}`}>Balance</div>
-                <div className={`text-sm font-bold mt-0.5 ${rollup.overdue_count > 0 ? "text-rose-900" : "text-ppp-charcoal"}`}>{formatCentsFull(rollup.open_balance_cents)}</div>
+                <div className={`text-sm font-bold mt-0.5 tabular-nums break-all ${rollup.overdue_count > 0 ? "text-rose-900" : "text-ppp-charcoal"}`}>{formatCentsFull(rollup.open_balance_cents)}</div>
               </div>
             </div>
             {rollup.invoiced_cents > 0 && (
