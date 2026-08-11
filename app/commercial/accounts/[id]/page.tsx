@@ -4532,6 +4532,16 @@ async function NewDealForm({
   // the day the request lands; still editable.
   const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const teams = await listTeams();
+  // Repeat-customer prefill (Karan 2026-08): carry forward from this customer's
+  // MOST RECENT opportunity only the things that genuinely repeat — the GC
+  // contact you deal with, the crew you send, and the estimator who knows the
+  // account. Everything else is left blank on purpose: the address, the dates
+  // and the stage are different every job, and a wrong default is worse than an
+  // empty field because it gets saved without being read.
+  const priorDeals = await listCommercialOpportunities({ accountId });
+  const lastDeal = priorDeals
+    .slice()
+    .sort((a2, b2) => (b2.created_at ?? "").localeCompare(a2.created_at ?? ""))[0] ?? null;
   // Name the account's team in the inherit option so "Customer's team" isn't a
   // blind pick.
   const accountTeamName = account.team_id
@@ -4565,6 +4575,26 @@ async function NewDealForm({
           shared client picker (also exposes optional follow-up date +
           notes for waiting-on-GC bids). Server action already parses
           sub_status + follow_up_at + follow_up_notes. */}
+      {/* Katie's ask (2026-08), verbatim: "For Existing builder, only enter the
+          address of the new Opportunity, name of the new Opportunity, select
+          Customer's Contact, Add Team." Those four stay in the open; everything
+          else folds away.
+          Collapsed rather than deleted, because each of these still matters
+          somewhere — Source feeds the win/loss report, RFP received powers
+          time-to-proposal, Estimator is who owns the bid — and every one of
+          them already has a sensible default (Stage = Qualifying, RFP = today).
+          So the fast path is: title, address, contact, team, Create. */}
+      <details className="group/more rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50/40">
+        <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer list-none min-h-[44px] touch-manipulation">
+          <span className="text-[12.5px] font-semibold text-ppp-charcoal-600">
+            More options
+            <span className="font-normal text-ppp-charcoal-400"> · stage, source, dates, estimator</span>
+          </span>
+          <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/more:rotate-180">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+          </span>
+        </summary>
+        <div className="px-3 pb-3 pt-1 space-y-3 border-t border-ppp-charcoal-200">
       <StatusSubStatusPicker mode="create" />
       <label className="block">
         <span className={labelCls}>Source</span>
@@ -4633,7 +4663,14 @@ async function NewDealForm({
               value: e.user_id,
               label: e.name,
             }))}
-            defaultValue=""
+            // Same estimator as this customer's last bid — they already know
+            // the account. Blank if they've left the roster since.
+            defaultValue={
+              lastDeal?.estimator_user_id &&
+              estimators.some((e) => e.user_id === lastDeal.estimator_user_id)
+                ? lastDeal.estimator_user_id
+                : ""
+            }
             placeholder={
               estimators.length === 0
                 ? "No teammates on the roster yet"
@@ -4656,6 +4693,12 @@ async function NewDealForm({
               : "Required to move this to Estimating."}
           </span>
         </label>
+        </div>
+        </div>
+      </details>
+      {/* The two that stay in the open with the title + address: who at the GC
+          this job is for, and which crew is on it. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block">
           <span className={labelCls}>Attention contact</span>
           {/* Katie gap #1: who at the GC the proposal is addressed to. Blank =
@@ -4663,7 +4706,15 @@ async function NewDealForm({
           <SearchableSelect
             name="primary_contact_id"
             options={contactOptions}
-            defaultValue=""
+            // Repeat customer: default to whoever this GC's last job was for.
+            // Only when that contact is still on the account — a deleted or
+            // moved-on contact must not silently attach to a new job.
+            defaultValue={
+              lastDeal?.primary_contact_id &&
+              contactOptions.some((c) => c.value === lastDeal.primary_contact_id)
+                ? lastDeal.primary_contact_id
+                : ""
+            }
             placeholder={contactOptions.length === 0 ? "No contacts on this GC yet" : "Search this GC's contacts…"}
             ariaLabel="Attention contact for proposals"
             disabled={contactOptions.length === 0}
@@ -4682,7 +4733,18 @@ async function NewDealForm({
               actually resolves; before, blank stored NULL and nothing fell
               back, so a deal labelled "default" in fact had no team at all.
               The option names the inherited team so the choice isn't blind. */}
-          <select name="team_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+          {/* Repeat customer: the crew that ran their last job, if that team
+              still exists. Blank falls back to the customer's team. */}
+          <select
+            name="team_id"
+            defaultValue={
+              lastDeal?.team_id && teams.some((t) => t.id === lastDeal.team_id)
+                ? lastDeal.team_id
+                : ""
+            }
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
+          >
             <option value="">
               {accountTeamName ? `Customer's team (${accountTeamName})` : "— No team —"}
             </option>
@@ -4701,14 +4763,14 @@ async function NewDealForm({
         <div className={labelCls}>
           Project address{" "}
           <span className="font-normal text-ppp-charcoal-400">
-            (pre-filled from the account&apos;s site/billing address — edit if this deal is at a different location)
+            (this job&apos;s location — every job is somewhere different)
           </span>
         </div>
         <input
           type="text"
           name="property_street"
           maxLength={200}
-          defaultValue={account.site_street ?? account.billing_street ?? ""}
+          defaultValue={account.site_street ?? ""}
           placeholder="Street"
           className={inputCls}
         />
@@ -4717,7 +4779,7 @@ async function NewDealForm({
             type="text"
             name="property_city"
             maxLength={80}
-            defaultValue={account.site_city ?? account.billing_city ?? ""}
+            defaultValue={account.site_city ?? ""}
             placeholder="City"
             className={inputCls}
           />
@@ -4725,7 +4787,7 @@ async function NewDealForm({
             type="text"
             name="property_state"
             maxLength={2}
-            defaultValue={account.site_state ?? account.billing_state ?? ""}
+            defaultValue={account.site_state ?? ""}
             placeholder="State"
             className={inputCls}
           />
@@ -4733,7 +4795,7 @@ async function NewDealForm({
             type="text"
             name="property_zip"
             maxLength={10}
-            defaultValue={account.site_zip ?? account.billing_zip ?? ""}
+            defaultValue={account.site_zip ?? ""}
             placeholder="ZIP"
             className={inputCls}
           />
