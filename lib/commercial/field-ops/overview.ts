@@ -99,7 +99,9 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
     if (!liveJobIds.has(a.job_id)) continue;
     schedByEmpDate.set(`${a.employee_id}|${a.work_date}`, (schedByEmpDate.get(`${a.employee_id}|${a.work_date}`) ?? 0) + a.scheduled_hours);
     crewWeek.add(a.employee_id);
-    if (a.work_date === today) {
+    // "On today" excludes anyone fully marked off today — they're on the schedule
+    // (crewWeek) but not actually working today (audit 2026-08, low-pri).
+    if (a.work_date === today && !fullOff.has(`${a.employee_id}|${today}`)) {
       crewToday.add(a.employee_id);
       jobsTodaySet.add(a.job_id);
     }
