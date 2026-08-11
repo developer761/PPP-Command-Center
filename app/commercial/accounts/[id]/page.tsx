@@ -4393,6 +4393,9 @@ function NewDealForm({
   // via SELECT_BG_STYLE so it visually matches the text inputs.
   const selectCls = `${inputCls} appearance-none bg-no-repeat pr-9 cursor-pointer`;
   const labelCls = "block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5";
+  // RFP Received defaults to today (Karan meeting 2026-08) — most bids are logged
+  // the day the request lands; still editable.
+  const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   return (
     <form action={createDealInlineAction} className="space-y-3">
       <input type="hidden" name="account_id" value={accountId} />
@@ -4444,31 +4447,11 @@ function NewDealForm({
           ))}
         </select>
       </label>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <label className="block">
-          <span className={labelCls}>Bid low</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            name="bid_low"
-            placeholder="0.00"
-            className={`${inputCls} tabular-nums`}
-          />
-        </label>
-        <label className="block">
-          <span className={labelCls}>Bid high</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            name="bid_high"
-            placeholder="0.00"
-            className={`${inputCls} tabular-nums`}
-          />
-        </label>
-        <div>
-          <span className={labelCls}>Proposal due</span>
-          <DateField name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
-        </div>
+      {/* Bid low / Bid high removed per the 2026-08 meeting — pricing lives on the
+          proposal, not the opportunity. */}
+      <div>
+        <span className={labelCls}>Proposal due</span>
+        <DateField name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
       </div>
       {/* Katie 2026-07-20: RFP Received on its own row so the two
           bid-lifecycle dates (RFP in / Proposal out) sit visually
@@ -4477,7 +4460,7 @@ function NewDealForm({
           left a dead half-column on tablet. */}
       <div>
         <span className={labelCls}>RFP received</span>
-        <DateField name="rfp_received_at" placeholder="When the RFP / bid request arrived" ariaLabel="RFP received date" />
+        <DateField name="rfp_received_at" defaultValue={todayIso} placeholder="When the RFP / bid request arrived" ariaLabel="RFP received date" />
         <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the opportunity card.</span>
       </div>
       {/* Phase B (Plan v1.1) — CEO structural fields. All optional at

@@ -444,13 +444,8 @@ export default async function NewCommercialAccountPage({
             per Phase C). DB columns kept for audit trail but never
             written to from this flow again. */}
 
-        <Section title="Tax">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="tax_exempt" defaultChecked={sp.tax_exempt === "1"} className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30" />
-            Tax exempt
-          </label>
-          <Field id="tax_exempt_cert_number" label="Tax exempt certificate #" defaultValue={sp.tax_exempt_cert_number ?? ""} />
-        </Section>
+        {/* Tax-exemption section removed per the 2026-08 meeting — not tracked at
+            the account level. DB columns kept for audit; never written here now. */}
 
         <Section title="Team">
           <p className="text-[12px] text-ppp-charcoal-500 -mt-1 leading-relaxed">

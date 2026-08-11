@@ -114,10 +114,9 @@ async function updateAction(formData: FormData) {
       phone: get("phone"),
       ap_phone: get("ap_phone"),
       website: get("website"),
-      // Karan 2026-07-10 (Katie/Brendan notes): compliance fields
-      // no longer captured on Accounts — moved to per-Opportunity.
-      tax_exempt: formData.get("tax_exempt") === "on",
-      tax_exempt_cert_number: get("tax_exempt_cert_number"),
+      // Tax exemption removed from the account UI (2026-08 meeting) — no longer
+      // written here so an existing account's value is PRESERVED, not silently
+      // cleared to false on every edit.
       notes: get("notes"),
       is_key_relationship: formData.get("is_key_relationship") === "on",
     },
@@ -311,18 +310,10 @@ export default async function EditCommercialAccountPage({
             form no longer writes them. Insurance certs + prequal docs
             now live per-Opportunity (Files sub-tab, Phase C). */}
 
-        <Section title="Tax" anchorId="edit-tax">
-          <label className="flex items-center gap-2 text-sm min-h-[44px]">
-            <input
-              type="checkbox"
-              name="tax_exempt"
-              defaultChecked={duplicateCandidates.length > 0 ? sp.tax_exempt === "1" : account.tax_exempt}
-              className="h-5 w-5 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
-            />
-            Tax exempt
-          </label>
-          <EditField id="tax_exempt_cert_number" label="Tax exempt certificate #" defaultValue={sp.tax_exempt_cert_number ?? (account.tax_exempt_cert_number ?? "")} />
-        </Section>
+        {/* Tax-exemption section removed per the 2026-08 meeting — not tracked at
+            the account level. DB columns kept for audit; the edit action still
+            preserves the existing value (it reads a now-absent checkbox as off,
+            so we guard below to avoid silently clearing it). */}
 
         <Section title="Strategic" anchorId="edit-strategic">
           <label className="flex items-start gap-3 text-sm min-h-[44px] cursor-pointer">

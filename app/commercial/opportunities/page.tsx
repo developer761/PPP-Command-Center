@@ -1567,28 +1567,7 @@ function NewDealSlideOut({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="new-deal-bid-low" className={LABEL_CLS}>Bid low ($)</label>
-              <input
-                id="new-deal-bid-low"
-                name="bid_value_low_dollars"
-                inputMode="decimal"
-                placeholder="0.00"
-                className={INPUT_CLS}
-              />
-            </div>
-            <div>
-              <label htmlFor="new-deal-bid-high" className={LABEL_CLS}>Bid high ($)</label>
-              <input
-                id="new-deal-bid-high"
-                name="bid_value_high_dollars"
-                inputMode="decimal"
-                placeholder="0.00"
-                className={INPUT_CLS}
-              />
-            </div>
-          </div>
+          {/* Bid low / high removed per the 2026-08 meeting — pricing lives on the proposal. */}
 
           <div>
             <label htmlFor="new-deal-due" className={LABEL_CLS}>Proposal due</label>

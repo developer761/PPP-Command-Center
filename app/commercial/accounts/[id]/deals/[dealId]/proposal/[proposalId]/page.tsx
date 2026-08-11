@@ -1629,10 +1629,10 @@ export default async function ProposalEditorPage({
           />
         </EditorSection>
 
-        {/* Alternate notes */}
+        {/* Qualifications (fka "Alternate description") — Karan meeting 2026-08 */}
         <EditorSection
-          title="Alternate description"
-          subtitle="Optional summary paragraph above the alternate line items."
+          title="Qualifications"
+          subtitle="Optional qualifications paragraph shown above the alternate line items on the proposal."
           icon={
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M7 7h10 M7 12h10 M7 17h6" /><path d="M3 7h.01 M3 12h.01 M3 17h.01" />
