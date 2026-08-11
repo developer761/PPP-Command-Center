@@ -513,6 +513,26 @@ export async function copyWeekForward(
         await resyncClockReminder(emp, day).catch(() => undefined);
       }
     }
+
+    // Auto-advance the copied work orders' status, same as scheduling ONE crew
+    // member does (upsertAssignment): a job someone was just put on the calendar
+    // for is now Scheduled. Without this, Copy Week Forward would leave every
+    // copied job stuck at "Ready to schedule" on the Status board even though the
+    // crew is on it. Forward-only — never regresses in-progress/complete jobs.
+    const copiedJobIds = [...new Set(toInsert.map((r) => String((r as { job_id: string }).job_id)))];
+    if (copiedJobIds.length > 0) {
+      const { data: toAdvance } = await sb
+        .from("commercial_jobs")
+        .select("id")
+        .in("id", copiedJobIds)
+        .in("status", ["estimating", "ready_to_schedule"])
+        .is("deleted_at", null);
+      const advIds = ((toAdvance ?? []) as { id: string }[]).map((j) => j.id);
+      if (advIds.length > 0) {
+        await sb.from("commercial_jobs").update({ status: "scheduled", updated_at: new Date().toISOString() }).in("id", advIds);
+        for (const id of advIds) await logUpdate("commercial_jobs", id, { status: "pre_schedule" }, { status: "scheduled" }, actorUserId);
+      }
+    }
   }
   return { ok: true, copied, skippedExisting, skippedAbsent, skippedDeletedJob, skippedInactive, targetMonday: tgtMon };
 }
@@ -528,10 +548,10 @@ export async function deleteAssignmentById(
   const { error } = await sb.from("commercial_assignments").delete().eq("id", assignmentId);
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_assignments", assignmentId, existing, actorUserId);
-  // Re-sync the queued 10-min clock-in nudge: cancel it, and if the crew member
-  // still has ANOTHER shift that day, re-schedule it for the earliest remaining
-  // start. A bare cancel would drop the nudge for a still-scheduled shift, and
-  // the once-daily cron can't fix a same-day removal (audit 2026-08).
+  // Re-sync the queued reminders (1-day / 1-hour / 10-min): cancel them, and if
+  // the crew member still has ANOTHER shift that day, re-schedule for the earliest
+  // remaining start. A bare cancel would drop reminders for a still-scheduled
+  // shift, and the once-daily cron can't fix a same-day removal (audit 2026-08).
   const ex = existing as { employee_id?: string; work_date?: string };
   if (ex.employee_id && ex.work_date) {
     const { resyncClockReminder } = await import("./schedule-email-send");
