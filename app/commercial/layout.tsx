@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { isAllowedToSignIn, isAdminEmail } from "@/lib/auth/admin";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import CommercialChrome from "@/components/commercial-chrome";
+import { isCrewOnlyUser, isCrewAllowedPath, CREW_HOME } from "@/lib/commercial/crew-access";
 import { UndoToast } from "@/components/commercial/undo-toast";
 import { CommandPalette } from "@/components/commercial/command-palette";
 import { KeyboardShortcuts } from "@/components/commercial/keyboard-shortcuts";
@@ -55,6 +56,26 @@ export default async function CommercialDashboardLayout({
   const access = platformAccess(profile);
   if (!access.hasNewPlatform) {
     redirect("/dashboard"); // they don't have access — bounce to the platform they DO have
+  }
+
+  // CREW ROLE — default-deny gate (Karan 2026-08).
+  //
+  // A crew login may reach only an allowlist of field-ops surfaces; everything
+  // else redirects to their home. Enforced HERE, in the layout every
+  // /commercial/* page renders through, rather than as per-query filters:
+  // Commercial access has been binary until now, so retro-fitting "except
+  // crew" into a few hundred queries is how you end up silently serving a
+  // painter the company P&L. Deny-by-default means a route added tomorrow is
+  // safe without anyone remembering this rule.
+  //
+  // Note this cannot rely on the request path being available in a layout, so
+  // the check reads the pathname the middleware stamps on the request headers.
+  const crewOnly = await isCrewOnlyUser(user.id);
+  if (crewOnly) {
+    const pathname = (await headers()).get("x-pathname") ?? "";
+    // No pathname header (an unexpected runtime) → send them home rather than
+    // fall through to an unrestricted render. Failing closed is the whole point.
+    if (!pathname || !isCrewAllowedPath(pathname)) redirect(CREW_HOME);
   }
 
   const email = user.email!;

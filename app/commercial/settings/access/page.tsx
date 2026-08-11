@@ -9,6 +9,7 @@ import { listManagedUsers } from "@/lib/auth/user-management";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { normalizeEmail } from "@/lib/auth/admin";
 import CommercialAccessManager from "@/components/commercial/commercial-access-manager";
+import { isCrewOnlyUser } from "@/lib/commercial/crew-access";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import {
   listScheduleRecipients,
@@ -46,6 +47,32 @@ async function removeRecipientAction(formData: FormData) {
   const res = await removeScheduleRecipient(String(formData.get("id") ?? ""));
   revalidatePath(ACCESS);
   redirect(res.ok ? ACCESS : `${ACCESS}?se_error=${encodeURIComponent(res.error)}`);
+}
+
+/** Grant / revoke the Crew role — the scoped self-service login. */
+async function toggleCrewAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const profile = await getProfileByUserId(user.id);
+  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  if (role !== "admin") redirect("/commercial");
+  const targetId = String(formData.get("user_id") ?? "");
+  if (!targetId) redirect("/commercial/settings/access");
+  // An admin can't be made crew-only — isCrewOnlyUser already ignores the role
+  // when other roles exist, but blocking it here keeps the UI honest instead of
+  // showing a toggle that does nothing.
+  const { setCrewRole } = await import("@/lib/commercial/crew-access");
+  const makeCrew = String(formData.get("make_crew") ?? "") === "1";
+  const res = await setCrewRole(targetId, makeCrew, user.id);
+  revalidatePath("/commercial/settings/access");
+  redirect(
+    res.ok
+      ? "/commercial/settings/access"
+      : `/commercial/settings/access?se_error=${encodeURIComponent(res.error)}`
+  );
 }
 
 async function toggleOptOutAction(formData: FormData) {
@@ -97,6 +124,12 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
   const receiverEmails = (oc.receiver_emails ?? []).map((e) => normalizeEmail(e));
   // R10: schedule-email settings, inline (no separate click-through).
   const [scheduleRecipients, crew] = await Promise.all([listScheduleRecipients(), listEmployees()]);
+  // Who currently holds the Crew role (scoped self-service login).
+  const crewRoleUserIds = new Set(
+    (await Promise.all(
+      users.map(async (u) => ((await isCrewOnlyUser(u.user_id)) ? u.user_id : null))
+    )).filter((v): v is string => !!v)
+  );
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 animate-fade-up">
@@ -151,6 +184,54 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
         initialApproverEmails={approverEmails}
         initialReceiverEmails={receiverEmails}
       />
+
+      {/* Crew logins — the scoped self-service role (Karan 2026-08). */}
+      <section className="mt-8">
+        <div className="mb-3">
+          <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+          <h2 className="text-xl font-bold tracking-tight text-ppp-charcoal">Crew logins</h2>
+          <p className="text-[13px] text-ppp-charcoal-500 mt-1 max-w-2xl">
+            A crew login can reach <strong>only</strong> their schedule, calendar, hours and the
+            PIN clock — everything else redirects. Anyone who also holds another role is
+            unrestricted, so this has no effect on admins.
+          </p>
+        </div>
+        <ul className="bg-surface border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100">
+          {users.map((u) => {
+            const isCrew = crewRoleUserIds.has(u.user_id);
+            const isAdminUser = u.role === "admin";
+            return (
+              <li key={u.user_id} className="flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{u.full_name || u.email}</div>
+                  <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{u.email}</div>
+                </div>
+                {isAdminUser ? (
+                  <span className="text-[11.5px] text-ppp-charcoal-400 shrink-0">Admin — always unrestricted</span>
+                ) : (
+                  <form action={toggleCrewAction} className="shrink-0">
+                    <input type="hidden" name="user_id" value={u.user_id} />
+                    <input type="hidden" name="make_crew" value={isCrew ? "0" : "1"} />
+                    <button
+                      type="submit"
+                      className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation ${
+                        isCrew
+                          ? "border-cc-brand-600 bg-cc-brand-50 text-cc-brand-800"
+                          : "border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                      }`}
+                    >
+                      {isCrew ? "Crew — restricted" : "Make crew"}
+                    </button>
+                  </form>
+                )}
+              </li>
+            );
+          })}
+          {users.length === 0 && (
+            <li className="px-4 py-3 text-[12.5px] text-ppp-charcoal-400">No Commercial logins yet.</li>
+          )}
+        </ul>
+      </section>
 
       {/* R10: schedule emails — inline, right here on Access. */}
       <section className="mt-8">

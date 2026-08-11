@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { rawAccessDenied } from "@/lib/commercial/auth";
 import { isAdminEmail } from "@/lib/auth/admin";
+import { isCrewOnlyUser } from "@/lib/commercial/crew-access";
 import { verifyEmployeePin } from "@/lib/commercial/field-ops/employees";
 import { clockIn, clockOut, getEmployeeDay } from "@/lib/commercial/field-ops/clock";
 import { todayEtIso } from "@/lib/commercial/field-ops/schedule";
@@ -34,7 +35,11 @@ export async function POST(request: Request) {
   // commercial user can't brute-force a 4-digit PIN to clock other people (payroll
   // fraud) — audit round 2.
   const isAdmin = (profile as { is_admin?: boolean } | null)?.is_admin ?? isAdminEmail(data.user.email);
-  if (!isAdmin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  // …and the Crew role (Karan 2026-08). Must mirror the clock-station PAGE gate
+  // exactly — a page a user can open but whose API rejects them is a dead
+  // button, and the reverse is an open door.
+  const isCrew = await isCrewOnlyUser(data.user.id);
+  if (!isAdmin && !isCrew) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   let body: Record<string, unknown>;
   try {

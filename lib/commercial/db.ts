@@ -30,7 +30,12 @@ export type CommercialRole =
   | "superintendent"
   | "foreman"
   | "office"
-  | "field";
+  | "field"
+  // Scoped self-service login for the people doing the work (Karan 2026-08).
+  // Unlike the others this role RESTRICTS rather than grants — see
+  // lib/commercial/crew-access.ts. Holding it and nothing else confines the
+  // login to an allowlist of field-ops surfaces.
+  | "crew";
 
 export const COMMERCIAL_ROLES: CommercialRole[] = [
   "admin",
@@ -40,4 +45,5 @@ export const COMMERCIAL_ROLES: CommercialRole[] = [
   "foreman",
   "office",
   "field",
+  "crew",
 ];
