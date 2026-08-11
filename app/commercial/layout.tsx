@@ -97,6 +97,7 @@ export default async function CommercialDashboardLayout({
       user={{ email, fullName, firstName, initial }}
       showSwitcher={access.hasBoth}
       isAdmin={isAdmin}
+      crewOnly={crewOnly}
     >
       {children}
       {/* Karan 2026-07-11 (signature-moments batch): global undo-toast.
@@ -110,12 +111,15 @@ export default async function CommercialDashboardLayout({
       {/* Karan 2026-07-11 signature-moments Tier 2: ⌘K / Ctrl+K
           command palette. Global search across accounts + deals +
           invoices, with keyboard-only navigation. */}
-      <CommandPalette />
+      {/* Search + shortcuts target routes a crew login can't reach — the API
+          403s and the palette swallows it, so crew got a search box that
+          silently returned nothing for every query. */}
+      {!crewOnly && <CommandPalette />}
       {/* Karan 2026-07-11 signature-moments Tier 3: global keyboard
           shortcuts — /, N, G+P/A/I/D, ? for help. Bridges into
           CommandPalette via a custom event so both live in the same
           layer. */}
-      <KeyboardShortcuts />
+      {!crewOnly && <KeyboardShortcuts />}
       {/* R7 — onboarding guided tour. Always mounted so a "Take the tour" button
           can replay it any time; it AUTO-shows only for first-timers (NULL flag),
           then stamps itself so it never auto-opens again. */}

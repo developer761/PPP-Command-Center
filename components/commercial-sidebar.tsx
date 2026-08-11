@@ -134,10 +134,13 @@ type Props = {
   showSwitcher: boolean;
   /** Platform admin — gates adminOnly nav items (e.g. Access provisioning). */
   isAdmin?: boolean;
+  /** Crew-only login — the allowlist denies every normal nav target, so
+   *  rendering them is ~17 links that each bounce back to /commercial/crew. */
+  crewOnly?: boolean;
   onNavigate?: () => void;
 };
 
-export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNavigate }: Props) {
+export default function CommercialSidebar({ showSwitcher, isAdmin = false, crewOnly = false, onNavigate }: Props) {
   const pathname = usePathname();
   // Manual expand/collapse overrides for the collapsible groups, keyed by group
   // label. Undefined = follow the auto rule (open when a child is active).
@@ -154,7 +157,25 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, onNav
   // sees a link that would just bounce them. The page redirects too (defense).
   // Recurse into collapsible groups so an admin-only leaf inside a group is
   // filtered the same way as a top-level one.
-  const sections = navSections.map((s) => ({
+  const sections = crewOnly
+    ? // A crew login can reach exactly the crew surfaces. Every other item in
+      // navSections — Accounts, Opportunities, Proposals, Invoices, Reports,
+      // Costs & P&L, Settings — redirects straight back, so showing them is 17
+      // dead links AND it advertises the money surfaces to someone who can't
+      // (and shouldn't) open them.
+      [
+        {
+          heading: "My work",
+          items: [
+            { label: "Home", href: "/commercial/crew", icon: <IconHardHat /> },
+            { label: "My schedule", href: "/commercial/crew/schedule", icon: <IconHardHat /> },
+            { label: "My jobs", href: "/commercial/crew/jobs", icon: <IconHardHat /> },
+            { label: "My hours", href: "/commercial/crew/hours", icon: <IconHardHat /> },
+            { label: "Clock in / out", href: "/commercial/field-ops/clock-station", icon: <IconHardHat /> },
+          ],
+        },
+      ]
+    : navSections.map((s) => ({
     ...s,
     items: s.items
       .map((entry) =>

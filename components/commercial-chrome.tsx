@@ -25,9 +25,11 @@ type Props = {
   showSwitcher: boolean;
   /** Platform admin — gates admin-only sidebar items (Access). */
   isAdmin: boolean;
+  /** Crew-only login — collapses the nav to the crew surfaces. */
+  crewOnly?: boolean;
 };
 
-export default function CommercialChrome({ children, user, showSwitcher, isAdmin }: Props) {
+export default function CommercialChrome({ children, user, showSwitcher, isAdmin, crewOnly = false }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
@@ -51,7 +53,7 @@ export default function CommercialChrome({ children, user, showSwitcher, isAdmin
   return (
     <div className="flex min-h-screen bg-[var(--color-surface-muted)]">
       <aside className="hidden lg:block shrink-0">
-        <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} />
+        <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} crewOnly={crewOnly} />
       </aside>
 
       {mobileOpen && (
@@ -75,7 +77,7 @@ export default function CommercialChrome({ children, user, showSwitcher, isAdmin
         // a11y walk).
         inert={!mobileOpen}
       >
-        <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} onNavigate={() => setMobileOpen(false)} />
+        <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} crewOnly={crewOnly} onNavigate={() => setMobileOpen(false)} />
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">

@@ -56,7 +56,29 @@ export function rawAccessDenied(row: unknown): boolean {
  * every commercial server action, right after the `if (!user) redirect(...)`
  * gate, passing the resolved `user.id`.
  */
-export async function assertCommercialAccess(userId: string): Promise<void> {
+export async function assertCommercialAccess(
+  userId: string,
+  opts?: { allowCrew?: boolean }
+): Promise<void> {
+  // DEFAULT-DENY for crew logins.
+  //
+  // The crew allowlist lives in the /commercial LAYOUT, which gates page
+  // RENDERS. A Next server action POSTs to the page path and executes even when
+  // that render-time redirect would have fired — the docblock above says so —
+  // so the allowlist never protected a single mutation. 30+ files define
+  // actions on this gate (accounts, opportunities, invoices, proposals,
+  // submittals, AIA, costs, change-orders, closeout, settings), and a crew
+  // session could POST any of them: action ids are build-global, so the path
+  // it's sent to is irrelevant.
+  //
+  // Denying HERE closes the whole class at once. Crew-facing surfaces opt back
+  // in with `{ allowCrew: true }` — a short, visible list, which is the right
+  // shape for a security boundary: new code is protected by default, and the
+  // exceptions have to be written down.
+  if (!opts?.allowCrew) {
+    const { isCrewOnlyUser, CREW_HOME } = await import("@/lib/commercial/crew-access");
+    if (await isCrewOnlyUser(userId)) redirect(CREW_HOME);
+  }
   const profile = await getProfileByUserId(userId);
   // The layout redirects a deactivated / no-access user on page RENDER, but a
   // server action POSTs to the path and runs even when that render-time redirect
@@ -72,13 +94,13 @@ export async function assertCommercialAccess(userId: string): Promise<void> {
  * session, requires commercial access, and returns the user id. Redirects
  * otherwise (no return).
  */
-export async function requireCommercialUser(): Promise<string> {
+export async function requireCommercialUser(opts?: { allowCrew?: boolean }): Promise<string> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  await assertCommercialAccess(user.id, opts);
   return user.id;
 }
 

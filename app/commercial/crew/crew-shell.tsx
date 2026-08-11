@@ -26,7 +26,8 @@ export async function requireCrewEmployee(): Promise<
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // Crew IS the audience here — opt back in past the default-deny gate.
+  await assertCommercialAccess(user.id, { allowCrew: true });
 
   const employee = await getEmployeeForUser(user.id);
   if (!employee) {

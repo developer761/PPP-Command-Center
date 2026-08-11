@@ -138,6 +138,17 @@ export default async function DashboardLayout({
     redirect("/choose-platform");
   }
 
+  // A Commercial CREW login must never land in the residential Command Center.
+  // Latent today (crew are provisioned Commercial-only), but if one were ever
+  // given both platform flags the switcher would appear and one click would
+  // hand a painter every rep KPI, the revenue figures and the leaderboard —
+  // with none of the crew allowlist applying, since that lives under
+  // /commercial. Cheaper to close now than to remember later.
+  {
+    const { isCrewOnlyUser, CREW_HOME } = await import("@/lib/commercial/crew-access");
+    if (await isCrewOnlyUser(user.id)) redirect(CREW_HOME);
+  }
+
   return (
     <DashboardChrome
       user={{

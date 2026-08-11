@@ -13,7 +13,8 @@ export default async function ClockStationPage() {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) redirect("/");
-  await assertCommercialAccess(data.user.id);
+  // The kiosk is explicitly crew-reachable (PIN-gated).
+  await assertCommercialAccess(data.user.id, { allowCrew: true });
   // Admin OR crew. The kiosk is the shop tablet; it was admin-only because a
   // non-admin commercial user could brute-force a 4-digit PIN and clock other
   // people (payroll fraud, audit round 2). Karan 2026-08 opened it to the Crew

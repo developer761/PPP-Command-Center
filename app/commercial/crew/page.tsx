@@ -26,7 +26,7 @@ export default async function CrewHomePage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  await assertCommercialAccess(user.id, { allowCrew: true });
 
   const [profile, crewOnly] = await Promise.all([
     getProfileByUserId(user.id),
