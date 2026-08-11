@@ -39,7 +39,14 @@ Only show relevant statuses per phase — create form, edit, pickers, filters, k
 Today's list shipped (B1/U1/U2/U3/U4/F1); parked #3 (typo), #8 ($8k proposal), F2 (submittal send). Prior open: CO lines on invoice, AIA templated-Excel, Kim proposal-build + Resend, Tomco Warranty/Work-Order doc formats.
 
 ## DONE (committed + pushed)
-- Remove Bid low/high (both forms) · RFP defaults today · remove tax exemption (preserve existing) · Alternate→Qualifications · proposal input glitch (React 19 form-reset on autosave).
+- Remove Bid low/high (both forms) · RFP defaults today · remove tax exemption (preserve existing) · Alternate→Qualifications · proposal input glitch (React 19 form-reset on autosave) · **Cost→Transactions** nav labels + heading · **auto-title** (MM-DD-YYYY Builder - Client - Street).
+- **Status analysis:** POST-contract tree already matches Karan's spec exactly. PRE-contract needs the flatten (RFP→top-level, Closed Won/Lost split) + a decision on where Follow-Up & Proposal-Pending-Approval go — awaiting Karan's specifics + a migration map for review.
 
-## NEXT (not started)
-Statuses+migration · phase tabs · new-opp slim flow + auto-title · shared IDs + Cost→Transactions · WO-from-scope builder · proposal revision lifecycle + Labor-into-Inclusions + Won-logic · global projects list · Teams · Crew role · Brendan + search bugs · consistency sweep.
+## AWAITING KARAN'S SPECIFICS
+- **Statuses** (the "do together" item): confirm the flat pre-contract list + where Follow-Up / Proposal-Pending-Approval map → then I write the migration + do the pre/post UI split.
+- **Search bar** "weird" — what specifically (results/ranking/⌘K)?
+- **Brendan sign-offs** "weird" — what specifically (request flow / buttons / notification)?
+- Katie: #3 typo, #8 $8k proposal, F2 submittal send.
+
+## NEXT (buildable, not started)
+phase tabs (needs status split) · new-opp slim form for existing builder (needs Teams) · shared IDs + TRANS records · WO-from-scope builder · proposal revision lifecycle + Labor-into-Inclusions + Won-logic · global projects list · Teams · Crew role · consistency sweep.
