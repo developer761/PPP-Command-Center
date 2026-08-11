@@ -65,10 +65,12 @@ export function AutosaveProposalForm({
     }
     inFlightRef.current = true;
     setStatus("saving");
-    // Use requestSubmit so the server action fires with the exact
-    // FormData shape the manual button used. React handles the submit
-    // event → server action pipeline for us.
-    formRef.current.requestSubmit();
+    // Call the server action DIRECTLY with the form's data — NOT requestSubmit().
+    // React 19 auto-RESETS a `<form action>` once the action resolves, which was
+    // wiping half-typed uncontrolled inputs (phone + any field) on every 800ms
+    // autosave — the "it glitches and won't let me enter the number" bug (Karan
+    // meeting 2026-08). A direct call still saves + revalidates, without the reset.
+    void wrappedAction(new FormData(formRef.current));
   }
 
   // Debounced listener on any input/change bubbling out of the form.
@@ -125,9 +127,12 @@ export function AutosaveProposalForm({
   return (
     <div className="relative">
       {!disabled && <StatusPill status={status} lastSavedAt={lastSavedAt} />}
+      {/* No `action={...}` — autosave calls the server action directly (see
+          fireSave) so React 19 never form-resets the inputs mid-type. onSubmit is
+          blocked so pressing Enter in a field can't trigger a reset either. */}
       <form
         ref={formRef}
-        action={wrappedAction}
+        onSubmit={(e) => e.preventDefault()}
         className="space-y-4"
       >
         {disabled ? (
