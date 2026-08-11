@@ -12,6 +12,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
+import { transactionRecordId } from "@/lib/commercial/record-ids";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents, formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { getProjectFinancials } from "@/lib/commercial/projects/financials";
@@ -499,8 +500,15 @@ export async function ProjectCostsTool({
 
         {purchases.length > 0 && (
           <ul className="space-y-2.5">
-            {purchases.map((pu) => {
+            {purchases.map((pu, puIdx) => {
               const isEditing = editId === pu.id;
+              // TRANS-#### shares the project's number (Karan 2026-08). Numbered
+              // oldest-first so a transaction's id never changes as new ones are
+              // logged — the list renders newest-first, hence the flip.
+              const transId = transactionRecordId(
+                opp?.project_number,
+                purchases.length - puIdx
+              );
               const receipt = pu.receipt_document_id ? receiptDocs.get(pu.receipt_document_id) ?? null : null;
               const meta = PURCHASE_CATEGORY_META[pu.category] ?? PURCHASE_CATEGORY_META.other;
               return (
@@ -511,6 +519,9 @@ export async function ProjectCostsTool({
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
+                          {transId && (
+                            <span className="text-[9.5px] font-mono text-ppp-navy-600" title="Transaction ID — shares this project's number">{transId}</span>
+                          )}
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-ppp-charcoal-200 bg-ppp-charcoal-50 text-[11px] font-semibold text-ppp-charcoal-700">{purchaseCategoryLabel(pu.category)}</span>
                           {pu.vendor && <span className="text-sm font-semibold text-ppp-charcoal break-words">{pu.vendor}</span>}
                         </div>

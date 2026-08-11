@@ -34,6 +34,7 @@ import {
 import { safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
+import { workOrderRecordId } from "@/lib/commercial/record-ids";
 import { AutosaveForm } from "@/components/commercial/autosave-form";
 import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
@@ -237,7 +238,7 @@ async function autoFileWorkOrder(
  *  route reuses the exact same header. */
 export function workOrderHeader(
   wo: { work_notes: string | null; assigned_to: string | null; scheduled_start_date: string | null; scheduled_end_date: string | null; sent_at: string | null; created_at: string },
-  opp: { title: string | null; client_name: string | null; property_street: string | null; property_city: string | null; property_state: string | null },
+  opp: { title: string | null; client_name: string | null; property_street: string | null; property_city: string | null; property_state: string | null; project_number?: string | null },
   account: { company_name: string },
   dealName: string
 ) {
@@ -246,6 +247,7 @@ export function workOrderHeader(
     .join(" · ");
   return {
     dealName,
+    recordId: workOrderRecordId(opp.project_number) || null,
     gcCompany: account.company_name,
     projectAddress: addr || null,
     assignedTo: wo.assigned_to,
@@ -315,7 +317,20 @@ export async function WorkOrderTool({
           <ToolBackHeader accountId={id} dealId={dealId} accountName={account.company_name} dealName={dealName} back={spv.back} />
           <div>
             <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Work Order</h1>
-            <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">{dealName} · <span className="font-medium">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</span></p>
+            {/* WO-#### shares the deal's number (Karan 2026-08: "make sure the
+                ending numbers are the same") so a crew member holding a work
+                order can match it to the project without a lookup. */}
+            <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+              {workOrderRecordId(opp.project_number) && (
+                <>
+                  <span className="font-mono text-ppp-navy-600" title="Work order ID — shares this project's number">
+                    {workOrderRecordId(opp.project_number)}
+                  </span>
+                  {" · "}
+                </>
+              )}
+              {dealName} · <span className="font-medium">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</span>
+            </p>
           </div>
         </>
       )}

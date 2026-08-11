@@ -45,6 +45,9 @@ export type WorkOrderPdfInput = {
   content: WorkOrderContent;
   header: {
     dealName: string;
+    /** WO-2026-0020 — shares the project's number so the crew's printed copy
+     *  can be matched back to the job without a lookup (Karan 2026-08). */
+    recordId?: string | null;
     gcCompany: string | null;
     projectAddress: string | null;
     assignedTo: string | null;
@@ -162,6 +165,7 @@ function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPd
           <View style={{ width: "60%" }}>
             <Text style={styles.label}>Project</Text>
             <Text style={styles.bold}>{header.dealName || "—"}</Text>
+            {header.recordId ? <Text style={styles.muted}>{header.recordId}</Text> : null}
             {header.gcCompany ? <Text>{header.gcCompany}</Text> : null}
             {header.projectAddress ? <Text style={styles.muted}>{header.projectAddress}</Text> : null}
           </View>

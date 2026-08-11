@@ -10,7 +10,8 @@
  * own card, so nothing clusters.
  */
 import Link from "next/link";
-import { derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { projectRecordId } from "@/lib/commercial/record-ids";
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { AIA_STATUS_META } from "@/lib/commercial/aia/constants";
@@ -54,7 +55,11 @@ const FOOTER_LINK =
 export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hideAccountName?: boolean }) {
   const name = derivedOppName(p.opp, p.accountName);
   const pct = p.percentCompleteBps != null ? Math.min(100, Math.round(p.percentCompleteBps / 100)) : null;
-  const oppCode = formatOpportunityNumber(p.opp.project_number);
+  // A won opportunity IS the project — same record, same number — so on the
+  // project card it reads as PROJ- rather than OPP-. Karan 2026-08: the
+  // trailing number stays identical across the whole family, which is what
+  // lets you match a work order or transaction back to the job at a glance.
+  const oppCode = projectRecordId(p.opp.project_number);
   const location = p.opp.property_street?.trim() || null;
   const tone = projectStatusTone(p.opp.status);
   const hasContract = p.contractToDateCents > 0;
@@ -78,7 +83,7 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
       <div className="pl-5 pr-4 py-3.5">
         <div className="flex items-center justify-between gap-2 mb-1">
           {oppCode ? (
-            <span className="text-[9.5px] font-mono text-ppp-navy-600 truncate" title="Opportunity ID">{oppCode}</span>
+            <span className="text-[9.5px] font-mono text-ppp-navy-600 truncate" title="Project ID — shares the opportunity's number">{oppCode}</span>
           ) : <span />}
           <div className="flex items-center gap-1.5 shrink-0">
             {p.isClosedOut && (
