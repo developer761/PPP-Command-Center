@@ -42,6 +42,7 @@ import CommercialDocumentUploadForm from "@/components/commercial-document-uploa
 import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
 import { DateField } from "@/components/commercial/date-field";
+import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
@@ -4417,16 +4418,8 @@ function NewDealForm({
         </div>
       )}
       <div>
-        <label className={labelCls} htmlFor="deal-title">Opportunity title</label>
-        <input
-          id="deal-title"
-          type="text"
-          name="title"
-          required
-          maxLength={200}
-          placeholder="e.g. Lobby + Halls Repaint — Q3 Bid"
-          className={inputCls}
-        />
+        <label className={labelCls} htmlFor="deal-title">Opportunity title <span className="font-normal text-ppp-charcoal-400">(auto-fills from date · builder · client · address — edit freely)</span></label>
+        <AutoOpportunityTitle builder={account.company_name ?? ""} className={inputCls} />
       </div>
       {/* Phase E-4 (2026-07-13): status + sub-status now cascade via a
           shared client picker (also exposes optional follow-up date +
