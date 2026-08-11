@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
+import { TimeSelect } from "@/components/commercial/time-select";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import type { MonthDay, DayCrew, DayOff } from "@/lib/commercial/field-ops/schedule";
 import { ABSENCE_TYPES } from "@/lib/commercial/field-ops/absence-constants";
@@ -636,8 +637,8 @@ function DayPanel({
                   <SearchableSelect name="job_id" options={jobOptions} placeholder="Search work orders…" ariaLabel="Work order" />
                 </label>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="block"><span className={LABEL_CLS}>Start time</span><input type="time" name="start_time" step={300} className={INPUT_CLS} /></label>
-                  <label className="block"><span className={LABEL_CLS}>End time</span><input type="time" name="end_time" step={300} className={INPUT_CLS} /></label>
+                  <label className="block"><span className={LABEL_CLS}>Start time</span><TimeSelect name="start_time" ariaLabel="Start time" placeholder="e.g. 7:00 AM" /></label>
+                  <label className="block"><span className={LABEL_CLS}>End time</span><TimeSelect name="end_time" ariaLabel="End time" placeholder="e.g. 3:30 PM" /></label>
                 </div>
                 <p className="text-[11px] text-ppp-charcoal-400 -mt-1">Hours come from start &amp; end. Leave both blank for a full 8h day.{off.length > 0 && <span className="text-amber-700"> Someone marked off can still be scheduled — check &ldquo;Off today&rdquo; above.</span>}</p>
                 <label className="block"><span className={LABEL_CLS}>Note for the crew (goes in their email)</span>
