@@ -357,10 +357,12 @@ async function createDealFromPipelineAction(formData: FormData) {
   }
   revalidatePath("/commercial/opportunities");
   revalidatePath(`/commercial/accounts/${account_id}`);
-  // Karan 2026-07-09: stay on the pipeline instead of jumping to the
-  // account's Deals tab. Passes ?created=<title> so the pipeline flash
-  // banner can confirm the create.
-  redirect(`/commercial/opportunities?created=1&created_title=${encodeURIComponent(title)}`);
+  // B1 (Katie 2026-08, Model B): open the new opportunity's deal drill-in — the
+  // one do-everything home — instead of dropping back on the pipeline list where
+  // "where do I go next?" was the complaint. deal_created=1 fires the confirm
+  // flash + the Overview now shows the bid fields entered. 303 redirect, so Back
+  // returns to the pipeline (never a form re-POST).
+  redirect(`/commercial/accounts/${account_id}?tab=projects&project=${result.opportunity.id}&deal_created=1`);
   // unreachable — satisfy the linter that this file has a "server action returns void" signature
   void backHref;
 }

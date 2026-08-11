@@ -208,6 +208,10 @@ type SP = Promise<{
   new_deal?: string;
   created?: string;
   created_title?: string;
+  /** B1 (Katie 2026-08): set when a NEW opportunity was just created and we
+   *  landed on its deal drill-in. Distinct from `created` (which means "invoice
+   *  created" on the Invoices sub-tab) so the two flashes never collide. */
+  deal_created?: string;
   /** Phase E-6: "Start project" fired on a Won debrief. Value is the
    *  opp id that just hopped from Pre-Sale to Pre-Construction so the
    *  toast can name the deal. */
@@ -1188,8 +1192,38 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
     return s === "sent" || s === "overdue" || s === "partial";
   }).length;
   const docTotalMB = documents.reduce((s, d) => s + d.size_bytes, 0) / 1024 / 1024;
+
+  // B1 (Katie #4): surface the bid fields on the Overview so a freshly-created
+  // opportunity shows what was entered — not just the money blocks, which are
+  // empty for a brand-new bid. The data always saved; it just wasn't shown here.
+  // Attention-contact NAME resolved from the deal's primary_contact_id (only when
+  // set — no extra query otherwise). Blank fields are omitted, never shown empty.
+  const attentionContactName = p.opp.primary_contact_id
+    ? (await listAccountContacts(accountId)).find((r) => r.contact.id === p.opp.primary_contact_id)?.contact.full_name ?? null
+    : null;
+  const bidDetails: { label: string; value: string }[] = [
+    { label: "Status", value: oppStatusDisplayLabel(p.opp.status, p.opp.sub_status) },
+  ];
+  if (p.opp.source) bidDetails.push({ label: "Source", value: opportunitySourceLabel(p.opp.source) });
+  if (attentionContactName) bidDetails.push({ label: "Attention", value: attentionContactName });
+  if (p.opp.rfp_received_at) bidDetails.push({ label: "RFP received", value: fmtEtDate(p.opp.rfp_received_at) ?? "—" });
+  if (p.opp.proposal_due_at) bidDetails.push({ label: "Proposal due", value: fmtEtDate(p.opp.proposal_due_at) ?? "—" });
+  if (p.opp.follow_up_at) bidDetails.push({ label: "Follow-up", value: fmtEtDate(p.opp.follow_up_at) ?? "—" });
+  if (p.opp.bid_value_low_cents != null || p.opp.bid_value_high_cents != null) {
+    const lo = p.opp.bid_value_low_cents;
+    const hi = p.opp.bid_value_high_cents;
+    const range = lo != null && hi != null ? `${formatCentsCompact(lo)} – ${formatCentsCompact(hi)}` : formatCentsCompact((lo ?? hi)!);
+    bidDetails.push({ label: "Bid range", value: range });
+  }
+
   return (
     <div className="space-y-4">
+      {sp?.deal_created === "1" && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800 flex items-center gap-2">
+          <span aria-hidden>✓</span>
+          <span>Opportunity created — everything you entered is saved and shown below.</span>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <Link href={`${base}?tab=deals`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[44px] sm:min-h-[36px]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M11 5l-7 7 7 7" /></svg>
@@ -1271,6 +1305,25 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             </span>
           </div>
         </div>
+        {/* B1 (Katie #4): the bid fields entered on create, shown right on the
+            Overview so a fresh opportunity reads as saved (not an empty money
+            block). Blank fields omitted. Overview-only, like Profitability. */}
+        {dealTab === "overview" && bidDetails.length > 0 && (
+          <section className="mt-4 rounded-xl border border-ppp-charcoal-100 bg-ppp-charcoal-25/40 p-3.5 sm:p-4">
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2.5">Deal details</h3>
+            <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5">
+              {bidDetails.map((d) => (
+                <div key={d.label} className="min-w-0">
+                  <dt className="text-[10.5px] text-ppp-charcoal-400">{d.label}</dt>
+                  <dd className="text-[12.5px] font-semibold text-ppp-charcoal break-words">{d.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {p.opp.follow_up_notes && (
+              <p className="text-[11.5px] text-ppp-charcoal-500 mt-2.5 leading-snug"><span className="text-ppp-charcoal-400">Follow-up note:</span> {p.opp.follow_up_notes}</p>
+            )}
+          </section>
+        )}
         {/* Profitability — THIS deal's P&L in the same layout as the GC (account)
             and platform (dashboard): Gross/Costs/Net/Margin cards + monthly billed
             line + margin gauge + cost donut. Scope-labeled so it never reads as
@@ -2772,8 +2825,11 @@ async function createDealInlineAction(formData: FormData) {
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/opportunities");
   revalidatePath("/commercial");
-  const createdTitle = encodeURIComponent(result.opportunity.title);
-  redirect(`/commercial/accounts/${account_id}?tab=projects&project=${result.opportunity.id}&created=1`);
+  void result.opportunity.title;
+  // B1 (Katie 2026-08): land on the new deal's drill-in with a distinct
+  // deal-created flash (NOT `created=1`, which the Invoices sub-tab reads as
+  // "Invoice created"). The drill-in Overview now shows the bid fields entered.
+  redirect(`/commercial/accounts/${account_id}?tab=projects&project=${result.opportunity.id}&deal_created=1`);
 }
 
 /**
