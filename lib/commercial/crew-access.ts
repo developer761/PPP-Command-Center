@@ -143,13 +143,21 @@ export async function getEmployeeForUser(
   // that row to a client component (or letting it into an RSC payload) would
   // ship the crew member's own PIN hash and a login-less auth token to the
   // browser; magic_link_token resolves an employee with no other check.
-  const { data } = await sb
+  const { data, error } = await sb
     .from("commercial_employees")
     .select(EMPLOYEE_COLS)
     .eq("user_id", userId)
     .eq("active", true)
     .limit(1)
     .maybeSingle();
+  if (error) {
+    // Migration 125 not applied yet → the column doesn't exist. Resolve to
+    // "not linked", which is the truth until it runs, and let the crew page's
+    // empty state say so. Failing closed here is right: the alternative is an
+    // error page, and there is no safe way to guess who this login is.
+    console.warn("[crew-access] employee lookup failed:", error.message);
+    return null;
+  }
   return (data as CommercialEmployee | null) ?? null;
 }
 

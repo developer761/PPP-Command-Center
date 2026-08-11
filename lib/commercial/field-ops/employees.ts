@@ -58,19 +58,44 @@ export type CommercialEmployee = {
 
 // user_id MUST be in this list — without it the column comes back undefined and
 // every scoped crew query silently resolves to "no employee linked".
+//
+// It also arrived in migration 125, which is applied separately from a deploy.
+// Selecting a column the DB doesn't have yet is a hard 42703 that takes the
+// whole Field Ops crew page down, so the readers below fall back to
+// EMPLOYEE_COLS_LEGACY on that one error. A missing column then degrades to
+// "no crew logins are linked" — which is TRUE until the migration runs — rather
+// than an error page on a screen that has nothing to do with the crew role.
 export const EMPLOYEE_COLS =
   "id, first_name, last_name, display_name, worker_type, role, pay_type, default_daily_hours, phone, email, sort_order, active, start_date, end_date, schedule_email_opt_out, preferred_language, external_ref, user_id, created_at, updated_at";
 
+/** Pre-migration-125 column list (no user_id). */
+const EMPLOYEE_COLS_LEGACY = EMPLOYEE_COLS.replace(", user_id", "");
+
+/** True when Postgres says a column is missing (42703). */
+function isMissingColumn(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  return err.code === "42703" || /column .* does not exist/i.test(err.message ?? "");
+}
+
 export async function listEmployees(opts?: { includeInactive?: boolean }): Promise<CommercialEmployee[]> {
   const sb = commercialDb();
-  let q = sb.from("commercial_employees").select(EMPLOYEE_COLS).order("sort_order").order("display_name");
-  if (!opts?.includeInactive) q = q.eq("active", true);
-  const { data, error } = await q;
+  const run = async (cols: string) => {
+    let q = sb.from("commercial_employees").select(cols).order("sort_order").order("display_name");
+    if (!opts?.includeInactive) q = q.eq("active", true);
+    return q;
+  };
+  let { data, error } = await run(EMPLOYEE_COLS);
+  if (isMissingColumn(error)) {
+    // Migration 125 hasn't run on this database yet. Serve the roster without
+    // the link rather than 500 the page.
+    console.warn("[field-ops/employees] user_id column missing — run migration 125");
+    ({ data, error } = await run(EMPLOYEE_COLS_LEGACY));
+  }
   if (error) {
     console.warn("[field-ops/employees] list failed:", error.message);
     return [];
   }
-  return (data ?? []) as CommercialEmployee[];
+  return (data ?? []) as unknown as CommercialEmployee[];
 }
 
 export async function getEmployee(id: string): Promise<CommercialEmployee | null> {
