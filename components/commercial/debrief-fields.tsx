@@ -91,23 +91,41 @@ export default function DebriefFields(props: Props) {
   const userInitiatedRef = useRef(false);
 
   // Watch the sibling status dropdown without needing a Context provider.
+  //
+  // BOTH selects have to be watched. Won vs Lost is carried by the SUB-status,
+  // so listening only to to_status meant: pick "Closed" (defaults to Won) →
+  // switch the sub to Lost → this block never re-ran, kept rendering the WIN
+  // debrief, and submitting hit the server's "Pick a reason for losing…"
+  // error with no loss-reason field anywhere on screen. Reaching Lost through
+  // the sub select is now the normal path, so this is the common case.
   useEffect(() => {
-    const select = document.querySelector<HTMLSelectElement>('select[name="to_status"]');
-    if (!select) return;
-    const onChange = (e: Event) => {
-      const v = select.value.toLowerCase();
-      // Only the real "change" event marks user intent — the initial
-      // synthetic call below should not trigger scroll-into-view.
+    const statusEl = document.querySelector<HTMLSelectElement>('select[name="to_status"]');
+    if (!statusEl) return;
+    const subSelector = 'input[name="to_sub_status"], select[name="to_sub_status"]';
+    const readTuple = (e: Event) => {
+      // Only a real "change" event marks user intent — the initial synthetic
+      // call below should not trigger scroll-into-view.
       if (e.type === "change") userInitiatedRef.current = true;
-      // v2: also check the sibling to_sub_status hidden input if the
-      // form has one (Kanban flip to closed passes both status + sub).
-      const subEl = document.querySelector<HTMLInputElement>('input[name="to_sub_status"]')
-        ?? document.querySelector<HTMLSelectElement>('select[name="to_sub_status"]');
-      setTerminal(outcomeFromTuple(v, subEl?.value));
+      // Re-query the sub element every time: the picker re-renders it when the
+      // parent status changes, so a captured reference goes stale.
+      const subEl = document.querySelector<HTMLInputElement | HTMLSelectElement>(subSelector);
+      setTerminal(outcomeFromTuple(statusEl.value.toLowerCase(), subEl?.value));
     };
-    select.addEventListener("change", onChange);
-    onChange(new Event("init"));
-    return () => select.removeEventListener("change", onChange);
+    statusEl.addEventListener("change", readTuple);
+    // The sub element is swapped out on status change, so bind at the document
+    // level and filter — a direct listener would be lost on the next re-render.
+    const onDocChange = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (t && "name" in t && (t as HTMLSelectElement).name === "to_sub_status") {
+        readTuple(e);
+      }
+    };
+    document.addEventListener("change", onDocChange, true);
+    readTuple(new Event("init"));
+    return () => {
+      statusEl.removeEventListener("change", readTuple);
+      document.removeEventListener("change", onDocChange, true);
+    };
   }, []);
 
   // When the user picks a terminal status, scroll the debrief into view +

@@ -105,6 +105,21 @@ export function kanbanColumnLabel(key: string): string {
   return COLUMN_BY_KEY.get(key)?.label ?? key;
 }
 
+/**
+ * Label for a "Move to…" menu option. Same as kanbanColumnLabel except the
+ * post-contract Closed column, which is disambiguated: a menu that lists
+ * "Closed Won · Closed Lost · … · Closed" reads as three closed states with
+ * no way to tell the last one apart. On the BOARD the column sits visibly
+ * inside the delivery lane, so the bare label is fine there.
+ *
+ * Exists because the pipeline page hand-rolled this exception and the
+ * accounts page didn't, so the same key showed two different names.
+ */
+export function kanbanMoveToLabel(key: string): string {
+  if (key === "post_sale_closed") return "Closed (post-sale)";
+  return kanbanColumnLabel(key);
+}
+
 export function isPreContractColumn(key: string): boolean {
   return COLUMN_BY_KEY.get(key)?.lane === "pre_contract";
 }
@@ -265,7 +280,13 @@ export function columnRealStatus(key: string): string {
  * filter will show RFP deals too.
  */
 export function columnDbStatusHint(key: string): string | null {
-  if (key === "proposal") return null;
+  // Proposal spans two statuses. Qualifying is the fallback column for any
+  // UNRECOGNISED status (columnKeyForOpp is total), so narrowing it with
+  // .eq("status","qualifying") would hide exactly the rows that fallback
+  // exists to rescue: a legacy v1 row that escaped migration 052 shows in
+  // Qualifying on the open board, then vanishes the moment you filter to
+  // Qualifying. Fetch wide for both and let the in-memory filter decide.
+  if (key === "proposal" || key === "qualifying") return null;
   return COLUMN_TARGET[key]?.status ?? null;
 }
 

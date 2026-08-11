@@ -104,16 +104,31 @@ describe("kanban column map", () => {
     }
   });
 
-  it("only skips the DB narrowing hint for the column that spans statuses", () => {
+  it("skips the DB narrowing hint where narrowing would lose rows", () => {
     // Proposal holds both (proposal, *) and (estimating, pending approval),
-    // so it can't be expressed as a single .eq() — callers must filter in
-    // memory. Every other column narrows cleanly.
-    expect(columnDbStatusHint("proposal")).toBeNull();
+    // so it can't be expressed as a single .eq(). Qualifying is the fallback
+    // column for unrecognised statuses, so narrowing it would hide the very
+    // rows that fallback rescues. Both must fetch wide and filter in memory.
+    const WIDE = ["proposal", "qualifying"];
+    for (const key of WIDE) expect(columnDbStatusHint(key), key).toBeNull();
     for (const col of KANBAN_COLUMNS) {
-      if (col.key === "proposal") continue;
+      if (WIDE.includes(col.key)) continue;
       expect(columnDbStatusHint(col.key), col.key).toBe(
         COLUMN_TARGET[col.key].status
       );
+    }
+  });
+
+  it("never narrows a column whose fallback rows would be excluded", () => {
+    // Property: if a column can hold a row whose top-level status differs
+    // from the hint, the hint must be null. Guards against a future column
+    // being narrowed by accident.
+    const LEGACY_AND_JUNK = ["rfp", "won", "lost", "proposal_sent", "solicitation", "nonsense"];
+    for (const s of LEGACY_AND_JUNK) {
+      const col = columnKeyForOpp(s, null);
+      const hint = columnDbStatusHint(col);
+      // Either we fetch wide, or the hint matches this row's real status.
+      expect(hint === null || hint === s, `${s} → column ${col}, hint ${hint}`).toBe(true);
     }
   });
 

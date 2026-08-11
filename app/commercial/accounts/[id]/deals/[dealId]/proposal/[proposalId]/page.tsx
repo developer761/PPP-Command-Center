@@ -1008,12 +1008,16 @@ export default async function ProposalEditorPage({
               blur/Enter. Falls through to the same renameProposalAction
               server flow. Karan's own words: "make it autosave if i
               want to change the name of the proposals". */}
-          <form
-            action={renameProposalAction}
-            className="flex items-center gap-2"
-          >
+          {/* No `action=` on the form — AutosaveProposalName calls the action
+              directly with this form's FormData, so React 19 can't reset the
+              uncontrolled input mid-type. The form element stays purely as the
+              FormData container (it carries hiddenIds); it has no submit
+              button, and the input preventDefault()s Enter, so nothing
+              triggers a native submit. */}
+          <form className="flex items-center gap-2">
             {hiddenIds}
             <AutosaveProposalName
+              action={renameProposalAction}
               initialValue={proposal.header_json.project_name ?? ""}
               placeholder={`Name this revision (e.g. "Warehouse Repaint")`}
               inputClassName="text-lg font-bold text-ppp-charcoal bg-transparent border-b border-dashed border-ppp-charcoal-200 focus:border-cc-brand-400 focus:outline-none py-0.5 min-w-0 flex-1 placeholder:text-ppp-charcoal-500 placeholder:italic placeholder:font-normal"

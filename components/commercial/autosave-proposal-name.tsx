@@ -18,9 +18,13 @@
  *   - Immediately on Enter
  *   - Escape reverts to the last-saved value
  *
- * Submit path: form.requestSubmit() fires the parent form's server
- * action (renameProposalAction), which patches header_json.project_name
- * + revalidatePath on editor/account/proposals-list pages.
+ * Submit path: the `action` prop (renameProposalAction) is called
+ * DIRECTLY with the parent form's FormData — never requestSubmit().
+ * React 19 auto-resets a `<form action>` once the action resolves, which
+ * wiped the half-typed name on every 600ms debounce tick (same class of
+ * bug as the proposal editor's phone field, Karan meeting 2026-08). The
+ * action still patches header_json.project_name + revalidatePath on the
+ * editor/account/proposals-list pages.
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -28,11 +32,15 @@ type Status = "idle" | "dirty" | "saving" | "saved";
 
 export function AutosaveProposalName({
   initialValue,
+  action,
   placeholder = "Name this revision",
   inputClassName = "",
   disabled = false,
 }: {
   initialValue: string;
+  /** The rename server action. Called directly with the enclosing form's
+   *  FormData so React 19 never form-resets the input mid-type. */
+  action: (formData: FormData) => Promise<void> | void;
   placeholder?: string;
   inputClassName?: string;
   /** Karan 2026-07-20: sent/won/lost proposals are frozen — the
@@ -72,16 +80,25 @@ export function AutosaveProposalName({
     if (!el) return;
     const val = el.value.trim();
     if (val === savedValueRef.current) return;
+    const form = el.form;
+    if (!form) return;
     savedValueRef.current = val;
     setStatus("saving");
-    // requestSubmit fires the parent form's server action (React's
-    // form action handler is registered via `<form action={fn}>` at
-    // the DOM level, so this correctly routes to renameProposalAction).
-    el.form?.requestSubmit();
+    // Call the action DIRECTLY — NOT requestSubmit(). React 19 resets a
+    // `<form action>` after the action resolves, and this input is
+    // uncontrolled (defaultValue), so a reset mid-type threw away
+    // everything typed since the last save. The FormData carries the
+    // sibling hidden ids plus this field, exactly as a submit would.
+    void Promise.resolve(action(new FormData(form))).catch(() => {
+      // Surface a failed save by reverting the optimistic "saved" state;
+      // the server's ?error= banner carries the detail.
+      setStatus("dirty");
+      savedValueRef.current = "";
+    });
     // Optimistically flip to "Saved" after a short window — the
     // server action redirects will re-render the tree; if the save
     // errored the ?error= banner takes over.
-    setTimeout(() => setStatus("saved"), 500);
+    setTimeout(() => setStatus((s) => (s === "saving" ? "saved" : s)), 500);
     setTimeout(
       () => setStatus((s) => (s === "saved" ? "idle" : s)),
       2200

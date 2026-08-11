@@ -77,6 +77,7 @@ import {
   columnKeyForOpp,
   columnDbStatusHint,
   kanbanColumnLabel,
+  kanbanMoveToLabel,
   resolveColumnTarget,
   isFollowUpCard,
   isDraftedCard,
@@ -119,7 +120,7 @@ const MS_PER_DAY = 86_400_000;
  *  "nothing happened" because Won isn't a visual column he was expecting
  *  the card to land in. */
 const MOVE_TO_COLUMNS: { key: string; label: string }[] = KANBAN_COLUMNS.map(
-  (c) => ({ key: c.key, label: c.key === "post_sale_closed" ? "Closed (post-sale)" : c.label })
+  (c) => ({ key: c.key, label: kanbanMoveToLabel(c.key) })
 );
 
 /** Which visual column a deal is CURRENTLY sitting in. The Move-to menu

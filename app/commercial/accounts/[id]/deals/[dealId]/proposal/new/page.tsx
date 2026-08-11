@@ -17,6 +17,7 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { hydrateProposalContext } from "@/lib/commercial/proposals/hydrate";
 import {
   createProposal,
+  findReusableDraftProposal,
   getProposal,
   listLineItemsForProposal,
   createLineItem,
@@ -80,6 +81,22 @@ export default async function CreateProposalRoute({
       bidSetDate = parent.bid_set_date;
       finalPriceOverride = parent.final_price_override_cents;
     }
+  }
+
+  // IDEMPOTENCY: this route mutates on GET, so browser-back from the editor
+  // re-runs it. Before creating, check whether this exact request already
+  // produced a proposal (an untouched draft, or the same bump) and just land
+  // on that one instead of minting a duplicate. See findReusableDraftProposal
+  // for why the match is deliberately narrow.
+  const reusable = await findReusableDraftProposal({
+    opportunity_id: dealId,
+    parent_proposal_id: parentProposalId,
+    created_by_user_id: user.id,
+  });
+  if (reusable) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${reusable.id}?created=1${backQs}`
+    );
   }
 
   const result = await createProposal({

@@ -52,7 +52,13 @@ export function AutosaveForm({
     }
     inFlightRef.current = true;
     setStatus("saving");
-    formRef.current.requestSubmit();
+    // Call the server action DIRECTLY with the form's data — NOT
+    // requestSubmit(). React 19 auto-RESETS a `<form action>` once the action
+    // resolves, which wipes half-typed uncontrolled inputs on every debounce
+    // tick — the "it glitches and won't let me enter the number" bug Karan hit
+    // on the proposal editor (meeting 2026-08). Same fix, same reason: a direct
+    // call still saves + revalidates, without the reset.
+    void wrappedAction(new FormData(formRef.current));
   }
 
   useEffect(() => {
@@ -110,7 +116,15 @@ export function AutosaveForm({
   return (
     <div className="relative">
       {!disabled && <StatusPill status={status} lastSavedAt={lastSavedAt} />}
-      <form ref={formRef} action={wrappedAction} className={formClassName}>
+      {/* No `action={...}` — autosave calls the server action directly (see
+          fireSave) so React 19 never form-resets the inputs mid-type. onSubmit
+          is blocked so pressing Enter in a field can't trigger a reset either;
+          the debounced save covers it either way. */}
+      <form
+        ref={formRef}
+        onSubmit={(e) => e.preventDefault()}
+        className={formClassName}
+      >
         {disabled ? (
           <fieldset disabled className={`${formClassName} opacity-70 pointer-events-none`}>{children}</fieldset>
         ) : (

@@ -41,6 +41,7 @@ import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import { DateField } from "@/components/commercial/date-field";
 import {
   isTerminalOpportunityStatus,
+  isValidSubStatus,
   PRE_SALE_OPEN_STATUSES,
   isWon,
   isPostSaleProject,
@@ -144,6 +145,9 @@ type SP = Promise<{
   error?: string;
   action?: string;
   to?: string;
+  /** Sub-status the quick-flips hand off alongside `to` (e.g. `to=pre_sale_closed&to_sub=lost`).
+   *  Read by the change-status card; ignoring it opened the Lost flow on Won. */
+  to_sub?: string;
   status_ok?: string;
   confirm_delete?: string;
   edited?: string;
@@ -1761,6 +1765,7 @@ export default async function OpportunityDetailPage({
           errorMessage={pickFirst(sp.error)}
           statusOk={pickFirst(sp.status_ok) === "1"}
           preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
+          preselectSub={pickFirst(sp.to_sub)}
           confirmDelete={pickFirst(sp.confirm_delete) === "1"}
           invoicesCreated={
             pickFirst(sp.invoices_created) ? Number(pickFirst(sp.invoices_created)) : 0
@@ -2597,6 +2602,7 @@ async function InfoTab({
   errorMessage,
   statusOk,
   preselectTo,
+  preselectSub,
   confirmDelete,
   invoicesCreated,
   invoiceErrors,
@@ -2606,6 +2612,11 @@ async function InfoTab({
   errorMessage?: string;
   statusOk?: boolean;
   preselectTo?: OpportunityStatus;
+  /** Sub-status the caller wants pre-selected alongside preselectTo. The
+   *  quick-flips send `&to_sub=lost` with a terminal target; ignoring it
+   *  meant the form opened on Closed - WON, so one click marked a deal the
+   *  user was closing as LOST as a win instead. */
+  preselectSub?: string;
   confirmDelete?: boolean;
   invoicesCreated?: number;
   invoiceErrors?: number;
@@ -2663,11 +2674,17 @@ async function InfoTab({
           terminal opps (the only allowed next is reopened, which lives
           as its own dedicated button in the page header). The Debrief
           tab carries everything terminal-specific. */}
-      {!isTerminal && (
+      {/* …unless the user was explicitly sent here to change it. The quick-
+          flips redirect terminal targets to `?action=change-status` for the
+          loss-reason capture; suppressing the card on an ALREADY-terminal deal
+          meant "→ Closed Lost" on a Closed Won card landed on Overview with no
+          form, no error and no explanation, and the deal stayed Won. */}
+      {(!isTerminal || preselectTo) && (
         <ChangeStatusCard
           opp={opp}
           nextStatuses={nextStatuses}
           preselectTo={preselectTo}
+          preselectSub={preselectSub}
           className="lg:col-span-2"
         />
       )}
@@ -2930,11 +2947,13 @@ function ChangeStatusCard({
   opp,
   nextStatuses,
   preselectTo,
+  preselectSub,
   className,
 }: {
   opp: CommercialOpportunity;
   nextStatuses: ReadonlyArray<OpportunityStatus>;
   preselectTo?: OpportunityStatus;
+  preselectSub?: string;
   className?: string;
 }) {
   // Render the pre-selected status (from list-page quick-flip's
@@ -2943,6 +2962,12 @@ function ChangeStatusCard({
   // honor preselectTo if it's actually a valid next status.
   const defaultTo =
     preselectTo && nextStatuses.includes(preselectTo) ? preselectTo : "";
+  // Honour the caller's sub-status too, but only if it's whitelisted for the
+  // target. Without this the Lost hand-off silently opened on Won.
+  const defaultSub =
+    defaultTo && preselectSub && isValidSubStatus(defaultTo, preselectSub)
+      ? preselectSub
+      : undefined;
   // The picker tracks state in URL, but the actual form is server-
   // action driven. We render the loss-reason picker ALWAYS so a user
   // who picks 'lost' from the dropdown sees the required fields
@@ -2991,11 +3016,17 @@ function ChangeStatusCard({
               optional `to_follow_up_at` / `to_follow_up_notes`.
               DebriefFields below still hooks the sibling to_status +
               to_sub_status inputs the picker exposes. */}
+          {/* initialStatus uses `||`, NOT `??`: defaultTo is "" (not nullish)
+              when there's no preselect, so `??` never fell through and the
+              picker silently defaulted to the FIRST status in the enum —
+              Qualifying. One click on "Move forward" then demoted the deal
+              and cascaded its proposal back to draft. Falling back to the
+              deal's CURRENT status makes the default a no-op instead. */}
           <StatusSubStatusPicker
             namePrefix="to_"
             mode="flip"
-            initialStatus={defaultTo ?? nextStatuses[0]}
-            initialSubStatus={opp.sub_status ?? undefined}
+            initialStatus={defaultTo || nextStatuses[0]}
+            initialSubStatus={defaultSub ?? opp.sub_status ?? undefined}
             initialFollowUpAt={opp.follow_up_at ?? undefined}
             initialFollowUpNotes={opp.follow_up_notes ?? undefined}
             allowedStatuses={nextStatuses}

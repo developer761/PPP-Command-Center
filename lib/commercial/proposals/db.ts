@@ -14,6 +14,7 @@
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
+import { paginateAll } from "@/lib/commercial/paginate";
 import type { ProposalStatus } from "./constants";
 
 // ────────────── types ──────────────
@@ -146,6 +147,79 @@ export type CreateProposalInput = {
   parent_proposal_id?: string | null;
   created_by_user_id?: string | null;
 };
+
+/**
+ * Idempotency guard for the create-a-proposal route.
+ *
+ * `/proposal/new` creates on GET render and then redirects, so pressing
+ * BROWSER BACK from the editor re-renders it and used to mint a SECOND
+ * proposal — the likely source of "why do I have extra proposals" (audit
+ * 2026-08). Rather than restructure every entry point into a POST (the
+ * picker, the bump link, and any bookmark), the route asks this first: is
+ * there already a proposal that this exact request would have produced?
+ *
+ * "Already produced" is deliberately narrow, so a user who genuinely wants
+ * a second revision still gets one:
+ *
+ *   - Fresh proposal (no parent): the newest DRAFT on this deal, by this
+ *     user, created inside the window, that is still UNTOUCHED — no line
+ *     items, no notes, no name, no price override. The moment they type
+ *     anything into it, the next visit correctly makes a new one.
+ *   - Bump (with parent): the newest DRAFT on this deal by this user with
+ *     the SAME parent inside the window. A bump copies the parent's lines
+ *     forward, so "untouched" can't be the test here; two bumps of one
+ *     parent within minutes is the back button, not intent. Bumping the
+ *     new revision instead is the way to get a genuine second one.
+ *
+ * Returns the proposal to reuse, or null to create fresh.
+ */
+const PROPOSAL_REUSE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+export async function findReusableDraftProposal(input: {
+  opportunity_id: string;
+  parent_proposal_id: string | null;
+  created_by_user_id: string | null;
+}): Promise<CommercialProposal | null> {
+  if (!input.created_by_user_id) return null;
+  const sb = commercialDb();
+  let q = sb
+    .from("commercial_proposals")
+    .select("*")
+    .eq("opportunity_id", input.opportunity_id)
+    .eq("created_by_user_id", input.created_by_user_id)
+    .eq("status", "draft")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  q = input.parent_proposal_id
+    ? q.eq("parent_proposal_id", input.parent_proposal_id)
+    : q.is("parent_proposal_id", null);
+  const { data } = await q.maybeSingle();
+  const candidate = data as CommercialProposal | null;
+  if (!candidate) return null;
+
+  const age = Date.now() - new Date(candidate.created_at).getTime();
+  // Number.isFinite guards a malformed created_at — an unparseable date
+  // yields NaN, and NaN < window is false, so it falls through to a fresh
+  // create rather than silently reusing an ancient row.
+  if (!Number.isFinite(age) || age > PROPOSAL_REUSE_WINDOW_MS) return null;
+
+  if (input.parent_proposal_id) return candidate;
+
+  // Fresh-proposal path: only reuse if nothing has been entered yet.
+  const untouched =
+    !candidate.intro_text_override &&
+    !candidate.alternate_notes &&
+    !candidate.bid_notes &&
+    !candidate.bid_set_date &&
+    candidate.final_price_override_cents == null &&
+    !candidate.header_json?.project_name &&
+    candidate.total_cents === 0;
+  if (!untouched) return null;
+
+  const items = await listLineItemsForProposal(candidate.id);
+  return items.length === 0 ? candidate : null;
+}
 
 export async function createProposal(
   input: CreateProposalInput
@@ -425,12 +499,15 @@ export async function updateProposal(
  * The two states it protects are exactly the two the deal carries that a
  * proposal status can't express:
  *
- *   - A deal in Request for Proposal (qualifying · rfp) with a DRAFT
- *     proposal. Drafting a price doesn't mean we've stopped qualifying —
- *     RFP is upstream of Estimating, not stale relative to it. The live
- *     cascade already had this guard (as an inline draft-at-qualifying
- *     special case); the healer never did, so an RFP deal jumped to
- *     Estimating the moment anyone opened the pipeline.
+ *   - A deal anywhere in QUALIFYING (Solicitation, RFP, or Qualifying ·
+ *     Estimating) with a DRAFT proposal. Drafting a price doesn't mean
+ *     we've stopped qualifying — Qualifying is upstream of Estimating, not
+ *     stale relative to it. The live cascade already had this guard (as an
+ *     inline draft-at-qualifying special case, now redundant but harmless);
+ *     the healer never did, so a Request-for-Proposal deal jumped to
+ *     Estimating the moment anyone opened the pipeline. Note this is
+ *     deliberately the whole Qualifying stage, not RFP alone — it mirrors
+ *     the long-standing inline behaviour rather than narrowing it.
  *
  *   - A deal in Proposal · Follow-Up with a SENT proposal. Follow-Up is a
  *     refinement OF sent ("it's out, we're chasing it"), not drift away
@@ -1461,6 +1538,55 @@ export async function listProposalsForOpp(
     .is("deleted_at", null)
     .order("revision_number", { ascending: false });
   return (data as CommercialProposal[] | null) ?? [];
+}
+
+/**
+ * Current proposal total per deal, for a batch of deals.
+ *
+ * Why this exists: the meeting removed Bid low/high from both create forms
+ * (2026-08), because pricing lives on the proposal now. But every pipeline
+ * KPI — weighted pipeline, bid range, the stage funnel — derived its number
+ * from those two fields, so a brand-new deal contributed ZERO and the
+ * dashboard quietly drifted low as the team created deals the new way. The
+ * fix is to let those KPIs fall back to what the deal is actually priced at:
+ * its live proposal.
+ *
+ * "Current" = the highest revision that isn't superseded or expired, so a
+ * bumped R2 replaces R1 rather than double-counting alongside it. Lost
+ * proposals still count while the DEAL is open — losing one bid on a deal
+ * you're still pursuing doesn't make the pursuit worth nothing.
+ *
+ * One query for all deals, mapped in memory. Deals with no proposal are
+ * simply absent from the map, and callers treat that as "no fallback".
+ */
+export async function listCurrentProposalTotalByOpp(
+  opportunityIds: string[]
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = Array.from(new Set(opportunityIds.filter(Boolean)));
+  if (ids.length === 0) return out;
+  const sb = commercialDb();
+  const rows = await paginateAll<{
+    opportunity_id: string;
+    revision_number: number;
+    total_cents: number;
+    status: ProposalStatus;
+  }>(() =>
+    sb
+      .from("commercial_proposals")
+      .select("opportunity_id, revision_number, total_cents, status")
+      .in("opportunity_id", ids)
+      .is("deleted_at", null)
+      .not("status", "in", "(superseded,expired)")
+      // Stable tiebreak so pagination can't interleave rows unpredictably.
+      .order("opportunity_id", { ascending: true })
+      .order("revision_number", { ascending: false })
+  );
+  for (const r of rows) {
+    // Rows arrive newest-revision-first per deal, so the first one wins.
+    if (!out.has(r.opportunity_id)) out.set(r.opportunity_id, r.total_cents ?? 0);
+  }
+  return out;
 }
 
 /**

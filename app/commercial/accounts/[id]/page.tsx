@@ -119,6 +119,7 @@ import {
 import {
   KANBAN_COLUMNS,
   columnKeyForOpp,
+  kanbanMoveToLabel,
   resolveColumnTarget,
 } from "@/lib/commercial/opportunities/kanban-columns";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
@@ -5156,7 +5157,10 @@ function AccountOpportunityRow({
   // Qualifying ⇄ Request for Proposal reachable, since those two columns
   // share the real status `qualifying`.)
   const here = columnKeyForOpp(opp.status, opp.sub_status);
-  const moveToOptions = KANBAN_COLUMNS.filter((c) => c.key !== here);
+  const moveToOptions = KANBAN_COLUMNS.filter((c) => c.key !== here).map((c) => ({
+    key: c.key,
+    label: kanbanMoveToLabel(c.key),
+  }));
   const isTerminal = TERMINAL_STATUSES.has(opp.status);
   const bidLabel = formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents);
   return (

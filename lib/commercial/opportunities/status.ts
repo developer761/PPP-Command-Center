@@ -530,7 +530,14 @@ export async function changeOpportunityStatus(
   // Fan out a bell + email to every active team member on the opp
   // (minus the actor). Fire-and-forget — never blocks the status flip.
   // Helper handles the self-skip + inactive-skip + fanout query.
-  void (async () => {
+  //
+  // Gated on a REAL top-level move, matching the status_log rule above. A
+  // sub-status refinement (Proposal · Sent → Proposal · Follow-Up) otherwise
+  // emailed the whole team "moved status from Proposal" → "Proposal" — a
+  // notification about nothing. Newly reachable now that the detail-page
+  // picker offers the current status so sub-statuses can be edited at all.
+  const isRealStatusMove = beforeRow.status !== input.to_status;
+  if (isRealStatusMove) void (async () => {
     try {
       let actorName = "PPP admin";
       if (input.acting_user_id) {

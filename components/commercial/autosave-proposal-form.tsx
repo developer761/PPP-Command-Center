@@ -14,8 +14,9 @@
  *     control (text, textarea, checkbox, select).
  *   - Debounces 800ms — pauses the timer while the user is still
  *     typing, fires once they stop.
- *   - Fires the parent form's `requestSubmit()` so the existing action
- *     handles the FormData exactly like the button did.
+ *   - Calls the server action DIRECTLY with `new FormData(form)` — never
+ *     `requestSubmit()`. React 19 resets a `<form action>` once the action
+ *     resolves, which wiped half-typed uncontrolled inputs mid-autosave.
  *   - Small status pill top-right: "Saving…" → "Saved" → hidden after 3s.
  *   - Manual "Save now" button still present as a fallback (slow
  *     connections, paranoia).

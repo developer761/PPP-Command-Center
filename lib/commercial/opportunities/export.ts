@@ -99,6 +99,12 @@ export type OpportunitiesExportFilters = OpportunitiesListFilters & {
   sources?: string[];
   stale?: boolean;
   hot?: boolean;
+  /** The kanban COLUMN the export was filtered to, when there was one.
+   *  Preferred over `status` for the filename: two columns can share a
+   *  status (Qualifying / Request for Proposal) and one column spans two
+   *  (Proposal), so `status` alone either names the wrong stage or — for
+   *  the columns that fetch wide — is undefined and names none. */
+  stage?: string;
 };
 
 export async function exportOpportunitiesCsv(
@@ -217,7 +223,8 @@ export function exportOpportunitiesFilename(
 ): string {
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const tokens: string[] = ["ppp-commercial-opportunities"];
-  if (filters.status) tokens.push(`status-${filters.status}`);
+  const stageToken = filters.stage ?? filters.status;
+  if (stageToken) tokens.push(`status-${stageToken}`);
   if (filters.accountId) tokens.push("account-scoped");
   if (filters.search) tokens.push("search");
   if (filters.stale) tokens.push("stale");

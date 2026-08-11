@@ -16,7 +16,13 @@ import { useRef, useState, useTransition } from "react";
  * Behavior:
  *  - Tracks initial serialized form state on mount
  *  - When any input inside the form blurs AND the form has changed,
- *    calls form.requestSubmit() to fire the server action
+ *    calls the server action DIRECTLY with the form's FormData. NOT
+ *    requestSubmit(): React 19 auto-resets a `<form action>` once the
+ *    action resolves, which wipes any uncontrolled sibling input the
+ *    user has already started editing (blur-to-save means focus has
+ *    usually moved to the NEXT field in the same card, so the reset
+ *    lands on a field being typed into). Same class of bug as the
+ *    proposal editor's phone field — Karan meeting 2026-08.
  *  - Shows a subtle "Saving…" → "Saved ✓" chip at the top-right of
  *    the enclosing card body
  *  - Concurrent submits are gated by useTransition so a rapid tab-
@@ -61,11 +67,14 @@ export default function AccountInlineCardForm({
     requestAnimationFrame(() => {
       const active = document.activeElement;
       if (formRef.current && formRef.current.contains(active)) return;
+      const form = formRef.current;
+      if (!form) return;
       const current = serialize();
       if (current === initialSerialized.current) return;
       initialSerialized.current = current;
-      startTransition(() => {
-        formRef.current?.requestSubmit();
+      const data = new FormData(form);
+      startTransition(async () => {
+        await action(data);
       });
       setSavedAt(Date.now());
     });
@@ -76,7 +85,7 @@ export default function AccountInlineCardForm({
   return (
     <form
       ref={formRef}
-      action={action}
+      onSubmit={(e) => e.preventDefault()}
       onFocus={captureInitial}
       onBlurCapture={handleBlur}
       className="relative"

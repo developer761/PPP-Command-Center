@@ -20,6 +20,12 @@ import {
   HOT_DEAL_DECISION_DAYS,
   HOT_DEAL_ACTIVE_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
+import {
+  KANBAN_COLUMNS,
+  columnKeyForOpp,
+  columnDbStatusHint,
+  kanbanColumnLabel,
+} from "@/lib/commercial/opportunities/kanban-columns";
 import { MS_PER_DAY } from "@/lib/commercial/accounts/constants";
 
 /**
@@ -66,10 +72,21 @@ export async function GET(request: Request) {
   const coldRfp = url.searchParams.get("coldrfp") === "1";
   const followup = url.searchParams.get("followup") === "1";
 
-  const validStatus =
-    statusRaw && (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
-      ? (statusRaw as OpportunityStatus)
-      : undefined;
+  // `status` carries a KANBAN COLUMN key, matching what the pipeline page
+  // puts in the URL. Validating it against OPPORTUNITY_STATUSES alone
+  // silently DROPPED the filter for rfp/won/lost (they're column keys, not
+  // top-level statuses) — so exporting a filtered board handed you the
+  // entire pipeline. Resolve exactly as the page does: pre-narrow in the
+  // query where the column maps to one status, then refine in memory.
+  const validColumn = statusRaw
+    ? (KANBAN_COLUMNS.some((c) => c.key === statusRaw)
+        ? statusRaw
+        : (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
+          ? columnKeyForOpp(statusRaw, null)
+          : undefined)
+    : undefined;
+  const validStatus = ((validColumn ? columnDbStatusHint(validColumn) : null) ??
+    undefined) as OpportunityStatus | undefined;
   const sourceList: OpportunitySource[] = [];
   if (sourcesRaw) {
     for (const s of sourcesRaw.split(",")) {
@@ -89,7 +106,12 @@ export async function GET(request: Request) {
     status: validStatus,
     includeArchived,
   });
-  let opps = oppsRaw;
+  // Column refine — the step the query hint can't do (Qualifying vs RFP share
+  // a status; Proposal spans two). Without it the CSV is a superset/subset of
+  // what the board shows.
+  let opps = validColumn
+    ? oppsRaw.filter((o) => columnKeyForOpp(o.status, o.sub_status) === validColumn)
+    : oppsRaw;
 
   if (stale) {
     opps = opps.filter((o) => {
@@ -143,6 +165,10 @@ export async function GET(request: Request) {
   const filters: OpportunitiesExportFilters = {
     search: q || undefined,
     status: validStatus,
+    // Name the filename after the COLUMN, not the query hint — otherwise a
+    // Proposal or Qualifying export (both fetch wide, hint = null) produced a
+    // filename with no stage in it at all.
+    stage: validColumn,
     sources: sourceList,
     stale,
     hot,
