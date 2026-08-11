@@ -57,7 +57,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const dealName = oppRow ? derivedOppName(oppRow as never, account.company_name) : "Project";
   // This sheet's own scope selection (migration 123) — a downloaded PDF must
   // show exactly what the crew holding it was given, not the whole proposal.
-  const content = await buildWorkOrderContent(wo.opportunity_id, wo.scope_line_item_ids);
+  const [content, allScope] = await Promise.all([
+    buildWorkOrderContent(wo.opportunity_id, wo.scope_line_item_ids),
+    // Unfiltered, so the partial-scope banner can say "4 of 8" — the
+    // downloaded PDF must carry the same warning as the one that was sent.
+    buildWorkOrderContent(wo.opportunity_id, null),
+  ]);
+  const sheetScopeLines = content.inclusions.length + content.alternates.length;
+  const totalScopeLines = allScope.inclusions.length + allScope.alternates.length;
 
   const addr = [opp.property_street, [opp.property_city, opp.property_state].filter(Boolean).join(", ")]
     .filter(Boolean)
@@ -81,6 +88,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           [workOrderRecordId(opp?.project_number), wo.area_label?.trim()]
             .filter(Boolean)
             .join(" · ") || null,
+        partialScopeNote:
+          totalScopeLines > 0 && sheetScopeLines > 0 && sheetScopeLines < totalScopeLines
+            ? `PARTIAL SCOPE — this sheet covers ${sheetScopeLines} of ${totalScopeLines} items on this project. Work ONLY the items listed below; the rest are on separate work orders.`
+            : null,
         gcCompany: account.company_name,
         projectAddress: addr || null,
         assignedTo: wo.assigned_to,

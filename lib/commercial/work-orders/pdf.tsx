@@ -48,6 +48,11 @@ export type WorkOrderPdfInput = {
     /** WO-2026-0020 — shares the project's number so the crew's printed copy
      *  can be matched back to the job without a lookup (Karan 2026-08). */
     recordId?: string | null;
+    /** Set when this sheet covers only PART of the project's scope. Printed as
+     *  a banner above the scope so a crew can't mistake their half for the
+     *  whole job — the failure mode is someone stopping early, or two crews
+     *  both assuming the other had a line. */
+    partialScopeNote?: string | null;
     gcCompany: string | null;
     projectAddress: string | null;
     assignedTo: string | null;
@@ -166,6 +171,11 @@ function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPd
             <Text style={styles.label}>Project</Text>
             <Text style={styles.bold}>{header.dealName || "—"}</Text>
             {header.recordId ? <Text style={styles.muted}>{header.recordId}</Text> : null}
+            {header.partialScopeNote ? (
+              <Text style={{ fontSize: 9, color: "#92400e", marginTop: 3, fontFamily: "Helvetica-Bold" }}>
+                {header.partialScopeNote}
+              </Text>
+            ) : null}
             {header.gcCompany ? <Text>{header.gcCompany}</Text> : null}
             {header.projectAddress ? <Text style={styles.muted}>{header.projectAddress}</Text> : null}
           </View>

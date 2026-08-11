@@ -214,11 +214,14 @@ async function autoFileWorkOrder(
   try {
     const wo = await getWorkOrder(woId);
     if (!wo) return null;
-    const [opp, account, content] = await Promise.all([
+    const [opp, account, content, allScope] = await Promise.all([
       getCommercialOpportunity(dealId),
       getCommercialAccount(accountId),
       buildWorkOrderContent(dealId, wo.scope_line_item_ids),
+      // Unfiltered, so we can say "4 of 8" rather than just listing 4.
+      buildWorkOrderContent(dealId, null),
     ]);
+    const allScopeCount = allScope.inclusions.length + allScope.alternates.length;
     if (!opp || !account) return null;
     const dealName = derivedOppName(opp, account.company_name);
     const oc = await getOperatingCompany();
@@ -227,7 +230,14 @@ async function autoFileWorkOrder(
     const { renderWorkOrderPdf } = await import("@/lib/commercial/work-orders/pdf");
     const pdf = await renderWorkOrderPdf({
       content,
-      header: workOrderHeader(wo, opp, account, dealName),
+      header: workOrderHeader(
+        wo,
+        opp,
+        account,
+        dealName,
+        content.inclusions.length + content.alternates.length,
+        allScopeCount
+      ),
       company: { name: oc.name, phone: oc.phone, website: oc.website },
       logo,
       signature,
@@ -262,13 +272,24 @@ export function workOrderHeader(
   wo: { work_notes: string | null; assigned_to: string | null; scheduled_start_date: string | null; scheduled_end_date: string | null; sent_at: string | null; created_at: string; area_label?: string | null },
   opp: { title: string | null; client_name: string | null; property_street: string | null; property_city: string | null; property_state: string | null; project_number?: string | null },
   account: { company_name: string },
-  dealName: string
+  dealName: string,
+  /** How many scope lines are on THIS sheet, and on the project overall. */
+  sheetScopeLines = 0,
+  totalScopeLines = 0
 ) {
   const addr = [opp.property_street, [opp.property_city, opp.property_state].filter(Boolean).join(", ")]
     .filter(Boolean)
     .join(" · ");
   return {
     dealName,
+    // Say so when this sheet is only PART of the job. A crew handed 4 of 8
+    // lines with no note can't tell a deliberate split from the whole scope —
+    // so they either stop early thinking they're done, or both crews assume
+    // the other had the line nobody did.
+    partialScopeNote:
+      totalScopeLines > 0 && sheetScopeLines > 0 && sheetScopeLines < totalScopeLines
+        ? `PARTIAL SCOPE — this sheet covers ${sheetScopeLines} of ${totalScopeLines} items on this project. Work ONLY the items listed below; the rest are on separate work orders.`
+        : null,
     // WO-#### plus the area tag, so a crew holding one of several sheets for
     // the same project can tell at a glance which one it is.
     recordId:
@@ -635,6 +656,16 @@ export async function WorkOrderTool({
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-4">
             <div className="text-[11px] font-bold uppercase tracking-widest text-ppp-charcoal-500">What the crew sees (auto-filled)</div>
 
+            {/* Shown in the PREVIEW too, not just the PDF — the person sending
+                should see the crew's warning before they send it, not after. */}
+            {pickable.lines.length > 0 &&
+              (wo?.scope_line_item_ids ?? []).length > 0 &&
+              (wo?.scope_line_item_ids ?? []).length < pickable.lines.length && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-900 mb-2">
+                  Partial scope — this sheet covers {(wo?.scope_line_item_ids ?? []).length} of{" "}
+                  {pickable.lines.length} items. The crew is told to work only what&rsquo;s listed here.
+                </div>
+              )}
             {content.inclusions.length > 0 && (
               <PreviewScope title="Scope of work" lines={content.inclusions} />
             )}
