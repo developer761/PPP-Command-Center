@@ -70,3 +70,29 @@ Steps 1–2 (the migration + status-writer) and step 9 (report audit) are the tw
 backfill idempotency, RLS, deploy-gate) and an after-audit of the report two-owner/
 two-amount split, plus re-audit each tool's save-redirects as the routes move. Ping
 me here (a `docs/` commit) when step 1's SQL is drafted and I'll review it before it runs.
+
+---
+
+## Follow-up on a27cb9b (record anatomy · send surface · edge 34–41)
+These additions are **sound** — the path-bar spec, the send-document surface, and
+edge cases 34–41 are well-reasoned (39 correctly names the React-19 form-reset
+class; 35 keeps the manual-advance CTA from fighting the auto-advance engine; 40/41
+make the Activity rail a read of existing data, not a new table). Approve.
+
+**One new gap — inline ✏ field edit (§4.5.5, edges 38/39) needs BUSINESS-LOGIC
+parity, not just permission + autosave parity.** Edge 38 covers permissions and 39
+covers autosave, but a pencil-edit of a **money/business field** must run the same
+*side-effects* the `/edit` route does, or it silently diverges:
+- Original contract → must set `original_contract_is_manual` (F6) and re-rank
+  `pickContractBaseCents`; else an inline edit is accepted-then-ignored.
+- Tax fields → must re-resolve ZIP jurisdiction + honor `account.tax_exempt` (C3).
+- Status/owner/amount that the split now routes to opp-vs-project → the pencil must
+  write the correct record.
+Add an edge: "inline edit routes through the SAME action/validation/side-effects as
+the full edit form; the pencil is a UI affordance over that action, never a second
+write path." (This is the completeness/'two write paths' class from C7–C10.)
+
+**Still open from my main review (A–F above):** the status-model split (A), the
+`contract_base_cents` vs `accepted_contract_cents` source-of-truth (B), and "never
+recompute" vs a legitimate re-win (C) are step-0 blockers not yet addressed in the
+plan. Please fold A/B/C in before step 1's migration.
