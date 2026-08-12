@@ -1061,3 +1061,8 @@ the pattern with a test — the structural guard I recommended.
 🟡 Tiny consistency nit (NOT a bug): edit-probability still reads via `?? ""` (the very shape the new test
 warns about) but is saved by its only-write-if-present branch. Safe; align it to the `=== null` pattern when
 convenient so the whole file follows one rule.
+
+---
+
+## ✅ CONFIRMED — migration 132 is LIVE in prod (Karan pasted it 2026-08-12)
+Ran the actual embeds against production via service key: `commercial_opportunity_notes → profiles!..._author_user_id_fkey` and `commercial_account_assignments → profiles!..._user_id_fkey` both return **200 (resolve)** — they returned PGRST200/empty before. So the 13 silent-empty queries are fixed live: team lists populate, the status-change notification fan-out finds recipients, the 4 crons (dunning / cooling / debrief-overdue / expiring-docs) will notify, and notes show authors. Action item CLOSED.
