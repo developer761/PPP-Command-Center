@@ -206,6 +206,10 @@ export function attentionFor(i: AttentionInput): Attention[] {
 export function sensibleNextStatuses(status: string, sub: string | null): string[] {
   switch (status) {
     case "qualifying":
+      // Qualifying -> RFP is a real human move: the package landing is an email,
+      // not something the system sees. Brendan 2026-08-12: "The first stage in
+      // an opp should be RFP."
+      return sub === "rfp" ? ["estimating", "pre_sale_closed"] : ["qualifying", "pre_sale_closed"];
     case "estimating":
       // Forward is driven by the proposal. What a person knows and the system
       // cannot is that we're out — declined, or beaten before we quoted.

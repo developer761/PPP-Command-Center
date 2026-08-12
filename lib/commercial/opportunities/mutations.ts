@@ -318,6 +318,40 @@ export async function updateCommercialOpportunity(
   if (error) return { ok: false, error: error.message };
   const opp = after as CommercialOpportunity;
   await logUpdate("commercial_opportunities", opp.id, before, opp, input.updated_by_user_id);
+
+  // ── Brendan's trigger: assigning an estimator IS moving to Estimating ─────
+  //
+  // "Then it should be estimating. This should trigger when we assign the
+  // estimator." (2026-08-12). Nobody assigns an estimator to a job they aren't
+  // about to price, so making someone then ALSO change the stage is asking
+  // them to state the same fact twice — and the second statement is the one
+  // that gets forgotten, which is how a deal sits in Qualifying with a
+  // half-built estimate on it.
+  //
+  // Only forward, and only from the two stages before it: an estimator swapped
+  // on a job already Sent must not drag it backwards.
+  const gainedEstimator =
+    !before.estimator_user_id && !!opp.estimator_user_id;
+  if (gainedEstimator && (opp.status === "qualifying")) {
+    try {
+      const { changeOpportunityStatus } = await import("./status");
+      await changeOpportunityStatus({
+        opp_id: opp.id,
+        to_status: "estimating",
+        to_sub_status: "estimating",
+        acting_user_id: input.updated_by_user_id ?? null,
+        // The engine did this, not a person — so it must not stamp
+        // status_user_set_at and lock the deal against later auto-advances.
+        source: "auto_advance",
+        _skipDagCheck: true,
+      });
+    } catch (err) {
+      // Best-effort: assigning an estimator must never fail because the stage
+      // move did. The next artifact will advance it anyway.
+      console.warn("[opportunities] estimator-assigned auto-advance failed:", err);
+    }
+  }
+
   return { ok: true, opportunity: opp };
 }
 

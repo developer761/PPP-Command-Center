@@ -57,12 +57,17 @@ describe("kanban column map", () => {
     expect(columnKeyForOpp("qualifying", "estimating")).toBe("qualifying");
   });
 
-  it("merges drafted + sent + follow-up into one Proposal column", () => {
-    expect(columnKeyForOpp("estimating", "proposal_pending_approval")).toBe("proposal");
-    expect(columnKeyForOpp("proposal", "sent")).toBe("proposal");
-    expect(columnKeyForOpp("proposal", "follow_up")).toBe("proposal");
-    // …but plain Estimating stays its own stage.
+  it("gives Pending Approval its own stage, and calls the next one Sent", () => {
+    // Brendan 2026-08-12: "Then pending approval — this should trigger when the
+    // estimator submits for approval. Then sent." Awaiting sign-off used to
+    // fold into Proposal, which is exactly why moving a deal from pricing to
+    // pending-approval left the progress bar untouched.
+    expect(columnKeyForOpp("estimating", "proposal_pending_approval")).toBe("pending_approval");
     expect(columnKeyForOpp("estimating", "estimating")).toBe("estimating");
+    expect(columnKeyForOpp("proposal", "sent")).toBe("sent");
+    // Follow-Up is dropped as a stage: chasing a GC is still the proposal being
+    // out. Old rows fold in rather than being migrated.
+    expect(columnKeyForOpp("proposal", "follow_up")).toBe("sent");
   });
 
   it("tags the two Proposal-column states that still differ", () => {
@@ -105,11 +110,12 @@ describe("kanban column map", () => {
   });
 
   it("skips the DB narrowing hint where narrowing would lose rows", () => {
-    // Proposal holds both (proposal, *) and (estimating, pending approval),
-    // so it can't be expressed as a single .eq(). Qualifying is the fallback
-    // column for unrecognised statuses, so narrowing it would hide the very
-    // rows that fallback rescues. Both must fetch wide and filter in memory.
-    const WIDE = ["proposal", "qualifying"];
+    // `sent` holds (proposal, sent) AND the legacy (proposal, follow_up);
+    // `pending_approval` shares the `estimating` status with `estimating`
+    // itself. Qualifying is the fallback column for unrecognised statuses, so
+    // narrowing it would hide the very rows that fallback rescues. All three
+    // must fetch wide and filter in memory.
+    const WIDE = ["sent", "pending_approval", "qualifying"];
     for (const key of WIDE) expect(columnDbStatusHint(key), key).toBeNull();
     for (const col of KANBAN_COLUMNS) {
       if (WIDE.includes(col.key)) continue;

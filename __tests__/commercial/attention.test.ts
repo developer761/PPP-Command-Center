@@ -143,12 +143,21 @@ describe("manualNextStep", () => {
  * the wrong options.
  */
 describe("sensibleNextStatuses — only the moves with no artifact behind them", () => {
-  it("offers a pre-sale deal only the outcome, because forward is driven by the proposal", () => {
-    // Building a proposal moves it to Estimating; sending it moves it to
-    // Proposal. Neither needs a person. Losing does.
-    for (const s of ["qualifying", "estimating", "proposal"]) {
+  it("offers a priced deal only the outcome, because forward is driven by the proposal", () => {
+    // Building a proposal moves it to Estimating; sending it moves it to Sent.
+    // Neither needs a person. Losing does.
+    for (const s of ["estimating", "proposal"]) {
       expect(sensibleNextStatuses(s, null), s).toEqual(["pre_sale_closed"]);
     }
+  });
+
+  it("lets a person move Qualifying to RFP — a package landing is an email", () => {
+    // Brendan 2026-08-12: "The first stage in an opp should be RFP." Nothing in
+    // the system sees a bid package arrive, so this is a human move by
+    // definition — and it was previously unreachable from the picker.
+    expect(sensibleNextStatuses("qualifying", "solicitation")).toContain("qualifying");
+    // …and once the RFP is in, forward is Estimating (assigning the estimator).
+    expect(sensibleNextStatuses("qualifying", "rfp")).toContain("estimating");
   });
 
   it("offers a won job the start of work, and a lost one nothing", () => {

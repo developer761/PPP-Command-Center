@@ -2,8 +2,11 @@ import Link from "next/link";
 import {
   isWon,
   isLost,
-  opportunitySubStatusLabel,
 } from "@/lib/commercial/opportunities/constants";
+import {
+  PRE_CONTRACT_COLUMNS,
+  columnKeyForOpp,
+} from "@/lib/commercial/opportunities/kanban-columns";
 
 /**
  * The status path — the Salesforce-style chevron bar across the top of a job.
@@ -36,12 +39,20 @@ export type PathStage = {
 
 type StageState = "passed" | "current" | "future" | "skipped" | "dropped";
 
-/** Sales ladder. The tail branches: a deal ends Won **or** Lost, never both. */
-const SALES_STAGES: PathStage[] = [
-  { key: "qualifying", label: "Qualifying" },
-  { key: "estimating", label: "Estimating" },
-  { key: "proposal", label: "Proposal" },
-];
+/**
+ * Sales ladder — Brendan's stages, with Qualifying kept at the front.
+ *
+ * This is the SAME list the pipeline, the saved views, the export and the
+ * reports use (`PRE_CONTRACT_COLUMNS`), rather than a second copy keyed on the
+ * top-level status. That divergence is what Karan hit: the bar tracked
+ * `status` while everyone thinks in the stage, so setting a deal to Pending
+ * Approval — a sub-status move — changed nothing on screen.
+ *
+ * The tail branches: a deal ends Won **or** Lost, never both.
+ */
+const SALES_STAGES: PathStage[] = PRE_CONTRACT_COLUMNS
+  .filter((c) => c.key !== "won" && c.key !== "lost")
+  .map((c) => ({ key: c.key, label: c.label }));
 /** Delivery ladder — the project's own path, shown once the job is won. */
 const DELIVERY_STAGES: PathStage[] = [
   { key: "pre_construction", label: "Pre-Construction" },
@@ -144,7 +155,7 @@ function PathRow({
         </span>
         {currentSub && (
           <span className="text-[10.5px] text-ppp-charcoal-500 truncate">
-            · {opportunitySubStatusLabel(currentSub)}
+            · {currentSub}
           </span>
         )}
       </div>
@@ -252,7 +263,10 @@ export function StatusPathBar({
   // Where the SALES path sits. A deal in delivery is past the whole sales
   // ladder, so it shows as fully passed with Closed Won at the tail — the sale
   // did happen, it just wasn't recorded as a formal close.
-  const salesCurrent = decided || inDelivery ? null : status;
+  // Position by STAGE. `columnKeyForOpp` is the one mapper the whole platform
+  // uses to turn a (status, sub_status) tuple into a stage, so the bar can no
+  // longer disagree with the list, the filters or the reports.
+  const salesCurrent = decided || inDelivery ? null : columnKeyForOpp(status, subStatus);
 
   return (
     <div className="space-y-3">
@@ -260,7 +274,9 @@ export function StatusPathBar({
         title="Sale"
         stages={SALES_STAGES}
         currentKey={salesCurrent}
-        currentSub={decided || inDelivery ? null : subStatus}
+        // The stage IS the sub-status now, so repeating it beside the title
+        // would print the same word twice.
+        currentSub={null}
         outcomes={[
           { key: "won", label: "Closed Won", reached: won || inDelivery },
           { key: "lost", label: "Closed Lost", reached: lost },

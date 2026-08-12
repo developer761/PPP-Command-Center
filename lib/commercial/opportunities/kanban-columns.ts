@@ -59,11 +59,33 @@ export type KanbanColumn = {
  *  Closed Won / Closed Lost sit BETWEEN the pre- and post-contract
  *  stages: winning a bid is the last pre-contract event, and every
  *  post-contract stage is downstream of it. */
+/*
+ * Brendan 2026-08-12, verbatim: "The first stage in an opp should be RFP. Then
+ * estimating — this should trigger when we assign the estimator. Then pending
+ * approval — when the estimator submits for approval. Then sent. Then closed,
+ * won or lost."
+ *
+ * This list IS that ladder, with Qualifying kept at the front (Karan's call —
+ * Brendan wanted it moved to a separate lead flow, which is deferred).
+ *
+ * Two changes from what was here before, and they are the fix for "when I put
+ * in sub status estimating it doesn't move the progress bar whatsoever":
+ *   - Pending Approval is its own stage. It was folded into "Proposal", so a
+ *     deal moving from pricing to awaiting-sign-off changed nothing on screen.
+ *   - "Proposal" is now "Sent", which is what it means and what Brendan calls
+ *     it. A stage named after the artifact, not the act, reads as a place a
+ *     proposal lives rather than a thing that happened.
+ *
+ * Solicitation and Follow-Up are gone as visible stages (Brendan: drop them).
+ * They still EXIST as stored sub-statuses on old rows — nothing is migrated,
+ * nothing is lost — they simply fold into Qualifying and Sent below.
+ */
 export const PRE_CONTRACT_COLUMNS: readonly KanbanColumn[] = [
   { key: "qualifying", label: "Qualifying", lane: "pre_contract" },
-  { key: "rfp", label: "Request for Proposal", lane: "pre_contract" },
+  { key: "rfp", label: "RFP", lane: "pre_contract" },
   { key: "estimating", label: "Estimating", lane: "pre_contract" },
-  { key: "proposal", label: "Proposal", lane: "pre_contract" },
+  { key: "pending_approval", label: "Pending Approval", lane: "pre_contract" },
+  { key: "sent", label: "Sent", lane: "pre_contract" },
   { key: "won", label: "Closed Won", lane: "pre_contract" },
   { key: "lost", label: "Closed Lost", lane: "pre_contract" },
 ] as const;
@@ -90,7 +112,8 @@ export const OPEN_COLUMN_KEYS: readonly string[] = [
   "qualifying",
   "rfp",
   "estimating",
-  "proposal",
+  "pending_approval",
+  "sent",
   "pre_construction",
   "in_progress",
   "billing",
@@ -164,14 +187,17 @@ export function columnKeyForOpp(
       // two subs (solicitation, estimating) stay under Qualifying.
       return sub_status === "rfp" ? "rfp" : "qualifying";
     case "estimating":
-      // Priced-and-awaiting-sign-off reads as a Proposal to the sales
-      // team even though the deal row still says `estimating`.
+      // Awaiting sign-off is its OWN stage now, not a fold into Proposal —
+      // that fold is why moving a deal from pricing to pending-approval left
+      // the progress bar untouched.
       return sub_status === "proposal_pending_approval"
-        ? "proposal"
+        ? "pending_approval"
         : "estimating";
     case "proposal":
-      // sent + follow_up both live here; follow_up shows as a card tag.
-      return "proposal";
+      // Follow-Up is dropped as a stage (Brendan): chasing a GC is still the
+      // proposal being out, not a different place in the pipeline. Old rows
+      // carrying it fold in here rather than being migrated.
+      return "sent";
     case "pre_sale_closed":
       // Defaults to LOST, not Won. sub_status has no CHECK constraint
       // behind it any more (migration 059 dropped both), so a hand-edited
@@ -244,7 +270,10 @@ export const COLUMN_TARGET: Record<string, ColumnTarget> = {
   qualifying: { status: "qualifying", sub_status: "solicitation" },
   rfp: { status: "qualifying", sub_status: "rfp" },
   estimating: { status: "estimating", sub_status: "estimating" },
-  proposal: { status: "proposal", sub_status: "sent" },
+  // The two stages Brendan asked to split apart. Both write a real tuple, so
+  // picking a stage sets status AND sub in one move — no second dropdown.
+  pending_approval: { status: "estimating", sub_status: "proposal_pending_approval" },
+  sent: { status: "proposal", sub_status: "sent" },
   won: { status: "pre_sale_closed", sub_status: "won" },
   lost: { status: "pre_sale_closed", sub_status: "lost" },
   pre_construction: { status: "pre_construction", sub_status: "coordination" },
@@ -303,7 +332,10 @@ export function columnDbStatusHint(key: string): string | null {
   // exists to rescue: a legacy v1 row that escaped migration 052 shows in
   // Qualifying on the open board, then vanishes the moment you filter to
   // Qualifying. Fetch wide for both and let the in-memory filter decide.
-  if (key === "proposal" || key === "qualifying") return null;
+  // `sent` spans proposal/sent + the legacy proposal/follow_up rows, and
+  // `pending_approval` shares the `estimating` status with `estimating` itself,
+  // so neither can be narrowed to one status server-side.
+  if (key === "sent" || key === "pending_approval" || key === "qualifying") return null;
   return COLUMN_TARGET[key]?.status ?? null;
 }
 
