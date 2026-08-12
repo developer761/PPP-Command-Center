@@ -17,7 +17,11 @@ import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { proposalRecordId } from "@/lib/commercial/record-ids";
 import type { ProposalStatus } from "./constants";
-import { targetForProposalStatus } from "@/lib/commercial/opportunities/auto-advance-targets";
+import {
+  targetForProposalStatus,
+  foldAutoAdvanceTargets,
+  type AutoAdvanceTargetKey,
+} from "@/lib/commercial/opportunities/auto-advance-targets";
 
 // ────────────── types ──────────────
 
@@ -902,7 +906,43 @@ export async function markProposalOutcome(input: {
     const dealStatus = (dealRow as { status: string } | null)?.status ?? null;
     if (dealStatus && POST_SALE.has(dealStatus)) {
       dealLeftInDelivery = dealStatus;
+    } else if (input.outcome === "won") {
+      // Through the engine, like every other automatic move.
+      //
+      // This was a second, unguarded deal-state writer — the exact thing the
+      // one-authority rule exists to prevent. It ran with the DAG check off, no
+      // `source`, and no forward-only guard, and its skip list covered
+      // post-sale but not `pre_sale_closed`. So on a deal already closed as
+      // LOST, marking a proposal won made the engine correctly decline (a lost
+      // deal is terminal) and then this writer flipped lost → won behind it.
+      // Resurrecting a dead deal is a decision a person should make.
+      const { autoAdvanceOpportunity } = await import(
+        "@/lib/commercial/opportunities/auto-advance"
+      );
+      const res = await autoAdvanceOpportunity({
+        oppId: proposalBefore.opportunity_id,
+        target: "won",
+        artifactAt: new Date().toISOString(),
+        source: "auto_advance",
+        reason: "Proposal marked won",
+        actingUserId: input.actor_user_id,
+      });
+      if (!res.moved && res.reason === "error") {
+        console.warn(
+          `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${res.detail}`
+        );
+      }
+    } else if (dealStatus === "pre_sale_closed") {
+      // Marking a proposal lost on a deal that is ALREADY decided. Crossing a
+      // won deal to lost is a real reversal with money attached, and the engine
+      // deliberately has no `lost` target because closing as lost needs a
+      // reason nobody can invent. Leave the deal; a person reverses it.
+      dealLeftInDelivery = dealStatus;
     } else {
+      // Lost, on a still-open deal. Stays a direct write because the engine has
+      // no lost target — closing as lost requires a loss_reason — but it is
+      // marked as automatic now so the timeline and the notification suppression
+      // treat it like every other cascade.
       const { changeOpportunityStatus } = await import(
         "@/lib/commercial/opportunities/status"
       );
@@ -911,6 +951,7 @@ export async function markProposalOutcome(input: {
         to_status: "pre_sale_closed",
         to_sub_status: input.outcome,
         acting_user_id: input.actor_user_id,
+        source: "auto_advance",
         _skipDagCheck: true,
       });
       if (!flip.ok) {
@@ -2614,6 +2655,28 @@ export async function reconcileDealStatesFromProposals(): Promise<{
   }
   const bestByDeal = currentByDeal;
 
+  // The FURTHEST state any of this deal's proposals justifies — not just the
+  // newest one's. A deal with a won R1 and a fresh R3 draft belongs at Won; the
+  // newest-only read says Estimating, and only forward-only stops that from
+  // walking a won deal backwards. Reading them all means a deal that has fallen
+  // BEHIND its own won proposal actually catches up.
+  const foldedByDeal = new Map<string, { key: AutoAdvanceTargetKey; stageAt: string }>();
+  {
+    const byDeal = new Map<string, typeof proposals>();
+    for (const p of proposals) {
+      const list = byDeal.get(p.opportunity_id);
+      if (list) list.push(p);
+      else byDeal.set(p.opportunity_id, [p]);
+    }
+    for (const [oppId, list] of byDeal) {
+      const key = foldAutoAdvanceTargets(list.map((p) => targetForProposalStatus(p.status)));
+      if (!key) continue;
+      // Date it from the proposal that actually justifies the move.
+      const source = list.find((p) => targetForProposalStatus(p.status) === key);
+      foldedByDeal.set(oppId, { key, stageAt: proposalStageAt(source ?? list[0]) });
+    }
+  }
+
   // Fetch each affected deal's current state so we only UPDATE where
   // there's actual drift.
   const dealIds = Array.from(bestByDeal.keys());
@@ -2723,12 +2786,12 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     const { targetForProposalStatus } = await import(
       "@/lib/commercial/opportunities/auto-advance-targets"
     );
-    const key = targetForProposalStatus(bestProp.status);
-    if (!key) continue;
+    const folded = foldedByDeal.get(deal.id);
+    if (!folded) continue;
     const res = await autoAdvanceOpportunity({
       oppId: deal.id,
-      target: key,
-      artifactAt: bestProp.stageAt,
+      target: folded.key,
+      artifactAt: folded.stageAt,
       source: "reconcile",
       reason: `Kept in step with proposal (${bestProp.status.replace(/_/g, " ")})`,
     });

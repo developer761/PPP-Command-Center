@@ -314,3 +314,37 @@ describe("the badge for a proposal that trails its deal", () => {
     }
   });
 });
+
+describe("A2 — one authority", () => {
+  it("will not resurrect a lost deal when a proposal is marked won", () => {
+    // markProposalOutcome used to run a SECOND, unguarded deal write after the
+    // engine: DAG check off, no source, no forward-only guard, and a skip list
+    // that covered post-sale but not pre_sale_closed. So on a deal already
+    // closed as LOST, marking a proposal won made the engine correctly decline
+    // — a lost deal is terminal — and the second writer flipped lost → won
+    // behind it. Reversing a dead deal is a person's decision.
+    const d = deal("pre_sale_closed", "lost");
+    expect(d.auto("won")).toBe(false);
+    expect(d.at).toBe("pre_sale_closed·lost");
+  });
+
+  it("still wins a deal that is genuinely still open", () => {
+    const d = deal("proposal", "sent");
+    expect(d.auto("won")).toBe(true);
+    expect(d.at).toBe("pre_sale_closed·won");
+  });
+
+  it("folds a deal's proposals to the furthest one, not the newest", () => {
+    // A won R1 with a fresh R3 draft belongs at Won. Reading only the newest
+    // proposal says Estimating, and only forward-only stops that from walking a
+    // won deal backwards — which means a deal that has fallen BEHIND its own won
+    // proposal never catches up.
+    const target = foldAutoAdvanceTargets(
+      ["won", "sent", "draft"].map((s) => targetForProposalStatus(s))
+    );
+    expect(target).toBe("won");
+    const d = deal("qualifying", "solicitation");
+    expect(d.auto(target!)).toBe(true);
+    expect(d.at).toBe("pre_sale_closed·won");
+  });
+});
