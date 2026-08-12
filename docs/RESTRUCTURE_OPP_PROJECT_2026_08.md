@@ -544,6 +544,43 @@ Run before planning the backfill, via the service key. Numbers are real, not est
 One data oddity, not a blocker: a `qualifying/solicitation` deal carries 8 invoices.
 Test data, and the won-or-carries-artifacts union rule catches it either way.
 
+### 8c. Post-flight — steps 1–2 applied (2026-08-12)
+
+Migration 131 applied. Verified against live data, not asserted.
+
+| Check | Result |
+|---|---|
+| Projects created | **11** |
+| Deals that should have one but don't | **0** |
+| Projects on deals that shouldn't have one | **0** |
+| Delivery rows linked | **63 / 63** |
+| Rows whose deal disagrees with their project | **0** |
+
+**The prediction was 9; the answer is 11, and 11 is right.** The pre-flight's
+"by status" bucket counted only the four delivery statuses — it excluded
+`pre_sale_closed/won`, which is the exact bug the pre-flight went on to reveal, and
+the count was never re-run against the corrected rule. Two won deals carrying no
+artifacts yet (`2026-0014`, `2026-0017`) are legitimately included. The estimate
+was stale, not the migration.
+
+**The drift guard was actively attacked, not merely observed:**
+
+| Test | Result |
+|---|---|
+| Point an invoice at a project belonging to another deal | ✅ rejected, `23514`, custom message |
+| Blank `opportunity_id` while keeping the project | ✅ auto-filled from the project |
+| State of the row after the rejected write | ✅ unchanged, both columns |
+| Re-state a correct pairing | ✅ accepted |
+| Delete a project holding invoices | ✅ refused, `23503` |
+
+Zero mismatches means nothing until something tries. Now something has.
+
+**Worth knowing about the data:** 6 of 11 projects have **no contract value** — correctly
+`null` and rendered "not set", never `$0.00`. 6 of 11 sit on soft-deleted deals and
+inherited the flag, as designed. One project belongs to a `qualifying/solicitation`
+deal that carries 8 invoices — the artifacts rule catching a deal that was invoiced
+without ever being marked won.
+
 ---
 
 ## 9. Build order
