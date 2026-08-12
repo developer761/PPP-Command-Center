@@ -72,6 +72,14 @@ const CARDS: Card[] = [
     adminOnly: true,
   },
   {
+    href: "/commercial/settings/repairs",
+    label: "Historical repairs",
+    blurb:
+      "Records still carrying a figure from before a bug was fixed — an erased signed contract, a certificate that recalculates, a win date overwritten by close-out. Review and approve each one. Admin-only.",
+    icon: <IconKey />,
+    adminOnly: true,
+  },
+  {
     href: "/commercial/settings/access",
     label: "Access & Users",
     blurb:
