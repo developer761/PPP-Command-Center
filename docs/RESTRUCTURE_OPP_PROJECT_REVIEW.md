@@ -791,3 +791,30 @@ line from the identity patch (1197).
   wasn't swept, so Industry is removed from create + detail-inline + list-filter but still editable there.
 - `accounts/page.tsx:730` + `1156-1159` still DISPLAY `account.industry` in list rows — the commit removed
   the list *filter* but not the row *display*. Inconsistent with "no longer shown."
+
+---
+
+## AUDIT — `f69d299` (account compliance→prequal + address reorder). Doc retirement right; edit-page NOT swept.
+
+**Done right:** the retired doc categories (COI/W-9/Master/Safety) are kept NAMED so historical uploads
+still read (documents.ts) — the correct way to deprecate, and notably NOT the data-loss pattern. The
+create form's billing-mirror fallback (`billing_* = same ? get("site_*") : get("billing_*")`,
+new/page.tsx:93-96) correctly avoids blanking billing when "same" is checked.
+
+### 🟠 The standalone edit page (`accounts/[id]/edit`) was NOT swept — mislabeled + inverted mirror
+`f69d299` inverted the toggle to "billing mirrors COMPANY" and updated the create form + the shared
+toggle component's label to "Same as company address". But it did **not** touch `accounts/[id]/edit/page.tsx`
+(confirmed: not in the commit's file list). That page is a LIVE form and still runs the OLD direction:
+`site_street = get("site_same_as_billing")==='1' ? get("billing_street") : get("site_street")` (110-113,
+comment 108 "copy billing → site"). So the shared toggle there now DISPLAYS "Same as company address"
+while the server copies **billing → site — the opposite direction** from the create form, and the page
+still leads with "Primary Site Address" (old layout). A user editing an existing account gets the inverse
+of what the checkbox promises.
+
+### ⚠️ SECOND systemic pattern: the account edit page keeps getting missed
+`42ee991` left Industry live on `accounts/[id]/edit`; `f69d299` left the whole address treatment stale
+there. The standalone edit page is consistently skipped when the create form + detail-inline sections are
+updated → the two edit surfaces diverge. **Recommend retiring `accounts/[id]/edit` and routing all account
+editing through the detail-page inline sections** (one edit surface, can't diverge), OR sweeping the edit
+page in the SAME commit every time. (Pairs with the first systemic pattern — field-drop data-loss — both
+are "the second edit path was left behind.")
