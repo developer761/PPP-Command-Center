@@ -93,29 +93,133 @@ function isWonLike(status: string, sub: string | null): boolean {
  *   - the customer said yes out loud, which leaves no trace to read
  *   - the job is won and someone has to decide the work has actually started
  */
+export type NextStep = {
+  /** The ACTION, in the words of the thing you are about to do. */
+  label: string;
+  /** Where that action actually happens. */
+  href: string;
+  /** One line of why, for the places that have room. */
+  why?: string;
+};
+
+/**
+ * The one thing to do next on this job.
+ *
+ * Karan 2026-08-12: *"there is like a Start Project button when an opp is won
+ * which is great, we need more of that so people know what to do / where to go
+ * easily for their next step"* — and then, precisely: *"it should be like 'mark
+ * it as approved' and then it brings you to the proposal for mark as approved."*
+ *
+ * Two rules follow from that, and they are what make this different from a
+ * status dropdown:
+ *
+ *  1. It names the ACTION, not the state. "Mark it approved", not "Move to
+ *     Pending Approval". Nobody thinks in states; they think in the next thing
+ *     on their list.
+ *  2. It goes WHERE THE ACTION HAPPENS. Approving lives on the proposal, so the
+ *     button opens the proposal. A button that sets a field without taking you
+ *     to the work leaves you to find the work yourself.
+ *
+ * It reads the PROPOSAL, not just the deal — which is the whole reason it can
+ * say "mark it approved" at all. And it stays quiet where the engine already
+ * acts: building a proposal moves the deal on its own, so there is no button
+ * for it.
+ */
+export function nextStep(
+  i: Pick<
+    AttentionInput,
+    "oppId" | "status" | "subStatus" | "proposalCount" | "sentProposalCount" | "approvedNotSentCount"
+  > & {
+    /** Latest proposal's id + status, so the button can point AT it. */
+    proposal?: { id: string; status: string } | null;
+    accountId?: string | null;
+  }
+): NextStep | null {
+  const { status, subStatus, oppId } = i;
+  const p = i.proposal ?? null;
+  const proposalHref =
+    p && i.accountId
+      ? `/commercial/accounts/${i.accountId}/deals/${oppId}/proposal/${p.id}?back=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=proposals`)}`
+      : `/commercial/opportunities/${oppId}?tab=proposals`;
+
+  // ── Delivery ────────────────────────────────────────────────────────────
+  if (status === "pre_sale_closed" && subStatus === "won") {
+    return {
+      label: "Start the job",
+      href: `/commercial/opportunities/${oppId}?action=change-status`,
+      why: "Move it into pre-construction so the crew can be scheduled.",
+    };
+  }
+  if (status === "pre_construction") {
+    return {
+      label: "Write the work order",
+      href: `/commercial/opportunities/${oppId}?tab=project&sub=work-order`,
+      why: "The crew needs the scope before they mobilise.",
+    };
+  }
+  if (status === "in_progress") {
+    return {
+      label: "Bill the work",
+      href: `/commercial/opportunities/${oppId}?tab=invoices`,
+      why: "Invoice what's complete so far.",
+    };
+  }
+  if (status === "billing") {
+    return {
+      label: "Close it out",
+      href: `/commercial/opportunities/${oppId}?tab=project&sub=closeout`,
+      why: "Warranty, O&M and waivers.",
+    };
+  }
+  if (status === "post_sale_closed") return null;
+  if (status === "pre_sale_closed") return null; // lost — nothing ahead
+
+  // ── Pre-sale. Driven by the PROPOSAL, which is what makes these useful. ──
+  if (i.proposalCount === 0) {
+    return {
+      label: "Build a proposal",
+      href: `/commercial/opportunities/${oppId}?tab=proposals`,
+      why: "Nothing is priced yet.",
+    };
+  }
+  if (p?.status === "draft") {
+    return {
+      label: "Send it for approval",
+      href: proposalHref,
+      why: "It's priced — get it signed off internally.",
+    };
+  }
+  if (p?.status === "pending_approval") {
+    return {
+      label: "Mark it approved",
+      href: proposalHref,
+      why: "Waiting on internal sign-off before it can go out.",
+    };
+  }
+  if (p?.status === "approved" || (i.approvedNotSentCount ?? 0) > 0) {
+    return {
+      label: "Send it to the GC",
+      href: proposalHref,
+      why: "Approved and still sitting here — they can't answer what they don't have.",
+    };
+  }
+  if (i.sentProposalCount > 0) {
+    return {
+      label: "Mark won or lost",
+      href: `/commercial/opportunities/${oppId}?action=change-status`,
+      why: "It's with them — record the answer when it comes.",
+    };
+  }
+  return null;
+}
+
+/** @deprecated Use `nextStep`, which names the action and points at it. Kept
+ *  so the path bar's CTA keeps its shape until every caller has moved. */
 export function manualNextStep(
   i: Pick<AttentionInput, "oppId" | "status" | "subStatus" | "proposalCount" | "sentProposalCount" | "approvedNotSentCount">
 ): { label: string; href: string } | null {
-  const { status, subStatus, oppId } = i;
-  if (status === "pre_sale_closed" && subStatus === "won") {
-    return { label: "Start the job", href: `/commercial/opportunities/${oppId}?action=change-status` };
-  }
-  if (status === "pre_sale_closed") return null; // lost — nothing ahead
-  if (WON_OR_DELIVERING.has(status)) return null; // the engine owns delivery
-  if (i.proposalCount === 0) {
-    return { label: "Build a proposal", href: `/commercial/opportunities/${oppId}?tab=proposals` };
-  }
-  // Approved but not out. The next move is to SEND it, not to decide it — the
-  // GC cannot say yes to something they have not received.
-  if ((i.approvedNotSentCount ?? 0) > 0) {
-    return { label: "Send it", href: `/commercial/opportunities/${oppId}?tab=proposals` };
-  }
-  if (i.sentProposalCount > 0) {
-    // Sent and waiting. A verbal yes leaves nothing for the engine to read, so
-    // this is the one pre-sale move that genuinely needs a person.
-    return { label: "Mark won or lost", href: `/commercial/opportunities/${oppId}?action=change-status` };
-  }
-  return null;
+  const s = nextStep(i);
+  return s ? { label: s.label, href: s.href } : null;
 }
 
 export function attentionFor(i: AttentionInput): Attention[] {

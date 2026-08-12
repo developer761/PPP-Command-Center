@@ -162,7 +162,7 @@ import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submit
 import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
 import { AttentionBanner } from "@/components/commercial/attention-banner";
-import { attentionFor, manualNextStep, sensibleNextStatuses } from "@/lib/commercial/opportunities/attention";
+import { attentionFor, nextStep, sensibleNextStatuses } from "@/lib/commercial/opportunities/attention";
 import { getProjectForOpportunity } from "@/lib/commercial/projects/ensure";
 import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
 
@@ -1510,7 +1510,16 @@ export default async function OpportunityDetailPage({
     todayIso: etTodayIso(),
   };
   const attentionItems = attentionFor(attentionInput);
-  const manualNext = manualNextStep(attentionInput);
+  // The latest revision, so "Mark it approved" can open THAT proposal rather
+  // than the list — Karan: "it brings you to the proposal for mark as approved".
+  const latestProposal = [...dealProposals].sort(
+    (a, b) => b.revision_number - a.revision_number
+  )[0];
+  const manualNext = nextStep({
+    ...attentionInput,
+    proposal: latestProposal ? { id: latestProposal.id, status: latestProposal.status } : null,
+    accountId: opp.account_id,
+  });
 
   const stageKpiList = stageKpis({
     status: opp.status,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { attentionFor, manualNextStep, sensibleNextStatuses, isUnderContract, type AttentionInput } from "@/lib/commercial/opportunities/attention";
+import { attentionFor, manualNextStep, nextStep, sensibleNextStatuses, isUnderContract, type AttentionInput } from "@/lib/commercial/opportunities/attention";
 
 const base: AttentionInput = {
   oppId: "11111111-2222-3333-4444-555555555555",
@@ -111,13 +111,17 @@ describe("attentionFor", () => {
  * next page load. It appears only where the engine is structurally blind.
  */
 describe("manualNextStep", () => {
-  it("offers nothing while the engine can act", () => {
-    // A drafted proposal advances the deal on send, with no human involved.
-    expect(manualNextStep({ ...base, status: "estimating", subStatus: "estimating", proposalCount: 1, sentProposalCount: 0 })).toBeNull();
-    // Delivery is entirely engine-driven.
-    for (const s of ["pre_construction", "in_progress", "billing", "post_sale_closed"]) {
-      expect(manualNextStep({ ...base, status: s }), s).toBeNull();
-    }
+  it("names the ACTION at each delivery stage, not the state", () => {
+    // Karan 2026-08-12: "it should be like 'mark it as approved' and then it
+    // brings you to the proposal". Nobody thinks in states; they think in the
+    // next thing on their list. Delivery used to return null here — which left
+    // a won job with no visible next move at all.
+    const at = (s: string) => manualNextStep({ ...base, status: s })?.label;
+    expect(at("pre_construction")).toBe("Write the work order");
+    expect(at("in_progress")).toBe("Bill the work");
+    expect(at("billing")).toBe("Close it out");
+    // A finished job has nothing ahead of it.
+    expect(at("post_sale_closed")).toBeUndefined();
   });
 
   it("offers a proposal when nothing has been quoted — no artifact exists to read", () => {
@@ -244,7 +248,7 @@ describe("approved but not sent", () => {
   });
 
   it("offers SEND, not a decision — the GC can't answer what they don't have", () => {
-    expect(manualNextStep(approved)?.label).toBe("Send it");
+    expect(manualNextStep(approved)?.label).toBe("Send it to the GC");
   });
 
   it("switches to the decision once it is actually out", () => {
@@ -255,5 +259,76 @@ describe("approved but not sent", () => {
 
   it("stops nagging once the job is won", () => {
     expect(keys(won({ approvedNotSentCount: 1 }))).not.toContain("approved_not_sent");
+  });
+});
+
+/**
+ * Karan 2026-08-12: "there is like a Start Project button when an opp is won
+ * which is great, we need more of that so people know what to do / where to go
+ * easily for their next step… it should be like 'mark it as approved' and then
+ * it brings you to the proposal for mark as approved."
+ *
+ * Two rules, and they are what separate this from a status dropdown: it names
+ * the ACTION rather than the state, and it goes where the action happens.
+ */
+describe("nextStep", () => {
+  const ACC = "aaaaaaaa-1111-2222-3333-444444444444";
+  const PROP = "bbbbbbbb-1111-2222-3333-444444444444";
+  const at = (over: Partial<Parameters<typeof nextStep>[0]>) =>
+    nextStep({ ...base, accountId: ACC, ...over } as Parameters<typeof nextStep>[0]);
+
+  it("says 'Mark it approved' and opens THAT proposal", () => {
+    const step = at({
+      status: "estimating",
+      subStatus: "proposal_pending_approval",
+      proposalCount: 1,
+      proposal: { id: PROP, status: "pending_approval" },
+    })!;
+    expect(step.label).toBe("Mark it approved");
+    // The exact ask: it brings you TO the proposal, not to a list of them.
+    expect(step.href).toContain(`/proposal/${PROP}`);
+    // …and carries a way back, so approving doesn't strand you.
+    expect(step.href).toContain("back=");
+  });
+
+  it("walks the proposal's own lifecycle, one action at a time", () => {
+    const withProp = (status: string) =>
+      at({ status: "estimating", proposalCount: 1, proposal: { id: PROP, status } })!.label;
+    expect(withProp("draft")).toBe("Send it for approval");
+    expect(withProp("pending_approval")).toBe("Mark it approved");
+    expect(withProp("approved")).toBe("Send it to the GC");
+  });
+
+  it("asks for the answer only once the GC actually has it", () => {
+    const sent = at({ status: "proposal", subStatus: "sent", proposalCount: 1, sentProposalCount: 1, proposal: { id: PROP, status: "sent" } })!;
+    expect(sent.label).toBe("Mark won or lost");
+  });
+
+  it("gives every delivery stage a next move too", () => {
+    // A won job used to show nothing at all here — the one place people most
+    // need telling what happens next.
+    expect(at({ status: "pre_sale_closed", subStatus: "won" })!.label).toBe("Start the job");
+    expect(at({ status: "pre_construction" })!.label).toBe("Write the work order");
+    expect(at({ status: "in_progress" })!.label).toBe("Bill the work");
+    expect(at({ status: "billing" })!.label).toBe("Close it out");
+  });
+
+  it("goes quiet where there is genuinely nothing to do", () => {
+    expect(at({ status: "post_sale_closed" })).toBeNull();
+    expect(at({ status: "pre_sale_closed", subStatus: "lost" })).toBeNull();
+  });
+
+  it("explains itself — every step says why", () => {
+    // The button is the answer to "what now?"; the line under it is the answer
+    // to "why that?".
+    for (const s of ["pre_construction", "in_progress", "billing"]) {
+      expect(at({ status: s })!.why, s).toBeTruthy();
+    }
+  });
+
+  it("falls back to the proposals tab when there is no proposal to point at", () => {
+    const step = at({ proposalCount: 0 })!;
+    expect(step.label).toBe("Build a proposal");
+    expect(step.href).toContain("tab=proposals");
   });
 });

@@ -251,6 +251,12 @@ export function StatusSubStatusPicker({
   // confusion Karan hit and Brendan described as "a lot of duplicated, a lot
   // of things are a bit confusing".
   const flipStage = columnKeyForOpp(status, subStatus);
+  // Picking a delivery stage on a deal that was never marked won. Real and
+  // common (a verbal award), so this warns rather than refusing.
+  const DELIVERY_KEYS = POST_CONTRACT_COLUMNS.map((c) => c.key);
+  const jumpsToDelivery =
+    DELIVERY_KEYS.includes(flipStage) &&
+    !(initialStatus === "pre_sale_closed" || DELIVERY_KEYS.includes(columnKeyForOpp(initialStatus ?? "", initialSubStatus ?? null)));
   const setStage = (key: string) => {
     const t = COLUMN_TARGET[key];
     if (!t) return;
@@ -286,6 +292,26 @@ export function StatusSubStatusPicker({
           Most of these move on their own as proposals get built and sent.
         </p>
       </label>
+      {/* Karan 2026-08-12: "it should let me jump into delivery if the opp
+          hasn't been won yet and logic like that."
+          
+          A heads-up, not a block. A GC awards a job on the phone and the crew
+          mobilises before any paperwork exists — refusing that would force
+          people to lie to the system, and the platform's rule is warn, never
+          reject. But jumping straight to delivery skips the win: no decision
+          date, no Win/Loss debrief, and the job lands in delivery having never
+          been counted as a sale. So we say exactly that, and let you through.
+          
+          The two-select UI showed this warning; the flat picker dropped it, and
+          this is putting it back where it belongs — on the actual choice. */}
+      {jumpsToDelivery && (
+        <p className="text-[11.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+          <strong>Heads up</strong> — this job hasn&rsquo;t been marked won.
+          Moving it straight into delivery records the win for you as of today,
+          and skips the win/loss debrief. Mark it Closed Won first if the award
+          date matters.
+        </p>
+      )}
       {/* The tuple the server action parses — unchanged contract, exactly as
           create mode already does it. */}
       <input type="hidden" name={statusField} value={status} />
