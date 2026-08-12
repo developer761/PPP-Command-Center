@@ -167,6 +167,7 @@ Starts only when D is clean.
 4. Reports — once Katie says which
 5. RFP email → auto-populate the opportunity
 6. **Joint smoke test with Karan → done**
+7. *(parked, after done)* Foreman Daily Log — see below
 
 **Scheduling & labor module — SHIPPED.** Previously listed here as "the big one,
 deliberately last." It is built and connected, verified 2026-08-11 against
@@ -176,11 +177,11 @@ station, crew self-service (`/commercial/crew/*`), the `/f/[token]` field page,
 and `commercial_field_ops_jobs.work_order_id` so work orders feed the scheduler
 rather than sitting in a silo. Do not re-plan it or quote it as remaining scope.
 
-*One spec item not found:* the foreman **Daily Log** (§5.4 — mobile, <30s, a
-foreman submits actuals for the whole crew). Per-person clock in/out exists and
-covers the same need from the other direction, which was Katie's own open
-question #1 ("actuals capture owner"). Ask before building — it may be
-deliberately replaced, not missing.
+*Foreman Daily Log (§5.4) — PARKED to the end (Karan 2026-08-11: "we don't need
+it for now").* Mobile, <30s, a foreman submits actuals for the whole crew.
+Per-person clock in/out already covers the same need from the other direction,
+which was Katie's own open question #1 ("actuals capture owner"). Not a gap —
+a deliberate deferral. Revisit only after step 6, and only if Tomco asks.
 
 **The Drive/Dropbox item is a FILE-SIZE problem and belongs to Stephanie's
 list.** Earlier notes framed it as "archive + restore of doc drawers, low
