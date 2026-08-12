@@ -152,6 +152,8 @@ import {
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
 import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
+import { ActivityRail } from "@/components/commercial/activity-rail";
+import { buildActivityFeed, loadActivityEntries } from "@/lib/commercial/opportunities/activity";
 import { stageKpis, isDeliveryPhase } from "@/lib/commercial/opportunities/stage-kpis";
 import { getProjectFinancials } from "@/lib/commercial/projects/financials";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
@@ -1601,6 +1603,14 @@ export default async function OpportunityDetailPage({
       ? "proposals"
       : sub!;
 
+  // The Activity rail. A read of records that already exist — status log,
+  // notes, tasks, proposals — merged into one chronology. Fetched only for the
+  // tab that renders it, so every other tab pays nothing for it.
+  const activityFeed = buildActivityFeed(
+    tab === "info" && !isDeletedDeal ? await loadActivityEntries(opp.id) : [],
+    etTodayIso()
+  );
+
   const editedOk = pickFirst(sp.edited) === "1";
   const clonedOk = pickFirst(sp.cloned) === "1";
 
@@ -1980,8 +1990,14 @@ export default async function OpportunityDetailPage({
         </div>
       )}
 
+      {/* Overview + the Activity rail (Salesforce's record layout). The rail
+          renders HERE only: the delivery tools — the AIA grid, the submittal
+          log — need the full width, and squeezing a payment application into
+          two thirds of the screen would cost more than the rail gives. */}
       {tab === "info" && (
-        <InfoTab
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_20rem] gap-4 items-start">
+          <div className="min-w-0">
+            <InfoTab
           opp={opp}
           account={account}
           errorMessage={pickFirst(sp.error)}
@@ -1995,7 +2011,12 @@ export default async function OpportunityDetailPage({
           invoiceErrors={
             pickFirst(sp.invoice_errors) ? Number(pickFirst(sp.invoice_errors)) : 0
           }
-        />
+            />
+          </div>
+          {!isDeletedDeal && (
+            <ActivityRail feed={activityFeed} todayIso={etTodayIso()} oppId={opp.id} />
+          )}
+        </div>
       )}
       {tab === "debrief" && isOppTerminal && (
         <DebriefTab
