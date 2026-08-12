@@ -459,3 +459,21 @@ across the ET offset / DST — and `proposal_due_at` is a DATE column, so `new D
 is UTC midnight. Same class step 5 fixed with `daysBetweenEt`. Coarser here (stale = weeks), so
 lower priority, but the overdue/stale gates would be a day off near the boundary. Consider the
 ET-calendar helper for these gates too.
+
+---
+
+## AUDIT — Step 8 shipped (`bb63768`, sidebar → 9 destinations; kanban retired). No migration.
+
+**Verdict: clean.** Verified: (1) the kanban BOARD is fully removed with no dead runtime
+reference (tsc clean); `?view=kanban` falls to the list, not a 404; `kanban-columns.ts` is
+correctly kept (column semantics for list/export/move-API/picker/report — not the board).
+(2) The `crewOnly` sidebar branch is untouched — only the main nav sections changed. (3) The
+now-unlinked routes still resolve (unlinked, not deleted) and the global Invoices list is NOT
+orphaned — reachable via **Reports → AR Aging → Invoices** (`ar-aging/page.tsx:55`) plus the
+account-scoped links. No orphans, no broken guards.
+
+**Surfaced to Karan (not a defect):** "Invoices" is no longer a top-level sidebar item —
+now per-job (opportunity → Invoices tab) + AR under Reports. He was looking at that page
+today, so worth confirming the new home matches intent (it aligns with the "invoices under
+the project / AR under Reports" direction). Trivial: the commit title says "eight" but there
+are nine destinations.
