@@ -638,10 +638,24 @@ export async function InvoiceDetailView({
   invoiceId: id,
   sp,
   inline = false,
+  expectAccountId,
+  expectOppId,
 }: {
   invoiceId: string;
   sp: Awaited<SP>;
   inline?: boolean;
+  /**
+   * When rendered INSIDE a deal, the account and deal it is supposed to belong
+   * to.
+   *
+   * The invoice id arrives from the URL (`&inv=`), so without this an id
+   * belonging to a different customer renders under THIS customer's header —
+   * and the actions on the page would then record a payment or void an invoice
+   * that was never theirs. The standalone route has no account context to check
+   * against, which is why this is a parameter rather than a hard-coded guard.
+   */
+  expectAccountId?: string;
+  expectOppId?: string;
 }) {
   if (!UUID_RE.test(id)) notFound();
   const errorMsg = pickFirst(sp.error);
@@ -649,6 +663,9 @@ export async function InvoiceDetailView({
 
   const invoice = await getCommercialInvoice(id);
   if (!invoice) notFound();
+  // Belongs to the deal it is being shown under, or it is not shown.
+  if (expectAccountId && invoice.account_id !== expectAccountId) notFound();
+  if (expectOppId && invoice.opportunity_id !== expectOppId) notFound();
   const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver, milestones, attachments] = await Promise.all([
     listInvoiceLineItems(invoice.id),
     listInvoicePayments(invoice.id),
