@@ -76,3 +76,15 @@ The `<10min` dup-suppression (`schedule-email-send.ts:452-454`, keyed on the emp
 
 ## Do-first for the build session
 **R1 first** (flip margin to billed — auto-fixes R2, R12-part, R17, R21, R22), then **R3 + R4** (board flood + new-hire email regressions), then R5/R6 (crew scope reach + alternates), then the R7–R16 half-solves. Verification session rechecks each.
+
+---
+
+## Round 2 re-audit — the margin sweep (c6c9f9f) is INCOMPLETE
+
+### R24. 💰 "One margin everywhere" missed ≥4 surfaces — still contract-based, now the odd ones out
+`marginFrom()`/`dealMargin()` are correctly billed-based, and the deal Overview, deal P&L, dashboard bars, and Costs tool now route through them (verified good). But the commit's claim "routes all six through it **including reports**" is **false** — these surfaces still render the contract-based `grossMarginPct` (`projects/db.ts:362`, `financials.ts:101`) as bare "% margin", so the SAME job shows a billed margin on its deal page and a contract margin here:
+- **Reports** — `reports/job-costs.ts:142` (`p.grossMarginPct`), `:175`/`:192` (`pct(…, contract)`), `reports/geography.ts:73` (`pct(a.marginCents, a.contractCents)`). Bare "Margin", contract-based.
+- **Global Costs index** — `app/commercial/post-job/costs/page.tsx:43` (`${p.grossMarginPct}% margin`).
+- **Invoice-new preview** — `app/commercial/invoices/new/page.tsx:105` (`${fin.grossMarginPct}%`).
+- **Account Transactions mini-card chip** — `accounts/[id]/page.tsx:1744` (`${p.grossMarginPct}% margin`) — it does add a "vs $X contract" sub-line (`:1751`), so it's the borderline one, but the chip value still differs from the deal Overview's billed margin.
+**Fix:** route these through `marginFrom(billedPreTaxCents, totalCostCents)` (reports need `billedPreTaxCents` threaded into their aggregates), or — if a report deliberately wants margin-vs-budget — label it explicitly "Margin vs contract", never bare "Margin". Either way the same job must not read two different margins. R21 (in the flow/consistency list) is the data-layer root: `listProjects.grossMarginPct` is still contract-based and feeds the reports.
