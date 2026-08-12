@@ -152,6 +152,8 @@ import {
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
 import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
+import { InlineFieldRow } from "@/components/commercial/inline-field";
+import { INLINE_FIELDS, inlineField, parseInlineValue } from "@/lib/commercial/opportunities/inline-fields";
 import { ActivityRail } from "@/components/commercial/activity-rail";
 import { buildActivityFeed, loadActivityEntries } from "@/lib/commercial/opportunities/activity";
 import { stageKpis, isDeliveryPhase } from "@/lib/commercial/opportunities/stage-kpis";
@@ -199,6 +201,10 @@ type SP = Promise<{
   details_saved?: string;
   /** Phase C: category filter chip on the Files sub-tab. */
   category?: string;
+  /** Inline field editor: which row is open, and its validation error. */
+  ef?: string;
+  ef_error?: string;
+  saved_field?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
@@ -448,6 +454,44 @@ async function setDealTeamAction(formData: FormData) {
   }
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
+/**
+ * Save one field, edited in place (the Salesforce pencil).
+ *
+ * Takes a field NAME from the request, which is exactly why `inlineField()` is
+ * an allowlist and not a convenience: without it this would write `status`,
+ * `decided_at` or `accepted_contract_cents` — columns with their own writers,
+ * their own cascades and, in two cases, money attached.
+ */
+async function saveInlineFieldAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const back = (q: string) => `/commercial/opportunities/${opp_id}?tab=info&${q}`;
+
+  const field = inlineField(String(formData.get("field") ?? ""));
+  // Not on the list = not writable by this path, and we say so rather than
+  // silently no-op, because a save that reports success and changes nothing is
+  // the worst of the three outcomes.
+  if (!field) redirect(back("error=" + encodeURIComponent("That field can't be edited here.")));
+
+  const parsed = parseInlineValue(field, String(formData.get("value") ?? ""));
+  if ("error" in parsed) {
+    // Reopen the SAME field so the message lands next to the input that caused
+    // it, rather than as a banner above a closed row.
+    redirect(back(`ef=${field.name}&ef_error=` + encodeURIComponent(parsed.error)));
+  }
+
+  const { updateOpportunityField } = await import("@/lib/commercial/opportunities/mutations");
+  const res = await updateOpportunityField(opp_id, field.name, parsed.value, user.id);
+  if (!res.ok) redirect(back("error=" + encodeURIComponent(res.error)));
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  redirect(back("saved_field=" + encodeURIComponent(field.label)));
 }
 
 async function reopenOpportunityAction(formData: FormData) {
@@ -2011,6 +2055,8 @@ export default async function OpportunityDetailPage({
           invoiceErrors={
             pickFirst(sp.invoice_errors) ? Number(pickFirst(sp.invoice_errors)) : 0
           }
+              editField={pickFirst(sp.ef) ?? null}
+              editError={pickFirst(sp.ef_error) ?? null}
             />
           </div>
           {!isDeletedDeal && (
@@ -2895,6 +2941,8 @@ async function InfoTab({
   confirmDelete,
   invoicesCreated,
   invoiceErrors,
+  editField,
+  editError,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -2907,6 +2955,9 @@ async function InfoTab({
    *  user was closing as LOST as a win instead. */
   preselectSub?: string;
   confirmDelete?: boolean;
+  /** Which field the pencil opened, from `?ef=`. */
+  editField?: string | null;
+  editError?: string | null;
   invoicesCreated?: number;
   invoiceErrors?: number;
 }) {
@@ -2961,6 +3012,31 @@ async function InfoTab({
   // are null-safe: null → "—", so a fresh deal with no RFP renders
   // clean instead of "NaN days".
   const lifecycle = await fetchOpportunityLifecycle(opp);
+  // One helper for every in-place field, so the read view, the pencil, the open
+  // editor and the error all stay in lockstep instead of being re-derived per
+  // row. Dates render as the ET calendar day; everything else as stored.
+  const base = `/commercial/opportunities/${opp.id}?tab=info`;
+  const inlineRow = (name: string, raw: string) => {
+    const def = inlineField(name);
+    if (!def) return null;
+    return (
+      <InlineFieldRow
+        key={name}
+        field={def}
+        value={raw ?? ""}
+        display={raw || null}
+        editing={editField === name}
+        // Hidden rather than shown-and-refusing: a pencil that appears for
+        // someone who cannot save is a trap.
+        canEdit={!opp.deleted_at}
+        editHref={`${base}&ef=${name}`}
+        cancelHref={base}
+        action={saveInlineFieldAction}
+        oppId={opp.id}
+        error={editField === name ? editError : null}
+      />
+    );
+  };
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {errorMessage && (
@@ -3014,7 +3090,11 @@ async function InfoTab({
           </svg>
         }
       >
-        <Field label="Title" value={opp.title} />
+        {/* Editable in place (the Salesforce pencil). `?ef=<field>` says which
+            row is open, so this is a navigation and a form post rather than a
+            controlled input — a field with two writers is a field that loses
+            what you typed, which this codebase has already been bitten by. */}
+        {inlineRow("title", opp.title)}
         <Field label="Status" value={oppStatusDisplayLabel(opp.status, opp.sub_status)} />
         <Field
           label="Source"
@@ -3087,21 +3167,13 @@ async function InfoTab({
           </svg>
         }
       >
-        <Field
-          label="RFP received"
-          value={lifecycle.rfp_received_at?.slice(0, 10) ?? "—"}
-          tooltip="Date the bid request arrived from the GC. Set on the opportunity edit sheet. Starts the time-to-proposal clock."
-        />
+        {inlineRow("rfp_received_at", opp.rfp_received_at?.slice(0, 10) ?? "")}
         <Field
           label="Proposal submitted"
           value={lifecycle.proposal_submitted_at?.slice(0, 10) ?? "—"}
           tooltip="First time a proposal was Sent (MIN sent_at across revisions). Auto-computed from proposals — no manual entry."
         />
-        <Field
-          label="Due date"
-          value={opp.proposal_due_at?.slice(0, 10) ?? "—"}
-          tooltip="When the customer is expecting our proposal. Drives Hot opportunities + the Decision countdown on the KPI strip."
-        />
+        {inlineRow("proposal_due_at", opp.proposal_due_at?.slice(0, 10) ?? "")}
         <Field
           label="Close date"
           value={opp.decided_at?.slice(0, 10) ?? "—"}

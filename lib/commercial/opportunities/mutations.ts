@@ -544,3 +544,46 @@ async function syncProjectForOpportunity(id: string): Promise<void> {
     console.warn("[opportunities] project sync threw:", err);
   }
 }
+
+/**
+ * Write ONE allowlisted column on an opportunity, from the inline editor.
+ *
+ * The caller validates the field against `INLINE_FIELDS` before reaching here;
+ * this is the second lock on the same door, because a writer that trusts its
+ * caller is one refactor away from writing anything.
+ *
+ * Audited like every other mutation — an edit that leaves no trace is how a
+ * number changes and nobody can say when or who.
+ */
+export async function updateOpportunityField(
+  id: string,
+  field: string,
+  value: string | number | null,
+  actorUserId: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { INLINE_FIELDS } = await import("./inline-fields");
+  if (!INLINE_FIELDS.some((f) => f.name === field)) {
+    return { ok: false, error: "That field can't be edited here." };
+  }
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_opportunities")
+    .select("*")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "Opportunity not found." };
+
+  const { data: after, error } = await sb
+    .from("commercial_opportunities")
+    .update({ [field]: value, updated_by_user_id: actorUserId })
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select("*")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!after) return { ok: false, error: "Opportunity not found." };
+
+  await logUpdate("commercial_opportunities", id, before, after, actorUserId);
+  return { ok: true };
+}
