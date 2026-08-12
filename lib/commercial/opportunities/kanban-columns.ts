@@ -75,7 +75,7 @@ export const POST_CONTRACT_COLUMNS: readonly KanbanColumn[] = [
   { key: "pre_construction", label: "Pre-Construction", lane: "post_contract" },
   { key: "in_progress", label: "In Progress", lane: "post_contract" },
   { key: "billing", label: "Billing", lane: "post_contract" },
-  { key: "post_sale_closed", label: "Closed", lane: "post_contract" },
+  { key: "post_sale_closed", label: "Completed", lane: "post_contract" },
 ] as const;
 
 export const KANBAN_COLUMNS: readonly KanbanColumn[] = [
@@ -96,8 +96,25 @@ export const OPEN_COLUMN_KEYS: readonly string[] = [
   "billing",
 ] as const;
 
-/** The decided cluster inside the PRE-contract lane. */
-export const TERMINAL_COLUMN_KEYS: readonly string[] = ["won", "lost"] as const;
+/**
+ * The DECIDED cluster — deals that are finished, one way or another.
+ *
+ * post_sale_closed joins Won/Lost here rather than becoming a fourth top-level
+ * column, for three reasons the board makes obvious:
+ *   - `anyOnBoard` is computed only from the bucketed columns, so seeding a new
+ *     open column would flip it true for every fully-closed account and render
+ *     seven EMPTY columns beside one populated — verbatim the "wall of empty
+ *     columns" the account filter exists to prevent.
+ *   - The cluster already applies TERMINAL_DISPLAY_CAP; a new column would list
+ *     every completed job a customer has ever had, unbounded.
+ *   - The cluster is already titled "Closed". A separate column also called
+ *     Closed would put two of them on one board, next to "Closed Won" and
+ *     "Closed Lost" — four things sharing a word.
+ *
+ * Labelled "Completed" inside the cluster so the three read as outcomes:
+ * Won · Lost · Completed.
+ */
+export const TERMINAL_COLUMN_KEYS: readonly string[] = ["won", "lost", "post_sale_closed"] as const;
 
 const COLUMN_BY_KEY = new Map(KANBAN_COLUMNS.map((c) => [c.key, c]));
 

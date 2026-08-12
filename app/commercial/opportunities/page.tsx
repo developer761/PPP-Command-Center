@@ -2526,7 +2526,7 @@ function KanbanBoard({
                           ? "bg-emerald-500"
                           : status === "lost"
                           ? "bg-rose-500"
-                          : "bg-ppp-charcoal-400";
+                          : "bg-ppp-navy-600";
                       return (
                         <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
                           <div className="w-full sm:w-44 lg:w-48 shrink-0 border border-ppp-charcoal-100 rounded-lg overflow-hidden flex flex-col h-full bg-surface">
@@ -2534,7 +2534,7 @@ function KanbanBoard({
                             <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-surface">
                               <div className="flex items-center justify-between gap-1">
                                 <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal">
-                                  {opportunityStatusLabel(status as OpportunityStatus)}
+                                  {kanbanColumnLabel(status)}
                                 </span>
                                 <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100">
                                   {colOpps.length}
@@ -2544,7 +2544,7 @@ function KanbanBoard({
                             <ul className="p-1.5 space-y-1.5 overflow-y-auto max-h-[70vh] min-h-[64px]">
                               {colOpps.length === 0 ? (
                                 <li className="text-[10px] text-ppp-charcoal-400 italic text-center py-3 leading-tight">
-                                  {status === "won" ? "Drop a winning opportunity" : status === "lost" ? "Drop a lost opportunity" : "Drop a no-bid opportunity"}
+                                  {status === "won" ? "Drop a winning opportunity" : status === "lost" ? "Drop a lost opportunity" : "Drop a finished job"}
                                 </li>
                               ) : (
                                 colOpps.map((opp) => (
