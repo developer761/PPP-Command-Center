@@ -1018,3 +1018,23 @@ full ladder (both lanes) so corrections still work (never-block preserved). ✅ 
 - **`auto-advance-targets.ts:66`** still `label: "Proposal"` — should be "Sent" [round-1 miss #2].
 The path bar has now been edited by 0da1676 / b883a66 / 5274bba without the stateFor/currentKey fixes. These
 two need a reached-set (opp status log) for stateFor + a sentinel currentKey; fold in on the next path-bar touch.
+
+---
+
+## VERIFY — `4670d98` / migration 132 (13 profiles-embed queries silently empty in PROD). Complete + safe. ✅
+Excellent production catch (from Karan's runtime log): 13 queries across 10 files embed `profiles` off a
+user_id column via a FK named for auth.users → PGRST200 → silent empty (team lists, notification fan-out, 4
+crons, note authors). Same "broken read == no data" shape as the mig-127 404. Migration 132 adds the profiles
+FK the code already names, on 4 tables (account/opportunity assignments + account/opportunity notes).
+
+**Miss-check PASSED — I verified completeness + safety, not just plausibility:**
+- Swept every `profiles!<fk>` embed in commercial code: all 11 use exactly the 4 FK names mig 132 creates
+  (3 acct-assign, 5 opp-assign, 2 opp-notes, 1 acct-notes). Sweep for a 5th/uncovered FK name = **empty** →
+  the notification fan-out + all 4 crons resolve through these same FKs. Nothing missed.
+- Swept for UNNAMED `profiles(...)` embeds (which mig 132's second FK would make ambiguous — the mig-127 trap
+  in reverse) = **empty**. Direct `.from("profiles")` queries aren't embeds and are unaffected.
+- Migration is sound: renames (not drops) the auth.users constraint (integrity intact), `ON DELETE SET NULL`,
+  unique index on `profiles.user_id`, `NOTIFY pgrst reload`, verified 41 refs/0 orphans, re-runnable.
+
+**ACTION: migration 132 must be applied to prod — the bug is LIVE now** (silent empty team lists + crons
+notifying nobody). Applying it fixes all 13 at once; there's no deploy-gate risk (the code is already failing).
