@@ -348,3 +348,23 @@ describe("A2 — one authority", () => {
     expect(d.at).toBe("pre_sale_closed·won");
   });
 });
+
+describe("R27 — the badge must not fire on Follow-Up", () => {
+  it("says nothing when a sent proposal explains the deal's state", () => {
+    // `follow_up` MEANS "a sent proposal we're chasing", so a sent proposal is
+    // not behind it. Treating it as behind put a navy "R2 Sent" badge beside
+    // the amber "Follow-Up" one — two labels contradicting each other on the
+    // card the badge exists to make clearer.
+    expect(proposalTrailsDeal({ status: "proposal", sub_status: "follow_up" }, "sent")).toBe(false);
+  });
+
+  it("still flags a genuinely stale proposal on a Follow-Up deal", () => {
+    expect(proposalTrailsDeal({ status: "proposal", sub_status: "follow_up" }, "draft")).toBe(true);
+  });
+
+  it("keeps the estimating sub-ladder, where the step is real progress", () => {
+    expect(
+      proposalTrailsDeal({ status: "estimating", sub_status: "proposal_pending_approval" }, "draft")
+    ).toBe(true);
+  });
+});

@@ -2856,7 +2856,7 @@ function KanbanCard({
             {trailingProposal && (
               <span
                 className="inline-flex items-center h-[18px] px-1.5 rounded-full text-[9.5px] font-bold bg-ppp-navy-50 text-ppp-navy-700 border border-ppp-navy-200"
-                title={`The newest proposal (R${trailingProposal.revision}) is a ${proposalStatusLabel(trailingProposal.status).toLowerCase()}. The deal stays where it is — a new revision doesn't undo work already done.`}
+                title={`The newest proposal (R${trailingProposal.revision}) is in ${proposalStatusLabel(trailingProposal.status)}. The deal stays where it is — a new revision doesn't undo work already done.`}
               >
                 R{trailingProposal.revision} {proposalStatusLabel(trailingProposal.status)}
               </span>

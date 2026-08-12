@@ -200,10 +200,16 @@ export function proposalTrailsDeal(
   const rank = stageRank(status, deal.sub_status);
   if (rank === null) return false;
 
-  return (
-    rank > target.order ||
-    (rank === target.order &&
-      status === target.status &&
-      subRank(status, deal.sub_status) > target.subOrder)
-  );
+  if (rank > target.order) return true;
+  // Same rung: only `estimating` has a sub-ladder that means real progress
+  // (estimating → proposal pending approval). Under `proposal`, `follow_up`
+  // MEANS "a sent proposal we're chasing" — a sent proposal justifies it
+  // completely, so treating it as ahead flagged the most common Proposal state
+  // as a discrepancy and printed a navy "R2 Sent" badge next to the amber
+  // "Follow-Up" one: two contradictory labels on the card this feature exists
+  // to stop being confusing.
+  if (rank === target.order && status === target.status && status === "estimating") {
+    return subRank(status, deal.sub_status) > target.subOrder;
+  }
+  return false;
 }
