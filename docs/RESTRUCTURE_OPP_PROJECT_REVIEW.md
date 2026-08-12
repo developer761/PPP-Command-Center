@@ -721,3 +721,30 @@ intent (zero dead duplication).
 
 ## Post-audit punch list (2026-08-12)
 Full multi-persona post-audit complete — 47 verified findings (6+ high). See `docs/POST_AUDIT_PUNCHLIST_2026_08.md`. Plus `7e462d9` audit: DATA-LOSS (edit nulls proposed_start/end) + display-still-shows nit, folded into the punch list.
+
+---
+
+## AUDIT — `0da1676` (Brendan's flat stage ladder + estimator trigger). Good fix; 2 path-bar findings STILL open.
+
+**Strong.** Resolves the real complaint ("Pending Approval / Estimating sub-status doesn't move the
+bar"): the path bar now renders `PRE_CONTRACT_COLUMNS` via `columnKeyForOpp` — the SAME flat ladder
+the list/filters/export/reports use — so it can't diverge from the list again (the two-ladder bug).
+Brendan's stages (Qualifying · RFP · Estimating · Pending Approval · Sent · Closed) land with no
+migration (old Solicitation/Follow-Up sub-statuses fold into Qualifying/Sent). The estimator-assignment
+→ Estimating trigger is well-built: fires only on a newly-*gained* estimator, only from `status==='qualifying'`
+(which covers both Qualifying and RFP since RFP is a sub-status), `source:"auto_advance"` so it doesn't
+lock the deal, best-effort try/catch. tsc + 408 tests green.
+
+**⚠️ But it rewrote `status-path-bar.tsx` — the exact file with two re-confirmed open findings — and
+fixed neither:**
+- **Skipped-stage (punch-list HIGH-adjacent / known #3) is STILL open and now WORSE.** `stateFor`
+  (138-139) is unchanged: `i < currentIdx ? "passed" : "current"/"future"` — never returns `"skipped"`.
+  The ladder went 3→**5** sales stages, so a deal jumped straight to Sent now shows RFP + Estimating +
+  Pending Approval as green-check "passed" — claiming an estimator was assigned and a proposal submitted
+  for approval, none of which happened. More stages = more false "completed".
+- **Won-not-started delivery `currentKey` STILL open.** Line 293 is still `inDelivery ? status :
+  "pre_construction"`, so a just-won deal lights Pre-Construction as current (contradicts its own comment).
+
+While you're in this file: wire `stateFor` to a reached-set (the opp status log gives it) so skipped
+stages render `"skipped"` not `"passed"`, and pass a sentinel (not null) for won-not-started so the
+delivery bar reads all-ahead.
