@@ -1038,3 +1038,8 @@ FK the code already names, on 4 tables (account/opportunity assignments + accoun
 
 **ACTION: migration 132 must be applied to prod — the bug is LIVE now** (silent empty team lists + crons
 notifying nobody). Applying it fixes all 13 at once; there's no deploy-gate risk (the code is already failing).
+
+---
+
+## VERIFY — `06d4761` (action-named next-step CTAs). Clean.
+Verified: `page.tsx` passes `accountId` + the latest proposal `{id,status}` to `manualNextStep` (proposalHref well-formed, not `/accounts/undefined/`); each stage CTA targets the right tab/record (won→Start, pre_construction→work-order, in_progress→invoices, billing→closeout; proposal states → the SPECIFIC proposal detail page with `?back=` to the opp proposals tab); `lost` and `post_sale_closed` correctly return null (no CTA); the account-scoped proposal detail route is a LIVE page (its redirects are auth guards, not a retired-route redirect), so "Mark it approved" reaches a working approve surface (requestProposalApproval). Correct + complete, no findings.
