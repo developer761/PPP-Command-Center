@@ -16,6 +16,7 @@ import {
   isValidSubStatus,
   isLost,
 } from "./constants";
+import { projectStateForOpportunity } from "@/lib/commercial/projects/ensure";
 import {
   type CommercialOpportunity,
   type OpportunityStatus,
@@ -677,6 +678,52 @@ export async function changeOpportunityStatus(
         "[changeOpportunityStatus] accepted-contract snapshot threw:",
         err instanceof Error ? err.message : String(err)
       );
+    }
+  }
+
+  // ── The PROJECT half of the job (migration 131) ─────────────────────────
+  //
+  // Winning creates the project. It hangs off THIS function rather than the
+  // won-status branch above because that branch only sees a formal close: seven
+  // of the nine real deals reached delivery without one, and a deal dragged
+  // straight from Proposal into In Progress never passes through `won` at all.
+  // `projectStateForOpportunity` owns that rule; here we only decide whether it
+  // is worth asking.
+  //
+  // Runs AFTER the accepted-contract snapshot on purpose — the snapshot is what
+  // the project reads to learn its contract figure.
+  //
+  // Best-effort: a job must never fail to be marked won because its project row
+  // couldn't be written. Idempotent, so the next status change re-attempts.
+  {
+    const wasProjectBearing = projectStateForOpportunity(
+      beforeRow.status,
+      beforeRow.sub_status
+    ).shouldExist;
+    const isProjectBearing = projectStateForOpportunity(
+      input.to_status,
+      nextSubStatus
+    ).shouldExist;
+    // The `was` case matters as much as the `is` case: that is the un-win, and
+    // it archives the project rather than leaving it live on a deal that is no
+    // longer won.
+    if (isProjectBearing || wasProjectBearing) {
+      try {
+        const { ensureProjectForOpportunity } = await import(
+          "@/lib/commercial/projects/ensure"
+        );
+        const res = await ensureProjectForOpportunity(input.opp_id, {
+          actingUserId: input.acting_user_id,
+        });
+        if (!res.ok) {
+          console.warn("[changeOpportunityStatus] project ensure failed:", res.error);
+        }
+      } catch (err) {
+        console.warn(
+          "[changeOpportunityStatus] project ensure threw:",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
     }
   }
 
