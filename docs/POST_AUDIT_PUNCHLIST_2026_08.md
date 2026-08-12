@@ -46,8 +46,13 @@ and a wide swath of mobile-touch + completeness gaps. **Three classes stand betw
    Bare `2026-08-12` coerces to UTC midnight = 8pm ET Aug 11; the account forms anchor to noon. Fix: anchor TIMESTAMPTZ date fields with `anchorDateOnlyIso` (noon).
 6. **Inline-field textarea has no `text-base` on mobile → iOS Safari zooms and never returns — `inline-field.tsx:65`.** The `<input>`
    branch fixes this; the `<textarea>` branch regressed it. Fix: `text-base sm:text-[13px]`.
-7. **[NEW, `7e462d9`] Editing a deal NULLs `proposed_start_at`/`proposed_end_at` — `accounts/[id]/page.tsx:1548-1553` + `mutations.ts:273-274`.**
-   The Brendan field-drop removed the form inputs but the edit action defaults these to `null` (not `undefined`), and the patch-builder writes any non-undefined value → every edit wipes the proposed dates. Contradicts "nothing already entered is lost." Fix: default to `undefined` (like `probability_pct` at 1535).
+7. **~~[NEW, `7e462d9`] Editing a deal NULLs `proposed_start_at`/`proposed_end_at`~~ — RETRACTED 2026-08-12.**
+   Self-corrected: the edit SHEET still renders these inputs pre-filled (`accounts/[id]/page.tsx:6364-6369`),
+   which `7e462d9` never removed — so editing submits the existing values and writes them back. No data loss.
+   (I'd assumed the inputs were gone without verifying.) **Do not action this item.** — A DIFFERENT,
+   REAL data-loss remains open: `42ee991` (drop Industry) — editing an account's identity section nulls
+   `industry` (input removed, `industry: get()` left in the patch, `updateCommercialAccount` spreads it).
+   See `RESTRUCTURE_OPP_PROJECT_REVIEW.md`. That one is confirmed; fix it.
 
 ---
 
