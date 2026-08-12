@@ -513,3 +513,30 @@ did NOT touch `opportunities/page.tsx` (the LIST), where the delivery views (Won
 Billing) still show `dealValueCents` = **bid midpoint**, not the contract ladder. So "one
 source platform-wide" holds for reports + the deal page, but the opportunities-list delivery
 views remain the exception (step-7 finding). Fold that in to truly be one source everywhere.
+
+---
+
+## AUDIT — Step 10 shipped (`87702e7`, dashboard points at new structure). No migration.
+
+Repointing the 7 retired-route tiles is right, the platform sweep for dead links is good, and
+the Settings→Sales-tax "Won opportunity" link fix is a real catch. BUT the headline feature —
+the lane filter that makes "the tile and the list it opens describe the same set" — **does the
+opposite: the tile and its list disagree at BOTH ends.**
+
+### 🔴 Finding: "Under contract" tile → `?lane=post_contract` list are DIFFERENT sets
+- **Tile set** — `production = summarizeProduction(listProjects())`. `listProjects` (`db.ts:109-122`)
+  selects `postSale (minus post_sale_closed unless includeClosed) OR (pre_sale_closed AND won)`
+  → **won-not-started + pre_construction + in_progress + billing**, **excluding completed**.
+- **List set** — `lane=post_contract` = `POST_CONTRACT_COLUMNS` keys =
+  **pre_construction + in_progress + billing + post_sale_closed**, and it drops **won**
+  (`columnKeyForOpp(pre_sale_closed,"won") = "won"`, which is NOT in that set).
+- **Result:** the tile counts won-not-started jobs the list omits, and the list shows completed
+  jobs the tile omits. Click "Under contract · $X · N active" and you land on a list with a
+  different membership — the precise "tile whose number and destination disagree" the commit
+  says it avoided. Worse, the "Under contract" VIEW hint ("awarded and **not yet closed out**")
+  describes the *tile* set (won-inclusive, closed-exclusive), contradicting its own
+  `lane=post_contract` params.
+- **Fix:** make `lane=post_contract` match `production` — include `pre_sale_closed/won`, exclude
+  `post_sale_closed` (the "active under contract" set), or thread `includeClosed` consistently.
+  One canonical "under contract" predicate shared by the tile, the view hint, and the lane
+  filter; today there are three definitions.
