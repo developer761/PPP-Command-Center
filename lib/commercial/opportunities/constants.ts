@@ -680,3 +680,58 @@ export function dealPhase(o: StatusTuple): DealPhase {
   }
   return "pre_sale";
 }
+
+/**
+ * A PostgREST `.or()` filter matching every state whose rank is strictly BELOW
+ * `targetRank` — i.e. every state an automatic move to that target may start
+ * from.
+ *
+ * This exists because `stageRank` is TypeScript and Postgres can't call it,
+ * while the advance has to be ONE atomic conditional write. Read-then-write
+ * loses the race against a human dragging the same card at the same moment, and
+ * the human has to win. Enumerating the states puts the guard in the WHERE:
+ *
+ *   UPDATE … WHERE id = ? AND (advanceFromFilter(rank))
+ *
+ * Zero rows updated then means "someone got there first, or it's already
+ * further along" — a no-op, not an error.
+ *
+ * Terminal off-ramps (rank null) never appear, so a lost bid or a closed job
+ * can't be the FROM side of an automatic move.
+ */
+export function advanceFromFilter(targetRank: number): string {
+  const clauses: string[] = [];
+
+  for (const [status, subsRO] of Object.entries(SUB_STATUSES_BY_STATUS)) {
+    const subs = subsRO as readonly string[];
+    const qualifies = (sub: string | null) => {
+      const r = stageRank(status, sub);
+      return r !== null && r < targetRank;
+    };
+    const below = subs.filter(qualifies);
+    // The column is nullable, so an unset sub is its own case — and the two
+    // CLOSED statuses read it differently. Under post_sale_closed a missing sub
+    // means "in closeout" (rank 7) and IS advanceable; under pre_sale_closed it
+    // is neither won nor lost, ranks null, and the engine keeps its hands off.
+    const nullQualifies = qualifies(null);
+    if (below.length === 0 && !nullQualifies) continue;
+
+    // stageRank only consults sub_status for those two. Everywhere else the
+    // whole status ranks together, so match on status alone — one clause that
+    // also covers the NULL rows.
+    if (below.length === subs.length && nullQualifies) {
+      clauses.push(`status.eq.${status}`);
+      continue;
+    }
+    // Partial: name the qualifying sub-statuses explicitly.
+    for (const sub of below) clauses.push(`and(status.eq.${status},sub_status.eq.${sub})`);
+    if (nullQualifies) clauses.push(`and(status.eq.${status},sub_status.is.null)`);
+  }
+
+  // No legal source state. Return a filter that matches nothing rather than an
+  // empty string, which PostgREST would reject and which an incautious caller
+  // could read as "no constraint" — the one mistake that would let an automatic
+  // move overwrite anything.
+  if (clauses.length === 0) return "id.is.null";
+  return clauses.join(",");
+}
