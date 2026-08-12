@@ -313,3 +313,13 @@ lands on the right tab but not scrolled to the section. **Fix:** rewrite these t
 `/commercial/opportunities/<dealId>?tab=…&sub=…` directly (same map as the redirect; the
 tab moots the old anchor), so account→deal is one hop and the sweep's own claim holds. The
 `AccountProjectHome` removal (next commit) won't touch these — they're in the lean page.
+
+### Step-3 cleanup (`fbb061b`) — verified clean
+Pure deletion of the now-unreachable `AccountProjectHome` + 3 panels (1,251 lines).
+**Confirmed no orphans:** zero live references to any deleted symbol; tsc/tests/build green.
+The ~45 deferred unused imports are an **acceptable** deferral (inert / tree-shaken / risky
+to auto-sweep on a 7.5k-line file / explicitly tracked) — not the never-defer class, since
+nothing is left broken. **NOTE: the step-3 live-links gap above is still OPEN** — the cleanup
+didn't address it; the old-shape account→deal links survive (now at 1011, 1562, redirects
+1887/2067, DocumentRow 5220 `#deal-invoices`, rows 4505/5052/6123). Fold that in with the
+unused-import hand-sweep.
