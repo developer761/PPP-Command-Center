@@ -276,3 +276,40 @@ config set. Two notes:
   silently no-ops again at go-live, Tomco starts on test data. The run should confirm the
   end-of-script counts are actually 0 (run in a transaction, check counts, then COMMIT) —
   not trust "success."
+
+---
+
+## AUDIT — Step 3 shipped (`f7906b1`, route move / opportunity is the job's home)
+
+**Verdict: strong, and the R32-class risks I flagged (theme 3 / gap E) are handled well.**
+The bounce/allowlist is deleted (not disabled), old URLs 308-redirect in ONE hop, the
+submittal backward-redirect is collapsed, and — the part I was most worried about — the
+back-guards were taught the new shape correctly: `tool-back-header.tsx` keeps
+`DEAL_DRILL_IN_BACK_RE` **and** adds `OPPORTUNITY_BACK_RE` (both shapes, anchors included),
+with the R-series lesson documented inline. The `dt→tab` redirect map (account page
+470-493) handles every value (`costs→transactions`, `pnl/overview→overview`,
+`documents→docs·files`, `proposals`/`invoices`). The costs-tool stale-revalidate bug the
+sweep found is a real catch. Good work.
+
+### 🟠 One 90%-done gap: the account page's OWN live deal links were NOT rewritten
+The commit says it "swept every reference **rather than relying on the redirects**" — but
+the surviving lean account page still emits the **old redirecting shape**
+(`?tab=projects&project=<d>…`) on its own live surfaces, so they lean on exactly the
+redirect the commit claims to have avoided. Confirmed-live (not the dead `AccountProjectHome`
+being removed next):
+- `PipelineDealBlock` line ~1019 — the pipeline/lost deal cards on Account Home (rendered
+  at 958/990). The **primary account→deal click** takes a redirect hop.
+- `DocumentRow` line ~5494 — `&dt=invoices#deal-invoices`.
+- Post-save server-action `redirect()`s at ~2161 (`editDealFromAccountAction`) and ~2341
+  (`recordPaymentInlineAction`, `&deal_created=1`) — a **save now double-redirects**
+  (old-shape → account redirect → opportunity). Works, but it's the save-redirect class.
+- Plus the deal-list row hrefs (~3994, 6397, 6811).
+
+**Two concrete harms, not just tidiness:** (1) every one of these is an extra redirect hop
+on the account's most-trafficked path; (2) the hash-bearing ones (`#deal-invoices`,
+`#deal-proposals`) **lose their anchor** — the account redirect rebuilds the URL from query
+params only, and a `#fragment` never reaches the server (verified at line 493), so the link
+lands on the right tab but not scrolled to the section. **Fix:** rewrite these to
+`/commercial/opportunities/<dealId>?tab=…&sub=…` directly (same map as the redirect; the
+tab moots the old anchor), so account→deal is one hop and the sweep's own claim holds. The
+`AccountProjectHome` removal (next commit) won't touch these — they're in the lean page.
