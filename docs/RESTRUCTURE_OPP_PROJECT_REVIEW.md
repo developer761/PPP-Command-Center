@@ -252,3 +252,27 @@ pipeline/quoted-subtotal to contract-value within one group — the per-group tw
 header-total (my F). §8.12 flags this for *reports* (each phase-homogeneous) but not the *list*.
 **Fix:** resolve the ladder-appropriate owner per row (or two owner facets); any group/header `$`
 subtotal must be phase-scoped (sum same-amount-type only, or show pipeline-$ vs contract-$ twins).
+
+---
+
+## SIDE AUDIT — `scripts/wipe-commercial-data.sql` (`dd8e580`, not applied / never auto-run)
+
+Audited the pre-go-live wipe. **FK-safe and will run to completion** — I specifically
+hunted for a kept table with a `RESTRICT`/`NO ACTION` FK to a deleted parent (which would
+abort the all-or-nothing transaction) and there is none: the only kept→deleted FK is
+`commercial_customer_prices.account_id → commercial_accounts ON DELETE CASCADE`. Ordering
+verified — all 8 `project_id` children delete before `commercial_projects` (line 74), which
+deletes before `commercial_opportunities` (line 84). The 10 untouched tables == the kept
+config set. Two notes:
+
+- **🟠 Header/behavior mismatch on customer prices.** The header lists "customer prices"
+  under *KEPT — configuration, not job data*, but `customer_prices.account_id` is `NOT NULL`
+  with `ON DELETE CASCADE`, so deleting the accounts (line 94) **cascade-deletes every
+  customer-price row** — the table ends up empty, contradicting "kept." Harmless at go-live
+  (no real accounts yet), but the doc is wrong: account-scoped prices are job data and go
+  with the accounts. Either drop them from the "kept" line, or (if a reusable price book was
+  intended) that's a schema question, not a script one.
+- **🟠 "Reported success but removed nothing" must be resolved before the real run.** If it
+  silently no-ops again at go-live, Tomco starts on test data. The run should confirm the
+  end-of-script counts are actually 0 (run in a transaction, check counts, then COMMIT) —
+  not trust "success."
