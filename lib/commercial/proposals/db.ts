@@ -1743,12 +1743,16 @@ export async function listProposalsForOpp(
  */
 export async function listCurrentProposalByOpp(
   opportunityIds: string[]
-): Promise<Map<string, { status: ProposalStatus; revision: number; totalCents: number }>> {
-  const out = new Map<string, { status: ProposalStatus; revision: number; totalCents: number }>();
+): Promise<Map<string, { id: string; status: ProposalStatus; revision: number; totalCents: number }>> {
+  // `id` is here so a list row's next-step button can open the PROPOSAL rather
+  // than the deal's Proposals tab — Karan's ask was "mark it as approved and
+  // then it brings you to the proposal", and a tab is not the proposal.
+  const out = new Map<string, { id: string; status: ProposalStatus; revision: number; totalCents: number }>();
   const ids = Array.from(new Set(opportunityIds.filter(Boolean)));
   if (ids.length === 0) return out;
   const sb = commercialDb();
   const rows = await paginateAll<{
+    id: string;
     opportunity_id: string;
     revision_number: number;
     total_cents: number;
@@ -1756,7 +1760,7 @@ export async function listCurrentProposalByOpp(
   }>(() =>
     sb
       .from("commercial_proposals")
-      .select("opportunity_id, revision_number, total_cents, status")
+      .select("id, opportunity_id, revision_number, total_cents, status")
       .in("opportunity_id", ids)
       .is("deleted_at", null)
       .not("status", "in", "(superseded,expired)")
@@ -1768,6 +1772,7 @@ export async function listCurrentProposalByOpp(
     // Rows arrive newest-revision-first per deal, so the first one wins.
     if (!out.has(r.opportunity_id)) {
       out.set(r.opportunity_id, {
+        id: r.id,
         status: r.status,
         revision: r.revision_number,
         totalCents: r.total_cents ?? 0,

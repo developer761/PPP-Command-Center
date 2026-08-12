@@ -1,4 +1,5 @@
 import "server-only";
+import { daysFromTodayEt } from "@/lib/date-et";
 
 import { commercialDb } from "@/lib/commercial/db";
 import {
@@ -112,10 +113,12 @@ export async function runDebriefOverdueReminder(): Promise<Result> {
         const acct = Array.isArray(r.account) ? r.account[0] ?? null : r.account;
         const displayName = derivedOppName({ ...r, title: r.title ?? "" }, acct?.company_name ?? null);
         const outcome = r.sub_status === "won" ? "won" : "lost";
-        const daysSinceDecision = Math.max(
-          1,
-          Math.floor((now - new Date(r.decided_at).getTime()) / 86_400_000)
-        );
+        // `decided_at` is a bare DATE. `new Date("2026-08-12")` is UTC
+        // midnight — four or five hours BEHIND the Eastern day it names — so
+        // subtracting it from `now` inflated the count by a day for most of
+        // the working day. This number goes straight into the notification a
+        // rep reads ("won 8 days ago"), so it was wrong in writing.
+        const daysSinceDecision = Math.max(1, -daysFromTodayEt(String(r.decided_at).slice(0, 10)));
         await insertCommercialDebriefOverdueNotification({
           opportunityId: r.id,
           accountId: r.account_id,

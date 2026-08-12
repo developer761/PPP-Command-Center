@@ -46,3 +46,24 @@ describe("fmtEtDate — the printed day matches the stored one", () => {
     expect(fmtEtDate("not a date")).toBe("—");
   });
 });
+
+/**
+ * The debrief cron writes its day count INTO the notification a rep reads
+ * ("won 8 days ago"), off a bare DATE column. Pinned because the wrong number
+ * here is one somebody quotes back at you.
+ */
+describe("daysFromTodayEt on a bare DATE", () => {
+  it("counts calendar days, so a decision made today is 0 and not -1", async () => {
+    const { daysFromTodayEt, etTodayIso } = await import("@/lib/date-et");
+    expect(daysFromTodayEt(etTodayIso())).toBe(0);
+  });
+
+  it("is symmetric across a DST boundary", async () => {
+    const { daysFromTodayEt } = await import("@/lib/date-et");
+    // Whatever today is, these two are exactly 1 apart — a UTC subtraction
+    // across the March boundary gives 0.958 and floors to the wrong side.
+    const a = daysFromTodayEt("2026-03-07");
+    const b = daysFromTodayEt("2026-03-08");
+    expect(b - a).toBe(1);
+  });
+});

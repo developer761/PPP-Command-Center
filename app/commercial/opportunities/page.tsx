@@ -93,6 +93,8 @@ import { isUnderContract } from "@/lib/commercial/opportunities/attention";
 import { SavedViewPicker } from "@/components/commercial/saved-view-picker";
 import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
 import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
+import { nextStep } from "@/lib/commercial/opportunities/attention";
+import { NextStepButton } from "@/components/commercial/next-step-button";
 import { proposalTrailsDeal } from "@/lib/commercial/opportunities/auto-advance-targets";
 import { daysFromTodayEt, etDateOf } from "@/lib/date-et";
 import {
@@ -1572,6 +1574,7 @@ export default async function CommercialOpportunitiesPage({
                           finishCount={finishCountMap.get(o.id) ?? 0}
                           sheetHref={customerSheetHref}
                           flipReturnHref={flipReturnHref}
+                          currentProposal={currentProposalByOpp.get(o.id) ?? null}
                           hideAccount={g.account !== null}
                         />
                       ))}
@@ -2738,6 +2741,7 @@ function OpportunityRow({
   finishCount,
   sheetHref,
   flipReturnHref,
+  currentProposal = null,
   hideAccount = false,
 }: {
   opportunity: CommercialOpportunity;
@@ -2751,6 +2755,8 @@ function OpportunityRow({
   finishCount: number;
   sheetHref: (accountId: string, focus?: string) => string;
   flipReturnHref: string;
+  /** Newest live proposal, so the row can say "mark it approved" and open it. */
+  currentProposal?: { id: string; status: string } | null;
   /** Karan 2026-07-10: when true, suppress the row's inline account
    *  name + industry chip because the outer group header already
    *  renders them. Kills the "Bob · Bob · — bid" repetition. */
@@ -2764,6 +2770,20 @@ function OpportunityRow({
   const defaultProb = DEFAULT_PROBABILITY_BY_STATUS[opportunity.status] ?? null;
   const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
   const moveToOptions = moveToOptionsFor(opportunity);
+  const next = nextStep({
+    oppId: opportunity.id,
+    status: opportunity.status,
+    subStatus: opportunity.sub_status,
+    accountId: opportunity.account_id,
+    proposal: currentProposal ? { id: currentProposal.id, status: currentProposal.status } : null,
+    // Derived from the current proposal rather than counted — the list doesn't
+    // load history, and every branch of nextStep turns on presence + newest
+    // state, not on how many revisions there have been.
+    proposalCount: currentProposal ? 1 : 0,
+    sentProposalCount:
+      currentProposal && ["sent", "won", "lost"].includes(currentProposal.status) ? 1 : 0,
+    approvedNotSentCount: 0,
+  });
   // Karan 2026-07-11 (signature-moments): days-idle heat treatment on
   // open deals only. Terminal statuses (won/lost/no_bid) aren't "idle"
   // — they closed intentionally. Amber at 7 days stuck, rose at 14.
@@ -2997,12 +3017,15 @@ function OpportunityRow({
         </div>
       )}
 
-      {/* Inline status flip — placeholder text carries the meaning
-          (Karan 2026-07-08 Batch 2: killed the shouty "QUICK FLIP" label). */}
+      {/* The row's footer: the ONE recommended action first, the manual
+          status flip after it. Both live outside the row's own <Link> — an
+          anchor inside an anchor is invalid and the inner one stops firing. */}
+      <div className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap">
+      <NextStepButton step={next} />
       {moveToOptions.length > 0 ? (
         <form
           action={quickFlipStatusAction}
-          className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap"
+          className="flex items-center gap-2 flex-wrap"
         >
           <input type="hidden" name="opp_id" value={opportunity.id} />
           <input type="hidden" name="return_href" value={flipReturnHref} />
@@ -3032,15 +3055,16 @@ function OpportunityRow({
           </button>
         </form>
       ) : (
-        <p className="px-4 pb-3 -mt-1 text-[11px] text-ppp-charcoal-500">
+        <p className="text-[11px] text-ppp-charcoal-500">
           <Link
             href={sheetHref(opportunity.account_id, opportunity.id)}
-            className="underline hover:text-ppp-charcoal-700"
+            className="underline hover:text-ppp-charcoal-700 inline-flex items-center min-h-[44px] sm:min-h-0"
           >
             Peek to reopen
           </Link>
         </p>
       )}
+      </div>
     </li>
   );
 }

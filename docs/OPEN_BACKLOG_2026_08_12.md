@@ -214,3 +214,31 @@ warranty: closed) + `.catch()` degrade. No findings. §7 gaps CLOSED.
 1. **`job-costs/page.tsx:73`** header caption STILL "Margin = contract − cost" while :102/:178 say "billed − cost" — same-page contradiction.
 2. **Path-bar skipped-detection** still heuristic (`skipped={inDelivery && !decided && !hasWinDate ? ["won"] : []}`) — only "Closed Won" skipped; a deal moved straight to Sent still shows RFP/Estimating/Pending-Approval as "passed". Thread the reached-set from `page.tsx:5156` status log.
 Neither touched by `1a2103d`. Re-surfacing so they close, not linger.
+
+
+## Date-math sweep — what was fixed and what deliberately was not (2026-08-12)
+
+Two different bugs live behind the same-looking code, and only one is worth
+churning fifteen files over.
+
+**Class A — a bare DATE parsed as UTC.** `new Date("2026-08-12")` is UTC
+midnight, which is the 11th in Eastern. Every one of these was a real,
+visible day-off. All fixed and pinned with tests:
+
+- `etDateOf` (the root every DATE column flows through)
+- `fmtEtDate` — printed one day early on every invoice, statement and AR row
+- Hot-deals filter (`proposal_due_at`) — hid the bid due TODAY
+- Dashboard `relativeLabel`
+- `cron/debrief-overdue` (`decided_at`) — wrote the wrong number INTO the
+  notification text a rep reads
+
+**Class B — elapsed days from a real TIMESTAMPTZ by UTC subtraction.** These
+are right except within an hour of a DST boundary, where the floor can land a
+day early. Left alone, deliberately: 12 sites, each a cosmetic "3d ago" or an
+idle-tint threshold, and today has already shown twice that a large scripted
+sweep breaks more than it fixes. Sites, if it ever matters:
+`opportunities/page.tsx` 2082 / 2320 / 2768 / 3073, `accounts/page.tsx` 214 /
+275 / 716 / 1265, `accounts/[id]/page.tsx` 2520 / 3039,
+`opportunities/export.ts` 90, `accounts/overview.ts` 91,
+`cron/invoice-dunning.ts` 130 (invoice `due_at` IS timestamptz — checked),
+`proposals/db.ts` 253.

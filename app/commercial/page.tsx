@@ -29,7 +29,9 @@ import {
   weightedPipelineCents,
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
-import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
+import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
+import { nextStep } from "@/lib/commercial/opportunities/attention";
+import { NextStepButton } from "@/components/commercial/next-step-button";
 import { isPostSaleProject, isLost, wasWonInPeriod, isOverdueProposal, isColdRfp, isFollowUpDue, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { etTodayIso, etDateOf, daysFromTodayEt } from "@/lib/date-et";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
@@ -91,8 +93,12 @@ export default async function CommercialDashboardPage() {
   // without this every deal created since then contributes ZERO to weighted
   // pipeline and drops off "Top 5 open opportunities" entirely — the number
   // Alex reads every morning would drift quietly low.
-  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(
-    opps.map((o) => o.id)
+  // The fuller query — same round trip `listCurrentProposalTotalByOpp` was
+  // already making under the hood, minus throwing the state away. Totals feed
+  // weighted pipeline; the state feeds each row's next-step button.
+  const currentProposalByOpp = await listCurrentProposalByOpp(opps.map((o) => o.id));
+  const proposalTotalByOpp = new Map(
+    Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const)
   );
   const oppWeighted = (o: CommercialOpportunity) =>
     weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
@@ -587,7 +593,7 @@ export default async function CommercialDashboardPage() {
 
       {/* ─── Two-column: Top 5 open + Recent activity ─── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <TopOpenDealsCard opps={topOpenDeals} accountNameById={accountNameById} proposalTotalByOpp={proposalTotalByOpp} />
+        <TopOpenDealsCard opps={topOpenDeals} accountNameById={accountNameById} proposalTotalByOpp={proposalTotalByOpp} currentProposalByOpp={currentProposalByOpp} />
         <RecentActivityCard opps={recentOpps} accountNameById={accountNameById} />
       </section>
 
@@ -760,12 +766,14 @@ function TopOpenDealsCard({
   opps,
   accountNameById,
   proposalTotalByOpp,
+  currentProposalByOpp,
 }: {
   opps: CommercialOpportunity[];
   accountNameById: Map<string, string>;
-  /** See listCurrentProposalTotalByOpp — without it a bid-less deal shows
-   *  "$0" in a list that is sorted by exactly that number. */
+  /** Without it a bid-less deal shows "$0" in a list sorted by that number. */
   proposalTotalByOpp: Map<string, number>;
+  /** Newest live proposal per deal — what lets a row say "mark it approved". */
+  currentProposalByOpp: Map<string, { id: string; status: string }>;
 }) {
   return (
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -792,14 +800,28 @@ function TopOpenDealsCard({
             const display = derivedOppName(o, acct);
             const weighted = weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
             const oppCode = formatOpportunityNumber(o.project_number);
+            const cp = currentProposalByOpp.get(o.id) ?? null;
+            const next = nextStep({
+              oppId: o.id,
+              status: o.status,
+              subStatus: o.sub_status,
+              accountId: o.account_id,
+              proposal: cp ? { id: cp.id, status: cp.status } : null,
+              proposalCount: cp ? 1 : 0,
+              sentProposalCount: cp && ["sent", "won", "lost"].includes(cp.status) ? 1 : 0,
+              approvedNotSentCount: 0,
+            });
             return (
-              <li key={o.id}>
+              // The button sits OUTSIDE the row's <Link> — an anchor inside an
+              // anchor is invalid and the inner one stops firing. It wraps to
+              // its own line on a phone rather than crushing the money column.
+              <li key={o.id} className="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:pr-3">
                 <Link
                   // D5: a deal-click opens the DEAL. These used to land on the
                   // opportunities tab with an edit sheet auto-popped — a form
                   // nobody asked for, in front of the thing they wanted to read.
                   href={`/commercial/opportunities/${o.id}`}
-                  className="flex items-center gap-3 px-4 py-2.5 min-h-[52px] hover:bg-ppp-charcoal-50/60 touch-manipulation"
+                  className="flex items-center gap-3 px-4 py-2.5 min-h-[52px] hover:bg-ppp-charcoal-50/60 touch-manipulation flex-1 min-w-0"
                 >
                   <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-cc-brand-100 text-cc-brand-700 text-[11px] font-bold tabular-nums shrink-0">
                     {idx + 1}
@@ -829,6 +851,7 @@ function TopOpenDealsCard({
                     </div>
                   </div>
                 </Link>
+                <NextStepButton step={next} className="mb-2.5 ml-4 sm:mb-0 sm:ml-0" />
               </li>
             );
           })}
