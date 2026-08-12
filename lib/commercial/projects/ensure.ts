@@ -195,6 +195,21 @@ export async function ensureProjectForOpportunity(
   // would in fact just fail — loudly, in the middle of someone's status change).
   if (!shouldExist) {
     if (existing && !existing.archived_at) {
+      // AUDIT 2026-08-12: the BACKFILL gives a project to any deal that is won
+      // OR already carrying delivery artifacts; this path only asked "is it
+      // won". Live data has exactly the deal that exposes the gap — one sitting
+      // at qualifying with eight invoices on it, invoiced before it was ever
+      // formally awarded, which is an ordinary thing (a deposit goes out on a
+      // handshake).
+      //
+      // Archiving that project would leave its invoices pointing at an archived
+      // record and drop them out of every project-scoped view — money made
+      // invisible by a status change. So: if the project HOLDS anything, it
+      // stays. The artifacts are the evidence that real work exists, and they
+      // outrank the stage field.
+      if (await projectHoldsAnything(existing.id)) {
+        return { ok: true, project: existing };
+      }
       const { error } = await sb
         .from("commercial_projects")
         .update({ archived_at: new Date().toISOString() })
@@ -293,6 +308,29 @@ export async function ensureProjectForOpportunity(
   await linkDeliveryRows(oppId, (data as CommercialProject).id);
 
   return { ok: true, project: data as CommercialProject };
+}
+
+/**
+ * Does this project hold any delivery record — an invoice, a change order, a
+ * payment application, a submittal, a work order, a closeout package, a
+ * purchase or a scheduled job?
+ *
+ * Used to decide whether un-winning a deal may archive its project. Stops at
+ * the first hit; on a read failure it answers TRUE, because the safe reading of
+ * "I could not check" is "do not hide money".
+ */
+async function projectHoldsAnything(projectId: string): Promise<boolean> {
+  const sb = commercialDb();
+  for (const table of DELIVERY_TABLES) {
+    const { data, error } = await sb
+      .from(table)
+      .select("id")
+      .eq("project_id", projectId)
+      .limit(1);
+    if (error) return true;
+    if ((data ?? []).length > 0) return true;
+  }
+  return false;
 }
 
 const DELIVERY_TABLES = [

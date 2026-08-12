@@ -67,3 +67,34 @@ describe("projectStateForOpportunity", () => {
     expect(won.shouldExist && !unwon.shouldExist).toBe(true);
   });
 });
+
+/**
+ * AUDIT 2026-08-12. The BACKFILL gives a project to any deal that is won OR
+ * already carrying delivery artifacts; the un-win path only asked "is it won".
+ *
+ * Live data contains exactly the deal that exposes the gap: one sitting at
+ * qualifying with eight invoices on it — invoiced before it was ever formally
+ * awarded, which is an ordinary thing when a deposit goes out on a handshake.
+ * Archiving that project would leave its invoices pointing at an archived
+ * record and drop them out of every project-scoped view: money made invisible
+ * by a status change.
+ *
+ * The rule itself is unchanged and still pure — what changed is that the
+ * ARCHIVE step now refuses when the project holds anything. These pin the rule
+ * either side of that.
+ */
+describe("un-winning a deal", () => {
+  it("still says a non-won deal should have no project", () => {
+    // The stage rule is honest about the stage. It is the archive ACTION that
+    // defers to what the project holds.
+    expect(projectStateForOpportunity("qualifying", "solicitation").shouldExist).toBe(false);
+    expect(projectStateForOpportunity("pre_sale_closed", "lost").shouldExist).toBe(false);
+  });
+
+  it("still says a won deal should have one, so re-winning restores it", () => {
+    // The other half of the bounce: un-won Tuesday, re-won Wednesday. The
+    // unique constraint means this reuses the same project rather than making
+    // a second one.
+    expect(projectStateForOpportunity("pre_sale_closed", "won").shouldExist).toBe(true);
+  });
+});
