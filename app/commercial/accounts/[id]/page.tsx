@@ -2999,7 +2999,12 @@ async function quickFlipFromAccountAction(formData: FormData) {
   // to the opp page so the DebriefOnlyCard is right there for optional
   // structured-debrief follow-through.
   if (isLostFlip) {
-    redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=pre_sale_closed&to_sub=lost`);
+    // Stays in the account. This used to jump to the global opportunity shell
+    // with no account context — losing the tab, the scroll position and the
+    // deal drawer — for the one outcome that is hardest to record in the first
+    // place. The account-scoped page now collects the reason AND performs the
+    // close, the same way Won already stays here.
+    redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?close=lost`);
   }
   const result = await changeOpportunityStatus({
     opp_id,

@@ -13,7 +13,7 @@
  * The submit action is scoped to this URL so the redirect after save
  * loops back to the account (?debrief_saved=1 toast).
  */
-import Link from "next/link";
+import { revalidatePath } from "next/cache";import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -30,6 +30,7 @@ import {
   isWon,
   isLost,
   oppStatusDisplayLabel,
+  PRE_SALE_OPEN_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import { writeDebrief, listDebriefsForOpp } from "@/lib/commercial/win-loss/debrief";
 import DebriefFields from "@/components/commercial/debrief-fields";
@@ -40,6 +41,10 @@ type SP = Promise<{
   just_closed?: string;
   debrief_saved?: string;
   error?: string;
+  /** `lost` — close this deal as lost, here, instead of ejecting to the
+   *  global opportunity shell. See `closeAsLostAction`. */
+  close?: string;
+  outcome?: string;
 }>;
 
 async function requireCommercialUser(): Promise<string> {
@@ -54,6 +59,65 @@ async function requireCommercialUser(): Promise<string> {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   return user.id;
+}
+
+/**
+ * Close a deal as Lost or No-bid without leaving the account.
+ *
+ * Marking a deal lost from the account used to redirect to the global
+ * opportunity shell — no account context, so the tab, the scroll position and
+ * the deal being worked on were all gone, for the one outcome that is hardest
+ * to record in the first place. Won already stayed here; there was no reason
+ * Lost shouldn't.
+ *
+ * It could not simply redirect here, though: this page requires a deal that is
+ * ALREADY closed, and the whole point of the old detour was that closing needs
+ * a loss reason. So the close happens here too — reason and all, in one step.
+ */
+async function closeAsLostAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const account_id = String(formData.get("account_id") ?? "");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(opp_id)) redirect("/commercial/accounts");
+
+  const back = `/commercial/accounts/${account_id}/debrief/${opp_id}?close=lost`;
+  const reason = String(formData.get("loss_reason") ?? "").trim() as OpportunityLossReason;
+  if (!OPPORTUNITY_LOSS_REASONS.includes(reason)) {
+    redirect(`${back}&error=${encodeURIComponent("Pick a reason so the win/loss report can use it.")}`);
+  }
+  const note = String(formData.get("loss_notes") ?? "").trim();
+  if (!note) {
+    redirect(`${back}&error=${encodeURIComponent("Add a sentence on what happened — it's the part that's useful later.")}`);
+  }
+
+  const opp = await getCommercialOpportunity(opp_id);
+  if (!opp || opp.account_id !== account_id) redirect(`/commercial/accounts/${account_id}?tab=deals`);
+  // Already closed by someone else while this form was open — fall through to
+  // the debrief rather than closing it twice.
+  if (opp.status === "pre_sale_closed") {
+    redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?just_closed=1`);
+  }
+
+  const { changeOpportunityStatus } = await import("@/lib/commercial/opportunities/status");
+  const result = await changeOpportunityStatus({
+    opp_id,
+    to_status: "pre_sale_closed",
+    to_sub_status: "lost",
+    acting_user_id: userId,
+    loss_reason: reason,
+    note,
+  });
+  if (!result.ok) redirect(`${back}&error=${encodeURIComponent(result.error)}`);
+
+  const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
+  await postPlaceholderAutoNote({
+    opportunityId: opp_id,
+    outcome: reason === "no_bid" ? "no_bid" : "lost",
+    actorUserId: userId,
+  });
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?just_closed=1`);
 }
 
 async function startProjectAction(formData: FormData) {
@@ -197,8 +261,105 @@ export default async function AccountDebriefPage({
   // post_sale_closed (delivered work), which has no bid outcome — the form
   // then mislabeled it "No-bid" and submitDebriefAction had no branch, so the
   // save silently no-op'd. Gate strictly to pre_sale_closed.
-  if (opp.status !== "pre_sale_closed") {
+  // A deal still being sold reaches this page for exactly one reason: it is
+  // being closed as lost, here, rather than out in the global opportunity
+  // shell. Anything else still bounces.
+  const closingAsLost =
+    sp.close === "lost" && PRE_SALE_OPEN_STATUSES.includes(opp.status);
+  if (opp.status !== "pre_sale_closed" && !closingAsLost) {
     redirect(`/commercial/accounts/${id}?tab=deals`);
+  }
+
+  if (closingAsLost) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+        <Link
+          href={`/commercial/accounts/${id}?tab=projects&project=${dealId}`}
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 min-h-[44px]"
+        >
+          <span aria-hidden>←</span> Back to the deal
+        </Link>
+        <div>
+          <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">
+            Close as lost
+          </h1>
+          <p className="text-[13px] text-ppp-charcoal-500 mt-1.5 leading-relaxed">
+            {opp.title || "(untitled deal)"} — {account.company_name}. Both fields feed the win/loss
+            report, which is the only place this ends up being useful.
+          </p>
+        </div>
+        {sp.error && (
+          <div className="rounded-lg px-4 py-3 text-sm bg-rose-50 border border-rose-200 text-rose-700">
+            {sp.error}
+          </div>
+        )}
+        <form
+          action={closeAsLostAction}
+          className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-4"
+        >
+          <input type="hidden" name="account_id" value={id} />
+          <input type="hidden" name="opp_id" value={dealId} />
+          <div>
+            <label
+              htmlFor="loss_reason"
+              className="block text-[12px] font-bold uppercase tracking-wider text-ppp-charcoal-600 mb-1.5"
+            >
+              Why did we lose it?
+            </label>
+            <select
+              id="loss_reason"
+              name="loss_reason"
+              required
+              defaultValue=""
+              className="w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-sm text-ppp-charcoal min-h-[44px]"
+            >
+              <option value="" disabled>
+                Pick one…
+              </option>
+              {OPPORTUNITY_LOSS_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {opportunityLossReasonLabel(r)}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">
+              Choose <strong>No bid</strong> if we never quoted it — those are kept out of
+              the win rate.
+            </p>
+          </div>
+          <div>
+            <label
+              htmlFor="loss_notes"
+              className="block text-[12px] font-bold uppercase tracking-wider text-ppp-charcoal-600 mb-1.5"
+            >
+              What happened?
+            </label>
+            <textarea
+              id="loss_notes"
+              name="loss_notes"
+              required
+              rows={3}
+              placeholder="Came in 12% over the winning bid; GC went with an incumbent they'd used on two prior phases."
+              className="w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-sm text-ppp-charcoal"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Link
+              href={`/commercial/accounts/${id}?tab=projects&project=${dealId}`}
+              className="inline-flex items-center px-3 py-2 rounded-lg text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px]"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              className="inline-flex items-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-[13px] font-semibold hover:bg-ppp-charcoal-800 min-h-[44px]"
+            >
+              Close as lost
+            </button>
+          </div>
+        </form>
+      </div>
+    );
   }
 
   const debriefs = await listDebriefsForOpp(dealId);
