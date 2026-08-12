@@ -57,33 +57,45 @@ export default async function PainterPage({ params }: { params: Promise<{ token:
     // Today is already covered by the clock card above.
     .filter((sh) => sh.work_date > today)
     .slice(0, 8);
-  const scopeToday = day.assignments.length
-    ? await getCrewScopeForJob(day.assignments[0].job_id).catch(() => null)
-    : null;
+  // One scope per job, not just the first. A painter split across two jobs in a
+  // day saw only one of them and had no way to know the other existed — the
+  // page simply didn't mention it. Deduped by job so a doubled assignment
+  // doesn't print the same list twice.
+  const scopesToday = (
+    await Promise.all(
+      Array.from(new Set(day.assignments.map((a) => a.job_id))).map(async (jobId) => ({
+        jobId,
+        scope: await getCrewScopeForJob(jobId).catch(() => null),
+      }))
+    )
+  ).filter((x) => x.scope && x.scope.lines.length > 0) as Array<{
+    jobId: string;
+    scope: NonNullable<Awaited<ReturnType<typeof getCrewScopeForJob>>>;
+  }>;
 
   return (
     <main className="min-h-screen bg-ppp-charcoal-50/40 py-6 px-4">
       <div className="max-w-md mx-auto space-y-4">
         <PainterClock token={token} firstName={employee.first_name} day={day} dateLabel={dateLabel} es={es} />
 
-        {scopeToday && scopeToday.lines.length > 0 && (
-          <section className="rounded-xl border border-ppp-charcoal-200 bg-white p-4">
+        {scopesToday.map(({ jobId, scope }) => (
+          <section key={jobId} className="rounded-xl border border-ppp-charcoal-200 bg-white p-4">
             <h2 className="text-[13px] font-bold text-ppp-charcoal">
-              {scopeToday.areaLabel ? `${scopeToday.areaLabel} — ` : ""}
+              {scope.areaLabel ? `${scope.areaLabel} — ` : ""}
               {es ? "Tu trabajo hoy" : "Your work today"}
-              {scopeToday.isPartial && (
+              {scope.isPartial && (
                 <span className="font-normal text-ppp-charcoal-500">
                   {" "}
-                  ({scopeToday.lines.length} {es ? "de" : "of"} {scopeToday.totalLines})
+                  ({scope.lines.length} {es ? "de" : "of"} {scope.totalLines})
                 </span>
               )}
             </h2>
             <ul className="mt-2 space-y-1.5 list-disc pl-5 text-[13px] text-ppp-charcoal-700">
-              {scopeToday.lines.map((l, i) => (
+              {scope.lines.map((l, i) => (
                 <li key={i}>{l}</li>
               ))}
             </ul>
-            {scopeToday.isPartial && (
+            {scope.isPartial && (
               <p className="mt-2 text-[12px] font-semibold text-amber-800">
                 {es
                   ? "Solo estos puntos — el resto esta en otra orden de trabajo."
@@ -91,7 +103,7 @@ export default async function PainterPage({ params }: { params: Promise<{ token:
               </p>
             )}
           </section>
-        )}
+        ))}
 
         {upcoming.length > 0 && (
           <section className="rounded-xl border border-ppp-charcoal-200 bg-white p-4">

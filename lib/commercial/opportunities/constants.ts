@@ -490,6 +490,22 @@ export const WARN_TRANSITIONS: ReadonlySet<string> = new Set([
   // Post-sale backpedals
   "in_progress→pre_construction",
   "billing→in_progress",
+  // Pre-sale straight into the delivery lane. The deal jumps the contract
+  // divider without ever being recorded as WON, so it is invisible to every win
+  // metric while a close date gets stamped on it — a silent hole in the win
+  // count plus a fabricated decision. Worth a question before it happens.
+  "qualifying→post_sale_closed",
+  "estimating→post_sale_closed",
+  "proposal→post_sale_closed",
+  "qualifying→pre_construction",
+  "estimating→pre_construction",
+  "proposal→pre_construction",
+  "qualifying→in_progress",
+  "estimating→in_progress",
+  "proposal→in_progress",
+  "qualifying→billing",
+  "estimating→billing",
+  "proposal→billing",
   // Terminal reopen
   "post_sale_closed→qualifying",
   "pre_sale_closed→qualifying",
