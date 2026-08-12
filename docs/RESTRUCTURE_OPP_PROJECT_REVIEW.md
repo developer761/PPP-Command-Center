@@ -680,3 +680,23 @@ can round-trip a day off through `etDateOf` depending on the DB session TZ — b
 form writes it identically (symmetric), and it ties into the step-5 date-type inconsistency
 (rfp = TZ, proposal_due/follow_up = DATE). Worth a platform-wide date-type cleanup, not an
 inline-specific fix.
+
+---
+
+## ✅ CLOSED — `f15f32d` closes 3 findings (verified)
+
+- **Activity-rail email archive (my finding #2): FIXED.** `loadActivityEntries` now does a 5th
+  parallel read — `listArchivedEmails("opp", oppId)` (type-valid, `.catch(()=>[])`) — and emits
+  `kind:"email"` entries. The "chased her twice" story now shows.
+- **Activity `etDay` "fake ET" (my nit): FIXED.** `etDay` now returns a `/^\d{4}-\d{2}-\d{2}$/`
+  date-only string as-is (no false conversion) and converts a real TIMESTAMPTZ to its ET day via
+  `Intl.DateTimeFormat(...America/New_York)`; month-grouping follows it. A 9pm-ET event no longer
+  slips into the next month.
+- **Account-page dead code (build session's own step-3 deferral): DONE.** 687 lines removed
+  (7,417→6,772), brace-matched + `type `-prefix-aware so it didn't repeat the sweep that broke
+  last time. Independently confirmed: `npx tsc --noEmit` exit 0, 0 errors — no orphaned reference.
+
+**Remaining open after this commit:** step-7 (list delivery views show bid not contract),
+step-4 (skipped-stage never computed), step-5 (proposal_due_at/follow_up_at DATE-through-etDateOf
+off-by-one). One new LOW: `POST_CONTRACT_COLUMNS` is still a dead import at
+`opportunities/page.tsx:80` (the step-10 residual — different file from the account-page sweep).
