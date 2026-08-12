@@ -1657,7 +1657,12 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard label="Gross revenue" value={formatCentsCompact(dealGrossCents)} tone="brand" sub="billed to date · pre-tax" spark={dealRevenueMonthly.map((r) => r.value)} sparkLabels={dealRevenueMonthly.map((r) => r.label)} />
             <StatCard label="Job costs" value={formatCentsCompact(dealCostsTotalCents)} tone="amber" sub={dealCostsTotalCents === 0 ? "none logged" : dealFin.fieldOpsLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
-            <StatCard label="Net profit" value={`${dealNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+            {/* Neutral while provisional, like the Margin card beside it. With
+                no costs booked, net IS the full gross — painting that green
+                reads "healthy job" on a job nobody has spent anything on, which
+                is the misread the margin sweep set out to kill. It survived one
+                card to the left. */}
+            <StatCard label="Net profit" value={`${dealNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealMarginInfo.provisional ? "neutral" : dealNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
             {/* The label travels with the number. Reconciling the VALUE alone
                 still showed "100% · net ÷ gross" on a job with $0 costs — which
                 reads as a triumph when it actually means nothing's been spent
@@ -2715,7 +2720,7 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
           <StatCard label="Job costs" value={formatCentsCompact(costsCents)} tone="amber" sub={costsCents === 0 ? "none logged" : fin.fieldOpsLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
-          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={pnlMargin.provisional ? "neutral" : netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
           <StatCard
             label={pnlMargin.label}
             value={marginDisplay}
@@ -7676,7 +7681,25 @@ async function AccountKpisTab({
   const decidedCount = (overview?.won_opps_count ?? 0) + (overview?.lost_opps_count ?? 0);
   const bidLow = overview?.total_active_bid_low_cents ?? 0;
   const bidHigh = overview?.total_active_bid_high_cents ?? 0;
-  const bidRangeLabel = bidLow > 0 || bidHigh > 0 ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}` : "—";
+  // The SQL view sums the raw bid low/high columns, and the create forms stopped
+  // collecting them — pricing lives on the proposal now. So this tile read "—"
+  // beside an "Open bids: 3" count taken from the same status set, with live
+  // money showing on every deal block below it. Same proposal fallback the rest
+  // of the platform uses.
+  const openBidOpps = (await listCommercialOpportunities({ accountId })).filter((o) =>
+    PRE_SALE_OPEN_STATUSES.includes(o.status)
+  );
+  const openProposalTotals = await listCurrentProposalTotalByOpp(openBidOpps.map((o) => o.id));
+  const fallbackTotal = openBidOpps.reduce(
+    (sum, o) => sum + dealValueCents(o, openProposalTotals.get(o.id) ?? null),
+    0
+  );
+  const bidRangeLabel =
+    bidLow > 0 || bidHigh > 0
+      ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}`
+      : fallbackTotal > 0
+        ? formatCentsFull(fallbackTotal)
+        : "—";
   const hasInvoicing = rollup.invoiced_cents > 0;
   const isCredit = rollup.open_balance_cents === 0 && rollup.credit_cents > 0;
   const hasContract = production.contractValueCents > 0;
@@ -7736,7 +7759,7 @@ async function AccountKpisTab({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Gross revenue" value={formatCentsCompact(acctGrossCents)} tone="brand" sub="billed to date" spark={acctRevenueMonthly.map((r) => r.value)} sparkLabels={acctRevenueMonthly.map((r) => r.label)} />
           <StatCard label="Job costs" value={formatCentsCompact(acctCostsCents)} tone="amber" sub={acctCostsCents === 0 ? "none logged" : acctCrewLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
-          <StatCard label="Net profit" value={`${acctNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(acctNetCents))}`} tone={acctNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+          <StatCard label="Net profit" value={`${acctNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(acctNetCents))}`} tone={acctMargin.provisional ? "neutral" : acctNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
           <StatCard
             label={acctMargin.label}
             value={acctMarginDisplay}
@@ -7917,7 +7940,12 @@ async function AccountKpisTab({
           )}
           <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
             <MiniFig label="Open bids" value={String(openBidCount)} tone="blue" sub={openBidCount === 0 ? "no live bids" : "in progress"} />
-            <MiniFig label="Bid range" value={bidRangeLabel} tone="neutral" sub="open bids" />
+            <MiniFig
+              label={bidLow > 0 || bidHigh > 0 ? "Bid range" : "Open value"}
+              value={bidRangeLabel}
+              tone="neutral"
+              sub="open bids"
+            />
             <MiniFig label="Won / lost" value={`${overview?.won_opps_count ?? 0} / ${overview?.lost_opps_count ?? 0}`} tone="emerald" sub={decidedCount === 0 ? "no history" : `of ${decidedCount} decided`} />
           </div>
         </div>
