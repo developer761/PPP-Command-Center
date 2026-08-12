@@ -200,3 +200,17 @@ completed") is NOT met for the sales ladder: a deal moved straight to Sent still
 Pending-Approval as green-check "passed". The real reached-set is ALREADY fetched at `page.tsx:5156`
 (`listOpportunityStatusLog`) for the history display — thread its visited `to_status` set into the path bar's
 `skipped` prop to actually close it. (won-not-started half IS fixed; this is the skipped half.)
+
+---
+
+## ✅ VERIFY — `1a2103d` (item 8: retainage + warranty tiles). Complete.
+Both verified: retainage renders in the billing AND closed phases (was in NEITHER money tile before — a job
+holding 5% read "Collected" and looked done), computed via the shared `computeG702` (no new copy — the
+one-number-one-source lesson applied), sub = "% of contract". Warranty tile in the closed phase, counted in
+months, tone only in the last 60 days, "Expired" neutral. Both fetches phase-gated (retainage: billing||closed,
+warranty: closed) + `.catch()` degrade. No findings. §7 gaps CLOSED.
+
+## 🔔 STILL OPEN — tracking my two 5daf83b tails until they get a fix (not just handed off):
+1. **`job-costs/page.tsx:73`** header caption STILL "Margin = contract − cost" while :102/:178 say "billed − cost" — same-page contradiction.
+2. **Path-bar skipped-detection** still heuristic (`skipped={inDelivery && !decided && !hasWinDate ? ["won"] : []}`) — only "Closed Won" skipped; a deal moved straight to Sent still shows RFP/Estimating/Pending-Approval as "passed". Thread the reached-set from `page.tsx:5156` status log.
+Neither touched by `1a2103d`. Re-surfacing so they close, not linger.
