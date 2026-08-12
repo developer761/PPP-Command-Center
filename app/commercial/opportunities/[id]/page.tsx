@@ -1697,6 +1697,39 @@ export default async function OpportunityDetailPage({
           overdue" countdown for a decision that had already been made. The
           account page got this gate; this page was missed, and it is exactly
           where those deep-links land. */}
+      {/* A decided deal gets the numbers that actually exist. Gating the
+          forecast strip left a won or lost deal — reached by exactly the bell
+          and debrief deep-links that land here — with a header and no money at
+          all. */}
+      {dealPhase(opp) !== "pre_sale" && (
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <KpiTile
+            label="Status"
+            value={oppStatusDisplayLabel(opp.status, opp.sub_status)}
+            tooltip="Where this deal stands today."
+          />
+          <KpiTile
+            label={isLost(opp) ? "Lost on" : "Won on"}
+            value={opp.decided_at ? fmtEtDate(opp.decided_at) ?? "—" : "—"}
+            tooltip="The day this deal was decided — what 'Wins this month' counts."
+          />
+          <KpiTile
+            label="Contract"
+            value={
+              pageProposalTotal && pageProposalTotal > 0
+                ? formatCentsCompact(pageProposalTotal)
+                : "—"
+            }
+            tooltip="The signed proposal total for this deal."
+          />
+          <KpiTile
+            label="Probability"
+            value={`${opp.probability_pct}%`}
+            tooltip="Where this deal ended up — 100% on a win, 0% on a loss."
+          />
+        </section>
+      )}
+
       {dealPhase(opp) === "pre_sale" && (
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiTile
@@ -2873,16 +2906,23 @@ async function InfoTab({
           </svg>
         }
       >
-        <Field
-          label="Bid range"
-          value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
-          tooltip="Low–high estimate for the project's contract value. If you've quoted a firm number, set low=high."
-        />
-        <Field
-          label="Weighted"
-          value={formatCentsCompact(weightedPipelineCents(opp, oppProposalTotal))}
-          tooltip="Probability × midpoint bid. Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing."
-        />
+        {/* Forecast fields — pre-sale only, matching the KPI strip above and the
+            account page. A bid range and a weighted value are guesses about a
+            decision that, on a won or lost deal, has already been made. */}
+        {dealPhase(opp) === "pre_sale" && (
+          <>
+            <Field
+              label="Bid range"
+              value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
+              tooltip="Low–high estimate for the project's contract value. If you've quoted a firm number, set low=high."
+            />
+            <Field
+              label="Weighted"
+              value={formatCentsCompact(weightedPipelineCents(opp, oppProposalTotal))}
+              tooltip="Probability × midpoint bid. Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing."
+            />
+          </>
+        )}
         <Field
           label="Proposed start"
           value={opp.proposed_start_at?.slice(0, 10) ?? "—"}
