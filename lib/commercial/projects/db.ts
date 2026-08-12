@@ -8,7 +8,7 @@
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
-import { pickContractBaseCents } from "@/lib/commercial/aia/constants";
+import { pickContractBaseCents, contractProposalCents, type ContractProposalRow } from "@/lib/commercial/aia/constants";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { costBreakdownByOpp, emptyCostBreakdown, type CostBreakdown } from "@/lib/commercial/purchases/db";
 import { fieldOpsLaborByOpp } from "@/lib/commercial/field-ops/labor-cost";
@@ -231,17 +231,23 @@ export async function listProjects(opts: {
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
-  const acceptedProposalByOpp = new Map<string, number>();
-  const latestProposalByOpp = new Map<string, { rev: number; cents: number }>();
+  // Group per deal, then apply the ONE shared selection rule — the same
+  // function the single-opp path uses, so the two can't drift.
+  const propsByOpp = new Map<string, ContractProposalRow[]>();
   for (const p of propData) {
-    if (p.status === "won") {
-      // If somehow >1 won proposal, keep the largest (defensive; should be one).
-      acceptedProposalByOpp.set(p.opportunity_id, Math.max(acceptedProposalByOpp.get(p.opportunity_id) ?? 0, Number(p.total_cents)));
-    }
-    const cur = latestProposalByOpp.get(p.opportunity_id);
-    if (!cur || p.revision_number > cur.rev) {
-      latestProposalByOpp.set(p.opportunity_id, { rev: p.revision_number, cents: Number(p.total_cents) });
-    }
+    const list = propsByOpp.get(p.opportunity_id);
+    if (list) list.push(p);
+    else propsByOpp.set(p.opportunity_id, [p]);
+  }
+  const acceptedProposalByOpp = new Map<string, number>();
+  const latestProposalByOpp = new Map<string, { cents: number }>();
+  const pendingProposalByOpp = new Map<string, number>();
+  for (const [oppId, rows] of propsByOpp) {
+    const { acceptedProposalCents, latestProposalCents, pendingProposalCents } =
+      contractProposalCents(rows);
+    acceptedProposalByOpp.set(oppId, acceptedProposalCents);
+    latestProposalByOpp.set(oppId, { cents: latestProposalCents });
+    pendingProposalByOpp.set(oppId, pendingProposalCents);
   }
 
   // ── Batch: close-out package status per opp. Keep the most-advanced non-void
@@ -336,7 +342,11 @@ export async function listProjects(opts: {
       originalContractCents: latest?.original_contract_cents ?? 0,
       sovTotalCents: sovTotal,
       acceptedProposalCents: acceptedProposalByOpp.get(o.id) ?? 0,
+      // The signed contract remembered on the deal, for a won job whose winning
+      // proposal has since been superseded by a re-quote.
+      acceptedSnapshotCents: Number((o as { accepted_contract_cents?: number | string | null }).accepted_contract_cents ?? 0) || 0,
       latestProposalCents: latestProposalByOpp.get(o.id)?.cents ?? 0,
+      pendingProposalCents: pendingProposalByOpp.get(o.id) ?? 0,
       bidMidCents: bidMidCents(o),
     });
     const contractToDate = base + co.netApproved;

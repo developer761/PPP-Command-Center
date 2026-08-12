@@ -886,6 +886,24 @@ export async function markProposalOutcome(input: {
   } catch (err) {
     console.warn(`[markProposalOutcome] opp flip threw:`, err);
   }
+
+  // Snapshot the signed contract onto the deal. Needed HERE as well as in
+  // changeOpportunityStatus because of the branch just above: when the deal is
+  // already in delivery, the deal flip is deliberately skipped — so the
+  // deal-side hook never fires, and a job won straight into production would
+  // have no remembered contract at all. Idempotent, so the ordinary path
+  // reaching both hooks is harmless.
+  if (input.outcome === "won") {
+    try {
+      const { snapshotAcceptedContract } = await import(
+        "@/lib/commercial/projects/accepted-contract"
+      );
+      await snapshotAcceptedContract(proposalBefore.opportunity_id);
+    } catch (err) {
+      console.warn(`[markProposalOutcome] accepted-contract snapshot threw:`, err);
+    }
+  }
+
   return {
     ok: true,
     proposal: propResult.proposal,

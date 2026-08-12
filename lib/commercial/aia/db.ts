@@ -14,6 +14,8 @@ import {
   DEFAULT_RETAINAGE_PCT,
   type AiaG702,
   type AiaApplicationStatus,
+  contractProposalCents,
+  type ContractProposalRow,
 } from "./constants";
 
 export type AiaApplication = {
@@ -500,7 +502,9 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
     originalContractCents: app.original_contract_cents,
     sovTotalCents,
     acceptedProposalCents: ladder.acceptedProposalCents,
+    acceptedSnapshotCents: ladder.acceptedSnapshotCents,
     latestProposalCents: ladder.latestProposalCents,
+    pendingProposalCents: ladder.pendingProposalCents,
     bidMidCents: ladder.bidMidCents,
   });
   return computeG702({
@@ -522,12 +526,18 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
  */
 async function contractLadderInputs(
   opportunity_id: string
-): Promise<{ acceptedProposalCents: number; latestProposalCents: number; bidMidCents: number }> {
+): Promise<{
+  acceptedProposalCents: number;
+  acceptedSnapshotCents: number;
+  latestProposalCents: number;
+  pendingProposalCents: number;
+  bidMidCents: number;
+}> {
   const sb = commercialDb();
   const [{ data: oppRow }, { data: propRows }] = await Promise.all([
     sb
       .from("commercial_opportunities")
-      .select("bid_value_low_cents, bid_value_high_cents")
+      .select("bid_value_low_cents, bid_value_high_cents, accepted_contract_cents")
       .eq("id", opportunity_id)
       .maybeSingle(),
     sb
@@ -537,22 +547,26 @@ async function contractLadderInputs(
       .is("deleted_at", null)
       .order("id", { ascending: true }),
   ]);
-  const o = oppRow as { bid_value_low_cents: number | null; bid_value_high_cents: number | null } | null;
+  const o = oppRow as {
+    bid_value_low_cents: number | null;
+    bid_value_high_cents: number | null;
+    accepted_contract_cents?: number | string | null;
+  } | null;
+  const acceptedSnapshotCents = Number(o?.accepted_contract_cents ?? 0) || 0;
   const bidMidCents =
     o?.bid_value_low_cents != null && o?.bid_value_high_cents != null
       ? Math.round((o.bid_value_low_cents + o.bid_value_high_cents) / 2)
       : o?.bid_value_low_cents ?? o?.bid_value_high_cents ?? 0;
-  let acceptedProposalCents = 0;
-  let latestProposalCents = 0;
-  let latestRev = -1;
-  for (const r of (propRows ?? []) as { total_cents: number; status: string; revision_number: number }[]) {
-    if (r.status === "won") acceptedProposalCents = Math.max(acceptedProposalCents, Number(r.total_cents));
-    if (r.revision_number > latestRev) {
-      latestRev = r.revision_number;
-      latestProposalCents = Number(r.total_cents);
-    }
-  }
-  return { acceptedProposalCents, latestProposalCents, bidMidCents };
+  const { acceptedProposalCents, latestProposalCents, pendingProposalCents } = contractProposalCents(
+    (propRows ?? []) as ContractProposalRow[]
+  );
+  return {
+    acceptedProposalCents,
+    acceptedSnapshotCents,
+    latestProposalCents,
+    pendingProposalCents,
+    bidMidCents,
+  };
 }
 
 /**
@@ -584,7 +598,9 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
     originalContractCents: app?.original_contract_cents ?? 0,
     sovTotalCents,
     acceptedProposalCents: ladder.acceptedProposalCents,
+    acceptedSnapshotCents: ladder.acceptedSnapshotCents,
     latestProposalCents: ladder.latestProposalCents,
+    pendingProposalCents: ladder.pendingProposalCents,
     bidMidCents: ladder.bidMidCents,
   });
 }

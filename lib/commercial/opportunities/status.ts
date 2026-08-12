@@ -604,6 +604,25 @@ export async function changeOpportunityStatus(
   }
   }
 
+  // Remember the signed contract on the deal, AFTER the proposal cascade — the
+  // cascade is what flips the current proposal to `won`, so running this before
+  // it would find nothing to snapshot. Winning is recorded on the proposal, and
+  // the next revision supersedes it; without this the agreed number is gone the
+  // moment someone re-quotes the job.
+  if (input.to_status === "pre_sale_closed" && nextSubStatus === "won") {
+    try {
+      const { snapshotAcceptedContract } = await import(
+        "@/lib/commercial/projects/accepted-contract"
+      );
+      await snapshotAcceptedContract(input.opp_id);
+    } catch (err) {
+      console.warn(
+        "[changeOpportunityStatus] accepted-contract snapshot threw:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   // Fan out a bell + email to every active team member on the opp
   // (minus the actor). Fire-and-forget — never blocks the status flip.
   // Helper handles the self-skip + inactive-skip + fanout query.

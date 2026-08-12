@@ -132,10 +132,29 @@ export function pickContractBaseCents(opts: {
   sovTotalCents: number;
   /** Total of the ACCEPTED (won) proposal — the signed contract number. */
   acceptedProposalCents?: number;
-  /** Total of the LATEST proposal on the deal (highest revision), used when no
-   *  proposal is won yet — so the contract tracks the most recent quote, never
-   *  the first one. */
+  /**
+   * The signed contract REMEMBERED ON THE DEAL (`accepted_contract_cents`).
+   *
+   * Needed because winning is recorded on the proposal, and creating a revision
+   * supersedes it — so the moment an estimator re-quotes a won job, no proposal
+   * reads `won` and the fact that $450k was signed disappears from the
+   * proposals table entirely. The deal remembers it instead.
+   */
+  acceptedSnapshotCents?: number;
+  /** Total of the LATEST proposal the customer has actually SEEN or decided on
+   *  (highest revision among sent/won/lost/expired/superseded), used when no
+   *  proposal is won yet — so the contract tracks the most recent real quote,
+   *  never the first one. */
   latestProposalCents?: number;
+  /**
+   * Total of the latest PRE-SEND proposal (draft / pending approval / approved).
+   *
+   * The bottom rung, below even the bid midpoint. A number nobody outside the
+   * office has seen must never outrank one they have — but it beats showing a
+   * deal no contract at all, which is what happened once the bid low/high fields
+   * were dropped from the create forms and `bidMidCents` became 0 for most deals.
+   */
+  pendingProposalCents?: number;
   bidMidCents: number;
 }): number {
   // Karan 2026-08 (smoke-test fix): a WON proposal IS the signed contract and
@@ -143,11 +162,79 @@ export function pickContractBaseCents(opts: {
   // AIA original_contract seeded from an old bid. So the proposal sits at the
   // TOP of the ladder: won first, then the latest proposal if none is won yet.
   if (opts.acceptedProposalCents && opts.acceptedProposalCents > 0) return opts.acceptedProposalCents;
+  // The remembered signed contract, for a won deal whose winning proposal was
+  // superseded by a re-quote. Below the live `won` total on purpose: if a
+  // proposal says `won` right now, that is the better answer, and re-winning a
+  // deal re-writes the snapshot anyway.
+  if (opts.acceptedSnapshotCents && opts.acceptedSnapshotCents > 0) return opts.acceptedSnapshotCents;
   if (opts.latestProposalCents && opts.latestProposalCents > 0) return opts.latestProposalCents;
-  // No proposal at all: fall back to the AIA doc's explicit contract / SOV
-  // (its system-of-record once billing starts), else the bid midpoint.
+  // No proposal the customer has seen: fall back to the AIA doc's explicit
+  // contract / SOV (its system-of-record once billing starts), else the bid
+  // midpoint, else an in-progress proposal as a last resort.
+  // Once an AIA app exists it IS the system of record — answer from the document
+  // even when that answer is zero. Falling past it to a bid range or a draft
+  // would put a number on a certificate that the certificate doesn't contain.
   if (opts.hasBillingApp) {
     return opts.originalContractCents > 0 ? opts.originalContractCents : opts.sovTotalCents;
   }
-  return opts.bidMidCents;
+  if (opts.bidMidCents > 0) return opts.bidMidCents;
+  return opts.pendingProposalCents ?? 0;
+}
+
+/** The proposal fields the contract ladder needs. */
+export type ContractProposalRow = {
+  total_cents: number | string;
+  status: string;
+  revision_number: number;
+};
+
+/**
+ * Which proposal totals may stand in as the contract — the ONE rule, shared by
+ * the batch path (`listProjects`) and the single-opp path
+ * (`contractLadderInputs`).
+ *
+ * It lived in both places, copied. That is the same defect twice over: a
+ * divergence between them shows up as one job reporting two different contract
+ * values on two screens, which is precisely what the ladder exists to prevent.
+ *
+ * The split is SEEN vs UNSEEN. `latestProposalCents` covers proposals the
+ * customer has actually received or decided on (sent / won / lost / expired /
+ * superseded). The pre-send trio (draft, pending approval, approved) is returned
+ * separately as `pendingProposalCents`, for the bottom rung only.
+ *
+ * That split is the whole fix: an estimator opening a revision and typing its
+ * first line must not move a number printed on a document the customer signed.
+ * `superseded` stays eligible — superseding is just how a revision bump retires
+ * the previous one, and that total was really sent to a real GC.
+ */
+const PRE_SEND_PROPOSAL_STATUSES = new Set(["draft", "pending_approval", "approved"]);
+
+export function contractProposalCents(rows: ContractProposalRow[]): {
+  acceptedProposalCents: number;
+  latestProposalCents: number;
+  pendingProposalCents: number;
+} {
+  let acceptedProposalCents = 0;
+  let latestProposalCents = 0;
+  let latestRev = -1;
+  let pendingProposalCents = 0;
+  let pendingRev = -1;
+  for (const r of rows) {
+    const cents = Number(r.total_cents) || 0;
+    // If somehow >1 won proposal, keep the largest (defensive; should be one).
+    if (r.status === "won") acceptedProposalCents = Math.max(acceptedProposalCents, cents);
+
+    if (PRE_SEND_PROPOSAL_STATUSES.has(r.status)) {
+      if (r.revision_number > pendingRev) {
+        pendingRev = r.revision_number;
+        pendingProposalCents = cents;
+      }
+      continue;
+    }
+    if (r.revision_number > latestRev) {
+      latestRev = r.revision_number;
+      latestProposalCents = cents;
+    }
+  }
+  return { acceptedProposalCents, latestProposalCents, pendingProposalCents };
 }
