@@ -264,20 +264,24 @@ export function StatusSubStatusPicker({
               </option>
             ))}
           </select>
+          {/* Karan 2026-08-12 ("not so bulky"): these were full sentences and
+              cost a two-line paragraph on a card people barely use. Same
+              distinctions, told in a phrase. Kept VISIBLE rather than moved to
+              a hover tooltip — there is no hover on a phone. */}
           <p className={HINT_CLS}>
             {status === "proposal"
-              ? "Proposal Sent = quote out with the GC. Follow Up = we're chasing them."
+              ? "Sent = out with the GC · Follow Up = chasing"
               : status === "qualifying"
-              ? "Solicitation = they invited a bid. RFP = formal package landed. Estimating = we're putting a price together."
+              ? "Solicitation = invited · RFP = package landed · Estimating = pricing"
               : status === "estimating"
-              ? "Estimating = we're pricing. Proposal Pending Approval = priced, waiting on internal sign-off."
+              ? "Estimating = pricing · Pending Approval = waiting on sign-off"
               : status === "in_progress"
-              ? "WIP On Site = crew is actively painting. WIP On Hold = paused (weather, access, GC change order, etc.)."
+              ? "On Site = crew working · On Hold = paused"
               : status === "billing"
-              ? "Substantial Completion = walkthrough done. Completed and Invoiced = final invoice out."
+              ? "Substantial Completion = walkthrough done · Invoiced = final out"
               : status === "post_sale_closed"
-              ? "Completed / Close-Out Docs = O&M / warranty / attic stock pending. Closed = fully done."
-              : "Where this opportunity sits inside the lane."}
+              ? "Close-Out Docs = warranty/O&M pending · Closed = done"
+              : "Where this sits inside the stage."}
           </p>
         </label>
       </div>
@@ -306,7 +310,7 @@ export function StatusSubStatusPicker({
             >
               {followUpToggled ? <path d="M5 12h14" /> : <><path d="M12 5v14" /><path d="M5 12h14" /></>}
             </svg>
-            {followUpToggled ? "Skip follow-up reminder" : "Schedule a follow-up reminder"}
+            {followUpToggled ? "Skip follow-up" : "Add follow-up"}
           </button>
         </div>
       )}

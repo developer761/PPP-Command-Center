@@ -3328,48 +3328,32 @@ function ChangeStatusCard({
   // can surface them up-front in a "Heads-up" block (the per-option
   // "(unusual)" suffix already labels them in the dropdown, but the
   // up-front block makes the warning visible BEFORE the user picks).
-  const warnNext = nextStatuses.filter((s) => shouldWarnTransition(opp.status, s));
   // Recomputed here rather than threaded through as a prop — it is a pure
   // function of the tuple, so a second call cannot disagree with the first.
   const sensible = sensibleNextStatuses(opp.status, opp.sub_status);
   return (
-    <section className={`bg-surface border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50 ${className ?? ""}`}>
-      <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
-        <div>
-          <h2 className="text-base font-bold text-ppp-charcoal flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[14px]" aria-hidden>→</span>
-            Move this opportunity forward
-          </h2>
-          <p className="text-[12px] text-ppp-charcoal-600 mt-1">
-            Currently <strong className="text-ppp-charcoal">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>.
-            {" "}
-            {sensible.length > 0 ? (
-              <>Most moves happen on their own as proposals get built and sent — this is for the ones we can&rsquo;t see, like a verbal yes or a decision not to bid. Closing needs a short note.</>
-            ) : (
-              <>This job moves on its own as work gets recorded. Use this only to correct it.</>
-            )}
-          </p>
-        </div>
+    // Karan 2026-08-12: "make it smaller and stuff and not so bulky". It was a
+    // full emerald hero card with a ringed border, an icon bubble, a
+    // three-line paragraph and an amber warning block — an amount of furniture
+    // that only made sense when this WAS the way a deal moved. It is the
+    // exception now, so it should read like one: a quiet bordered card with a
+    // one-line explanation. The warning block is gone because the picker no
+    // longer offers the moves it was warning about.
+    <section className={`bg-surface border border-ppp-charcoal-200 rounded-xl p-3.5 ${className ?? ""}`}>
+      <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2.5">
+        <h2 className="text-[13px] font-bold text-ppp-charcoal">Change status</h2>
+        <p className="text-[11.5px] text-ppp-charcoal-500">
+          {sensible.length > 0
+            ? "For what we can\u2019t see \u2014 a verbal yes, or a no-bid."
+            : "Corrections only \u2014 this job moves on its own."}
+        </p>
       </div>
-      {warnNext.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-[12px] text-amber-800">
-          <strong>Heads up</strong> — these transitions are valid but unusual:
-          {" "}
-          {warnNext.map((s, i) => (
-            <span key={s}>
-              <em>{oppStatusDisplayLabel(opp.status, opp.sub_status)} → {opportunityStatusLabel(s)}</em>
-              {i < warnNext.length - 1 ? ", " : ""}
-            </span>
-          ))}
-          . Double-check before submitting.
-        </div>
-      )}
       {nextStatuses.length === 0 ? (
         <p className="text-[12px] text-ppp-charcoal-500 italic">
           This status has no outbound transitions. Use <em>Reopen</em> above to re-engage — it starts a fresh Solicitation.
         </p>
       ) : (
-        <form action={changeStatusAction} className="space-y-3">
+        <form action={changeStatusAction} className="space-y-2.5">
           <input type="hidden" name="opp_id" value={opp.id} />
           {/* Phase E-4: cascading picker — replaces the raw to_status
               <select>. Renders `to_status` + `to_sub_status` +
@@ -3412,15 +3396,15 @@ function ChangeStatusCard({
               type="submit"
               name="debrief_skip"
               value="1"
-              className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-medium hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 transition-colors min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12.5px] font-medium hover:bg-ppp-charcoal-50 transition-colors min-h-[44px] sm:min-h-[36px] touch-manipulation"
             >
-              Save status, debrief later
+              Debrief later
             </button>
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors min-h-[44px] sm:min-h-[36px] touch-manipulation"
             >
-              Move forward →
+              Save
             </button>
           </div>
         </form>
