@@ -30,7 +30,7 @@ never be in flight together.**
 
 ## 1. Build order
 
-### ▶ PHASE A — Crew role *(spec: CREW_ROLE_BUILD_SPEC)*
+### ✅ PHASE A — Crew role — SHIPPED *(spec: CREW_ROLE_BUILD_SPEC)*
 Security is already correct (deny-by-default allowlist, no leak). The *feature*
 is broken: 3 of 4 tiles bounce, the full 25-link sidebar renders.
 
@@ -47,7 +47,7 @@ is broken: 3 of 4 tiles bounce, the full 25-link sidebar renders.
 
 Migration 125 already applied.
 
-### ▶ PHASE B — Overview phase-swap + Closed column *(spec: OVERVIEW_… §2 stageRank · §3 Overview · §5 Closed column)*
+### ✅ PHASE B — Overview phase-swap + Closed column — SHIPPED *(spec: OVERVIEW_… §2 stageRank · §3 Overview · §5 Closed column)*
 Display work, no status engine. Lands the deal-Overview KPI swap (a pre-sale bid
 currently shows the delivery Profitability block with $0 across it) and the
 visible Closed column.
@@ -55,7 +55,7 @@ visible Closed column.
 Doing B before C on purpose: it's the same page as C's notifications but carries
 none of C's status-write risk, so a mistake here is visible, not silent.
 
-### ▶ PHASE C — Auto-advance engine *(spec: OVERVIEW_… §4 auto-advance)*
+### ✅ PHASE C — Auto-advance engine — SHIPPED + audited clean (AUTOADVANCE_AUDIT_2026_08) *(spec: OVERVIEW_… §4 auto-advance)*
 The riskiest item — it writes statuses. Requires the shared
 `stageRank(status, sub)` helper used by **all three** call paths (live proposal
 cascade, page-load reconciler, new auto-advance), forward-only, terminal
@@ -65,7 +65,7 @@ Also fixes a **live** bug: the reconciler is bidirectional today, so advancing a
 deal and then opening an R2 draft yanks it back to Estimating. Making it
 forward-only ends that ping-pong.
 
-### ▶ PHASE C.5 — Consistency punch-list *(doc: CONSISTENCY_PUNCHLIST_2026_08.md)*
+### 🟡 PHASE C.5 — Consistency punch-list — DOC ONLY, NOT BUILT *(doc: CONSISTENCY_PUNCHLIST_2026_08.md)*
 27 verified cross-surface inconsistencies from a 6-dimension consistency sweep —
 same metric showing two numbers (win rate, margin, "Invoiced" pre-tax vs
 with-tax), a "needs debrief" badge that can't reach zero, one deal naming
@@ -74,7 +74,7 @@ and confusing empty-states/flow. **Surgical items (H3, M1, M4–M6, L2–L9) bat
 immediately**; five items (H1/H2/H4/H6/M7) gate on Karan's D1–D5 answers in that
 doc. Do the surgical batch alongside B/C; the gated ones after Karan answers.
 
-### ▶ PHASE C.6 — Completeness punch-list *(doc: COMPLETENESS_PUNCHLIST_2026_08.md)*
+### 🟡 PHASE C.6 — Completeness punch-list — DOC ONLY, NOT BUILT *(doc: COMPLETENESS_PUNCHLIST_2026_08.md)*
 20 verified "should've-been-caught" gaps — plumbing built but unwired, silent
 actions, outputs missing context. Do the **money/dispatch** ones first (C2 void
 hard-deletes CO billing; C3 tax-exempt skipped on CO path; C4 deal-delete
@@ -82,7 +82,7 @@ confirm understates cascade; C5 deactivated employee still scheduled), then the
 one mechanical batch (C7–C10: ~9 mutations swallow their failure Result), then
 the rest. C1 (proposal PDF hardcoded footer) is high — thread getOperatingCompany.
 
-### ▶ PHASE C.7 — Flow + logic punch-list *(doc: FLOW_LOGIC_PUNCHLIST_2026_08.md)*
+### 🟡 PHASE C.7 — Flow + logic punch-list — DOC ONLY, NOT BUILT *(doc: FLOW_LOGIC_PUNCHLIST_2026_08.md)*
 11 verified broken-flow / wrong-logic items. **F1 + F2 first, above everything**:
 re-quoting a WON deal silently swaps the signed contract for an in-progress
 draft (contract/margin/AIA all follow it), and AIA G702/G703 stop footing on any
@@ -92,7 +92,7 @@ payment, F6 AIA original-contract ignored), then the flow breaks (F7 drag-to-
 Proposal reverts — ties to auto-advance; F8 Start-Project maze; F9 lost-flip
 leaves the account; F10 due-date TZ off by a day).
 
-### ▶ PHASE C.8 — Re-audit of the shipped batch *(doc: REAUDIT_SHIPPED_2026_08.md)*
+### 🟡 PHASE C.8 — Re-audit of the shipped batch — R1–R6 FIXED, R7–R23 OPEN *(doc: REAUDIT_SHIPPED_2026_08.md)*
 Side-by-side re-audit of the batch that cleared C.5/§3/§5 items. Structure is
 mostly good but details regressed — **fix before the auto-advance handoff**.
 **R1 first: the margin fix was built CONTRACT-based, the opposite of decision
@@ -102,6 +102,15 @@ fully-closed account's board — the §5 flood-guard wasn't applied) and **R4** 
 crew welcome-email `<10min` suppression makes a same-minute new hire get no
 schedule/scope email + no clock nudge). Then R5/R6 crew scope (1-of-4 email paths;
 alternates folded in) and the R7–R16 half-solves.
+
+### ▶ PHASE C.9 — Auto-advance follow-ups *(doc: AUTOADVANCE_AUDIT_2026_08.md)*
+Engine verdict was SOLID; three non-blocking follow-ups remain. **A2 first** —
+`markProposalOutcome` is a live second deal-state writer with no `source` and no
+forward-only guard, which is the one-authority rule the engine exists to
+enforce. Then A1 (`decided_at` not restamped on a won↔lost re-decision) and A3
+(`decided_at` never stamped on a manual pre-sale→delivery jump, so the win is
+invisible in "Wins this month"). Also: `foldAutoAdvanceTargets` is tested but
+wired to nothing — wire it or drop it.
 
 ### ▶ PHASE D — Full re-audit
 Fresh persona + adversarial agents over everything from A–C. Non-negotiable:
