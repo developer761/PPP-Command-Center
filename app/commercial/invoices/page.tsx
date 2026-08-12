@@ -40,7 +40,7 @@ import { pickFirst } from "@/lib/commercial/form-utils";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { listProducts } from "@/lib/commercial/products/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
-import { resolveTaxForZip, thouToPct, type TaxJurisdictionLite } from "@/lib/commercial/tax/constants";
+import { type TaxJurisdictionLite } from "@/lib/commercial/tax/constants";
 import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
 
 export const dynamic = "force-dynamic";
@@ -1826,11 +1826,12 @@ function FullDetailByOpp({
       {oppOrder.map(([oppId, groupInvoices]) => {
         const opp = oppById.get(oppId);
         const account = opp ? accountById.get(opp.account_id) : null;
-        // Sales tax by ZIP: resolve the project's property ZIP → jurisdiction
-        // and pre-fill the new-invoice tax %. Null when no ZIP / no match /
-        // feature unconfigured; the field then stays blank for manual entry.
-        const taxHit = resolveTaxForZip(opp?.property_zip, taxJurisdictions ?? []);
-        const suggestedTaxPct = taxHit ? thouToPct(taxHit.rateThou) : null;
+        // A ZIP-derived "suggested tax %" used to be computed here and never
+        // read. Removed rather than left lying around: it resolved tax from the
+        // property ZIP alone, with no check on whether the customer is
+        // tax-exempt — the exact bug just fixed on the change-order path. Dead
+        // code that computes tax wrongly is what someone wires up later.
+        // Invoice creation resolves tax centrally, exemption included.
         // 2026-07-29 financial truth: "Invoiced" = ISSUED only (drafts aren't
         // billed yet). Drafts carried separately + shown as "N drafts not yet
         // sent" so this ties out with the project card + Projects tab.

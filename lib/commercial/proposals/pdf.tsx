@@ -1166,8 +1166,28 @@ function ExclusionsBlock({ exclusions }: { exclusions: string[] }) {
 // prints a separate "Labor" table via InclusionsInternal, where the estimator's
 // qty x rate math is the point.
 
-function EstimatorBlock({ e }: { e: ProposalEstimatorSnapshot }) {
-  if (!e.name && !e.email && !e.phone) return null;
+function EstimatorBlock({
+  e,
+  company,
+}: {
+  e: ProposalEstimatorSnapshot;
+  company?: OperatingCompany | null;
+}) {
+  // No estimator on the deal and nobody typed one — the block used to disappear
+  // entirely, so a proposal went to a GC with no named point of contact at all.
+  // Whoever reads it has a question; give them somewhere to send it. The
+  // company's own details are the honest fallback: not a person, but reachable.
+  if (!e.name && !e.email && !e.phone) {
+    if (!company?.phone && !company?.email) return null;
+    return (
+      <View style={styles.estBlock}>
+        <Text style={styles.estHeader}>Questions:</Text>
+        <Text style={styles.estName}>{company.name}</Text>
+        {company.phone && <Text style={styles.estRow}>{company.phone}</Text>}
+        {company.email && <Text style={styles.estRow}>{company.email}</Text>}
+      </View>
+    );
+  }
   return (
     <View style={styles.estBlock}>
       {/* Karan 2026-07-17 (Katie feedback): reference PDF has an
@@ -1386,7 +1406,7 @@ export function ProposalPdfDocument({
             in the reference. Sign-and-return line comes last, well
             below the estimator, so it doesn't split the natural
             "here's the number, here's who to reach" flow. */}
-        <EstimatorBlock e={proposal.estimator_snapshot_json} />
+        <EstimatorBlock e={proposal.estimator_snapshot_json} company={company} />
 
         {showSignatureBlock && <SignatureBlock />}
 

@@ -37,6 +37,10 @@ export function formatCentsCompact(cents: number): string {
 /** Format cents as full "$1,234.56" for line items + totals. Negatives read
  *  "-$1,234.56" (sign before the $), not "$-1,234.56". */
 export function formatCentsFull(cents: number): string {
+  // Same guard `formatCentsCompact` got in the 2026-08 edge audit. This one was
+  // missed, and it is the helper used for line items and totals — the places a
+  // "$NaN" would be most alarming to a customer reading an invoice.
+  if (!Number.isFinite(cents)) return "$0.00";
   const neg = cents < 0;
   const dollars = Math.abs(cents) / 100;
   const body = `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

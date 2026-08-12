@@ -6777,15 +6777,6 @@ async function NotesTab({ accountId }: { accountId: string }) {
   );
 }
 
-function ComingSoonTab({ label, phase }: { label: string; phase: string }) {
-  return (
-    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-      <strong className="block text-ppp-charcoal">{label} tab</strong>
-      <p className="mt-1">Coming {phase} in the Phase 1 build.</p>
-    </div>
-  );
-}
-
 /**
  * Karan 2026-07-08: inline-edit Card with AUTOSAVE. When `section` +
  * `accountId` are provided, the card body wraps its children in a

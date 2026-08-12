@@ -1296,6 +1296,18 @@ export async function InvoiceDetailView({
           <div className="text-[12.5px] text-ppp-charcoal-600 space-y-1 max-w-xs">
             <div className="flex justify-between gap-4"><span>Subtotal</span><span className="tabular-nums font-semibold text-ppp-charcoal">{formatCentsFull(invoice.subtotal_cents)}</span></div>
             {invoice.tax_pct > 0 && <div className="flex justify-between gap-4"><span>Tax ({invoice.tax_pct}%)</span><span className="tabular-nums">{formatCentsFull(invoice.total_cents - invoice.subtotal_cents)}</span></div>}
+            {/* A zero-tax invoice with nothing explaining WHY is the one a GC's
+                accounts-payable team queries. The certificate number is already
+                collected on the account and was surfaced nowhere. */}
+            {invoice.tax_pct === 0 && account?.tax_exempt && (
+              <div className="flex justify-between gap-4 text-ppp-charcoal-500">
+                <span>
+                  Tax-exempt
+                  {account.tax_exempt_cert_number ? ` — Cert #${account.tax_exempt_cert_number}` : ""}
+                </span>
+                <span className="tabular-nums">{formatCentsFull(0)}</span>
+              </div>
+            )}
             <div className="flex justify-between gap-4 border-t border-ppp-charcoal-100 pt-1 font-bold text-ppp-charcoal"><span>Total</span><span className="tabular-nums text-ppp-blue-700">{formatCentsFull(invoice.total_cents)}</span></div>
           </div>
         )}
