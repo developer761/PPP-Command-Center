@@ -89,8 +89,19 @@ function safeBack(raw: string | undefined | null): string | null {
  *  round-trip (adds ? or & as needed). No-op when there's no back context. */
 function withBack(url: string, back: string | null): string {
   if (!back) return url;
+  // When the submittal was opened INSIDE the deal drill-in, that URL is the
+  // destination, not a breadcrumb to carry along: the detail renders there, so
+  // redirecting to the standalone page after a save would throw the user out of
+  // the deal they never left — the exact jump this whole change removes.
+  // The flags the action wanted to set (?saved=1, ?error=…) come with it.
+  if (DRILL_IN_RE.test(back)) {
+    const q = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
+    return q ? `${back}${back.includes("?") ? "&" : "?"}${q}` : back;
+  }
   return `${url}${url.includes("?") ? "&" : "?"}back=${encodeURIComponent(back)}`;
 }
+/** A deal drill-in URL — `/commercial/accounts/<uuid>?tab=projects&project=<uuid>…` */
+const DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&project=[0-9a-f-]{36}/i;
 /** The guarded origin an action received via its hidden `back` input. */
 function formBack(fd: FormData): string | null {
   return safeBack(String(fd.get("back") ?? "") || undefined);
@@ -193,6 +204,9 @@ async function saveCoverAutosaveAction(formData: FormData): Promise<void> {
   });
   if (!result.ok) throw new Error(result.error);
   revalidatePath(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`);
+  // The same submittal also renders inside the deal drill-in, which is a
+  // different route — without this an inline save shows stale data.
+  revalidatePath(`/commercial/accounts/${account_id}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -697,10 +711,44 @@ export default async function SubmittalDetailPage({
   params: PP;
   searchParams: SP;
 }) {
-  const { id: account_id, dealId: opportunity_id, sid: submittal_id } = await params;
-  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(submittal_id)) notFound();
+  const { id, dealId, sid } = await params;
+  return (
+    <SubmittalDetailView
+      account_id={id}
+      opportunity_id={dealId}
+      submittal_id={sid}
+      sp={await searchParams}
+    />
+  );
+}
 
-  const sp = await searchParams;
+/**
+ * The submittal detail, renderable as its own route OR inside the deal drill-in.
+ *
+ * Everything for a deal belongs under that deal — clicking SUB-001 used to throw
+ * you onto a standalone page, losing the account and deal chrome and the tab you
+ * were on. The tools that already got this right (work orders, change orders,
+ * AIA, costs, closeout) all use exactly this shape: one component, a `variant`,
+ * and the route becomes a thin wrapper.
+ *
+ * `inline` suppresses this page's own back link and title, because the drill-in
+ * supplies both. The ownership guard below runs either way — an inline render
+ * must not be the thing that skips it.
+ */
+export async function SubmittalDetailView({
+  account_id,
+  opportunity_id,
+  submittal_id,
+  sp,
+  inline = false,
+}: {
+  account_id: string;
+  opportunity_id: string;
+  submittal_id: string;
+  sp: Awaited<SP>;
+  inline?: boolean;
+}) {
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(submittal_id)) notFound();
   const errorMessage = pickFirst(sp.error);
   const saved = pickFirst(sp.saved) === "1";
   // Bulk-link picker state preservation on error (audit Round 3).
@@ -729,9 +777,17 @@ export default async function SubmittalDetailPage({
   if (!ownRow || (ownRow as { account_id: string }).account_id !== account_id) notFound();
 
   // The submittal log now lives inline under the deal's Project sub-tab.
-  const backTo = safeBack(pickFirst(sp.back));
-  const submittalsListHref =
-    backTo ?? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`;
+  // Inline, every action must come back to the drill-in with this submittal
+  // still open — otherwise saving the cover sheet silently relocates you.
+  const backTo = inline
+    ? `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals&sid=${submittal_id}`
+    : safeBack(pickFirst(sp.back));
+  // Inline, "all submittals" means the drill-in's own Submittals tab — closing
+  // an item must not bounce you out to the standalone list you were avoiding.
+  const drillInSubmittals = `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`;
+  const submittalsListHref = inline
+    ? drillInSubmittals
+    : (backTo ?? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`);
 
   // Finish-code suggestions for the items editor (autocomplete-friendly).
   // Attachments — linked + unlinked, fetched in parallel for the
@@ -789,15 +845,27 @@ export default async function SubmittalDetailPage({
   const addressDefault = (submittal.to_address_lines ?? []).join("\n");
 
   return (
-    <div className="space-y-5 max-w-4xl">
-      {/* Back link */}
-      <Link
-        href={submittalsListHref}
-        className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 min-h-[44px] touch-manipulation"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
-        Back to submittals
-      </Link>
+    <div className={inline ? "space-y-5" : "space-y-5 max-w-4xl"}>
+      {/* Back link — suppressed inline, where the drill-in's own tab bar is the
+          way back and a second one just stacks two "back"s on one screen. */}
+      {!inline && (
+        <Link
+          href={submittalsListHref}
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 min-h-[44px] touch-manipulation"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
+          Back to submittals
+        </Link>
+      )}
+      {inline && (
+        <Link
+          href={submittalsListHref}
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 min-h-[44px] touch-manipulation"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
+          All submittals
+        </Link>
+      )}
 
       {/* Banners */}
       {errorMessage && (

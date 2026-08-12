@@ -114,6 +114,7 @@ import { CloseoutTool } from "./closeout/[dealId]/closeout-tool";
 import { WorkOrderTool } from "./work-order/[dealId]/work-order-tool";
 import { AiaTool } from "./aia/[dealId]/aia-tool";
 import { SubmittalsTool } from "./submittals/[dealId]/submittals-tool";
+import { SubmittalDetailView } from "./submittals/[dealId]/[sid]/page";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -189,6 +190,15 @@ type SP = Promise<{
   error?: string;
   /** Which of a deal's work orders is open (migration 123 allows several). */
   wo?: string;
+  /**
+   * Which submittal is open inside the deal drill-in.
+   *
+   * Named `sid`, not `sub` — `sub` is already this page's sub-nav param, and
+   * reusing it would make every link ambiguous the moment sub-nav comes back.
+   * Matches the convention the tools that already work in place use: `wo`,
+   * `app`, `pkg`, `edit_co`, `edit_purchase`.
+   */
+  sid?: string;
   team_added?: string;
   /** What assigning a team just applied, e.g. "Added 4 team members". */
   team_applied?: string;
@@ -2093,14 +2103,27 @@ async function ProjectToolsPanel({
           sp={{ pkg: sp?.pkg, error: sp?.error, ok: sp?.ok }}
         />
       )}
-      {projectTool === "submittals" && (
-        <SubmittalsTool
-          id={accountId}
-          dealId={dealId}
-          variant="inline"
-          sp={{ error: sp?.error }}
-        />
-      )}
+      {projectTool === "submittals" &&
+        (sp?.sid && UUID_RE.test(String(sp.sid)) ? (
+          // An individual submittal, rendered INSIDE the deal. Clicking SUB-001
+          // used to throw you onto a standalone page — the account and deal
+          // chrome gone, and the tab you were on with it. Same component the
+          // standalone route uses; it just leaves its own header off here.
+          <SubmittalDetailView
+            account_id={accountId}
+            opportunity_id={dealId}
+            submittal_id={String(sp.sid)}
+            sp={sp as never}
+            inline
+          />
+        ) : (
+          <SubmittalsTool
+            id={accountId}
+            dealId={dealId}
+            variant="inline"
+            sp={{ error: sp?.error }}
+          />
+        ))}
       {projectTool === "work-order" && (
         <WorkOrderTool
           id={accountId}

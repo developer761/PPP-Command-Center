@@ -229,6 +229,13 @@ function SubmittalRow({ submittal, oppId, accountId, back, origin = "" }: { subm
       ? `/commercial/accounts/${accountId}/submittals/${oppId}?v=1`
       : `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=submittals`;
   const backHref = `?back=${encodeURIComponent(back && back.startsWith("/commercial/") ? back : logHere)}`;
+  // Inside the deal, opening a submittal STAYS inside the deal — `&sid=` swaps
+  // the tool's list for that submittal's detail without leaving the page. From
+  // the standalone log there is no drill-in to stay in, so it navigates.
+  const itemHref =
+    origin === "inline"
+      ? `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=submittals&sid=${submittal.id}`
+      : `/commercial/accounts/${accountId}/submittals/${oppId}/${submittal.id}${backHref}`;
   const tone = submittalStatusTone(submittal.status);
   const tonePillCls =
     tone === "emerald" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
@@ -243,7 +250,7 @@ function SubmittalRow({ submittal, oppId, accountId, back, origin = "" }: { subm
   const responseLine = submittal.response_received_at ? ` · Response received ${fmt(submittal.response_received_at)}` : "";
   return (
     <li>
-      <Link href={`/commercial/accounts/${accountId}/submittals/${oppId}/${submittal.id}${backHref}`} className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px]">
+      <Link href={itemHref} className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2 flex-wrap">
