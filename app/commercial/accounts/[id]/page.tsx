@@ -91,6 +91,8 @@ import {
   formatBidRange,
   formatOpportunityNumber,
   weightedPipelineCents,
+  dealValueCents,
+  opportunityLossReasonLabel,
   derivedOppName,
   getCommercialOpportunity,
   OPPORTUNITY_STATUSES,
@@ -1145,6 +1147,12 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
     getProjectFinancials(p.opp.id),
     laborByWorkerForProject(p.opp.id),
   ]);
+  // Sales-lens value for the PRE-SALE tiles. Uses the proposal-total fallback,
+  // because the meeting removed Bid low/high from the create forms — without it
+  // every deal made since then reads $0.
+  const dealProposalTotal = (
+    await listCurrentProposalTotalByOpp([p.opp.id])
+  ).get(p.opp.id);
   // R5 project rollup — the "money out" half of the job at a glance.
   const dealTotalHours = laborRows.reduce((s, w) => s + w.hours, 0);
   const dealMaterialsCents = dealFin.costs.materials;
@@ -1447,6 +1455,128 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             company-wide. Same definitions everywhere, so it reconciles up a level.
             Only on the Overview tab — the dedicated P&L tab (DealPnLView) renders
             an identical block, so ungated it showed twice on that tab (R6 #1). */}
+        {/* ── PRE-SALE KPIs (spec §3a) ──────────────────────────────────
+            The delivery P&L is hidden on a bid, so this is what belongs in that
+            space: the sales lens. Value uses the proposal-total fallback and
+            renders "Not priced yet" rather than "$0" — a bid nobody has priced
+            is not a bid worth nothing. */}
+        {dealTab === "overview" && phase === "pre_sale" && (
+          <section className="mt-4 rounded-xl border border-ppp-charcoal-100 p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+                <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-blue-600" />
+                Bid at a glance
+              </h3>
+              <span className="text-[11px] text-ppp-charcoal-500">pre-contract · not won yet</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(() => {
+                const value = dealValueCents(p.opp, dealProposalTotal);
+                const weighted = weightedPipelineCents(p.opp, dealProposalTotal);
+                const priced = value > 0;
+                return (
+                  <>
+                    <div className="rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-2">
+                      <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Bid value</div>
+                      <div className="text-sm font-bold text-ppp-charcoal mt-0.5 tabular-nums break-all">
+                        {priced ? formatCentsFull(value) : "—"}
+                      </div>
+                      {!priced && <div className="text-[10px] text-ppp-charcoal-400">Not priced yet</div>}
+                    </div>
+                    <div className="rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-2">
+                      <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Weighted</div>
+                      <div className="text-sm font-bold text-ppp-charcoal mt-0.5 tabular-nums break-all">
+                        {priced ? formatCentsFull(weighted) : "—"}
+                      </div>
+                      <div className="text-[10px] text-ppp-charcoal-400">at {p.opp.probability_pct}%</div>
+                    </div>
+                    <div className="rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-2">
+                      <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Stage</div>
+                      <div className="text-sm font-bold text-ppp-charcoal mt-0.5">
+                        {oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-2">
+                      <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">RFP received</div>
+                      <div className="text-sm font-bold text-ppp-charcoal mt-0.5">
+                        {p.opp.rfp_received_at ? fmtEtDate(p.opp.rfp_received_at) : "—"}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </section>
+        )}
+
+        {/* ── WON, not started (spec §3c) ───────────────────────────────
+            The bridge state. Billed/collected/AR are structurally zero here, so
+            showing the delivery money block would be a wall of $0 on a deal
+            that was just won — the thing that made this phase necessary. */}
+        {dealTab === "overview" && phase === "won_not_started" && (
+          <section className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 sm:p-5">
+            <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-emerald-600" />
+              Won — ready to start
+            </h3>
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <div className="rounded-lg border border-emerald-200 bg-surface px-2.5 py-2">
+                <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Contract</div>
+                <div className="text-sm font-bold text-ppp-charcoal mt-0.5 tabular-nums break-all">
+                  {dealFin.hasContract ? formatCentsFull(dealFin.contractCents) : "—"}
+                </div>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-surface px-2.5 py-2">
+                <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Proposed start</div>
+                <div className="text-sm font-bold text-ppp-charcoal mt-0.5">
+                  {p.opp.proposed_start_at ? fmtEtDate(p.opp.proposed_start_at) : "—"}
+                </div>
+              </div>
+            </div>
+            <p className="text-[12px] text-emerald-900 mt-2.5">
+              Nothing is billed yet. Move it to <strong>Pre-Construction</strong> when the crew is scheduled.
+            </p>
+          </section>
+        )}
+
+        {/* ── LOST (spec §3d) ───────────────────────────────────────────
+            No money, no probability, no countdown. loss_reason is gated on the
+            debrief actually being filled in — the proposal→deal cascade
+            auto-writes 'other' as a placeholder, and printing that reads like a
+            recorded answer when nobody has given one. */}
+        {dealTab === "overview" && phase === "lost" && (
+          <section className="mt-4 rounded-xl border border-rose-200 bg-rose-50/40 p-4 sm:p-5">
+            <h3 className="text-sm font-bold text-rose-900 flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-rose-500" />
+              Lost
+            </h3>
+            <dl className="grid grid-cols-2 gap-2 mt-3">
+              <div>
+                <dt className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Reason</dt>
+                <dd className="text-[13px] font-semibold text-ppp-charcoal mt-0.5">
+                  {p.opp.win_loss_debriefed_at && p.opp.loss_reason
+                    ? opportunityLossReasonLabel(p.opp.loss_reason)
+                    : "Not recorded"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Decided</dt>
+                <dd className="text-[13px] font-semibold text-ppp-charcoal mt-0.5">
+                  {p.opp.decided_at ? fmtEtDate(p.opp.decided_at) : "—"}
+                </dd>
+              </div>
+            </dl>
+            {!p.opp.win_loss_debriefed_at && (
+              <Link
+                href={`/commercial/accounts/${accountId}/debrief/${p.opp.id}`}
+                className="inline-flex items-center gap-1 mt-3 text-[12.5px] font-semibold text-rose-800 hover:underline min-h-[44px]"
+              >
+                Debrief pending — record why we lost it <span aria-hidden>→</span>
+              </Link>
+            )}
+          </section>
+        )}
+
         {/* dealShowPnl was computed and NEVER READ — zero references — so this
             delivery P&L rendered on every deal, including a lost bid and a
             brand-new $0 one. That empty money wall is the thing Karan flagged. */}
