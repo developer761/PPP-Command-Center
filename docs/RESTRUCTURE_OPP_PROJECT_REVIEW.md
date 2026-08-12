@@ -1043,3 +1043,21 @@ notifying nobody). Applying it fixes all 13 at once; there's no deploy-gate risk
 
 ## VERIFY — `06d4761` (action-named next-step CTAs). Clean.
 Verified: `page.tsx` passes `accountId` + the latest proposal `{id,status}` to `manualNextStep` (proposalHref well-formed, not `/accounts/undefined/`); each stage CTA targets the right tab/record (won→Start, pre_construction→work-order, in_progress→invoices, billing→closeout; proposal states → the SPECIFIC proposal detail page with `?back=` to the opp proposals tab); `lost` and `post_sale_closed` correctly return null (no CTA); the account-scoped proposal detail route is a LIVE page (its redirects are auth guards, not a retired-route redirect), so "Mark it approved" reaches a working approve surface (requestProposalApproval). Correct + complete, no findings.
+
+---
+
+## ✅ VERIFY — `25ecf46` fixes BOTH my findings (data-loss + Industry). Verified complete.
+The other pass fixed both, acknowledged them ("the parallel session's review... it was right on both"), and PINNED
+the pattern with a test — the structural guard I recommended.
+- **Data-loss (proposed_start/end + probability): CLOSED.** Both actions now distinguish absent (`formData.get()
+  === null` → `undefined` → `updateCommercialOpportunity` skips it) from present-empty (`""` → null → clear).
+  Verified: create has all 3 `=== null` guards; edit has start/end via `=== null` and probability already safe
+  via `let = undefined` + `if (probRaw !== "")` (never written when absent). Count 5 not 6 = correct, not a miss.
+- **Industry (identity section + header pill): CLOSED.** `industry: get()` removed from the identity patch;
+  the `account.industry` header Pill removed (grep empty). My `42ee991` fully resolved.
+- **Pattern pinned:** test asserts empty→clear and null(absent)≠"" — states plainly that `?? ""` before the
+  null-check is the bug. Good.
+
+🟡 Tiny consistency nit (NOT a bug): edit-probability still reads via `?? ""` (the very shape the new test
+warns about) but is saved by its only-write-if-present branch. Safe; align it to the `=== null` pattern when
+convenient so the whole file follows one rule.
