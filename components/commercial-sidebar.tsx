@@ -94,7 +94,7 @@ const navSections: NavSection[] = [
           { label: "Submittals", href: "/commercial/post-job/submittals", icon: <IconChangeOrder /> },
           { label: "Change Orders", href: "/commercial/post-job/change-orders", icon: <IconRefresh /> },
           { label: "AIA Billing", href: "/commercial/post-job/aia", icon: <IconFileText /> },
-          { label: "Costs & P&L", href: "/commercial/post-job/costs", icon: <IconTrendingUp /> },
+          { label: "Transactions", href: "/commercial/post-job/costs", icon: <IconTrendingUp /> },
           { label: "Closeout & Warranty", href: "/commercial/post-job/closeout", icon: <IconCheckSquare /> },
         ],
       },

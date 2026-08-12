@@ -1827,7 +1827,10 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
               { label: "Won", value: String(propWon), tone: propWon > 0 ? "emerald" : undefined },
               { label: "Highest bid", value: highestBidCents > 0 ? formatCentsCompact(highestBidCents) : "—" },
             ]}
-            bar={propWinPct != null ? { label: "Win rate", pct: propWinPct, tone: "emerald" } : undefined}
+            // "Win rate" is the deal-level won/(won+lost) everywhere else. This is the
+            // share of THIS deal's proposals that were accepted — a different
+            // question with the same name.
+            bar={propWinPct != null ? { label: "Proposal acceptance", pct: propWinPct, tone: "emerald" } : undefined}
           />
           <DealProposalsSection accountId={accountId} oppId={p.opp.id} proposals={dealProposals} />
         </>
@@ -2491,7 +2494,7 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
       </div>
       <div className="p-4 space-y-4">
         <CommercialFilesUploadForm parentType="opportunity" parentId={oppId} />
-        <p className="text-[11px] text-ppp-charcoal-500">Everything filed against this opportunity — receipts from Costs &amp; P&amp;L, lien waivers, invoice attachments, and the PDFs the tools generate — sorts into its box below. Pick a category above to file a new one.</p>
+        <p className="text-[11px] text-ppp-charcoal-500">Everything filed against this opportunity — receipts from Transactions, lien waivers, invoice attachments, and the PDFs the tools generate — sorts into its box below. Pick a category above to file a new one.</p>
 
         {/* Filing cabinet — boxes that HOLD documents render in the grid; empty
             categories fold into a compact "not filed yet" strip so a fresh deal
@@ -6143,7 +6146,7 @@ async function AccountProposalsTab({
                 <header className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap bg-surface">
                   <div className="min-w-0">
                     <Link
-                      href={`/commercial/accounts/${accountId}?tab=deals&sub=opportunities#deal-row-${dealId}`}
+                      href={`/commercial/accounts/${accountId}?tab=projects&project=${dealId}`}
                       className="block truncate text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700"
                       title={dealTitle}
                     >

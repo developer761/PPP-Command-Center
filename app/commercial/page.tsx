@@ -21,6 +21,7 @@
  */
 import Link from "next/link";
 import Image from "next/image";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import {
   derivedOppName,
   formatOpportunityNumber,
@@ -75,11 +76,13 @@ function relativeLabel(iso: string | null | undefined): string {
 }
 
 export default async function CommercialDashboardPage() {
-  const [opps, accounts, invoices, projectRows] = await Promise.all([
+  const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
+  const [opps, accounts, invoices, projectRows, operatingCompany] = await Promise.all([
     listCommercialOpportunities({}),
     listCommercialAccounts({}),
     listCommercialInvoices({}),
     listProjects({}),
+    getOperatingCompany(),
   ]);
   // Fallback deal value for deals with no bid range. The meeting removed Bid
   // low/high from both create forms (pricing lives on the proposal now), so
@@ -312,7 +315,7 @@ export default async function CommercialDashboardPage() {
         <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 shrink-0">
           <Image
             src="/brand/tomco-logo.jpg"
-            alt="Tomco Painting"
+            alt={operatingCompany.name}
             width={268}
             height={131}
             priority
@@ -321,7 +324,10 @@ export default async function CommercialDashboardPage() {
         </span>
         <div className="min-w-0 border-l border-ppp-charcoal-100 pl-3 sm:pl-4">
           <h1 className="text-sm font-semibold text-ppp-charcoal leading-tight">Welcome back</h1>
-          <div className="text-[11px] text-ppp-charcoal-500 leading-tight">Tomco Painting · Command Center</div>
+          {/* From the operating-company record, not a literal. A rename or a
+              licensee updated every generated document and left the name over
+              the CEO's own dashboard unchanged. */}
+          <div className="text-[11px] text-ppp-charcoal-500 leading-tight">{operatingCompany.name} · Command Center</div>
         </div>
       </div>
 
@@ -372,7 +378,7 @@ export default async function CommercialDashboardPage() {
               {revCostSegments.length > 0 ? (
                 <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(totalCostCents)} centerLabel="job costs" />
               ) : (
-                <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">No job costs logged yet. Add them on any project&rsquo;s Costs &amp; P&amp;L tab.</p>
+                <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">No job costs logged yet. Add them on any deal&rsquo;s Transactions tab.</p>
               )}
               {laborUnratedHours > 0 && (
                 <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
@@ -790,7 +796,7 @@ function TopOpenDealsCard({
                     <div className="text-[10.5px] text-ppp-charcoal-500 truncate flex items-center gap-1.5 mt-0.5">
                       {oppCode && <span className="font-mono text-ppp-navy-600">{oppCode}</span>}
                       {oppCode && <span aria-hidden>·</span>}
-                      <span>{opportunityStatusLabel(o.status)}</span>
+                      <span>{oppStatusDisplayLabel(o.status, o.sub_status)}</span>
                       {o.proposal_due_at && (
                         <>
                           <span aria-hidden>·</span>
@@ -864,7 +870,7 @@ function RecentActivityCard({
                     <div className="text-[10.5px] text-ppp-charcoal-500 truncate flex items-center gap-1.5 mt-0.5">
                       {oppCode && <span className="font-mono text-ppp-navy-600">{oppCode}</span>}
                       {oppCode && <span aria-hidden>·</span>}
-                      <span>{opportunityStatusLabel(o.status)}</span>
+                      <span>{oppStatusDisplayLabel(o.status, o.sub_status)}</span>
                     </div>
                   </div>
                   <div className="text-[11px] text-ppp-charcoal-500 shrink-0 tabular-nums whitespace-nowrap">

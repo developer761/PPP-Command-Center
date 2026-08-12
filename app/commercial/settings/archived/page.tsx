@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -247,7 +248,7 @@ export default async function ArchivedDealsPage({
                       </td>
                       <td className="px-3 py-2 align-top">
                         <span className="inline-flex items-center rounded bg-ppp-charcoal-100 px-1.5 py-0.5 text-[11px] font-medium text-ppp-charcoal-700">
-                          {opportunityStatusLabel(o.status)}
+                          {oppStatusDisplayLabel(o.status, o.sub_status)}
                         </span>
                       </td>
                       <td className="px-3 py-2 align-top text-ppp-charcoal-500 whitespace-nowrap">
@@ -316,7 +317,7 @@ export default async function ArchivedDealsPage({
                     <div className="mt-1 flex items-center gap-2 text-[11px] text-ppp-charcoal-500 flex-wrap">
                       {oppCode && <span className="font-mono text-ppp-navy-600">{oppCode}</span>}
                       <span className="inline-flex items-center rounded bg-ppp-charcoal-100 px-1.5 py-0.5 font-medium text-ppp-charcoal-700">
-                        {opportunityStatusLabel(o.status)}
+                        {oppStatusDisplayLabel(o.status, o.sub_status)}
                       </span>
                       <span>Archived {archivedAt}</span>
                     </div>

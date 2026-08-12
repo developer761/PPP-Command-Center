@@ -20,7 +20,7 @@ export const TOOL_BACK: Record<string, { path: string; label: string }> = {
   "/commercial/post-job/change-orders": { path: "/commercial/post-job/change-orders", label: "Change Orders" },
   "/commercial/post-job/aia": { path: "/commercial/post-job/aia", label: "AIA Billing" },
   "/commercial/post-job/closeout": { path: "/commercial/post-job/closeout", label: "Closeout & Warranty" },
-  "/commercial/post-job/costs": { path: "/commercial/post-job/costs", label: "Costs & P&L" },
+  "/commercial/post-job/costs": { path: "/commercial/post-job/costs", label: "Transactions" },
   "/commercial/post-job/work-orders": { path: "/commercial/post-job/work-orders", label: "Work Orders" },
 };
 

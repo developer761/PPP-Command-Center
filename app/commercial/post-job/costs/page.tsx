@@ -32,7 +32,7 @@ export default async function CostsIndexPage() {
 
   return (
     <PostJobToolIndex
-      title="Costs & P&L"
+      title="Transactions"
       subtitle="What each job actually costs — materials, labor, subs — vs its contract, so you see the margin."
       icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}
       projects={projects}

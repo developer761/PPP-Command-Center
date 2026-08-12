@@ -64,7 +64,13 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
       {/* KPI strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiTile label="Under contract" value={formatCentsCompact(activeSummary.contractValueCents)} sub={`${activeSummary.activeProjects} active project${activeSummary.activeProjects === 1 ? "" : "s"}`} tone="navy" icon={<IconContract />} />
-        <KpiTile label="Invoiced" value={formatCentsCompact(activeSummary.billedContractCents)} sub={`${formatCentsCompact(activeSummary.paidCents)} paid`} tone="blue" icon={<IconGauge />} />
+        {/* WITH tax, matching the paid sub-line and Outstanding beside it, and the
+            account-360 tile. This showed the PRE-tax total, so a taxed job read
+            "$108,875 paid" under "Invoiced $100,000" and Outstanding came out
+            larger than Invoiced. The pre-tax figure is still the right basis for
+            the "Billed of contract" meter below — a contract is pre-tax — which
+            is why both numbers exist. */}
+        <KpiTile label="Invoiced" value={formatCentsCompact(activeSummary.invoicedCents)} sub={`${formatCentsCompact(activeSummary.paidCents)} paid`} tone="blue" icon={<IconGauge />} />
         <KpiTile label="Left to bill" value={formatCentsCompact(activeSummary.leftToBillCents)} sub="contract − billed" tone="neutral" icon={<IconHardHat />} />
         <KpiTile label="Outstanding" value={formatCentsCompact(activeSummary.outstandingCents)} sub={activeSummary.pendingCoCount > 0 ? `${activeSummary.pendingCoCount} CO${activeSummary.pendingCoCount === 1 ? "" : "s"} pending` : "invoiced − paid"} tone={activeSummary.outstandingCents > 0 ? "amber" : "neutral"} icon={<IconChangeOrder />} />
       </div>
