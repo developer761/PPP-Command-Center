@@ -51,10 +51,10 @@ and a wide swath of mobile-touch + completeness gaps. **Three classes stand betw
    so editing preserved the values — no loss). But `e7ba2d1` then REMOVED those inputs (grep for
    `name="proposed_start_at"` on the account page = 0) while LEAVING `editDealFromAccountAction` reading them
    (`page.tsx:1572`), defaulting to `null` (1575), and writing them (payload 1624-1625) → `updateCommercialOpportunity`
-   writes null (mutations.ts:273). So it's a live data-loss again. **Fix:** remove them from the action too, or
-   default `undefined`. — ALSO real + open: `42ee991` Industry identity-section (`page.tsx:1221`
-   `industry: get()`, input removed) → editing basic info nulls Industry. Both are the same "second edit path
-   left behind" class; a structural guard (test: no patch writes a field lacking an input) would kill it.
+   writes null (mutations.ts:273). — ✅ **CLOSED `25ecf46`:** both actions now treat absent (`get()===null`) as
+   `undefined` (don't-touch) vs present-empty (`""`) as clear; all 3 fields (proposed_start/end + probability)
+   preserve on edit. The account **Industry** data-loss (`42ee991`, identity patch + header pill) is ✅ CLOSED
+   too. Both pinned by a test asserting the FormData null-vs-empty distinction (the structural guard).
 
 ---
 
