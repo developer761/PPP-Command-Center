@@ -155,7 +155,9 @@ describe("sensibleNextStatuses — only the moves with no artifact behind them",
     // Brendan 2026-08-12: "The first stage in an opp should be RFP." Nothing in
     // the system sees a bid package arrive, so this is a human move by
     // definition — and it was previously unreachable from the picker.
-    expect(sensibleNextStatuses("qualifying", "solicitation")).toContain("qualifying");
+    // Forward moves only — the picker prepends the CURRENT status itself, so
+    // returning it here listed Qualifying twice in the dropdown.
+    expect(sensibleNextStatuses("qualifying", "solicitation")).not.toContain("qualifying");
     // …and once the RFP is in, forward is Estimating (assigning the estimator).
     expect(sensibleNextStatuses("qualifying", "rfp")).toContain("estimating");
   });

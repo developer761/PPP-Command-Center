@@ -5,6 +5,7 @@
  * Submittals is no longer the odd tool hanging off the opportunity page.
  */
 import { flashMessage } from "@/lib/commercial/flash";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -13,7 +14,6 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import {
   listOpportunitySubmittals,
   createOpportunitySubmittal,

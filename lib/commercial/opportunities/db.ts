@@ -1,4 +1,5 @@
 import "server-only";
+import { oppStatusDisplayLabel } from "./kanban-columns";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
@@ -22,7 +23,6 @@ import {
   laneForStatus,
   opportunityStatusLabel,
   opportunityStatusLabelV2,
-  oppStatusDisplayLabel,
   opportunitySubStatusLabel,
   SUB_STATUSES_BY_STATUS,
   isValidSubStatus,

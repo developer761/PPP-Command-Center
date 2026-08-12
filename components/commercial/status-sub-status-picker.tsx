@@ -22,6 +22,7 @@ import { DateField } from "@/components/commercial/date-field";
 import {
   OPPORTUNITY_STATUSES,
   SUB_STATUSES_BY_STATUS,
+  OFFERED_SUB_STATUSES,
   DEFAULT_SUB_STATUS_BY_STATUS,
   opportunityStatusLabelV2,
   opportunitySubStatusLabel,
@@ -148,9 +149,13 @@ export function StatusSubStatusPicker({
   const [status, setStatus] = useState<string>(defaultStatus);
   // Sub-status default: caller's value if valid for the picked status, else
   // the DEFAULT_SUB_STATUS_BY_STATUS entry for that status.
-  const subOptionsForStatus = (
-    SUB_STATUSES_BY_STATUS as Record<string, readonly string[]>
-  )[status] ?? [];
+  // OFFERED, not merely valid. `qualifying` accepts an `estimating` sub-status
+  // that means the same stage as the real Estimating — offering both is how a
+  // person picks Estimating and watches the deal stay put. Old rows keep the
+  // tuple; nobody can choose it again.
+  const subOptionsForStatus =
+    OFFERED_SUB_STATUSES[status] ??
+    ((SUB_STATUSES_BY_STATUS as Record<string, readonly string[]>)[status] ?? []);
   const initialSubIsValid =
     initialSubStatus && subOptionsForStatus.includes(initialSubStatus);
   const [subStatus, setSubStatus] = useState<string>(

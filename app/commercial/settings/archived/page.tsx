@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";

@@ -99,6 +99,19 @@ export type OpportunityStatus =
  *  migration 052 exactly — do not diverge without a migration. */
 type V2Status = (typeof OPPORTUNITY_STATUSES)[number];
 
+/**
+ * Sub-statuses a PICKER may offer, as opposed to what is merely valid.
+ *
+ * AUDIT 2026-08-12: `qualifying` accepts an `estimating` sub-status, which made
+ * two different tuples mean "we are pricing it". Offering both is how a person
+ * picks Estimating and watches the deal stay in Qualifying. The tuple stays
+ * VALID — old rows carry it and must not fail validation — it is simply no
+ * longer something you can choose.
+ */
+export const OFFERED_SUB_STATUSES: Record<string, readonly string[]> = {
+  qualifying: ["solicitation", "rfp"],
+};
+
 export const SUB_STATUSES_BY_STATUS = {
   qualifying: ["solicitation", "rfp", "estimating"] as const,
   // Katie's 2026-07-13 spec: `estimating` top-level has TWO sub-statuses,
@@ -218,16 +231,10 @@ export function opportunityStatusLabel(
  *  "Won" or "Lost" for pill labels. Karan 2026-07-13: on decided rows the
  *  user wants the outcome word, not "Closed", so at-a-glance scan reads
  *  "Won" instead of a bland terminal state. */
-export function oppStatusDisplayLabel(
-  status: string | null | undefined,
-  sub_status: string | null | undefined
-): string {
-  if (status === "pre_sale_closed") {
-    if (sub_status === "won") return "Won";
-    if (sub_status === "lost") return "Lost";
-  }
-  return opportunityStatusLabelV2(status);
-}
+// `oppStatusDisplayLabel` moved to ./kanban-columns 2026-08-12. It has to name
+// the STAGE, and the stage labels live there — a function that says what state
+// a deal is in belongs beside the definition of those states, not beside the
+// raw status enum it used to read.
 
 // Katie's 2026-07-13 status structure — labels below are copied verbatim
 // from her spec so the UI matches the language she uses with Alex and

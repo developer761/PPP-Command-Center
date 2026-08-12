@@ -10,9 +10,9 @@
  * own card, so nothing clusters.
  */
 import Link from "next/link";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { projectRecordId } from "@/lib/commercial/record-ids";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { AIA_STATUS_META } from "@/lib/commercial/aia/constants";
 import type { ProjectRow } from "@/lib/commercial/projects/db";

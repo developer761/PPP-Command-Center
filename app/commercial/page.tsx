@@ -20,8 +20,8 @@
  * invoices/projects list fetches; everything else is derived JS-side.
  */
 import Link from "next/link";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import Image from "next/image";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import {
   derivedOppName,
   formatOpportunityNumber,

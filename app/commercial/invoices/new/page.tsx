@@ -10,11 +10,11 @@
  * No teleport to the account, no bare form.
  */
 import { redirect } from "next/navigation";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { isWon } from "@/lib/commercial/opportunities/constants";
 import { listProposalsForOpp } from "@/lib/commercial/proposals/db";

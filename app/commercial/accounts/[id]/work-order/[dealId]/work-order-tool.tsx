@@ -6,6 +6,7 @@
  * Closeout / AIA / Change Orders / Submittals.
  */
 import { flashMessage } from "@/lib/commercial/flash";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -13,7 +14,6 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {

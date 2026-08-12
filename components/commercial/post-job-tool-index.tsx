@@ -12,9 +12,9 @@
  * shown here always matches the Projects tab, the account, and the tool page.
  */
 import Link from "next/link";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import type { ProjectRow } from "@/lib/commercial/projects/db";
 
 export type ToolStatusTone = "neutral" | "amber" | "emerald" | "brand" | "rose";

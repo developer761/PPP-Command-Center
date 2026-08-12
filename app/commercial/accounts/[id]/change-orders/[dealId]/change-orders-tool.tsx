@@ -11,6 +11,7 @@
  * action taken on the standalone route hands you back to the inline view.
  */
 import { notFound, redirect } from "next/navigation";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { revalidatePath } from "next/cache";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -19,7 +20,6 @@ import {
   getCommercialOpportunity,
   derivedOppName,
 } from "@/lib/commercial/opportunities/db";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";

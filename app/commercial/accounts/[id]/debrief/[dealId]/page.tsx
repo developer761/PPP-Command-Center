@@ -14,6 +14,7 @@
  * loops back to the account (?debrief_saved=1 toast).
  */
 import { revalidatePath } from "next/cache";import Link from "next/link";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -29,7 +30,6 @@ import {
 import {
   isWon,
   isLost,
-  oppStatusDisplayLabel,
   PRE_SALE_OPEN_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import { writeDebrief, listDebriefsForOpp } from "@/lib/commercial/win-loss/debrief";

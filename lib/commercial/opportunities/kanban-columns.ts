@@ -41,6 +41,7 @@ import {
   OPPORTUNITY_STATUSES,
   SUB_STATUSES_BY_STATUS,
   isValidSubStatus,
+  opportunityStatusLabelV2,
   type OpportunityStatus,
 } from "./constants";
 
@@ -183,9 +184,19 @@ export function columnKeyForOpp(
 ): string {
   switch (status) {
     case "qualifying":
-      // RFP is promoted out of Qualifying into its own stage. The other
-      // two subs (solicitation, estimating) stay under Qualifying.
-      return sub_status === "rfp" ? "rfp" : "qualifying";
+      // AUDIT 2026-08-12 (Karan: "I put it into estimating and it brings it
+      // back to qualifying"). `qualifying` carries an `estimating` SUB-status,
+      // so there were two different tuples both meaning "we are pricing it":
+      // (qualifying, estimating) and (estimating, estimating). This mapper only
+      // promoted `rfp`, so the first one read as Qualifying — picking Estimating
+      // genuinely sent the deal backwards on screen.
+      //
+      // Both tuples now resolve to the stage the words mean. The picker no
+      // longer OFFERS the qualifying variant (see OFFERED_SUB_STATUSES), so no
+      // new ones are created; this keeps the old rows reading correctly.
+      if (sub_status === "rfp") return "rfp";
+      if (sub_status === "estimating") return "estimating";
+      return "qualifying";
     case "estimating":
       // Awaiting sign-off is its OWN stage now, not a fold into Proposal —
       // that fold is why moving a deal from pricing to pending-approval left
@@ -335,7 +346,16 @@ export function columnDbStatusHint(key: string): string | null {
   // `sent` spans proposal/sent + the legacy proposal/follow_up rows, and
   // `pending_approval` shares the `estimating` status with `estimating` itself,
   // so neither can be narrowed to one status server-side.
-  if (key === "sent" || key === "pending_approval" || key === "qualifying") return null;
+  // `sent` spans proposal/sent + the legacy proposal/follow_up rows;
+  // `pending_approval` shares the `estimating` status with `estimating`; and
+  // `estimating` itself now holds BOTH (estimating, estimating) and the legacy
+  // (qualifying, estimating) — narrowing it to one status would silently drop
+  // the second, which is the row Karan hit. Qualifying is the fallback column
+  // for unrecognised statuses, so narrowing it hides the rows that fallback
+  // exists to rescue. All four fetch wide and filter in memory.
+  if (key === "sent" || key === "pending_approval" || key === "estimating" || key === "qualifying") {
+    return null;
+  }
   return COLUMN_TARGET[key]?.status ?? null;
 }
 
@@ -424,4 +444,32 @@ export function dealTabsFor(isPostContract: boolean): {
   return isPostContract
     ? { primary: DEAL_PRIMARY_TABS_POST, tools: DEAL_DELIVERY_TOOLS }
     : { primary: DEAL_PRIMARY_TABS_PRE, tools: [] };
+}
+
+
+/**
+ * What to CALL the state a deal is in — the stage, in the words the pipeline,
+ * the filters and the reports already use.
+ *
+ * AUDIT 2026-08-12 (Karan: "I put the status to RFP and it always says Status
+ * updated to Qualifying"). This lived in constants.ts, returned the TOP-LEVEL
+ * status and ignored the sub-status — so RFP read as "Qualifying" and Pending
+ * Approval read as "Estimating", across 37 call sites including every
+ * status-change confirmation. The message was true about a field nobody thinks
+ * in, which is the same two-ladder problem as the progress bar.
+ *
+ * It lives here now because this is where the stage names are, and it uses the
+ * same mapper as everything else — so a confirmation cannot disagree with the
+ * bar the person is looking at.
+ */
+export function oppStatusDisplayLabel(
+  status: string | null | undefined,
+  sub_status: string | null | undefined
+): string {
+  if (status === "pre_sale_closed") {
+    if (sub_status === "won") return "Won";
+    if (sub_status === "lost") return "Lost";
+  }
+  if (!status) return opportunityStatusLabelV2(status);
+  return kanbanColumnLabel(columnKeyForOpp(status, sub_status ?? null)) || opportunityStatusLabelV2(status);
 }

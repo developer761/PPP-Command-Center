@@ -5,6 +5,7 @@ import {
   TERMINAL_COLUMN_KEYS,
   COLUMN_TARGET,
   columnKeyForOpp,
+  oppStatusDisplayLabel,
   columnDbStatusHint,
   resolveColumnTarget,
   auditKanbanColumnMap,
@@ -54,7 +55,11 @@ describe("kanban column map", () => {
   it("promotes RFP out of Qualifying without swallowing its siblings", () => {
     expect(columnKeyForOpp("qualifying", "rfp")).toBe("rfp");
     expect(columnKeyForOpp("qualifying", "solicitation")).toBe("qualifying");
-    expect(columnKeyForOpp("qualifying", "estimating")).toBe("qualifying");
+    // AUDIT 2026-08-12: this used to expect "qualifying", and that expectation
+    // WAS the bug Karan reported — `qualifying` carries an `estimating`
+    // sub-status, so picking Estimating left the deal reading as Qualifying.
+    // Both tuples that mean "we are pricing it" now resolve to Estimating.
+    expect(columnKeyForOpp("qualifying", "estimating")).toBe("estimating");
   });
 
   it("gives Pending Approval its own stage, and calls the next one Sent", () => {
@@ -115,7 +120,7 @@ describe("kanban column map", () => {
     // itself. Qualifying is the fallback column for unrecognised statuses, so
     // narrowing it would hide the very rows that fallback rescues. All three
     // must fetch wide and filter in memory.
-    const WIDE = ["sent", "pending_approval", "qualifying"];
+    const WIDE = ["sent", "pending_approval", "estimating", "qualifying"];
     for (const key of WIDE) expect(columnDbStatusHint(key), key).toBeNull();
     for (const col of KANBAN_COLUMNS) {
       if (WIDE.includes(col.key)) continue;
@@ -158,5 +163,36 @@ describe("kanban column map", () => {
     // overflow drawer rather than as a drop zone on the board.
     const covered = new Set([...open, ...terminal, "post_sale_closed"]);
     for (const c of KANBAN_COLUMNS) expect(covered.has(c.key), c.key).toBe(true);
+  });
+});
+
+/**
+ * AUDIT 2026-08-12 — Karan: "I put the status to RFP and it always says Status
+ * updated to Qualifying. Then I put it into estimating and it brings it back to
+ * qualifying."
+ *
+ * Both halves were real, and both came from the same place: the two-level model
+ * has tuples that mean the same stage, and the label read the top level only.
+ */
+describe("the state a deal is IN is what it says it is", () => {
+  it("names the stage, not the top-level status", async () => {
+    const { oppStatusDisplayLabel } = await import("@/lib/commercial/opportunities/kanban-columns");
+    // The exact complaint: setting RFP said "Qualifying".
+    expect(oppStatusDisplayLabel("qualifying", "rfp")).toBe("RFP");
+    // …and the same class of lie one stage along.
+    expect(oppStatusDisplayLabel("estimating", "proposal_pending_approval")).toBe("Pending Approval");
+    expect(oppStatusDisplayLabel("proposal", "sent")).toBe("Sent");
+    expect(oppStatusDisplayLabel("qualifying", "solicitation")).toBe("Qualifying");
+  });
+
+  it("still says Won and Lost rather than Closed", () => {
+    // The outcome is the useful word on a decided deal.
+    expect(oppStatusDisplayLabel("pre_sale_closed", "won")).toBe("Won");
+    expect(oppStatusDisplayLabel("pre_sale_closed", "lost")).toBe("Lost");
+  });
+
+  it("resolves BOTH tuples that mean 'we are pricing it' to Estimating", () => {
+    expect(columnKeyForOpp("estimating", "estimating")).toBe("estimating");
+    expect(columnKeyForOpp("qualifying", "estimating")).toBe("estimating");
   });
 });

@@ -5,13 +5,13 @@
  * Same account-scoped pattern + drawer-reopening back link as Change Orders.
  */
 import Link from "next/link";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
