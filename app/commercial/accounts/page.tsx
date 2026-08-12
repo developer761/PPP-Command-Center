@@ -33,7 +33,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   listCommercialAccounts,
-  listCommercialAccountIndustries,
   formatAccountNumber,
   type CommercialAccount,
 } from "@/lib/commercial/accounts/db";
@@ -148,7 +147,7 @@ export default async function CommercialAccountsPage({
     | "red"
     | "not_started"
     | undefined;
-  const industry = pickFirst(sp.industry);
+  // Industry removed 2026-08-12 (Brendan: "We don't need Industry on accounts").
   const tagFilter = pickFirst(sp.tag);
   const sortRaw = pickFirst(sp.sort) ?? "created_desc";
   const SORT_OPTIONS = [
@@ -166,9 +165,8 @@ export default async function CommercialAccountsPage({
   const filterExpiring = pickFirst(sp.expiring) === "1";
   const filterIssue = pickFirst(sp.issue) === "1";
 
-  const [accountsRaw, industries, assignableStaff] = await Promise.all([
-    listCommercialAccounts({ search, rating, compliance, industry }),
-    listCommercialAccountIndustries(),
+  const [accountsRaw, assignableStaff] = await Promise.all([
+    listCommercialAccounts({ search, rating, compliance }),
     listAssignableStaff(),
   ]);
   const bulkResult = pickFirst(sp.bulk_result);
@@ -288,7 +286,7 @@ export default async function CommercialAccountsPage({
   // when a filter is active these numbers describe the matching set, not the
   // whole book — the labels below flip to say so (Karan 2026-07-27 audit; the
   // old copy claimed "book" while showing the filtered slice).
-  const filterActive = !!(search || rating || compliance || industry || filterStale || filterExpiring || filterIssue);
+  const filterActive = !!(search || rating || compliance || filterStale || filterExpiring || filterIssue);
   const universeCount = accountsRaw.length; // search/rating-filtered size — for the "of N" header
   const matchingCount = accounts.length; // the DISPLAYED set (after the quick-filter chips)
   const recentlyActiveCount = recentlyActive.length;
@@ -306,7 +304,6 @@ export default async function CommercialAccountsPage({
   if (search) baseParams.set("q", search);
   if (rating) baseParams.set("rating", rating);
   if (compliance) baseParams.set("compliance", compliance);
-  if (industry) baseParams.set("industry", industry);
   if (tagFilter) baseParams.set("tag", tagFilter);
   if (sort !== "created_desc") baseParams.set("sort", sort);
   const toggleChipHref = (param: "stale" | "expiring" | "issue", currentlyOn: boolean): string => {
@@ -323,7 +320,6 @@ export default async function CommercialAccountsPage({
     if (search) p.set("q", search);
     if (rating) p.set("rating", rating);
     if (compliance) p.set("compliance", compliance);
-    if (industry) p.set("industry", industry);
     if (tagFilter) p.set("tag", tagFilter);
     if (filterStale) p.set("stale", "1");
     if (filterExpiring) p.set("expiring", "1");
@@ -335,12 +331,11 @@ export default async function CommercialAccountsPage({
   // Chip-clear links — link to /commercial/accounts?X= (empty) which
   // drops that single filter while preserving the rest. Used inside the
   // "Active filters" chip row.
-  const clearFilterHref = (drop: "q" | "rating" | "compliance" | "industry" | "tag" | "stale" | "expiring" | "issue"): string => {
+  const clearFilterHref = (drop: "q" | "rating" | "compliance" | "tag" | "stale" | "expiring" | "issue"): string => {
     const p = new URLSearchParams();
     if (search && drop !== "q") p.set("q", search);
     if (rating && drop !== "rating") p.set("rating", rating);
     if (compliance && drop !== "compliance") p.set("compliance", compliance);
-    if (industry && drop !== "industry") p.set("industry", industry);
     if (tagFilter && drop !== "tag") p.set("tag", tagFilter);
     if (filterStale && drop !== "stale") p.set("stale", "1");
     if (filterExpiring && drop !== "expiring") p.set("expiring", "1");
@@ -349,10 +344,10 @@ export default async function CommercialAccountsPage({
     const qs = p.toString();
     return qs ? `/commercial/accounts?${qs}` : "/commercial/accounts";
   };
-  const anyFilterActive = !!search || !!rating || !!compliance || !!industry || !!tagFilter || filterStale || filterExpiring || filterIssue;
+  const anyFilterActive = !!search || !!rating || !!compliance || !!tagFilter || filterStale || filterExpiring || filterIssue;
   const activeFilterCount =
     (search ? 1 : 0) + (rating ? 1 : 0) + (compliance ? 1 : 0) +
-    (industry ? 1 : 0) + (tagFilter ? 1 : 0) +
+    (tagFilter ? 1 : 0) +
     (filterStale ? 1 : 0) + (filterExpiring ? 1 : 0) + (filterIssue ? 1 : 0);
   const sortChanged = sort !== "created_desc";
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Newest first";
@@ -361,7 +356,6 @@ export default async function CommercialAccountsPage({
   if (search) exportParams.set("q", search);
   if (rating) exportParams.set("rating", rating);
   if (compliance) exportParams.set("compliance", compliance);
-  if (industry) exportParams.set("industry", industry);
   const exportQs = exportParams.toString();
 
   return (
@@ -559,24 +553,6 @@ export default async function CommercialAccountsPage({
                       <option value="not_started">Not started</option>
                     </select>
                   </div>
-                  {industries.length > 0 && (
-                    <div>
-                      <label htmlFor="industry" className={LABEL_CLS}>Industry</label>
-                      <select
-                        id="industry"
-                        name="industry"
-                        defaultValue={industry ?? ""}
-                        form="accounts-filter-form"
-                        className={SELECT_CLS}
-                        style={SELECT_BG_STYLE}
-                      >
-                        <option value="">All industries</option>
-                        {industries.map((ind) => (
-                          <option key={ind} value={ind}>{ind}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                   {allTags.length > 0 && (
                     <div>
                       <label htmlFor="tag" className={LABEL_CLS}>Tag</label>
@@ -701,7 +677,6 @@ export default async function CommercialAccountsPage({
             {search && <ActiveFilterChip href={clearFilterHref("q")} label={`Search: "${search}"`} />}
             {rating && <ActiveFilterChip href={clearFilterHref("rating")} label={`Rating ${rating}`} />}
             {compliance && <ActiveFilterChip href={clearFilterHref("compliance")} label={`Compliance: ${compliance.replace("_", " ")}`} />}
-            {industry && <ActiveFilterChip href={clearFilterHref("industry")} label={`Industry: ${industry}`} />}
             {tagFilter && <ActiveFilterChip href={clearFilterHref("tag")} label={`Tag: ${tagFilter}`} />}
             {filterStale && <ActiveFilterChip href={clearFilterHref("stale")} label={`Stale > ${ACTIVITY_STALE_DAYS}d`} />}
             {filterExpiring && <ActiveFilterChip href={clearFilterHref("expiring")} label="Expiring docs" />}

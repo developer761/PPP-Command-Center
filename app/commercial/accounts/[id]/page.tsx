@@ -2074,7 +2074,9 @@ function InfoCards({ account }: { account: CommercialAccount }) {
         <EditableField name="company_name" label="Company name" defaultValue={account.company_name} required />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <EditableField name="dba" label="DBA" defaultValue={account.dba} placeholder="Doing business as…" />
-          <EditableField name="industry" label="Industry" defaultValue={account.industry} placeholder="Real estate, hospitality…" />
+          {/* Industry removed 2026-08-12 — Brendan: "We don't need Industry on
+              accounts." The column stays so nothing already typed is lost; it
+              is simply no longer asked for, shown or filtered on. */}
         </div>
         <EditableField name="website" label="Website" defaultValue={account.website} type="url" placeholder="https://…" />
       </Card>

@@ -69,7 +69,7 @@ async function createAction(formData: FormData) {
       // re-added; the warning copy notes that.
       const p = new URLSearchParams({ duplicate: ids, typed_name: company });
       for (const k of [
-        "dba", "industry", "rating", "billing_street", "billing_city", "billing_state",
+        "dba", "rating", "billing_street", "billing_city", "billing_state",
         "billing_zip", "site_street", "site_city", "site_state", "site_zip", "phone",
         "ap_phone", "website", "tax_exempt_cert_number", "notes",
       ]) {
@@ -86,7 +86,6 @@ async function createAction(formData: FormData) {
   const result = await createCommercialAccount({
     company_name: company,
     dba: get("dba"),
-    industry: get("industry"),
     rating: (get("rating") as "A" | "B" | "C" | null) ?? null,
     is_key_relationship: formData.get("is_key_relationship") === "on",
     billing_street: get("billing_street"),
@@ -285,7 +284,6 @@ export default async function NewCommercialAccountPage({
     duplicate?: string;
     typed_name?: string;
     dba?: string;
-    industry?: string;
     rating?: string;
     billing_street?: string;
     billing_city?: string;
@@ -311,12 +309,12 @@ export default async function NewCommercialAccountPage({
   const typedName = sp.typed_name ?? "";
 
   // Hydrate the duplicate-candidate previews if we're showing the warning.
-  let duplicateCandidates: Array<{ id: string; company_name: string; industry: string | null }> = [];
+  let duplicateCandidates: Array<{ id: string; company_name: string }> = [];
   if (duplicateIds.length > 0) {
     const { commercialDb } = await import("@/lib/commercial/db");
     const { data } = await commercialDb()
       .from("commercial_accounts")
-      .select("id, company_name, industry")
+      .select("id, company_name")
       .in("id", duplicateIds)
       .is("deleted_at", null);
     duplicateCandidates = (data ?? []) as typeof duplicateCandidates;
@@ -371,7 +369,6 @@ export default async function NewCommercialAccountPage({
                   className="inline-flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-800 font-medium"
                 >
                   → {d.company_name}
-                  {d.industry && <span className="text-[11px] text-ppp-charcoal-500">({d.industry})</span>}
                 </Link>
               </li>
             ))}
@@ -386,7 +383,6 @@ export default async function NewCommercialAccountPage({
         <Section title="Identity">
           <Field id="company_name" label="Company name *" required defaultValue={typedName} />
           <Field id="dba" label="DBA (doing business as)" defaultValue={sp.dba ?? ""} />
-          <Field id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" defaultValue={sp.industry ?? ""} />
           <SelectField id="rating" label="Rating" options={[["", "—"], ["A", "A"], ["B", "B"], ["C", "C"]]} defaultValue={sp.rating ?? ""} />
           {/* Karan 2026-07-08: is_key_relationship parity with the Edit
               form. Was create→edit round-trip; now flagging a key
