@@ -247,7 +247,7 @@ export default async function ProposalsIndexPage({
     .from("commercial_proposals")
     .select(
       `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, snapshot_document_id, header_json,
-       opportunity:commercial_opportunities!inner(
+       opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(
          id, title, client_name, property_street, project_number, account_id, deleted_at,
          account:commercial_accounts!inner(id, company_name, deleted_at)
        )`

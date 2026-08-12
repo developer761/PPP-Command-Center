@@ -396,7 +396,7 @@ export async function getLifetimeCompetitorStats(): Promise<Map<string, Competit
       outcome,
       debriefed_at,
       deciding_factor,
-      opportunity:commercial_opportunities!inner(bid_value_low_cents, bid_value_high_cents, deleted_at)
+      opportunity:commercial_opportunities!commercial_win_loss_debrief_opportunity_id_fkey!inner(bid_value_low_cents, bid_value_high_cents, deleted_at)
     `)
     .not("competitor_id", "is", null);
 

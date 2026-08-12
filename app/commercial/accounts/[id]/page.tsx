@@ -4210,7 +4210,7 @@ async function AccountProposalsTab({
     .from("commercial_proposals")
     .select(
       `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, header_json, snapshot_document_id,
-       opportunity:commercial_opportunities!inner(id, title, title_override, client_name, property_street, project_number, account_id, deleted_at, archived_at, status, sub_status)`
+       opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(id, title, title_override, client_name, property_street, project_number, account_id, deleted_at, archived_at, status, sub_status)`
     )
     .is("deleted_at", null)
     .eq("opportunity.account_id", accountId)

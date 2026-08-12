@@ -54,7 +54,7 @@ export async function runOverdueTasksReminder(): Promise<Result> {
       .from("commercial_opportunity_tasks")
       .select(
         `id, title, due_at, assigned_user_id,
-         opportunity:commercial_opportunities!inner(
+         opportunity:commercial_opportunities!commercial_opportunity_tasks_opportunity_id_fkey!inner(
            id, title, client_name, property_street, deleted_at,
            account:commercial_accounts!inner(id, company_name, deleted_at)
          )`

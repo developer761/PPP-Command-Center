@@ -203,7 +203,7 @@ async function evaluateRule(
     case "proposal_idle": {
       const { data } = await sb
         .from("commercial_proposals")
-        .select("id, revision_number, sent_at, opportunity:commercial_opportunities!inner(id, account_id, title, title_override, client_name, property_street, deleted_at, archived_at)")
+        .select("id, revision_number, sent_at, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(id, account_id, title, title_override, client_name, property_street, deleted_at, archived_at)")
         .eq("status", "sent")
         .not("sent_at", "is", null)
         .lt("sent_at", cutoffIso)

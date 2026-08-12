@@ -320,7 +320,7 @@ export async function getLessonsLearnedFeed(
       deciding_factor,
       lessons_learned,
       debriefed_at,
-      opportunity:commercial_opportunities!inner(title, deleted_at),
+      opportunity:commercial_opportunities!commercial_win_loss_debrief_opportunity_id_fkey!inner(title, deleted_at),
       competitor:commercial_competitors!commercial_win_loss_debrief_competitor_id_fkey(name)
     `)
     .gte("debriefed_at", range.fromIso)

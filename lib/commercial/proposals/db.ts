@@ -1658,7 +1658,7 @@ export async function bulkDeleteProposalDraftsForAccount(
   // opportunity → account_id) so we can log + count non-drafts.
   const { data, error } = await sb
     .from("commercial_proposals")
-    .select("id, status, opportunity:commercial_opportunities!inner(account_id, deleted_at)")
+    .select("id, status, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(account_id, deleted_at)")
     .is("deleted_at", null)
     .eq("opportunity.account_id", accountId)
     .is("opportunity.deleted_at", null);
