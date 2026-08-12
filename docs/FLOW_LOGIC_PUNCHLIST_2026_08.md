@@ -63,6 +63,22 @@ The header/milestone due countdown uses a raw 24h instant diff, not ET calendar 
 
 ---
 
+## 🟠 MEDIUM — the "everything under the deal" IA (Karan, repeatedly)
+
+### F12. Opening a deal SUB-ITEM breaks OUT of the deal drill-in to a standalone page
+**Karan has raised this many times — it's the flagship IA rule: everything for a deal lives *under that deal*, no jumping to standalone pages.** Status:
+- ✅ The drill-in **embeds the tool LISTS** correctly — Submittals/Invoices/AIA/COs/Closeout/Costs render inline via `?tab=projects&project=<id>&dt=<tool>` (`accounts/[id]/page.tsx` renders `<SubmittalsTool variant="inline">` etc.). Good.
+- ❌ But opening an **individual item** navigates to a **standalone full-page route**, dropping the account/deal chrome + the `?tab=projects&project=` URL:
+  - a **submittal** → `/commercial/accounts/[id]/submittals/[dealId]/[sid]` (the SUB-001 "Submittal documents" click Karan hit)
+  - a **proposal** → `/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]`
+  - (the `?back=` param is carried, so the *back button* returns to the drill-in — but the click itself is a full-page jump out, which is exactly the "it brought me to the submittals page" complaint. Back-carrying mitigates the return; it doesn't satisfy "keep me here.")
+
+**Expected (Karan):** clicking a submittal / proposal / any deal item KEEPS you in the deal drill-in — the item detail renders inside `?tab=projects&project=&dt=…` (e.g. `&dt=submittals&sub=<sid>`), account+deal chrome intact — and closing it returns to the same tab/scroll. And **vice versa**: reaching an item from a global list (the Proposals index, the global Submittals log) should still land you in the deal's context, not a bare page.
+
+**Fix (the real one):** render the sub-item detail *inside* the drill-in as a sub-view of its tool tab, not as a separate route — either lift the detail component into the `dt=<tool>` render with a `&sub=<id>` param, or a right-slide-out sheet over the drill-in (the pattern Karan likes for detail). **Sweep the whole class** — submittal detail + proposal editor are the two that fully break out today; verify every other deal item (invoice detail lives at the global `/commercial/invoices/[id]` — same class) either renders in-context or is a deliberate exception. Interim (if the full in-drill-in render is deferred): make EVERY entry point carry `?back=<drill-in>` AND give the standalone page the account/deal chrome so it doesn't read as a different place — but the target state is in-drill-in.
+
+---
+
 ## 🟡 LOW
 ### F11. Reopening an EXPIRED proposal shows the "Withdrawn." banner
 `reopenExpiredAction` redirects with `?approval=withdrawn` (`proposal/[proposalId]/page.tsx:661`), reusing the withdraw-approval banner — wrong header for "reopened from expired."
