@@ -700,3 +700,19 @@ inline-specific fix.
 step-4 (skipped-stage never computed), step-5 (proposal_due_at/follow_up_at DATE-through-etDateOf
 off-by-one). One new LOW: `POST_CONTRACT_COLUMNS` is still a dead import at
 `opportunities/page.tsx:80` (the step-10 residual — different file from the account-page sweep).
+
+---
+
+## AUDIT — `50bdd2c` (remove duplicated tiles/toolbar from Karan's smoke test). Correct, 1 straggler.
+
+Karan's smoke test caught real duplication (CONTRACT/WON shown twice; the 6 delivery tools as
+both old ProjectToolbar pills AND the new Project sub-tabs) — steps 4-5 built the replacements
+and left the originals. Verified the fix removed the RIGHT copies: both KpiTile grids +
+ProjectToolbar are gone, the replacements (`StatusPathBar` 1804, `StageKpiStrip` 1894,
+`AttentionBanner` 1897) remain, `npx tsc --noEmit` exit 0 / 0 errors — no orphaned reference.
+`ProjectStat`/`ToolMiniCard`/`DealPnLView` fully gone (0 occurrences).
+
+**🟡 One straggler:** `function KpiTile` still exists at `opportunities/[id]/page.tsx:5356` with
+ZERO render sites — the grids that used it were removed but the component definition was left,
+so it's now dead (tsc doesn't error on an unused function). Remove it to match the commit's own
+intent (zero dead duplication).
