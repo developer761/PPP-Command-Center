@@ -92,6 +92,17 @@ payment, F6 AIA original-contract ignored), then the flow breaks (F7 drag-to-
 Proposal reverts — ties to auto-advance; F8 Start-Project maze; F9 lost-flip
 leaves the account; F10 due-date TZ off by a day).
 
+### ▶ PHASE C.8 — Re-audit of the shipped batch *(doc: REAUDIT_SHIPPED_2026_08.md)*
+Side-by-side re-audit of the batch that cleared C.5/§3/§5 items. Structure is
+mostly good but details regressed — **fix before the auto-advance handoff**.
+**R1 first: the margin fix was built CONTRACT-based, the opposite of decision
+D2** (the commit comment overrode the decision) — flip `dealMargin()` to billed;
+it auto-fixes R2/R12/R17/R21/R22. Then **R3** (Closed column now floods a
+fully-closed account's board — the §5 flood-guard wasn't applied) and **R4** (the
+crew welcome-email `<10min` suppression makes a same-minute new hire get no
+schedule/scope email + no clock nudge). Then R5/R6 crew scope (1-of-4 email paths;
+alternates folded in) and the R7–R16 half-solves.
+
 ### ▶ PHASE D — Full re-audit
 Fresh persona + adversarial agents over everything from A–C. Non-negotiable:
 this round's audits caught a live security leak and two bugs in code written
