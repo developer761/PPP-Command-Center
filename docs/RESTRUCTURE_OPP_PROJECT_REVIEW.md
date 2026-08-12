@@ -323,3 +323,22 @@ nothing is left broken. **NOTE: the step-3 live-links gap above is still OPEN** 
 didn't address it; the old-shape account→deal links survive (now at 1011, 1562, redirects
 1887/2067, DocumentRow 5220 `#deal-invoices`, rows 4505/5052/6123). Fold that in with the
 unused-import hand-sweep.
+
+---
+
+## ✅ CLOSED — build session fixed both audit findings (`77b6596`), verified
+
+- **Steps-1-2 must-fix (delete/archive cascade misses the project):** FIXED + verified. All
+  four paths (delete/restore/archive/unarchive) now call `ensureProjectForOpportunity`
+  *after* the flag is set, best-effort. Order confirmed correct — the sync re-reads the deal
+  (no `deleted_at` filter on either read), sees the just-set flag, and `won` status is
+  unchanged so `shouldExist` stays true and the reconcile patch mirrors `deleted_at`/
+  `archived_at`. One rule, not four. (Minor nit, not a finding: the 6-line best-effort wrapper
+  is duplicated across db.ts `syncArchivedProject` + mutations.ts `syncProjectForOpportunity`
+  — cross-module, acceptable.)
+- **Step-3 gap (account page's own old-shape deal links):** FIXED + verified. All 12 repointed;
+  platform-wide grep now finds **zero** live old-shape `?tab=projects&project=` URLs, and the
+  account page carries 17 direct `/commercial/opportunities/…` links. The two anchor-losing
+  "jump to invoices/proposals" links went with them.
+
+Both restructure audit findings resolved. Nothing open on steps 1-3 + cleanup.
