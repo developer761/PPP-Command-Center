@@ -186,3 +186,11 @@ H4, M5, M6, L3, L6, C1, C5, C7, C8, C9, C11–C15, R3, R8, R9, R10(copy), R14, R
 
 ### R45 (tiny). L2 probability tooltip leaks a changelog sentence to users
 `opportunities/[id]/page.tsx:1748` — the v2-ladder rewrite is correct, but the tooltip string ends with "The old tooltip listed Inquiry and Negotiating, which are v1 statuses that no longer exist." That is commit-rationale text inside a user-facing `tooltip=` prop; a user hovering the Probability tile sees the tooltip narrate its own history. Trim that sentence. (Everything else in 79372fe + 83a9066 verified complete: C6 addressee, M1 win-rate basis, L1 board bid-range, M3 closeout-owing count, R44 both consumers.)
+
+---
+
+## CLOSED (2026-08-12)
+- **R32** — proposal editor line-item/rename/delete actions all thread `proposalBack` now (build session). ✅
+- **R39** — the last render site (proposal detail chip) now uses `proposalDisplayId` (shared-family PROP-2026-####); board + account tab already did. One id everywhere. ✅ (verification session, commit)
+- **R45** — the changelog sentence is gone from the probability tooltip. ✅
+- **Migration deploy-gate (126-130)** — APPLIED by Karan. The R25/R30/R31/R33/R35 pre-deploy risk is closed. ✅ (A hardening follow-up remains optional: wrap the two hot write paths in `isMissingColumn` so a FUTURE new-column migration cannot repeat the class — but nothing is broken now.)
