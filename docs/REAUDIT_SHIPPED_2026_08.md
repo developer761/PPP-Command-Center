@@ -147,3 +147,28 @@ F8 half-landed: the **debrief page** Start Project is now un-gated from `isDebri
 - **R32** — F12 proposal editor: `renameProposalAction`/`addLineItemAction`/`updateLineItemAction` still have **0 `proposalBack`** (line-item edit still drops the drill-in origin). The NOTE_TO_BUILD_SESSION flagged this to finish; this batch didn't.
 - **F9** — lost/no-bid flip from an account still bounces to the global opp shell (not touched this batch).
 - **R10** — folded into R36.
+
+---
+
+## HOLISTIC RE-AUDIT of the ~16-commit catch-up batch (2026-08-12)
+A 6-lane sweep verified every commit the per-commit watcher missed. Many fixes are complete; the ones below are the **90%/wrong/open** items. Same pattern at scale — fix lands on the obvious surface, misses siblings.
+
+### 🔴 HIGH
+- **R37. %-crash sweep (f610e3b) is 90%** — 3 raw `decodeURIComponent(searchParam)` sites still live (`accounts/[id]/page.tsx:5358, :5404`; `work-order-tool.tsx:459`), **two in the same file the sweep edited**. A record titled "50% Deposit" still 500s the account page on create/delete. Route all three through `flash.ts flashMessage()`.
+- **R38. C4 delete-cascade warning missed the PRIMARY delete path** — the account DealEditSheet confirm enumerates the cascade, but the opp **drill-in danger-zone** (`opportunities/[id]/page.tsx:3048-3071`) still reads "Delete {title}?" with a bare button. Per D5 the deal-click lands here, so this is the main path. Reuse the account-delete copy.
+- **R39. H6 proposal-ID is 90%** — 3 render sites still inline old `PROP-{seq}`: detail header chip (`proposal/[proposalId]/page.tsx:1041`), board kanban (`proposals/page.tsx:645`), board list (`:1390`, + board select `:247` must fetch `project_number`). Account tab shows `PROP-2026-0042`, detail one click away shows `PROP-####`.
+- **R32 (still open, was "wrong")** — proposal editor `rename`/`addLineItem`/`updateLineItem`/`deleteLineItem` actions rebuild raw URLs with 0 `proposalBack` (success redirect strips the drill-in origin). Thread `proposalBack(formData)` + emit the `back` field.
+- **Migration-guard gate (still open)** — gate = **126,127,128,129,130**; no 131, no guard added. Neither hot write (`status.ts:394`, `aia/db.ts`) nor the AIA explicit selects wrapped in `isMissingColumn`, and no CI/pre-deploy migration check. Guard the two paths OR add the gate.
+
+### 🟠 MEDIUM
+- **R40. M7 is 90%** — only dashboard + invoice deal-clicks were converted. The **account opportunities-tab full-row Link (`accounts/[id]/page.tsx:5695` — the exact site M7 named)** still uses `?tab=opportunities&edit=` (auto-pop); same for the duplicate-warning link (`:4910`) and 2 archived deal-name clicks (`settings/archived:233,308`). Route to `?tab=projects&project=`.
+- **R41. C10 opt-out toggle — wrong param** — `settings/access/page.tsx:83` redirects `?error=` but the page reads `se_error` (siblings all use `se_error`). Failed toggle shows no banner. One-char fix.
+- **R42. R15 not done** — no shared tone helper landed; `PipelineDealBlock` inline tone (status-only) still diverges from `statusPillTone` (status+sub) — `proposal·follow_up` blue vs amber on one account. Extract the shared helper.
+- **R36 (still 90%)** — the R10 "Nothing billed yet" half IS now gated on `billedPreTaxCents`; the **Start-Project button half is still open** (won panel `accounts/[id]/page.tsx:1560-1598` ends in prose, no button). Wire a form to `startProjectAction`.
+- **R43. A2 fold is 90%** — the reconcile loop derives target from the newest proposal, so `dealAlreadyConsistentWithProposal` short-circuits BEFORE the folded `won` advance; the headline case (deal behind a won proposal, newest is a fresh draft) never catches up. Evaluate the folded advance independently of the newest-derived guard.
+
+### 🟡 LOW (batch)
+H3 stale `outstandingCents` comment (`projects/db.ts:52`); 5a024e7 inline-invoice `expect*` guard inert/dead (no live leak); R7 InfoTab still shows Probability/Weighted/Bid on decided deals; M4 board card hover-title still `opportunityStatusLabel`→"Closed"; H1 report lacks the `wasWonInPeriod` legacy-row guard (legacy-data-only parity).
+
+### ✅ VERIFIED COMPLETE (don't re-touch)
+H4, M5, M6, L3, L6, C1, C5, C7, C8, C9, C11–C15, R3, R8, R9, R10(copy), R14, R16, R18, R20, R23, M7(dashboard/invoice half). **Historical-repairs (ba183b7) verified sound across all six sub-items** — correct discriminators, ET win-date, approved-figure guard on all apply paths, provenance columns, per-row human Apply (no auto-apply), and reconstruction math that degrades to "not recoverable" rather than writing a wrong figure to a signed-doc row.
