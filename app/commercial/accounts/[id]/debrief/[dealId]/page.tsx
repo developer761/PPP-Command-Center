@@ -230,7 +230,7 @@ async function submitDebriefAction(formData: FormData) {
   // next step became available. A loss has no next step, so it returns to the
   // deal as before.
   if (outcome === "won") {
-    redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?saved=1`);
+    redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?debrief_saved=1`);
   }
   redirect(
     `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}`
@@ -430,6 +430,16 @@ export default async function AccountDebriefPage({
           >
             <span aria-hidden className="mt-0.5">⚠</span>
             <span>{error}</span>
+          </div>
+        )}
+        {/* A won deal now STAYS here after saving, so Start Project is right
+            below — but nothing confirmed the save had happened. */}
+        {sp.debrief_saved === "1" && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
+            <strong>Debrief saved.</strong>{" "}
+            {isWon(opp)
+              ? "Start the project below when the crew is ready."
+              : "It feeds the Win/Loss report."}
           </div>
         )}
         {justClosed && !isDebriefed && (

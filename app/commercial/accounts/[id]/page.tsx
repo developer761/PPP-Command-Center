@@ -5675,6 +5675,9 @@ function AccountOpportunityRow({
     label: kanbanMoveToLabel(c.key),
   }));
   const isTerminal = TERMINAL_STATUSES.has(opp.status);
+  // The debrief only exists for a deal at Closed — see the note on the other
+  // CTA. `isTerminal` also matches post_sale_closed, where the link dead-ends.
+  const canDebrief = opp.status === "pre_sale_closed";
   const bidLabel = formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents);
   return (
     // 2026-07-21 audit: anchor target for #deal-row-<id>. Two links
@@ -5821,7 +5824,7 @@ function AccountOpportunityRow({
           the toast right after a Won drop. Amber pill for pending
           debrief; emerald for filed. Renders below the row link so it
           doesn't nest anchors. */}
-      {isTerminal && (
+      {canDebrief && (
         <div className="px-4 pb-3 -mt-1">
           <Link
             href={`/commercial/accounts/${accountId}/debrief/${opp.id}`}
@@ -8089,7 +8092,12 @@ async function DealEditSheet({
             account-scoped debrief page. Without this the user has no
             way to reach the debrief form after the initial Won-drop
             toast disappears. Amber tint on pending, emerald on filed. */}
-        {isTerminalOpportunityStatus(deal.status) && (
+        {/* Only while the deal is at Closed. The debrief page accepts nothing
+            else, so on a job already in delivery this CTA was a link that
+            bounced the user straight back to the deals tab — and after H4
+            narrowed the count to match, it was also advertising work the badge
+            no longer asks for. */}
+        {deal.status === "pre_sale_closed" && (
           <div
             className={`rounded-lg px-4 py-3 flex items-center justify-between gap-3 text-sm ${
               deal.win_loss_debriefed_at

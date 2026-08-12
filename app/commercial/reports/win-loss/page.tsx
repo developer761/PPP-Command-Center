@@ -187,7 +187,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
             </span>
           </div>
           <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-            Aggregated debrief data — what we&apos;re winning, what we&apos;re losing, and why. Quarterly review fuel.
+            What we&apos;re winning and losing, over the period you choose — and, from the debriefs that have been filed, why.
           </p>
         </div>
       </div>
@@ -272,8 +272,8 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
         <span
           tabIndex={0}
           role="img"
-          aria-label="These numbers come from completed Win/Loss debriefs in the selected period — not raw opportunity status. An opportunity that was won or lost but never debriefed won't appear here; complete its debrief and it will."
-          title="These numbers come from completed Win/Loss debriefs in the selected period — not raw opportunity status. An opportunity that was won or lost but never debriefed won't appear here; complete its debrief and it will."
+          aria-label="Counts every deal DECIDED in this period, by its decision date — a win counts whether or not a debrief has been filed. The competitor and deciding-factor breakdowns below still come from debriefs, because that is where the reasons are recorded."
+          title="Counts every deal DECIDED in this period, by its decision date — a win counts whether or not a debrief has been filed. The competitor and deciding-factor breakdowns below still come from debriefs, because that is where the reasons are recorded."
           className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-ppp-charcoal-300 text-ppp-charcoal-500 text-[9px] font-bold cursor-help focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
         >
           ?
@@ -325,7 +325,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
       {summary.totalClosed === 0 ? (
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
           <h2 className="text-base font-semibold text-ppp-charcoal mb-2">
-            No debriefs in this period
+            No deals decided in this period
           </h2>
           <p className="text-sm text-ppp-charcoal-500">
             Try a wider range, or head to the{" "}
