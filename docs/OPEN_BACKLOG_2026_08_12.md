@@ -176,3 +176,27 @@ proposal_idle cron resolve as soon as `25979c7` DEPLOYS (Vercel). The rest of th
 - `reports/job-costs/page.tsx:73`: "Margin = contract − cost (the projected profit…)" — now contradicts the billed-based code AND the Costs tab it claims to match.
 - `reports/geography/page.tsx:95`: "Margin is contract-based." — flatly wrong; code is `marginFrom(billed, cost)`.
 Change both captions to "billed − cost" so the label matches the number.
+
+---
+
+## VERIFY — `5daf83b` (item 3 tail + items 2-caption/5/6/7 ride-along). Mostly complete; 2 tails.
+✅ **Item 3 date cluster COMPLETE:** Hot filter → `daysFromTodayEt`, dashboard `relativeLabel` → `etDateOf`,
+`fmtEtDate` bare-date guard (fixes the VISIBLE invoice-dated-a-day-early bug). Tests added.
+✅ **Item 5:** account edit-page toggle now copies site→billing (billing mirrors company), matching create + the label.
+✅ **Item 7:** tap targets hit 44px on mobile (pencil `h-11 w-11 sm:h-6`, chip `h-11 sm:h-7`, min-h-[44px] on menu/×).
+✅ **Label:** `auto-advance-targets:66` now `"Sent"` (my round-1 miss #2 CLOSED). ✅ **Won-not-started** fixed (`notStarted`).
+✅ **Geography caption** corrected to billed-based.
+
+### 🟠 Tail 1 — `job-costs/page.tsx:73` header STILL says "Margin = contract − cost"
+Lines 102 (tile sub) + 178 (footer) were corrected to "billed − cost", but the HEADER caption (73) still says
+"Margin = contract − cost (the projected profit, same as each deal's Costs tab)" — now contradicting its own
+page AND the billed-based Costs tab. Fix line 73 too.
+
+### 🟠 Tail 2 — path-bar skipped-detection is PARTIAL (only "won" skipped, not the general sales-jump)
+`stateFor` returns "skipped" only when the caller's `skipped[]` contains the key, but `StatusPathBar` computes
+that set HEURISTICALLY: `skipped={inDelivery && !decided && !hasWinDate ? ["won"] : []}` — it only ever marks
+"Closed Won" skipped. The commit's own goal ("a deal that jumped stages showed every stage behind it as
+completed") is NOT met for the sales ladder: a deal moved straight to Sent still shows RFP/Estimating/
+Pending-Approval as green-check "passed". The real reached-set is ALREADY fetched at `page.tsx:5156`
+(`listOpportunityStatusLog`) for the history display — thread its visited `to_status` set into the path bar's
+`skipped` prop to actually close it. (won-not-started half IS fixed; this is the skipped half.)
