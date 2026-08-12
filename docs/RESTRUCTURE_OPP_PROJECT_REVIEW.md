@@ -1000,3 +1000,21 @@ rows — the fix is complete, not 90%. (3) `sensibleNextStatuses` forward-only (
 - **LABEL:** `auto-advance-targets.ts:66` still `label: "Proposal"` — should be "Sent".
 `status-sub-status-picker.tsx` has now been edited by 0da1676, 3e6bd53, b883a66 without fixing
 CREATE_EXCLUDED_STAGES — good candidate to fold into the next status-flow touch.
+
+---
+
+## VERIFY — `5274bba` (RECHECK: one flat stage picker). Correct; fixed 2 of my flags; 3 still open.
+Solid. The change-status picker is now ONE flat Stage select whose options derive from the shared columns
+and write `COLUMN_TARGET[c.key]` (the same tuple the server action expects) — can't drift, and it offers the
+full ladder (both lanes) so corrections still work (never-block preserved). ✅ **CLOSED my round-1 miss #1**:
+`CREATE_EXCLUDED_STAGES = ["sent","pending_approval"]` (Sent/Pending-Approval no longer creatable). ✅ Fixed a
+4th ladder copy: DELIVERY_STAGES now `POST_CONTRACT_COLUMNS.map(...)` so the bar says "Completed" not "Closed Out".
+
+### 🔔 STILL OPEN (path bar touched AGAIN — 4th time — without them; + my label miss)
+- **`status-path-bar.tsx:146`** `stateFor` is STILL `i < currentIdx ? "passed" : …` — never returns "skipped",
+  so a jumped stage renders as a green-check "passed" (worse at 5+ stages). [skipped-stage]
+- **`status-path-bar.tsx:300`** `currentKey={inDelivery ? status : "pre_construction"}` — a won-not-started
+  deal still lights Pre-Construction as current. [won-not-started]
+- **`auto-advance-targets.ts:66`** still `label: "Proposal"` — should be "Sent" [round-1 miss #2].
+The path bar has now been edited by 0da1676 / b883a66 / 5274bba without the stateFor/currentKey fixes. These
+two need a reached-set (opp status log) for stateFor + a sentinel currentKey; fold in on the next path-bar touch.
