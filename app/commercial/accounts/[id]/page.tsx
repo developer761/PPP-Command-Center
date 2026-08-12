@@ -563,7 +563,9 @@ export default async function CommercialAccountDetailPage({
                 <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Repeat customer</Pill>
               )}
               {account.rating && <Pill tone={ratingTone(account.rating)}>{account.rating}</Pill>}
-              {account.industry && <Pill tone="neutral">{account.industry}</Pill>}
+              {/* Industry pill removed 2026-08-12 — Brendan: "We don't need
+                  Industry on accounts." This was the last place it still
+                  showed; the second one the parallel session caught. */}
               {/* Karan 2026-07-09 Phase A: vendor_compliance_status pill removed —
                   Compliance moves to per-Opportunity/per-Project docs in Phase C. */}
             </div>
@@ -1218,7 +1220,8 @@ async function updateAccountSectionAction(formData: FormData) {
       patch = {
         company_name: get("company_name") ?? undefined,
         dba: get("dba"),
-        industry: get("industry"),
+        // Not on any form any more, so writing it would blank whatever is
+        // stored — the same absent-field-writes-null trap as the dates above.
         website: get("website"),
       };
       break;
@@ -1413,19 +1416,41 @@ async function createDealInlineAction(formData: FormData) {
   // Karan 2026-07-08: capture proposed_start / proposed_end / probability
   // override on create so the user doesn't have to bounce through the
   // Edit form after logging a deal that already has a signed schedule.
-  const proposedStartRaw = String(formData.get("proposed_start_at") ?? "").trim();
-  const proposed_start_at = proposedStartRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedStartRaw)
-    ? `${proposedStartRaw}T09:00:00.000Z`
-    : null;
-  const proposedEndRaw = String(formData.get("proposed_end_at") ?? "").trim();
-  const proposed_end_at = proposedEndRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedEndRaw)
-    ? `${proposedEndRaw}T17:00:00.000Z`
-    : null;
-  const probRaw = String(formData.get("probability_pct") ?? "").trim();
+  // A field that is NOT ON THE FORM must not be written. `formData.get`
+  // returns null when a field is absent and "" when it is present-but-empty —
+  // collapsing both to null is what turned "I removed the input" into "every
+  // save wipes the stored value". Caught by the parallel session, and it was
+  // mine: I removed these inputs for Brendan and left the action writing them.
+  //
+  // `undefined` reaches updateCommercialOpportunity as "don't touch".
+  const proposedStartField = formData.get("proposed_start_at");
+  const proposedStartRaw = String(proposedStartField ?? "").trim();
+  const proposed_start_at =
+    proposedStartField === null
+      ? undefined
+      : proposedStartRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedStartRaw)
+        ? `${proposedStartRaw}T09:00:00.000Z`
+        : null;
+  const proposedEndField = formData.get("proposed_end_at");
+  const proposedEndRaw = String(proposedEndField ?? "").trim();
+  const proposed_end_at =
+    proposedEndField === null
+      ? undefined
+      : proposedEndRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedEndRaw)
+        ? `${proposedEndRaw}T17:00:00.000Z`
+        : null;
+  // Same trap: the Probability input came out for Brendan, so an absent field
+  // would have reset every deal's probability to null on save — and the
+  // forecast on the dashboard reads it.
+  const probField = formData.get("probability_pct");
+  const probRaw = String(probField ?? "").trim();
   const probParsed = probRaw ? Number(probRaw) : NaN;
-  const probability_pct = Number.isFinite(probParsed) && probParsed >= 0 && probParsed <= 100
-    ? Math.round(probParsed)
-    : null;
+  const probability_pct =
+    probField === null
+      ? undefined
+      : Number.isFinite(probParsed) && probParsed >= 0 && probParsed <= 100
+        ? Math.round(probParsed)
+        : null;
 
   // Duplicate check (Phase B). Skipped when the user submits with the
   // hidden `confirm_duplicate=1` field from the "Create anyway" button.
@@ -1569,14 +1594,29 @@ async function editDealFromAccountAction(formData: FormData) {
   const proposal_due_at = proposalDueRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposalDueRaw)
     ? `${proposalDueRaw}T16:00:00.000Z`
     : null;
-  const proposedStartRaw = String(formData.get("proposed_start_at") ?? "").trim();
-  const proposed_start_at = proposedStartRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedStartRaw)
-    ? `${proposedStartRaw}T09:00:00.000Z`
-    : null;
-  const proposedEndRaw = String(formData.get("proposed_end_at") ?? "").trim();
-  const proposed_end_at = proposedEndRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedEndRaw)
-    ? `${proposedEndRaw}T17:00:00.000Z`
-    : null;
+  // A field that is NOT ON THE FORM must not be written. `formData.get`
+  // returns null when a field is absent and "" when it is present-but-empty —
+  // collapsing both to null is what turned "I removed the input" into "every
+  // save wipes the stored value". Caught by the parallel session, and it was
+  // mine: I removed these inputs for Brendan and left the action writing them.
+  //
+  // `undefined` reaches updateCommercialOpportunity as "don't touch".
+  const proposedStartField = formData.get("proposed_start_at");
+  const proposedStartRaw = String(proposedStartField ?? "").trim();
+  const proposed_start_at =
+    proposedStartField === null
+      ? undefined
+      : proposedStartRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedStartRaw)
+        ? `${proposedStartRaw}T09:00:00.000Z`
+        : null;
+  const proposedEndField = formData.get("proposed_end_at");
+  const proposedEndRaw = String(proposedEndField ?? "").trim();
+  const proposed_end_at =
+    proposedEndField === null
+      ? undefined
+      : proposedEndRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedEndRaw)
+        ? `${proposedEndRaw}T17:00:00.000Z`
+        : null;
   // Migration 069 — RFP arrival date. Anchor at noon UTC so the ET
   // display doesn't drift a day either side of the date line.
   const rfpReceivedRaw = String(formData.get("rfp_received_at") ?? "").trim();

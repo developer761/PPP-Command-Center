@@ -73,3 +73,37 @@ describe("parseInlineValue", () => {
     expect(parseInlineValue(f("client_name"), "  Acme  ")).toEqual({ value: "Acme" });
   });
 });
+
+/**
+ * The structural guard the parallel session asked for.
+ *
+ * The recurring failure all day: a field is removed from a FORM, and the server
+ * action keeps reading it. `formData.get` returns null when a field is absent
+ * and "" when it is present-but-empty — collapsing both to null turns "I
+ * removed the input" into "every save wipes the stored value". It happened to
+ * the proposed dates and nearly to probability, whose value the dashboard
+ * forecast reads.
+ *
+ * This pins the distinction the actions must preserve.
+ */
+describe("absent form field vs empty form field", () => {
+  it("an EMPTY field is a clear — an intentional edit", () => {
+    // Present-but-blank means "I want this gone".
+    const f = inlineField("client_name")!;
+    expect(parseInlineValue(f, "")).toEqual({ value: null });
+    expect(parseInlineValue(f, "   ")).toEqual({ value: null });
+  });
+
+  it("distinguishes null (absent) from empty string (present) in FormData", () => {
+    // The exact API behaviour every server action here depends on. If this ever
+    // stops being true, the actions that branch on `=== null` are silently
+    // writing nulls again.
+    const fd = new FormData();
+    fd.set("present_but_empty", "");
+    expect(fd.get("present_but_empty")).toBe("");
+    expect(fd.get("not_on_the_form")).toBeNull();
+    // …which is why `?? ""` before the null-check is the bug: it erases the
+    // difference the branch depends on.
+    expect(String(fd.get("not_on_the_form") ?? "")).toBe("");
+  });
+});
