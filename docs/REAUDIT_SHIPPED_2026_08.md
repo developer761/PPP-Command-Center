@@ -57,7 +57,14 @@ The `<10min` dup-suppression (`schedule-email-send.ts:452-454`, keyed on the emp
 
 ## 🟡 LOW
 - **R18.** Closed cluster count badge undercounts (sums the sliced ≤10, shows "10" when 31 exist); no per-account "view all" (`opportunities/page.tsx:2514`).
-- **R19.** `getProjectFinancials` runs unconditionally for every phase (`:1148`) — §3 said gate to in-delivery. (§3e/won-card need *some* money data, so partial.)
+- **R19. ❌ DECLINED — do not do this.** `getProjectFinancials` runs for every
+  phase, and §3 asked for it to be gated to in-delivery. It must not be: the
+  §3e safety net (`accounts/[id]/page.tsx`, `dealHasRollup || p.invoicedCents > 0
+  || dealFin.collectedCents > 0`) reads it on a PRE-SALE deal precisely to catch
+  one that has unexpected billing against it, and the won-not-started card needs
+  it too. Gating the fetch would switch off the check that exists to notice money
+  where there should not be any, to save a query nobody has measured. Verified
+  2026-08-12; leaving this open invites someone to "finish" it and break §3e.
 - **R20.** `bidDetails` "Bid range" shows on won/lost/in-delivery (`:1296`) — forecast value post-sale. Low (legacy fields only).
 - **R21.** `listProjects.grossMarginPct` still contract-based (`projects/db.ts:362`) — anchors the Job-Costs/Geography **reports** to the wrong basis. Align with R1 or expose both named.
 - **R22.** Stale comments at `:1164-1173` now misdescribe `dealMargin()` (say "net÷gross ... same guard as the dashboard" — both false now). Fixed for free by R1.
