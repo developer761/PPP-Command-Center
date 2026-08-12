@@ -555,3 +555,22 @@ no-win-date → `past()` true → surfaces immediately (safe reading of unknown)
 "Build a proposal" CTA for that state, so guidance isn't lost, only the wallpaper warning.
 Tiny nit (not worth fixing): a future-dated `decided_at` would suppress the graced warnings
 (`wonDaysAgo < grace`), but that's a data anomaly.
+
+---
+
+## AUDIT — `47e1618` (status picker offers only engine-blind moves; +mine/new views). Clean.
+
+Well-designed. Verified: (1) `sensibleNextStatuses` returns the correct engine-blind moves per
+stage (verbal won/lost, start-the-job, and the manual delivery ladder that has no auto-advance);
+(2) the picker keeps the FULL allowed set behind a "show every status" disclosure
+(`allOtherStatuses = allowedNextStatuses(...) − sensible`, "(unusual)"-labelled, "use only to
+correct it") — respects `feedback_never_reject_only_warn`, corrections stay reachable; (3) the
+new `mine`/`new` filters are fully wired — both in `VIEW_OWNED_PARAMS` (clear on view switch),
+query-filtered, and chipped; (4) the "New this week" cutoff is ET-anchored and resolves to a
+STRING via `.toISOString().slice(0,10)`, so the `created_at.slice(0,10) >= cutoff` compare is
+string-vs-string (correct), not Date-vs-string.
+
+Two low nits (not blockers): (a) `created_at` is sliced as UTC while the cutoff is ET-anchored —
+a ≤1-day boundary imprecision for late-evening-ET creations on the 7-day window; `etDateOf(created_at)`
+would make it exact. (b) `mine` with an unresolved `viewerUserId` falls through to showing ALL
+deals under a "Mine" chip — harmless soft-fail, but the chip then lies; consider empty-or-guard.
