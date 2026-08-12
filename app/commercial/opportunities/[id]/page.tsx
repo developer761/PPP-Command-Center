@@ -31,7 +31,19 @@ import {
   unarchiveOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { commercialDb } from "@/lib/commercial/db";
-import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
+import { listCurrentProposalTotalByOpp, listProposalsForOpp } from "@/lib/commercial/proposals/db";
+// Restructure step 3: the deal's proposals + the six delivery tools render on
+// this page now. Every tool body was already factored out with a
+// `variant: "route" | "inline"` prop and shared between its standalone account
+// route and the account page's deal drill-in — this is a third caller, not a
+// fork. The account routes redirect here.
+import { DealProposalsSection } from "@/components/commercial/deal-proposals-section";
+import { ChangeOrdersTool } from "@/app/commercial/accounts/[id]/change-orders/[dealId]/change-orders-tool";
+import { AiaTool } from "@/app/commercial/accounts/[id]/aia/[dealId]/aia-tool";
+import { ProjectCostsTool } from "@/app/commercial/accounts/[id]/costs/[dealId]/costs-tool";
+import { CloseoutTool } from "@/app/commercial/accounts/[id]/closeout/[dealId]/closeout-tool";
+import { SubmittalsTool } from "@/app/commercial/accounts/[id]/submittals/[dealId]/submittals-tool";
+import { WorkOrderTool } from "@/app/commercial/accounts/[id]/work-order/[dealId]/work-order-tool";
 import { fetchOpportunityLifecycle, formatDurationDays } from "@/lib/commercial/opportunities/lifecycle";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { listTeams, setOwnerTeam, getEffectiveOwnerTeam } from "@/lib/commercial/teams/db";
@@ -1233,16 +1245,59 @@ async function deleteFinishAction(formData: FormData) {
 //
 // Sub-navigation drives from URL `?tab=X&sub=Y`. Missing/invalid `sub`
 // falls back to the group's default (Info / Plans / Notes).
-type PrimaryTab = "overview" | "docs" | "activity" | "invoices" | "debrief";
-type SubTab = "info" | "team" | "plans" | "finishes" | "files" | "notes" | "tasks" | "timeline" | "emails";
+// Karan 2026-08-12 (restructure step 3): the opportunity is the home of the
+// whole job. Proposals and the six delivery tools used to live on
+// account-scoped routes and the deal drill-in embedded inside the account page;
+// they render HERE now, and those routes redirect in. See
+// docs/RESTRUCTURE_OPP_PROJECT_2026_08.md §4.
+//
+// `project` is the delivery half — it appears once the job is won, which is the
+// same moment `commercial_projects` gets its row (migration 131).
+type PrimaryTab =
+  | "overview"
+  | "docs"
+  | "activity"
+  | "proposals"
+  | "project"
+  | "invoices"
+  | "debrief";
+type SubTab =
+  | "info"
+  | "team"
+  | "plans"
+  | "finishes"
+  | "files"
+  | "notes"
+  | "tasks"
+  | "timeline"
+  | "emails"
+  // Delivery tools — sub-tabs of `project`.
+  | "work-order"
+  | "submittals"
+  | "change-orders"
+  | "aia"
+  | "transactions"
+  | "closeout";
+/** Delivery tools, in the order the work actually happens. */
+const PROJECT_SUB_TABS: { key: SubTab; label: string }[] = [
+  { key: "work-order", label: "Work Order" },
+  { key: "submittals", label: "Submittals" },
+  { key: "change-orders", label: "Change Orders" },
+  { key: "aia", label: "AIA Billing" },
+  { key: "transactions", label: "Transactions" },
+  { key: "closeout", label: "Closeout" },
+];
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
 // Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
 const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
   { key: "overview", label: "Overview" },
+  { key: "proposals", label: "Proposals" },
   { key: "docs", label: "Documents" },
   { key: "activity", label: "Activity" },
 ];
-const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, { key: SubTab; label: string }[]> = {
+/** Primaries that carry sub-tabs. `proposals`, `invoices` and `debrief` are leaves. */
+type GroupTab = Exclude<PrimaryTab, "debrief" | "invoices" | "proposals">;
+const SUB_TABS_BY_PRIMARY: Record<GroupTab, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
     { key: "team", label: "Team" },
@@ -1258,11 +1313,13 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, {
     { key: "timeline", label: "Timeline" },
     { key: "emails", label: "Email Archive" },
   ],
+  project: PROJECT_SUB_TABS,
 };
-const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, SubTab> = {
+const DEFAULT_SUB_BY_PRIMARY: Record<GroupTab, SubTab> = {
   overview: "info",
   docs: "plans",
   activity: "notes",
+  project: "work-order",
 };
 
 /**
@@ -1274,15 +1331,33 @@ const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
   if (!raw) return { primary: "overview", sub: null };
   // Direct primary hits.
-  if (raw === "overview" || raw === "docs" || raw === "activity" || raw === "invoices" || raw === "debrief") {
+  if (
+    raw === "overview" ||
+    raw === "docs" ||
+    raw === "activity" ||
+    raw === "proposals" ||
+    raw === "project" ||
+    raw === "invoices" ||
+    raw === "debrief"
+  ) {
     return { primary: raw as PrimaryTab, sub: null };
   }
   // Legacy flat sub-tab keys → route to the primary + explicit sub.
   if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
   if (raw === "plans" || raw === "finishes" || raw === "files") return { primary: "docs", sub: raw as SubTab };
-  // Submittals moved to its own account-scoped page (2026-07-29); a legacy
-  // ?tab=submittals now falls through to the account drill-in bounce below.
   if (raw === "notes" || raw === "tasks" || raw === "timeline" || raw === "emails") return { primary: "activity", sub: raw as SubTab };
+  // Delivery tools as flat keys. These are what the redirected account routes
+  // emit, and what a year of bookmarks and bell notifications already carry —
+  // `?tab=submittals` and `?tab=changeorders` both used to bounce to the
+  // account page, so they must land on the right tool now rather than Overview.
+  if (raw === "work-order" || raw === "workorder") return { primary: "project", sub: "work-order" };
+  if (raw === "submittals") return { primary: "project", sub: "submittals" };
+  if (raw === "change-orders" || raw === "changeorders") return { primary: "project", sub: "change-orders" };
+  if (raw === "aia") return { primary: "project", sub: "aia" };
+  // `costs` is the old route name; `transactions` is what Katie calls it.
+  if (raw === "transactions" || raw === "costs") return { primary: "project", sub: "transactions" };
+  if (raw === "closeout") return { primary: "project", sub: "closeout" };
+  if (raw === "proposal") return { primary: "proposals", sub: null };
   // Unknown / stale keys → fall through to Overview.
   return { primary: "overview", sub: null };
 }
@@ -1312,117 +1387,35 @@ export default async function OpportunityDetailPage({
   const pageProposalTotal = (
     await listCurrentProposalTotalByOpp([opp.id])
   ).get(opp.id);
+  // Every revision, for the Proposals tab (step 3). Cheap — one deal's worth.
+  const dealProposals = await listProposalsForOpp(opp.id);
 
-  // Karan 2026-07-08: kill the deal-detail page as a landing surface.
-  // Per user "everything in accounts" — the pipeline shouldn't route
-  // people here anymore. Bounce to the account's Deals tab with the
-  // ?deal=<id> param so the account page can auto-expand the drill-in
-  // for this deal. Deep-link workflows (?tab=debrief on a closed deal,
-  // ?tab=documents from a submittal email, ?action=change-status from
-  // a kanban drag-close) still render the full page below because
-  // those are structured workflows that need the whole form shell.
-  const _rawTab = pickFirst(sp.tab);
-  const _rawAction = pickFirst(sp.action);
-  // 2026-07-21 audit fix (systemic): this allowlist is matched against
-  // the RAW tab key the tab-bar + server actions emit. It had a dead
-  // "documents" entry (never a real key — the primary key is "docs") and
-  // omitted "docs" and "files" entirely, so the Documents tab, the Files
-  // sub-tab, and every doc-surface back-link bounced users to the account
-  // page and file rename/delete/move ejected them mid-action. `docs` +
-  // `files` are legitimate deal-scoped surfaces (siblings of the
-  // already-allowed plans/finishes/submittals) and must render here.
-  // `overview`/`info` are deliberately NOT listed — those are the
-  // "landing" case that intentionally bounces to the account drill-in
-  // (Karan 2026-07-08 "everything in accounts"); the Bid Lifecycle now
-  // lives on the account deal sheet.
-  const _hasStructuredIntent =
-    _rawTab === "debrief" ||
-    _rawTab === "docs" ||
-    _rawTab === "plans" ||
-    _rawTab === "finishes" ||
-    _rawTab === "files" ||
-    _rawTab === "activity" ||
-    _rawTab === "notes" ||
-    _rawTab === "tasks" ||
-    _rawTab === "timeline" ||
-    _rawTab === "team" ||
-    _rawTab === "invoices" ||
-    _rawTab === "invoice" ||
-    _rawTab === "changeorders" ||
-    _rawAction === "change-status";
-  // For DELETED deals we never bounce to the account — the account page
-  // has no affordance for a deleted deal and the account itself may be
-  // deleted. Deleted-deal drill-in must land here and stay.
-  if (account && !isDeletedDeal && !_hasStructuredIntent) {
-    // 2026-07-21 audit fix (#4): the account page consumes ?edit= (not
-    // ?deal=) and anchors rows as #deal-row-<id> (not #deal-<id>), so the
-    // old redirect dumped users at the top of an unfiltered list with no
-    // signal which deal they clicked. Route to the opportunities sub-tab
-    // and scroll to the correct row anchor. We deliberately do NOT
-    // auto-open the edit sheet (Karan 2026-07-08: "when i click an
-    // existing deal it focuses the deal i dont like that").
-    const q = new URLSearchParams({ tab: "opportunities" });
-    // 2026-07-21 re-audit (Finding A): an archived deal reached via the
-    // command palette bounced here WITHOUT ?archived=1, so the account
-    // tab (which hides archived by default) rendered neither the row nor
-    // the #deal-row anchor target — the clicked deal vanished. Carry the
-    // archived flag so the row is present + scrolled to.
-    if (opp.archived_at) q.set("archived", "1");
-    const err = pickFirst(sp.error);
-    const editedOk = pickFirst(sp.edited);
-    const statusOk = pickFirst(sp.status_ok);
-    if (err) q.set("error", err);
-    if (editedOk) q.set("saved", editedOk);
-    else if (statusOk) q.set("saved", statusOk);
-    redirect(`/commercial/accounts/${account.id}?${q.toString()}#deal-row-${opp.id}`);
-  }
-
-  // Karan 2026-07-08: Accounts+Deals merge — Invoices lives under the
-  // customer, not the deal. Any legacy URL that lands on the Invoices
-  // tab of a deal (bell notifications, bookmarks, "Convert to invoice"
-  // button, cascade redirects from server actions) bounces to the
-  // account-scoped invoicing surface with this deal's row scrolled +
-  // the quick-add form pre-opened for the deal. Preserves every
-  // deep-link + eliminates the overlap that had Invoices existing in
-  // two places.
+  // ── The bounce to the account page is GONE (Karan 2026-08-12, step 3) ────
+  //
+  // From 2026-07-08 until now, landing on a deal without an explicit tab threw
+  // you to the account page ("everything in accounts"), and an allowlist of
+  // "structured intent" decided which URLs were permitted to render here
+  // instead. That allowlist was itself the source of two shipped bugs — the
+  // Documents tab and every doc back-link ejected users mid-action because
+  // `docs` and `files` were missing from it.
+  //
+  // This restructure reverses the decision it enforced. The opportunity is the
+  // home of the whole job; the account is a shelf that links to it. There is
+  // nothing left to allowlist, so both the list and the redirect are deleted
+  // rather than disabled. The account-side routes now redirect *here*.
+  //
+  // See docs/RESTRUCTURE_OPP_PROJECT_2026_08.md §4.2.
   const rawTab = pickFirst(sp.tab);
-  // Skip the account-scoped invoicing redirect for DELETED deals —
-  // the account view filters out deleted deals, so the redirect would
-  // land the user on a page with no signal about this deal at all.
-  // Deleted-deal invoice management stays on this page.
-  if ((rawTab === "invoices" || rawTab === "invoice") && account && !isDeletedDeal) {
-    const q = new URLSearchParams({
-      account_id: account.id,
-      add: opp.id,
-    });
-    // Preserve the toast-carrier params so a post-payment redirect
-    // that used to land on ?tab=invoices&paid_ok=1 still flashes the
-    // success banner on the new home.
-    const paidOk = pickFirst(sp.paid_ok);
-    const paidInvoice = pickFirst(sp.paid_invoice);
-    const paidCapped = pickFirst(sp.paid_capped);
-    const paidHeadsUp = pickFirst(sp.paid_heads_up);
-    const createdN = pickFirst(sp.invoices_created);
-    const errN = pickFirst(sp.invoice_errors);
-    const errMsg = pickFirst(sp.error);
-    if (paidOk) q.set("paid_ok", paidOk);
-    if (paidInvoice) q.set("paid_invoice", paidInvoice);
-    if (paidCapped) q.set("paid_capped", paidCapped);
-    if (paidHeadsUp) q.set("paid_heads_up", paidHeadsUp);
-    if (createdN) q.set("invoices_created", createdN);
-    if (errN) q.set("invoice_errors", errN);
-    if (errMsg) q.set("error", errMsg);
-    redirect(`/commercial/invoices?${q.toString()}#opp-${opp.id}`);
-  }
-
-  // Phase G v2 (Karan 2026-07-28): Change Orders moved to the account-scoped
-  // page so it lives "under the account, not opportunities" and is reachable
-  // without the bounce. Any legacy ?tab=changeorders link (incl. the ones we
-  // shipped in the slide-outs) forwards to the canonical home.
-  if (rawTab === "changeorders") {
-    if (account) redirect(`/commercial/accounts/${account.id}/change-orders/${opp.id}`);
-    redirect(`/commercial/accounts/${opp.account_id}/change-orders/${opp.id}`);
-  }
+  // The two remaining bounces are gone with the first (step 3).
+  //
+  // Invoices used to redirect to the company-wide `/commercial/invoices` list
+  // filtered to this deal, and Change Orders to an account-scoped route. Both
+  // now render as tabs here — the deal's own money stays on the deal. The
+  // cross-deal AR view still exists for "who owes us across every job", which
+  // is a genuinely different question and belongs under Reports (§4.1).
+  //
+  // Their toast params (`paid_ok`, `invoices_created`, …) are read by the
+  // invoices tab below, so nothing needs forwarding.
 
   // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY
   // above. Debrief tab only appears on terminal opps + always slots
@@ -1446,39 +1439,52 @@ export default async function OpportunityDetailPage({
       ]
     : [
         ...PRIMARY_TABS_BASE,
-        // Phase G v2 (2026-07-28): Change Orders moved OUT of the opp tabs to
-        // the account-scoped page (?tab=changeorders redirects there, above).
+        // The delivery half. Appears at the win — the same moment the job gets
+        // its `commercial_projects` row. Before that there is no work to show,
+        // and a bid has no submittals, change orders or closeout.
+        ...(isOppWon ? [{ key: "project" as PrimaryTab, label: "Project" }] : []),
+        ...(isOppWon ? [{ key: "invoices" as PrimaryTab, label: "Invoices" }] : []),
         ...(isOppTerminal ? [{ key: "debrief" as PrimaryTab, label: "Debrief" }] : []),
       ];
   const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
   // Only allow debrief primary on terminal opps.
   // For deleted deals, allow the invoices tab regardless of Won state.
+  // `project` follows the same rule as Invoices: a deal that isn't won has no
+  // delivery half, so a stale link to one lands on Overview rather than an
+  // empty set of tools.
   const primary: PrimaryTab =
     resolvedPrimary === "debrief" && !isOppTerminal
       ? "overview"
       : resolvedPrimary === "invoices" && !isOppWon && !isDeletedDeal
       ? "overview"
+      : resolvedPrimary === "project" && !isOppWon
+      ? "overview"
+      : resolvedPrimary === "project" && isDeletedDeal
+      ? "overview"
       : resolvedPrimary;
   const rawSub = pickFirst(sp.sub) as SubTab | undefined;
-  // debrief + invoices are leaves (no sub-tabs). Only overview/docs/
-  // activity carry sub-tabs.
-  const sub: SubTab | null =
-    primary === "debrief" || primary === "invoices"
-      ? null
-      : (rawSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === rawSub))
-      ? rawSub
-      : resolvedSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === resolvedSub)
-      ? resolvedSub
-      : DEFAULT_SUB_BY_PRIMARY[primary];
+  // debrief, invoices and proposals are leaves (no sub-tabs). Only
+  // overview / docs / activity / project carry them.
+  const isGroup = (p: PrimaryTab): p is GroupTab =>
+    p === "overview" || p === "docs" || p === "activity" || p === "project";
+  const sub: SubTab | null = !isGroup(primary)
+    ? null
+    : (rawSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === rawSub))
+    ? rawSub
+    : resolvedSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === resolvedSub)
+    ? resolvedSub
+    : DEFAULT_SUB_BY_PRIMARY[primary];
   // Legacy compat: many downstream server actions still redirect with
   // `?tab=team&error=...` etc. The `tab` variable below stays a flat
   // SubTab | "debrief" so all the existing tab === "team" checks below
   // continue to work — we just derive it from the resolved primary+sub.
-  const tab: SubTab | "debrief" | "invoices" =
+  const tab: SubTab | "debrief" | "invoices" | "proposals" =
     primary === "debrief"
       ? "debrief"
       : primary === "invoices"
       ? "invoices"
+      : primary === "proposals"
+      ? "proposals"
       : sub!;
 
   const editedOk = pickFirst(sp.edited) === "1";
@@ -1659,7 +1665,7 @@ export default async function OpportunityDetailPage({
                 page. Phase 3 primary conversion action. */}
             {isWon(opp) && account && (
               <Link
-                href={`/commercial/accounts/${account.id}?tab=projects&project=${opp.id}&dt=invoices#deal-invoices`}
+                href={`/commercial/opportunities/${opp.id}?tab=invoices#deal-invoices`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
                 title={`Open ${account.company_name}'s invoicing surface with a fresh draft ready for this opportunity.`}
               >
@@ -1814,10 +1820,10 @@ export default async function OpportunityDetailPage({
       </nav>
 
       {/* Sub-tab pill row — only renders when the primary has sub-tabs
-          (Overview/Documents/Activity). Debrief has no sub-nav. Pills
-          are red-tinted when active so the two-level hierarchy is
-          visually obvious. */}
-      {primary !== "debrief" && primary !== "invoices" && (
+          (Overview/Documents/Activity/Project). Debrief, Invoices and
+          Proposals are leaves with no sub-nav. Pills are red-tinted when
+          active so the two-level hierarchy is visually obvious. */}
+      {isGroup(primary) && (
         <div className="flex flex-wrap items-center gap-1.5">
           {SUB_TABS_BY_PRIMARY[primary].map((s) => {
             const active = s.key === sub;
@@ -1910,6 +1916,52 @@ export default async function OpportunityDetailPage({
         />
       )}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
+
+      {/*
+        Proposals and the six delivery tools, rendered in place (step 3).
+
+        These bodies were already factored out with a `variant` prop and shared
+        between their standalone account route and the deal drill-in embedded in
+        the account page — so hosting them here is a third caller, not a
+        rewrite. The account routes now redirect in.
+
+        `variant="inline"` drops the standalone page chrome (its own heading,
+        back link and page padding) because this page already provides all
+        three. Every tool takes the account id as `id` and the deal id as
+        `dealId`; they are unchanged.
+      */}
+      {tab === "proposals" && (
+        <DealProposalsSection
+          accountId={opp.account_id}
+          oppId={opp.id}
+          proposals={dealProposals}
+          // The editor is a full-width route of its own; hand it this tab to
+          // come back to so a save doesn't eject you to the account page.
+          backHref={`/commercial/opportunities/${opp.id}?tab=proposals#deal-proposals`}
+        />
+      )}
+      {isOppWon && !isDeletedDeal && (
+        <>
+          {tab === "work-order" && (
+            <WorkOrderTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+          )}
+          {tab === "submittals" && (
+            <SubmittalsTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+          )}
+          {tab === "change-orders" && (
+            <ChangeOrdersTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+          )}
+          {tab === "aia" && (
+            <AiaTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+          )}
+          {tab === "transactions" && (
+            <ProjectCostsTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+          )}
+          {tab === "closeout" && (
+            <CloseoutTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+          )}
+        </>
+      )}
     </div>
   );
 }

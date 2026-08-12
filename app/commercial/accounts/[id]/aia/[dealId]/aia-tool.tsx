@@ -74,15 +74,13 @@ async function ownsAiaContext(accountId: string, dealId: string, appId?: string)
 function base(id: string, dealId: string, origin?: string): string {
   // Return you to WHERE you are — standalone tool when opened directly, the
   // account's deal (Project sub-tab) view when embedded there. Never jump.
-  return origin === "route"
-    ? `/commercial/accounts/${id}/aia/${dealId}?v=1`
-    : `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=aia`;
+  return `/commercial/opportunities/${dealId}?tab=project&sub=aia`;
 }
 function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
 }
 function revalidateAia(id: string, dealId: string) {
-  revalidatePath(`/commercial/accounts/${id}/aia/${dealId}`);
+  revalidatePath(`/commercial/opportunities/${dealId}`);
   revalidatePath(`/commercial/accounts/${id}`);
 }
 function toEtNoon(dateStr: string): string | null {
@@ -402,7 +400,7 @@ export async function AiaTool({
       {/* R5 billing signpost — the AIA application certifies work completed; the
           actual money requests are Invoices. Cross-link back. */}
       <Link
-        href={`/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=invoices`}
+        href={`/commercial/opportunities/${dealId}?tab=invoices`}
         className="flex items-center gap-2.5 rounded-xl border border-cc-brand-200 bg-cc-brand-50/50 px-4 py-2.5 hover:bg-cc-brand-50 transition-colors"
       >
         <span aria-hidden className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-cc-brand-600 text-white shrink-0">

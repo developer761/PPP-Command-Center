@@ -40,12 +40,26 @@ const INVOICE_DEAL_BACK_RE =
 const DEAL_DRILL_IN_BACK_RE =
   /^\/commercial\/accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\?tab=projects&project=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(&dt=[a-z-]+)?(#[a-z-]+)?$/i;
 
+/** The OPPORTUNITY page — where a deal's tools live as of restructure step 3
+ *  (Karan 2026-08-12). Added in the same commit that moved them, deliberately:
+ *  the last time this whitelist lagged the surface it described, every link
+ *  carrying the new shape was silently dropped and fell back to a generic
+ *  breadcrumb, with nothing to indicate the back button had stopped working.
+ *
+ *  Shape: `/commercial/opportunities/<uuid>` with an optional `?tab=` /
+ *  `&sub=` and an optional anchor. Anchored at both ends and restricted to
+ *  known-safe characters, so the open-redirect guard is unchanged — `?back=`
+ *  becomes an href and must never accept an arbitrary URL. */
+const OPPORTUNITY_BACK_RE =
+  /^\/commercial\/opportunities\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?tab=[a-z-]+(&sub=[a-z-]+)?)?(#[a-z-]+)?$/i;
+
 /** Resolve the whitelisted back-target from a raw ?back param (or null). */
 export function resolveToolBack(back: string | undefined): { path: string; label: string } | null {
   if (!back) return null;
   if (TOOL_BACK[back]) return TOOL_BACK[back];
   if (INVOICE_DEAL_BACK_RE.test(back)) return { path: back, label: "Invoices" };
   if (DEAL_DRILL_IN_BACK_RE.test(back)) return { path: back, label: "Deal" };
+  if (OPPORTUNITY_BACK_RE.test(back)) return { path: back, label: "Deal" };
   return null;
 }
 
@@ -71,7 +85,7 @@ export function ToolBackHeader({
           Back to {target.label}
         </Link>
         <span aria-hidden className="text-ppp-charcoal-300">·</span>
-        <Link href={`/commercial/accounts/${accountId}?tab=projects&project=${dealId}`} className="truncate hover:text-cc-brand-700 min-h-[44px] sm:min-h-[32px] inline-flex items-center">
+        <Link href={`/commercial/opportunities/${dealId}`} className="truncate hover:text-cc-brand-700 min-h-[44px] sm:min-h-[32px] inline-flex items-center">
           {accountName} · {dealName}
         </Link>
       </div>
@@ -85,7 +99,7 @@ export function ToolBackHeader({
         {accountName} · Projects
       </Link>
       <span aria-hidden>/</span>
-      <Link href={`/commercial/accounts/${accountId}?tab=projects&project=${dealId}`} className="text-ppp-charcoal-700 font-medium truncate hover:text-cc-brand-700 min-h-[44px] sm:min-h-[32px] inline-flex items-center">{dealName}</Link>
+      <Link href={`/commercial/opportunities/${dealId}`} className="text-ppp-charcoal-700 font-medium truncate hover:text-cc-brand-700 min-h-[44px] sm:min-h-[32px] inline-flex items-center">{dealName}</Link>
     </div>
   );
 }

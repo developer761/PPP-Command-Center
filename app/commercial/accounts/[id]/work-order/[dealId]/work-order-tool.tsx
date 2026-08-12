@@ -65,12 +65,10 @@ function base(id: string, dealId: string, origin?: string, woId?: string | null)
   // scope); send sheet B and A would render the green "Sent to Field Ops"
   // banner directly above its own Draft pill.
   const woQs = woId ? `&wo=${woId}` : "";
-  return origin === "route"
-    ? `/commercial/accounts/${id}/work-order/${dealId}?v=1${woQs}`
-    : `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=work-order${woQs}`;
+  return `/commercial/opportunities/${dealId}?tab=work-order${woQs}`;
 }
 function revalidateWO(id: string, dealId: string) {
-  revalidatePath(`/commercial/accounts/${id}/work-order/${dealId}`);
+  revalidatePath(`/commercial/opportunities/${dealId}`);
   revalidatePath(`/commercial/accounts/${id}`);
   revalidatePath("/commercial/post-job/work-orders");
 }
@@ -354,7 +352,7 @@ export async function WorkOrderTool({
   // Quick-links so the empty/partial hints aren't dead-ends (RUX-4): finishes
   // live on the opportunity's Finishes tab; proposals on the deal's Proposals tab.
   const finishesHref = `/commercial/opportunities/${dealId}?tab=finishes`;
-  const proposalHref = `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=proposals`;
+  const proposalHref = `/commercial/opportunities/${dealId}?tab=proposals`;
 
   const Ctx = () => (
     <>

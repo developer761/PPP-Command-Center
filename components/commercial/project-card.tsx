@@ -73,7 +73,7 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
   // sheet. Pointing at ?edit= made the edit form auto-pop on navigation
   // (2026-07-29 bug). The project home is a read view with the tool jumps;
   // editing deal details is an explicit button there.
-  const overviewHref = `/commercial/accounts/${p.accountId}?tab=projects&project=${p.opp.id}`;
+  const overviewHref = `/commercial/opportunities/${p.opp.id}`;
   // Everything for a deal lives UNDER the deal. These chips used to jump to the
   // standalone tool routes, which drops the account/deal chrome and the tab you
   // came from — the same complaint as opening an item, one level up. The tools

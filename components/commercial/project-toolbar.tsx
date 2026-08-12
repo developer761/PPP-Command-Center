@@ -28,14 +28,19 @@ export function ProjectToolbar({
   // point at /opportunities/[id] (which redirected — the "glitch") and then at
   // ?edit= (which auto-popped the edit form). The project home is a clean read
   // view; editing deal details is an explicit button there.
-  const b = (tool: string) => (fromTool ? `?back=/commercial/post-job/${tool}` : "");
+  // Step 3: every tool is a tab on the deal's own page now, so these are all
+  // one URL shape. The `?back=` carrier still rides along when you arrived from
+  // a sidebar tool index, so "← Back to <Tool>" keeps following you.
+  const b = (tool: string) => (fromTool ? `&back=${encodeURIComponent(`/commercial/post-job/${tool}`)}` : "");
+  const t = (sub: string, tool: string) =>
+    `/commercial/opportunities/${dealId}?tab=project&sub=${sub}${b(tool)}`;
   const items: { key: ProjectToolbarActive; label: string; href: string }[] = [
-    { key: "overview", label: "Overview", href: `/commercial/accounts/${accountId}?tab=projects&project=${dealId}` },
-    { key: "change-orders", label: "Change Orders", href: `/commercial/accounts/${accountId}/change-orders/${dealId}${b("change-orders")}` },
-    { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}${b("aia")}` },
-    { key: "submittals", label: "Submittals", href: `/commercial/accounts/${accountId}/submittals/${dealId}${b("submittals")}` },
-    { key: "closeout", label: "Closeout", href: `/commercial/accounts/${accountId}/closeout/${dealId}${b("closeout")}` },
-    { key: "invoices", label: "Invoices", href: `/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=invoices#deal-invoices` },
+    { key: "overview", label: "Overview", href: `/commercial/opportunities/${dealId}` },
+    { key: "change-orders", label: "Change Orders", href: t("change-orders", "change-orders") },
+    { key: "aia", label: "AIA Billing", href: t("aia", "aia") },
+    { key: "submittals", label: "Submittals", href: t("submittals", "submittals") },
+    { key: "closeout", label: "Closeout", href: t("closeout", "closeout") },
+    { key: "invoices", label: "Invoices", href: `/commercial/opportunities/${dealId}?tab=invoices#deal-invoices` },
   ];
   return (
     <nav aria-label="Project" className="-mx-1 overflow-x-auto overscroll-x-contain">

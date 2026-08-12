@@ -460,6 +460,39 @@ export default async function CommercialAccountDetailPage({
   // off the projects-list fallback.
   const inDealDrillIn = tab === "projects" && typeof sp.project === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.project);
 
+  // ── The drill-in moved out (restructure step 3, Karan 2026-08-12) ─────────
+  //
+  // A deal used to open *inside* the account page at
+  // `?tab=projects&project=<uuid>`. It has its own page now, and the account is
+  // a shelf that links to it. Every one of these URLs is in bookmarks, bell
+  // notifications and sent emails, so this forwards rather than 404s.
+  //
+  // `dt` was the tool sub-tab; it maps onto the opportunity page's
+  // `?tab=project&sub=` (and `dt=proposals` / `dt=invoices`, which were not
+  // project tools, onto their own primaries).
+  if (inDealDrillIn) {
+    const dealId = sp.project as string;
+    const dt = typeof sp.dt === "string" ? sp.dt : "overview";
+    const q = new URLSearchParams();
+    if (dt === "proposals") q.set("tab", "proposals");
+    else if (dt === "invoices") q.set("tab", "invoices");
+    else if (dt === "documents") { q.set("tab", "docs"); q.set("sub", "files"); }
+    else if (dt === "pnl" || dt === "overview") q.set("tab", "overview");
+    else {
+      // A delivery tool. `costs` was renamed `transactions` for Katie.
+      q.set("tab", "project");
+      q.set("sub", dt === "costs" ? "transactions" : dt);
+    }
+    // Carry everything else — deep links to a specific invoice, a submittal,
+    // an error toast from a save that redirected here.
+    for (const [k, v] of Object.entries(sp)) {
+      if (k === "tab" || k === "project" || k === "dt" || k === "sub") continue;
+      const first = Array.isArray(v) ? v[0] : v;
+      if (first != null) q.set(k, first);
+    }
+    redirect(`/commercial/opportunities/${dealId}?${q.toString()}`);
+  }
+
   const account = await getCommercialAccount(id);
   if (!account) notFound();
 
@@ -8062,7 +8095,7 @@ async function DealEditSheet({
     .filter((c) => c.status === "approved")
     .reduce((a, c) => a + c.amount_cents, 0);
   const coPendingCount = changeOrders.filter((c) => c.status === "pending").length;
-  const coHref = `/commercial/accounts/${accountId}/change-orders/${deal.id}`;
+  const coHref = `/commercial/opportunities/${deal.id}?tab=project&sub=change-orders`;
   // ISO date-picker defaults — extract YYYY-MM-DD from the stored UTC
   // timestamps so <input type="date"> renders them correctly.
   const dueDateDefault = deal.proposal_due_at ? deal.proposal_due_at.slice(0, 10) : "";
@@ -8251,7 +8284,7 @@ async function DealEditSheet({
         {/* Phase H: AIA progress billing entry (post-sale projects). */}
         {isPostSaleDeal && (
           <Link
-            href={`/commercial/accounts/${accountId}/aia/${deal.id}`}
+            href={`/commercial/opportunities/${deal.id}?tab=project&sub=aia`}
             className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
           >
             <div className="flex items-center justify-between gap-3">
@@ -8270,7 +8303,7 @@ async function DealEditSheet({
         )}
         {isPostSaleDeal && (
           <Link
-            href={`/commercial/accounts/${accountId}/closeout/${deal.id}`}
+            href={`/commercial/opportunities/${deal.id}?tab=project&sub=closeout`}
             className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
           >
             <div className="flex items-center justify-between gap-3">
@@ -8293,7 +8326,7 @@ async function DealEditSheet({
             — you couldn't reach the create surface from where you land. */}
         {isPostSaleDeal && (
           <Link
-            href={`/commercial/accounts/${accountId}/submittals/${deal.id}`}
+            href={`/commercial/opportunities/${deal.id}?tab=project&sub=submittals`}
             className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
           >
             <div className="flex items-center justify-between gap-3">

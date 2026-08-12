@@ -407,7 +407,7 @@ async function createDealFromPipelineAction(formData: FormData) {
   // "where do I go next?" was the complaint. deal_created=1 fires the confirm
   // flash + the Overview now shows the bid fields entered. 303 redirect, so Back
   // returns to the pipeline (never a form re-POST).
-  redirect(`/commercial/accounts/${account_id}?tab=projects&project=${result.opportunity.id}&deal_created=1`);
+  redirect(`/commercial/opportunities/${result.opportunity.id}?deal_created=1`);
   // unreachable — satisfy the linter that this file has a "server action returns void" signature
   void backHref;
 }
@@ -878,7 +878,7 @@ export default async function CommercialOpportunitiesPage({
   // branch repoints all of them consistently. `focus` is always an opp id at the
   // opp call sites; the account-only header link passes none.
   const customerSheetHref = (accountId: string, focus?: string): string => {
-    if (focus) return `/commercial/accounts/${accountId}?tab=projects&project=${focus}`;
+    if (focus) return `/commercial/opportunities/${focus}`;
     const p = new URLSearchParams(baseParams);
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");

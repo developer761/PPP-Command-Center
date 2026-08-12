@@ -176,7 +176,7 @@ export async function GET(request: Request) {
       hint,
       // Land on the full opportunity drill-in (the canonical home), not the
       // bare redirect shell that bounces to the account list (2026-08 flow walk).
-      href: `/commercial/accounts/${o.account_id}?tab=projects&project=${o.id}`,
+      href: `/commercial/opportunities/${o.id}`,
     });
   }
 

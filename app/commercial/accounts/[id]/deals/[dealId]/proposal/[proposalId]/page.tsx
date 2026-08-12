@@ -573,6 +573,12 @@ async function sendProposalAction(formData: FormData) {
 // ── R1d approval workflow actions ──────────────────────────────────────
 /** A deal drill-in URL — `/commercial/accounts/<uuid>?tab=projects&project=<uuid>…` */
 const DEAL_DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&project=[0-9a-f-]{36}/i;
+/** The deal's own page — where its tools live as of restructure step 3
+ *  (2026-08-12). Added alongside the drill-in shape, not instead of it: the
+ *  old URLs still arrive from bookmarks and sent email. A `?back=` this
+ *  guard rejects is silently dropped, so omitting the new shape would kill
+ *  every back link from the deal page with nothing to show for it. */
+const OPP_PAGE_RE = /^\/commercial\/opportunities\/[0-9a-f-]{36}(\?|#|$)/i;
 
 function proposalHref(accountId: string, dealId: string, proposalId: string, suffix = "", back = "") {
   const url = `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}${suffix}`;
@@ -712,7 +718,7 @@ async function deleteProposalAction(formData: FormData) {
   // gone from the list = the feedback). Going via .../proposal?deleted=1 dropped
   // the flag on its 302 to the account page, so the old flow gave no context (#20).
   redirect(
-    `/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=proposals#deal-proposals`
+    `/commercial/opportunities/${dealId}?tab=proposals#deal-proposals`
   );
 }
 
@@ -954,7 +960,7 @@ export default async function ProposalEditorPage({
 
   // 2026-08 restructure: proposals live on the DEAL now — back goes to the
   // deal view's proposals section, not the (removed) account Proposals tab.
-  const listHref = `/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=proposals#deal-proposals`;
+  const listHref = `/commercial/opportunities/${dealId}?tab=proposals#deal-proposals`;
   // RUX-1: when opened from the Proposals index (sidebar), offer "Back to
   // Proposals" so the editor reads as part of that queue — not a dead-end into
   // the account. Whitelisted (only the exact index path) so ?back can't be an
@@ -964,7 +970,7 @@ export default async function ProposalEditorPage({
   // counts: a proposal reached from the deal should return to the deal.
   const backRaw = typeof sp.back === "string" ? sp.back : "";
   const backParam =
-    backRaw === "/commercial/proposals" || DEAL_DRILL_IN_RE.test(backRaw) ? backRaw : "";
+    backRaw === "/commercial/proposals" || DEAL_DRILL_IN_RE.test(backRaw) || OPP_PAGE_RE.test(backRaw) ? backRaw : "";
 
   // Hidden fields shared by every server action on this page.
   const hiddenIds = (

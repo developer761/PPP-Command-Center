@@ -25,6 +25,31 @@ describe("resolveToolBack", () => {
     ).toBe("Invoices");
   });
 
+  it("accepts the opportunity page — where the tools live as of step 3", () => {
+    // Added in the same commit that moved the tools there. Last time this
+    // whitelist lagged the surface it describes, every link carrying the new
+    // shape was silently dropped with nothing to show the back button had
+    // stopped working.
+    const OPP = "/commercial/opportunities/66666666-7777-8888-9999-000000000000";
+    expect(resolveToolBack(OPP)?.path).toBe(OPP);
+    expect(resolveToolBack(`${OPP}?tab=project&sub=submittals`)?.path).toBe(
+      `${OPP}?tab=project&sub=submittals`
+    );
+    expect(resolveToolBack(`${OPP}?tab=proposals#deal-proposals`)).not.toBeNull();
+  });
+
+  it("refuses an opportunity URL with anything extra appended", () => {
+    const OPP = "/commercial/opportunities/66666666-7777-8888-9999-000000000000";
+    for (const bad of [
+      `${OPP}?tab=project&sub=submittals&next=https://evil.example.com`,
+      `${OPP}/../../etc/passwd`,
+      "/commercial/opportunities/not-a-uuid",
+      `${OPP}?tab=project&evil=1`,
+    ]) {
+      expect(resolveToolBack(bad), bad).toBeNull();
+    }
+  });
+
   it("refuses anything that isn't a place in this app", () => {
     // The reason this is a whitelist and not a passthrough: `back` is rendered
     // as an href, so an attacker-supplied value is an open redirect.

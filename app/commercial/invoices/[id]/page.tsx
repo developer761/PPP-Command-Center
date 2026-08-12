@@ -120,7 +120,7 @@ function withFrom(url: string, from: string): string {
   // Without this, saving from inside a deal throws you into the global Invoices
   // section, which is the jump this change exists to remove. The action's own
   // flags (?saved=…, ?error=…) travel with it.
-  if (DRILL_IN_RE.test(from)) {
+  if (DRILL_IN_RE.test(from) || OPP_PAGE_RE.test(from)) {
     const q = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
     return q ? `${from}${from.includes("?") ? "&" : "?"}${q}` : from;
   }
@@ -128,6 +128,12 @@ function withFrom(url: string, from: string): string {
 }
 /** A deal drill-in URL — `/commercial/accounts/<uuid>?tab=projects&project=<uuid>…` */
 const DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&project=[0-9a-f-]{36}/i;
+/** The deal's own page — where its tools live as of restructure step 3
+ *  (2026-08-12). Added alongside the drill-in shape, not instead of it: the
+ *  old URLs still arrive from bookmarks and sent email. A `?back=` this
+ *  guard rejects is silently dropped, so omitting the new shape would kill
+ *  every back link from the deal page with nothing to show for it. */
+const OPP_PAGE_RE = /^\/commercial\/opportunities\/[0-9a-f-]{36}(\?|#|$)/i;
 
 async function addLineItemAction(formData: FormData) {
   "use server";
@@ -785,7 +791,7 @@ export async function InvoiceDetailView({
   // whole list. Falls back to the natural parent when `from` is missing.
   // Inline, every action returns to the drill-in with this invoice still open.
   const fromRaw = inline
-    ? `/commercial/accounts/${account?.id ?? ""}?tab=projects&project=${opp?.id ?? ""}&dt=invoices&inv=${id}`
+    ? `/commercial/opportunities/${opp?.id ?? ""}?tab=invoices&inv=${id}`
     : pickFirst(sp.from);
   const backHref = (() => {
     if (fromRaw && fromRaw.startsWith("/commercial/")) return fromRaw;
@@ -848,7 +854,7 @@ export async function InvoiceDetailView({
           <>
             <span aria-hidden className="text-ppp-charcoal-300">/</span>
             <Link
-              href={`/commercial/accounts/${opp.account_id}?tab=projects&project=${opp.id}`}
+              href={`/commercial/opportunities/${opp.id}`}
               className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
               title={derivedOppName(opp, account?.company_name ?? null)}
             >
@@ -907,7 +913,7 @@ export async function InvoiceDetailView({
                   sheet never opens (archived deals are excluded from the
                   account tab's list) and the user lands on a bare page. */}
               <Link
-                href={`/commercial/accounts/${opp.account_id}?tab=projects&project=${opp.id}${opp.archived_at ? "&archived=1" : ""}`}
+                href={`/commercial/opportunities/${opp.id}${opp.archived_at ? "&archived=1" : ""}`}
                 className="text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2"
               >
                 {derivedOppName(opp, account?.company_name ?? null)}
@@ -1064,7 +1070,7 @@ export async function InvoiceDetailView({
                   {/* Route to the opportunity's real home (account drill-in
                       sheet), archived-safe — /opportunities/[id] bounces. */}
                   <Link
-                    href={`/commercial/accounts/${opp.account_id}?tab=projects&project=${opp.id}${opp.archived_at ? "&archived=1" : ""}`}
+                    href={`/commercial/opportunities/${opp.id}${opp.archived_at ? "&archived=1" : ""}`}
                     className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2"
                   >
                     {derivedOppName(opp, account?.company_name ?? null)}

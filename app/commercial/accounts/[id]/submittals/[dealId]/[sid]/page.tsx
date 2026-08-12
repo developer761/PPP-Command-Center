@@ -94,7 +94,7 @@ function withBack(url: string, back: string | null): string {
   // redirecting to the standalone page after a save would throw the user out of
   // the deal they never left — the exact jump this whole change removes.
   // The flags the action wanted to set (?saved=1, ?error=…) come with it.
-  if (DRILL_IN_RE.test(back)) {
+  if (DRILL_IN_RE.test(back) || OPP_PAGE_RE.test(back)) {
     const q = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
     return q ? `${back}${back.includes("?") ? "&" : "?"}${q}` : back;
   }
@@ -102,6 +102,12 @@ function withBack(url: string, back: string | null): string {
 }
 /** A deal drill-in URL — `/commercial/accounts/<uuid>?tab=projects&project=<uuid>…` */
 const DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&project=[0-9a-f-]{36}/i;
+/** The deal's own page — where its tools live as of restructure step 3
+ *  (2026-08-12). Added alongside the drill-in shape, not instead of it: the
+ *  old URLs still arrive from bookmarks and sent email. A `?back=` this
+ *  guard rejects is silently dropped, so omitting the new shape would kill
+ *  every back link from the deal page with nothing to show for it. */
+const OPP_PAGE_RE = /^\/commercial\/opportunities\/[0-9a-f-]{36}(\?|#|$)/i;
 /** The guarded origin an action received via its hidden `back` input. */
 function formBack(fd: FormData): string | null {
   return safeBack(String(fd.get("back") ?? "") || undefined);
@@ -780,11 +786,11 @@ export async function SubmittalDetailView({
   // Inline, every action must come back to the drill-in with this submittal
   // still open — otherwise saving the cover sheet silently relocates you.
   const backTo = inline
-    ? `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals&sid=${submittal_id}`
+    ? `/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals&sid=${submittal_id}`
     : safeBack(pickFirst(sp.back));
   // Inline, "all submittals" means the drill-in's own Submittals tab — closing
   // an item must not bounce you out to the standalone list you were avoiding.
-  const drillInSubmittals = `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`;
+  const drillInSubmittals = `/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals`;
   const submittalsListHref = inline
     ? drillInSubmittals
     : (backTo ?? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`);

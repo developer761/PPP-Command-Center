@@ -1350,7 +1350,7 @@ export async function insertCommercialBidSubmittedNotifications(input: {
   const users = (await listManagedUsers()).filter((u) => u.has_new_platform_access && u.is_active);
   if (users.length === 0) return { fanout: 0 };
 
-  const relativeLink = `/commercial/accounts/${input.accountId}?tab=projects&project=${input.opportunityId}`;
+  const relativeLink = `/commercial/opportunities/${input.opportunityId}`;
   const emailLink = appendBase(relativeLink);
   const who = input.contactName?.trim() || input.accountName;
   const shortTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);

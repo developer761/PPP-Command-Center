@@ -195,7 +195,7 @@ function DealRow({ d }: { d: JobCostRow }) {
   return (
     <li>
       <Link
-        href={`/commercial/accounts/${d.accountId}?tab=projects&project=${d.oppId}&dt=costs`}
+        href={`/commercial/opportunities/${d.oppId}?tab=project&sub=transactions`}
         className="flex items-center gap-3 py-2.5 -mx-1 px-1 rounded-lg hover:bg-ppp-charcoal-50/60 min-h-[44px]"
       >
         <div className="min-w-0 flex-1">

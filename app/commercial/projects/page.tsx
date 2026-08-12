@@ -47,7 +47,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
         tone: (pctBilled >= 100 ? "emerald" : "blue") as ChartTone,
         valueLabel: formatCentsCompact(p.contractToDateCents),
         sub: `${formatCentsCompact(p.billedContractCents)} billed · ${pctBilled}%`,
-        href: `/commercial/accounts/${p.opp.account_id}?tab=projects&project=${p.opp.id}`,
+        href: `/commercial/opportunities/${p.opp.id}`,
       };
     });
   const billedOfContractPct = activeSummary.contractValueCents > 0 ? Math.min(100, Math.round((activeSummary.billedContractCents / activeSummary.contractValueCents) * 100)) : 0;

@@ -57,7 +57,7 @@ async function requireCommercialUser(): Promise<string> {
 
 /** Revalidate every surface a change order feeds. */
 function revalidateChangeOrderSurfaces(accountId: string, oppId: string) {
-  revalidatePath(`/commercial/accounts/${accountId}/change-orders/${oppId}`);
+  revalidatePath(`/commercial/opportunities/${oppId}`);
   revalidatePath(`/commercial/accounts/${accountId}`);
   revalidatePath("/commercial/opportunities");
   revalidatePath("/commercial");
@@ -67,9 +67,7 @@ function revalidateChangeOrderSurfaces(accountId: string, oppId: string) {
 export function coBase(accountId: string, oppId: string, origin?: string): string {
   // Return you to WHERE you are — standalone tool when opened directly, the
   // account's deal (Project sub-tab) view when embedded there. Never jump.
-  return origin === "route"
-    ? `/commercial/accounts/${accountId}/change-orders/${oppId}?v=1`
-    : `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=change-orders`;
+  return `/commercial/opportunities/${oppId}?tab=project&sub=change-orders`;
 }
 function coRedirect(accountId: string, oppId: string, params: Record<string, string>, back = "", origin = ""): never {
   const p = { ...params };

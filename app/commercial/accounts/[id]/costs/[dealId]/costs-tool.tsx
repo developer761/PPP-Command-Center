@@ -79,9 +79,7 @@ function costsBase(accountId: string, oppId: string, origin?: string): string {
   // Return you to WHERE you are: the standalone tool page when opened directly,
   // the account's deal (Project sub-tab) view when embedded there. Never jump
   // between the two.
-  return origin === "route"
-    ? `/commercial/accounts/${accountId}/costs/${oppId}?v=1`
-    : `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=costs`;
+  return `/commercial/opportunities/${oppId}?tab=project&sub=transactions`;
 }
 function costsRedirect(accountId: string, oppId: string, params: Record<string, string>, back = "", origin = ""): never {
   const p = { ...params };
@@ -94,6 +92,11 @@ function costsRedirect(accountId: string, oppId: string, params: Record<string, 
 }
 
 function revalidateCostSurfaces(accountId: string, oppId: string) {
+  // The deal's own page — where Transactions now renders, and the surface the
+  // person who just saved is looking at. It was never revalidated: this tool
+  // only ever invalidated the account and the projects list, so a saved cost
+  // could show stale on the very page that saved it. Found in the step-3 sweep.
+  revalidatePath(`/commercial/opportunities/${oppId}`);
   revalidatePath(`/commercial/accounts/${accountId}`);
   revalidatePath("/commercial/projects");
   revalidatePath("/commercial");

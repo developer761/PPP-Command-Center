@@ -1,24 +1,34 @@
 /**
- * Submittals — standalone account-scoped route (the submittal LOG).
+ * Redirect — this tool lives on the opportunity now.
  *
- * The log body lives in `submittals-tool.tsx` (shared with the deal's Project
- * sub-tab, the canonical home). This page is a thin wrapper rendering the same
- * body with standalone-page chrome. The submittal DETAIL editor stays a pushed
- * route (`[sid]/page.tsx`) reached from the log.
+ * Restructure step 3 (Karan 2026-08-12): the opportunity is the home of the
+ * whole job, so the delivery tools render there rather than on account-scoped
+ * routes. The tool BODY (`submittals-tool.tsx`) is unchanged and still lives
+ * here — it is imported by the opportunity page and by the account page's deal
+ * drill-in. Only this route wrapper is retired.
+ *
+ * Kept as a redirect rather than deleted: these URLs are in bookmarks, bell
+ * notifications and sent emails. Query params carry through so a deep link to
+ * a specific record still lands on it.
+ *
+ * See docs/RESTRUCTURE_OPP_PROJECT_2026_08.md §4.2.
  */
-import { SubmittalsTool, type SubmittalsSP } from "./submittals-tool";
+import { redirect } from "next/navigation";
 
-type PP = Promise<{ id: string; dealId: string }>;
-type SP = Promise<SubmittalsSP>;
-
-export default async function AccountSubmittalsPage({
+export default async function RedirectToOpportunity({
   params,
   searchParams,
 }: {
-  params: PP;
-  searchParams: SP;
+  params: Promise<{ id: string; dealId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { id, dealId } = await params;
+  const { dealId } = await params;
   const sp = await searchParams;
-  return <SubmittalsTool id={id} dealId={dealId} sp={sp} variant="route" />;
+  const q = new URLSearchParams({ tab: "project", sub: "submittals" });
+  for (const [k, v] of Object.entries(sp)) {
+    if (k === "tab" || k === "sub") continue;
+    const first = Array.isArray(v) ? v[0] : v;
+    if (first != null) q.set(k, first);
+  }
+  redirect(`/commercial/opportunities/${dealId}?${q.toString()}`);
 }

@@ -1,19 +1,24 @@
 /**
- * Compatibility shim — the submittal detail page moved to the account-scoped
- * route (/commercial/accounts/[id]/submittals/[dealId]/[sid]) so Submittals no
- * longer hangs off the opportunity page. Any legacy link / bookmark to the old
- * URL resolves the opportunity's account and forwards to the new home.
+ * Deep link to one submittal.
+ *
+ * This route has now pointed both ways. It first forwarded to the
+ * account-scoped detail page, when Submittals hung off the account; restructure
+ * step 3 (Karan 2026-08-12) moved the tools onto the opportunity, which left
+ * this shim redirecting to a route that redirects straight back here.
+ *
+ * It resolves in one hop again: the submittals tool renders the detail in place
+ * when handed `&sid=`, so this lands on the deal's own page with that submittal
+ * open — no account lookup, no second redirect.
  */
 import { redirect, notFound } from "next/navigation";
-import { getCommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
 type PP = Promise<{ id: string; sid: string }>;
 
-export default async function LegacySubmittalDetailRedirect({ params }: { params: PP }) {
+export default async function SubmittalDeepLink({ params }: { params: PP }) {
   const { id: opportunity_id, sid: submittal_id } = await params;
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(submittal_id)) notFound();
-  const opp = await getCommercialOpportunity(opportunity_id);
-  if (!opp?.account_id) redirect("/commercial/post-job/submittals");
-  redirect(`/commercial/accounts/${opp.account_id}/submittals/${opportunity_id}/${submittal_id}`);
+  redirect(
+    `/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals&sid=${submittal_id}`
+  );
 }

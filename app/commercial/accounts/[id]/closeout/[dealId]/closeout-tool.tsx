@@ -71,12 +71,10 @@ function backQ(back: string): string {
 function base(id: string, dealId: string, origin?: string) {
   // Return you to WHERE you are — standalone tool when opened directly, the
   // account's deal (Project sub-tab) view when embedded there. Never jump.
-  return origin === "route"
-    ? `/commercial/accounts/${id}/closeout/${dealId}?v=1`
-    : `/commercial/accounts/${id}?tab=projects&project=${dealId}&dt=closeout`;
+  return `/commercial/opportunities/${dealId}?tab=project&sub=closeout`;
 }
 function revalidateCloseout(id: string, dealId: string) {
-  revalidatePath(`/commercial/accounts/${id}/closeout/${dealId}`);
+  revalidatePath(`/commercial/opportunities/${dealId}`);
   revalidatePath(`/commercial/accounts/${id}`);
   revalidatePath("/commercial/post-job/closeout");
 }

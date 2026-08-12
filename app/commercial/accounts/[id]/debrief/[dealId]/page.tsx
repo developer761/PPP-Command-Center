@@ -160,7 +160,7 @@ async function startProjectAction(formData: FormData) {
     );
   }
   redirect(
-    `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}&project_started=1`
+    `/commercial/opportunities/${opp_id}?project_started=1`
   );
 }
 
@@ -233,7 +233,7 @@ async function submitDebriefAction(formData: FormData) {
     redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?debrief_saved=1`);
   }
   redirect(
-    `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}`
+    `/commercial/opportunities/${opp_id}`
   );
 }
 
@@ -274,7 +274,7 @@ export default async function AccountDebriefPage({
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-4">
         <Link
-          href={`/commercial/accounts/${id}?tab=projects&project=${dealId}`}
+          href={`/commercial/opportunities/${dealId}`}
           className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 min-h-[44px]"
         >
           <span aria-hidden>←</span> Back to the deal
@@ -345,7 +345,7 @@ export default async function AccountDebriefPage({
           </div>
           <div className="flex items-center justify-end gap-2">
             <Link
-              href={`/commercial/accounts/${id}?tab=projects&project=${dealId}`}
+              href={`/commercial/opportunities/${dealId}`}
               className="inline-flex items-center px-3 py-2 rounded-lg text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px]"
             >
               Cancel
@@ -372,7 +372,7 @@ export default async function AccountDebriefPage({
   // Back reopens the deal DRAWER (where the user came from) rather than the
   // bare list, which scrolled to the top of the account (2026-07-28 nav sweep —
   // same fix already on the sibling Change Orders page).
-  const backHref = `/commercial/accounts/${id}?tab=projects&project=${dealId}`;
+  const backHref = `/commercial/opportunities/${dealId}`;
 
   return (
     <div className="min-h-screen bg-ppp-charcoal-50">

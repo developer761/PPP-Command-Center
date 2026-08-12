@@ -46,15 +46,13 @@ async function createSubmittalAction(formData: FormData) {
   const backQfirst = back && back.startsWith("/commercial/post-job/")
     ? `?back=${encodeURIComponent(back)}`
     : origin === "inline"
-      ? `?back=${encodeURIComponent(`/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`)}`
+      ? `?back=${encodeURIComponent(`/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals`)}`
       : "";
   if (!UUID_RE.test(account_id) || !UUID_RE.test(opportunity_id)) redirect("/commercial/accounts");
   // Return you to WHERE you are — standalone submittals log when opened directly,
   // the account's deal (Project sub-tab) view when embedded there. Never jump.
   const base =
-    origin === "route"
-      ? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`
-      : `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=submittals`;
+    `/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals`;
 
   const sb = commercialDb();
   const { data: acctRow } = await sb
@@ -82,7 +80,7 @@ async function createSubmittalAction(formData: FormData) {
     created_by_user_id: user.id,
   });
   if (!result.ok) redirect(`${base}&error=${encodeURIComponent(result.error)}${backQ}`);
-  revalidatePath(`/commercial/accounts/${account_id}/submittals/${opportunity_id}`);
+  revalidatePath(`/commercial/opportunities/${opportunity_id}`);
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/post-job/submittals");
   // Hand off to the account-scoped detail page so the cover + items can be
@@ -226,16 +224,14 @@ function SubmittalRow({ submittal, oppId, accountId, back, origin = "" }: { subm
   // (the deal's Project sub-tab when embedded, the standalone log otherwise, or a
   // deeper origin like the global submittals index if one was passed in).
   const logHere =
-    origin === "route"
-      ? `/commercial/accounts/${accountId}/submittals/${oppId}?v=1`
-      : `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=submittals`;
+    `/commercial/opportunities/${oppId}?tab=project&sub=submittals`;
   const backHref = `?back=${encodeURIComponent(back && back.startsWith("/commercial/") ? back : logHere)}`;
   // Inside the deal, opening a submittal STAYS inside the deal — `&sid=` swaps
   // the tool's list for that submittal's detail without leaving the page. From
   // the standalone log there is no drill-in to stay in, so it navigates.
   const itemHref =
     origin === "inline"
-      ? `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=submittals&sid=${submittal.id}`
+      ? `/commercial/opportunities/${oppId}?tab=project&sub=submittals&sid=${submittal.id}`
       : `/commercial/accounts/${accountId}/submittals/${oppId}/${submittal.id}${backHref}`;
   const tone = submittalStatusTone(submittal.status);
   const tonePillCls =
