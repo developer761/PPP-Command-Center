@@ -351,7 +351,7 @@ async function renameProposalAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
   // Karan 2026-07-16: name changes surface on THREE pages (editor +
@@ -392,7 +392,7 @@ async function addLineItemAction(formData: FormData) {
     const isParent = catalog.some((c) => c.parent_product_id === product_id);
     if (isParent) {
       redirect(
-        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("That product is a browse header — pick one of its variations (e.g. Seal & Poly).")}`
+        proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("That product is a browse header — pick one of its variations (e.g. Seal & Poly).")}`, proposalBack(formData))
       );
     }
   }
@@ -427,7 +427,7 @@ async function addLineItemAction(formData: FormData) {
   );
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
   revalidatePath(
@@ -452,7 +452,7 @@ async function updateLineItemAction(formData: FormData) {
   const owning = await getLineItem(id);
   if (!owning || owning.proposal_id !== proposalId) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("That line item is not part of this proposal.")}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("That line item is not part of this proposal.")}`, proposalBack(formData))
     );
   }
   // Round-3 audit fix: optimistic lock. If Alex has this row open in
@@ -501,7 +501,7 @@ async function updateLineItemAction(formData: FormData) {
   );
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
   revalidatePath(
@@ -526,13 +526,13 @@ async function deleteLineItemAction(formData: FormData) {
   const owning = await getLineItem(id);
   if (!owning || owning.proposal_id !== proposalId) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("That line item is not part of this proposal.")}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("That line item is not part of this proposal.")}`, proposalBack(formData))
     );
   }
   const result = await deleteLineItem(id, userId);
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
   revalidatePath(
@@ -558,7 +558,7 @@ async function sendProposalAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
   revalidatePath(
@@ -704,7 +704,7 @@ async function deleteProposalAction(formData: FormData) {
   const result = await softDeleteProposal(proposalId, userId);
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
   // Land straight on the deal's Proposals view (the deleted revision is simply
@@ -735,7 +735,7 @@ async function reopenProposalActionForm(formData: FormData) {
   });
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
   revalidatePath(
@@ -765,7 +765,7 @@ async function markProposalOutcomeAction(formData: FormData) {
   }
   if (outcome !== "won" && outcome !== "lost") {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("Invalid outcome.")}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("Invalid outcome.")}`, proposalBack(formData))
     );
   }
   const { markProposalOutcome } = await import("@/lib/commercial/proposals/db");
@@ -776,7 +776,7 @@ async function markProposalOutcomeAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
   revalidatePath(
