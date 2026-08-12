@@ -653,3 +653,30 @@ the doc + the rationale), or correct the doc comments to "four reads" and drop t
   DATE `due_at` — but the name/comment mislead and it would be off-by-one on any TIMESTAMPTZ).
 - Month grouping uses `at.slice(0,7)` = UTC month, so an event in the late-evening-ET window on a
   month's last day groups into the next month. Cosmetic.
+
+---
+
+## AUDIT — `8731b25` (inline field editing). Resolves my earlier business-logic-parity finding.
+
+My follow-up review warned that inline edit needs BUSINESS-LOGIC parity, not just permission +
+autosave parity (the "two write paths" class). **The build session resolved it the right way —
+by making the allowlist a security boundary that EXCLUDES the side-effect fields**, rather than
+replicating their side-effects:
+- `status`/`sub_status`, `decided_at`, `accepted_contract_*`, `project_number` are deliberately
+  absent (documented, with the reason each has its own writer/cascade). Checked **twice** — at the
+  action AND in `updateOpportunityField` (defense against field-name injection). Bare column write
+  + `logUpdate`. Server-rendered (no client JS → dodges the React-19 form-reset that bit the
+  proposal editor). Validation is real: dates must match `YYYY-MM-DD`, length caps refuse (not
+  truncate) an over-long paste, probability 0–100, clear-is-an-edit vs error distinguished.
+- **`property_zip` IS allowlisted, and I checked my C3 (tax) concern specifically: it's SAFE.**
+  `commercial_opportunities` stores no `tax_pct`; the invoice "new" page reads `opp.property_zip`
+  **live** (`invoices/new/page.tsx:127`) and resolves tax from it at creation. So there is no
+  stored jurisdiction to go stale — an inline ZIP change flows to the next invoice correctly, and
+  the inline + full-edit paths are symmetric. No side-effect to replicate. ✅
+
+**Low nit (pre-existing class, not an inline regression):** `rfp_received_at` is a TIMESTAMPTZ
+(mig 069) while the other date fields are DATE. Inline-writing a date-only value to a TIMESTAMPTZ
+can round-trip a day off through `etDateOf` depending on the DB session TZ — but the full-edit
+form writes it identically (symmetric), and it ties into the step-5 date-type inconsistency
+(rfp = TZ, proposal_due/follow_up = DATE). Worth a platform-wide date-type cleanup, not an
+inline-specific fix.
