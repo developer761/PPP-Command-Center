@@ -150,3 +150,11 @@ silent-empty class.**
 - **Step-7:** opportunities-LIST delivery rows show bid, not contract (`dealValueCents`).
 The full 47-item punch list with file:line + fixes is in `POST_AUDIT_PUNCHLIST_2026_08.md` — fold it in so
 "one list" is truly one list.
+
+### ✅ RESOLVED (`25979c7`) — the 7 remaining mig-127 embeds now named
+The other pass fixed all 7 within minutes of the finding, verified each against prod (4 were 300, 3 were
+200), and acknowledged the mis-marking. Confirmed: grep for un-named `commercial_opportunities!inner` across
+commercial code = **empty** (all 10 now carry `!commercial_proposals_opportunity_id_fkey`). The FK already
+exists in prod (it's a query-side fix, no migration), so the Account 360 Proposals tab / bulk-delete /
+proposal_idle cron resolve as soon as `25979c7` DEPLOYS (Vercel). The rest of the CORRECTION section above
+(margin-D2, bare-DATE, mobile, §7, step-7) is still open and now carried in the list.
