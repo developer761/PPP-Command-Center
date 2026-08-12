@@ -234,6 +234,34 @@ export async function updateEmployee(
       await resetClockReminder(id, String(l.work_date).slice(0, 10)).catch(() => undefined);
     }
   }
+
+  // Deactivating someone takes them OFF the upcoming schedule.
+  //
+  // Only the email nudges were being cancelled — the assignments themselves
+  // stayed, and the schedule reads don't filter on `active`. So a crew member
+  // who had been let go kept appearing on next week's jobs, counted toward
+  // headcount and scheduled hours, with nothing marking them inactive. A
+  // manager could dispatch someone who no longer works here, or read labor
+  // numbers that included them.
+  //
+  // Only FUTURE work is cancelled. Past assignments are history — they are what
+  // the hours and payroll were built from, and rewriting them would change what
+  // someone was paid for work they actually did.
+  if (deactivated) {
+    const { todayEtIso } = await import("./schedule");
+    const { error: cancelErr } = await sb
+      .from("commercial_assignments")
+      .update({ status: "cancelled" })
+      .eq("employee_id", id)
+      .gte("work_date", todayEtIso())
+      .neq("status", "cancelled");
+    if (cancelErr) {
+      console.warn(
+        `[field-ops/employees] could not clear future shifts for ${id}:`,
+        cancelErr.message
+      );
+    }
+  }
   return { ok: true, employee };
 }
 

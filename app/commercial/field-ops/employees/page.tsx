@@ -121,8 +121,11 @@ async function toggleActiveAction(formData: FormData) {
   const userId = await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const active = String(formData.get("active") ?? "") === "1";
-  await updateEmployee(id, { active }, userId);
+  // A swallowed failure here means a "deactivated" worker who can still be
+  // scheduled and can still clock in — the deactivation looked done and wasn't.
+  const result = await updateEmployee(id, { active }, userId);
   revalidatePath(BASE);
+  if (!result.ok) redirect(`${BASE}?error=${encodeURIComponent(result.error)}`);
   redirect(BASE);
 }
 

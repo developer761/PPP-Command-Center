@@ -2284,6 +2284,12 @@ export async function sendProposal(input: {
       lineItems,
       exclusions: exclusionTexts,
       mode: "customer",
+      // The letterhead footer reads these. Without it the proposal keeps the
+      // old hard-coded contact details while every other document updates.
+      company: await (async () => {
+        const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
+        return getOperatingCompany();
+      })(),
     });
   } catch (err) {
     console.error("[sendProposal] pdf render failed:", err);

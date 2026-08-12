@@ -110,12 +110,14 @@ export async function GET(
     const { renderProposalPdf } = await import(
       "@/lib/commercial/proposals/pdf"
     );
+    const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
     pdfBuffer = await renderProposalPdf({
       proposal,
       lineItems,
       exclusions,
       mode,
       showSignatureBlock,
+      company: await getOperatingCompany(),
     });
   } catch (err) {
     // Post-audit fix: log the full error server-side but return an

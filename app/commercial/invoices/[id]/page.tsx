@@ -242,8 +242,19 @@ async function removePaymentAction(formData: FormData) {
   const from = String(formData.get("from") ?? "");
   const payment_id = String(formData.get("payment_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(payment_id)) redirect("/commercial/invoices");
-  await removePayment(invoice_id, payment_id, user.id);
+  // The result was discarded and the redirect fired regardless, so a failed
+  // un-record left the payment on the invoice, the balance unchanged, and the
+  // user believing the money had been taken off.
+  const removed = await removePayment(invoice_id, payment_id, user.id);
   await revalidateInvoiceContext(invoice_id);
+  if (!removed.ok) {
+    redirect(
+      withFrom(
+        `/commercial/invoices/${invoice_id}?error=${encodeURIComponent(removed.error ?? "Could not remove that payment.")}`,
+        from
+      )
+    );
+  }
   redirect(withFrom(`/commercial/invoices/${invoice_id}`, from));
 }
 

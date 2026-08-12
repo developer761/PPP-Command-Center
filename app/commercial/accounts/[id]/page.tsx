@@ -8524,8 +8524,17 @@ async function DealEditSheet({
               <input type="hidden" name="account_id" value={accountId} />
               <input type="hidden" name="opp_id" value={deal.id} />
               <input type="hidden" name="confirm" value="yes" />
+              {/* "Remove from the pipeline" described about a fifth of what this
+                  click does. Deleting a deal also soft-deletes its unpaid
+                  invoices, tombstones every recorded cost, tears down the Field
+                  Ops work order and CANCELS upcoming crew shifts — none of which
+                  is visible until someone notices money missing or a crew that
+                  was never dispatched. Say all of it. */}
               <p className="text-[12px] text-rose-800 leading-relaxed">
-                Are you sure? This will remove <strong>{deal.title || "this opportunity"}</strong> from the pipeline.
+                Delete <strong>{deal.title || "this opportunity"}</strong>? This also
+                removes its unpaid invoices, every cost recorded against it, and its
+                work order — and takes the crew off any shifts already scheduled for
+                it. Paid invoices are kept.
               </p>
               <PendingSubmitButton
                 className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation disabled:hover:bg-rose-700"

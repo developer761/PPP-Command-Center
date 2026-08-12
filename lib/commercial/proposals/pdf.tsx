@@ -1,3 +1,4 @@
+import type { OperatingCompany } from "@/lib/commercial/operating-company/db";
 import "server-only";
 
 import {
@@ -1204,6 +1205,16 @@ export type RenderProposalArgs = {
   exclusions: string[]; // resolved text list (already ordered per Alex)
   mode?: ProposalPdfMode;
   showSignatureBlock?: boolean;
+  /**
+   * The operating company, for the letterhead footer.
+   *
+   * The footer was a hard-coded string. Work orders and closeout documents both
+   * read these fields, so changing the company phone or address in Settings
+   * updated those and left PROPOSALS going out with the old details — on the one
+   * document a customer replies to. Optional so an un-updated caller still
+   * renders; it falls back to the same literal that used to be there.
+   */
+  company?: OperatingCompany | null;
 };
 
 export function ProposalPdfDocument({
@@ -1219,6 +1230,7 @@ export function ProposalPdfDocument({
   // OFF; callers can flip it on explicitly if a specific proposal
   // needs the sign line.
   showSignatureBlock = false,
+  company = null,
 }: RenderProposalArgs) {
   // Migration 063 (2026-07-19): labor rows render in their own PDF
   // section between Inclusions and Alternates. Rolls into TOTAL like
@@ -1387,10 +1399,21 @@ export function ProposalPdfDocument({
         <View style={styles.footerRow} fixed>
           <View style={styles.footerRuleFlank} />
           <Text style={styles.footerText}>
-            77-13 Windsor Place • Central Islip, NY 11722 •{" "}
-            <Text style={styles.footerLabel}>Tel:</Text> 631.582.2770 •{" "}
-            <Text style={styles.footerLabel}>Fax:</Text> 631.582.2771 •{" "}
-            <Text style={styles.footerLabel}>Web:</Text> www.tomcopainting.com
+            {[company?.address_line1, company?.address_line2].filter(Boolean).join(", ") ||
+              "77-13 Windsor Place"}{" "}
+            •{" "}
+            {[company?.city, company?.state].filter(Boolean).join(", ")}
+            {company?.zip ? ` ${company.zip}` : ""}
+            {!company?.city && !company?.zip ? "Central Islip, NY 11722" : ""} •{" "}
+            <Text style={styles.footerLabel}>Tel:</Text> {company?.phone || "631.582.2770"}
+            {company?.fax || !company ? (
+              <>
+                {" "}
+                • <Text style={styles.footerLabel}>Fax:</Text> {company?.fax || "631.582.2771"}
+              </>
+            ) : null}{" "}
+            • <Text style={styles.footerLabel}>Web:</Text>{" "}
+            {company?.website || "www.tomcopainting.com"}
           </Text>
           <View style={styles.footerRuleFlank} />
         </View>
