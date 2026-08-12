@@ -158,3 +158,97 @@ Overview swap — still reads the opp). When the delivery path bar ships it MUST
 through `changeOpportunityStatus` (`opp.status`) so `ensureProject` re-derives
 `project.status`; a direct write to `project.status` would silently drift the two. State
 this on the path-bar step, and name which predicates (if any) move to read `project.status`.
+
+---
+
+## EDGE SWEEP — 13 NEW verified cases for the LATER steps (4/5/9), grounded in code
+
+A 31-agent adversarial sweep (verified against the live code) surfaced these — none are
+in the plan's 41 or A–F above, and they are **prerequisites for the steps not yet built**
+(delivery path bar, list view, reports, send surface). They cluster into 5 themes. Nothing
+here blocks steps 1-2 (already shipped and sound); each blocks the step named.
+
+**⚠️ Correction to my Review A:** I wrote "the auto-advance engine caps at won." That is
+**wrong.** `auto-advance-targets.ts` has a `closed` target (`post_sale_closed·closed`,
+`exactFrom post_sale_closed·closeout`) that `closeout/db.ts:220` fires — a genuine
+**delivery-side** auto-advance. That changes theme 1 below.
+
+### 🔴 Theme 1 — the DELIVERY ladder has no infrastructure (blocks steps 4/5)
+Everything delivery-side today borrows the SALES machinery, and the split takes it away:
+- **No `changeProjectStatus` writer.** `lib/commercial/projects/` has ensure/db/financials/
+  accepted-contract only. Every transition goes through `changeOpportunityStatus` (opp-only:
+  opp status log, opp-owner notify, `status_user_set_at`, `_requireFrom` guard). A step-4
+  delivery CTA ("Mark In Progress") has **nothing to call** — build it ad-hoc and delivery
+  moves get no audit row, no project-owner notification (so §8.13 can't fire), no forward-only
+  guard. **Build `changeProjectStatus` as a prerequisite of step 4**, mirroring the opp writer.
+- **No `commercial_project_status_log`.** Consequence cascade, all verified:
+  - **Age-in-stage freezes at the win date** for every delivery row — `listCurrentStatusEnteredAtByOpp`
+    reads the opp log, whose last row (model ii) is the WIN. A job 3 weeks into Billing shows
+    "won 200 days ago." Uncomputable from the planned `commercial_projects` schema (only
+    `started_at`/`substantially_complete_at`/`closed_out_at`).
+  - **Edge 33 (skipped vs passed stage) unsatisfiable** on the delivery bar — `deal-journey-strip`
+    colors by ordinal; with no per-transition history it can't tell a skipped stage from a passed one.
+  - **Activity rail + Account 360 go blind to delivery moves** — `getAccountRecentActivity` unions
+    only opp-keyed sources; every `pre_construction→…→billing` move produces zero rail entries,
+    exactly when the job is most active (contradicts edge 40 / §7).
+  - **Fix:** create `commercial_project_status_log` (project_id, from/to, changed_at, changed_by,
+    source), written by `changeProjectStatus`; read it for age-in-stage (per-phase source switch:
+    sales rows → opp log, delivery rows → project log), the delivery bar, and the rail.
+- **`closeout→closed` auto-advance writes the OPP** (the correction above). Post-split it must
+  re-point to `changeProjectStatus` (target `project.status='closed'`), or closeout stops closing
+  jobs / stamps an orphaned `post_sale_closed` on a sales-only opp.
+- **Backfill must relocate existing delivery history** (step 1 addendum): the 9 backfilled deals
+  already have delivery-status rows in the opp log (e.g. `→pre_construction`). Copy every opp-log
+  row whose `to_status` is a delivery value into the new project log, and mark/drop them so the
+  sales bar + rail stop rendering them as opp events (edge-25 retired-status class).
+
+### 🔴 Theme 2 — null-opp T&M projects break every rollup (blocks reports/list, step 9)
+The plan makes `opportunity_id` nullable for T&M — but the entire financial layer is opp-keyed:
+- **Silent omission:** `listProjects` selects `from('commercial_opportunities')`, so a null-opp
+  project never appears — its billed revenue + costs vanish from Job Costs, account Profitability,
+  dashboard P&L, the deal Costs tab. `getProjectFinancials(oppId)` reads everything via
+  `.eq('opportunity_id', …)` — uncomputable with no oppId. §8.10's "existing queries keep working"
+  is false for this class; §8.12's audit covers mis-grouping, not missing rows.
+- **Crash counterpart:** once `listProjects` is re-keyed to iterate `commercial_projects` (the
+  natural end-state), `job-costs.ts:135-136` calls `derivedOppName(p.opp)` / `p.opp.status` with
+  no null guard → 500 on Job Costs / Profitability. ~a dozen `.opp.` derefs must be audited.
+- **Fix:** re-key the financial layer to `project_id` (mirror trigger keeps opp-keyed rows working);
+  make `ProjectRow.opp` nullable with a project-name/PM/`project.status` fallback everywhere;
+  until then, block T&M-project creation. Fold null-opp into the step-9 audit explicitly.
+
+### 🔴 Theme 3 — the drill-in redirect is NOT a next.config rule (blocks the route move, step 3)
+The dominant old link — `/commercial/accounts/<a>?tab=projects&project=<d>&dt=<tool>` (page.tsx
+316/804/881, archived list, invoices/[id] 788/851, project-card, tool-back-header) — is a **query
+drill-in on the surviving lean account page**, not a distinct path. A path/`tab=projects`-keyed
+redirect either hijacks the account's own list tab or misses `<d>` (it's in the query). And `dt`
+values don't match new `tab` names (`costs→transactions`, `pnl→?`, `project→alias`, unknown→
+silently coerced to overview — a soft dead-end that *looks* like it worked). **Fix:** redirect
+*inside* the `/commercial/accounts/[id]` server component when `tab==='projects' && valid project=<uuid>`,
+with an explicit `dt→tab` map, preserving `#anchor`/`sid=`/`inv=`. Leave bare `?tab=projects`
+rendering the account's list. Also: **every new `/api/commercial/projects/**` route must call
+`denyCrewApi(user.id)`** — the crew allowlist gates pages only (proven by the opportunities
+sign-route's own `denyCrewApi`); the upload client already targets `/api/commercial/projects/<id>/documents`,
+a route that doesn't exist yet — born crew-denied, not retrofitted.
+
+### 🔴 Theme 4 — multi-CC/BCC on the send surface (blocks §4.6, step 4/5)
+Verified in `proposals/email.ts`: (1) **multi-CC is rejected** — CC is validated with a
+single-address regex (`EMAIL_RE`, line 67), so `"pm@gc.com, super@gc.com"` fails; even if it
+passed, the raw joined string is handed to Resend's `cc` as one address. (2) **Brendan BCC
+leak/dup** — the silent-BCC dedup `PROPOSAL_COPY_EMAILS.filter(e => e !== ccEmail)` compares each
+copy address to the *entire joined* CC string, so with a multi-valued CC Brendan is never filtered:
+he lands in both the visible CC (internal list leaked to the GC) **and** the hidden BCC (double
+delivery). (3) A user **BCC isn't pre-validated** and `sendProposal` marks the proposal `sent`
+*before* the Resend call — a fat-fingered BCC errors after "sent" or is silently dropped. **Fix:**
+parse CC/BCC on comma → trim → lowercase → `EMAIL_RE` each, reject the specific bad address
+*before* marking sent; pass validated **arrays** to Resend; compute BCC against a lowercase Set of
+To+CC so nothing appears twice and the internal list never leaks. (Preserves the Brendan
+approve→send / reply-to-GC routing — just makes it multi-value-safe.)
+
+### 🟠 Theme 5 — list group-by-owner is ambiguous across phases (blocks list view, step 5)
+The split gives the sale an owner (`estimator_user_id`) and the work a different owner
+(`project.owner_user_id`). A single "Owner" column + group-by-owner on a cross-phase list files
+every PM-run delivery row under the estimator (or vice-versa); a per-group `$` subtotal adds
+pipeline/quoted-subtotal to contract-value within one group — the per-group twin of the mixed
+header-total (my F). §8.12 flags this for *reports* (each phase-homogeneous) but not the *list*.
+**Fix:** resolve the ladder-appropriate owner per row (or two owner facets); any group/header `$`
+subtotal must be phase-scoped (sum same-amount-type only, or show pipeline-$ vs contract-$ twins).
