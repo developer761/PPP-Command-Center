@@ -405,6 +405,19 @@ async function resolveCurrentDealInvoice(oppId: string): Promise<CommercialInvoi
  *  deal-invoice create form). 0 when no jurisdiction matches. */
 async function dealTaxPct(oppId: string): Promise<number> {
   const opp = await getCommercialOpportunity(oppId);
+  // A tax-exempt customer is exempt on every path. The deal invoice form forces
+  // 0% for them; this one read the ZIP and nothing else, so ticking a change
+  // order to bill an exempt GC auto-created a draft WITH sales tax on it — the
+  // exact mis-bill the deal form was hardened against, reachable from a
+  // different button.
+  if (opp?.account_id) {
+    const { data: acct } = await commercialDb()
+      .from("commercial_accounts")
+      .select("tax_exempt")
+      .eq("id", opp.account_id)
+      .maybeSingle();
+    if ((acct as { tax_exempt?: boolean } | null)?.tax_exempt) return 0;
+  }
   const hit = resolveTaxForZip(opp?.property_zip ?? null, await listTaxJurisdictions({ activeOnly: true }));
   return hit ? thouToPct(hit.jurisdiction.combined_rate_thou) : 0;
 }

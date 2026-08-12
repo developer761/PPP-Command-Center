@@ -732,6 +732,11 @@ export async function InvoiceDetailView({
   const daysUntilDue = daysBetween(new Date().toISOString(), invoice.due_at);
   const isDraft = invoice.status === "draft";
   const isVoid = invoice.status === "void";
+  // Lines that exist because a change order was ticked to bill. Voiding frees
+  // those COs by deleting these rows, which reopening cannot undo.
+  const changeOrderLineCount = lineItems.filter(
+    (li) => (li as { change_order_id?: string | null }).change_order_id
+  ).length;
   // Karan 2026-07-08: orphan detection. If the parent deal or account
   // was soft-deleted before the cascade guard shipped, this invoice can
   // exist without a live parent. Surface a clear "Orphan" affordance
@@ -1223,6 +1228,23 @@ export async function InvoiceDetailView({
                 <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                 <input type="hidden" name="to_status" value={s} />
+                {s === "void" && changeOrderLineCount > 0 ? (
+                  // Void is presented as a safe, reversible flip — and for a
+                  // plain invoice it is. But voiding an invoice that carries
+                  // change-order billing DELETES those lines, deliberately, so
+                  // the change orders are freed to be re-billed. Reopening as
+                  // draft brings the invoice back WITHOUT them: the charge is
+                  // gone, the total has dropped, and nothing said so. That is a
+                  // silent revenue drop at the exact moment the button promises
+                  // it can be undone.
+                  <ConfirmSubmitButton
+                    message={`Voiding this invoice un-bills ${changeOrderLineCount} change order${changeOrderLineCount === 1 ? "" : "s"}. Reopening it as a draft will NOT bring ${changeOrderLineCount === 1 ? "that charge" : "those charges"} back — you'd re-tick ${changeOrderLineCount === 1 ? "it" : "them"} on the Change Orders tab. Void anyway?`}
+                    pendingLabel="Voiding…"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors border border-rose-200 text-rose-700 bg-surface hover:bg-rose-50"
+                  >
+                    Void
+                  </ConfirmSubmitButton>
+                ) : (
                 <button
                   type="submit"
                   className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors ${
@@ -1233,6 +1255,7 @@ export async function InvoiceDetailView({
                 >
                   {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : s === "draft" && invoice.status === "void" ? "Reopen as draft" : invoiceStatusLabel(s)}
                 </button>
+                )}
               </form>
             ))}
           </div>

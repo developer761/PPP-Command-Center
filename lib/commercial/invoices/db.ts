@@ -403,10 +403,15 @@ export async function createCommercialInvoice(
 
   const { data: acct } = await sb
     .from("commercial_accounts")
-    .select("id, deleted_at")
+    .select("id, deleted_at, tax_exempt")
     .eq("id", input.account_id)
     .maybeSingle();
   if (!acct || acct.deleted_at) return { ok: false, error: "account_not_found" };
+  // Tax exemption is a property of the CUSTOMER, so it is enforced here rather
+  // than trusted to each caller. The deal invoice form forced 0% correctly; the
+  // change-order path computed tax from the ZIP alone and auto-created drafts
+  // charging an exempt GC sales tax. Any future path gets this for free.
+  const taxExempt = Boolean((acct as { tax_exempt?: boolean }).tax_exempt);
 
   const invoice_number = await nextInvoiceNumber();
 
@@ -431,7 +436,10 @@ export async function createCommercialInvoice(
       issued_at: input.issue ? nowIso : null,
       sent_at: input.issue ? nowIso : null,
       subtotal_cents,
-      tax_pct: typeof input.tax_pct === "number" && input.tax_pct >= 0 && input.tax_pct <= 100 ? input.tax_pct : 0,
+      tax_pct:
+        taxExempt || !(typeof input.tax_pct === "number" && input.tax_pct >= 0 && input.tax_pct <= 100)
+          ? 0
+          : input.tax_pct,
       paid_cents: 0,
       payment_terms: input.payment_terms ?? DEFAULT_PAYMENT_TERMS,
       customer_message: input.customer_message ?? null,
