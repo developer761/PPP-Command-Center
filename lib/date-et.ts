@@ -25,6 +25,17 @@ export function etTodayIso(): string {
  */
 export function etDateOf(timestamp: string | null | undefined): string | null {
   if (!timestamp) return null;
+  // AUDIT 2026-08-12: a bare DATE has no time and no zone, and `new Date`
+  // parses "2026-08-12" as UTC MIDNIGHT — so converting it to Eastern moved it
+  // to the 11th. Every DATE column on the platform runs through here:
+  // proposal_due_at, follow_up_at, the work-order and field-ops dates. A
+  // proposal due TODAY read "1 day overdue", and every one of those figures was
+  // a day early.
+  //
+  // A date-only string is already the calendar day somebody typed. There is
+  // nothing to convert, so it is returned untouched. Only real timestamps get
+  // zone-shifted.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) return timestamp;
   const t = new Date(timestamp);
   if (Number.isNaN(t.getTime())) return null;
   return t.toLocaleDateString("en-CA", { timeZone: "America/New_York" });

@@ -57,6 +57,10 @@ export type StageKpiInput = {
   openBalanceCents?: number | null;
   grossMarginCents?: number | null;
   grossMarginPct?: number | null;
+  /** True while a job is only part-billed, so the margin is a running figure
+   *  rather than the final one. Saying so is the difference between a number
+   *  someone trusts and a number they quote. */
+  marginProvisional?: boolean;
   approvedChangeOrderCents?: number | null;
 
   openSubmittals?: number | null;
@@ -183,7 +187,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if (i.grossMarginPct != null && hasContract) {
       out.push({
         key: "margin",
-        label: "Margin",
+        label: i.marginProvisional ? "Margin so far" : "Margin",
         value: `${i.grossMarginPct}%`,
         sub: money(i.grossMarginCents),
         tone: i.grossMarginPct < 0 ? "bad" : i.grossMarginPct < 15 ? "warn" : "good",

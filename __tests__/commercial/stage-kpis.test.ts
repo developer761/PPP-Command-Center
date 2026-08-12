@@ -134,3 +134,35 @@ describe("phaseFor", () => {
     expect(phaseFor("post_sale_closed", "closed")).toBe("closed");
   });
 });
+
+/**
+ * AUDIT: the strip was fed a CONTRACT-based margin while the Costs tab, the
+ * account rollup, the dashboard and every report use the billed-based one —
+ * the same job showing two different profit percentages a tab-click apart.
+ *
+ * Karan settled this in D2 (billed-based is the number). Step 5 rebuilt the
+ * strip straight off the raw financials and reintroduced the split.
+ */
+describe("margin", () => {
+  const wip = (over: Partial<StageKpiInput> = {}): StageKpiInput => ({
+    ...base,
+    status: "in_progress",
+    subStatus: "wip_on_site",
+    hasContract: true,
+    contractCents: 100_000_00,
+    billedPreTaxCents: 40_000_00,
+    grossMarginPct: 22,
+    grossMarginCents: 8_800_00,
+    ...over,
+  });
+
+  it("says 'Margin so far' while a job is only part-billed", () => {
+    // A running figure quoted as final is how somebody promises a number the
+    // job cannot finish at.
+    expect(tile(wip({ marginProvisional: true }), "margin")!.label).toBe("Margin so far");
+  });
+
+  it("says plain 'Margin' once it is the real one", () => {
+    expect(tile(wip({ marginProvisional: false }), "margin")!.label).toBe("Margin");
+  });
+});

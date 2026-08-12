@@ -134,6 +134,9 @@ export type CommercialOpportunity = {
    *  since 129 landed but was missing from this interface, so every reader had
    *  to cast to reach it. */
   closed_out_at: string | null;
+  /** The agreed figure, remembered at the win (migration 127). Typed here so
+   *  `dealValueCents` can prefer it once a job is under contract. */
+  accepted_contract_cents: number | null;
   loss_reason: OpportunityLossReason | null;
   loss_notes: string | null;
   // Per-opp project address (migration 035). Null when not set — UI
@@ -413,6 +416,21 @@ export function dealValueCents(
   opp: CommercialOpportunity,
   proposalTotalCents?: number | null
 ): number {
+  // AUDIT 2026-08-12: once a job is UNDER CONTRACT, the bid is history. The
+  // pipeline list, its header total and the delivery views were all still
+  // showing the estimator's original range for jobs already being built and
+  // billed — so a job won at $120k could sit in the list at its $95k bid, and
+  // the totals summed the wrong number.
+  //
+  // The signed figure wins from the moment it exists. Below that, the ladder is
+  // unchanged.
+  const signed = opp.accepted_contract_cents;
+  if (signed !== null && signed !== undefined && signed > 0) {
+    const decided =
+      (opp.status === "pre_sale_closed" && opp.sub_status === "won") ||
+      ["pre_construction", "in_progress", "billing", "post_sale_closed"].includes(opp.status);
+    if (decided) return signed;
+  }
   const low = opp.bid_value_low_cents;
   const high = opp.bid_value_high_cents;
   if ((low === null || low === undefined) && (high === null || high === undefined)) {

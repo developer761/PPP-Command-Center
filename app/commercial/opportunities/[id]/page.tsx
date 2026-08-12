@@ -156,7 +156,7 @@ import { INLINE_FIELDS, inlineField, parseInlineValue } from "@/lib/commercial/o
 import { ActivityRail } from "@/components/commercial/activity-rail";
 import { buildActivityFeed, loadActivityEntries } from "@/lib/commercial/opportunities/activity";
 import { stageKpis, isDeliveryPhase } from "@/lib/commercial/opportunities/stage-kpis";
-import { getProjectFinancials } from "@/lib/commercial/projects/financials";
+import { getProjectFinancials, dealMargin } from "@/lib/commercial/projects/financials";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submittal-constants";
 import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
@@ -1521,6 +1521,9 @@ export default async function OpportunityDetailPage({
     accountId: opp.account_id,
   });
 
+  // The one margin the whole platform agrees on — billed-based, per D2.
+  const pathMargin = pathFin ? dealMargin(pathFin) : null;
+
   const stageKpiList = stageKpis({
     status: opp.status,
     subStatus: opp.sub_status,
@@ -1538,8 +1541,19 @@ export default async function OpportunityDetailPage({
     billedPreTaxCents: pathFin?.billedPreTaxCents ?? null,
     collectedCents: pathFin?.collectedCents ?? null,
     openBalanceCents: pathFin?.openBalanceCents ?? null,
-    grossMarginCents: pathFin?.grossMarginCents ?? null,
-    grossMarginPct: pathFin?.grossMarginPct ?? null,
+    // AUDIT: this used getProjectFinancials' CONTRACT-based margin while the
+    // Costs tab, the account rollup, the dashboard and every report use
+    // `dealMargin`, which is BILLED-based. Same job, two different profit
+    // percentages, one tab-click apart — and the contract-based one flatters a
+    // job that has barely been invoiced, because it credits the whole contract
+    // against costs already spent.
+    //
+    // Karan settled this in the D2 decision (billed-based is the number);
+    // I then rebuilt the strip in step 5 straight off the raw financials and
+    // reintroduced the split. One source now.
+    grossMarginCents: pathMargin?.cents ?? null,
+    grossMarginPct: pathMargin?.pct ?? null,
+    marginProvisional: pathMargin?.provisional ?? false,
     approvedChangeOrderCents: pathChangeOrders
       .filter((c) => c.status === "approved")
       .reduce((a, c) => a + (c.amount_cents ?? 0), 0),
