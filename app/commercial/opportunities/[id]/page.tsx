@@ -1401,31 +1401,14 @@ export default async function OpportunityDetailPage({
   // Every revision, for the Proposals tab (step 3). Cheap — one deal's worth.
   const dealProposals = await listProposalsForOpp(opp.id);
 
-  // ── Status path + what needs attention (step 4) ──────────────────────────
-  // Three small reads, in parallel, all scoped to this one deal.
+  // ── Status path, attention and stage KPIs (steps 4–5) ────────────────────
+  // Reads first, so everything below is derived from ONE set of numbers.
   const [pathProject, pathWorkOrder, pathInvoices] = await Promise.all([
     getProjectForOpportunity(opp.id),
     getWorkOrderForOpp(opp.id).catch(() => null),
     listCommercialInvoices({ opportunityId: opp.id }).catch(() => []),
   ]);
-  const attentionInput = {
-    oppId: opp.id,
-    status: opp.status,
-    subStatus: opp.sub_status,
-    contractBaseCents: pathProject?.contract_base_cents,
-    hasProject: !!pathProject,
-    followUpAt: opp.follow_up_at,
-    proposalCount: dealProposals.length,
-    sentProposalCount: dealProposals.filter((p) =>
-      ["sent", "won", "lost"].includes(p.status)
-    ).length,
-    hasWorkOrder: !!pathWorkOrder,
-    hasBilling: pathInvoices.length > 0,
-  };
-  const attentionItems = attentionFor(attentionInput);
-  const manualNext = manualNextStep(attentionInput);
 
-  // ── Stage-aware KPIs (step 5) ────────────────────────────────────────────
   // Financials + change orders only once the job is actually won — a bid has no
   // contract, no billing and no costs, so those reads would be three round-trips
   // to learn nothing.
@@ -1450,6 +1433,35 @@ export default async function OpportunityDetailPage({
   const oldestUnpaid = pathInvoices
     .filter((inv) => (inv.balance_cents ?? 0) > 0 && inv.issued_at)
     .sort((a, b) => String(a.issued_at).localeCompare(String(b.issued_at)))[0];
+  // ── Step 9 fix: ONE contract figure per page ─────────────────────────────
+  //
+  // The attention banner used to read `commercial_projects.contract_base_cents`
+  // directly while the KPI strip read the contract ladder. They agree at award
+  // — the project row is populated FROM that ladder — but not afterwards: add a
+  // proposal to a job won on a verbal yes and the ladder finds it while the
+  // project column stays null. The page then showed "Contract $45,000" and,
+  // directly beneath it, "Contract value isn't set".
+  //
+  // Both now read the ladder, which is what the money math everywhere else uses
+  // and what the user is actually shown. The project column remains the durable
+  // record of what was agreed at award; it is not a second display source.
+  const attentionInput = {
+    oppId: opp.id,
+    status: opp.status,
+    subStatus: opp.sub_status,
+    contractBaseCents: pathFin?.hasContract ? pathFin.contractCents : null,
+    hasProject: !!pathProject,
+    followUpAt: opp.follow_up_at,
+    proposalCount: dealProposals.length,
+    sentProposalCount: dealProposals.filter((p) =>
+      ["sent", "won", "lost"].includes(p.status)
+    ).length,
+    hasWorkOrder: !!pathWorkOrder,
+    hasBilling: pathInvoices.length > 0,
+  };
+  const attentionItems = attentionFor(attentionInput);
+  const manualNext = manualNextStep(attentionInput);
+
   const stageKpiList = stageKpis({
     status: opp.status,
     subStatus: opp.sub_status,

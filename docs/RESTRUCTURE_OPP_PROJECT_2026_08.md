@@ -430,10 +430,25 @@ The part that decides whether this lands clean.
     poisons every rollup.
 11. **Current contract value = base + approved COs, computed, never stored.** Storing it
     is how the AIA rewrite bug (F2) happened.
-12. **Two amounts, two reports.** Win-rate groups by *opportunity* owner and quoted
-    subtotal; job-cost/margin groups by *project* owner and contract value. Every
-    existing report groups by opp owner today — **all six need auditing**, they are the
-    most likely place a silently-wrong number survives this.
+12. **Two amounts, two reports.** ~~Every existing report groups by opp owner today —
+    all six need auditing.~~ **Wrong, corrected by the step-9 audit (2026-08-12).**
+    No report groups by owner at all: AR aging groups by customer, geography by
+    city and zip, job costs by deal→account, pipeline by stage. The two-owner
+    split therefore does not touch them.
+
+    The *two-amounts* half was real and is verified: job costs and geography both
+    read `listProjects`, which derives the contract from the same ladder as
+    `getProjectFinancials` and the deal page. One source, platform-wide. Pipeline
+    correctly stays on weighted/quoted value, which is the sales question.
+
+    **What the audit did find** — a contradiction introduced by steps 4–5, not by
+    the reports: the attention banner read `commercial_projects.contract_base_cents`
+    while the KPI strip six pixels above it read the ladder. They agree at award
+    but diverge afterwards (add a proposal to a job won on a verbal yes and the
+    ladder finds it while the column stays null), so a job could show
+    *"Contract $45,000"* directly above *"Contract value isn't set."* Both now read
+    the ladder; the project column is the durable record of what was agreed at
+    award, not a second display source.
 13. **Notification routing splits with ownership.** Sales alerts → opp owner; delivery
     alerts → project owner. Today every rule targets the opp owner.
 
@@ -441,6 +456,17 @@ The part that decides whether this lands clean.
 
 14. `commercial_jobs.project_id` **nullable** — field-ops one-offs have no project and
     no opp.
+
+14b. **A project with no opportunity is invisible to every report.** Every report is
+    opportunity-driven, and `commercial_projects.opportunity_id` is nullable by
+    design (§10.2, direct T&M work). Nothing can create such a row today —
+    `ensureProjectForOpportunity` always sets it and there is no standalone-project
+    UI — so this is latent, not live. **The tripwire is the day T&M jobs without a
+    bid become a real workflow:** job costs, geography and every P&L rollup need to
+    read projects rather than opportunities before that ships, or those jobs' costs
+    silently vanish from company totals. Raised by the parallel session's forward
+    sweep; recorded here rather than built, because building report support for a
+    row type that cannot yet exist is speculative.
 15. **RLS policies referencing `opportunity_id`** must be updated in the same migration
     or they silently over- or under-deny.
 16. **Deploy gate.** Code that writes a new column deploys before the migration runs and
