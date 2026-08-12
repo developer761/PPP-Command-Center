@@ -424,3 +424,38 @@ So the breadcrumb says "· Projects" and lands on a tab titled "Opportunities." 
 label to "· Opportunities" (and the stale doc-comment at lines 10-11/94 that still says
 "account Projects tab"). Low severity, but it's the label-consistency class and it's a
 changed-the-href-missed-the-label-below partial.
+
+---
+
+## AUDIT — Step 7 shipped (`37ff210`, saved views + header totals + filter chips). No migration.
+
+**Verdict: strong.** `saved-views.ts` is excellent — views are pure query-param definitions,
+the active view is **derived** by exact param match (remove or add a chip → drops to "Custom
+filter", round-trip tested), switching clears every view-owned param, the header count/total
+come from the SAME array the rows render (no 23-over-19 lie), a TRUE count (no "50+" cap), and
+the sum is omitted rather than shown as $0. `activeViewKey`/`viewHref`/`filterChips` are clean.
+Age-in-stage reads `listCurrentStatusEnteredAtByOpp` — **correct today** under model (i) (the
+opp log still holds delivery transitions); the "freeze at win" is only the future model-(ii)
+cutover, already tracked in theme-1. Two things:
+
+### 🟠 Finding: delivery views show + total the BID value, not the project CONTRACT (gap B on the list)
+The row shows `bidRange` (`bid_value_low–high`, page.tsx:2139) and the header total sums
+`dealValueCents` (page.tsx:696/85) — which is bid-midpoint, or the proposal total, and
+**never the contract** (`db.ts:412` reads only `bid_value_*`/proposal). So on the new delivery
+views — **Won-not-started / Active projects / Billing** — every row shows its old bid estimate
+and the header sums bid midpoints, not the signed contracts that `project.contract_base_cents`
+now carries. That undercuts the restructure's own premise ("the price bid is not the contract
+delivered") and is a bigger "small lie" than the count-cap the commit meticulously avoided: a
+PM scanning Billing backlog sees bids, not contracts. This is the list manifestation of gap B
+(the reader-switch) — expected while readers haven't moved to the project column, but it must
+land before the list is "done." Cheap first step: `dealValueCents` can prefer
+`opp.accepted_contract_cents` (mig 127, already ON the opp) for won/delivery rows without
+joining the project.
+
+### 🟡 Sweep note (pre-existing, same class as the step-5 etDateOf bug): raw `Date.now()` age math
+`page.tsx:597` (`days since updated`, stale gate) and `:607` (`proposal_due_at` countdown)
+subtract raw UTC timestamps (`Date.now() - new Date(x).getTime()`), which drifts up to a day
+across the ET offset / DST — and `proposal_due_at` is a DATE column, so `new Date("2026-08-15")`
+is UTC midnight. Same class step 5 fixed with `daysBetweenEt`. Coarser here (stale = weeks), so
+lower priority, but the overdue/stale gates would be a day off near the boundary. Consider the
+ET-calendar helper for these gates too.
