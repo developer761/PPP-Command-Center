@@ -96,3 +96,65 @@ write path." (This is the completeness/'two write paths' class from C7–C10.)
 `contract_base_cents` vs `accepted_contract_cents` source-of-truth (B), and "never
 recompute" vs a legitimate re-win (C) are step-0 blockers not yet addressed in the
 plan. Please fold A/B/C in before step 1's migration.
+
+---
+
+## AUDIT — Steps 1-2 shipped (`8885bab` + post-flight `4fd9daa`)
+
+Read migration 131, `lib/commercial/projects/ensure.ts`, the `changeOpportunityStatus`
+hook, and traced every opp-mutation path. **Verdict: strong. Ship it.** The design
+answers my A/C/D at the writer, and the risky parts are handled well:
+- **Drift guard** — the BEFORE trigger is correct: fires only when both ids are present
+  and disagree, fills a blank `opportunity_id`, no-ops on a NULL project (T&M). Minimal
+  `UPDATE OF project_id, opportunity_id` scope. ✓
+- **Backfill** — the "won OR carrying delivery artifacts" rule is right (9 real deals,
+  not 1); `ON CONFLICT DO NOTHING` + `project_id IS NULL` guards make it idempotent;
+  soft-deleted/archived flags inherited. Post-flight confirms 11 projects / 63-of-63
+  linked / guard attacked. ✓
+- **Gap C (re-win)** — RESOLVED for now: `ensureProjectForOpportunity` fills a blank
+  `contract_base_cents` but never overwrites; re-deciding stays `snapshotAcceptedContract`'s
+  job. `owner_user_id` likewise never re-stamped (PM reassignment survives). ✓
+- **contract_source** dropped bid-midpoint from the award ladder entirely (accepted →
+  won-proposal → latest-proposal → NULL), so a bid-only deal renders "not set", never a
+  fake signed number. Cleaner than the plan's enum. ✓
+- No hard-delete of opps anywhere → `ON DELETE RESTRICT` never fires from the app. ✓
+
+### 🔴 1. Soft-delete / archive cascade does NOT reach the project row — the ONE must-fix
+`ensureProjectForOpportunity` mirrors `deleted_at` and `archived_at` from the opp — but
+only `changeOpportunityStatus` calls it. The **delete and archive paths bypass it**:
+- `softDeleteCommercialOpportunity` (mutations.ts) cascades to invoices, purchases and
+  field-ops jobs — but **not** `commercial_projects`. The project (with its
+  `contract_base_cents`) stays `deleted_at = NULL` = live.
+- `archiveOpportunity` / `unarchiveOpportunity` (db.ts) set `archived_at` directly and
+  never touch the project.
+- `restoreCommercialOpportunity` restores the cascaded children but not the project.
+
+Masked **today** only because no surface reads `commercial_projects` yet — but a
+project/opportunity list is the entire point of this restructure, and the moment it
+ships this is a **zombie project feeding a rollup nobody can trace to a deleted deal** —
+the *exact* class `softDeleteCommercialOpportunity`'s own purchases-cascade comment calls
+"the worst kind." Per Karan's no-defer rule, fix it **now**, in the same family as this
+commit, not at the list step. Cheap: `ensureProjectForOpportunity` already does the
+mirroring — just call it best-effort (in a `try`) at the tail of `softDelete`,
+`restore`, `archive`, and `unarchive` (a won+deleted opp keeps `shouldExist=true`, so
+the reconcile patch sets `deleted_at`/`archived_at`/back-to-null correctly). Add a test:
+soft-delete a won deal → its project is `deleted_at`-stamped; restore → cleared.
+
+### 🟠 2. Forward flag for the READER-SWITCH step (gap B/C) — do NOT let a re-win go stale
+The fill-blank-only rule is right *because readers still use `accepted_contract_cents`*.
+When a later step points `getProjectFinancials` / AIA `pickContractBaseCents` at
+`project.contract_base_cents`, the re-win case reopens F1: R1 won $450k → un-won → R2 won
+$500k leaves `project.contract_base_cents` frozen at $450k (fill-blank skips a non-null),
+while `accepted_contract_cents` correctly reads $500k. So the reader-switch step must
+EITHER keep reading `accepted_contract_cents` for the live figure, OR make `ensureProject`
+re-write `contract_base_cents` on a newer win. Decide it *at that step* — don't switch
+readers blindly.
+
+### 🟠 3. Forward flag for the DELIVERY PATH-BAR step (gap A) — one-way status mirror
+This is model (i): `opp.status` keeps its full range, `project.status` mirrors the
+delivery half **one-way** via `ensureProject`. Consistent today (delivery is still driven
+off `opp.status`, and every predicate — `dealPhase`/`isPostSaleProject`/`stageRank`/the
+Overview swap — still reads the opp). When the delivery path bar ships it MUST write
+through `changeOpportunityStatus` (`opp.status`) so `ensureProject` re-derives
+`project.status`; a direct write to `project.status` would silently drift the two. State
+this on the path-bar step, and name which predicates (if any) move to read `project.status`.
