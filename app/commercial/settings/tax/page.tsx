@@ -305,7 +305,7 @@ export default async function TaxJurisdictionsAdminPage({
 
       <p className="text-[11.5px] text-ppp-charcoal-500">
         Auto-fill shows up when you create an invoice from a{" "}
-        <Link href="/commercial/invoices" className="text-cc-brand-700 font-semibold hover:underline">Won opportunity</Link>{" "}
+        <Link href="/commercial/opportunities?status=won" className="text-cc-brand-700 font-semibold hover:underline">Won opportunity</Link>{" "}
         that has a property ZIP on record. No ZIP or no matching jurisdiction → the tax field stays blank for manual entry.
       </p>
     </div>

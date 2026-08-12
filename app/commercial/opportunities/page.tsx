@@ -77,6 +77,7 @@ import {
 import {
   KANBAN_COLUMNS,
   PRE_CONTRACT_COLUMNS,
+  POST_CONTRACT_COLUMNS,
   OPEN_COLUMN_KEYS,
   TERMINAL_COLUMN_KEYS,
   columnKeyForOpp,
@@ -431,6 +432,13 @@ export default async function CommercialOpportunitiesPage({
   // reports deep-links) because a real status is either a column key
   // already or resolves to one via columnKeyForOpp.
   const statusFilter = pickFirst(sp.status);
+  // Step 10: filter by LANE — everything under contract, or everything still
+  // being sold. The dashboard's money tiles ("Under contract", "Left to bill")
+  // span won + in-progress + billing, which a single-stage filter cannot
+  // express, so they used to link at the retired Projects page instead.
+  const laneRaw = pickFirst(sp.lane);
+  const laneFilter =
+    laneRaw === "post_contract" || laneRaw === "pre_contract" ? laneRaw : undefined;
   const validColumn = statusFilter
     ? (KANBAN_COLUMNS.some((c) => c.key === statusFilter)
         ? statusFilter
@@ -619,6 +627,12 @@ export default async function CommercialOpportunitiesPage({
   // dashboard card that linked here — these had drifted on BOTH the status set
   // and the date comparison, so "3 overdue" could open a list of 4.
   const attentionToday = todayEtIso; // computed above, ET calendar day
+  if (laneFilter) {
+    const laneKeys = new Set(
+      (laneFilter === "post_contract" ? POST_CONTRACT_COLUMNS : PRE_CONTRACT_COLUMNS).map((c) => c.key)
+    );
+    opps = opps.filter((o) => laneKeys.has(columnKeyForOpp(o.status, o.sub_status)));
+  }
   if (overdueFilter) opps = opps.filter((o) => isOverdueProposal(o, attentionToday));
   if (coldRfpFilter) opps = opps.filter((o) => isColdRfp(o, attentionToday));
   if (followupFilter) opps = opps.filter((o) => isFollowUpDue(o, attentionToday));
@@ -666,6 +680,7 @@ export default async function CommercialOpportunitiesPage({
   const viewParams: Record<string, string | undefined> = {
     q: search || undefined,
     status: statusFilter || undefined,
+    lane: laneFilter || undefined,
     sources: sourcesRaw || undefined,
     sort: sortRaw || undefined,
     view: viewRaw || undefined,

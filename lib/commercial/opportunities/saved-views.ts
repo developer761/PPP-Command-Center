@@ -32,6 +32,7 @@ export type SavedView = {
  *  the bug where you pick "Active Projects" and still see last view's search. */
 export const VIEW_OWNED_PARAMS = [
   "status",
+  "lane",
   "hot",
   "stale",
   "overdue",
@@ -63,6 +64,13 @@ export const SAVED_VIEWS: SavedView[] = [
     hint: "Sent to the GC and waiting on an answer.",
     params: { status: "proposal", sort: "oldest" },
     group: "pipeline",
+  },
+  {
+    key: "under_contract",
+    label: "Under contract",
+    hint: "Every job we have been awarded and not yet closed out.",
+    params: { lane: "post_contract" },
+    group: "delivery",
   },
   {
     key: "won_not_started",
@@ -186,6 +194,13 @@ export function filterChips(
       key: "status",
       label: labelForStatus(current.status),
       removeHref: without(["status"]),
+    });
+  }
+  if (current.lane) {
+    chips.push({
+      key: "lane",
+      label: current.lane === "post_contract" ? "Under contract" : "Still selling",
+      removeHref: without(["lane"]),
     });
   }
   flag("overdue", "Overdue");
