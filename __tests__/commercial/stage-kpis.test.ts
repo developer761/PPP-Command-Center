@@ -166,3 +166,73 @@ describe("margin", () => {
     expect(tile(wip({ marginProvisional: false }), "margin")!.label).toBe("Margin");
   });
 });
+
+/**
+ * §7 completeness gaps: the two numbers a delivery job carries that no tile
+ * showed. Both answer a question the deal page could not.
+ */
+describe("retainage held", () => {
+  const billing = (over: Partial<StageKpiInput> = {}): StageKpiInput => ({
+    ...base,
+    status: "billing",
+    subStatus: "substantial_completion",
+    hasContract: true,
+    contractCents: 200_000_00,
+    ...over,
+  });
+
+  it("shows money the GC is holding even when nothing is outstanding", () => {
+    // The gap: retainage is in NEITHER money tile — it isn't overdue, so it's
+    // not Outstanding, and it hasn't arrived, so it's not Collected. Without
+    // this the page read "Collected" on a job with 5% still out.
+    const t = tile(billing({ openBalanceCents: 0, collectedCents: 190_000_00, retainageHeldCents: 10_000_00 }), "retainage")!;
+    expect(t.label).toBe("Retainage held");
+    expect(t.tone).toBe("warn");
+    expect(t.sub).toBe("5% of contract");
+  });
+
+  it("survives past closeout, which is exactly when it gets forgotten", () => {
+    const closed = { ...billing(), status: "post_sale_closed", subStatus: "closed", retainageHeldCents: 10_000_00 };
+    expect(keys(closed)).toContain("retainage");
+  });
+
+  it("is omitted when none is held, and never shows on a bid", () => {
+    expect(keys(billing({ retainageHeldCents: 0 }))).not.toContain("retainage");
+    expect(keys({ ...base, retainageHeldCents: 10_000_00 })).not.toContain("retainage");
+  });
+
+  it("drops the percentage rather than dividing by an unset contract", () => {
+    const t = tile(billing({ hasContract: false, contractCents: 0, retainageHeldCents: 10_000_00 }), "retainage")!;
+    expect(t.sub).toBeNull();
+  });
+});
+
+describe("warranty expiry", () => {
+  const closed = (through: string | null): StageKpiInput => ({
+    ...base,
+    status: "post_sale_closed",
+    subStatus: "closed",
+    warrantyThroughAt: through,
+  });
+
+  it("counts down in months, and only warns in the last stretch", () => {
+    // "in 340 days" is the wrong register for a year-long obligation, and a
+    // warning that runs for twelve months is a warning nobody reads.
+    expect(tile(closed("2027-08-12"), "warranty")!.value).toBe("12 months left");
+    expect(tile(closed("2027-08-12"), "warranty")!.tone).toBe("default");
+    const soon = tile(closed("2026-09-15"), "warranty")!;
+    expect(soon.value).toBe("34 days left");
+    expect(soon.tone).toBe("warn");
+  });
+
+  it("says expired plainly — a discharged obligation is not a problem", () => {
+    const t = tile(closed("2026-07-01"), "warranty")!;
+    expect(t.value).toBe("expired");
+    expect(t.tone).toBe("default");
+  });
+
+  it("is omitted with no date, and never shows before closeout", () => {
+    expect(keys(closed(null))).not.toContain("warranty");
+    expect(keys({ ...base, status: "in_progress", warrantyThroughAt: "2027-08-12" })).not.toContain("warranty");
+  });
+});

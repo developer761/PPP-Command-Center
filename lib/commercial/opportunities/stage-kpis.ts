@@ -66,6 +66,12 @@ export type StageKpiInput = {
   openSubmittals?: number | null;
   crewHours?: number | null;
   oldestUnpaidInvoiceDate?: string | null;
+  /** Retainage withheld on the latest AIA application — earned, not yet
+   *  collectible. Money that lives in no other tile: it is excluded from
+   *  Outstanding (nobody is late paying it) and it is not Collected. */
+  retainageHeldCents?: number | null;
+  /** Substantial completion + warranty term, as an ET calendar date. */
+  warrantyThroughAt?: string | null;
 };
 
 /** Whole days between two ET calendar dates. Positive = `to` is later. */
@@ -90,6 +96,18 @@ function dueLabel(dateIso: string, todayIso: string): { text: string; tone: KpiT
   if (d === 0) return { text: "due today", tone: "warn" };
   if (d <= 3) return { text: `in ${d} day${d === 1 ? "" : "s"}`, tone: "warn" };
   return { text: `in ${d} days`, tone: "default" };
+}
+
+/** Warranty runs in months, not days, so `dueLabel`'s "in 340 days" is the
+ *  wrong register. Only the last stretch is actionable — that is the window to
+ *  chase callbacks before the obligation lapses — so that is the only one that
+ *  gets a tone. */
+function warrantyLabel(dateIso: string, todayIso: string): { text: string; tone: KpiTone } {
+  const d = daysBetweenEt(todayIso, dateIso);
+  if (d < 0) return { text: "expired", tone: "default" };
+  if (d === 0) return { text: "expires today", tone: "warn" };
+  if (d <= 60) return { text: `${d} day${d === 1 ? "" : "s"} left`, tone: "warn" };
+  return { text: `${Math.round(d / 30)} months left`, tone: "default" };
 }
 
 const DELIVERY = new Set(["pre_construction", "in_progress", "billing", "post_sale_closed"]);
@@ -218,6 +236,22 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     } else if ((i.collectedCents ?? 0) > 0) {
       out.push({ key: "ar", label: "Collected", value: money(i.collectedCents), tone: "good" });
     }
+    // Retainage is the money a GC holds back on every application. It is
+    // earned, it is not late, and it appears in NEITHER tile above — so
+    // without this the deal page shows a job as fully collected while 5% of
+    // the contract is still sitting with the GC.
+    if ((i.retainageHeldCents ?? 0) > 0) {
+      out.push({
+        key: "retainage",
+        label: "Retainage held",
+        value: money(i.retainageHeldCents),
+        sub:
+          hasContract
+            ? `${Math.round(((i.retainageHeldCents ?? 0) / (i.contractCents || 1)) * 100)}% of contract`
+            : null,
+        tone: "warn",
+      });
+    }
   }
 
   if (phase === "closed") {
@@ -232,6 +266,13 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     }
     if (i.closedOutAt) {
       out.push({ key: "closed", label: "Closed out", value: agoLabel(i.closedOutAt, i.todayIso), sub: i.closedOutAt });
+    }
+    // The obligation that outlives the job. Nothing else on the platform
+    // surfaces it at a glance, and "are we still on the hook for this?" is the
+    // first question asked when a call-back comes in.
+    if (i.warrantyThroughAt) {
+      const w = warrantyLabel(i.warrantyThroughAt, i.todayIso);
+      out.push({ key: "warranty", label: "Warranty", value: w.text, sub: i.warrantyThroughAt, tone: w.tone });
     }
   }
 

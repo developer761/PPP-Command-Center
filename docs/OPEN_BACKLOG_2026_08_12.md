@@ -146,7 +146,7 @@ silent-empty class.**
   work-order/field-ops DATE columns. §4.2 names only the rfp_received_at sub-part.
 - **Mobile 24px touch targets:** inline-field pencil, stage-KPI parent links, saved-view chip remove-X,
   activity "Add task" — all < 44px.
-- **§7 completeness:** billing-stage "retainage held" tile + closed-stage "warranty expiry" tile unbuilt.
+- ~~**§7 completeness:** billing-stage "retainage held" tile + closed-stage "warranty expiry" tile unbuilt.~~ **DONE** — both shipped. Retainage reads through `retainageHeldForOpportunity` (`computeG702`, the same math as the printed G702 and the Projects list) so the deal page, the list and the GC's PDF can't disagree.
 - **Step-7:** opportunities-LIST delivery rows show bid, not contract (`dealValueCents`).
 The full 47-item punch list with file:line + fixes is in `POST_AUDIT_PUNCHLIST_2026_08.md` — fold it in so
 "one list" is truly one list.

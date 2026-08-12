@@ -83,6 +83,36 @@ export async function listAiaApplications(opportunityId: string): Promise<AiaApp
   return (data ?? []) as AiaApplication[];
 }
 
+/**
+ * Retainage held on a job, as of its latest application.
+ *
+ * AIA line 5 is cumulative, so "held" is whatever the newest application says
+ * — not a sum across applications, which would count the same withholding
+ * once per pay period.
+ *
+ * The number is built by `computeG702`, the same function the printed G702 and
+ * the Projects list use, so the deal page, the list and the PDF a GC receives
+ * cannot disagree. Latest = highest application_number regardless of status,
+ * matching the Projects list exactly. (A draft therefore counts. That is
+ * arguably generous — the GC hasn't seen it — but one platform-wide number
+ * beats two defensible ones.)
+ */
+export async function retainageHeldForOpportunity(opportunityId: string): Promise<number> {
+  const apps = await listAiaApplications(opportunityId);
+  if (apps.length === 0) return 0;
+  const latest = apps.reduce((a, b) => (b.application_number > a.application_number ? b : a));
+  const lines = await listAiaLineItems(latest.id);
+  if (lines.length === 0) return 0;
+  const { computeG702 } = await import("./constants");
+  return computeG702({
+    originalContractCents: latest.original_contract_cents,
+    netChangeOrdersCents: 0, // irrelevant to line 5 — retainage is per-line off completed work
+    retainagePct: latest.retainage_pct,
+    lines,
+    previousCertificatesCents: 0,
+  }).retainageCents;
+}
+
 export async function getAiaApplication(id: string): Promise<AiaApplication | null> {
   const sb = commercialDb();
   const { data } = await sb

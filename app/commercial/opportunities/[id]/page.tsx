@@ -66,7 +66,7 @@ import { daysFromTodayEt } from "@/lib/date-et";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
-import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
+import { getEffectiveContractBaseCents, retainageHeldForOpportunity } from "@/lib/commercial/aia/db";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
@@ -160,6 +160,8 @@ import { getProjectFinancials, dealMargin } from "@/lib/commercial/projects/fina
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submittal-constants";
 import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
+import { listCloseoutPackages } from "@/lib/commercial/closeout/db";
+import { computeWarrantyEndDate } from "@/lib/commercial/closeout/constants";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
 import { AttentionBanner } from "@/components/commercial/attention-banner";
 import { attentionFor, nextStep, sensibleNextStatuses } from "@/lib/commercial/opportunities/attention";
@@ -1461,14 +1463,35 @@ export default async function OpportunityDetailPage({
   // Open submittals and crew hours are only rendered while a job is on site, so
   // they are only fetched then — two round-trips a bid would never use.
   const pathOnSite = opp.status === "in_progress";
-  const [pathFin, pathChangeOrders, pathSubmittals, pathLabor] = pathIsWon
+  const pathIsClosedOut = opp.status === "post_sale_closed";
+  const [pathFin, pathChangeOrders, pathSubmittals, pathLabor, pathCloseouts, pathRetainageCents] = pathIsWon
     ? await Promise.all([
         getProjectFinancials(opp.id).catch(() => null),
         listChangeOrders(opp.id).catch(() => []),
         pathOnSite ? listOpportunitySubmittals(opp.id).catch(() => []) : Promise.resolve([]),
         pathOnSite ? laborByWorkerForProject(opp.id).catch(() => []) : Promise.resolve([]),
+        // Only a closed-out job renders a warranty tile; anything earlier would
+        // pay for a query whose result is thrown away.
+        pathIsClosedOut ? listCloseoutPackages(opp.id).catch(() => []) : Promise.resolve([]),
+        opp.status === "billing" || pathIsClosedOut
+          ? retainageHeldForOpportunity(opp.id).catch(() => 0)
+          : Promise.resolve(0),
       ])
-    : [null, [], [], []];
+    : [null, [], [], [], [], 0];
+
+  // Warranty runs from substantial completion. A job can carry more than one
+  // package (a re-issue after a punch item); the LATEST completion date is the
+  // one still in force. Voided packages are not in force at all.
+  const pathWarrantyThrough = (() => {
+    const live = pathCloseouts.filter((c) => !c.voided_at && c.substantial_completion_date);
+    if (live.length === 0) return null;
+    const latest = live
+      .slice()
+      .sort((a, b) =>
+        String(b.substantial_completion_date).localeCompare(String(a.substantial_completion_date))
+      )[0];
+    return computeWarrantyEndDate(latest.substantial_completion_date, latest.warranty_years);
+  })();
   // The latest proposal the CUSTOMER IS HOLDING — not the latest created. A
   // drafted revision must not reset "sent 9 days ago" on the one they have.
   const sentProposals = dealProposals
@@ -1561,6 +1584,8 @@ export default async function OpportunityDetailPage({
     // Whole hours — a crew-hours tile reading "412.75" is noise at a glance.
     crewHours: Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)) || null,
     oldestUnpaidInvoiceDate: etDateOf(oldestUnpaid?.issued_at),
+    retainageHeldCents: pathRetainageCents,
+    warrantyThroughAt: pathWarrantyThrough,
   });
   // The identity line: what am I looking at, and whose is it. A won job leads
   // with its project number — that is the number on the paperwork in the field.
