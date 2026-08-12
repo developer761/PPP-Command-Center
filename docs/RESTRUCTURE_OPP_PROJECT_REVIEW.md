@@ -540,3 +540,18 @@ opposite: the tile and its list disagree at BOTH ends.**
   `post_sale_closed` (the "active under contract" set), or thread `includeClosed` consistently.
   One canonical "under contract" predicate shared by the tile, the view hint, and the lane
   filter; today there are three definitions.
+
+---
+
+## AUDIT — `ef94dab` (attention grace periods + drop redundant rule). Clean.
+
+Well-reasoned refinement. Verified: (1) grace math (`daysSince`) uses the ET-calendar
+`Date.UTC(slice…)` pattern (same as step-5's `daysBetweenEt`) — NOT raw `Date.now()`; (2)
+`decidedAt: opp.decided_at` is passed **raw**, correct because `decided_at` is a DATE column
+(wrapping it in `etDateOf` would re-introduce the step-5 off-by-one — they didn't); (3)
+no-win-date → `past()` true → surfaces immediately (safe reading of unknown); (4) the
+`no_project` warning is correctly NOT grace-gated (a won deal must get its project at once);
+(5) dropping "at Proposal with no proposal built" is safe — `manualNextStep` still returns the
+"Build a proposal" CTA for that state, so guidance isn't lost, only the wallpaper warning.
+Tiny nit (not worth fixing): a future-dated `decided_at` would suppress the graced warnings
+(`wonDaysAgo < grace`), but that's a data anomaly.
