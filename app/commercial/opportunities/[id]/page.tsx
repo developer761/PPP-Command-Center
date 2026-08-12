@@ -49,6 +49,7 @@ import {
   isWon,
   isPostSaleProject,
   isLost,
+  dealPhase,
 } from "@/lib/commercial/opportunities/constants";
 import { daysFromTodayEt } from "@/lib/date-et";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
@@ -1690,6 +1691,13 @@ export default async function OpportunityDetailPage({
 
       {/* Compact KPI strip — bid range, probability, weighted, decision
           countdown if a due date is set. */}
+      {/* Forecast tiles — only while the deal is still being SOLD.
+          Reached by a deep-link from a bell or a debrief, a won or lost deal
+          used to show a probability, a weighted forecast and a "Decision in —
+          overdue" countdown for a decision that had already been made. The
+          account page got this gate; this page was missed, and it is exactly
+          where those deep-links land. */}
+      {dealPhase(opp) === "pre_sale" && (
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiTile
           label="Bid"
@@ -1712,6 +1720,7 @@ export default async function OpportunityDetailPage({
           tooltip="Days until the proposal is due (or how overdue it is). Pulled from proposal_due_at on the new-opp or edit form."
         />
       </section>
+      )}
 
       {/* Phase H: on a post-sale project, a toolbar to the production tools
           (Change Orders / AIA Billing / Submittals / Invoices) so they're

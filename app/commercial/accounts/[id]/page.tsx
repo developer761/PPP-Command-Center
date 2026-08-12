@@ -5853,9 +5853,12 @@ function statusPillTone(
   sub_status?: string | null,
 ): { cls: string } {
   // Terminal (v2 + v1 legacy).
-  if (status === "pre_sale_closed" && sub_status === "won") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+  // Won is NAVY, not emerald — Karan's call, and the won-not-started card on
+  // this same page is navy. A green pill sitting directly above that navy card
+  // read as two different states for one deal.
+  if (status === "pre_sale_closed" && sub_status === "won") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
   if (status === "pre_sale_closed" && sub_status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
-  if (status === "won") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+  if (status === "won") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
   if (status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
   // 2026-07-28 color audit: semantic palette only (cc-brand red is the action
   // color, never a status). Active stage → ppp-blue, working/attention →
@@ -5865,7 +5868,8 @@ function statusPillTone(
   if (status === "pre_construction") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
   if (status === "in_progress") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
   if (status === "billing") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
-  if (status === "post_sale_closed") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+  // A finished job is navy too — it is the same "won" family, further along.
+  if (status === "post_sale_closed") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
   // v2 Pre-Sale intermediate.
   if (status === "proposal" && sub_status === "follow_up") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
   if (status === "proposal") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
