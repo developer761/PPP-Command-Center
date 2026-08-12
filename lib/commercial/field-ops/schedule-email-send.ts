@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { addDaysIso, todayEtIso, etWallTimeToUtcIso, fmtTime12 } from "./schedule";
+import { getCrewScopeForOpp, type CrewScope } from "@/lib/commercial/work-orders/db";
 import { listScheduleRecipients } from "./schedule-emails";
 import { absenceLabel } from "./absence-constants";
 import type { CommercialEmployee } from "./employees";
@@ -119,7 +120,15 @@ function dowOf(iso: string): number {
   return new Date(iso + "T12:00:00Z").getUTCDay();
 }
 
-type Shift = { name: string; site: string | null; hours: number; pw: boolean; start: string | null; end: string | null; note: string | null };
+type Shift = {
+  name: string; site: string | null; hours: number; pw: boolean;
+  start: string | null; end: string | null; note: string | null;
+  /** Deal + work order, so the crew email can say WHAT the job is — the scope
+   *  reached the PDF and nowhere else, so someone scheduled onto a job was told
+   *  where and when but never what (Karan 2026-08). */
+  opportunityId: string | null;
+  workOrderId: string | null;
+};
 type UpDay = { date: string; jobs: Shift[] };
 
 async function getShiftsForRange(employeeId: string, fromIso: string, numDays: number): Promise<UpDay[]> {
@@ -153,9 +162,9 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
     ((absRows ?? []) as { work_date: string; hours: number | null }[]).filter((r) => r.hours == null).map((r) => String(r.work_date).slice(0, 10))
   );
   const jobIds = [...new Set(assigns.map((a) => a.job_id))];
-  const jobsById = new Map<string, { name: string; site_address: string | null; site_city: string | null; prevailing_wage: boolean }>();
-  const { data: jobs } = await sb.from("commercial_jobs").select("id, name, site_address, site_city, prevailing_wage").in("id", jobIds).is("deleted_at", null);
-  for (const j of (jobs ?? []) as { id: string; name: string; site_address: string | null; site_city: string | null; prevailing_wage: boolean }[])
+  const jobsById = new Map<string, { name: string; site_address: string | null; site_city: string | null; prevailing_wage: boolean; opportunity_id: string | null; work_order_id: string | null }>();
+  const { data: jobs } = await sb.from("commercial_jobs").select("id, name, site_address, site_city, prevailing_wage, opportunity_id, work_order_id").in("id", jobIds).is("deleted_at", null);
+  for (const j of (jobs ?? []) as { id: string; name: string; site_address: string | null; site_city: string | null; prevailing_wage: boolean; opportunity_id: string | null; work_order_id: string | null }[])
     jobsById.set(j.id, j);
 
   const byDate = new Map<string, UpDay>();
@@ -178,6 +187,8 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
           start: a.scheduled_start_time,
           end: a.scheduled_end_time,
           note: a.note,
+          opportunityId: j?.opportunity_id ?? null,
+          workOrderId: j?.work_order_id ?? null,
         };
       }),
     });
@@ -185,11 +196,28 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function shiftLine(j: Shift, es: boolean): string {
+function shiftLine(j: Shift, es: boolean, scope?: CrewScope | null): string {
   const pw = es ? "salario prevaleciente" : "prevailing wage";
   const times = j.start ? `${fmtTime12(j.start)}${j.end ? `-${fmtTime12(j.end)}` : ""}` : `${j.hours}h`;
   let line = `  - ${j.name}${j.site ? ` (${j.site})` : ""} - ${times}${j.pw ? ` [${pw}]` : ""}`;
   if (j.note) line += `\n      ${es ? "Nota" : "Note"}: ${j.note}`;
+  // WHAT you're working on. Partial sheets say so explicitly — being handed 3
+  // of 6 items with no denominator is how a crew stops early thinking they're
+  // done, or two crews both skip the line neither was told about.
+  if (scope && scope.lines.length > 0) {
+    const heading = scope.isPartial
+      ? es
+        ? `Tu alcance (${scope.lines.length} de ${scope.totalLines}):`
+        : `Your scope (${scope.lines.length} of ${scope.totalLines}):`
+      : es
+        ? "Alcance:"
+        : "Scope:";
+    line += `\n      ${scope.areaLabel ? `${scope.areaLabel} — ` : ""}${heading}`;
+    for (const l of scope.lines) line += `\n        * ${l}`;
+    if (scope.isPartial) {
+      line += `\n      ${es ? "Solo estos puntos - el resto esta en otra orden." : "These items only - the rest is on another work order."}`;
+    }
+  }
   return line;
 }
 
@@ -355,16 +383,26 @@ export async function sendWelcomeEmail(employee: CommercialEmployee): Promise<vo
   if (!employee.email) return;
   try {
     const sb = commercialDb();
-    const { data: emp } = await sb.from("commercial_employees").select("magic_link_token").eq("id", employee.id).maybeSingle();
-    const token = (emp as { magic_link_token?: string } | null)?.magic_link_token ?? null;
+    // Read the CURRENT name, not the object the caller passed. The welcome
+    // greeted "Hi k" while the shift email an hour later greeted "Hi Karan" —
+    // the caller's object was captured before the name was corrected, and only
+    // the shift path re-read the row.
+    const { data: emp } = await sb
+      .from("commercial_employees")
+      .select("magic_link_token, first_name")
+      .eq("id", employee.id)
+      .maybeSingle();
+    const row = emp as { magic_link_token?: string; first_name?: string } | null;
+    const token = row?.magic_link_token ?? null;
+    const firstName = row?.first_name?.trim() || employee.first_name;
     const oc = await getOperatingCompany();
     const es = employee.preferred_language === "es";
     const link = magicLink(token);
     const upcoming = await getShiftsForRange(employee.id, todayEtIso(), 7);
     const intro = es
-      ? `Hola ${employee.first_name},\n\nEstas registrado con ${oc.name}. Usa este enlace en tu telefono para ver tu horario y marcar entrada/salida cada dia - no necesitas contrasena. Guardalo en favoritos.`
-      : `Hi ${employee.first_name},\n\nYou're set up with ${oc.name}. Use this link on your phone to see your schedule and clock in/out each day - no password needed. Bookmark it.`;
-    const body = `${intro}\n\n${link}\n\n${upcoming.length > 0 ? buildBody(employee.first_name, upcoming, link, oc.name, es) : `- ${oc.name}`}`;
+      ? `Hola ${firstName},\n\nEstas registrado con ${oc.name}. Usa este enlace en tu telefono para ver tu horario y marcar entrada/salida cada dia - no necesitas contrasena. Guardalo en favoritos.`
+      : `Hi ${firstName},\n\nYou're set up with ${oc.name}. Use this link on your phone to see your schedule and clock in/out each day - no password needed. Bookmark it.`;
+    const body = `${intro}\n\n${link}\n\n${upcoming.length > 0 ? buildBody(firstName, upcoming, link, oc.name, es) : `- ${oc.name}`}`;
     const { sendEmail } = await import("@/lib/email/resend");
     await sendEmail({
       channel: "commercial",
@@ -398,6 +436,23 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
 
     const shifts = await getShiftsForRange(employeeId, workDate, 1);
     if (shifts.length === 0) return; // all shifts for the day were removed
+
+    // Don't send a shift email moments after the welcome. The welcome already
+    // includes the next 7 days of schedule, so setting someone up and putting
+    // them on a job in the same minute sent two emails back to back that said
+    // largely the same thing (Karan hit this testing it). Keyed on the employee
+    // record's age — there's no welcomed_at, and "created seconds ago" is
+    // exactly the case worth collapsing.
+    const { data: createdRow } = await sb
+      .from("commercial_employees")
+      .select("created_at")
+      .eq("id", employeeId)
+      .maybeSingle();
+    const createdAt = (createdRow as { created_at?: string } | null)?.created_at;
+    if (createdAt) {
+      const ageMs = Date.now() - new Date(createdAt).getTime();
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 10 * 60_000) return;
+    }
     const oc = await getOperatingCompany();
     const es = emp.preferred_language === "es";
     const link = magicLink(emp.magic_link_token);
@@ -405,7 +460,17 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
       ? `Hola ${emp.first_name},\n\nEstas programado para el ${dayLabel(workDate, true)}:`
       : `Hi ${emp.first_name},\n\nYou're scheduled for ${dayLabel(workDate, false)}:`;
     const lines: string[] = [head, ""];
-    for (const j of shifts[0].jobs) lines.push(shiftLine(j, es));
+    // Resolve each job's crew scope so the email says WHAT, not just where/when.
+    const scopeByJob = new Map<string, CrewScope | null>();
+    for (const j of shifts[0].jobs) {
+      if (!j.opportunityId) continue;
+      const key = `${j.opportunityId}|${j.workOrderId ?? ""}`;
+      if (scopeByJob.has(key)) continue;
+      scopeByJob.set(key, await getCrewScopeForOpp(j.opportunityId, j.workOrderId).catch(() => null));
+    }
+    for (const j of shifts[0].jobs) {
+      lines.push(shiftLine(j, es, j.opportunityId ? scopeByJob.get(`${j.opportunityId}|${j.workOrderId ?? ""}`) : null));
+    }
     lines.push("", es ? "Marca entrada/salida aqui:" : "Clock in/out here:", link, "", `- ${oc.name}`);
     const { sendEmail } = await import("@/lib/email/resend");
     await sendEmail({

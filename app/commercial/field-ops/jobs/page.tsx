@@ -129,6 +129,15 @@ export default async function FieldOpsJobsPage({
   // twins here, and deal-connected jobs here → a dashboard WO on the deal.
   await Promise.all([ensureJobsForSentWorkOrders(userId), ensureWorkOrdersForConnectedJobs(userId), cleanOrphanedJobs(userId)]);
   const [jobs, dealOptions] = await Promise.all([listJobs({ includeClosed: sp.closed === "1" }), listDealOptionsForWorkOrder()]);
+  // Crew scope per job — what the work actually IS. Resolved here so each card
+  // can show it; a job with no work order or no priced proposal simply omits
+  // the section rather than rendering an empty heading.
+  const { getCrewScopeForJob } = await import("@/lib/commercial/work-orders/db");
+  const scopeByJob = new Map(
+    await Promise.all(
+      jobs.map(async (j) => [j.id, await getCrewScopeForJob(j.id).catch(() => null)] as const)
+    )
+  );
 
   return (
     <div className="pb-8 max-w-4xl">
@@ -187,13 +196,38 @@ export default async function FieldOpsJobsPage({
         </div>
       ) : (
         <ul className="space-y-2">
-          {jobs.map((j) => (
+          {jobs.map((j) => {
+            const scope = scopeByJob.get(j.id) ?? null;
+            return (
             <li key={j.id} className="bg-surface border border-ppp-charcoal-100 rounded-xl">
               <details>
                 <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer list-none min-h-[52px]">
                   <div className="min-w-0 flex-1">
                     <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{j.name} {j.prevailing_wage && <span className="ml-1 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">PW</span>}</div>
                     <div className="text-[11.5px] text-ppp-charcoal-500 truncate font-mono">{j.job_code} · {jobStatusLabel(j.status)}{j.division_tag ? ` · ${divisionLabel(j.division_tag)}` : ""}{j.customer_name ? ` · ${j.customer_name}` : ""}</div>
+                    {/* WHAT the work is. The card identified the job — code,
+                        status, customer — but never said what to paint, so a
+                        crew member opening their own work order learned
+                        everything except the job. */}
+                    {scope && scope.lines.length > 0 && (
+                      <div className="mt-1.5 text-[11.5px] text-ppp-charcoal-600">
+                        <span className="font-semibold">
+                          {scope.areaLabel ? `${scope.areaLabel} — ` : ""}Scope
+                          {scope.isPartial ? ` (${scope.lines.length} of ${scope.totalLines})` : ""}:
+                        </span>
+                        <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
+                          {scope.lines.slice(0, 6).map((l, i) => (
+                            <li key={i} className="truncate">{l}</li>
+                          ))}
+                          {scope.lines.length > 6 && <li>…and {scope.lines.length - 6} more</li>}
+                        </ul>
+                        {scope.isPartial && (
+                          <div className="font-semibold text-amber-800 mt-0.5">
+                            These items only — the rest is on another work order.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <span className="text-[11px] text-ppp-charcoal-400 shrink-0">Edit</span>
                 </summary>
@@ -227,7 +261,8 @@ export default async function FieldOpsJobsPage({
                 </form>
               </details>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

@@ -600,3 +600,82 @@ export async function remapWorkOrderScopeForOpp(
   }
   return updated;
 }
+
+// ── Crew-facing scope (2026-08) ────────────────────────────────────────────
+
+export type CrewScope = {
+  /** The lines this crew is actually working, in proposal order. */
+  lines: string[];
+  /** Total lines on the project, so "3 of 6" can be stated. */
+  totalLines: number;
+  /** True when this sheet is only part of the job. */
+  isPartial: boolean;
+  /** Optional area tag ("Level 3"), if the sheet carries one. */
+  areaLabel: string | null;
+};
+
+/**
+ * What a crew member needs to be told about a job, in one call.
+ *
+ * The scope selection reached the PDF and nowhere else — not the schedule
+ * email, not the magic-link page, not the Field Ops work order. Those are the
+ * three places a crew member actually looks, so someone scheduled onto a job
+ * was told WHERE and WHEN but never WHAT (Karan, testing it himself 2026-08).
+ *
+ * Resolves from the deal, picking the live work order that best matches: a
+ * SENT sheet first (that's the one a crew was handed), else the earliest live
+ * one. Returns null when there's no work order or no proposal scope yet —
+ * callers then simply say nothing rather than printing an empty section.
+ */
+export async function getCrewScopeForOpp(
+  opportunity_id: string,
+  /** Narrow to one sheet when the caller knows which (e.g. a job's work_order_id). */
+  workOrderId?: string | null
+): Promise<CrewScope | null> {
+  const workOrders = await listWorkOrdersForOpp(opportunity_id);
+  if (workOrders.length === 0) return null;
+  const wo =
+    (workOrderId && workOrders.find((w) => w.id === workOrderId)) ||
+    workOrders.find((w) => w.status === "sent") ||
+    workOrders[0];
+  if (!wo) return null;
+
+  const [content, all] = await Promise.all([
+    buildWorkOrderContent(opportunity_id, wo.scope_line_item_ids),
+    buildWorkOrderContent(opportunity_id, null),
+  ]);
+  const toText = (l: { product_name: string | null; description: string }) =>
+    (l.description?.trim() || l.product_name?.trim() || "").trim();
+  const lines = [...content.inclusions, ...content.alternates].map(toText).filter(Boolean);
+  const totalLines = all.inclusions.length + all.alternates.length;
+  if (lines.length === 0) return null;
+  return {
+    lines,
+    totalLines,
+    isPartial: totalLines > 0 && lines.length < totalLines,
+    areaLabel: wo.area_label?.trim() || null,
+  };
+}
+
+/**
+ * Crew scope resolved from a Field Ops JOB rather than a deal.
+ *
+ * The crew-facing surfaces (magic link, work-order card, schedule email) all
+ * hold a job id, not an opportunity id — so this does the hop for them and
+ * uses the job's own `work_order_id` to pick the right sheet when a project
+ * has several.
+ */
+export async function getCrewScopeForJob(
+  jobId: string | null | undefined
+): Promise<CrewScope | null> {
+  if (!jobId) return null;
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_jobs")
+    .select("opportunity_id, work_order_id")
+    .eq("id", jobId)
+    .maybeSingle();
+  const row = data as { opportunity_id: string | null; work_order_id: string | null } | null;
+  if (!row?.opportunity_id) return null;
+  return getCrewScopeForOpp(row.opportunity_id, row.work_order_id);
+}
