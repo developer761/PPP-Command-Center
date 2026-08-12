@@ -113,7 +113,7 @@ export async function GET(request: Request) {
       .limit(MAX_PER_KIND),
     sb
       .from("commercial_proposals")
-      .select("id, proposal_seq, revision_number, status, opportunity_id, header_json, commercial_opportunities(account_id, client_name, title, project_number)")
+      .select("id, proposal_seq, revision_number, status, opportunity_id, header_json, commercial_opportunities!commercial_proposals_opportunity_id_fkey(account_id, client_name, title, project_number)")
       .is("deleted_at", null)
       .or(propOr)
       .order("updated_at", { ascending: false })

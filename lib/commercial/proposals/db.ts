@@ -1702,7 +1702,7 @@ export async function getProposal(
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_proposals")
-    .select("*, opportunity:commercial_opportunities(project_number)")
+    .select("*, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey(project_number)")
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1715,7 +1715,7 @@ export async function listProposalsForOpp(
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_proposals")
-    .select("*, opportunity:commercial_opportunities(project_number)")
+    .select("*, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey(project_number)")
     .eq("opportunity_id", opportunityId)
     .is("deleted_at", null)
     .order("revision_number", { ascending: false });
