@@ -920,3 +920,33 @@ stage name. **Fix:** `label: "Sent"`.
 
 (Note: most other `"proposal"` literals in the sweep are the still-valid top-level STATUS `"proposal"`
 — unchanged by the rename — not stale. These two are the ones keyed on the retired COLUMN name.)
+
+---
+
+## VERIFY — `e7ba2d1` (build's AUDIT round 2). Fixed 2 well; but RE-INTRODUCED the proposed-dates data-loss + left Industry #2 open.
+
+Good fixes: document-category picker extracted to a pure client-importable module (no more hardcoded copy
+offering retired COI/W-9/etc. with COI default-selected); Industry removed from the standalone
+`accounts/[id]/edit` page. Both real. **But two data-loss issues, same class the commit claims to have
+internalized ("every one had a second home"):**
+
+### 🔴 NEW/re-introduced: editing a deal now NULLs `proposed_start_at`/`proposed_end_at`
+This commit removed the proposed-start/end INPUTS from the edit sheet (grep for `name="proposed_start_at"`
+across the account page = **0**) but LEFT `editDealFromAccountAction` reading them (page.tsx:1572), defaulting
+to **null** (1573-1575), and writing them in the payload (1624-1625). `updateCommercialOpportunity` writes
+null (mutations.ts:273, `null !== undefined`). → **every edit nulls proposed_start/end.** This is the finding
+I RETRACTED earlier — correctly, because at that time the inputs were still present (values preserved). This
+commit removing the inputs-without-the-action is what makes it real now. Contradicts "No migration — all data
+kept." **Fix:** remove `proposed_start_at`/`proposed_end_at` from `editDealFromAccountAction` (reads 1572-1578
++ payload 1624-1625) too, matching the input removal — or default them `undefined`.
+
+### 🔴 STILL OPEN: Industry identity-section data-loss (`42ee991`) — a DIFFERENT surface than the one just fixed
+`e7ba2d1` fixed Industry on `accounts/[id]/edit`, but the DETAIL-page identity SECTION still writes
+`industry: get("industry")` (page.tsx:1221) with no industry input in that section → editing basic info still
+nulls Industry (`updateCommercialAccount` spreads the null). Fix: drop `industry` from the identity patch.
+
+### The pattern is RECURRING despite awareness → needs a STRUCTURAL guard, not more vigilance
+Two rounds of the build session explicitly naming this pattern, and it recurred twice more (proposed-dates,
+Industry-identity). Per-instance care isn't holding. **Recommend a test/lint that fails when a patch-builder
+writes a column that has no corresponding form input** (the mechanical invariant), and/or collapsing the
+duplicate edit surfaces. That kills the class instead of chasing instances.
