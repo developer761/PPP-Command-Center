@@ -950,3 +950,29 @@ Two rounds of the build session explicitly naming this pattern, and it recurred 
 Industry-identity). Per-instance care isn't holding. **Recommend a test/lint that fails when a patch-builder
 writes a column that has no corresponding form input** (the mechanical invariant), and/or collapsing the
 duplicate edit surfaces. That kills the class instead of chasing instances.
+
+---
+
+## VERIFY — `e15cc86` (build's AUDIT round 3: un-winning could hide money). Real catch; but the guard misses a SECOND archive path.
+
+The finding + fix are genuinely good: a qualifying deal with 8 invoices (deposit-on-a-handshake) would lose
+them when its status changed, because the un-win branch archived the project unconditionally.
+`projectHoldsAnything` (iterates all 8 DELIVERY_TABLES, stops at first hit, returns TRUE on read error —
+safe) now blocks that. Correct and well-degraded.
+
+### 🟠 MISS: the guard is only on the un-win branch — archiving a WON deal bypasses it
+`projectHoldsAnything` gates `ensure.ts:210` (the `!shouldExist` un-win → archive path). But the RECONCILE
+branch mirrors `archived_at` UNGATED: `ensure.ts:231` `if (!existing.archived_at && opp.archived_at)
+patch.archived_at = opp.archived_at`. And `archiveOpportunity` (db.ts:555 → `syncArchivedProject` →
+`ensureProjectForOpportunity`) reaches THIS branch for a still-won deal (shouldExist=true). So **archiving a
+won deal that holds invoices mirrors `archived_at` onto its project and drops its money out of every
+project-scoped view — the identical hide-money-by-a-flag the fix just closed, on the archive-a-won-deal
+path.** (Contingent on the same premise round 3 asserts — that an archived project's money is hidden — which
+this fix already accepts.) **Fix:** gate line 231 with `!(await projectHoldsAnything(existing.id))` too, so a
+money-holding project stays live even when its deal is archived.
+
+### 🟡 Secondary hardening: `projectHoldsAnything` checks by `project_id` only
+If any delivery-artifact writer ever sets `opportunity_id` but not `project_id` (the drift trigger fills the
+reverse, not this direction), such a row is invisible to the guard and the project could still be archived
+out from under it. Belt-and-suspenders: also check by the project's `opportunity_id`, or assert every
+delivery writer sets `project_id`.
