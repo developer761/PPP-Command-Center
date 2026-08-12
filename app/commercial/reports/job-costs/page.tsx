@@ -42,7 +42,17 @@ export default async function JobCostsReportPage() {
 
   const report = await getJobCostsReport();
   const t = report.totals;
-  const marginTone = t.marginPct === null ? "neutral" : t.marginPct < 0 ? "rose" : t.marginPct < 15 ? "amber" : "emerald";
+  // Neutral until something has actually been spent. A contract with no costs
+  // logged computes to 100%, which reads as a spectacular job and only means
+  // nobody has booked a cost yet.
+  const marginTone =
+    t.marginPct === null || t.totalCostCents === 0
+      ? "neutral"
+      : t.marginPct < 0
+        ? "rose"
+        : t.marginPct < 15
+          ? "amber"
+          : "emerald";
 
   // Cost composition as a pie (donut) — the seven buckets, non-zero only.
   const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
@@ -89,7 +99,7 @@ export default async function JobCostsReportPage() {
             <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="navy" sub={`${t.dealCount} ${t.dealCount === 1 ? "deal" : "deals"} · ${t.accountCount} ${t.accountCount === 1 ? "GC" : "GCs"}`} />
             <Tile label="Billed to date" value={formatCentsCompact(t.billedCents)} tone="brand" sub="pre-tax" />
             <Tile label="Total cost" value={formatCentsCompact(t.totalCostCents)} tone="amber" sub="materials · crew · subs" />
-            <Tile label="Projected margin" value={t.marginPct === null ? "—" : `${t.marginPct}%`} tone={marginTone} sub={`${t.marginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(t.marginCents))} · contract − cost`} />
+            <Tile label="Projected margin" value={t.marginPct === null ? "—" : `${t.marginPct}%`} tone={marginTone} sub={t.totalCostCents === 0 ? "no costs logged yet" : `${t.marginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(t.marginCents))} · contract − cost`} />
           </div>
 
           {/* ── Monthly billing trend (line) ── */}
@@ -133,7 +143,14 @@ export default async function JobCostsReportPage() {
           {/* ── Per-GC groups → per-deal rows ── */}
           <div className="space-y-2.5">
             {report.groups.map((g) => {
-              const gTone = g.marginPct === null ? "neutral" : g.marginPct < 0 ? "rose" : g.marginPct < 15 ? "amber" : "emerald";
+              const gTone =
+                g.marginPct === null || g.totalCostCents === 0
+                  ? "neutral"
+                  : g.marginPct < 0
+                    ? "rose"
+                    : g.marginPct < 15
+                      ? "amber"
+                      : "emerald";
               return (
                 <details key={g.accountId} className="group bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden" open={report.groups.length <= 3}>
                   <summary className="list-none cursor-pointer px-4 py-3 flex items-center gap-3 min-h-[52px] select-none hover:bg-ppp-charcoal-50/60">
@@ -167,7 +184,14 @@ export default async function JobCostsReportPage() {
 }
 
 function DealRow({ d }: { d: JobCostRow }) {
-  const tone = d.marginPct === null ? "neutral" : d.marginPct < 0 ? "rose" : d.marginPct < 15 ? "amber" : "emerald";
+  const tone =
+    d.marginPct === null || d.totalCostCents === 0
+      ? "neutral"
+      : d.marginPct < 0
+        ? "rose"
+        : d.marginPct < 15
+          ? "amber"
+          : "emerald";
   return (
     <li>
       <Link

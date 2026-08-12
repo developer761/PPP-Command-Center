@@ -57,7 +57,14 @@ export default async function ReportsOverviewPage() {
     .map((c) => ({ label: c.label, value: jobCosts.totals.buckets[c.key], tone: BUCKET_TONE[c.key], valueLabel: formatCentsCompact(jobCosts.totals.buckets[c.key]) }));
 
   const overdue = aging.totals.total - aging.totals.current;
-  const marginTone: Tone = jobCosts.totals.marginPct === null ? "neutral" : jobCosts.totals.marginPct < 0 ? "rose" : jobCosts.totals.marginPct < 15 ? "amber" : "emerald";
+  const marginTone: Tone =
+    jobCosts.totals.marginPct === null || jobCosts.totals.totalCostCents === 0
+      ? "neutral"
+      : jobCosts.totals.marginPct < 0
+        ? "rose"
+        : jobCosts.totals.marginPct < 15
+          ? "amber"
+          : "emerald";
   const hasHeadToHead = winLoss.wonCount + winLoss.lostCount > 0;
 
   const cards: {

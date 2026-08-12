@@ -75,7 +75,7 @@ import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIds
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commercial/invoices/lien-waiver";
 import { DonutChart, GaugeRing, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
-import { getProjectFinancials, dealMargin } from "@/lib/commercial/projects/financials";
+import { getProjectFinancials, dealMargin, marginFrom } from "@/lib/commercial/projects/financials";
 import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { costBreakdownForOpps } from "@/lib/commercial/purchases/db";
@@ -7489,7 +7489,22 @@ async function AccountKpisTab({
   const acctLaborUnratedHours = pnlRows.reduce((acc, p) => acc + p.laborUnratedHours, 0);
   const acctCostsCents = accountCosts.total + acctCrewLaborCents;
   const acctNetCents = acctGrossCents - acctCostsCents;
-  const acctMarginPct = acctGrossCents > 0 ? Math.round((acctNetCents / acctGrossCents) * 100) : null;
+  // Same margin rule as the deal surfaces. This block used to print "100% ·
+  // net ÷ gross" beside "Job costs $0 · none logged" — arithmetically true and
+  // completely misleading: it means nothing has been spent yet, not that the
+  // work is all profit.
+  const acctMargin = marginFrom(acctGrossCents, acctCostsCents);
+  const acctMarginPct = acctMargin.pct;
+  const acctMarginTone: ChartTone =
+    acctMarginPct === null || acctMargin.provisional
+      ? "neutral"
+      : acctMargin.overBudget || acctMarginPct < 0
+        ? "rose"
+        : acctMarginPct < 15
+          ? "amber"
+          : "emerald";
+  const acctMarginDisplay =
+    acctMarginPct === null ? "—" : acctMargin.overBudget ? "Over budget" : `${acctMarginPct}%`;
   const acctRevenueMonthly = monthlyBilledSeries(accountInvoices);
   const acctCostSegments: DonutSegment[] = [
     ...PURCHASE_CATEGORIES.filter((c) => accountCosts[c] > 0).map((c) => ({
@@ -7571,7 +7586,12 @@ async function AccountKpisTab({
           <StatCard label="Gross revenue" value={formatCentsCompact(acctGrossCents)} tone="brand" sub="billed to date" spark={acctRevenueMonthly.map((r) => r.value)} sparkLabels={acctRevenueMonthly.map((r) => r.label)} />
           <StatCard label="Job costs" value={formatCentsCompact(acctCostsCents)} tone="amber" sub={acctCostsCents === 0 ? "none logged" : acctCrewLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
           <StatCard label="Net profit" value={`${acctNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(acctNetCents))}`} tone={acctNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
-          <StatCard label="Margin" value={acctMarginPct === null ? "—" : `${acctMarginPct}%`} tone={acctMarginPct === null ? "neutral" : acctMarginPct < 0 ? "rose" : acctMarginPct < 15 ? "amber" : "emerald"} sub={acctMarginPct === null ? "no revenue yet" : "net ÷ gross"} />
+          <StatCard
+            label={acctMargin.label}
+            value={acctMarginDisplay}
+            tone={acctMarginTone}
+            sub={acctMargin.caveat ?? "billed − costs"}
+          />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
           <div className="lg:col-span-2">
@@ -7579,7 +7599,13 @@ async function AccountKpisTab({
             <TrendChart data={acctRevenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[140px]" />
           </div>
           <div className="flex items-center gap-4 justify-center">
-            <GaugeRing pct={acctMarginPct ?? 0} tone={acctMarginPct === null ? "neutral" : acctMarginPct < 0 ? "rose" : acctMarginPct < 15 ? "amber" : "emerald"} value={acctMarginPct === null ? "—" : `${acctMarginPct}%`} label="margin" size={104} />
+            <GaugeRing
+              pct={acctMargin.overBudget ? 0 : (acctMarginPct ?? 0)}
+              tone={acctMarginTone}
+              value={acctMarginDisplay}
+              label="margin"
+              size={104}
+            />
             {acctCostSegments.length > 0 ? (
               <DonutChart size={104} legend={false} segments={acctCostSegments} centerValue={formatCentsCompact(acctCostsCents)} centerLabel="costs" />
             ) : (

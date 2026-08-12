@@ -36,6 +36,39 @@ function formatValue(v: number, fmt: YFormat): string {
 }
 
 /**
+ * The y-axis domain for a series: [yMin, yMax] plus the span used to plot.
+ *
+ * Exported and pure because getting this wrong is invisible in code review and
+ * obvious on screen. Two bugs lived here:
+ *
+ *  1. A flat-$0 series invented headroom off a zero max and printed a phantom
+ *     "$180" ceiling above a line of nothing.
+ *  2. Headroom was computed from `Math.max(1, max - min)` — but currency values
+ *     arrive in $K, so that floor is ONE THOUSAND DOLLARS. An account with $100
+ *     billed got an axis topping out at "$280" (0.1 + 1 × 0.18), and since the
+ *     same forced 1 was the plotting denominator, the line was squashed to a
+ *     third of its true height. Headroom has to be proportional to the data.
+ */
+export function chartDomain(values: number[]): { yMax: number; yMin: number; yRange: number } {
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+
+  // Nothing to show: pin the domain to a clean [0, 0] so the axis honestly
+  // reads $0 top and bottom rather than implying a scale that isn't there.
+  if (max === 0 && min === 0) return { yMax: 0, yMin: 0, yRange: 1 };
+
+  // Every point identical: sit the line at the top of its own scale, baselined
+  // at zero, so "$100 every month" reads as $100 rather than as a fraction of
+  // some invented ceiling.
+  if (max === min) return { yMax: max, yMin: 0, yRange: max || 1 };
+
+  const span = max - min;
+  const yMax = max + span * 0.18;
+  const yMin = Math.max(0, min - span * 0.1);
+  return { yMax, yMin, yRange: yMax - yMin || 1 };
+}
+
+/**
  * Mobile-perfect line/area chart.
  * - HTML axis labels (never distort with SVG stretching).
  * - `touch-action: pan-y` so the page still scrolls when finger crosses the chart.
@@ -79,17 +112,7 @@ export default function TrendChart({
   }
 
   const values = data.map((d) => d.value);
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  // All-zero (or all-same-value) series: an empty deal, a brand-new job, a
-  // period with nothing billed. Don't invent headroom off a zero max — that
-  // printed a phantom "$180" ceiling on a flat-$0 line. Pin the domain to a
-  // clean [0, 0] so the axis honestly reads $0 top and bottom.
-  const flat = max === min;
-  const range = Math.max(1, max - min);
-  const yMax = flat ? (max === 0 ? 0 : max) : max + range * 0.18;
-  const yMin = flat ? (max === 0 ? 0 : Math.max(0, min - range * 0.1)) : Math.max(0, min - range * 0.1);
-  const yRange = Math.max(1, yMax - yMin);
+  const { yMax, yMin, yRange } = chartDomain(values);
 
   const xAt = (i: number) =>
     data.length === 1 ? 50 : (i / (data.length - 1)) * 100;

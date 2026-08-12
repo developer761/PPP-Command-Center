@@ -40,7 +40,7 @@ import { costBreakdownByOpp, emptyCostBreakdown } from "@/lib/commercial/purchas
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
-import TrendChart from "@/components/trend-chart";
+import { marginFrom } from "@/lib/commercial/projects/financials";import TrendChart from "@/components/trend-chart";
 import { DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
@@ -271,14 +271,17 @@ export default async function CommercialDashboardPage() {
     .filter((p) => p.billedContractCents > 0)
     .map((p) => {
       const gross = p.billedContractCents;
-      const net = gross - p.costsCents;
-      const mPct = gross > 0 ? Math.round((net / gross) * 100) : null;
+      const m = marginFrom(gross, p.costsCents);
+      const net = m.cents;
       return {
         label: derivedOppName(p.opp, accountNameById.get(p.opp.account_id) ?? ""),
         value: gross,
-        tone: (net < 0 ? "rose" : "emerald") as ChartTone,
+        // Neutral while no costs are booked. The caption already says "no costs
+        // logged", but a green bar says "healthy job" louder than the caption
+        // says "we haven't spent anything yet".
+        tone: (m.provisional ? "neutral" : net < 0 ? "rose" : "emerald") as ChartTone,
         valueLabel: formatCentsCompact(gross),
-        sub: p.costsCents > 0 ? `${formatCentsCompact(net)} net · ${mPct ?? 0}%` : "no costs logged",
+        sub: m.provisional ? "no costs logged" : `${formatCentsCompact(net)} net · ${m.pct ?? 0}%`,
         href: `/commercial/accounts/${p.opp.account_id}?tab=projects&project=${p.opp.id}&dt=pnl`,
       };
     })

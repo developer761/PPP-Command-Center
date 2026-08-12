@@ -117,7 +117,17 @@ function RankSection({ title, caption, rows, accent, limit, compact = false }: {
       ) : (
         <ul className="space-y-2.5">
           {shown.map((r) => {
-            const tone = r.marginPct === null ? "text-ppp-charcoal-400" : r.marginPct < 0 ? "text-rose-700" : r.marginPct < 15 ? "text-amber-700" : "text-emerald-700";
+            // Grey until costs exist — a region with contracts and nothing
+            // spent computes to a green 100% that means the opposite of what
+            // it looks like.
+            const tone =
+              r.marginPct === null || r.totalCostCents === 0
+                ? "text-ppp-charcoal-400"
+                : r.marginPct < 0
+                  ? "text-rose-700"
+                  : r.marginPct < 15
+                    ? "text-amber-700"
+                    : "text-emerald-700";
             return (
               <li key={`${r.label}|${r.sub ?? ""}`}>
                 <div className="flex items-baseline justify-between gap-2 text-[12.5px] mb-1">

@@ -170,6 +170,59 @@ export type DealMargin = {
  * position, not a result. The labels say so rather than letting a 100% read as
  * money in the bank.
  */
+/**
+ * Margin from a billed/cost pair — the shared core, usable by the aggregate
+ * surfaces (account rollup, dashboard bars, reports) that have two numbers
+ * rather than a whole ProjectFinancials.
+ *
+ * The reason this is shared rather than re-derived per screen: `net ÷ gross` is
+ * trivial arithmetic, so every surface wrote its own — and every one of them
+ * printed "100%" next to "no costs logged", which reads as a triumph and
+ * actually means nobody has spent anything yet.
+ */
+export function marginFrom(
+  billedCents: number,
+  costCents: number
+): {
+  pct: number | null;
+  cents: number;
+  label: string;
+  caveat: string | null;
+  provisional: boolean;
+  overBudget: boolean;
+} {
+  const cents = billedCents - costCents;
+  if (billedCents <= 0) {
+    return {
+      pct: null,
+      cents,
+      label: "Margin",
+      caveat: costCents > 0 ? "Nothing billed yet — costs only." : "Nothing billed yet.",
+      provisional: true,
+      overBudget: false,
+    };
+  }
+  const pct = Math.round((cents / billedCents) * 100);
+  if (costCents === 0) {
+    return {
+      pct,
+      cents,
+      label: "Projected margin",
+      caveat: "No costs booked yet — this is everything billed, not profit.",
+      provisional: true,
+      overBudget: false,
+    };
+  }
+  return {
+    pct,
+    cents,
+    label: "Margin",
+    caveat: null,
+    provisional: false,
+    overBudget: pct < -100,
+  };
+}
+
 export function dealMargin(fin: {
   billedPreTaxCents: number;
   contractCents: number;
@@ -177,7 +230,8 @@ export function dealMargin(fin: {
   totalCostCents: number;
   laborUnratedHours: number;
 }): DealMargin {
-  const marginCents = fin.billedPreTaxCents - fin.totalCostCents;
+  const core = marginFrom(fin.billedPreTaxCents, fin.totalCostCents);
+  const marginCents = core.cents;
 
   // The contract view, always separately labeled. Null when there's no contract
   // to measure against — a ratio over zero is undefined, not 0%.

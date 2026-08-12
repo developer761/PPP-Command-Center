@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dealMargin } from "@/lib/commercial/projects/financials";
+import { dealMargin, marginFrom } from "@/lib/commercial/projects/financials";
 
 /**
  * One margin, used everywhere. Three surfaces used to disagree about the same
@@ -107,5 +107,68 @@ describe("dealMargin", () => {
     expect(m.vsContract).toBeNull();
     // The billed headline still works — billing can precede a recorded contract.
     expect(m.pct).toBe(75);
+  });
+});
+
+/**
+ * `marginFrom` is the shared core behind every margin on the platform — the
+ * deal Overview, the deal P&L, the Costs tool, the account rollup, the
+ * dashboard bars and the reports. It exists because `net ÷ gross` is trivial
+ * enough that each surface wrote its own, and every one of them printed "100%"
+ * beside "no costs logged".
+ */
+describe("marginFrom", () => {
+  it("refuses to call an unstarted job a 100% margin", () => {
+    // The account rollup Karan spotted: Gross $100, Job costs $0 · none logged,
+    // Margin 100% · net ÷ gross. True arithmetic, and it reads as a triumph
+    // when it means nobody has spent anything yet.
+    const m = marginFrom(100_00, 0);
+    expect(m.pct).toBe(100);
+    expect(m.provisional).toBe(true);
+    expect(m.label).toBe("Projected margin");
+    expect(m.caveat).toMatch(/No costs booked yet/i);
+  });
+
+  it("states a real margin plainly once costs exist", () => {
+    const m = marginFrom(100_00, 60_00);
+    expect(m.pct).toBe(40);
+    expect(m.provisional).toBe(false);
+    expect(m.label).toBe("Margin");
+    expect(m.caveat).toBeNull();
+  });
+
+  it("has no percentage before anything is billed, but still shows the loss", () => {
+    const m = marginFrom(0, 5_000_00);
+    expect(m.pct).toBeNull();
+    expect(m.cents).toBe(-5_000_00);
+    expect(m.caveat).toMatch(/Nothing billed yet/i);
+  });
+
+  it("flags a catastrophic overrun instead of printing -4900%", () => {
+    expect(marginFrom(1_00, 50_00).overBudget).toBe(true);
+  });
+
+  it("agrees with dealMargin, so a deal and its account can't disagree", () => {
+    // The account rollup sums its deals. If the two used different rules, one
+    // deal could read 40% while the account containing only that deal read
+    // something else.
+    for (const [billed, cost] of [
+      [100_00, 0],
+      [100_00, 60_00],
+      [0, 500_00],
+      [1_00, 50_00],
+    ] as const) {
+      const core = marginFrom(billed, cost);
+      const deal = dealMargin({
+        billedPreTaxCents: billed,
+        contractCents: billed,
+        hasContract: billed > 0,
+        totalCostCents: cost,
+        laborUnratedHours: 0,
+      });
+      expect(deal.pct, `${billed}/${cost}`).toBe(core.pct);
+      expect(deal.provisional, `${billed}/${cost}`).toBe(core.provisional);
+      expect(deal.overBudget, `${billed}/${cost}`).toBe(core.overBudget);
+    }
   });
 });
