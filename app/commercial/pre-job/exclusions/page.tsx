@@ -9,6 +9,7 @@
  * Reads open to any commercial user; writes admin-gated (mirrors Products).
  */
 
+import { flashMessage } from "@/lib/commercial/flash";
 import { redirect } from "next/navigation";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
@@ -189,7 +190,7 @@ export default async function ExclusionsLibraryPage({
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800">
           {sp.error === "admins-only"
             ? "Admin access required to edit the Exclusions Library."
-            : decodeURIComponent(sp.error)}
+            : flashMessage(sp.error)}
         </div>
       )}
 

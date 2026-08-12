@@ -1,3 +1,4 @@
+import { flashMessage } from "@/lib/commercial/flash";
 import { redirect } from "next/navigation";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { revalidatePath } from "next/cache";
@@ -178,7 +179,7 @@ export default async function NewProductPage({
 
       {sp.error && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 text-sm text-rose-800">
-          {decodeURIComponent(sp.error)}
+          {flashMessage(sp.error)}
         </div>
       )}
 

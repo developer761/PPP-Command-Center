@@ -4,6 +4,7 @@
  * detail. Mirrors the Change Orders / AIA / Closeout account-scoped pattern so
  * Submittals is no longer the odd tool hanging off the opportunity page.
  */
+import { flashMessage } from "@/lib/commercial/flash";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -167,7 +168,7 @@ export async function SubmittalsTool({
       {sp.error && (
         <div role="alert" aria-live="polite" className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0"><circle cx="12" cy="12" r="10" /><path d="M12 6v6 M12 16.5v.5" /></svg>
-          <span>{decodeURIComponent(sp.error)}</span>
+          <span>{flashMessage(sp.error)}</span>
         </div>
       )}
 

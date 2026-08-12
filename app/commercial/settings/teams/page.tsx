@@ -1,3 +1,4 @@
+import { flashMessage } from "@/lib/commercial/flash";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
@@ -141,11 +142,11 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
       <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Teams</h1>
       <p className="text-[13px] text-ppp-charcoal-500 mt-1 mb-5">Build a reusable team once — a name, a team admin, and members with roles — then assign the whole team to an account or opportunity by name.</p>
 
-      {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{decodeURIComponent(sp.error)}</div>}
+      {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{flashMessage(sp.error)}</div>}
       {/* Team-admin authority moving is a real access change. It used to happen
           silently — the sole admin was removed and the system handed the role to
           whoever was next, with nobody told. */}
-      {sp.heads_up && <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12.5px] text-amber-800">{decodeURIComponent(sp.heads_up)}</div>}
+      {sp.heads_up && <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12.5px] text-amber-800">{flashMessage(sp.heads_up)}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5">
         {/* Team list + create */}

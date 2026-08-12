@@ -5,6 +5,7 @@
  * Change Orders / AIA — a single focused page with a ToolBackHeader (no
  * redundant tool tabs; this IS the closeout page).
  */
+import { flashMessage } from "@/lib/commercial/flash";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -360,7 +361,7 @@ export async function CloseoutTool({
         </>
       )}
 
-      {sp.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{decodeURIComponent(sp.error)}</div>}
+      {sp.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{flashMessage(sp.error)}</div>}
       {sp.ok && <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Saved.</div>}
 
       {/* Package list + create */}

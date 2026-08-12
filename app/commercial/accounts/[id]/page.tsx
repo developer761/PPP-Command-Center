@@ -1,3 +1,4 @@
+import { flashMessage } from "@/lib/commercial/flash";
 import { notFound, redirect } from "next/navigation";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
@@ -1920,7 +1921,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Invoice created.</div>
       )}
       {sp?.error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{decodeURIComponent(sp.error)}</div>
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{flashMessage(sp.error)}</div>
       )}
       {/* Next milestone due — glanceable schedule cue when any invoice is
           broken into milestones with due dates. */}

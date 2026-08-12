@@ -18,6 +18,7 @@
  * URL: /commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]
  */
 
+import { flashMessage } from "@/lib/commercial/flash";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
@@ -1432,7 +1433,7 @@ export default async function ProposalEditorPage({
       )}
       {sp.error && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5 text-sm text-rose-800" role="alert">
-          {decodeURIComponent(sp.error)}
+          {flashMessage(sp.error)}
         </div>
       )}
       {/* R1d approval flash banners */}
