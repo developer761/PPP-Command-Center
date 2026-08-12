@@ -260,8 +260,22 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
         const carried = new Set(
           priorLines.map((l) => l.change_order_id).filter((x): x is string => !!x)
         );
+        // Rows seeded BEFORE the foreign key existed carry a null id and are
+        // identifiable only by the `CO-001` naming the seed used — migration 128
+        // added the column with no backfill. Without this they get copied
+        // forward verbatim AND re-appended, so App 2's schedule counts every
+        // legacy change order twice. The partial unique index can't catch it
+        // either, since it only covers non-null ids.
+        const carriedNumbers = new Set(
+          priorLines
+            .map((l) => /^CO-0*(\d+)$/i.exec(l.item_no ?? "")?.[1])
+            .filter((x): x is string => !!x)
+        );
         const sinceCOs = (await listChangeOrders(app.opportunity_id)).filter(
-          (c) => c.status === "approved" && !carried.has(c.id)
+          (c) =>
+            c.status === "approved" &&
+            !carried.has(c.id) &&
+            !carriedNumbers.has(String(c.co_number))
         );
         let carryNo = rows.length + 1;
         for (const co of sinceCOs) {
@@ -510,6 +524,26 @@ export async function deleteAiaApplication(id: string, userId: string): Promise<
 
 // ── G703 line items ──
 
+/** Completion columns clamped to the direction the line can actually move. */
+function clampCompletionToSign(line: {
+  scheduled_value_cents?: number | null;
+  from_previous_cents?: number | null;
+  this_period_cents?: number | null;
+  materials_stored_cents?: number | null;
+}): {
+  from_previous_cents: number;
+  this_period_cents: number;
+  materials_stored_cents: number;
+} {
+  const credit = Math.round(line.scheduled_value_cents ?? 0) < 0;
+  const fit = (v: number) => (credit ? Math.min(0, v) : Math.max(0, v));
+  return {
+    from_previous_cents: fit(Math.round(line.from_previous_cents ?? 0)),
+    this_period_cents: fit(Math.round(line.this_period_cents ?? 0)),
+    materials_stored_cents: fit(Math.round(line.materials_stored_cents ?? 0)),
+  };
+}
+
 export async function upsertAiaLineItem(
   applicationId: string,
   line: Partial<AiaLineItem> & { id?: string },
@@ -530,9 +564,12 @@ export async function upsertAiaLineItem(
     description: (line.description ?? "").slice(0, 500),
     // Not clamped — an operator entering a credit line means it.
     scheduled_value_cents: Math.round(line.scheduled_value_cents ?? 0),
-    from_previous_cents: Math.max(0, Math.round(line.from_previous_cents ?? 0)),
-    this_period_cents: Math.max(0, Math.round(line.this_period_cents ?? 0)),
-    materials_stored_cents: Math.max(0, Math.round(line.materials_stored_cents ?? 0)),
+    // Completion follows the sign of the line: a normal line can't be billed
+    // negative, a CREDIT line (a deductive change order) can only be billed
+    // negative. Clamping everything at zero left a deduct row permanently at 0,
+    // so the descoped work came off the contract sum but never off the amount
+    // completed — and the job billed past 100%.
+    ...clampCompletionToSign(line),
     updated_at: new Date().toISOString(),
     ...(line.position !== undefined ? { position: line.position } : {}),
   };

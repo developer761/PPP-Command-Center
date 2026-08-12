@@ -130,7 +130,13 @@ export default async function CommercialDashboardPage() {
   // into production still counts as a win (isWon alone missed those — audit H2).
   const wonOpps = opps.filter((o) => isPostSaleProject(o));
   const lostOpps = opps.filter((o) => isLost(o));
-  const decidedOpps = [...wonOpps, ...lostOpps]; // won + lost (win-rate basis)
+  // Win-rate basis: won + lost, EXCLUDING no-bids. We never quoted a no-bid, so
+  // it says nothing about how we price or sell — the win/loss report excludes
+  // them and this tile did not, which was one of three ways the two disagreed.
+  const decidedOpps = [
+    ...wonOpps,
+    ...lostOpps.filter((o) => o.loss_reason !== "no_bid"),
+  ];
   const weightedPipeline = openOpps.reduce((acc, o) => acc + oppWeighted(o), 0);
 
   // ─── This month ───

@@ -8577,7 +8577,7 @@ async function DealEditSheet({
                 Delete <strong>{deal.title || "this opportunity"}</strong>? This also
                 removes its unpaid invoices, every cost recorded against it, and its
                 work order — and takes the crew off any shifts already scheduled for
-                it. Paid invoices are kept.
+                it. A deal with a PAID invoice can&rsquo;t be deleted at all.
               </p>
               <PendingSubmitButton
                 className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation disabled:hover:bg-rose-700"

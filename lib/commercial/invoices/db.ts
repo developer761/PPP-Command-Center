@@ -584,7 +584,27 @@ export async function updateInvoiceCoreFields(
   const clean: Record<string, unknown> = {};
   if (patch.tax_pct !== undefined) {
     if (patch.tax_pct < 0 || patch.tax_pct > 100) return { ok: false, error: "tax_pct_out_of_range" };
-    clean.tax_pct = patch.tax_pct;
+    // Exemption is a property of the CUSTOMER, so it holds on edit as well as
+    // on create. Create was guarded and this was not, and the tax field is
+    // always present on the form — so typing a rate onto an exempt GC's invoice
+    // billed them sales tax, and the page only shows the "tax-exempt on file"
+    // note while the rate reads zero, so nothing contradicted it on screen.
+    const { data: inv } = await sb
+      .from("commercial_invoices")
+      .select("account_id")
+      .eq("id", invoice_id)
+      .maybeSingle();
+    const acctId = (inv as { account_id?: string } | null)?.account_id ?? null;
+    let exempt = false;
+    if (acctId) {
+      const { data: acct } = await sb
+        .from("commercial_accounts")
+        .select("tax_exempt")
+        .eq("id", acctId)
+        .maybeSingle();
+      exempt = Boolean((acct as { tax_exempt?: boolean } | null)?.tax_exempt);
+    }
+    clean.tax_pct = exempt ? 0 : patch.tax_pct;
   }
   if (patch.payment_terms !== undefined) clean.payment_terms = patch.payment_terms.slice(0, 60);
   if (patch.customer_message !== undefined) clean.customer_message = patch.customer_message?.slice(0, 1000) ?? null;

@@ -1399,7 +1399,7 @@ export default async function ProposalEditorPage({
           <span>
             <strong>Marked won.</strong>{" "}
             {sp.deal_kept
-              ? <>The opportunity was left in <em>{opportunityStatusLabelV2(sp.deal_kept)}</em> — it&rsquo;s already past the bid stage, so pulling it back to Closed Won would have taken a live job off the board.</>
+              ? <>The opportunity was left in <em>{opportunityStatusLabelV2(sp.deal_kept)}</em>. The proposal is marked won, but the deal was NOT moved — it is either already decided or past the bid stage, and pulling it back would erase real state. Move it by hand if that is what you meant.</>
               : <>Opportunity flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</>}
           </span>
         </div>
@@ -1409,7 +1409,7 @@ export default async function ProposalEditorPage({
           <div>
             <strong>Marked lost.</strong>{" "}
             {sp.deal_kept
-              ? <>The opportunity was left in <em>{opportunityStatusLabelV2(sp.deal_kept)}</em> — un-winning a job that&rsquo;s already in delivery would erase real work state. Fix the proposal, or move the deal by hand if it really was lost.</>
+              ? <>The opportunity was left in <em>{opportunityStatusLabelV2(sp.deal_kept)}</em> — reversing a deal that has already been decided, or that has work under way, erases real state. Fix the proposal, or move the deal by hand if it really was lost.</>
               : <>Opportunity flipped to <em>Pre-Sale Closed · Lost</em>. Please add the loss reason so the Win/Loss report is accurate.</>}
           </div>
           <Link

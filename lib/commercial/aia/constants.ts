@@ -64,12 +64,30 @@ export type AiaG702 = {
   percentCompleteBps: number | null;
 };
 
-/** Cumulative completed + stored for one G703 line (columns D + E + F). */
+/**
+ * Cumulative completed + stored for one G703 line (columns D + E + F).
+ *
+ * A CREDIT line — a deductive change order, whose scheduled value is negative —
+ * earns DOWNWARD. The floor at zero was applied to every line, so a deduct row
+ * was stuck at 0 no matter what: its scope came off the contract sum (line 3)
+ * but never came off the completed total (line 4), so a job billed to 100% of
+ * its remaining lines reported over 100% complete, a negative balance to
+ * finish, and a final payment due that included the descoped work. The customer
+ * gets billed for the thing they removed.
+ *
+ * So the clamp follows the SIGN of the line: a normal line can't go below zero,
+ * a credit line can't go above it. Neither can drift past its own scheduled
+ * value in the wrong direction, which is what the clamp was protecting against.
+ */
 export function lineCompletedStoredCents(l: AiaLineInput): number {
+  // Clamped PER COLUMN, not on the sum — a stray negative in one column must
+  // not reduce the others (that was the original rule and it still holds).
+  const credit = Math.round(l.scheduled_value_cents) < 0;
+  const fit = (v: number) => (credit ? Math.min(0, v) : Math.max(0, v));
   return (
-    Math.max(0, Math.round(l.from_previous_cents)) +
-    Math.max(0, Math.round(l.this_period_cents)) +
-    Math.max(0, Math.round(l.materials_stored_cents))
+    fit(Math.round(l.from_previous_cents)) +
+    fit(Math.round(l.this_period_cents)) +
+    fit(Math.round(l.materials_stored_cents))
   );
 }
 

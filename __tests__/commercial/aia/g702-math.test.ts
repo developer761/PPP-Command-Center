@@ -317,3 +317,52 @@ describe("the AIA footing rule", () => {
     expect(g(100_000_00, 0, [line(100_000_00, 50_000_00)]).sovVarianceCents).toBe(0);
   });
 });
+
+describe("deductive change orders", () => {
+  it("lets a credit line be earned DOWN", () => {
+    // A deduct row's scheduled value is negative. Every completion column was
+    // floored at zero, so the row sat at 0 forever: the descoped scope came off
+    // the contract sum but never off the amount completed.
+    expect(
+      lineCompletedStoredCents({
+        scheduled_value_cents: -5_000_00,
+        from_previous_cents: 0,
+        this_period_cents: -5_000_00,
+        materials_stored_cents: 0,
+      })
+    ).toBe(-5_000_00);
+  });
+
+  it("does not bill a descoped job past 100%", () => {
+    // Contract $100k, a $5k deduct approved. Base lines billed to 100%.
+    // Before: line 4 = $100k against a $95k contract sum — 105% complete, a
+    // negative balance to finish, and a final payment that includes the work
+    // the customer removed.
+    const g = computeG702({
+      originalContractCents: 100_000_00,
+      netChangeOrdersCents: -5_000_00,
+      retainagePct: 0,
+      lines: [
+        { scheduled_value_cents: 100_000_00, from_previous_cents: 0, this_period_cents: 100_000_00, materials_stored_cents: 0 },
+        { scheduled_value_cents: -5_000_00, from_previous_cents: 0, this_period_cents: -5_000_00, materials_stored_cents: 0 },
+      ],
+      previousCertificatesCents: 0,
+    });
+    expect(g.contractSumToDateCents).toBe(95_000_00);
+    expect(g.totalCompletedStoredCents).toBe(95_000_00);
+    expect(g.percentCompleteBps).toBe(10000);
+    expect(g.balanceToFinishCents).toBe(0);
+    expect(g.sovVarianceCents).toBe(0);
+  });
+
+  it("still floors a stray negative on an ordinary line", () => {
+    expect(
+      lineCompletedStoredCents({
+        scheduled_value_cents: 10_000_00,
+        from_previous_cents: -100,
+        this_period_cents: 250,
+        materials_stored_cents: 50,
+      })
+    ).toBe(300);
+  });
+});

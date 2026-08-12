@@ -927,10 +927,17 @@ export async function markProposalOutcome(input: {
         reason: "Proposal marked won",
         actingUserId: input.actor_user_id,
       });
-      if (!res.moved && res.reason === "error") {
-        console.warn(
-          `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${res.detail}`
-        );
+      if (!res.moved) {
+        // The engine declined — the deal is lost, or already further along. Say
+        // so. Reporting "flipped to Closed Won" for a deal still sitting at
+        // Closed Lost is worse than the old unguarded write it replaced: that
+        // one was wrong but visible, this one is wrong and silent.
+        dealLeftInDelivery = dealStatus;
+        if (res.reason === "error") {
+          console.warn(
+            `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${res.detail}`
+          );
+        }
       }
     } else if (dealStatus === "pre_sale_closed") {
       // Marking a proposal lost on a deal that is ALREADY decided. Crossing a
