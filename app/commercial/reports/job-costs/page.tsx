@@ -99,7 +99,7 @@ export default async function JobCostsReportPage() {
             <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="navy" sub={`${t.dealCount} ${t.dealCount === 1 ? "deal" : "deals"} · ${t.accountCount} ${t.accountCount === 1 ? "GC" : "GCs"}`} />
             <Tile label="Billed to date" value={formatCentsCompact(t.billedCents)} tone="brand" sub="pre-tax" />
             <Tile label="Total cost" value={formatCentsCompact(t.totalCostCents)} tone="amber" sub="materials · crew · subs" />
-            <Tile label="Projected margin" value={t.marginPct === null ? "—" : `${t.marginPct}%`} tone={marginTone} sub={t.totalCostCents === 0 ? "no costs logged yet" : `${t.marginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(t.marginCents))} · contract − cost`} />
+            <Tile label="Margin" value={t.marginPct === null ? "—" : `${t.marginPct}%`} tone={marginTone} sub={t.totalCostCents === 0 ? "no costs logged yet" : `${t.marginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(t.marginCents))} · billed − cost`} />
           </div>
 
           {/* ── Monthly billing trend (line) ── */}
@@ -175,7 +175,7 @@ export default async function JobCostsReportPage() {
           </div>
 
           <p className="text-[11px] text-ppp-charcoal-400 leading-snug">
-            Scope: every deal incl. closed jobs &amp; pre-sale bids — a strict superset of any single deal&rsquo;s Costs tab. Crew labor is auto from approved time entries; subcontract labor is manually logged. Billed is shown for cash-flow context; margin is contract-based.
+            Scope: every deal incl. closed jobs &amp; pre-sale bids — a strict superset of any single deal&rsquo;s Costs tab. Crew labor is auto from approved time entries; subcontract labor is manually logged. Margin is billed − cost, the same basis as every deal page, so a job reads the same number here and there. Contract is shown for scope context.
           </p>
         </>
       )}

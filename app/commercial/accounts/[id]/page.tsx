@@ -1741,12 +1741,22 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         </ToolMiniCard>
 
         {/* Costs — total job cost + projected gross margin (full picture on the P&L tab) */}
-        <ToolMiniCard label="Transactions" href={`${base}?tab=projects&project=${p.opp.id}&dt=costs`} iconBg="bg-cc-brand-600" icon={<path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />} chip={p.costsCents === 0 ? null : p.grossMarginPct == null ? { label: "no contract", tone: "neutral" } : { label: `${p.grossMarginPct}% margin`, tone: p.grossMarginPct < 0 ? "rose" : p.grossMarginPct < 15 ? "amber" : "emerald" }}>
+        <ToolMiniCard label="Transactions" href={`${base}?tab=projects&project=${p.opp.id}&dt=costs`} iconBg="bg-cc-brand-600" icon={<path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />} chip={(() => {
+          if (p.costsCents === 0) return null;
+          // Billed-based, matching the deal Overview this card sits above. The
+          // chip used to read the contract-based number, so the same job showed
+          // two margins one click apart.
+          const m = marginFrom(p.billedContractCents, p.costsCents);
+          type ChipTone = "neutral" | "amber" | "emerald" | "blue" | "rose";
+          if (m.pct == null) return { label: "nothing billed", tone: "neutral" as ChipTone };
+          const tone: ChipTone = m.pct < 0 ? "rose" : m.pct < 15 ? "amber" : "emerald";
+          return { label: `${m.pct}% margin`, tone };
+        })()}>
           {p.costsCents === 0 ? (
             <p className="text-[11.5px] text-ppp-charcoal-500">No job costs logged yet — add materials, labor &amp; subs to see margin.</p>
           ) : (
             <div>
-              <div className="text-[11.5px] font-semibold text-ppp-charcoal tabular-nums">{formatCentsCompact(p.costsCents)} cost{p.grossMarginPct == null ? "" : ` · ${p.grossMarginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(p.grossMarginCents))} margin`}</div>
+              <div className="text-[11.5px] font-semibold text-ppp-charcoal tabular-nums">{formatCentsCompact(p.costsCents)} cost{` · ${marginFrom(p.billedContractCents, p.costsCents).cents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(marginFrom(p.billedContractCents, p.costsCents).cents))} margin`}</div>
               {p.hasBilling || p.contractToDateCents > 0 ? (
                 <div className={`text-[10.5px] mt-0.5 ${p.grossMarginPct != null && p.grossMarginPct < 0 ? "text-rose-600" : "text-ppp-charcoal-500"}`}>vs {formatCentsCompact(p.contractToDateCents)} contract</div>
               ) : (

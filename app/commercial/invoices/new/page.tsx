@@ -21,7 +21,7 @@ import { listProposalsForOpp } from "@/lib/commercial/proposals/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel } from "@/lib/commercial/invoices/constants";
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
-import { getProjectFinancials } from "@/lib/commercial/projects/financials";
+import { getProjectFinancials, marginFrom } from "@/lib/commercial/projects/financials";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { DealNewInvoiceForm } from "../../accounts/[id]/page";
@@ -61,6 +61,8 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
     listCommercialInvoices({ opportunityId: opp!.id }),
     getProjectFinancials(opp!.id),
   ]);
+  // Billed-based, same rule as the deal page this tile links to.
+  const invMargin = marginFrom(fin.billedPreTaxCents, fin.totalCostCents);
   const dealName = derivedOppName(opp!, account?.company_name ?? "");
   const returnTo = `/commercial/invoices/new?opp=${opp!.id}`;
   // Issued invoices, newest first (drafts shown but tagged).
@@ -101,9 +103,9 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
         />
         <MoneyTile
           label="Margin"
-          value={fin.totalCostCents === 0 ? "—" : `${fin.grossMarginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(fin.grossMarginCents))}`}
-          sub={fin.grossMarginPct == null || fin.totalCostCents === 0 ? undefined : `${fin.grossMarginPct}%`}
-          tone={fin.totalCostCents === 0 ? "neutral" : fin.grossMarginPct != null && fin.grossMarginPct < 0 ? "rose" : "emerald"}
+          value={fin.totalCostCents === 0 ? "—" : `${invMargin.cents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(invMargin.cents))}`}
+          sub={invMargin.pct == null || fin.totalCostCents === 0 ? undefined : `${invMargin.pct}%`}
+          tone={fin.totalCostCents === 0 ? "neutral" : invMargin.pct != null && invMargin.pct < 0 ? "rose" : "emerald"}
           href={`/commercial/accounts/${opp!.account_id}/costs/${opp!.id}?back=${encodeURIComponent(returnTo)}`}
         />
       </div>

@@ -14,6 +14,7 @@ import "server-only";
  * All amounts are integer cents.
  */
 
+import { marginFrom } from "@/lib/commercial/projects/financials";
 import { listProjects } from "@/lib/commercial/projects/db";
 
 export type GeoRow = {
@@ -47,17 +48,17 @@ export type GeographyReport = {
 const clean = (v: string | null | undefined): string => (v ?? "").trim();
 const titleCase = (s: string): string =>
   s.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase());
-const pct = (margin: number, contract: number): number | null =>
-  contract > 0 ? Math.round((margin / contract) * 100) : null;
+type Acc = { dealCount: number; contractCents: number; billedCents: number; totalCostCents: number; label: string; sub: string | null };
 
-type Acc = { dealCount: number; contractCents: number; totalCostCents: number; marginCents: number; label: string; sub: string | null };
-
-function bump(map: Map<string, Acc>, key: string, label: string, sub: string | null, contract: number, cost: number, margin: number): void {
-  const a = map.get(key) ?? { dealCount: 0, contractCents: 0, totalCostCents: 0, marginCents: 0, label, sub };
+// `billed` is carried so margin uses the platform basis (billed − cost, D2).
+// This aggregate used to sum a contract-based margin, so a region's margin
+// disagreed with the margin on every deal inside it.
+function bump(map: Map<string, Acc>, key: string, label: string, sub: string | null, contract: number, billed: number, cost: number): void {
+  const a = map.get(key) ?? { dealCount: 0, contractCents: 0, billedCents: 0, totalCostCents: 0, label, sub };
   a.dealCount += 1;
   a.contractCents += contract;
+  a.billedCents += billed;
   a.totalCostCents += cost;
-  a.marginCents += margin;
   map.set(key, a);
 }
 
@@ -69,8 +70,8 @@ function finalize(map: Map<string, Acc>): GeoRow[] {
       dealCount: a.dealCount,
       contractCents: a.contractCents,
       totalCostCents: a.totalCostCents,
-      marginCents: a.marginCents,
-      marginPct: pct(a.marginCents, a.contractCents),
+      marginCents: marginFrom(a.billedCents, a.totalCostCents).cents,
+      marginPct: marginFrom(a.billedCents, a.totalCostCents).pct,
     }))
     // Most jobs first, then biggest contract — "where most jobs are" up top.
     .sort((x, y) => y.dealCount - x.dealCount || y.contractCents - x.contractCents);
@@ -97,9 +98,9 @@ export async function getGeographyReport(): Promise<GeographyReport> {
     const hasLoc = !!(city || state || zip);
     if (hasLoc) located += 1; else unspecified += 1;
 
-    if (city) bump(byCity, `${city}|${state}`, city, state || null, p.contractToDateCents, p.costsCents, p.grossMarginCents);
-    if (zip) bump(byZip, zip, zip, city || null, p.contractToDateCents, p.costsCents, p.grossMarginCents);
-    if (state) bump(byState, state, state, null, p.contractToDateCents, p.costsCents, p.grossMarginCents);
+    if (city) bump(byCity, `${city}|${state}`, city, state || null, p.contractToDateCents, p.billedContractCents, p.costsCents);
+    if (zip) bump(byZip, zip, zip, city || null, p.contractToDateCents, p.billedContractCents, p.costsCents);
+    if (state) bump(byState, state, state, null, p.contractToDateCents, p.billedContractCents, p.costsCents);
   }
 
   return {

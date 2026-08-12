@@ -20,7 +20,7 @@ import "server-only";
 
 import { listProjects, type ProjectRow } from "@/lib/commercial/projects/db";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
-
+import { marginFrom } from "@/lib/commercial/projects/financials";
 /** The seven cost buckets a job can carry, in display order. `subLabor` is the
  *  manual "labor" purchase category (renamed Subcontract labor); `crewLabor` is
  *  the auto field-ops cost. */
@@ -138,8 +138,11 @@ export async function getJobCostsReport(): Promise<JobCostsReport> {
       billedCents: p.billedContractCents,
       buckets,
       totalCostCents: totalCost,
-      marginCents: p.grossMarginCents,
-      marginPct: p.grossMarginPct,
+      // Billed-based (decision D2), same rule as every deal surface. This used
+      // to carry `grossMarginPct` — contract-based — so one job reported one
+      // margin on its own page and a different one here.
+      marginCents: marginFrom(p.billedContractCents, totalCost).cents,
+      marginPct: marginFrom(p.billedContractCents, totalCost).pct,
       laborUnratedHours: p.laborUnratedHours,
     };
 
@@ -172,7 +175,7 @@ export async function getJobCostsReport(): Promise<JobCostsReport> {
 
   const groups = [...groupsById.values()];
   for (const g of groups) {
-    g.marginPct = pct(g.marginCents, g.contractCents);
+    g.marginPct = marginFrom(g.billedCents, g.totalCostCents).pct;
     // Costliest-contract deals first within a GC.
     g.deals.sort((a, b) => b.contractCents - a.contractCents || b.totalCostCents - a.totalCostCents);
   }
@@ -188,8 +191,8 @@ export async function getJobCostsReport(): Promise<JobCostsReport> {
       billedCents: tBilled,
       buckets: totalsBuckets,
       totalCostCents: tCost,
-      marginCents: tContract - tCost,
-      marginPct: pct(tContract - tCost, tContract),
+      marginCents: marginFrom(tBilled, tCost).cents,
+      marginPct: marginFrom(tBilled, tCost).pct,
       laborUnratedHours: tUnrated,
     },
   };

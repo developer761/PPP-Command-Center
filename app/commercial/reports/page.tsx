@@ -88,7 +88,7 @@ export default async function ReportsOverviewPage() {
       title: "Job costs & profit",
       blurb: "Real cost vs contract per deal, GC, and company-wide.",
       icon: <path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />,
-      primary: { label: "Projected margin", value: jobCosts.totals.marginPct === null ? "—" : `${jobCosts.totals.marginPct}%`, tone: marginTone },
+      primary: { label: "Margin", value: jobCosts.totals.marginPct === null ? "—" : `${jobCosts.totals.marginPct}%`, tone: marginTone },
       secondary: { label: "Total cost", value: formatCentsCompact(jobCosts.totals.totalCostCents), tone: "amber" },
     },
     {

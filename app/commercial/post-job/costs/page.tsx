@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
+import { marginFrom } from "@/lib/commercial/projects/financials";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { PostJobToolIndex, type ToolStatusTone } from "@/components/commercial/post-job-tool-index";
 
@@ -38,9 +39,13 @@ export default async function CostsIndexPage() {
       emptyHint="Job costs live on a project (a Won opportunity). Win an opportunity and log its costs to see margin here."
       status={(p): { label: string; tone: ToolStatusTone } => {
         if (p.costsCents === 0) return { label: "No costs", tone: "neutral" };
-        if (p.grossMarginPct == null) return { label: `${formatCentsCompact(p.costsCents)} cost`, tone: "neutral" };
-        const tone: ToolStatusTone = p.grossMarginPct < 0 ? "rose" : p.grossMarginPct < 15 ? "amber" : "emerald";
-        return { label: `${p.grossMarginPct}% margin`, tone };
+        // Billed-based, same as the deal page this links to. It used to show
+        // the contract-based number, so a job's margin changed when you clicked
+        // through to it.
+        const m = marginFrom(p.billedContractCents, p.costsCents);
+        if (m.pct == null) return { label: `${formatCentsCompact(p.costsCents)} cost`, tone: "neutral" };
+        const tone: ToolStatusTone = m.pct < 0 ? "rose" : m.pct < 15 ? "amber" : "emerald";
+        return { label: `${m.pct}% margin`, tone };
       }}
       hrefFor={(p) => `/commercial/accounts/${p.accountId}/costs/${p.opp.id}?back=/commercial/post-job/costs`}
       accent="brand"
