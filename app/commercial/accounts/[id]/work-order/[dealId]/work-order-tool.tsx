@@ -5,6 +5,7 @@
  * to the deal's Documents on "Send to Field Ops". Same account-scoped tool pattern as
  * Closeout / AIA / Change Orders / Submittals.
  */
+import { flashMessage } from "@/lib/commercial/flash";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -456,7 +457,7 @@ export async function WorkOrderTool({
           Tick the lines this crew should get.
         </div>
       )}
-      {spv.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700" role="alert">{decodeURIComponent(spv.error)}</div>}
+      {spv.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700" role="alert">{flashMessage(spv.error)}</div>}
       {spv.ok && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800" role="status">
           Sent to Field Ops — it&rsquo;s now schedulable there, and the PDF was filed to this job&rsquo;s Documents

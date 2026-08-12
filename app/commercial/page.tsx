@@ -40,7 +40,8 @@ import { costBreakdownByOpp, emptyCostBreakdown } from "@/lib/commercial/purchas
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
-import { marginFrom } from "@/lib/commercial/projects/financials";import TrendChart from "@/components/trend-chart";
+import { marginFrom } from "@/lib/commercial/projects/financials";
+import TrendChart from "@/components/trend-chart";
 import { DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {

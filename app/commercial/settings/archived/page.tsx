@@ -230,7 +230,7 @@ export default async function ArchivedDealsPage({
                       <td className="px-3 py-2 align-top">
                         <div className="font-medium text-ppp-charcoal">
                           <Link
-                            href={`/commercial/accounts/${o.account_id}?tab=opportunities&archived=1&edit=${o.id}#deal-row-${o.id}`}
+                            href={`/commercial/accounts/${o.account_id}?tab=projects&archived=1&project=${o.id}#deal-row-${o.id}`}
                             className="hover:text-cc-brand-700 hover:underline"
                           >
                             {display}
@@ -305,7 +305,7 @@ export default async function ArchivedDealsPage({
                   />
                   <div className="min-w-0 flex-1">
                     <Link
-                      href={`/commercial/accounts/${o.account_id}?tab=opportunities&archived=1&edit=${o.id}#deal-row-${o.id}`}
+                      href={`/commercial/accounts/${o.account_id}?tab=projects&archived=1&project=${o.id}#deal-row-${o.id}`}
                       className="font-medium text-ppp-charcoal hover:text-cc-brand-700 hover:underline block truncate"
                     >
                       {display}

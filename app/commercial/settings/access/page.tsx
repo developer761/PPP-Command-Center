@@ -80,7 +80,9 @@ async function toggleOptOutAction(formData: FormData) {
   const userId = await requireAccessAdmin();
   const res = await updateEmployee(String(formData.get("id") ?? ""), { schedule_email_opt_out: String(formData.get("opt_out") ?? "") === "1" }, userId);
   revalidatePath(ACCESS);
-  if (!res.ok) redirect(`${ACCESS}?error=${encodeURIComponent(res.error ?? "Could not change that setting.")}`);
+  // `se_error` is what this page reads — its siblings all use it. `?error=`
+  // rendered nothing, so a failed toggle looked like it worked.
+  if (!res.ok) redirect(`${ACCESS}?se_error=${encodeURIComponent(res.error ?? "Could not change that setting.")}`);
   redirect(ACCESS);
 }
 

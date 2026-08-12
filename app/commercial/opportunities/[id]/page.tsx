@@ -3061,8 +3061,18 @@ async function InfoTab({
           </div>
         ) : (
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+            {/* The PRIMARY delete path — a deal-click lands on this page, so
+                this is where most deletes happen, and it said the least. Same
+                copy as the account sheet: the click also removes unpaid
+                invoices, every recorded cost and the work order, and takes the
+                crew off shifts already scheduled for it. */}
             <div className="text-sm font-semibold text-rose-800 mb-1">
               Delete {opp.title || "this opportunity"}?
+            </div>
+            <div className="text-[12px] text-rose-800 leading-relaxed mb-2">
+              This also removes its unpaid invoices, every cost recorded against it, and
+              its work order — and takes the crew off any shifts already scheduled for it.
+              A deal with a PAID invoice can&rsquo;t be deleted at all.
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <form action={softDeleteOpportunityAction}>

@@ -4902,7 +4902,7 @@ async function NewDealForm({
           <div>
             Another opportunity on this account already has the same client + location:{" "}
             <Link
-              href={`/commercial/accounts/${accountId}?tab=opportunities&edit=${duplicateWarning.id}#deal-edit-sheet`}
+              href={`/commercial/accounts/${accountId}?tab=projects&project=${duplicateWarning.id}`}
               className="underline decoration-amber-500 underline-offset-2 hover:text-amber-950"
             >
               {duplicateWarning.label}
@@ -5350,7 +5350,7 @@ async function OpportunitiesTab({
       {createdTitle && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
           <span>
-            <strong>{decodeURIComponent(createdTitle)}</strong> logged.
+            <strong>{flashMessage(createdTitle)}</strong> logged.
           </span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities`}
@@ -5396,7 +5396,7 @@ async function OpportunitiesTab({
       {deletedFlash && (
         <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-start justify-between gap-3">
           <span>
-            <strong className="text-ppp-charcoal">{decodeURIComponent(deletedFlash)}</strong> deleted. Soft-delete — restorable by admin from the audit log.
+            <strong className="text-ppp-charcoal">{flashMessage(deletedFlash)}</strong> deleted. Soft-delete — restorable by admin from the audit log.
           </span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities`}
@@ -5687,7 +5687,7 @@ function AccountOpportunityRow({
           submittals awaiting, primary lead, days-stuck. No cluttered 6-chip soup
           on every row — the empty state is quiet. */}
       <Link
-        href={`/commercial/accounts/${accountId}?tab=opportunities&edit=${opp.id}#deal-row-${opp.id}`}
+        href={`/commercial/accounts/${accountId}?tab=projects&project=${opp.id}`}
         className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px] touch-manipulation"
       >
         <div className="flex items-start justify-between gap-3">
