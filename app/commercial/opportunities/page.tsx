@@ -86,7 +86,9 @@ import {
   isFollowUpCard,
   isDraftedCard,
 } from "@/lib/commercial/opportunities/kanban-columns";
-import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
+import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
+import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
+import { proposalTrailsDeal } from "@/lib/commercial/opportunities/auto-advance-targets";
 import { daysFromTodayEt } from "@/lib/date-et";
 import {
   changeOpportunityStatus,
@@ -574,7 +576,10 @@ export default async function CommercialOpportunitiesPage({
   // has no bid range. Since the meeting removed Bid low/high from the create
   // forms, every NEW deal has none, and weighted pipeline / bid range / the
   // stage funnel were all counting those deals as zero.
-  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(oppIds);
+  const currentProposalByOpp = await listCurrentProposalByOpp(oppIds);
+  const proposalTotalByOpp = new Map(
+    Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const)
+  );
   // For the New-opportunity sheet (audit #14 — it had drifted behind the
   // account's form). Cheap, and only this page renders that sheet.
   const allTeams = await listTeams();
@@ -1344,6 +1349,7 @@ export default async function CommercialOpportunitiesPage({
           opps={opps}
           accountById={accountById}
           proposalTotalByOpp={proposalTotalByOpp}
+          currentProposalByOpp={currentProposalByOpp}
           statusEnteredAtMap={statusEnteredAtMap}
           taskStatsMap={taskStatsMap}
           primaryLeadMap={primaryLeadMap}
@@ -2166,6 +2172,7 @@ function KanbanBoard({
   opps,
   accountById,
   proposalTotalByOpp,
+  currentProposalByOpp,
   statusEnteredAtMap,
   taskStatsMap,
   primaryLeadMap,
@@ -2179,6 +2186,8 @@ function KanbanBoard({
   accountById: Map<string, CommercialAccount>;
   /** See CustomerBoard — same bid-less-deal fallback. */
   proposalTotalByOpp: Map<string, number>;
+  /** Newest live revision per deal, for the "proposal is behind" card badge. */
+  currentProposalByOpp: Map<string, { status: string; revision: number; totalCents: number }>;
   statusEnteredAtMap: Map<string, string>;
   taskStatsMap: Map<string, { open: number; overdue: number; due_soon: number }>;
   primaryLeadMap: Map<string, { user_email: string; user_full_name: string | null; role: string }>;
@@ -2558,6 +2567,7 @@ function KanbanBoard({
                                       fileCount={fileCountMap.get(opp.id) ?? 0}
                                       submittalStats={submittalCountMap.get(opp.id) ?? null}
                                       finishCount={finishCountMap.get(opp.id) ?? 0}
+                                      currentProposal={currentProposalByOpp.get(opp.id) ?? null}
                                       sheetHref={sheetHref}
                                       flipReturnHref={flipReturnHref}
                                       compact
@@ -2626,6 +2636,7 @@ function KanbanBoard({
                               fileCount={fileCountMap.get(opp.id) ?? 0}
                               submittalStats={submittalCountMap.get(opp.id) ?? null}
                               finishCount={finishCountMap.get(opp.id) ?? 0}
+                              currentProposal={currentProposalByOpp.get(opp.id) ?? null}
                               sheetHref={sheetHref}
                               flipReturnHref={flipReturnHref}
                             />
@@ -2690,6 +2701,7 @@ function KanbanCard({
   sheetHref,
   flipReturnHref,
   compact,
+  currentProposal,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -2705,6 +2717,8 @@ function KanbanCard({
    *  have half the horizontal space of the open pipeline. Hides quick-flip
    *  form + trims the meta band to just title + bid. */
   compact?: boolean;
+  /** Newest live revision, for the "proposal is behind the deal" badge. */
+  currentProposal?: { status: string; revision: number } | null;
 }) {
   const moveToOptions = moveToOptionsFor(opp);
   const days = statusEnteredAt
@@ -2733,6 +2747,13 @@ function KanbanCard({
   // project_number) instead of the confusing per-account deal_number.
   const oppCode = formatOpportunityNumber(opp.project_number);
   const showDays = days !== null && days > 3;
+  // Automatic status moves are forward-only, so a deal that's ahead of its
+  // current proposal STAYS ahead — correctly (you really did send R1), but the
+  // proposals board shows a Draft while this card says Proposal. Naming the
+  // proposal's actual state here stops that reading as a bug, and stops anyone
+  // dragging the deal backwards to "fix" it.
+  const trailingProposal =
+    currentProposal && proposalTrailsDeal(opp, currentProposal.status) ? currentProposal : null;
 
   if (compact) {
     return (
@@ -2791,8 +2812,9 @@ function KanbanCard({
             that actually matters day to day: has the GC seen it, and are we
             chasing? Amber = waiting on them, charcoal = still ours. */}
         {(isFollowUpCard(opp.status, opp.sub_status) ||
-          isDraftedCard(opp.status, opp.sub_status)) && (
-          <div className="mb-1">
+          isDraftedCard(opp.status, opp.sub_status) ||
+          trailingProposal) && (
+          <div className="mb-1 flex items-center gap-1 flex-wrap">
             {isFollowUpCard(opp.status, opp.sub_status) ? (
               <span
                 className="inline-flex items-center h-[18px] px-1.5 rounded-full text-[9.5px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
@@ -2800,12 +2822,20 @@ function KanbanCard({
               >
                 Follow-Up
               </span>
-            ) : (
+            ) : isDraftedCard(opp.status, opp.sub_status) ? (
               <span
                 className="inline-flex items-center h-[18px] px-1.5 rounded-full text-[9.5px] font-bold bg-ppp-charcoal-50 text-ppp-charcoal-600 border border-ppp-charcoal-200"
                 title="Priced and awaiting internal sign-off — not sent to the GC yet"
               >
                 Not sent yet
+              </span>
+            ) : null}
+            {trailingProposal && (
+              <span
+                className="inline-flex items-center h-[18px] px-1.5 rounded-full text-[9.5px] font-bold bg-ppp-navy-50 text-ppp-navy-700 border border-ppp-navy-200"
+                title={`The newest proposal (R${trailingProposal.revision}) is a ${proposalStatusLabel(trailingProposal.status).toLowerCase()}. The deal stays where it is — a new revision doesn't undo work already done.`}
+              >
+                R{trailingProposal.revision} {proposalStatusLabel(trailingProposal.status)}
               </span>
             )}
           </div>

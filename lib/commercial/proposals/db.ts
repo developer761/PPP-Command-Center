@@ -1639,10 +1639,10 @@ export async function listProposalsForOpp(
  * One query for all deals, mapped in memory. Deals with no proposal are
  * simply absent from the map, and callers treat that as "no fallback".
  */
-export async function listCurrentProposalTotalByOpp(
+export async function listCurrentProposalByOpp(
   opportunityIds: string[]
-): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
+): Promise<Map<string, { status: ProposalStatus; revision: number; totalCents: number }>> {
+  const out = new Map<string, { status: ProposalStatus; revision: number; totalCents: number }>();
   const ids = Array.from(new Set(opportunityIds.filter(Boolean)));
   if (ids.length === 0) return out;
   const sb = commercialDb();
@@ -1664,9 +1664,23 @@ export async function listCurrentProposalTotalByOpp(
   );
   for (const r of rows) {
     // Rows arrive newest-revision-first per deal, so the first one wins.
-    if (!out.has(r.opportunity_id)) out.set(r.opportunity_id, r.total_cents ?? 0);
+    if (!out.has(r.opportunity_id)) {
+      out.set(r.opportunity_id, {
+        status: r.status,
+        revision: r.revision_number,
+        totalCents: r.total_cents ?? 0,
+      });
+    }
   }
   return out;
+}
+
+/** Just the totals, for callers that don't care about the proposal's state. */
+export async function listCurrentProposalTotalByOpp(
+  opportunityIds: string[]
+): Promise<Map<string, number>> {
+  const byOpp = await listCurrentProposalByOpp(opportunityIds);
+  return new Map(Array.from(byOpp, ([id, p]) => [id, p.totalCents]));
 }
 
 /**

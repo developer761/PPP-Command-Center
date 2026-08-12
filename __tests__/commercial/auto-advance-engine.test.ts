@@ -4,6 +4,7 @@ import {
   targetForProposalStatus,
   foldAutoAdvanceTargets,
   canAutoAdvance,
+  proposalTrailsDeal,
   type AutoAdvanceTargetKey,
 } from "@/lib/commercial/opportunities/auto-advance-targets";
 import { advanceFromFilter } from "@/lib/commercial/opportunities/constants";
@@ -247,6 +248,69 @@ describe("the decision date follows the event, not the clock", () => {
   it("falls back rather than inventing a date", () => {
     for (const bad of [null, undefined, "", "not-a-date"]) {
       expect(etDateOf(bad), String(bad)).toBeNull();
+    }
+  });
+});
+
+describe("the badge for a proposal that trails its deal", () => {
+  const at = (status: string, sub: string | null) => ({ status, sub_status: sub });
+
+  it("flags the R2-draft-on-a-sent-deal case", () => {
+    // The state forward-only deliberately leaves alone: R1 really was sent, so
+    // the deal belongs at Proposal — but the proposals board shows a Draft, and
+    // without saying so the two screens look broken.
+    expect(proposalTrailsDeal(at("proposal", "sent"), "draft")).toBe(true);
+    expect(proposalTrailsDeal(at("proposal", "follow_up"), "draft")).toBe(true);
+  });
+
+  it("says nothing when the proposal is level with the deal", () => {
+    expect(proposalTrailsDeal(at("proposal", "sent"), "sent")).toBe(false);
+    expect(proposalTrailsDeal(at("estimating", "estimating"), "draft")).toBe(false);
+  });
+
+  it("says nothing when the proposal is AHEAD — the engine will catch the deal up", () => {
+    expect(proposalTrailsDeal(at("estimating", "estimating"), "sent")).toBe(false);
+    expect(proposalTrailsDeal(at("qualifying", "solicitation"), "won")).toBe(false);
+  });
+
+  it("catches a trailing proposal within a single stage", () => {
+    // Both rank 1: the deal is at pending-approval, the proposal went back to
+    // draft. Same stage, so only the sub ladder can tell.
+    expect(proposalTrailsDeal(at("estimating", "proposal_pending_approval"), "draft")).toBe(true);
+  });
+
+  it("stays quiet on a decided deal", () => {
+    // Won and lost are settled — the proposal's state is no longer something
+    // anyone needs to reconcile.
+    expect(proposalTrailsDeal(at("pre_sale_closed", "won"), "draft")).toBe(false);
+    expect(proposalTrailsDeal(at("pre_sale_closed", "lost"), "draft")).toBe(false);
+    expect(proposalTrailsDeal(at("post_sale_closed", "closed"), "draft")).toBe(false);
+  });
+
+  it("stays quiet for proposal states that imply no stage", () => {
+    for (const s of ["superseded", "expired", "lost", null, undefined, ""]) {
+      expect(proposalTrailsDeal(at("proposal", "sent"), s), String(s)).toBe(false);
+    }
+  });
+
+  it("never fires where the engine would advance instead", () => {
+    // The two must be mutually exclusive: if an automatic move is available,
+    // the mismatch is temporary and doesn't warrant a badge.
+    const states: [string, string][] = [
+      ["qualifying", "solicitation"],
+      ["estimating", "estimating"],
+      ["estimating", "proposal_pending_approval"],
+      ["proposal", "sent"],
+      ["proposal", "follow_up"],
+      ["in_progress", "wip_on_site"],
+    ];
+    for (const [status, sub] of states) {
+      for (const ps of ["draft", "pending_approval", "approved", "sent", "won"]) {
+        const key = targetForProposalStatus(ps)!;
+        const advances = canAutoAdvance({ status, sub_status: sub }, key);
+        const trails = proposalTrailsDeal({ status, sub_status: sub }, ps);
+        expect(advances && trails, `${status}/${sub} vs ${ps}`).toBe(false);
+      }
     }
   });
 });

@@ -1,4 +1,4 @@
-import { stageRank, subRank } from "./constants";
+import { stageRank, subRank, PRE_SALE_OPEN_STATUSES } from "./constants";
 
 /**
  * The ONLY states an automatic move may target.
@@ -166,4 +166,44 @@ export function canAutoAdvance(
     return subRank(status, current.sub_status) < target.subOrder;
   }
   return false;
+}
+
+/**
+ * Does the current proposal sit BEHIND the deal's stage?
+ *
+ * This is the state forward-only deliberately leaves alone. Opening an R2 draft
+ * on a deal you already sent means the deal is still at Proposal — correctly,
+ * because you did send R1 — while the proposals board shows the current
+ * proposal as a Draft. Nothing is wrong, but the two screens disagree at a
+ * glance, so the card says which state the proposal is actually in rather than
+ * leaving someone to guess or, worse, drag the deal backwards to "fix" it.
+ *
+ * False when there's nothing worth saying: the proposal is level with or ahead
+ * of the deal (the engine will catch it up), the deal is closed, or the
+ * proposal's status implies no stage at all.
+ */
+export function proposalTrailsDeal(
+  deal: { status: string | null; sub_status: string | null },
+  proposalStatus: string | null | undefined
+): boolean {
+  const key = targetForProposalStatus(proposalStatus);
+  if (!key) return false;
+  const target = AUTO_ADVANCE_TARGETS[key];
+
+  const status = deal.status ?? "";
+  // Only while the deal is still being bid. That's where the pipeline board and
+  // the proposals board sit side by side and can be read against each other.
+  // Once a deal is won, lost, or in delivery it's settled, and a stray revision
+  // sitting in Draft is not a discrepancy anyone needs to act on — badging it
+  // would just put noise on a closed card.
+  if (!(PRE_SALE_OPEN_STATUSES as readonly string[]).includes(status)) return false;
+  const rank = stageRank(status, deal.sub_status);
+  if (rank === null) return false;
+
+  return (
+    rank > target.order ||
+    (rank === target.order &&
+      status === target.status &&
+      subRank(status, deal.sub_status) > target.subOrder)
+  );
 }
