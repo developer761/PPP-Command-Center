@@ -327,6 +327,10 @@ async function createDealFromPipelineAction(formData: FormData) {
   const teamRaw = String(formData.get("team_id") ?? "").trim();
   const team_id = teamRaw && UUID_RE.test(teamRaw) ? teamRaw : null;
   const client_name = String(formData.get("client_name") ?? "").trim() || null;
+  // Added with Brendan's field order — the form offered these two and the
+  // writer silently dropped them, which is worse than not offering them.
+  const title_override = String(formData.get("title_override") ?? "").trim().slice(0, 200) || null;
+  const estimator_name = String(formData.get("estimator_name") ?? "").trim().slice(0, 120) || null;
   const property_street = String(formData.get("property_street") ?? "").trim() || null;
   const property_city = String(formData.get("property_city") ?? "").trim() || null;
   const property_state = String(formData.get("property_state") ?? "").trim() || null;
@@ -394,6 +398,8 @@ async function createDealFromPipelineAction(formData: FormData) {
     rfp_received_at,
     team_id,
     client_name,
+    title_override,
+    estimator_name,
     property_street,
     property_city,
     property_state,
@@ -1786,6 +1792,40 @@ function NewDealSlideOut({
             </div>
           </div>
 
+          {/* Same order as the account-scoped form (Brendan 2026-08-12), so the
+              two ways into an opportunity ask for the same things in the same
+              sequence. They had drifted: this one was missing the nickname, the
+              estimator and the lead source entirely.
+
+              PROPOSAL CONTACT is the one field of his list that is genuinely
+              absent here, and it is a constraint rather than an omission — the
+              contact list belongs to a GC that has not been chosen yet at the
+              top of this form. The create writer already inherits the GC's
+              primary contact when none is given, so a deal started here still
+              lands with the right person on it. */}
+          <div>
+            <label htmlFor="new-deal-nickname" className={LABEL_CLS}>
+              Project nickname <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+            </label>
+            <input
+              id="new-deal-nickname"
+              name="title_override"
+              maxLength={200}
+              placeholder="What the team calls it — e.g. Jericho Turnpike lobby"
+              className={INPUT_CLS}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="new-deal-due" className={LABEL_CLS}>Proposal due</label>
+            <DateField
+              id="new-deal-due"
+              name="proposal_due_at"
+              placeholder="Pick a due date"
+              ariaLabel="Proposal due date"
+            />
+          </div>
+
           <div>
             <label htmlFor="new-deal-rfp" className={LABEL_CLS}>RFP received</label>
             {/* Defaults to today, matching the account form — the RFP almost
@@ -1801,6 +1841,30 @@ function NewDealSlideOut({
           </div>
 
           <div>
+            <label htmlFor="new-deal-estimator" className={LABEL_CLS}>Estimator</label>
+            <input
+              id="new-deal-estimator"
+              name="estimator_name"
+              maxLength={120}
+              placeholder="Who's pricing it"
+              className={INPUT_CLS}
+            />
+            <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">
+              Assigning one moves this opportunity to Estimating.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="new-deal-source" className={LABEL_CLS}>Lead source</label>
+            <select id="new-deal-source" name="source" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              <option value="">Choose a source</option>
+              {OPPORTUNITY_SOURCES.map((src) => (
+                <option key={src} value={src}>{opportunitySourceLabel(src)}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label htmlFor="new-deal-team" className={LABEL_CLS}>Team</label>
             <select id="new-deal-team" name="team_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
               <option value="">— Customer&apos;s team —</option>
@@ -1811,16 +1875,6 @@ function NewDealSlideOut({
             <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">
               Leave blank to follow the customer&apos;s team. Build teams in Settings → Teams.
             </p>
-          </div>
-
-          <div>
-            <label htmlFor="new-deal-due" className={LABEL_CLS}>Proposal due</label>
-            <DateField
-              id="new-deal-due"
-              name="proposal_due_at"
-              placeholder="Pick a due date"
-              ariaLabel="Proposal due date"
-            />
           </div>
 
           <div>

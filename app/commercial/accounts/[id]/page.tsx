@@ -3200,181 +3200,35 @@ async function NewDealForm({
           time-to-proposal, Estimator is who owns the bid — and every one of
           them already has a sensible default (Stage = Qualifying, RFP = today).
           So the fast path is: title, address, contact, team, Create. */}
-      <details className="group/more rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50/40">
-        <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer list-none min-h-[44px] touch-manipulation">
-          <span className="text-[12.5px] font-semibold text-ppp-charcoal-600">
-            More options
-            <span className="font-normal text-ppp-charcoal-400"> · stage, source, dates, estimator</span>
-          </span>
-          <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/more:rotate-180">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
-          </span>
-        </summary>
-        <div className="px-3 pb-3 pt-1 space-y-3 border-t border-ppp-charcoal-200">
-      <StatusSubStatusPicker mode="create" />
+      {/* ── Brendan 2026-08-12 ──────────────────────────────────────────────
+          "More options section should be always available (expanded)", and a
+          field order he wrote out: client name · project address · nickname ·
+          proposal contact · proposal due · RFP received · estimator · lead
+          source · notes.
+
+          Both collapsible sections are gone. They hid nine fields behind two
+          different disclosures, one nested inside the other, so the answer to
+          "where do I put the estimator?" was two clicks and a guess. A form
+          people fill in every day should not have to be explored.
+
+          Also gone: Proposed start / Proposed end — "too early to determine at
+          the opportunity level." Dates for the WORK live on the project.
+
+          Order below is his, exactly. Stage and Team are not on his list but
+          are real and both default sensibly, so they sit at the end rather
+          than interrupting the sequence he asked for. */}
       <label className="block">
-        <span className={labelCls}>Source</span>
-        <select
-          name="source"
-          defaultValue=""
-          className={selectCls}
-          style={SELECT_BG_STYLE}
-        >
-          <option value="">Choose a source</option>
-          {OPPORTUNITY_SOURCES.map((s) => (
-            <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
-          ))}
-        </select>
+        <span className={labelCls}>Client name</span>
+        <input
+          type="text"
+          name="client_name"
+          maxLength={200}
+          defaultValue={account.company_name ?? ""}
+          placeholder="e.g. Tomco Painting"
+          className={inputCls}
+        />
       </label>
-      {/* Bid low / Bid high removed per the 2026-08 meeting — pricing lives on the
-          proposal, not the opportunity. */}
-      <div>
-        <span className={labelCls}>Proposal due</span>
-        <DateField name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
-      </div>
-      {/* Katie 2026-07-20: RFP Received on its own row so the two
-          bid-lifecycle dates (RFP in / Proposal out) sit visually
-          grouped and power the time-to-proposal metric. Single column —
-          audit fix: was `grid-cols-1 sm:grid-cols-2` with only one child,
-          left a dead half-column on tablet. */}
-      <div>
-        <span className={labelCls}>RFP received</span>
-        <DateField name="rfp_received_at" defaultValue={todayIso} placeholder="When the RFP / bid request arrived" ariaLabel="RFP received date" />
-        <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the opportunity card.</span>
-      </div>
-      {/* Phase B (Plan v1.1) — CEO structural fields. All optional at
-          Solicitation; the changeOpportunityStatus validator blocks the
-          Estimating transition until all three are set. Hint below the
-          Estimator picker explains the gate so users know why they'd
-          fill these in later. */}
-      {/* Karan 2026-07-20 (Katie ask): Site Location + Project Address
-          were TWO inputs both writing to name="property_street" —
-          last-in-wins silently, confused the user, and the shorter
-          top-of-form field always got clobbered by the fuller expando
-          version below. Merged into one: the full Project address
-          block (street + city + state + zip) below is now the only
-          address input on this form. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block">
-          <span className={labelCls}>Client name</span>
-          <input
-            type="text"
-            name="client_name"
-            maxLength={200}
-            defaultValue={account.company_name ?? ""}
-            placeholder="e.g. Tomco Painting"
-            className={inputCls}
-          />
-        </label>
-        <label className="block">
-          <span className={labelCls}>Estimator</span>
-          {/* Karan 2026-07-10 (searchable-dropdowns rule): SearchableSelect
-              type-to-filters the team roster. Works today with 2 people;
-              won't need retrofit once PPP has 40 estimators. Manual
-              entry preserved via the text input below (estimator_name
-              column, migration 049). */}
-          <SearchableSelect
-            name="estimator_user_id"
-            options={estimators.map((e) => ({
-              value: e.user_id,
-              label: e.name,
-            }))}
-            // Same estimator as this customer's last bid — they already know
-            // the account. Blank if they've left the roster since.
-            defaultValue={
-              lastDeal?.estimator_user_id &&
-              estimators.some((e) => e.user_id === lastDeal.estimator_user_id)
-                ? lastDeal.estimator_user_id
-                : ""
-            }
-            placeholder={
-              estimators.length === 0
-                ? "No teammates on the roster yet"
-                : "Search team roster…"
-            }
-            ariaLabel="Estimator from account team"
-            disabled={estimators.length === 0}
-            emptyMessage="No teammates match. Try a different search or type a name below."
-          />
-          <input
-            type="text"
-            name="estimator_name"
-            maxLength={120}
-            placeholder="…or type a name manually"
-            className={`${inputCls} mt-1`}
-          />
-          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
-            {estimators.length === 0
-              ? "No teammates yet — type a name above."
-              : "Required to move this to Estimating."}
-          </span>
-        </label>
-        </div>
-        </div>
-      </details>
-      {/* The two that stay in the open with the title + address: who at the GC
-          this job is for, and which crew is on it. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block">
-          <span className={labelCls}>Attention contact</span>
-          {/* Katie gap #1: who at the GC the proposal is addressed to. Blank =
-              auto-inherit the GC's default primary (create mutation fills it). */}
-          <SearchableSelect
-            name="primary_contact_id"
-            options={contactOptions}
-            // Repeat customer: default to whoever this GC's last job was for.
-            // Only when that contact is still on the account — a deleted or
-            // moved-on contact must not silently attach to a new job.
-            defaultValue={
-              lastDeal?.primary_contact_id &&
-              contactOptions.some((c) => c.value === lastDeal.primary_contact_id)
-                ? lastDeal.primary_contact_id
-                : ""
-            }
-            placeholder={contactOptions.length === 0 ? "No contacts on this GC yet" : "Search this GC's contacts…"}
-            ariaLabel="Attention contact for proposals"
-            disabled={contactOptions.length === 0}
-            emptyMessage="No contacts match. Add one on the GC's People tab."
-          />
-          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
-            {contactOptions.length === 0
-              ? "No contacts yet — the GC’s primary will be used once added."
-              : "Blank uses the GC’s default primary contact."}
-          </span>
-        </label>
-        <label className="block">
-          <span className={labelCls}>Team</span>
-          {/* Meeting 2026-08 — assign a preset team to THIS deal. Blank means
-              "inherit the customer's team", which getEffectiveOwnerTeam now
-              actually resolves; before, blank stored NULL and nothing fell
-              back, so a deal labelled "default" in fact had no team at all.
-              The option names the inherited team so the choice isn't blind. */}
-          {/* Repeat customer: the crew that ran their last job, if that team
-              still exists. Blank falls back to the customer's team. */}
-          <select
-            name="team_id"
-            defaultValue={
-              lastDeal?.team_id && teams.some((t) => t.id === lastDeal.team_id)
-                ? lastDeal.team_id
-                : ""
-            }
-            className={SELECT_CLS}
-            style={SELECT_BG_STYLE}
-          >
-            <option value="">
-              {accountTeamName ? `Customer's team (${accountTeamName})` : "— No team —"}
-            </option>
-            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
-            Build teams in Settings → Teams. You can change this later on the deal.
-          </span>
-        </label>
-      </div>
-      {/* Project address — hoisted out of the "optional" expando 2026-07-20
-          per Katie: address is a first-class deal field, not a hidden
-          nice-to-have. Pre-filled from the account's site/billing so
-          the common case is one glance + go. */}
+
       <div>
         <div className={labelCls}>
           Project address{" "}
@@ -3391,62 +3245,130 @@ async function NewDealForm({
           className={inputCls}
         />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-          <input
-            type="text"
-            name="property_city"
-            maxLength={80}
-            defaultValue={keptValues?.property_city ?? account.site_city ?? ""}
-            placeholder="City"
-            className={inputCls}
-          />
-          <input
-            type="text"
-            name="property_state"
-            maxLength={2}
-            defaultValue={keptValues?.property_state ?? account.site_state ?? ""}
-            placeholder="State"
-            className={inputCls}
-          />
-          <input
-            type="text"
-            name="property_zip"
-            maxLength={10}
-            defaultValue={keptValues?.property_zip ?? account.site_zip ?? ""}
-            placeholder="ZIP"
-            className={inputCls}
-          />
+          <input type="text" name="property_city" maxLength={80} defaultValue={keptValues?.property_city ?? account.site_city ?? ""} placeholder="City" className={inputCls} />
+          <input type="text" name="property_state" maxLength={2} defaultValue={keptValues?.property_state ?? account.site_state ?? ""} placeholder="State" className={inputCls} />
+          <input type="text" name="property_zip" maxLength={10} defaultValue={keptValues?.property_zip ?? account.site_zip ?? ""} placeholder="ZIP" className={inputCls} />
         </div>
       </div>
-      <details className="group/more">
-        <summary className="list-none cursor-pointer text-[11.5px] font-medium text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[28px] flex items-center gap-1.5 select-none">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-          Show optional fields
-        </summary>
-        <div className="mt-2 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <span className={labelCls}>Proposed start</span>
-              <DateField name="proposed_start_at" placeholder="Pick a start date" ariaLabel="Proposed start date" />
-            </div>
-            <div>
-              <span className={labelCls}>Proposed end</span>
-              <DateField name="proposed_end_at" placeholder="Pick an end date" ariaLabel="Proposed end date" />
-            </div>
-          </div>
-          <label className="block">
-            <span className={labelCls}>Description</span>
-            <textarea
-              name="description"
-              rows={2}
-              maxLength={1000}
-              placeholder="e.g. Scope: repaint 3-story lobby + 4 corridors. Existing latex, no lead."
-              className={`${inputCls} min-h-[60px]`}
-            />
-          </label>
+
+      {/* New on this form. The writer already accepted it — only the edit sheet
+          ever offered it, so a nickname could not be set at the moment the job
+          is actually being named. */}
+      <label className="block">
+        <span className={labelCls}>
+          Project nickname{" "}
+          <span className="font-normal text-ppp-charcoal-400">(optional — what the team calls it)</span>
+        </span>
+        <input
+          type="text"
+          name="title_override"
+          maxLength={200}
+          placeholder="e.g. Jericho Turnpike lobby"
+          className={inputCls}
+        />
+      </label>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className={labelCls}>Proposal contact</span>
+          <SearchableSelect
+            name="primary_contact_id"
+            options={contactOptions}
+            defaultValue={
+              lastDeal?.primary_contact_id &&
+              contactOptions.some((c) => c.value === lastDeal.primary_contact_id)
+                ? lastDeal.primary_contact_id
+                : ""
+            }
+            placeholder={contactOptions.length === 0 ? "No contacts on this GC yet" : "Search this GC's contacts…"}
+            ariaLabel="Proposal contact"
+            disabled={contactOptions.length === 0}
+            emptyMessage="No contacts match. Add one on the GC's Contacts tab."
+          />
+          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
+            {contactOptions.length === 0
+              ? "No contacts yet — the GC’s primary will be used once added."
+              : "Blank uses the GC’s default primary contact."}
+          </span>
+        </label>
+        <div>
+          <span className={labelCls}>Proposal due</span>
+          <DateField name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
         </div>
-      </details>
+      </div>
+
+      <div>
+        <span className={labelCls}>RFP received</span>
+        <DateField name="rfp_received_at" defaultValue={todayIso} placeholder="When the RFP / bid request arrived" ariaLabel="RFP received date" />
+        <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the opportunity card.</span>
+      </div>
+
+      <label className="block">
+        <span className={labelCls}>Estimator</span>
+        <SearchableSelect
+          name="estimator_user_id"
+          options={estimators.map((e) => ({ value: e.user_id, label: e.name }))}
+          defaultValue={
+            lastDeal?.estimator_user_id &&
+            estimators.some((e) => e.user_id === lastDeal.estimator_user_id)
+              ? lastDeal.estimator_user_id
+              : ""
+          }
+          placeholder={estimators.length === 0 ? "No teammates on the roster yet" : "Search team roster…"}
+          ariaLabel="Estimator"
+          disabled={estimators.length === 0}
+          emptyMessage="No teammates match. Try a different search or type a name below."
+        />
+        <input type="text" name="estimator_name" maxLength={120} placeholder="…or type a name manually" className={`${inputCls} mt-1`} />
+        <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
+          Assigning one moves this opportunity to Estimating.
+        </span>
+      </label>
+
+      <label className="block">
+        <span className={labelCls}>Lead source</span>
+        <select name="source" defaultValue="" className={selectCls} style={SELECT_BG_STYLE}>
+          <option value="">Choose a source</option>
+          {OPPORTUNITY_SOURCES.map((s) => (
+            <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className="block">
+        <span className={labelCls}>Notes</span>
+        <textarea
+          name="description"
+          rows={2}
+          maxLength={1000}
+          placeholder="e.g. Scope: repaint 3-story lobby + 4 corridors. Existing latex, no lead."
+          className={`${inputCls} min-h-[60px]`}
+        />
+      </label>
+
+      {/* Not on Brendan's list, but real — and both default, so they sit after
+          the sequence he asked for rather than interrupting it. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className={labelCls}>Team</span>
+          <select
+            name="team_id"
+            defaultValue={lastDeal?.team_id && teams.some((t) => t.id === lastDeal.team_id) ? lastDeal.team_id : ""}
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
+          >
+            <option value="">{accountTeamName ? `Customer's team (${accountTeamName})` : "— No team —"}</option>
+            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
+            Build teams in Settings → Teams. You can change this later.
+          </span>
+        </label>
+        <div>
+          <span className={labelCls}>Stage</span>
+          <StatusSubStatusPicker mode="create" />
+        </div>
+      </div>
       <div className="flex justify-end pt-1">
         <PendingSubmitButton
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 disabled:hover:bg-cc-brand-600"
