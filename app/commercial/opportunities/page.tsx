@@ -23,6 +23,7 @@
  * fetch, and DAG rule is byte-identical to the prior version. Only the
  * visual layout + component composition changed.
  */
+import { dealValueCents } from "@/lib/commercial/opportunities/db";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
@@ -653,6 +654,13 @@ export default async function CommercialOpportunitiesPage({
   const totalPipelineCents = presaleOpenOpps.reduce((acc, o) => acc + oppValue(o), 0);
   const totalBidLowCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
   const totalBidHighCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
+  // L1: the bid columns are no longer collected on create — pricing lives on
+  // the proposal — so this summed to zero and read "—" beside a Weighted tile
+  // showing live money from the proposal fallback, on the same screen.
+  const totalOpenValueCents = presaleOpenOpps.reduce(
+    (acc, o) => acc + dealValueCents(o, proposalTotalByOpp.get(o.id) ?? null),
+    0
+  );
   // Pipeline value by stage (weighted $) — a funnel of where open deals sit.
   // Bucketed by KANBAN COLUMN, not raw status, so this funnel names the same
   // stages the board does. Bucketing by status put every priced-but-unsent
@@ -950,10 +958,12 @@ export default async function CommercialOpportunitiesPage({
           />
           <KpiCard
             tone="neutral"
-            label="Bid range (open)"
+            label={totalBidLowCents === 0 && totalBidHighCents === 0 ? "Open value" : "Bid range (open)"}
             value={
               totalBidLowCents === 0 && totalBidHighCents === 0
-                ? "—"
+                ? totalOpenValueCents > 0
+                  ? formatCentsCompact(totalOpenValueCents)
+                  : "—"
                 : `${formatCentsCompact(totalBidLowCents)}–${formatCentsCompact(totalBidHighCents)}`
             }
             sub="low + high across open opportunities"

@@ -146,10 +146,18 @@ export default async function CommercialDashboardPage() {
   // month-start DATE — the full-ISO monthStart sorts AFTER "2026-08-01" and
   // silently drops every deal decided on the 1st.
   const monthStartDate = `${etTodayIso().slice(0, 7)}-01`;
+  // M1: ONE definition of "won in this month" on BOTH halves of the rate. The
+  // numerator used `wasWonInPeriod`, which skips a closed-out deal whose date
+  // can't be trusted yet, while the denominator counted it anyway — so every
+  // legacy closed-out job silently deflated the rate. Whatever the numerator
+  // won't count, the denominator doesn't either.
   const wonThisMonth = wonOpps.filter((o) => wasWonInPeriod(o, monthStartDate));
-  const totalDecidedForMonth = decidedOpps.filter(
-    (o) => (o.decided_at ?? "") >= monthStartDate
-  ).length;
+  const countableThisMonth = decidedOpps.filter(
+    (o) =>
+      (isLost(o) && (o.decided_at ?? "") >= monthStartDate) ||
+      wasWonInPeriod(o, monthStartDate)
+  );
+  const totalDecidedForMonth = countableThisMonth.length;
   const monthWinPct =
     totalDecidedForMonth > 0
       ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)

@@ -78,7 +78,7 @@ function LogoBlock({ company, logo }: { company: CompanyContact; logo?: Buffer |
   );
 }
 
-function TransmittalDoc({ pkg, items, dealName, company, logo }: { pkg: PkgInput; items: ItemInput[]; dealName: string; company: CompanyContact; logo?: Buffer | null }) {
+function TransmittalDoc({ pkg, items, dealName, accountName, company, logo }: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null }) {
   const fromCompany = company.name;
   const included = items.filter((i) => i.included);
   const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
@@ -89,7 +89,7 @@ function TransmittalDoc({ pkg, items, dealName, company, logo }: { pkg: PkgInput
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
             <Text style={styles.label}>Transmitted to</Text>
-            <Text style={styles.bold}>{pkg.to_company || "—"}</Text>
+            <Text style={styles.bold}>{pkg.to_company || accountName || "—"}</Text>
             {pkg.to_attention ? <Text>Attn: {pkg.to_attention}</Text> : null}
             {(pkg.to_address_lines ?? []).map((l, i) => <Text key={i}>{l}</Text>)}
           </View>
@@ -141,7 +141,7 @@ function TransmittalDoc({ pkg, items, dealName, company, logo }: { pkg: PkgInput
   );
 }
 
-function WarrantyDoc({ pkg, dealName, company, logo, signature }: { pkg: PkgInput; dealName: string; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }) {
+function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature }: { pkg: PkgInput; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }) {
   const fromCompany = company.name;
   const start = pkg.substantial_completion_date;
   const end = computeWarrantyEndDate(start, pkg.warranty_years);
@@ -152,7 +152,7 @@ function WarrantyDoc({ pkg, dealName, company, logo, signature }: { pkg: PkgInpu
         <LogoBlock company={company} logo={logo} />
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
-            <Text style={styles.bold}>{pkg.to_company || "—"}</Text>
+            <Text style={styles.bold}>{pkg.to_company || accountName || "—"}</Text>
             {pkg.to_attention ? <Text>Attn: {pkg.to_attention}</Text> : null}
             {(pkg.to_address_lines ?? []).map((l, i) => <Text key={i}>{l}</Text>)}
           </View>
@@ -195,10 +195,10 @@ function WarrantyDoc({ pkg, dealName, company, logo, signature }: { pkg: PkgInpu
   );
 }
 
-export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; company: CompanyContact; logo?: Buffer | null }): Promise<Buffer> {
+export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null }): Promise<Buffer> {
   return renderToBuffer(<TransmittalDoc {...input} />);
 }
 
-export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }): Promise<Buffer> {
+export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }): Promise<Buffer> {
   return renderToBuffer(<WarrantyDoc {...input} />);
 }

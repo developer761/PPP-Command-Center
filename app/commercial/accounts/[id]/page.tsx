@@ -860,6 +860,10 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
     (p) => p.opp.status !== "post_sale_closed" && dealPhase(p.opp) !== "won_not_started"
   );
   const completedProjects = projects.filter((p) => p.opp.status === "post_sale_closed");
+  // Finished on site but the paperwork isn't in — distinct from truly closed.
+  const closeoutPending = completedProjects.filter(
+    (p) => p.opp.sub_status === "closeout"
+  ).length;
   const pipelineDeals = allOpps.filter(
     (o) => !postSaleIds.has(o.id) && PRE_SALE_OPEN_STATUSES.includes(o.status),
   );
@@ -937,6 +941,16 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
               <summary className="list-none cursor-pointer flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 min-h-[44px] sm:min-h-[36px] select-none">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
                 Completed · {completedProjects.length}
+                {/* M3: a job at `post_sale_closed·closeout` still OWES paperwork
+                    — warranty, transmittal, lien waivers — and it was folded
+                    away inside a collapsed "Completed" group, which is where
+                    outstanding work goes to be forgotten. Say so on the summary
+                    so it's visible without expanding. */}
+                {closeoutPending > 0 && (
+                  <span className="normal-case tracking-normal text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+                    {closeoutPending} awaiting close-out docs
+                  </span>
+                )}
               </summary>
               <ul className="space-y-2.5 mt-2">
                 {completedProjects.map((p) => <ProjectCard key={p.opp.id} p={p} hideAccountName />)}
