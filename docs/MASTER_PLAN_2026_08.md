@@ -74,6 +74,14 @@ and confusing empty-states/flow. **Surgical items (H3, M1, M4–M6, L2–L9) bat
 immediately**; five items (H1/H2/H4/H6/M7) gate on Karan's D1–D5 answers in that
 doc. Do the surgical batch alongside B/C; the gated ones after Karan answers.
 
+### ▶ PHASE C.6 — Completeness punch-list *(doc: COMPLETENESS_PUNCHLIST_2026_08.md)*
+20 verified "should've-been-caught" gaps — plumbing built but unwired, silent
+actions, outputs missing context. Do the **money/dispatch** ones first (C2 void
+hard-deletes CO billing; C3 tax-exempt skipped on CO path; C4 deal-delete
+confirm understates cascade; C5 deactivated employee still scheduled), then the
+one mechanical batch (C7–C10: ~9 mutations swallow their failure Result), then
+the rest. C1 (proposal PDF hardcoded footer) is high — thread getOperatingCompany.
+
 ### ▶ PHASE D — Full re-audit
 Fresh persona + adversarial agents over everything from A–C. Non-negotiable:
 this round's audits caught a live security leak and two bugs in code written
