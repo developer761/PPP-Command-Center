@@ -66,11 +66,34 @@ export function fmtEtDate(iso: string | null): string {
   });
 }
 
-/** Days between two ISO timestamps. Negative = past. */
+/**
+ * Whole CALENDAR days between two dates, in Eastern time. Negative = past.
+ *
+ * This was a raw 24-hour instant diff, which is wrong for a due date. `due_at`
+ * is a calendar date — midnight UTC — so at noon in New York on the day
+ * something is due, the difference is already negative and it floored to −1:
+ * an invoice read "1 day overdue" on its own due date, and the header showed
+ * "Sent" and "1 day overdue" side by side. The status badge was fixed for this
+ * months ago; this path was missed, so the two disagreed on the same screen.
+ *
+ * Bare `YYYY-MM-DD` values are taken as written. Converting them through a
+ * timezone would shift them back a day, which is the same bug from the other
+ * direction.
+ */
 export function daysBetween(fromIso: string | null, toIso: string | null): number | null {
-  if (!fromIso || !toIso) return null;
-  const a = new Date(fromIso).getTime();
-  const b = new Date(toIso).getTime();
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return Math.floor((b - a) / 86_400_000);
+  const a = etCalendarDate(fromIso);
+  const b = etCalendarDate(toIso);
+  if (!a || !b) return null;
+  const [ay, am, ad] = a.split("-").map(Number);
+  const [by, bm, bd] = b.split("-").map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}
+
+/** The ET calendar date for an instant, or a bare date passed through unchanged. */
+function etCalendarDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso.slice(0, 10)) && !iso.includes("T")) return iso.slice(0, 10);
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return null;
+  return t.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }

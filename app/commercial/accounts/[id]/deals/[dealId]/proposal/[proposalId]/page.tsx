@@ -675,7 +675,7 @@ async function reopenExpiredAction(formData: FormData) {
   }
   revalidatePath(proposalHref(accountId, dealId, proposalId));
   revalidatePath(`/commercial/accounts/${accountId}`);
-  redirect(proposalHref(accountId, dealId, proposalId, "?approval=withdrawn", proposalBack(formData)));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=reopened_expired", proposalBack(formData)));
 }
 
 /** Sender withdraws their own pending request back to draft (any editor). */
@@ -1456,6 +1456,13 @@ export default async function ProposalEditorPage({
           <strong>Unlocked for editing.</strong> The prior approval was cleared — you&rsquo;ll need a fresh approval before this can be sent.
         </div>
       )}
+      {sp.approval === "reopened_expired" && (
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-900" role="status">
+          <strong>Reopened.</strong> This proposal had expired and is back to draft. Update the
+          pricing and dates before you send it again — an expired quote usually needs both.
+        </div>
+      )}
+
       {sp.approval === "withdrawn" && (
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-900" role="status">
           <strong>Withdrawn.</strong> This proposal is back to draft. Make your changes, then send it for approval again.

@@ -161,6 +161,13 @@ async function submitDebriefAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
+  // A won deal stays on this page: Start Project is right here, and redirecting
+  // away the instant the debrief saved dropped the user out exactly when the
+  // next step became available. A loss has no next step, so it returns to the
+  // deal as before.
+  if (outcome === "won") {
+    redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?saved=1`);
+  }
   redirect(
     `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}`
   );
@@ -289,7 +296,12 @@ export default async function AccountDebriefPage({
             is filed on a Won deal that's still at pre_sale_closed. This is
             Katie's celebrated Won → delivery moment — the deal hops the
             Pre-Sale / Post-Sale lane divider here. */}
-        {isWon(opp) && isDebriefed && opp.status === "pre_sale_closed" && (
+        {/* NOT gated on the debrief. This is the only control that moves a won
+            deal into delivery, and it used to require a debrief that the app
+            itself presents as optional — so the normal path was: win, skip the
+            debrief, land on a panel whose only guidance was the sentence "Move
+            it to Pre-Construction", with no button anywhere. */}
+        {isWon(opp) && opp.status === "pre_sale_closed" && (
           <StartProjectCard accountId={id} oppId={dealId} />
         )}
 

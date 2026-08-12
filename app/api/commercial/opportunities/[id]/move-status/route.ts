@@ -135,6 +135,29 @@ export async function POST(
     );
   }
 
+  // Moving a deal to Proposal means "the customer has it". If no proposal has
+  // actually been sent, the drop used to succeed and then get quietly undone —
+  // the deal-side cascade won't promote an unsent proposal to `sent` (that would
+  // skip the approval gate, the PDF snapshot and the notifications), so the card
+  // sat in a stage its own proposals contradicted. Say so instead of accepting a
+  // move that doesn't hold.
+  if (to_status === "proposal") {
+    const { listProposalsForOpp } = await import("@/lib/commercial/proposals/db");
+    const proposals = await listProposalsForOpp(opp_id);
+    const anySent = proposals.some((p) =>
+      ["sent", "won", "lost", "expired", "superseded"].includes(p.status)
+    );
+    if (proposals.length > 0 && !anySent) {
+      return NextResponse.json(
+        {
+          error:
+            "Send the proposal first — this stage means the customer has it. Open the deal's Proposals tab and send it, and the deal moves here on its own.",
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: to_status as OpportunityStatus,
