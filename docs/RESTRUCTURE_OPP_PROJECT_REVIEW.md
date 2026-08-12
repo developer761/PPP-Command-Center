@@ -477,3 +477,39 @@ now per-job (opportunity → Invoices tab) + AR under Reports. He was looking at
 today, so worth confirming the new home matches intent (it aligns with the "invoices under
 the project / AR under Reports" direction). Trivial: the commit title says "eight" but there
 are nine destinations.
+
+---
+
+## AUDIT — Step 9 shipped (`380f6a1`, report audit). No migration.
+
+**Verdict: strong, and intellectually honest.** Verified all three claims:
+- **"No report groups by owner" — TRUE.** Grep across `app/commercial/reports/` finds zero
+  group-by-owner; they group by customer / city+zip / stage / deal→account. So my Review-A
+  gap-A (and the edge-sweep group-by-owner concern) was moot for reports, and the build
+  session corrected its OWN plan's wrong premise in the doc rather than quietly dropping it.
+- **Reports derive contract from the ONE ladder — TRUE.** `listProjects` (job costs +
+  geography) calls `pickContractBaseCents` (`db.ts:341`) with `accepted_contract_cents` etc.,
+  the same ladder as `getProjectFinancials`. Pipeline correctly stays on weighted/quoted
+  (the sales question). Two-amounts drift closed.
+- **The contradiction it caught is REAL and the fix is correct.** The attention banner read
+  `commercial_projects.contract_base_cents` while the KPI strip six pixels above read the
+  ladder — they diverge after award (proposal added to a verbal-yes win → ladder finds it,
+  column stays null → "Contract $45,000" above "Contract value isn't set"). Fixed:
+  `attentionInput.contractBaseCents = pathFin?.hasContract ? pathFin.contractCents : null`
+  (the ladder). One contract figure per page now.
+
+**My own miss — noting it honestly:** this is exactly gap B/C manifesting, and their SELF-audit
+caught it, not me. I audited the attention banner (step 4) and the KPI strip (step 5) in
+isolation and never cross-checked that the two sourced the contract from *different* places on
+the same page. That's the cross-surface check I should have run at step 5. Credit to their
+step-9 self-audit.
+- **null-opp latent gap:** they recorded my edge-sweep theme-2 finding with the exact tripwire
+  (the day T&M-without-a-bid jobs become real) rather than building for it — a reasonable,
+  documented deferral since nothing can create a null-opp row today.
+
+### ⚠️ Still open — my step-7 finding is NOT covered by "one source platform-wide"
+Step 9 touched only `opportunities/[id]/page.tsx` (the DEAL page) + confirmed the reports. It
+did NOT touch `opportunities/page.tsx` (the LIST), where the delivery views (Won / Active /
+Billing) still show `dealValueCents` = **bid midpoint**, not the contract ladder. So "one
+source platform-wide" holds for reports + the deal page, but the opportunities-list delivery
+views remain the exception (step-7 finding). Fold that in to truly be one source everywhere.
