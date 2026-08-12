@@ -2461,6 +2461,40 @@ export async function sendProposal(input: {
  *   - Never overwrites Won with Lost or vice versa — those are user-
  *     intent decisions that a reconcile shouldn't second-guess.
  */
+/**
+ * WHEN this proposal reached its current stage — the clock the auto-advance
+ * engine weighs against a person's decision.
+ *
+ * Deliberately NOT `updated_at`. A BEFORE UPDATE trigger bumps that on every
+ * write to the row, and re-pricing a line item rewrites the proposal to
+ * recompute its total — so changing a quantity moved the timestamp to "now" and
+ * re-armed the engine against a deliberate human move. Changing a price is not
+ * evidence about which stage a deal is in.
+ *
+ * Falls back to `updated_at` for statuses with no transition column of their
+ * own (`won`/`lost` are recorded on the deal, not here), which is still the
+ * best available answer for them.
+ */
+function proposalStageAt(p: {
+  status: string;
+  updated_at: string;
+  sent_at: string | null;
+  approved_at: string | null;
+  created_at: string;
+}): string {
+  switch (p.status) {
+    case "draft":
+      return p.created_at;
+    case "pending_approval":
+    case "approved":
+      return p.approved_at ?? p.updated_at;
+    case "sent":
+      return p.sent_at ?? p.updated_at;
+    default:
+      return p.updated_at;
+  }
+}
+
 export async function reconcileDealStatesFromProposals(): Promise<{
   checked: number;
   fixed: number;
@@ -2474,7 +2508,7 @@ export async function reconcileDealStatesFromProposals(): Promise<{
   // symptom: "I moved one card and a different card moved."
   const { data: propRows } = await sb
     .from("commercial_proposals")
-    .select("id, status, opportunity_id, revision_number, updated_at")
+    .select("id, status, opportunity_id, revision_number, updated_at, sent_at, approved_at, created_at")
     .is("deleted_at", null)
     .in("status", ["draft", "pending_approval", "approved", "sent", "won", "lost"])
     .order("revision_number", { ascending: false });
@@ -2485,6 +2519,9 @@ export async function reconcileDealStatesFromProposals(): Promise<{
       opportunity_id: string;
       revision_number: number;
       updated_at: string;
+      sent_at: string | null;
+      approved_at: string | null;
+      created_at: string;
     }[] | null) ?? [];
   if (proposals.length === 0) return { checked: 0, fixed: 0 };
 
@@ -2495,10 +2532,10 @@ export async function reconcileDealStatesFromProposals(): Promise<{
   // compares it against the last human status change to decide who is more
   // current, so a person who deliberately moved a deal isn't overruled by a
   // proposal they'd already seen.
-  const currentByDeal = new Map<string, { status: string; updated_at: string }>();
+  const currentByDeal = new Map<string, { status: string; stageAt: string }>();
   for (const p of proposals) {
     if (!currentByDeal.has(p.opportunity_id)) {
-      currentByDeal.set(p.opportunity_id, { status: p.status, updated_at: p.updated_at });
+      currentByDeal.set(p.opportunity_id, { status: p.status, stageAt: proposalStageAt(p) });
     }
   }
   const bestByDeal = currentByDeal;
@@ -2617,7 +2654,7 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     const res = await autoAdvanceOpportunity({
       oppId: deal.id,
       target: key,
-      artifactAt: bestProp.updated_at,
+      artifactAt: bestProp.stageAt,
       source: "reconcile",
       reason: `Kept in step with proposal (${bestProp.status.replace(/_/g, " ")})`,
     });

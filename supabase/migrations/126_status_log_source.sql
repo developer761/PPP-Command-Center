@@ -37,3 +37,26 @@ ALTER TABLE public.commercial_opportunity_status_log
 CREATE INDEX IF NOT EXISTS commercial_opportunity_status_log_user_moves_idx
   ON public.commercial_opportunity_status_log (opportunity_id, changed_at DESC)
   WHERE source = 'user';
+
+-- When a PERSON last set this deal's status, sub-status included.
+--
+-- The status_log can't answer this on its own: it only gets a row when the
+-- TOP-LEVEL status changes, so a person moving a card from the Proposal column
+-- back to Estimating -- which changes only the sub-status -- leaves no trace
+-- for the guard to find, and the next page load quietly snaps the card
+-- forward again. One column on the deal captures every human decision,
+-- whichever part of the status they changed.
+ALTER TABLE public.commercial_opportunities
+  ADD COLUMN IF NOT EXISTS status_user_set_at TIMESTAMPTZ;
+
+-- Backfill from the most recent human-looking log row, so existing deals get
+-- the protection immediately rather than only after someone touches them.
+UPDATE public.commercial_opportunities o
+  SET status_user_set_at = l.changed_at
+  FROM (
+    SELECT DISTINCT ON (opportunity_id) opportunity_id, changed_at
+      FROM public.commercial_opportunity_status_log
+      WHERE changed_by_user_id IS NOT NULL
+      ORDER BY opportunity_id, changed_at DESC
+  ) l
+  WHERE l.opportunity_id = o.id AND o.status_user_set_at IS NULL;

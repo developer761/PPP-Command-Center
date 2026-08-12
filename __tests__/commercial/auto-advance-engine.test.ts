@@ -7,6 +7,8 @@ import {
   type AutoAdvanceTargetKey,
 } from "@/lib/commercial/opportunities/auto-advance-targets";
 import { advanceFromFilter } from "@/lib/commercial/opportunities/constants";
+import { humanDecidedMoreRecently } from "@/lib/commercial/opportunities/auto-advance";
+import { etDateOf } from "@/lib/date-et";
 
 /**
  * The scenarios this engine exists to fix, written as the sequence of events a
@@ -193,6 +195,58 @@ describe("the guard that ships to the database", () => {
           canAutoAdvance({ status, sub_status: sub }, key)
         );
       }
+    }
+  });
+});
+
+describe("a human decision outranks the system", () => {
+  const T = (iso: string) => new Date(iso).toISOString();
+
+  it("defers to a person who moved the deal after the proposal reached its stage", () => {
+    // The admin re-qualify case: a deal at Proposal gets dragged back to
+    // Qualifying. The proposal is still 'sent', so forward-only alone would
+    // happily shove the deal forward again on the next page load — undoing them
+    // on a render they didn't even make.
+    expect(
+      humanDecidedMoreRecently(T("2026-08-10T12:00:00Z"), T("2026-08-01T12:00:00Z"))
+    ).toBe(true);
+  });
+
+  it("lets a newer artifact win", () => {
+    // They moved it back, then the proposal was actually sent again. The
+    // proposal is now the more current statement about where the deal is.
+    expect(
+      humanDecidedMoreRecently(T("2026-08-01T12:00:00Z"), T("2026-08-10T12:00:00Z"))
+    ).toBe(false);
+  });
+
+  it("does not block when nobody has ever set the status by hand", () => {
+    expect(humanDecidedMoreRecently(null, T("2026-08-01T12:00:00Z"))).toBe(false);
+  });
+
+  it("defers to any human decision when there is no artifact clock", () => {
+    expect(humanDecidedMoreRecently(T("2026-08-01T12:00:00Z"), null)).toBe(true);
+  });
+});
+
+describe("the decision date follows the event, not the clock", () => {
+  it("stamps the day the proposal was sent, not the day we noticed", () => {
+    // pre_sale_closed is terminal, so advancing to Won writes decided_at — and
+    // the dashboard builds its win-rate denominator from that column raw. A
+    // reconcile pass catching up in August must not restate a March win as an
+    // August one.
+    expect(etDateOf("2026-03-14T20:00:00Z")).toBe("2026-03-14");
+  });
+
+  it("uses the ET calendar day, so an evening close lands in the right month", () => {
+    // 2026-04-01 00:30 UTC is still March 31st in New York. Stamping the UTC
+    // day would move this win into the next month — and the next quarter.
+    expect(etDateOf("2026-04-01T00:30:00Z")).toBe("2026-03-31");
+  });
+
+  it("falls back rather than inventing a date", () => {
+    for (const bad of [null, undefined, "", "not-a-date"]) {
+      expect(etDateOf(bad), String(bad)).toBeNull();
     }
   });
 });

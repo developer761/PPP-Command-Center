@@ -1194,7 +1194,23 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // Account-style Profitability visuals for THIS deal (same components + defs as
   // the GC + platform levels): monthly billed line + margin gauge + cost donut.
   const dealRevenueMonthly = monthlyBilledSeries(dealInvoices);
-  const dealMarginTone: ChartTone = dealMarginPct === null ? "neutral" : dealMarginPct < 0 ? "rose" : dealMarginPct < 15 ? "amber" : "emerald";
+  // A provisional number gets a neutral tone. Painting an unstarted job's 100%
+  // emerald, directly beside a caption saying no costs have been booked, tells
+  // the eye the opposite of what the words say — and the eye wins.
+  const dealMarginTone: ChartTone =
+    dealMarginPct === null || dealMarginInfo.provisional
+      ? "neutral"
+      : dealMarginInfo.overBudget || dealMarginPct < 0
+        ? "rose"
+        : dealMarginPct < 15
+          ? "amber"
+          : "emerald";
+  const dealMarginDisplay =
+    dealMarginInfo.pct === null
+      ? "—"
+      : dealMarginInfo.overBudget
+        ? "Over budget"
+        : `${dealMarginInfo.pct}%`;
   const dealCostSegments: DonutSegment[] = [
     ...PURCHASE_CATEGORIES.filter((c) => dealFin.costs[c] > 0).map((c) => ({
       label: PURCHASE_CATEGORY_META[c].label,
@@ -1579,9 +1595,14 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                 yet. dealMargin() carries the honest wording. */}
             <StatCard
               label={dealMarginInfo.label}
-              value={dealMarginInfo.pct === null ? "—" : dealMarginInfo.overBudget ? "Over budget" : `${dealMarginInfo.pct}%`}
+              value={dealMarginDisplay}
               tone={dealMarginTone}
-              sub={dealMarginInfo.caveat ?? "contract − costs"}
+              sub={
+                dealMarginInfo.caveat ??
+                (dealMarginInfo.vsContract
+                  ? `billed − costs · ${dealMarginInfo.vsContract.pct}% ${dealMarginInfo.vsContract.label}`
+                  : "billed − costs")
+              }
             />
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
@@ -1590,7 +1611,13 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
               <TrendChart data={dealRevenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[140px]" />
             </div>
             <div className="flex items-center gap-4 justify-center">
-              <GaugeRing pct={dealMarginPct ?? 0} tone={dealMarginTone} value={dealMarginPct === null ? "—" : `${dealMarginPct}%`} label="margin" size={104} />
+              <GaugeRing
+                pct={dealMarginInfo.overBudget ? 0 : (dealMarginPct ?? 0)}
+                tone={dealMarginTone}
+                value={dealMarginDisplay}
+                label="margin"
+                size={104}
+              />
               {dealCostSegments.length > 0 ? (
                 <DonutChart size={104} legend={false} segments={dealCostSegments} centerValue={formatCentsCompact(dealCostsTotalCents)} centerLabel="costs" />
               ) : (
@@ -2554,7 +2581,18 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
   // and another is open (2026-08 re-audit: min(collected,invoiced) let a
   // per-invoice credit over-draw the ring).
   const paidCapped = Math.max(0, fin.collectedCents - fin.creditCents);
-  const marginTone: ChartTone = marginPct === null ? "neutral" : marginPct < 0 ? "rose" : marginPct < 15 ? "amber" : "emerald";
+  // Neutral while the number is provisional — see the Overview tile for why an
+  // emerald 100% beside "no costs booked yet" misleads.
+  const marginTone: ChartTone =
+    marginPct === null || pnlMargin.provisional
+      ? "neutral"
+      : pnlMargin.overBudget || marginPct < 0
+        ? "rose"
+        : marginPct < 15
+          ? "amber"
+          : "emerald";
+  const marginDisplay =
+    pnlMargin.pct === null ? "—" : pnlMargin.overBudget ? "Over budget" : `${pnlMargin.pct}%`;
 
   return (
     <div className="space-y-4 mt-3">
@@ -2572,9 +2610,14 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
           <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
           <StatCard
             label={pnlMargin.label}
-            value={pnlMargin.pct === null ? "—" : pnlMargin.overBudget ? "Over budget" : `${pnlMargin.pct}%`}
+            value={marginDisplay}
             tone={marginTone}
-            sub={pnlMargin.caveat ?? "contract − costs"}
+            sub={
+              pnlMargin.caveat ??
+              (pnlMargin.vsContract
+                ? `billed − costs · ${pnlMargin.vsContract.pct}% ${pnlMargin.vsContract.label}`
+                : "billed − costs")
+            }
           />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
@@ -2583,7 +2626,13 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
             <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[140px]" />
           </div>
           <div className="flex items-center gap-4 justify-center">
-            <GaugeRing pct={marginPct ?? 0} tone={marginTone} value={marginPct === null ? "—" : `${marginPct}%`} label="margin" size={104} />
+            <GaugeRing
+              pct={pnlMargin.overBudget ? 0 : (marginPct ?? 0)}
+              tone={marginTone}
+              value={marginDisplay}
+              label="margin"
+              size={104}
+            />
             {costSegments.length > 0 ? (
               <DonutChart size={104} legend={false} segments={costSegments} centerValue={formatCentsCompact(costsCents)} centerLabel="costs" />
             ) : (

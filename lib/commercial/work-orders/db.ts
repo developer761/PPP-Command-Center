@@ -612,6 +612,14 @@ export type CrewScope = {
   isPartial: boolean;
   /** Optional area tag ("Level 3"), if the sheet carries one. */
   areaLabel: string | null;
+  /**
+   * Optional add-ons the customer has NOT bought, kept separate from `lines`.
+   *
+   * Never merge these into the scope list: crew surfaces render one flat set of
+   * bullets, so an alternate shown there reads as work to do — and painting an
+   * unsold alternate is unbilled labor.
+   */
+  alternates: string[];
 };
 
 /**
@@ -646,14 +654,21 @@ export async function getCrewScopeForOpp(
   ]);
   const toText = (l: { product_name: string | null; description: string }) =>
     (l.description?.trim() || l.product_name?.trim() || "").trim();
-  const lines = [...content.inclusions, ...content.alternates].map(toText).filter(Boolean);
-  const totalLines = all.inclusions.length + all.alternates.length;
+  // Base inclusions ONLY. Alternates are optional add-ons the customer hasn't
+  // bought — crew surfaces render one flat bullet list, so folding them in here
+  // presents unsold work as the job. It also broke the partial count: a sheet
+  // covering every real inclusion but no alternates read "5 of 7 — the rest is
+  // on another work order" when there is no other work order.
+  const lines = content.inclusions.map(toText).filter(Boolean);
+  const totalLines = all.inclusions.length;
+  const alternates = content.alternates.map(toText).filter(Boolean);
   if (lines.length === 0) return null;
   return {
     lines,
     totalLines,
     isPartial: totalLines > 0 && lines.length < totalLines,
     areaLabel: wo.area_label?.trim() || null,
+    alternates,
   };
 }
 

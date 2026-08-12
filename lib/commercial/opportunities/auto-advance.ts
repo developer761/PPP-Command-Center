@@ -8,6 +8,7 @@ import {
   canAutoAdvance,
 } from "./auto-advance-targets";
 import { changeOpportunityStatus, type StatusChangeSource } from "./status";
+import { etDateOf } from "@/lib/date-et";
 import type { OpportunityStatus } from "./db";
 
 /**
@@ -62,20 +63,48 @@ export async function autoAdvanceOpportunity(
   const target = AUTO_ADVANCE_TARGETS[input.target];
   const sb = commercialDb();
 
-  const { data: opp } = await sb
+  const { data: opp, error: readErr } = await sb
     .from("commercial_opportunities")
-    .select("id, status, sub_status")
+    .select("id, status, sub_status, status_user_set_at")
     .eq("id", input.oppId)
     .is("deleted_at", null)
     .maybeSingle();
-  if (!opp) return { moved: false, reason: "missing" };
-  const current = opp as { status: string | null; sub_status: string | null };
+  if (readErr && !isMissingGuardColumn(readErr.message)) {
+    return { moved: false, reason: "error", detail: readErr.message };
+  }
+  // Migration 126 hasn't run yet: re-read without the column so the pipeline
+  // keeps moving. Refusing everything here would silently freeze every
+  // proposal-driven advance, with nothing but a log line to say why.
+  const row = readErr
+    ? await (async () => {
+        console.warn(
+          "[auto-advance] commercial_opportunities has no `status_user_set_at` — run migration 126. Advancing without the manual-override guard."
+        );
+        const { data } = await sb
+          .from("commercial_opportunities")
+          .select("id, status, sub_status")
+          .eq("id", input.oppId)
+          .is("deleted_at", null)
+          .maybeSingle();
+        return data as {
+          status: string | null;
+          sub_status: string | null;
+          status_user_set_at?: string | null;
+        } | null;
+      })()
+    : (opp as {
+        status: string | null;
+        sub_status: string | null;
+        status_user_set_at?: string | null;
+      } | null);
+  if (!row) return { moved: false, reason: "missing" };
+  const current = row;
 
   // Cheap check first: most calls are on deals already at or past the target,
-  // and this saves both the log query and the write.
+  // so this saves the write entirely.
   if (!canAutoAdvance(current, input.target)) return { moved: false, reason: "not_behind" };
 
-  if (await humanDecidedMoreRecently(input.oppId, input.artifactAt ?? null)) {
+  if (humanDecidedMoreRecently(current.status_user_set_at ?? null, input.artifactAt ?? null)) {
     return { moved: false, reason: "human_decided" };
   }
 
@@ -93,6 +122,12 @@ export async function autoAdvanceOpportunity(
     acting_user_id: input.actingUserId ?? null,
     source: input.source,
     note: input.reason,
+    // Stamp the day the deal was actually decided, not the day the system got
+    // around to noticing. `pre_sale_closed` is terminal, so an advance to Won
+    // sets `decided_at` — and the dashboard reads that column raw to build its
+    // win-rate denominator. A reconcile pass catching up months later would
+    // otherwise drag an old win into this month and out of its own.
+    decided_at_override: etDateOf(input.artifactAt),
     _requireFrom: requireFrom,
     // Strictly deal-side. Cascading back to the proposals would move cards
     // nobody touched, and re-entering this engine from inside itself is how a
@@ -118,31 +153,22 @@ export async function autoAdvanceOpportunity(
  * pass would then find it legitimately behind the still-`sent` proposal and
  * shove it forward again, undoing them on a page load they didn't even make.
  *
- * `source = 'user'` is the signal (migration 126), not `changed_by_user_id`:
- * proposal cascades run inside a human's request and carry that human's id, so
- * the actor column can't tell a person's decision from the system's.
+ * The signal is `status_user_set_at` on the deal, not the status_log: a log row
+ * is written only when the TOP-LEVEL status changes, so a person dragging a card
+ * from the Proposal column back to Estimating — a sub-status-only move — leaves
+ * the log empty and the guard blind.
  */
-async function humanDecidedMoreRecently(oppId: string, artifactAt: string | null): Promise<boolean> {
-  const sb = commercialDb();
-  const { data, error } = await sb
-    .from("commercial_opportunity_status_log")
-    .select("changed_at")
-    .eq("opportunity_id", oppId)
-    .eq("source", "user")
-    .order("changed_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  // Reading the guard failed — refuse the move. Skipping an advance leaves a
-  // deal a stage behind until someone drags it; guessing wrong overwrites a
-  // decision a person made, which nobody sees happen.
-  if (error) {
-    console.warn("[auto-advance] could not read status_log; refusing to move:", error.message);
-    return true;
-  }
-  const lastHuman = (data as { changed_at: string } | null)?.changed_at;
-  if (!lastHuman) return false;
+export function humanDecidedMoreRecently(
+  statusUserSetAt: string | null,
+  artifactAt: string | null
+): boolean {
+  if (!statusUserSetAt) return false;
   // No artifact time to compare against: any human decision outranks us.
   if (!artifactAt) return true;
-  return new Date(lastHuman).getTime() > new Date(artifactAt).getTime();
+  return new Date(statusUserSetAt).getTime() > new Date(artifactAt).getTime();
+}
+
+/** PostgREST's shape for "that column doesn't exist" (pre-migration-126). */
+function isMissingGuardColumn(message: string): boolean {
+  return /status_user_set_at/i.test(message);
 }

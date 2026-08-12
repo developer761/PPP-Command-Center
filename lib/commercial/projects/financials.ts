@@ -130,6 +130,22 @@ export type DealMargin = {
   caveat: string | null;
   /** True when the number is a loss big enough that a raw % misleads. */
   overBudget: boolean;
+  /**
+   * True when the percentage is arithmetically real but doesn't yet mean what
+   * it appears to — nothing billed, or nothing spent.
+   *
+   * Callers use it to keep a chart from painting an unstarted job's 100%
+   * emerald right next to a caption saying no costs have been booked.
+   */
+  provisional: boolean;
+  /**
+   * The contract-basis view — "how is this tracking against what we sold?"
+   *
+   * Carries its own label because D2 allows this number ONLY as an explicitly
+   * labeled secondary. Rendering it under the bare word "margin" is what made
+   * two surfaces disagree in the first place.
+   */
+  vsContract: { pct: number; cents: number; label: string } | null;
 };
 
 /**
@@ -141,57 +157,86 @@ export type DealMargin = {
  *   - the Transactions chip — contract-based                   → different again
  * $200k billed with no costs booked yet showed "—" and "100%" two clicks apart.
  *
- * Contract-based wins. Gross margin on a construction job means "what we expect
- * to make on this contract" — billed-based measures invoicing progress, not
- * profitability, and it swings wildly early on (bill 10% up front before any
- * costs land and it reads 100%).
+ * The basis is BILLED — margin to date, matching the dashboard bars, the
+ * account Profitability rollup and the P&L cards. That was decision D2, and an
+ * earlier version of this function ignored it and headlined the contract basis
+ * instead: the two deal surfaces then agreed with each other but disagreed with
+ * every rollup above them, which is the split unifying the margin was meant to
+ * end. The contract view still has a use — it answers "how is this job tracking
+ * against what we sold?" — so it comes back as `vsContract`, under a label that
+ * says so. It must never appear under the bare word "margin".
  *
- * Because costs accrue over the job, contract − costs-to-date is a PROJECTION,
- * not a result. The label says so until costs exist, so nobody reads a fresh
- * job's "100%" as money in the bank.
+ * Because both billing and costs accrue over a job, either number is a
+ * position, not a result. The labels say so rather than letting a 100% read as
+ * money in the bank.
  */
 export function dealMargin(fin: {
+  billedPreTaxCents: number;
   contractCents: number;
   hasContract: boolean;
   totalCostCents: number;
-  grossMarginCents: number;
-  grossMarginPct: number | null;
   laborUnratedHours: number;
 }): DealMargin {
-  // No contract → every ratio is undefined. Show dollars, never a NaN/∞ %.
-  if (!fin.hasContract || fin.contractCents <= 0) {
+  const marginCents = fin.billedPreTaxCents - fin.totalCostCents;
+
+  // The contract view, always separately labeled. Null when there's no contract
+  // to measure against — a ratio over zero is undefined, not 0%.
+  const contractMarginCents = fin.contractCents - fin.totalCostCents;
+  const vsContract =
+    fin.hasContract && fin.contractCents > 0
+      ? {
+          pct: Math.round((contractMarginCents / fin.contractCents) * 100),
+          cents: contractMarginCents,
+          label: "vs contract (budget)",
+        }
+      : null;
+
+  // Nothing billed → no margin to date. Costs already spent are still real, so
+  // the dollars show; the percentage would be a division by zero.
+  if (fin.billedPreTaxCents <= 0) {
     return {
       pct: null,
-      cents: fin.grossMarginCents,
+      cents: marginCents,
       label: "Gross margin",
-      caveat: "Contract not set yet — add a proposal total to see margin.",
+      caveat:
+        fin.totalCostCents > 0
+          ? "Nothing billed yet — costs are booked against an unbilled job."
+          : "Nothing billed yet.",
       overBudget: false,
+      provisional: true,
+      vsContract,
     };
   }
-  const pct = fin.grossMarginPct;
-  // Zero costs is not a 100% margin, it's an unstarted job. Saying "100%" on a
-  // deal nobody has spent anything on reads as a triumph and is meaningless.
+
+  const pct = Math.round((marginCents / fin.billedPreTaxCents) * 100);
+
+  // Zero costs is not a 100% margin, it's a job nobody has spent anything on
+  // yet. Saying "100%" there reads as a triumph and means nothing.
   if (fin.totalCostCents === 0) {
     return {
       pct,
-      cents: fin.grossMarginCents,
+      cents: marginCents,
       label: "Projected gross margin",
-      caveat: "No costs booked yet — this is the full contract, not profit.",
+      caveat: "No costs booked yet — this is everything billed, not profit.",
       overBudget: false,
+      provisional: true,
+      vsContract,
     };
   }
-  const overBudget = pct !== null && pct < -100;
+
   const caveat =
     fin.laborUnratedHours > 0
       ? `Margin understated — ${fin.laborUnratedHours} crew hour${fin.laborUnratedHours === 1 ? "" : "s"} have no cost rate.`
       : null;
   return {
     pct,
-    cents: fin.grossMarginCents,
+    cents: marginCents,
     label: "Gross margin",
     caveat,
     // Below −100% a raw percentage stops communicating ("-4900%"); the words
     // do the work instead.
-    overBudget,
+    overBudget: pct < -100,
+    provisional: false,
+    vsContract,
   };
 }

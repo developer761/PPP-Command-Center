@@ -15,6 +15,21 @@ export function etTodayIso(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
+/**
+ * The ET calendar date a timestamp fell on, as YYYY-MM-DD.
+ *
+ * For stamping a decision date from WHEN SOMETHING HAPPENED rather than from
+ * now — an automatic move made months later must not record today as the day
+ * the deal was won, or the win lands in the wrong month's numbers.
+ * Returns null for anything unparseable, so callers fall back deliberately.
+ */
+export function etDateOf(timestamp: string | null | undefined): string | null {
+  if (!timestamp) return null;
+  const t = new Date(timestamp);
+  if (Number.isNaN(t.getTime())) return null;
+  return t.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
 /** Whole days from ET-today to a plain YYYY-MM-DD (future = positive, past = negative). */
 export function daysFromTodayEt(dateIso: string): number {
   const d = (dateIso ?? "").slice(0, 10);

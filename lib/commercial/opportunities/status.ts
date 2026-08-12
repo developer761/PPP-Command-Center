@@ -129,6 +129,17 @@ export type ChangeStatusInput = {
    * successful no-op, reported as `skipped: "guard"`.
    */
   _requireFrom?: string;
+  /**
+   * The ET calendar date (YYYY-MM-DD) this decision was actually made, when
+   * that isn't today.
+   *
+   * `decided_at` otherwise gets stamped with today's date on any move into a
+   * terminal status. That's right for a person clicking Won now, and wrong for
+   * an automatic move catching up months later — the dashboard builds its
+   * win-rate denominator from raw `decided_at`, so a late catch-up would drag
+   * an old win into this month and out of the month it belongs to.
+   */
+  decided_at_override?: string | null;
 };
 
 /** @see ChangeStatusInput.source */
@@ -288,7 +299,10 @@ export async function changeOpportunityStatus(
     wasTerminal && PRE_SALE_OPEN_STATUSES.includes(input.to_status);
   let nextDecidedAt: string | null | undefined = undefined; // undefined = don't touch
   if (isTerminal && !wasTerminal) {
-    nextDecidedAt = etTodayIso(); // DATE column — ET day, so an evening close lands in the right month
+    // DATE column — ET day, so an evening close lands in the right month. An
+    // automatic move supplies the date the triggering thing happened; only a
+    // decision being made right now defaults to today.
+    nextDecidedAt = input.decided_at_override ?? etTodayIso();
   } else if (reopensToPipeline) {
     nextDecidedAt = null;
   }
@@ -311,6 +325,12 @@ export async function changeOpportunityStatus(
     probability_pct: nextProbability,
     updated_by_user_id: input.acting_user_id ?? null,
   };
+  // Stamp WHEN a person last set this deal's status, so the auto-advance engine
+  // can tell a human decision from its own work. It can't read that off the
+  // status_log: a log row is only written when the TOP-LEVEL status changes, so
+  // a drag from the Proposal column back to Estimating — a sub-status-only
+  // move — would leave no trace and get silently undone on the next render.
+  if ((input.source ?? "user") === "user") patch.status_user_set_at = new Date().toISOString();
   if (nextDecidedAt !== undefined) patch.decided_at = nextDecidedAt;
   if (targetIsLost) {
     patch.loss_reason = lossReason;
@@ -347,19 +367,38 @@ export async function changeOpportunityStatus(
   // status_log entry (would be from_status == to_status, meaningless
   // noise in the timeline). Audit-log still captures the row diff.
   if (beforeRow.status !== input.to_status) {
-    const { data: logRow, error: logErr } = await sb
+    const logPayload: Record<string, unknown> = {
+      opportunity_id: input.opp_id,
+      from_status: beforeRow.status,
+      to_status: input.to_status,
+      changed_by_user_id: input.acting_user_id ?? null,
+      source: input.source ?? "user",
+      note: input.note?.trim() || null,
+      loss_reason: lossReason,
+    };
+    let { data: logRow, error: logErr } = await sb
       .from("commercial_opportunity_status_log")
-      .insert({
-        opportunity_id: input.opp_id,
-        from_status: beforeRow.status,
-        to_status: input.to_status,
-        changed_by_user_id: input.acting_user_id ?? null,
-        source: input.source ?? "user",
-        note: input.note?.trim() || null,
-        loss_reason: lossReason,
-      })
+      .insert(logPayload)
       .select("*")
       .single();
+    // Deploying this code before migration 126 runs would otherwise drop EVERY
+    // timeline row on the floor — the insert fails on the unknown `source`
+    // column, the warning goes to a log nobody is reading, and the status change
+    // itself still succeeds. Those rows can't be reconstructed afterwards, and
+    // they carry the timeline, "days in current status", recent activity and
+    // the win/loss debrief's foreign key. Retry without the new column so the
+    // history survives the gap.
+    if (logErr && /source/i.test(logErr.message)) {
+      console.warn(
+        "[commercial/opportunities/status] status_log has no `source` column — run migration 126. Logging without it."
+      );
+      delete logPayload.source;
+      ({ data: logRow, error: logErr } = await sb
+        .from("commercial_opportunity_status_log")
+        .insert(logPayload)
+        .select("*")
+        .single());
+    }
     if (logErr) {
       console.warn(
         "[commercial/opportunities/status] status_log insert failed:",
@@ -424,7 +463,7 @@ export async function changeOpportunityStatus(
       const sub = input.to_sub_status;
       if (s === "qualifying") {
         return {
-          demoteFrom: ["pending_approval", "sent", "won", "lost"],
+          demoteFrom: ["pending_approval", "approved", "sent", "won", "lost"],
           to: "draft",
         };
       }
@@ -433,13 +472,19 @@ export async function changeOpportunityStatus(
         // manual deal move from "Proposal Drafted" back to plain
         // Estimating actually rewinds the proposal state (otherwise
         // reconcile pulls the deal forward again on next page load).
-        return { demoteFrom: ["pending_approval", "sent", "won", "lost"], to: "draft" };
+        // `approved` belongs here too. Without it, dragging a card from the
+        // Proposal column back to Estimating left the proposal `approved`, and
+        // the next page load read that proposal and snapped the deal forward
+        // again — the bounce-back, on someone else's render, with no timeline
+        // row to explain it (the drag changed only the sub-status, so it
+        // wrote none).
+        return { demoteFrom: ["pending_approval", "approved", "sent", "won", "lost"], to: "draft" };
       }
       if (s === "estimating" && sub === "proposal_pending_approval") {
         // Add draft to the promote-from set so manually flipping the
         // deal to "Proposal Drafted" also flips the current draft to
         // pending_approval (they represent the same moment in the flow).
-        return { demoteFrom: ["draft", "sent", "won", "lost"], to: "pending_approval" };
+        return { demoteFrom: ["draft", "approved", "sent", "won", "lost"], to: "pending_approval" };
       }
       if (s === "proposal") {
         // R1d HARD GATE (Karan 2026-08): the deal-axis cascade must NOT
@@ -462,13 +507,13 @@ export async function changeOpportunityStatus(
       // leaving the column mismatch Karan flagged.
       if (s === "pre_sale_closed" && sub === "won") {
         return {
-          demoteFrom: ["draft", "pending_approval", "sent", "lost"],
+          demoteFrom: ["draft", "pending_approval", "approved", "sent", "lost"],
           to: "won",
         };
       }
       if (s === "pre_sale_closed" && sub === "lost") {
         return {
-          demoteFrom: ["draft", "pending_approval", "sent", "won"],
+          demoteFrom: ["draft", "pending_approval", "approved", "sent", "won"],
           to: "lost",
         };
       }

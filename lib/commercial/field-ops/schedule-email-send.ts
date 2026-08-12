@@ -196,7 +196,11 @@ async function getShiftsForRange(employeeId: string, fromIso: string, numDays: n
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function shiftLine(j: Shift, es: boolean, scope?: CrewScope | null): string {
+// `scope` is REQUIRED, not optional. It started out optional and three of the
+// four email paths simply never passed it — the calls compiled, and most crew
+// on most days got a schedule with no work on it. Pass `null` deliberately if
+// there genuinely is no scope.
+function shiftLine(j: Shift, es: boolean, scope: CrewScope | null | undefined): string {
   const pw = es ? "salario prevaleciente" : "prevailing wage";
   const times = j.start ? `${fmtTime12(j.start)}${j.end ? `-${fmtTime12(j.end)}` : ""}` : `${j.hours}h`;
   let line = `  - ${j.name}${j.site ? ` (${j.site})` : ""} - ${times}${j.pw ? ` [${pw}]` : ""}`;
@@ -221,7 +225,38 @@ function shiftLine(j: Shift, es: boolean, scope?: CrewScope | null): string {
   return line;
 }
 
-function buildBody(firstName: string, upcoming: UpDay[], link: string, ocName: string, es: boolean): string {
+/** Key a job by the sheet its scope comes from, so we resolve each one once. */
+const scopeKey = (j: Shift) => `${j.opportunityId}|${j.workOrderId ?? ""}`;
+
+/**
+ * Resolve the crew scope for every job across a set of days.
+ *
+ * Scope reached only the shift-assignment email at first, so the morning
+ * "what am I painting today" email and the weekly schedule both went out with
+ * a time and an address and nothing about the work. Resolving it in one place
+ * means a new email path gets it by construction.
+ */
+async function scopesFor(days: UpDay[]): Promise<Map<string, CrewScope | null>> {
+  const out = new Map<string, CrewScope | null>();
+  for (const d of days) {
+    for (const j of d.jobs) {
+      if (!j.opportunityId) continue;
+      const key = scopeKey(j);
+      if (out.has(key)) continue;
+      out.set(key, await getCrewScopeForOpp(j.opportunityId, j.workOrderId).catch(() => null));
+    }
+  }
+  return out;
+}
+
+function buildBody(
+  firstName: string,
+  upcoming: UpDay[],
+  link: string,
+  ocName: string,
+  es: boolean,
+  scopes?: Map<string, CrewScope | null>
+): string {
   const L = es
     ? { hi: `Hola ${firstName},`, intro: "Aqui esta tu horario:", none: "No tienes trabajos programados todavia.", cta: "Abre esto en tu telefono para ver tu horario y marcar entrada/salida:" }
     : { hi: `Hi ${firstName},`, intro: "Here's your schedule:", none: "No jobs scheduled for you yet.", cta: "Open this on your phone to see your schedule and clock in/out:" };
@@ -230,7 +265,8 @@ function buildBody(firstName: string, upcoming: UpDay[], link: string, ocName: s
   else
     for (const d of upcoming) {
       lines.push(dayLabel(d.date, es));
-      for (const j of d.jobs) lines.push(shiftLine(j, es));
+      for (const j of d.jobs)
+        lines.push(shiftLine(j, es, j.opportunityId ? scopes?.get(scopeKey(j)) : null));
       lines.push("");
     }
   lines.push(L.cta, link, "", `- ${ocName}`);
@@ -402,7 +438,8 @@ export async function sendWelcomeEmail(employee: CommercialEmployee): Promise<vo
     const intro = es
       ? `Hola ${firstName},\n\nEstas registrado con ${oc.name}. Usa este enlace en tu telefono para ver tu horario y marcar entrada/salida cada dia - no necesitas contrasena. Guardalo en favoritos.`
       : `Hi ${firstName},\n\nYou're set up with ${oc.name}. Use this link on your phone to see your schedule and clock in/out each day - no password needed. Bookmark it.`;
-    const body = `${intro}\n\n${link}\n\n${upcoming.length > 0 ? buildBody(firstName, upcoming, link, oc.name, es) : `- ${oc.name}`}`;
+    const welcomeScopes = await scopesFor(upcoming);
+    const body = `${intro}\n\n${link}\n\n${upcoming.length > 0 ? buildBody(firstName, upcoming, link, oc.name, es, welcomeScopes) : `- ${oc.name}`}`;
     const { sendEmail } = await import("@/lib/email/resend");
     await sendEmail({
       channel: "commercial",
@@ -437,22 +474,17 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
     const shifts = await getShiftsForRange(employeeId, workDate, 1);
     if (shifts.length === 0) return; // all shifts for the day were removed
 
-    // Don't send a shift email moments after the welcome. The welcome already
-    // includes the next 7 days of schedule, so setting someone up and putting
-    // them on a job in the same minute sent two emails back to back that said
-    // largely the same thing (Karan hit this testing it). Keyed on the employee
-    // record's age — there's no welcomed_at, and "created seconds ago" is
-    // exactly the case worth collapsing.
-    const { data: createdRow } = await sb
-      .from("commercial_employees")
-      .select("created_at")
-      .eq("id", employeeId)
-      .maybeSingle();
-    const createdAt = (createdRow as { created_at?: string } | null)?.created_at;
-    if (createdAt) {
-      const ageMs = Date.now() - new Date(createdAt).getTime();
-      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 10 * 60_000) return;
-    }
+    // A 10-minute "don't email twice right after the welcome" suppression used
+    // to sit here. It was built on a false premise: the welcome is sent when
+    // the employee record is created, and it fetches their schedule AT THAT
+    // MOMENT — before any assignment exists — so it goes out saying "No jobs
+    // scheduled for you yet."
+    //
+    // The natural flow is to add a hire and put them on this week's job right
+    // away, which tripped the window and swallowed the shift email: the only
+    // one carrying the date, the scope of what they're painting, and the
+    // clock-in nudges. The welcome is never redundant with it, so collapsing
+    // them was pure information loss.
     const oc = await getOperatingCompany();
     const es = emp.preferred_language === "es";
     const link = magicLink(emp.magic_link_token);
@@ -461,15 +493,9 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
       : `Hi ${emp.first_name},\n\nYou're scheduled for ${dayLabel(workDate, false)}:`;
     const lines: string[] = [head, ""];
     // Resolve each job's crew scope so the email says WHAT, not just where/when.
-    const scopeByJob = new Map<string, CrewScope | null>();
+    const scopeByJob = await scopesFor(shifts);
     for (const j of shifts[0].jobs) {
-      if (!j.opportunityId) continue;
-      const key = `${j.opportunityId}|${j.workOrderId ?? ""}`;
-      if (scopeByJob.has(key)) continue;
-      scopeByJob.set(key, await getCrewScopeForOpp(j.opportunityId, j.workOrderId).catch(() => null));
-    }
-    for (const j of shifts[0].jobs) {
-      lines.push(shiftLine(j, es, j.opportunityId ? scopeByJob.get(`${j.opportunityId}|${j.workOrderId ?? ""}`) : null));
+      lines.push(shiftLine(j, es, j.opportunityId ? scopeByJob.get(scopeKey(j)) : null));
     }
     lines.push("", es ? "Marca entrada/salida aqui:" : "Clock in/out here:", link, "", `- ${oc.name}`);
     const { sendEmail } = await import("@/lib/email/resend");
@@ -633,7 +659,12 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
         "",
         es ? "Tu trabajo de hoy:" : "Today's work:",
         "",
-        ...todayShifts[0].jobs.map((j) => shiftLine(j, es)),
+        ...(await (async () => {
+          const sc = await scopesFor(todayShifts);
+          return todayShifts[0].jobs.map((j) =>
+            shiftLine(j, es, j.opportunityId ? sc.get(scopeKey(j)) : null)
+          );
+        })()),
         "",
         es ? "Marca entrada/salida aqui:" : "Clock in/out here:",
         link,
@@ -687,7 +718,7 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
             channel: "commercial",
             to: e.email,
             subject: es ? "Tu horario de esta semana" : "Your schedule this week",
-            text: buildBody(e.first_name, week, link, oc.name, es),
+            text: buildBody(e.first_name, week, link, oc.name, es, await scopesFor(week)),
             ...(fromHdr ? { from: fromHdr } : {}),
             tags: [{ name: "kind", value: "crew_weekly" }],
           });

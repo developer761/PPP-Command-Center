@@ -15,7 +15,7 @@ import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/oppor
 import { transactionRecordId } from "@/lib/commercial/record-ids";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents, formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
-import { getProjectFinancials } from "@/lib/commercial/projects/financials";
+import { getProjectFinancials, dealMargin } from "@/lib/commercial/projects/financials";
 import { fieldOpsLaborByWorkerForOpp } from "@/lib/commercial/field-ops/labor-cost";
 import {
   listPurchasesForProject,
@@ -284,11 +284,16 @@ export async function ProjectCostsTool({
   // True % (may exceed 100 when over budget) for the label; bar width clamps.
   const truePctOfContract = fin.hasContract ? Math.round((totalCostCents / fin.contractCents) * 100) : 0;
   const barPctOfContract = Math.min(100, truePctOfContract);
-  const mt = marginTone(fin.grossMarginPct);
+  // ONE margin, same basis as every other surface (billed − costs, decision
+  // D2). This tile used to read the contract-based grossMarginPct while the
+  // gauge below it read the billed one — two different numbers under the same
+  // word, on one screen.
+  const dm = dealMargin(fin);
+  const mt = marginTone(dm.provisional ? null : dm.pct);
   const laborTotalHours = laborByWorker.reduce((s, w) => s + w.hours, 0);
   // Revenue framing (Gross = billed, Net = billed − costs) — matches the Revenue page.
   const netProfitCents = fin.billedPreTaxCents - totalCostCents;
-  const billedMarginPct = fin.billedPreTaxCents > 0 ? Math.round((netProfitCents / fin.billedPreTaxCents) * 100) : null;
+  const billedMarginPct = dm.pct;
   const costSegments: DonutSegment[] = [
     ...PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
       label: PURCHASE_CATEGORY_META[c].label,
@@ -339,10 +344,16 @@ export async function ProjectCostsTool({
           <PLTile label="Collected" value={formatCentsFull(fin.collectedCents)} tone="emerald" />
           <PLTile label="Costs" value={formatCentsFull(totalCostCents)} tone={totalCostCents > 0 ? "rose" : "neutral"} />
           <PLTile
-            label={fin.grossMarginCents < 0 ? "Margin (loss)" : "Gross margin"}
-            value={formatCentsFull(fin.grossMarginCents)}
-            sub={fin.grossMarginPct != null ? `${fin.grossMarginPct}% · ${mt.label}` : fin.grossMarginCents < 0 ? "over budget · no contract" : undefined}
-            tone={fin.grossMarginCents < 0 ? "rose" : fin.grossMarginPct == null ? "neutral" : fin.grossMarginPct < 15 ? "amber" : "emerald"}
+            label={dm.cents < 0 ? "Margin (loss)" : dm.label}
+            value={formatCentsFull(dm.cents)}
+            sub={
+              dm.overBudget
+                ? "over budget"
+                : dm.pct != null
+                  ? `${dm.pct}%${dm.provisional ? "" : ` · ${mt.label}`}${dm.vsContract ? ` · ${dm.vsContract.pct}% vs contract` : ""}`
+                  : (dm.caveat ?? undefined)
+            }
+            tone={dm.provisional || dm.pct == null ? "neutral" : dm.cents < 0 ? "rose" : dm.pct < 15 ? "amber" : "emerald"}
             emphasize
           />
         </div>
@@ -396,7 +407,13 @@ export async function ProjectCostsTool({
               )}
             </div>
             <div className="flex items-center gap-4">
-              <GaugeRing pct={billedMarginPct ?? 0} tone={billedMarginPct === null ? "neutral" : billedMarginPct < 0 ? "rose" : billedMarginPct < 15 ? "amber" : "emerald"} value={billedMarginPct === null ? "—" : `${billedMarginPct}%`} label="margin" size={112} />
+              <GaugeRing
+                pct={dm.overBudget ? 0 : (billedMarginPct ?? 0)}
+                tone={dm.provisional || billedMarginPct === null ? "neutral" : billedMarginPct < 0 ? "rose" : billedMarginPct < 15 ? "amber" : "emerald"}
+                value={dm.overBudget ? "Over budget" : billedMarginPct === null ? "—" : `${billedMarginPct}%`}
+                label="margin"
+                size={112}
+              />
               <div className="min-w-0 text-[12px] space-y-1">
                 <div><span className="text-ppp-charcoal-500">Gross (billed): </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(fin.billedPreTaxCents)}</strong></div>
                 <div><span className="text-ppp-charcoal-500">Costs: </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsCompact(totalCostCents)}</strong></div>

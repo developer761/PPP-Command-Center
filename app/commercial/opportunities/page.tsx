@@ -2310,16 +2310,16 @@ function KanbanBoard({
       .filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status))
       .reduce((sum, o) => sum + weightedPipelineCents(o, proposalTotalByOpp.get(o.id)), 0);
   }
-  // Karan 2026-07-15 edge-case: if an account's opps are ALL
-  // post_sale_closed, they were pushed to globalOverflow and byStatus
-  // is completely empty for that account. Rendering the section would
-  // show a wall of empty columns. Filter those accounts out — they're
-  // still discoverable via the overflow drawer at the bottom.
+  // Karan 2026-07-15 edge-case: an account whose opps are ALL finished would
+  // render a wall of empty columns. Filter those accounts off the live board —
+  // they're still reachable through the overflow drawer at the bottom.
+  //
+  // Counted over the OPEN columns only. Once `post_sale_closed` became a real
+  // column, a fully-closed account had a non-empty bucket again and came
+  // straight back onto the board: seven empty columns beside one Completed
+  // cluster, which is the exact thing this filter exists to prevent.
   const accountBuckets = Array.from(accountGroups.values())
-    .filter((a) => {
-      const anyOnBoard = Array.from(a.byStatus.values()).some((list) => list.length > 0);
-      return anyOnBoard;
-    })
+    .filter((a) => OPEN_COLUMN_KEYS.some((k) => (a.byStatus.get(k)?.length ?? 0) > 0))
     .sort((a, b) => {
       if (a.openCount !== b.openCount) return b.openCount - a.openCount;
       const an = a.account?.company_name ?? "";
