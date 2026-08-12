@@ -2549,9 +2549,28 @@ function KanbanBoard({
                                 <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal">
                                   {kanbanColumnLabel(status)}
                                 </span>
-                                <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100">
-                                  {colOpps.length}
-                                </span>
+                                {/* Real total, with the cap stated when it bites.
+                                    The cluster header counts every decided deal
+                                    while these counted the ≤10 shown, so an
+                                    account with 31 read "Closed 31" directly
+                                    above "WON 10 · LOST 0". */}
+                                {(() => {
+                                  const real = acct.opps.filter(
+                                    (o) => columnKeyForOpp(o.status, o.sub_status ?? null) === status
+                                  ).length;
+                                  return (
+                                    <span
+                                      className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100"
+                                      title={
+                                        real > colOpps.length
+                                          ? `Showing the ${colOpps.length} most recent of ${real}`
+                                          : undefined
+                                      }
+                                    >
+                                      {real > colOpps.length ? `${colOpps.length}/${real}` : real}
+                                    </span>
+                                  );
+                                })()}
                               </div>
                             </div>
                             <ul className="p-1.5 space-y-1.5 overflow-y-auto max-h-[70vh] min-h-[64px]">

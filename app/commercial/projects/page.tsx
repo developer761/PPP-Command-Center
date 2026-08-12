@@ -70,9 +70,12 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
             larger than Invoiced. The pre-tax figure is still the right basis for
             the "Billed of contract" meter below — a contract is pre-tax — which
             is why both numbers exist. */}
-        <KpiTile label="Invoiced" value={formatCentsCompact(activeSummary.invoicedCents)} sub={`${formatCentsCompact(activeSummary.paidCents)} paid`} tone="blue" icon={<IconGauge />} />
-        <KpiTile label="Left to bill" value={formatCentsCompact(activeSummary.leftToBillCents)} sub="contract − billed" tone="neutral" icon={<IconHardHat />} />
-        <KpiTile label="Outstanding" value={formatCentsCompact(activeSummary.outstandingCents)} sub={activeSummary.pendingCoCount > 0 ? `${activeSummary.pendingCoCount} CO${activeSummary.pendingCoCount === 1 ? "" : "s"} pending` : "invoiced − paid"} tone={activeSummary.outstandingCents > 0 ? "amber" : "neutral"} icon={<IconChangeOrder />} />
+        <KpiTile label="Invoiced" value={formatCentsCompact(activeSummary.invoicedCents)} sub={`${formatCentsCompact(activeSummary.paidCents)} paid · incl. tax`} tone="blue" icon={<IconGauge />} />
+        {/* Pre-tax, like the contract it measures against — the two money bases
+            on this row are deliberate: contract figures are pre-tax, cash
+            figures include it. */}
+        <KpiTile label="Left to bill" value={formatCentsCompact(activeSummary.leftToBillCents)} sub="contract − billed, pre-tax" tone="neutral" icon={<IconHardHat />} />
+        <KpiTile label="Outstanding" value={formatCentsCompact(activeSummary.outstandingCents)} sub={activeSummary.pendingCoCount > 0 ? `${activeSummary.pendingCoCount} CO${activeSummary.pendingCoCount === 1 ? "" : "s"} pending` : "unpaid balance"} tone={activeSummary.outstandingCents > 0 ? "amber" : "neutral"} icon={<IconChangeOrder />} />
       </div>
 
       {/* Portfolio — contract-mix donut + per-project bars (shown once there's a
