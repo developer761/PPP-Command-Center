@@ -105,3 +105,36 @@ describe("dueLabel", () => {
     expect(dueLabel("2026-03-08", "2026-03-07").text).toBe("due tomorrow");
   });
 });
+
+/**
+ * The two the parallel session caught: the rail claimed to read the email
+ * archive and didn't, and its "ET" day was actually the UTC day.
+ */
+describe("ET boundaries", () => {
+  it("groups a late-evening ET event into the month it happened in ET, not UTC", () => {
+    // 2026-08-31 21:00 ET is 2026-09-01 01:00 UTC. Grouping on the raw string
+    // filed an August event under September.
+    const feed = buildActivityFeed(
+      [e({ id: "late", at: "2026-09-01T01:00:00Z", kind: "email", title: "Chasing the GC" })],
+      "2026-09-15"
+    );
+    expect(feed.months[0].label).toBe("August 2026");
+  });
+
+  it("treats a date-only value as already ET rather than shifting it", () => {
+    // due_at is a DATE column — there is no zone to convert, and converting it
+    // anyway would move it a day.
+    expect(dueLabel("2026-08-12", "2026-08-12").text).toBe("due today");
+  });
+
+  it("carries emails in the chronology", () => {
+    const feed = buildActivityFeed(
+      [
+        e({ id: "m1", at: "2026-08-05T14:00:00Z", kind: "email", title: "Re: 1200 Jericho" }),
+        e({ id: "s1", at: "2026-08-04T14:00:00Z", kind: "status" }),
+      ],
+      "2026-08-12"
+    );
+    expect(feed.months[0].entries.map((x) => x.kind)).toEqual(["email", "status"]);
+  });
+});

@@ -53,10 +53,31 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-/** ET calendar date of an ISO timestamp. Matches every other elapsed figure on
- *  the platform — subtracting raw timestamps shifts the day across DST. */
+/**
+ * ET calendar date of a timestamp.
+ *
+ * A plain `.slice(0, 10)` gives the UTC date, which is a different day for
+ * anything after 8pm Eastern — so an email received at 9pm on the 31st landed
+ * in the next month, and a task due that evening could read a day late. It was
+ * harmless while this only touched a DATE column, but the name promised ET and
+ * the value wasn't. Flagged by the parallel session; fixed rather than
+ * renamed, because every other elapsed figure on the platform is ET and this
+ * one silently wasn't.
+ *
+ * A date-only string (YYYY-MM-DD) has no zone to convert and is returned as-is.
+ */
 function etDay(iso: string): string {
-  return iso.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
 }
 
 export function buildActivityFeed(
@@ -78,7 +99,7 @@ export function buildActivityFeed(
   const past = [...entries].sort((a, b) => b.at.localeCompare(a.at));
   const byMonth = new Map<string, ActivityEntry[]>();
   for (const e of past) {
-    const key = e.at.slice(0, 7);
+    const key = etDay(e.at).slice(0, 7);
     const list = byMonth.get(key);
     if (list) list.push(e);
     else byMonth.set(key, [e]);
@@ -123,11 +144,12 @@ function daysBetween(fromIso: string, toIso: string): number {
  * archive is unhappy.
  */
 export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[]> {
-  const [log, notes, tasks, proposals] = await Promise.all([
+  const [log, notes, tasks, proposals, emails] = await Promise.all([
     import("./status").then((m) => m.listOpportunityStatusLog(oppId)).catch(() => []),
     import("./notes").then((m) => m.listOpportunityNotes(oppId)).catch(() => []),
     import("./tasks").then((m) => m.listOpportunityTasks(oppId)).catch(() => []),
     import("../proposals/db").then((m) => m.listProposalsForOpp(oppId)).catch(() => []),
+    import("../email-archive/db").then((m) => m.listArchivedEmails("opp", oppId)).catch(() => []),
   ]);
   const { opportunityStatusLabel } = await import("./db");
   const out: ActivityEntry[] = [];
@@ -155,6 +177,20 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
       detail: t.description,
       dueAt: t.due_at,
       done: !!t.completed_at,
+    });
+  }
+  // The source the whole rationale rests on. "We sent it, she asked for a
+  // revision, we chased her twice" — the chasing is email, and the first cut of
+  // this shipped without it while the comment above claimed otherwise. Caught by
+  // the parallel session's audit.
+  for (const em of emails) {
+    const who = em.from_name || em.from_email;
+    out.push({
+      id: `email:${em.id}`,
+      kind: "email",
+      at: em.received_at,
+      title: em.subject?.trim() || "(no subject)",
+      detail: who ? `from ${who}` : null,
     });
   }
   for (const p of proposals) {

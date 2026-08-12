@@ -6,39 +6,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount, formatAccountNumber, type CommercialAccount } from "@/lib/commercial/accounts/db";
-import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
-import {
-  listAccountContacts,
-  addContactToAccount,
-  detachContactFromAccount,
-  getPrimaryContact,
-  setPrimaryContact,
-  touchContact,
-  CONTACT_ROLES,
-  roleLabel,
-  type ContactRole,
-  type CommercialContact,
-} from "@/lib/commercial/accounts/contacts";
-import {
-  listAccountTeam,
-  listAssignableStaff,
-  listAllPppProfileEmails,
-  addAssignment,
-  removeAssignment,
-  ASSIGNMENT_ROLES,
-  assignmentRoleLabel,
-  type AssignmentRole,
-} from "@/lib/commercial/accounts/assignments";
-import {
-  listAccountDocuments,
-  listAccountDocumentsWithUploaders,
-  archiveDocument,
-  restoreDocument,
-  documentCategoryLabel,
-  expiryStatus,
-  type DocumentCategory,
-  type CommercialAccountDocument,
-} from "@/lib/commercial/accounts/documents";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS } from "@/lib/commercial/form-classnames";
+import { listAccountContacts, addContactToAccount, detachContactFromAccount, getPrimaryContact, setPrimaryContact, touchContact, CONTACT_ROLES, roleLabel, type ContactRole, type CommercialContact } from "@/lib/commercial/accounts/contacts";
+import { listAccountTeam, listAssignableStaff, listAllPppProfileEmails, addAssignment, removeAssignment, ASSIGNMENT_ROLES, assignmentRoleLabel, type AssignmentRole } from "@/lib/commercial/accounts/assignments";
+import { listAccountDocumentsWithUploaders, archiveDocument, restoreDocument, documentCategoryLabel, expiryStatus, type DocumentCategory, type CommercialAccountDocument } from "@/lib/commercial/accounts/documents";
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
 import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
@@ -53,31 +24,19 @@ import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { CopyToClipboardButton } from "@/components/commercial/copy-to-clipboard-button";
-import {
-  getAccountOverview,
-  relativeActivity,
-  activityTone,
-  winRate,
-  daysSinceIso,
-  type AccountOverview,
-} from "@/lib/commercial/accounts/overview";
-import {
-  getInvoiceRollupForAccount,
-  splitOpenBalance,
-  type AccountInvoiceRollup,
-} from "@/lib/commercial/invoices/rollup";
+import { getAccountOverview, relativeActivity, winRate, daysSinceIso, type AccountOverview } from "@/lib/commercial/accounts/overview";
+import { getInvoiceRollupForAccount, splitOpenBalance, type AccountInvoiceRollup } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { monthlyBilledSeries as monthlyBilledSeriesShared } from "@/lib/commercial/invoices/monthly";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
-import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
+import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
 import { ProgressMeter } from "@/components/commercial/progress-meter";
-import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIdsWithChangeOrderLine, changeOrderLineCentsByInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
-import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
-import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commercial/invoices/lien-waiver";
+import { listCommercialInvoices, addPayment, createCommercialInvoice, changeOrderLineCentsByInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { seedMilestonesFromLineItems, listMilestonesForInvoice, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
+import { attachInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
 import { DonutChart, GaugeRing, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
-import { getProjectFinancials, dealMargin, marginFrom } from "@/lib/commercial/projects/financials";
-import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
+import { getProjectFinancials, marginFrom } from "@/lib/commercial/projects/financials";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { costBreakdownForOpps } from "@/lib/commercial/purchases/db";
 import TrendChart from "@/components/trend-chart";
@@ -85,90 +44,32 @@ import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
-import {
-  listCommercialOpportunities,
-  opportunityStatusLabel,
-  oppStatusDisplayLabel,
-  formatBidRange,
-  formatOpportunityNumber,
-  weightedPipelineCents,
-  dealValueCents,
-  opportunityLossReasonLabel,
-  derivedOppName,
-  getCommercialOpportunity,
-  OPPORTUNITY_STATUSES,
-  OPPORTUNITY_SOURCES,
-  opportunitySourceLabel,
-  type CommercialOpportunity,
-  type OpportunityStatus,
-} from "@/lib/commercial/opportunities/db";
+import { listCommercialOpportunities, oppStatusDisplayLabel, formatBidRange, formatOpportunityNumber, weightedPipelineCents, dealValueCents, derivedOppName, getCommercialOpportunity, OPPORTUNITY_STATUSES, OPPORTUNITY_SOURCES, opportunitySourceLabel, type CommercialOpportunity, type OpportunityStatus } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
-import { proposalDisplayId, listProposalsForOpp, getProposal, listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
-import { listDocumentsForParent } from "@/lib/commercial/documents/db";
-import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/commercial/documents/categories";
-import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
+import { proposalDisplayId, getProposal, listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 // Inline delivery tools rendered under the deal's Project sub-tab (2026-08).
-import { SubmittalDetailView } from "./submittals/[dealId]/[sid]/page";
-import { InvoiceDetailView } from "@/app/commercial/invoices/[id]/page";
 import { revalidatePath } from "next/cache";
-import {
-  listCurrentStatusEnteredAtByOpp,
-  changeOpportunityStatus,
-} from "@/lib/commercial/opportunities/status";
-import {
-  KANBAN_COLUMNS,
-  columnKeyForOpp,
-  dealTabsFor,
-  kanbanMoveToLabel,
-  resolveColumnTarget,
-} from "@/lib/commercial/opportunities/kanban-columns";
+import { listCurrentStatusEnteredAtByOpp, changeOpportunityStatus } from "@/lib/commercial/opportunities/status";
+import { KANBAN_COLUMNS, columnKeyForOpp, kanbanMoveToLabel, resolveColumnTarget } from "@/lib/commercial/opportunities/kanban-columns";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
-import { listSubmittalCountByOpp, listOpportunitySubmittals } from "@/lib/commercial/opportunities/submittals";
-import { submittalStatusLabel } from "@/lib/commercial/opportunities/submittal-constants";
-import { listCloseoutPackages, listCloseoutItems } from "@/lib/commercial/closeout/db";
-import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
-import { closeoutProgressPct } from "@/lib/commercial/closeout/constants";
+import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
 import { findDuplicateOpportunities } from "@/lib/commercial/opportunities/duplicates";
-import {
-  PRE_SALE_OPEN_STATUSES,
-  IN_DELIVERY_STATUSES,
-  TERMINAL_STATUSES,
-  QUICK_FLIP_BLOCKED_STATUSES,
-  isTerminalOpportunityStatus,
-  isWon,
-  isLost,
-  isPostSale,
-  isPostSaleProject,
-  dealPhase,
-} from "@/lib/commercial/opportunities/constants";
+import { PRE_SALE_OPEN_STATUSES, IN_DELIVERY_STATUSES, TERMINAL_STATUSES, isWon, isLost, isPostSale, isPostSaleProject, dealPhase } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
 import { BidLifecycleTimeline } from "@/components/commercial/bid-lifecycle-timeline";
 import { IconClock, IconAlertTriangle, IconFileDoc, IconStar } from "@/components/commercial/inline-icons";
 import { HashReveal } from "@/components/commercial/hash-reveal";
-import {
-  getAccountRecentActivity,
-  describeActivity,
-} from "@/lib/commercial/accounts/recent-activity";
-import {
-  proposalStatusLabel,
-  isProposalEligibleOpp,
-} from "@/lib/commercial/proposals/constants";
+import { getAccountRecentActivity, describeActivity } from "@/lib/commercial/accounts/recent-activity";
+import { proposalStatusLabel, isProposalEligibleOpp } from "@/lib/commercial/proposals/constants";
 import NewProposalPicker from "@/components/commercial/new-proposal-picker";
 import { commercialDb } from "@/lib/commercial/db";
-import {
-  listAccountTags,
-  listAllDistinctTags,
-  addAccountTag,
-  removeAccountTag,
-  MAX_TAG_LENGTH,
-  type AccountTag,
-} from "@/lib/commercial/accounts/tags";
+import { listAccountTags, listAllDistinctTags, addAccountTag, removeAccountTag, MAX_TAG_LENGTH, type AccountTag } from "@/lib/commercial/accounts/tags";
 // InfoDot import removed 2026-07-08 Batch 2b — labels use native `title`
 // attribute for hover tooltips instead of the visible `?` badge.
 
@@ -297,8 +198,6 @@ type SP = Promise<{
   pu_date?: string;
   pu_desc?: string;
 }>;
-/** Resolved (awaited) shape of SP — passed to the inline Project tools. */
-type SPShape = Awaited<SP>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
 // Karan 2026-07-05: "too cluttered, needs better organization." Went
@@ -372,11 +271,6 @@ const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string 
     { key: "opportunities", label: "Pipeline" },
     { key: "documents", label: "Documents" },
   ],
-};
-const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
-  overview: "home",
-  people: "contacts",
-  deals: "opportunities",
 };
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
   // 2026-08: Overview (all-deal KPI dashboard) is the default landing.
@@ -1076,42 +970,7 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
   );
 }
 
-/**
- * Account-scoped Projects tab (2026-07-29). Every Won / in-delivery deal for
- * THIS customer, each as its own ProjectCard with direct jumps into that
- * project's Change Orders / AIA Billing / Submittals / Closeout — so you can
- * work a specific project's production tools without leaving the account.
- * Multiple deals each get their own card (no clustering); a summary strip up
- * top rolls the account's delivery numbers. Empty state guides you when the
- * account has no jobs under contract yet.
- */
-// The six delivery-tool keys, in canonical order (RUX-2). Shared by the deal
-// tab normalizer + dispatch so a `dt=<tool>` value is recognized in both.
-// "transactions" is an alias for "costs": the surface was renamed in the
-// 2026-08 meeting but the URL key stayed `costs`, so links written to the new
-// name would 404. Both resolve; `costs` remains canonical so every existing
-// bookmark, bell link and back-href keeps working.
-const DEAL_TOOL_KEYS = ["work-order", "submittals", "change-orders", "aia", "costs", "transactions", "closeout"];
 
-function DealPanelLead({
-  stats,
-  bar,
-}: {
-  stats: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" }[];
-  bar?: { label: string; pct: number; tone: import("@/components/commercial/progress-meter").MeterTone };
-}) {
-  const cols = stats.length === 2 ? "grid-cols-2" : stats.length >= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
-  return (
-    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-      <div className={`grid ${cols} gap-3`}>
-        {stats.map((s, i) => (
-          <ProjectStat key={i} label={s.label} value={s.value} sub={s.sub} tone={s.tone} />
-        ))}
-      </div>
-      {bar && <ProgressMeter className="mt-3" label={bar.label} pct={bar.pct} tone={bar.tone} />}
-    </div>
-  );
-}
 
 /**
  * Create an invoice/milestone directly on the deal (Phase 1, Katie: invoices
@@ -1287,20 +1146,6 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
   );
 }
 
-const DEAL_DOC_BOXES: { key: string; label: string; categories: string[]; hint?: string }[] = [
-  { key: "receipt", label: "Receipts", categories: ["receipt"] },
-  { key: "lien_waiver", label: "Lien Waivers", categories: ["lien_waiver"] },
-  { key: "invoice_attachment", label: "Invoice Attachments", categories: ["invoice_attachment"] },
-  { key: "change_order", label: "Change Orders", categories: ["change_order"] },
-  { key: "aia_billing", label: "AIA Billing", categories: ["aia_billing"] },
-  { key: "submittal", label: "Submittals", categories: ["submittal"] },
-  { key: "closeout", label: "Closeout", categories: ["closeout"] },
-  { key: "proposal", label: "Proposals", categories: ["proposal"] },
-  { key: "contract", label: "Contracts & Permits", categories: ["contract", "permit", "insurance", "bid_set"], hint: "Contracts · permits · insurance · plans & specs" },
-  // Catch-all — anything not claimed above (rfi, meeting_minutes, site_photo,
-  // correspondence, other, or an unknown/future category) lands here.
-  { key: "other", label: "Other", categories: ["rfi", "meeting_minutes", "site_photo", "correspondence", "other"], hint: "RFIs · minutes · site photos · correspondence · anything else" },
-];
 
 function monthlyBilledSeries(invoices: { status: string; created_at: string | null; subtotal_cents: number }[]): { label: string; value: number }[] {
   return monthlyBilledSeriesShared(invoices, { months: 6, nowIso: new Date().toISOString() });
@@ -1317,303 +1162,9 @@ const PNL_COST_TONE: Record<string, ChartTone> = {
 // Field-ops crew labor (Option A) — an auto cost source alongside purchases, its
 // own donut slice so "where the money goes" shows in-house labor distinctly.
 const CREW_LABOR_TONE: ChartTone = "emerald";
-async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: string }) {
-  const [fin, dealInvoices] = await Promise.all([
-    getProjectFinancials(oppId),
-    listCommercialInvoices({ opportunityId: oppId }),
-  ]);
-  const grossRevenueCents = fin.billedPreTaxCents;
-  // Total cost = purchases + field-ops crew labor (Option A), so Net/Margin here
-  // match the deal Overview, the account rollup, and the platform P&L.
-  const costsCents = fin.totalCostCents;
-  const netProfitCents = grossRevenueCents - costsCents;
-  // Same dealMargin() the Overview uses. This computed its own billed-based
-  // number with NO cost guard, so a deal with $200k billed and nothing spent
-  // read "100%" here and "—" on the Overview — the same deal, two clicks apart.
-  const pnlMargin = dealMargin(fin);
-  const marginPct = pnlMargin.pct;
-  const collectedPct = fin.invoicedCents > 0 ? Math.min(100, Math.round((fin.collectedCents / fin.invoicedCents) * 100)) : 0;
-  const revenueMonthly = monthlyBilledSeries(dealInvoices);
-  const costSegments: DonutSegment[] = [
-    ...PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
-      label: PURCHASE_CATEGORY_META[c].label,
-      value: fin.costs[c],
-      tone: PNL_COST_TONE[c] ?? "neutral",
-      valueLabel: formatCentsCompact(fin.costs[c]),
-    })),
-    ...(fin.fieldOpsLaborCents > 0
-      ? [{ label: "Crew labor", value: fin.fieldOpsLaborCents, tone: CREW_LABOR_TONE, valueLabel: formatCentsCompact(fin.fieldOpsLaborCents) }]
-      : []),
-  ];
-  const overdueCount = dealInvoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
-  // Split the open balance into overdue vs current so the Collections donut
-  // labels only the overdue portion "Overdue" (2026-08 UI/UX audit).
-  const overdueBalanceCents = dealInvoices
-    .filter((i) => deriveInvoiceStatus(i) === "overdue")
-    .reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
-  const currentOpenCents = Math.max(0, fin.openBalanceCents - overdueBalanceCents);
-  const isCredit = fin.openBalanceCents === 0 && fin.creditCents > 0;
-  const leftToBillCents = fin.hasContract ? Math.max(0, fin.contractCents - fin.billedPreTaxCents) : 0;
-  // Over-billed when pre-tax billed exceeds the (pre-tax) contract — surfaced in
-  // amber, NEVER hidden behind a clean full-green "done" donut (2026-08 money
-  // audit #1: the P&L tab was contradicting the deal's own Overview card).
-  const overBilledCents = fin.hasContract ? Math.max(0, fin.billedPreTaxCents - fin.contractCents) : 0;
-  const billedWithinContractCents = Math.max(0, fin.billedPreTaxCents - overBilledCents);
-  const billedOfContractPct = fin.hasContract ? Math.min(100, Math.round((fin.billedPreTaxCents / fin.contractCents) * 100)) : 0;
-  const billedOfContractRawPct = fin.hasContract ? Math.round((fin.billedPreTaxCents / fin.contractCents) * 100) : 0;
-  // Payment APPLIED within invoices (collected − overpayment credit) = Σ per-invoice
-  // min(paid, total). Using this for the Paid donut slice keeps
-  // Paid + currentOpen + overdue == invoiced even when one invoice is overpaid
-  // and another is open (2026-08 re-audit: min(collected,invoiced) let a
-  // per-invoice credit over-draw the ring).
-  const paidCapped = Math.max(0, fin.collectedCents - fin.creditCents);
-  // Neutral while the number is provisional — see the Overview tile for why an
-  // emerald 100% beside "no costs booked yet" misleads.
-  const marginTone: ChartTone =
-    marginPct === null || pnlMargin.provisional
-      ? "neutral"
-      : pnlMargin.overBudget || marginPct < 0
-        ? "rose"
-        : marginPct < 15
-          ? "amber"
-          : "emerald";
-  const marginDisplay =
-    pnlMargin.pct === null ? "—" : pnlMargin.overBudget ? "Over budget" : `${pnlMargin.pct}%`;
 
-  return (
-    <div className="space-y-4 mt-3">
-      <p className="text-[12px] text-ppp-charcoal-500">This opportunity&rsquo;s whole financial picture, combined from every tool. Gross = billed to date; Net = gross − job costs. Tax is pass-through, not revenue.</p>
 
-      {/* ── Profitability ── */}
-      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Profitability</h3>
-          <span className="text-[11px] text-ppp-charcoal-500">Gross = billed · Net = billed − costs</span>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
-          <StatCard label="Job costs" value={formatCentsCompact(costsCents)} tone="amber" sub={costsCents === 0 ? "none logged" : fin.fieldOpsLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
-          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={pnlMargin.provisional ? "neutral" : netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
-          <StatCard
-            label={pnlMargin.label}
-            value={marginDisplay}
-            tone={marginTone}
-            sub={
-              pnlMargin.caveat ??
-              (pnlMargin.vsContract
-                ? `billed − costs · ${pnlMargin.vsContract.pct}% ${pnlMargin.vsContract.label}`
-                : "billed − costs")
-            }
-          />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
-          <div className="lg:col-span-2">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Revenue billed / month · last 6 mo</div>
-            <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[140px]" />
-          </div>
-          <div className="flex items-center gap-4 justify-center">
-            <GaugeRing
-              pct={pnlMargin.overBudget ? 0 : (marginPct ?? 0)}
-              tone={marginTone}
-              value={marginDisplay}
-              label="margin"
-              size={104}
-            />
-            {costSegments.length > 0 ? (
-              <DonutChart size={104} legend={false} segments={costSegments} centerValue={formatCentsCompact(costsCents)} centerLabel="costs" />
-            ) : (
-              <div className="text-[11px] text-ppp-charcoal-400 max-w-[100px]">Costs appear here as they&rsquo;re logged.</div>
-            )}
-          </div>
-        </div>
-        {fin.laborUnratedHours > 0 && (
-          <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
-            <span className="font-semibold">{fin.laborUnratedHours.toLocaleString()} approved crew hours</span> have no cost rate set, so labor cost and margin are understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
-          </p>
-        )}
-      </section>
 
-      {/* ── Collections ── */}
-      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Collections</h3>
-          <Link href={`/commercial/opportunities/${oppId}?tab=invoices`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Invoices →</Link>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-          <MiniFig label="Invoiced" value={formatCentsCompact(fin.invoicedCents)} tone="brand" sub={fin.invoicedCents > 0 ? undefined : "none yet"} />
-          <MiniFig label="Paid" value={formatCentsCompact(fin.collectedCents)} tone="emerald" sub={fin.invoicedCents > 0 ? `${collectedPct}% collected` : "—"} />
-          <MiniFig label={isCredit ? "Credit" : "Outstanding"} value={formatCentsCompact(isCredit ? fin.creditCents : fin.openBalanceCents)} tone={isCredit ? "emerald" : fin.openBalanceCents > 0 ? "blue" : "neutral"} sub={fin.invoicedCents === 0 ? "not billed" : isCredit ? "overpaid" : fin.openBalanceCents === 0 ? "settled" : "unpaid"} />
-          <MiniFig label="Overdue" value={String(overdueCount)} tone={overdueCount > 0 ? "rose" : "neutral"} sub={overdueCount > 0 ? "past due" : "on track"} />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-center">
-          <div className="flex items-center justify-center">
-            <DonutChart
-              size={140}
-              segments={[
-                { label: "Paid", value: paidCapped, tone: "emerald", valueLabel: formatCentsCompact(paidCapped) },
-                ...(currentOpenCents > 0
-                  ? [{ label: "Open (current)", value: currentOpenCents, tone: "blue" as ChartTone, valueLabel: formatCentsCompact(currentOpenCents) }]
-                  : []),
-                ...(overdueBalanceCents > 0
-                  ? [{ label: "Overdue", value: overdueBalanceCents, tone: "rose" as ChartTone, valueLabel: formatCentsCompact(overdueBalanceCents) }]
-                  : []),
-              ]}
-              centerValue={formatCentsCompact(fin.invoicedCents)}
-              centerLabel="invoiced"
-            />
-          </div>
-          <div>
-            <ProgressMeter label="Collected of invoiced" value={fin.collectedCents} max={fin.invoicedCents} tone={collectedPct === 100 ? "emerald" : overdueCount > 0 ? "amber" : "blue"} rightLabel={fin.invoicedCents > 0 ? `${collectedPct}%` : "—"} amounts={{ done: formatCentsFull(fin.collectedCents), total: formatCentsFull(fin.invoicedCents) }} />
-          </div>
-        </div>
-      </section>
-
-      {/* ── Contract ── */}
-      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-        <h3 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Contract</h3>
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          <MiniFig label="Contract" value={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"} tone="navy" sub={fin.hasContract ? "bid + COs" : "not set"} />
-          <MiniFig label="Billed" value={formatCentsCompact(fin.billedPreTaxCents)} tone={overBilledCents > 0 ? "amber" : "emerald"} sub={fin.hasContract ? `${billedOfContractRawPct}%` : "—"} />
-          {overBilledCents > 0 ? (
-            <MiniFig label="Over-billed" value={formatCentsCompact(overBilledCents)} tone="amber" sub="past contract" />
-          ) : (
-            <MiniFig label="Left to bill" value={fin.hasContract ? formatCentsCompact(leftToBillCents) : "—"} tone="blue" sub="contract − billed" />
-          )}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-center">
-          <div className="flex items-center justify-center">
-            <DonutChart
-              size={140}
-              segments={[
-                // Neutral (not emerald) when there's no contract yet — a full
-                // green ring on a no-contract deal reads as "done" (2026-08
-                // re-audit). Emerald once a contract exists; "Within contract"
-                // when over-billed so it doesn't collide with the full "Billed".
-                { label: overBilledCents > 0 ? "Within contract" : "Billed", value: billedWithinContractCents, tone: fin.hasContract ? "emerald" : "neutral", valueLabel: formatCentsCompact(billedWithinContractCents) },
-                { label: "Left to bill", value: leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(leftToBillCents) },
-                ...(overBilledCents > 0
-                  ? [{ label: "Over-billed", value: overBilledCents, tone: "amber" as ChartTone, valueLabel: formatCentsCompact(overBilledCents) }]
-                  : []),
-              ]}
-              centerValue={fin.hasContract ? formatCentsCompact(fin.contractCents) : "—"}
-              centerLabel="contract"
-            />
-          </div>
-          <div>
-            {fin.hasContract ? (
-              <ProgressMeter label="Billed of contract" value={fin.billedPreTaxCents} max={fin.contractCents} tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"} rightLabel={`${billedOfContractRawPct}%`} amounts={{ done: formatCentsFull(fin.billedPreTaxCents), total: formatCentsFull(fin.contractCents) }} note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null} />
-            ) : (
-              <p className="text-[12px] text-ppp-charcoal-400">Set a bid range or accepted proposal on the opportunity to fill the contract number.</p>
-            )}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-/** A clean neutral project-tool card: small accent icon + a status chip + rich
- *  mini-content, linking into that tool inline under the deal's Project tab. */
-function ToolMiniCard({
-  label,
-  href,
-  iconBg,
-  icon,
-  chip,
-  children,
-}: {
-  label: string;
-  href: string;
-  iconBg: string;
-  icon: React.ReactNode;
-  chip: { label: string; tone: "neutral" | "amber" | "emerald" | "blue" | "rose" } | null;
-  children: React.ReactNode;
-}) {
-  const chipCls =
-    chip?.tone === "rose" ? "bg-rose-50 text-rose-700 border-rose-200"
-    : chip?.tone === "amber" ? "bg-amber-50 text-amber-800 border-amber-200"
-    : chip?.tone === "emerald" ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-    : chip?.tone === "blue" ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
-    : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
-  return (
-    <Link href={href} className="group block rounded-xl border border-ppp-charcoal-100 bg-surface p-4 hover:border-ppp-charcoal-200 hover:shadow-sm transition-all">
-      <div className="flex items-center gap-2.5 mb-2">
-        <span aria-hidden className={`inline-flex items-center justify-center h-8 w-8 rounded-lg ${iconBg} text-white shrink-0`}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{icon}</svg>
-        </span>
-        <span className="text-[13px] font-bold text-ppp-charcoal">{label}</span>
-        {chip && <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${chipCls}`}>{chip.label}</span>}
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="ml-auto text-ppp-charcoal-300 shrink-0 group-hover:text-ppp-charcoal-500 group-hover:translate-x-0.5 transition-all"><path d="M9 18l6-6-6-6" /></svg>
-      </div>
-      {children}
-    </Link>
-  );
-}
-
-/** Compact summary tile for the account Projects tab (local KpiTile has a
- *  different placeholder-oriented API, so this keeps the collision-free). */
-function ProjectStat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" | "rose" }) {
-  const valueCls = tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : tone === "rose" ? "text-rose-700" : "text-ppp-charcoal";
-  return (
-    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-3.5 py-3 shadow-sm">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
-      <div className={`font-condensed text-xl sm:text-2xl font-black tabular-nums leading-none mt-1 truncate ${valueCls}`} title={value}>{value}</div>
-      {sub && <div className="text-[10.5px] text-ppp-charcoal-500 mt-1 truncate" title={sub}>{sub}</div>}
-    </div>
-  );
-}
-
-/**
- * Quick-flip an opp's status straight from the account-side
- * Opportunities tab — Alex sees a bid mid-pipeline, picks the next
- * status from a dropdown on the row, one tap submits. Same DAG check
- * as the global page; terminal states (won/lost/no_bid) redirect to
- * the opp detail so the user can capture the required reason/note.
- */
-/**
- * Karan 2026-07-08: inline-edit each Card on the account overview.
- * Instead of jumping to the /edit page, each category (Company /
- * Billing / Site / Contact / Compliance / Tax) gets its own tiny
- * form + Save button. The `section` field tells the action which
- * subset of `updateCommercialAccount` fields to accept; everything
- * outside that whitelist is dropped so a stray form input can't
- * silently patch unrelated columns.
- *
- * Numeric fields (insurance minimums) get NaN-safe parsing; blank
- * inputs clear back to null.
- */
-/**
- * Karan 2026-07-08: manual account note. Notes tab used to say
- * "manual notes coming next" — this is the "next." Server action
- * validates body, calls addAccountNote with kind='user' so it
- * renders in the normal (white) card style vs. the slate-badge
- * auto-debrief style.
- */
-async function addAccountNoteAction(formData: FormData) {
-  "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
-  const account_id = String(formData.get("account_id") ?? "");
-  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
-  const body = String(formData.get("body") ?? "").trim();
-  if (!body) {
-    redirect(`/commercial/accounts/${account_id}?tab=notes&error=${encodeURIComponent("Type something before adding a note.")}`);
-  }
-  const { addAccountNote } = await import("@/lib/commercial/account-notes");
-  const result = await addAccountNote({
-    account_id,
-    body,
-    kind: "user",
-    author_user_id: user.id,
-  });
-  if (!result.ok) {
-    redirect(`/commercial/accounts/${account_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
-  }
-  revalidatePath(`/commercial/accounts/${account_id}`);
-  redirect(`/commercial/accounts/${account_id}?tab=notes&saved=1#note-${result.note.id}`);
-}
 
 async function updateAccountSectionAction(formData: FormData) {
   "use server";
@@ -5431,135 +4982,6 @@ function DocumentRow({
   );
 }
 
-/**
- * Notes tab — surfaces commercial_account_notes for this account.
- * Two visual treatments:
- *   - user notes: standard white card with author + timestamp
- *   - auto_debrief notes: slate-tinted card with [AUTO] badge + "View opportunity" link
- *
- * Auto-debrief notes land here automatically when a linked opportunity
- * is closed (won/lost/no_bid) via the Win/Loss Debrief flow. Two-stage
- * post: a placeholder lands immediately on status change, enriches
- * in-place when the structured debrief is submitted.
- */
-async function NotesTab({ accountId }: { accountId: string }) {
-  const { listAccountNotes } = await import("@/lib/commercial/account-notes");
-  const notes = await listAccountNotes(accountId);
-
-  const addForm = (
-    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-      <h3 className="text-sm font-bold text-ppp-charcoal mb-1">Add a note</h3>
-      <p className="text-[11.5px] text-ppp-charcoal-500 mb-3">
-        Post any manual note for this account — call summaries, competitor intel,
-        follow-ups, anything the team should see. Won/Lost/No-bid debriefs also
-        auto-post here.
-      </p>
-      <form action={addAccountNoteAction} className="space-y-2">
-        <input type="hidden" name="account_id" value={accountId} />
-        <textarea
-          name="body"
-          rows={3}
-          maxLength={5000}
-          required
-          placeholder="Type your note…"
-          className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-500 resize-y min-h-[80px] transition-colors"
-        />
-        <div className="flex items-center justify-end">
-          <button
-            type="submit"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/25"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 5v14 M5 12h14" />
-            </svg>
-            Add note
-          </button>
-        </div>
-      </form>
-    </section>
-  );
-
-  if (notes.length === 0) {
-    return (
-      <div className="space-y-3">
-        {addForm}
-        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-6 text-center text-sm text-ppp-charcoal-500">
-          <strong className="block text-ppp-charcoal">No notes yet</strong>
-          <p className="mt-1">
-            Add your first one above. Won / Lost / No-bid debriefs also auto-post here.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {addForm}
-      {notes.map((n) => {
-        const isAuto = n.kind === "auto_debrief";
-        return (
-          <article
-            key={n.id}
-            className={`rounded-xl border p-4 sm:p-5 ${
-              isAuto
-                ? "bg-ppp-charcoal-50/60 border-ppp-charcoal-200"
-                : "bg-surface border-ppp-charcoal-100"
-            }`}
-          >
-            <header className="flex items-start justify-between gap-3 mb-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                {isAuto ? (
-                  <>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-ppp-charcoal-200 text-ppp-charcoal-700">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <rect x="3" y="11" width="18" height="10" rx="2" />
-                        <circle cx="12" cy="5" r="2" />
-                        <path d="M12 7v4 M8 16h.01 M16 16h.01" />
-                      </svg>
-                      Auto
-                    </span>
-                    {n.source_outcome && (
-                      <span
-                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          n.source_outcome === "won"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : n.source_outcome === "lost"
-                            ? "bg-rose-100 text-rose-800"
-                            : "bg-ppp-charcoal-100 text-ppp-charcoal-700"
-                        }`}
-                      >
-                        {n.source_outcome === "no_bid" ? "No bid" : n.source_outcome}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-[12px] font-medium text-ppp-charcoal">
-                    {n.author_full_name ?? n.author_email ?? "System"}
-                  </span>
-                )}
-                <time className="text-[11px] text-ppp-charcoal-500">
-                  {new Date(n.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: "America/New_York" })}
-                </time>
-              </div>
-              {isAuto && n.source_opportunity_id && (
-                <Link
-                  href={`/commercial/accounts/${accountId}/debrief/${n.source_opportunity_id}`}
-                  className="text-[11px] font-medium text-cc-brand-700 hover:text-cc-brand-800 shrink-0 underline underline-offset-2"
-                >
-                  Open debrief →
-                </Link>
-              )}
-            </header>
-            <p className="text-sm text-ppp-charcoal whitespace-pre-wrap leading-relaxed">
-              {n.body}
-            </p>
-          </article>
-        );
-      })}
-    </div>
-  );
-}
 
 /**
  * Karan 2026-07-08: inline-edit Card with AUTOSAVE. When `section` +
@@ -5648,65 +5070,7 @@ function EditableField({
   );
 }
 
-/** Inline <select> — fixes the chevron overlap by widening pr and
- *  aligning the background icon manually via bg-no-repeat. */
-function EditableSelect({
-  name,
-  label,
-  defaultValue,
-  options,
-}: {
-  name: string;
-  label: string;
-  defaultValue: string | null;
-  options: Array<[string, string]>;
-}) {
-  return (
-    <label className="block">
-      <span className="block text-[10.5px] uppercase tracking-wider font-bold text-ppp-charcoal-500 mb-1">
-        {label}
-      </span>
-      <select
-        name={name}
-        defaultValue={defaultValue ?? ""}
-        className="w-full px-3 py-2 pr-9 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface hover:border-ppp-charcoal-300 focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 text-ppp-charcoal min-h-[44px] appearance-none bg-no-repeat transition-colors"
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
-          backgroundPosition: "right 0.65rem center",
-          backgroundSize: "1rem 1rem",
-        }}
-      >
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>{l}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
-/** Inline checkbox — one-liner, checkbox on the left of label. */
-function EditableCheckbox({
-  name,
-  label,
-  defaultChecked,
-}: {
-  name: string;
-  label: string;
-  defaultChecked: boolean;
-}) {
-  return (
-    <label className="inline-flex items-center gap-2 py-2 cursor-pointer text-sm">
-      <input
-        type="checkbox"
-        name={name}
-        defaultChecked={defaultChecked}
-        className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
-      />
-      <span className="text-ppp-charcoal">{label}</span>
-    </label>
-  );
-}
 
 function Field({
   label,
@@ -5783,17 +5147,8 @@ function ratingTone(r: "A" | "B" | "C"): "emerald" | "blue" | "amber" {
   return r === "A" ? "emerald" : r === "B" ? "blue" : "amber";
 }
 
-function complianceTone(s: "green" | "yellow" | "red" | "not_started"): "emerald" | "amber" | "rose" | "neutral" {
-  return s === "green" ? "emerald" : s === "yellow" ? "amber" : s === "red" ? "rose" : "neutral";
-}
 
-function complianceLabel(s: "green" | "yellow" | "red" | "not_started"): string {
-  return s === "green" ? "Approved" : s === "yellow" ? "In progress" : s === "red" ? "Issues" : "Not started";
-}
 
-function prequalLabel(s: "not_started" | "pending" | "approved" | "rejected"): string {
-  return s === "not_started" ? "Not started" : s === "pending" ? "Pending" : s === "approved" ? "Approved" : "Rejected";
-}
 
 /**
  * AccountInvoicesTab — Karan 2026-07-08 rewrite.
