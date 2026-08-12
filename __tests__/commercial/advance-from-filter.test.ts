@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   advanceFromFilter,
   stageRank,
+  subRank,
   SUB_STATUSES_BY_STATUS,
 } from "@/lib/commercial/opportunities/constants";
 
@@ -38,42 +39,67 @@ const ALL_STATES: [string, string | null][] = [
   ...Object.keys(SUB_STATUSES_BY_STATUS).map((s) => [s, null] as [string, string | null]),
 ];
 
+/** Every non-terminal state, usable as a target. */
+const TARGETS = ALL_STATES.filter(([s, sub]) => sub !== null && stageRank(s, sub) !== null) as [
+  string,
+  string,
+][];
+
 describe("advanceFromFilter", () => {
-  it("agrees with stageRank on every state, for every target rank", () => {
-    for (let target = 1; target <= 8; target++) {
-      const filter = advanceFromFilter(target);
+  it("agrees with (stageRank, subRank) on every state, for every target", () => {
+    for (const [ts, tsub] of TARGETS) {
+      const filter = advanceFromFilter(ts, tsub);
+      const targetRank = stageRank(ts, tsub)!;
+      const targetSub = subRank(ts, tsub);
       for (const [status, sub] of ALL_STATES) {
         const r = stageRank(status, sub);
-        const shouldMatch = r !== null && r < target;
+        const shouldMatch =
+          r !== null &&
+          (r < targetRank || (r === targetRank && status === ts && subRank(status, sub) < targetSub));
         expect(
           matches(filter, status, sub),
-          `target=${target} ${status}/${sub} (rank ${r})`
+          `target=${ts}/${tsub} from ${status}/${sub} (rank ${r})`
         ).toBe(shouldMatch);
       }
     }
   });
 
+  it("allows a step forward WITHIN a status", () => {
+    // Both are rank 1. A pure rank compare would refuse this, and since nothing
+    // ever moves backwards to correct it, the deal would sit at plain
+    // "Estimating" for good.
+    const f = advanceFromFilter("estimating", "proposal_pending_approval");
+    expect(matches(f, "estimating", "estimating")).toBe(true);
+    // …but not the reverse, and not sideways out of another status at the same rank.
+    expect(matches(advanceFromFilter("estimating", "estimating"), "estimating", "proposal_pending_approval")).toBe(false);
+  });
+
+  it("fills in a NULL sub_status rather than leaving the deal stuck", () => {
+    expect(matches(advanceFromFilter("estimating", "estimating"), "estimating", null)).toBe(true);
+  });
+
   it("never lets a LOST bid be the source of an automatic move", () => {
     // The resurrection case: someone edits an old proposal on a dead deal and
     // the engine drags it back into the live pipeline.
-    for (let target = 1; target <= 8; target++) {
-      expect(matches(advanceFromFilter(target), "pre_sale_closed", "lost"), `target=${target}`).toBe(
-        false
-      );
+    for (const [ts, tsub] of TARGETS) {
+      expect(
+        matches(advanceFromFilter(ts, tsub), "pre_sale_closed", "lost"),
+        `target=${ts}/${tsub}`
+      ).toBe(false);
     }
   });
 
   it("never lets a CLOSED job be the source of an automatic move", () => {
-    for (let target = 1; target <= 8; target++) {
+    for (const [ts, tsub] of TARGETS) {
       expect(
-        matches(advanceFromFilter(target), "post_sale_closed", "closed"),
-        `target=${target}`
+        matches(advanceFromFilter(ts, tsub), "post_sale_closed", "closed"),
+        `target=${ts}/${tsub}`
       ).toBe(false);
     }
   });
 
   it("reads a NULL sub_status the way each CLOSED status defines it", () => {
-    const f = advanceFromFilter(8);
+    const f = advanceFromFilter("post_sale_closed", "closeout");
     // pre_sale_closed with no sub is neither won nor lost — ambiguous. It ranks
     // null, so the engine keeps its hands off rather than guessing.
     expect(matches(f, "pre_sale_closed", null)).toBe(false);
@@ -87,42 +113,51 @@ describe("advanceFromFilter", () => {
     expect(matches(f, "in_progress", null)).toBe(true);
   });
 
-  it("matches nothing at all when no state qualifies", () => {
-    // Target rank 0 has nothing below it. The dangerous failure would be
-    // returning "" and having the caller treat it as no constraint.
-    const f = advanceFromFilter(0);
-    expect(f).toBe("id.is.null");
-    for (const [status, sub] of ALL_STATES) {
-      expect(matches(f, status, sub), `${status}/${sub}`).toBe(false);
-    }
+  it("accepts only the unset row at the very bottom of the ladder", () => {
+    // Nothing is behind the first stage except a deal whose sub was never set,
+    // and filling that in is a real forward move — not a no-op.
+    const f = advanceFromFilter("qualifying", "solicitation");
+    const accepted = ALL_STATES.filter(([s, sub]) => matches(f, s, sub));
+    expect(accepted).toEqual([["qualifying", null]]);
   });
 
   it("is never empty, whatever the target", () => {
-    for (let target = 0; target <= 8; target++) {
-      expect(advanceFromFilter(target).length, `target=${target}`).toBeGreaterThan(0);
+    for (const [ts, tsub] of TARGETS) {
+      expect(advanceFromFilter(ts, tsub).length, `${ts}/${tsub}`).toBeGreaterThan(0);
     }
+  });
+
+  it("refuses to build a filter for a terminal target", () => {
+    // 'Everything below a terminal state' is undefined. Closing a job is a
+    // sub-status refinement with one exact source, not a climb — so this must
+    // match nothing rather than guess at a range.
+    expect(advanceFromFilter("post_sale_closed", "closed")).toBe("id.is.null");
+    expect(advanceFromFilter("pre_sale_closed", "lost")).toBe("id.is.null");
   });
 
   it("emits only filter syntax PostgREST can parse", () => {
     // Values interpolate straight into the filter string. Anything outside
     // [a-z_] would need escaping — this fails loudly if a future sub-status
     // introduces a comma, dot or paren.
-    for (let target = 1; target <= 8; target++) {
+    for (const [ts, tsub] of TARGETS) {
       const clause = String.raw`(and\(status\.eq\.[a-z_]+,sub_status\.(eq\.[a-z_]+|is\.null)\)|status\.eq\.[a-z_]+)`;
-      expect(advanceFromFilter(target)).toMatch(new RegExp(`^${clause}(,${clause})*$`));
+      expect(advanceFromFilter(ts, tsub)).toMatch(new RegExp(`^${clause}(,${clause})*$`));
     }
   });
 
   it("widens monotonically as the target climbs", () => {
     // Advancing to a later stage can only ever accept MORE source states, never
     // swap them out. A non-monotonic filter would mean the ladder has a hole.
+    const ladder = TARGETS.slice().sort(
+      (a, b) => stageRank(a[0], a[1])! - stageRank(b[0], b[1])! || subRank(a[0], a[1]) - subRank(b[0], b[1])
+    );
     let previous: string[] = [];
-    for (let target = 1; target <= 8; target++) {
-      const f = advanceFromFilter(target);
+    for (const [ts, tsub] of ladder) {
+      const f = advanceFromFilter(ts, tsub);
       const current = ALL_STATES.filter(([s, sub]) => matches(f, s, sub)).map(
         ([s, sub]) => `${s}/${sub}`
       );
-      for (const state of previous) expect(current, `target=${target}`).toContain(state);
+      for (const state of previous) expect(current, `target=${ts}/${tsub}`).toContain(state);
       previous = current;
     }
   });

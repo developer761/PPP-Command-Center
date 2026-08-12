@@ -16,6 +16,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { paginateAll } from "@/lib/commercial/paginate";
 import type { ProposalStatus } from "./constants";
+import { targetForProposalStatus } from "@/lib/commercial/opportunities/auto-advance-targets";
 
 // ────────────── types ──────────────
 
@@ -294,60 +295,21 @@ export async function createProposal(
         to_status: "superseded",
         acting_user_id: input.created_by_user_id ?? null,
       });
-      // Karan 2026-07-16: bump-forward creates a new Draft that
-      // becomes the current for this deal. The deal state also
-      // needs to align back to (estimating, estimating) if it was
-      // past that stage (Proposal Sent / Won / Lost). Without this
-      // the opp kanban says "Proposal Sent" while the current
-      // proposal is a fresh Draft — semantic mismatch Karan flagged.
+      // Karan 2026-07-16 had this walk the deal BACK to (estimating,
+      // estimating) whenever a revision bump created a fresh draft, so the
+      // kanban wouldn't read "Proposal Sent" over a draft.
       //
-      // Skip post-sale deals — crews on site, don't yank backward.
-      try {
-        const { data: oppRow } = await sb
-          .from("commercial_opportunities")
-          .select("id, status, sub_status")
-          .eq("id", input.opportunity_id)
-          .is("deleted_at", null)
-          .maybeSingle();
-        const opp = oppRow as {
-          status: string;
-          sub_status: string | null;
-        } | null;
-        // Statuses we must NOT rewind to Estimating on a bump. 2026-07-28
-        // re-audit: pre_sale_closed (Won/Lost) was missing — bumping a revision
-        // on a Won/Lost deal walked it back to Estimating, silently erasing the
-        // win/loss outcome. A closed deal should be Reopened before re-bidding.
-        const noRewindStatuses = new Set([
-          "pre_construction",
-          "in_progress",
-          "billing",
-          "post_sale_closed",
-          "pre_sale_closed",
-        ]);
-        if (
-          opp &&
-          !noRewindStatuses.has(opp.status) &&
-          !(opp.status === "qualifying") &&
-          !(opp.status === "estimating" && opp.sub_status === "estimating")
-        ) {
-          const { changeOpportunityStatus } = await import(
-            "@/lib/commercial/opportunities/status"
-          );
-          await changeOpportunityStatus({
-            opp_id: input.opportunity_id,
-            to_status: "estimating",
-            to_sub_status: "estimating",
-            acting_user_id: input.created_by_user_id ?? null,
-            _skipDagCheck: true,
-            _skipProposalCascade: true,
-          });
-        }
-      } catch (err) {
-        console.warn(
-          "[createProposal] bump-forward deal cascade threw:",
-          err instanceof Error ? err.message : String(err)
-        );
-      }
+      // REMOVED with the auto-advance engine. Every state it could fire from
+      // was ahead of Estimating, making it purely a backward writer — the
+      // first half of the ping-pong. Open an R2 draft on a deal at Proposal
+      // and this yanked it to Estimating immediately under the creator's
+      // name; the reconciler then fought over it on every later page load,
+      // emailing the team on each swing.
+      //
+      // Automatic moves are forward-only now, and a new draft is not evidence
+      // that a deal regressed — an estimator revising a sent proposal is
+      // normal, and the deal is still at Proposal. Re-pricing a deal is a
+      // person dragging it back, which the engine leaves alone.
     }
     return { ok: true, proposal };
   }
@@ -702,28 +664,60 @@ export async function updateProposalStatus(input: {
             { status: dealStatus, sub: dealSub ?? "" }
           )
         ) {
-          const { changeOpportunityStatus } = await import(
-            "@/lib/commercial/opportunities/status"
-          );
-          const flip = await changeOpportunityStatus({
-            opp_id: beforeRow.opportunity_id,
-            // Cast — the switch above only sets dealStatus to values
-            // that are valid OpportunityStatus enum members.
-            to_status: dealStatus as Parameters<typeof changeOpportunityStatus>[0]["to_status"],
-            to_sub_status: dealSub,
-            acting_user_id: input.acting_user_id,
-            _skipDagCheck: true,
-            // Karan 2026-07-15 (round 6): don't let the deal update
-            // fan back out to sibling proposals — this cascade was
-            // triggered by a proposal move, so promoting/demoting
-            // siblings would make "one card moved" look like "all
-            // cards moved together" on the proposal kanban.
-            _skipProposalCascade: true,
-          });
-          if (!flip.ok) {
-            console.warn(
-              `[updateProposalStatus] deal cascade failed for ${beforeRow.opportunity_id}: ${flip.error}`
+          const autoKey = targetForProposalStatus(input.to_status);
+          if (autoKey) {
+            // Forward-only, through the shared engine. This cascade used to
+            // move the deal in whichever direction the proposal implied, so
+            // dragging a sent proposal back to Draft dragged the deal back to
+            // Estimating with it. A person walking a proposal backwards is
+            // usually correcting the PROPOSAL, not declaring the deal
+            // regressed; if they mean the deal too, they move the deal.
+            const { autoAdvanceOpportunity } = await import(
+              "@/lib/commercial/opportunities/auto-advance"
             );
+            const res = await autoAdvanceOpportunity({
+              oppId: beforeRow.opportunity_id,
+              target: autoKey,
+              // The proposal changed in this request, so it is by definition
+              // the most current signal — no earlier human move outranks it.
+              artifactAt: new Date().toISOString(),
+              source: "auto_advance",
+              reason: `Proposal marked ${input.to_status.replace(/_/g, " ")}`,
+              actingUserId: input.acting_user_id,
+            });
+            if (!res.moved && res.reason === "error") {
+              console.warn(
+                `[updateProposalStatus] deal cascade failed for ${beforeRow.opportunity_id}: ${res.detail}`
+              );
+            }
+          } else {
+            // `lost` has no automatic target on purpose — closing a deal as
+            // lost requires a loss_reason, and the engine must never invent
+            // one. A person marking the proposal lost is the decision, so this
+            // stays a direct, user-attributed write.
+            const { changeOpportunityStatus } = await import(
+              "@/lib/commercial/opportunities/status"
+            );
+            const flip = await changeOpportunityStatus({
+              opp_id: beforeRow.opportunity_id,
+              // Cast — the switch above only sets dealStatus to values
+              // that are valid OpportunityStatus enum members.
+              to_status: dealStatus as Parameters<typeof changeOpportunityStatus>[0]["to_status"],
+              to_sub_status: dealSub,
+              acting_user_id: input.acting_user_id,
+              _skipDagCheck: true,
+              // Karan 2026-07-15 (round 6): don't let the deal update
+              // fan back out to sibling proposals — this cascade was
+              // triggered by a proposal move, so promoting/demoting
+              // siblings would make "one card moved" look like "all
+              // cards moved together" on the proposal kanban.
+              _skipProposalCascade: true,
+            });
+            if (!flip.ok) {
+              console.warn(
+                `[updateProposalStatus] deal cascade failed for ${beforeRow.opportunity_id}: ${flip.error}`
+              );
+            }
           }
         }
         } // end of else (draft-at-qualifying skip)
@@ -2352,30 +2346,25 @@ export async function sendProposal(input: {
   // pre_construction, in_progress, billing, post_sale_closed. Any of
   // these means the bid has been decided and delivery is (or was)
   // underway — sending a proposal shouldn't rewind the deal.
-  const advanced = new Set([
-    "pre_sale_closed",
-    "pre_construction",
-    "in_progress",
-    "billing",
-    "post_sale_closed",
-  ]);
-  if (opp.status === "proposal" && opp.sub_status === "sent") {
-    // Already there — no-op.
-  } else if (!advanced.has(opp.status)) {
-    const { changeOpportunityStatus } = await import("@/lib/commercial/opportunities/status");
-    const flip = await changeOpportunityStatus({
-      opp_id: opp.id,
-      to_status: "proposal",
-      to_sub_status: "sent",
-      acting_user_id: input.actor_user_id,
-      note: `Auto-flipped by sendProposal (R${sentProposal.revision_number})`,
-      _skipDagCheck: true,
-    });
-    if (!flip.ok) {
-      console.warn(
-        `[sendProposal] opp status flip failed for opp ${opp.id}: ${flip.error}`
-      );
-    }
+  // The hand-maintained "don't rewind past these" list this used to carry is
+  // now the engine's forward-only rule, which also covers what the list missed
+  // — a deal already at Proposal · Follow-Up is ahead of Sent within the same
+  // stage, and the list had no way to say so.
+  const { autoAdvanceOpportunity } = await import(
+    "@/lib/commercial/opportunities/auto-advance"
+  );
+  const sendRes = await autoAdvanceOpportunity({
+    oppId: opp.id,
+    target: "proposal",
+    artifactAt: new Date().toISOString(),
+    source: "auto_advance",
+    reason: `Proposal R${sentProposal.revision_number} sent`,
+    actingUserId: input.actor_user_id,
+  });
+  if (!sendRes.moved && sendRes.reason === "error") {
+    console.warn(
+      `[sendProposal] opp status flip failed for opp ${opp.id}: ${sendRes.detail}`
+    );
   }
 
   // ── 4. Account timeline note ────────────────────────────────────
@@ -2502,10 +2491,14 @@ export async function reconcileDealStatesFromProposals(): Promise<{
   // Group proposals by deal, pick the CURRENT (highest revision_number)
   // one — the same "current" the kanban renders. Order was DESC on
   // revision_number so first-write wins.
-  const currentByDeal = new Map<string, string>();
+  // Carries `updated_at` as well as the status: the auto-advance engine
+  // compares it against the last human status change to decide who is more
+  // current, so a person who deliberately moved a deal isn't overruled by a
+  // proposal they'd already seen.
+  const currentByDeal = new Map<string, { status: string; updated_at: string }>();
   for (const p of proposals) {
     if (!currentByDeal.has(p.opportunity_id)) {
-      currentByDeal.set(p.opportunity_id, p.status);
+      currentByDeal.set(p.opportunity_id, { status: p.status, updated_at: p.updated_at });
     }
   }
   const bestByDeal = currentByDeal;
@@ -2579,7 +2572,7 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     if (postSaleStatuses.has(deal.status)) continue;
     const bestProp = bestByDeal.get(deal.id);
     if (!bestProp) continue;
-    const target = derive(bestProp);
+    const target = derive(bestProp.status);
     if (!target) continue;
     // Not just an exact tuple match — RFP-with-a-draft and
     // Follow-Up-with-a-sent are consistent too. This healer runs on every
@@ -2607,27 +2600,32 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     if (deal.status === "pre_sale_closed" && target.status !== "pre_sale_closed") {
       continue;
     }
-    const { changeOpportunityStatus } = await import(
-      "@/lib/commercial/opportunities/status"
+    // FORWARD-ONLY, as of the auto-advance engine. This pass used to move a
+    // deal in either direction, which is what produced the ping-pong: a deal at
+    // Proposal with a fresh R2 draft got yanked back to Estimating on every
+    // render of the pipeline or proposals page — by whoever happened to load
+    // it — and each swing emailed the whole team. Healing DOWN is now a human
+    // decision; the engine only ever moves a deal that is genuinely behind.
+    const { autoAdvanceOpportunity } = await import(
+      "@/lib/commercial/opportunities/auto-advance"
     );
-    const flip = await changeOpportunityStatus({
-      opp_id: deal.id,
-      to_status: target.status as Parameters<typeof changeOpportunityStatus>[0]["to_status"],
-      to_sub_status: target.sub,
-      acting_user_id: null,
-      _skipDagCheck: true,
-      // Karan 2026-07-16: reconcile must NEVER fan back out to
-      // proposals. It's purely a deal-side heal — if it triggered
-      // the deal-side proposal cascade, the reconcile could
-      // promote/demote a proposal the user didn't touch, symptom:
-      // "I moved one card and a different card moved."
-      _skipProposalCascade: true,
+    const { targetForProposalStatus } = await import(
+      "@/lib/commercial/opportunities/auto-advance-targets"
+    );
+    const key = targetForProposalStatus(bestProp.status);
+    if (!key) continue;
+    const res = await autoAdvanceOpportunity({
+      oppId: deal.id,
+      target: key,
+      artifactAt: bestProp.updated_at,
+      source: "reconcile",
+      reason: `Kept in step with proposal (${bestProp.status.replace(/_/g, " ")})`,
     });
-    if (flip.ok) {
+    if (res.moved) {
       fixed += 1;
-    } else {
+    } else if (res.reason === "error") {
       console.warn(
-        `[reconcileDealStatesFromProposals] deal ${deal.id} flip failed: ${flip.error}`
+        `[reconcileDealStatesFromProposals] deal ${deal.id} flip failed: ${res.detail}`
       );
     }
   }

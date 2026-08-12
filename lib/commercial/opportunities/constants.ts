@@ -682,16 +682,38 @@ export function dealPhase(o: StatusTuple): DealPhase {
 }
 
 /**
- * A PostgREST `.or()` filter matching every state whose rank is strictly BELOW
- * `targetRank` — i.e. every state an automatic move to that target may start
- * from.
+ * Position of a sub-status WITHIN its top-level status.
+ *
+ * `SUB_STATUSES_BY_STATUS` already lists each status's subs in the order work
+ * actually moves through them, so the array index is the ladder. An unset sub
+ * ranks -1 — below every real one — so a row with a NULL sub can always be
+ * filled in rather than being stuck.
+ */
+export function subRank(status: string, sub: string | null | undefined): number {
+  if (!sub) return -1; // unset ranks below every real sub, so it can be filled in
+  const subs = (SUB_STATUSES_BY_STATUS as Record<string, readonly string[]>)[status];
+  if (!subs) return -1;
+  const i = subs.indexOf(sub);
+  return i < 0 ? -1 : i;
+}
+
+/**
+ * A PostgREST `.or()` filter matching every state an automatic move to
+ * `(targetStatus, targetSub)` is allowed to start FROM — i.e. everything
+ * strictly behind the target on the ladder.
+ *
+ * "Behind" is two-part: a lower stage rank, OR the same rank and an earlier
+ * sub-status within it. The second half matters because `estimating·estimating`
+ * and `estimating·proposal_pending_approval` share rank 1; comparing ranks
+ * alone would refuse the promotion and, since forward-only means nothing comes
+ * back to correct it, freeze the deal at plain "Estimating" permanently.
  *
  * This exists because `stageRank` is TypeScript and Postgres can't call it,
  * while the advance has to be ONE atomic conditional write. Read-then-write
  * loses the race against a human dragging the same card at the same moment, and
  * the human has to win. Enumerating the states puts the guard in the WHERE:
  *
- *   UPDATE … WHERE id = ? AND (advanceFromFilter(rank))
+ *   UPDATE … WHERE id = ? AND (advanceFromFilter(status, sub))
  *
  * Zero rows updated then means "someone got there first, or it's already
  * further along" — a no-op, not an error.
@@ -699,14 +721,30 @@ export function dealPhase(o: StatusTuple): DealPhase {
  * Terminal off-ramps (rank null) never appear, so a lost bid or a closed job
  * can't be the FROM side of an automatic move.
  */
-export function advanceFromFilter(targetRank: number): string {
+export function advanceFromFilter(targetStatus: string, targetSub: string): string {
+  const targetRank = stageRank(targetStatus, targetSub);
+  // A terminal target has no ladder position, so "everything below it" is
+  // undefined. Those moves are sub-status refinements with an exact source
+  // state, handled by the caller — never by this filter.
+  if (targetRank === null) return "id.is.null";
+  const targetSubRank = subRank(targetStatus, targetSub);
+
   const clauses: string[] = [];
 
   for (const [status, subsRO] of Object.entries(SUB_STATUSES_BY_STATUS)) {
     const subs = subsRO as readonly string[];
     const qualifies = (sub: string | null) => {
       const r = stageRank(status, sub);
-      return r !== null && r < targetRank;
+      if (r === null) return false; // terminal off-ramp is never a legal source
+      if (r < targetRank) return true;
+      // Same rung of the ladder: still a legal move if it's a step forward
+      // WITHIN the status. Two sub-statuses of `estimating` share rank 1, so a
+      // pure rank compare would freeze a deal at plain "Estimating" forever —
+      // forward-only means nothing ever comes back to fix it.
+      if (r === targetRank && status === targetStatus) {
+        return subRank(status, sub) < targetSubRank;
+      }
+      return false;
     };
     const below = subs.filter(qualifies);
     // The column is nullable, so an unset sub is its own case — and the two

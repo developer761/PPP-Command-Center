@@ -1,7 +1,7 @@
-import { stageRank } from "./constants";
+import { stageRank, subRank } from "./constants";
 
 /**
- * The ONLY four states an automatic move may target.
+ * The ONLY states an automatic move may target.
  *
  * A whitelist rather than "any status", because every trigger the adversarial
  * pass killed (§4b) was a plausible-looking one: won → Pre-Construction skips
@@ -11,56 +11,100 @@ import { stageRank } from "./constants";
  * pre→post books delivery on a bid nobody recorded as won. None of those can be
  * expressed here, which is the point.
  *
- * `order` is the position used for the forward-only comparison. For the three
- * live stages it IS `stageRank` (asserted below, so the two can't drift). Only
- * `closed` needs its own number: `stageRank` deliberately returns null for it
- * (terminal — never a legal source), but it is a legal TARGET, so it sits above
- * the whole ladder at 8.
+ * `order` / `subOrder` are the position used for the forward-only comparison.
+ * For the live stages they ARE `stageRank` / `subRank` (asserted in the tests,
+ * so the two can't drift). Only `closed` needs its own number: `stageRank`
+ * deliberately returns null for it — terminal, never a legal source — but it is
+ * a legal TARGET, so it sits above the whole ladder at 8.
  */
-export type AutoAdvanceTargetKey = "estimating" | "proposal" | "won" | "closed";
+export type AutoAdvanceTargetKey =
+  | "estimating"
+  | "estimating_pending"
+  | "proposal"
+  | "won"
+  | "closed";
 
 export type AutoAdvanceTarget = {
   status: string;
   sub_status: string;
   order: number;
+  subOrder: number;
   /** Goes in the timeline note, so it reads as the stage a person recognises. */
   label: string;
   /**
-   * Extra source restriction beyond "ranks below the target".
-   * Closeout completion may only close a job that's actually in delivery — the
-   * rank guard alone would let it close a deal sitting in Qualifying.
+   * The exact state this move may start from, when it is a sub-status
+   * refinement rather than a climb up the ladder.
+   *
+   * Only `closed` uses it, and it is load-bearing: `post_sale_closed` is in
+   * `TERMINAL_STATUSES`, so writing it from any earlier status stamps
+   * `decided_at` with today's date. The dashboard builds its win-rate
+   * DENOMINATOR from raw `decided_at`, so auto-closing an old job would quietly
+   * move a win into the wrong month. Restricting the source to
+   * `post_sale_closed·closeout` keeps the top-level status unchanged, which
+   * means no `decided_at` write, no log row and no notification.
    */
-  requiresPostSale?: boolean;
+  exactFrom?: { status: string; sub_status: string };
 };
 
 export const AUTO_ADVANCE_TARGETS: Record<AutoAdvanceTargetKey, AutoAdvanceTarget> = {
-  estimating: { status: "estimating", sub_status: "estimating", order: 1, label: "Estimating" },
-  proposal: { status: "proposal", sub_status: "sent", order: 2, label: "Proposal" },
-  won: { status: "pre_sale_closed", sub_status: "won", order: 3, label: "Closed Won" },
+  estimating: {
+    status: "estimating",
+    sub_status: "estimating",
+    order: 1,
+    subOrder: 0,
+    label: "Estimating",
+  },
+  // Katie's second `estimating` sub-status: priced, awaiting sign-off. Same
+  // rank as Estimating — the difference is the sub ladder, not the stage.
+  estimating_pending: {
+    status: "estimating",
+    sub_status: "proposal_pending_approval",
+    order: 1,
+    subOrder: 1,
+    label: "Proposal Pending Approval",
+  },
+  proposal: { status: "proposal", sub_status: "sent", order: 2, subOrder: 0, label: "Proposal" },
+  won: {
+    status: "pre_sale_closed",
+    sub_status: "won",
+    order: 3,
+    subOrder: 0,
+    label: "Closed Won",
+  },
   closed: {
     status: "post_sale_closed",
     sub_status: "closed",
     order: 8,
+    subOrder: 1,
     label: "Closed",
-    requiresPostSale: true,
+    exactFrom: { status: "post_sale_closed", sub_status: "closeout" },
   },
 };
 
 /**
- * Maps a proposal's status to the stage it justifies — the resulting STATUS,
- * not the word "proposal".
+ * Maps a proposal's status to the state it justifies — the resulting STATE, not
+ * the word "proposal".
  *
- * A draft/pending/approved proposal targets **Estimating**, not Proposal: a
- * draft is work-in-progress, and advancing to Proposal would fabricate a "sent"
- * deal that has no PDF and no approval, walking straight past the send gate.
- * Returns null for anything that justifies no move (rejected, void, unknown).
+ * A draft targets **Estimating**, not Proposal: a draft is work in progress, and
+ * advancing to Proposal would fabricate a "sent" deal with no PDF and no
+ * approval, walking straight past the send gate.
+ *
+ * `pending_approval` and `approved` target the *pending-approval sub-status*
+ * rather than plain Estimating. Both mean "pricing is done", which is precisely
+ * what that sub-status records — and pointing them at plain Estimating would
+ * make them a backward move for any deal already there, i.e. no move at all.
+ *
+ * Returns null for anything that justifies no move.
  */
-export function targetForProposalStatus(status: string | null | undefined): AutoAdvanceTargetKey | null {
+export function targetForProposalStatus(
+  status: string | null | undefined
+): AutoAdvanceTargetKey | null {
   switch (status) {
     case "draft":
+      return "estimating";
     case "pending_approval":
     case "approved":
-      return "estimating";
+      return "estimating_pending";
     case "sent":
       return "proposal";
     case "won":
@@ -70,12 +114,18 @@ export function targetForProposalStatus(status: string | null | undefined): Auto
   }
 }
 
+/** Is `a` further along than `b`? Lexicographic on (stage, sub). */
+function outranks(a: AutoAdvanceTarget, b: AutoAdvanceTarget): boolean {
+  if (a.order !== b.order) return a.order > b.order;
+  return a.subOrder > b.subOrder;
+}
+
 /**
  * Folds every trigger fired in one request into the single furthest target.
  *
  * Required by §4d.4: a deal with three proposals must produce ONE write, ONE
- * log row and ONE notification. Applying them in sequence would walk the deal
- * up the ladder one stage at a time and spray the timeline with intermediate
+ * log row and ONE notification. Applying them in sequence would walk the deal up
+ * the ladder one stage at a time and spray the timeline with intermediate
  * stages it was never really in.
  */
 export function foldAutoAdvanceTargets(
@@ -84,7 +134,7 @@ export function foldAutoAdvanceTargets(
   let best: AutoAdvanceTargetKey | null = null;
   for (const k of keys) {
     if (!k) continue;
-    if (best === null || AUTO_ADVANCE_TARGETS[k].order > AUTO_ADVANCE_TARGETS[best].order) best = k;
+    if (best === null || outranks(AUTO_ADVANCE_TARGETS[k], AUTO_ADVANCE_TARGETS[best])) best = k;
   }
   return best;
 }
@@ -100,7 +150,20 @@ export function canAutoAdvance(
   current: { status: string | null; sub_status: string | null },
   key: AutoAdvanceTargetKey
 ): boolean {
-  const rank = stageRank(current.status ?? "", current.sub_status);
+  const target = AUTO_ADVANCE_TARGETS[key];
+  const status = current.status ?? "";
+
+  // A refinement move names its one legal source outright.
+  if (target.exactFrom) {
+    return status === target.exactFrom.status && current.sub_status === target.exactFrom.sub_status;
+  }
+
+  const rank = stageRank(status, current.sub_status);
   if (rank === null) return false; // terminal off-ramp, or a status we don't understand
-  return rank < AUTO_ADVANCE_TARGETS[key].order;
+  if (rank < target.order) return true;
+  // Same rung: a step forward within the status still counts.
+  if (rank === target.order && status === target.status) {
+    return subRank(status, current.sub_status) < target.subOrder;
+  }
+  return false;
 }

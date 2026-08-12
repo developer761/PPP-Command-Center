@@ -196,6 +196,42 @@ export async function changeCloseoutStatus(
     .maybeSingle();
   if (error || !data) return { ok: false, error: error?.message ?? "status_change_failed" };
   await logUpdate("commercial_closeout_packages", id, before, data, actorUserId);
+
+  // Finishing the closeout package finishes the job: (post_sale_closed,
+  // closeout) → (post_sale_closed, closed). Edge-triggered on the transition
+  // INTO complete — the optimistic guard above means this line is reached once
+  // per real transition even if the button is double-clicked, and a second
+  // package completing on the same deal is a harmless no-op.
+  //
+  // The source restriction on this target is doing real work. `post_sale_closed`
+  // counts as terminal, so writing it from any EARLIER status stamps
+  // `decided_at` with today — and the dashboard builds its win-rate denominator
+  // from raw `decided_at`, so closing an old job would quietly drag a win into
+  // the wrong month. Requiring the deal to already be at `·closeout` keeps this
+  // a pure sub-status refinement: same top-level status, so no `decided_at`
+  // write, no status_log row, no notification.
+  if (to === "complete" && before.status !== "complete") {
+    try {
+      const { autoAdvanceOpportunity } = await import(
+        "@/lib/commercial/opportunities/auto-advance"
+      );
+      await autoAdvanceOpportunity({
+        oppId: (data as CloseoutPackage).opportunity_id,
+        target: "closed",
+        artifactAt: now,
+        source: "auto_advance",
+        reason: "Closeout package completed",
+        actingUserId: actorUserId,
+      });
+    } catch (err) {
+      // The package IS complete; failing to refine the deal's sub-status must
+      // not fail the user's action. Someone can drag the card.
+      console.warn(
+        "[changeCloseoutStatus] deal close-out advance failed:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
   return { ok: true, value: data as CloseoutPackage };
 }
 

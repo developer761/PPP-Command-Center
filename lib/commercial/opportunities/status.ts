@@ -103,12 +103,41 @@ export type ChangeStatusInput = {
    *  follow-up fields and got a value) to overwrite the DB row. */
   follow_up_at?: string | null | undefined;
   follow_up_notes?: string | null | undefined;
+  /**
+   * WHO decided this — a person, or the system acting on an artifact.
+   *
+   * Recorded on the status_log row (migration 126) because it cannot be
+   * inferred afterwards: every proposal cascade runs inside a human's request
+   * and passes that human's `acting_user_id`, so the actor column says
+   * "a person" for automatic moves too. The auto-advance engine reads this back
+   * to avoid undoing a decision someone actually made.
+   *
+   * Non-`user` sources also skip the team fan-out — nobody needs an email
+   * saying the system agreed with a proposal they just sent.
+   *
+   * Defaults to `user`: an unmarked caller is a person, which is the reading
+   * that makes the engine cautious rather than eager.
+   */
+  source?: StatusChangeSource;
+  /**
+   * Forward-only guard, as a PostgREST filter over the states this move may
+   * start from (build it with `advanceFromFilter`).
+   *
+   * Applied to the UPDATE itself so the DATABASE enforces monotonicity: a
+   * human dragging the same card at the same moment can't be clobbered by a
+   * check that passed a few milliseconds earlier. Zero rows matched is a
+   * successful no-op, reported as `skipped: "guard"`.
+   */
+  _requireFrom?: string;
 };
+
+/** @see ChangeStatusInput.source */
+export type StatusChangeSource = "user" | "auto_advance" | "reconcile";
 
 export async function changeOpportunityStatus(
   input: ChangeStatusInput
 ): Promise<
-  | { ok: true; opportunity: CommercialOpportunity }
+  | { ok: true; opportunity: CommercialOpportunity; skipped?: "guard" }
   | { ok: false; error: string }
 > {
   const sb = commercialDb();
@@ -301,13 +330,15 @@ export async function changeOpportunityStatus(
     patch.follow_up_notes = null;
   }
 
-  const { data: after, error: updateErr } = await sb
-    .from("commercial_opportunities")
-    .update(patch)
-    .eq("id", input.opp_id)
-    .select("*")
-    .single();
+  let q = sb.from("commercial_opportunities").update(patch).eq("id", input.opp_id);
+  // The forward-only guard rides on the UPDATE rather than sitting in front of
+  // it, so the database is the one deciding whether this move is still legal.
+  if (input._requireFrom) q = q.or(input._requireFrom);
+  const { data: after, error: updateErr } = await q.select("*").maybeSingle();
   if (updateErr) return { ok: false, error: updateErr.message };
+  // No row matched: the deal moved on between the read and the write, or it was
+  // already at least this far along. Nothing to do, and nothing went wrong.
+  if (!after) return { ok: true, opportunity: beforeRow, skipped: "guard" };
   const updated = after as CommercialOpportunity;
 
   // Append the status_log row — ONLY for real top-level status changes.
@@ -323,6 +354,7 @@ export async function changeOpportunityStatus(
         from_status: beforeRow.status,
         to_status: input.to_status,
         changed_by_user_id: input.acting_user_id ?? null,
+        source: input.source ?? "user",
         note: input.note?.trim() || null,
         loss_reason: lossReason,
       })
@@ -536,7 +568,14 @@ export async function changeOpportunityStatus(
   // emailed the whole team "moved status from Proposal" → "Proposal" — a
   // notification about nothing. Newly reachable now that the detail-page
   // picker offers the current status so sub-statuses can be edited at all.
-  const isRealStatusMove = beforeRow.status !== input.to_status;
+  //
+  // Also gated on a PERSON having made the move. The reconciler passes a null
+  // actor, so every drift-heal fanned out to the whole team as "PPP admin moved
+  // this deal" — and paired with the ping-pong that was two waves of bells per
+  // cycle, triggered by whoever merely loaded the pipeline page. The system
+  // agreeing with a proposal someone just sent is not news.
+  const isRealStatusMove =
+    beforeRow.status !== input.to_status && (input.source ?? "user") === "user";
   if (isRealStatusMove) void (async () => {
     try {
       let actorName = "PPP admin";

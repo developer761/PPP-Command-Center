@@ -5,7 +5,7 @@ import {
   foldAutoAdvanceTargets,
   canAutoAdvance,
 } from "@/lib/commercial/opportunities/auto-advance-targets";
-import { stageRank } from "@/lib/commercial/opportunities/constants";
+import { stageRank, subRank } from "@/lib/commercial/opportunities/constants";
 import { PROPOSAL_STATUSES, type ProposalStatus } from "@/lib/commercial/proposals/constants";
 
 describe("auto-advance target whitelist", () => {
@@ -13,9 +13,10 @@ describe("auto-advance target whitelist", () => {
     // Two numbers for the same concept is exactly how a forward-only engine
     // starts moving deals backwards. If stageRank's ladder is ever renumbered,
     // this fails instead of the engine quietly disagreeing with the DB guard.
-    for (const key of ["estimating", "proposal", "won"] as const) {
+    for (const key of ["estimating", "estimating_pending", "proposal", "won"] as const) {
       const t = AUTO_ADVANCE_TARGETS[key];
       expect(stageRank(t.status, t.sub_status), key).toBe(t.order);
+      expect(subRank(t.status, t.sub_status), key).toBe(t.subOrder);
     }
   });
 
@@ -24,7 +25,9 @@ describe("auto-advance target whitelist", () => {
     // Terminal means "never a legal SOURCE" — it's still a legal target.
     expect(stageRank(closed.status, closed.sub_status)).toBeNull();
     expect(closed.order).toBe(8);
-    expect(closed.requiresPostSale).toBe(true);
+    // …and it may only start from the one state where closing changes nothing
+    // but the sub-status.
+    expect(closed.exactFrom).toEqual({ status: "post_sale_closed", sub_status: "closeout" });
   });
 
   it("offers no target that §4b killed", () => {
@@ -48,8 +51,15 @@ describe("targetForProposalStatus", () => {
   it("sends a DRAFT to Estimating, not to Proposal", () => {
     // The trap: "a proposal exists" reads like the Proposal stage. It isn't —
     // advancing there fabricates a sent deal with no PDF and no approval.
+    expect(targetForProposalStatus("draft")).toBe("estimating");
+    // Priced-and-awaiting-signoff has its own sub-status; pointing it at plain
+    // Estimating would be a BACKWARD move for a deal already sitting there,
+    // i.e. silently no move at all.
+    for (const s of ["pending_approval", "approved"]) {
+      expect(targetForProposalStatus(s), s).toBe("estimating_pending");
+    }
     for (const s of ["draft", "pending_approval", "approved"]) {
-      expect(targetForProposalStatus(s), s).toBe("estimating");
+      expect(AUTO_ADVANCE_TARGETS[targetForProposalStatus(s)!].status, s).toBe("estimating");
     }
   });
 
@@ -68,8 +78,8 @@ describe("targetForProposalStatus", () => {
     // defaulting to 'no move' and leaving a stage that never advances.
     const expected: Record<ProposalStatus, string | null> = {
       draft: "estimating",
-      pending_approval: "estimating",
-      approved: "estimating",
+      pending_approval: "estimating_pending",
+      approved: "estimating_pending",
       sent: "proposal",
       won: "won",
       lost: null, // deal-level loss is a human decision with a loss_reason
@@ -94,6 +104,9 @@ describe("foldAutoAdvanceTargets", () => {
     // in sequence would walk the deal Estimating → Proposal → Won and write
     // three log rows for stages it was never really in.
     expect(foldAutoAdvanceTargets(["estimating", "won", "proposal"])).toBe("won");
+    // …and within one stage it still picks the further sub-status.
+    expect(foldAutoAdvanceTargets(["estimating", "estimating_pending"])).toBe("estimating_pending");
+    expect(foldAutoAdvanceTargets(["estimating_pending", "estimating"])).toBe("estimating_pending");
   });
 
   it("is order-independent", () => {
@@ -133,7 +146,7 @@ describe("canAutoAdvance", () => {
   });
 
   it("will not resurrect a lost bid or reopen a closed job", () => {
-    for (const key of ["estimating", "proposal", "won", "closed"] as const) {
+    for (const key of ["estimating", "estimating_pending", "proposal", "won", "closed"] as const) {
       expect(canAutoAdvance({ status: "pre_sale_closed", sub_status: "lost" }, key), key).toBe(false);
       expect(canAutoAdvance({ status: "post_sale_closed", sub_status: "closed" }, key), key).toBe(false);
     }
@@ -145,8 +158,27 @@ describe("canAutoAdvance", () => {
     }
   });
 
-  it("lets closeout close a job that is mid-delivery", () => {
+  it("closes ONLY a job already sitting in closeout", () => {
     expect(canAutoAdvance({ status: "post_sale_closed", sub_status: "closeout" }, "closed")).toBe(true);
-    expect(canAutoAdvance({ status: "billing", sub_status: "substantial_completion" }, "closed")).toBe(true);
+    // Everything else is refused, and that restriction is load-bearing:
+    // post_sale_closed is terminal, so writing it from an earlier status stamps
+    // decided_at with today and moves the win into the wrong month. Closing from
+    // pre_sale_closed/won would also erase a just-won deal from 'Wins this month'.
+    for (const from of [
+      { status: "billing", sub_status: "substantial_completion" },
+      { status: "in_progress", sub_status: "wip_on_site" },
+      { status: "pre_sale_closed", sub_status: "won" },
+      { status: "qualifying", sub_status: "solicitation" },
+      { status: "post_sale_closed", sub_status: null },
+    ]) {
+      expect(canAutoAdvance(from, "closed"), JSON.stringify(from)).toBe(false);
+    }
+  });
+
+  it("promotes within a stage, but never demotes within one", () => {
+    const at = (sub: string) => ({ status: "estimating", sub_status: sub });
+    expect(canAutoAdvance(at("estimating"), "estimating_pending")).toBe(true);
+    expect(canAutoAdvance(at("proposal_pending_approval"), "estimating")).toBe(false);
+    expect(canAutoAdvance(at("proposal_pending_approval"), "estimating_pending")).toBe(false);
   });
 });
