@@ -31,11 +31,21 @@ export const TOOL_BACK: Record<string, { path: string; label: string }> = {
 const INVOICE_DEAL_BACK_RE =
   /^\/commercial\/invoices\/new\?opp=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The deal drill-in itself — `/commercial/accounts/<uuid>?tab=projects&project=<uuid>`
+ *  with an optional `&dt=<tool>`. This is where a deal's tools actually live, so
+ *  it is the most important back-target of all, and it was the one target the
+ *  whitelist didn't accept: every link that carried it was silently dropped and
+ *  fell through to a generic breadcrumb. Same dynamic-UUID shape as the invoice
+ *  case above, so the open-redirect guard is unchanged. */
+const DEAL_DRILL_IN_BACK_RE =
+  /^\/commercial\/accounts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\?tab=projects&project=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(&dt=[a-z-]+)?(#[a-z-]+)?$/i;
+
 /** Resolve the whitelisted back-target from a raw ?back param (or null). */
 export function resolveToolBack(back: string | undefined): { path: string; label: string } | null {
   if (!back) return null;
   if (TOOL_BACK[back]) return TOOL_BACK[back];
   if (INVOICE_DEAL_BACK_RE.test(back)) return { path: back, label: "Invoices" };
+  if (DEAL_DRILL_IN_BACK_RE.test(back)) return { path: back, label: "Deal" };
   return null;
 }
 

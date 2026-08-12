@@ -71,10 +71,15 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
   // (2026-07-29 bug). The project home is a read view with the tool jumps;
   // editing deal details is an explicit button there.
   const overviewHref = `/commercial/accounts/${p.accountId}?tab=projects&project=${p.opp.id}`;
-  const coHref = `/commercial/accounts/${p.accountId}/change-orders/${p.opp.id}`;
-  const aiaHref = `/commercial/accounts/${p.accountId}/aia/${p.opp.id}`;
-  const submittalsHref = `/commercial/accounts/${p.accountId}/submittals/${p.opp.id}`;
-  const closeoutHref = `/commercial/accounts/${p.accountId}/closeout/${p.opp.id}`;
+  // Everything for a deal lives UNDER the deal. These chips used to jump to the
+  // standalone tool routes, which drops the account/deal chrome and the tab you
+  // came from — the same complaint as opening an item, one level up. The tools
+  // already render inline on the drill-in, so point at that.
+  const toolHref = (tool: string) => `${overviewHref}&dt=${tool}`;
+  const coHref = toolHref("change-orders");
+  const aiaHref = toolHref("aia");
+  const submittalsHref = toolHref("submittals");
+  const closeoutHref = toolHref("closeout");
 
   return (
     <li className="relative bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden hover:border-cc-brand-200 hover:shadow-md transition-all">
