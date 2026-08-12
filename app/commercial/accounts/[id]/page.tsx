@@ -115,6 +115,7 @@ import { WorkOrderTool } from "./work-order/[dealId]/work-order-tool";
 import { AiaTool } from "./aia/[dealId]/aia-tool";
 import { SubmittalsTool } from "./submittals/[dealId]/submittals-tool";
 import { SubmittalDetailView } from "./submittals/[dealId]/[sid]/page";
+import { InvoiceDetailView } from "@/app/commercial/invoices/[id]/page";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -199,6 +200,8 @@ type SP = Promise<{
    * `app`, `pkg`, `edit_co`, `edit_purchase`.
    */
   sid?: string;
+  /** Which invoice is open inside the deal drill-in. See `sid`. */
+  inv?: string;
   team_added?: string;
   /** What assigning a team just applied, e.g. "Added 4 team members". */
   team_applied?: string;
@@ -1832,7 +1835,13 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
 
       {/* ── Deal invoices — invoices live under the deal (Katie 2026-08). List
           + create here; the global Invoices page is a read-only open list. ── */}
-      {dealTab === "invoices" && (
+      {dealTab === "invoices" && sp?.inv && UUID_RE.test(String(sp.inv)) && (
+        // One invoice, rendered INSIDE the deal. This used to open the GLOBAL
+        // invoices route — not just another page, a different section of the
+        // app — so you lost the account, the deal and the tab in one click.
+        <InvoiceDetailView invoiceId={String(sp.inv)} sp={sp as never} inline />
+      )}
+      {dealTab === "invoices" && !(sp?.inv && UUID_RE.test(String(sp.inv))) && (
       <>
       <DealPanelLead
         stats={[
@@ -1908,7 +1917,9 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                 return a.position - b.position;
               });
               const waived = ms.filter((m) => m.lien_waiver_document_id).length;
-              const detailHref = `/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}&dt=invoices`)}`;
+              // Stays in the deal: `&inv=` swaps this list for that invoice's
+              // detail without leaving the page.
+              const detailHref = `/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}&dt=invoices&inv=${inv.id}`;
               return (
                 <li key={inv.id}>
                   <Link href={detailHref} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">

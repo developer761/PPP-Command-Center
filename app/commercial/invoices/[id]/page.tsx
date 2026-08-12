@@ -115,8 +115,19 @@ async function revalidateInvoiceContext(invoice_id: string): Promise<void> {
  */
 function withFrom(url: string, from: string): string {
   if (!from || !from.startsWith("/commercial/")) return url;
+  // Opened inside the deal drill-in, that URL IS where the invoice lives — so
+  // it is the redirect target, not a breadcrumb to carry to the global route.
+  // Without this, saving from inside a deal throws you into the global Invoices
+  // section, which is the jump this change exists to remove. The action's own
+  // flags (?saved=…, ?error=…) travel with it.
+  if (DRILL_IN_RE.test(from)) {
+    const q = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
+    return q ? `${from}${from.includes("?") ? "&" : "?"}${q}` : from;
+  }
   return `${url}${url.includes("?") ? "&" : "?"}from=${encodeURIComponent(from)}`;
 }
+/** A deal drill-in URL — `/commercial/accounts/<uuid>?tab=projects&project=<uuid>…` */
+const DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&project=[0-9a-f-]{36}/i;
 
 async function addLineItemAction(formData: FormData) {
   "use server";
@@ -602,8 +613,26 @@ async function bulkDeleteInvoicesFromDetailAction(formData: FormData) {
 
 export default async function InvoiceDetailPage({ params, searchParams }: { params: PP; searchParams: SP }) {
   const { id } = await params;
+  return <InvoiceDetailView invoiceId={id} sp={await searchParams} />;
+}
+
+/**
+ * The invoice detail, renderable as its own route OR inside the deal drill-in.
+ *
+ * An invoice under a deal used to open the GLOBAL invoices route — not just a
+ * different page, a different section of the app. `inline` leaves this page's
+ * own back button, breadcrumb and title off, because the drill-in supplies them.
+ */
+export async function InvoiceDetailView({
+  invoiceId: id,
+  sp,
+  inline = false,
+}: {
+  invoiceId: string;
+  sp: Awaited<SP>;
+  inline?: boolean;
+}) {
   if (!UUID_RE.test(id)) notFound();
-  const sp = await searchParams;
   const errorMsg = pickFirst(sp.error);
   const savedTarget = pickFirst(sp.saved);
 
@@ -713,7 +742,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   // the query so a click coming from /commercial/invoices?opportunity_id=X
   // (the deleted-deal cluster) returns to that scoped view, not the
   // whole list. Falls back to the natural parent when `from` is missing.
-  const fromRaw = pickFirst(sp.from);
+  // Inline, every action returns to the drill-in with this invoice still open.
+  const fromRaw = inline
+    ? `/commercial/accounts/${account?.id ?? ""}?tab=projects&project=${opp?.id ?? ""}&dt=invoices&inv=${id}`
+    : pickFirst(sp.from);
   const backHref = (() => {
     if (fromRaw && fromRaw.startsWith("/commercial/")) return fromRaw;
     // 2026-07-29: invoices are account-scoped now — return to the account's
@@ -725,6 +757,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
   return (
     <div className="space-y-5">
+      {/* The page's own back button + breadcrumb. Suppressed inline, where the
+          deal drill-in already supplies both and a second set just stacks two
+          competing ways back on one screen. */}
+      {!inline && (<>
       {/* Prominent back button — Karan 2026-07-08. The breadcrumb below
           is still there for hop-anywhere navigation, but the primary
           "back" affordance is a big button so users can bounce to their
@@ -784,6 +820,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           {invoice.invoice_number}
         </span>
       </nav>
+      </>)}
 
       {isOrphan && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 flex items-start gap-2.5">
