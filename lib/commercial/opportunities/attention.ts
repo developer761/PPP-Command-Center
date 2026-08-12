@@ -40,7 +40,31 @@ export type AttentionInput = {
   sentProposalCount: number;
   hasWorkOrder: boolean;
   hasBilling: boolean;
+  /** ET calendar dates. Drive the grace periods below. */
+  decidedAt?: string | null;
+  todayIso?: string;
 };
+
+/** Whole ET calendar days between two YYYY-MM-DD dates. */
+function daysSince(fromIso: string | null | undefined, todayIso: string | undefined): number | null {
+  if (!fromIso || !todayIso) return null;
+  const a = Date.UTC(+fromIso.slice(0, 4), +fromIso.slice(5, 7) - 1, +fromIso.slice(8, 10));
+  const b = Date.UTC(+todayIso.slice(0, 4), +todayIso.slice(5, 7) - 1, +todayIso.slice(8, 10));
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * How long a job gets before a missing thing counts as a problem.
+ *
+ * Karan 2026-08-12: without these, every won job wears a warning from the
+ * moment it is awarded — a work order does not exist five minutes after a GC
+ * says yes. A row that is always on is wallpaper, and wallpaper is what trains
+ * people to ignore the row that actually costs money (the contract value).
+ *
+ * A job with no recorded win date gets NO grace: we cannot tell whether it was
+ * won today or in March, and the safe reading of an unknown is to surface it.
+ */
+const GRACE_DAYS = { work_order: 7, contract_value: 3 } as const;
 
 const WON_OR_DELIVERING = new Set([
   "pre_construction",
@@ -107,7 +131,10 @@ export function attentionFor(i: AttentionInput): Attention[] {
   }
 
   // The money one. NOT the same as zero — zero is a number someone chose.
-  if (won && i.hasProject && (i.contractBaseCents == null || i.contractBaseCents <= 0)) {
+  const wonDaysAgo = daysSince(i.decidedAt, i.todayIso);
+  const past = (grace: number) => wonDaysAgo == null || wonDaysAgo >= grace;
+
+  if (won && i.hasProject && (i.contractBaseCents == null || i.contractBaseCents <= 0) && past(GRACE_DAYS.contract_value)) {
     out.push({
       key: "no_contract_value",
       title: "Contract value isn't set",
@@ -118,7 +145,7 @@ export function attentionFor(i: AttentionInput): Attention[] {
     });
   }
 
-  if (won && !i.hasWorkOrder) {
+  if (won && !i.hasWorkOrder && past(GRACE_DAYS.work_order)) {
     out.push({
       key: "no_work_order",
       title: "No work order yet",
@@ -150,15 +177,10 @@ export function attentionFor(i: AttentionInput): Attention[] {
     });
   }
 
-  if (i.status === "proposal" && i.proposalCount === 0) {
-    out.push({
-      key: "proposal_stage_no_proposal",
-      title: "This deal is at Proposal with no proposal built",
-      consequence: "Its value is a guess, so the weighted pipeline is reading a number nobody quoted.",
-      href: `/commercial/opportunities/${i.oppId}?tab=proposals`,
-      tone: "warn",
-    });
-  }
+  // A deal at Proposal with no proposal used to warn here. Removed 2026-08-12:
+  // the auto-advance engine moves a deal to Proposal BECAUSE one was sent, so
+  // the only way to reach this state is a manual drag — and the person who just
+  // dragged it does not need telling what they did a second ago.
 
   return out;
 }

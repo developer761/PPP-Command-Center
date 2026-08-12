@@ -1458,6 +1458,10 @@ export default async function OpportunityDetailPage({
     ).length,
     hasWorkOrder: !!pathWorkOrder,
     hasBilling: pathInvoices.length > 0,
+    // Grace periods: a work order does not exist five minutes after a GC says
+    // yes, and a row that is always on is wallpaper.
+    decidedAt: opp.decided_at,
+    todayIso: etTodayIso(),
   };
   const attentionItems = attentionFor(attentionInput);
   const manualNext = manualNextStep(attentionInput);

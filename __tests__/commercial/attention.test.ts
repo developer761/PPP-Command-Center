@@ -62,10 +62,33 @@ describe("attentionFor", () => {
     expect(keys({ ...billing, hasBilling: true })).not.toContain("billing_nothing_billed");
   });
 
-  it("flags a deal sitting at Proposal with no proposal built", () => {
+  it("does NOT nag about a deal at Proposal with no proposal built", () => {
+    // Removed 2026-08-12. The auto-advance engine moves a deal to Proposal
+    // BECAUSE one was sent, so the only way to reach this state is a manual
+    // drag — and telling the person who just dragged it what they did a second
+    // ago is exactly the noise that teaches people to ignore the row.
     const p = { ...base, status: "proposal", subStatus: "sent", proposalCount: 0 };
-    expect(keys(p)).toContain("proposal_stage_no_proposal");
-    expect(keys({ ...p, proposalCount: 2 })).not.toContain("proposal_stage_no_proposal");
+    expect(keys(p)).not.toContain("proposal_stage_no_proposal");
+  });
+
+  it("gives a freshly-won job a grace period before nagging", () => {
+    // A work order does not exist five minutes after a GC says yes. Without
+    // this, every won job wears a warning from the moment it is awarded, and a
+    // row that is always on is wallpaper.
+    const fresh = won({ decidedAt: "2026-08-11", todayIso: "2026-08-12" });
+    expect(keys(fresh)).not.toContain("no_work_order");
+    expect(keys(fresh)).not.toContain("no_contract_value");
+    // …and starts once the grace runs out (contract 3 days, work order 7).
+    expect(keys(won({ decidedAt: "2026-08-08", todayIso: "2026-08-12" }))).toContain("no_contract_value");
+    expect(keys(won({ decidedAt: "2026-08-01", todayIso: "2026-08-12" }))).toContain("no_work_order");
+  });
+
+  it("gives NO grace to a job with no recorded win date", () => {
+    // We cannot tell whether it was won today or in March, and the safe reading
+    // of an unknown is to surface it rather than hide it for a week.
+    const undated = won({ decidedAt: null, todayIso: "2026-08-12" });
+    expect(keys(undated)).toContain("no_contract_value");
+    expect(keys(undated)).toContain("no_work_order");
   });
 
   it("nudges about a sent proposal with nothing scheduled to chase it", () => {
@@ -77,7 +100,7 @@ describe("attentionFor", () => {
   });
 
   it("says nothing about a healthy job", () => {
-    expect(attentionFor(won({ contractBaseCents: 45_000_00, hasWorkOrder: true }))).toHaveLength(0);
+    expect(attentionFor(won({ contractBaseCents: 45_000_00, hasWorkOrder: true, decidedAt: "2026-01-01", todayIso: "2026-08-12" }))).toHaveLength(0);
   });
 });
 
