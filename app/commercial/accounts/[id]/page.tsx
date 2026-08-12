@@ -418,6 +418,14 @@ export default async function CommercialAccountDetailPage({
   const rawTab = sp.tab;
   const rawSub = sp.sub;
   const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
+  // L7 — `?tab=invoices` is an orphan: nothing in the app links to it any more
+  // (every invoice link goes to the account-scoped global list) and nothing
+  // redirects into it, yet it renders a second, separately-maintained invoices
+  // surface. Old bookmarks are the only traffic, so send them to the canonical
+  // one rather than keeping two implementations that can drift apart.
+  if (resolvedPrimary === "invoices") {
+    redirect(`/commercial/invoices?account_id=${id}`);
+  }
   // Named `primaryTab` here to avoid collision with the `primary` local
   // below that refers to the primary contact record.
   const primaryTab: PrimaryTab = resolvedPrimary;
@@ -440,7 +448,6 @@ export default async function CommercialAccountDetailPage({
     : primaryTab === "deals" ? "home"
     : primaryTab === "documents" ? "documents"
     : primaryTab === "activity" ? "activity"
-    : primaryTab === "invoices" ? "invoices"
     : primaryTab === "proposals" ? "proposals"
     : primaryTab === "projects" ? "projects"
     : primaryTab === "people" ? "contacts"
@@ -810,18 +817,6 @@ export default async function CommercialAccountDetailPage({
         />
       )}
       {tab === "kpis" && <AccountKpisTab accountId={account.id} overview={overview} rollup={invoiceRollup} />}
-      {tab === "invoices" && (
-        <AccountInvoicesTab
-          accountId={account.id}
-          rollup={invoiceRollup}
-          paymentOk={sp.payment_ok === "1"}
-          paymentCapped={sp.capped === "1"}
-          paymentRequested={typeof sp.requested === "string" ? Number(sp.requested) || null : null}
-          paymentApplied={typeof sp.applied === "string" ? Number(sp.applied) || null : null}
-          paymentHeadsUp={typeof sp.heads_up === "string" ? sp.heads_up : null}
-          errorMessage={sp.error}
-        />
-      )}
       {tab === "team" && (
         <TeamTab
           accountId={account.id}

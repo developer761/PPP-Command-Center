@@ -1547,7 +1547,12 @@ export default async function OpportunityDetailPage({
             <>
               <span aria-hidden className="text-ppp-charcoal-300">/</span>
               <Link
-                href={`/commercial/accounts/${account.id}?tab=opportunities`}
+                // L8: the account's own landing, matching the invoice-detail
+                // breadcrumb. The two disagreed — one dropped you on the
+                // Opportunities sub-tab, the other on Overview — so "the
+                // account" meant two different screens depending on where you
+                // had come from.
+                href={`/commercial/accounts/${account.id}`}
                 className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
                 title={account.company_name}
               >
