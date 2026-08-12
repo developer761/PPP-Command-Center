@@ -1,4 +1,4 @@
-/**
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";/**
  * `/commercial/accounts` — Phase 1 Account Management list page.
  *
  * UI rebuild 2026-07-05 (Karan: "confusing and unorganized, needs to be
@@ -24,6 +24,9 @@
  *      showing total accounts + recently-active count + open-bid roll-up.
  *   5. **Mobile = 44px tap targets throughout + card layout.**
  */
+import { listCommercialOpportunities, dealValueCents } from "@/lib/commercial/opportunities/db";
+import { PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
@@ -175,11 +178,34 @@ export default async function CommercialAccountsPage({
   // pick a GC first. It was never rendered here, so those flows dead-ended
   // silently. Surface it as an amber "do this first" hint.
   const statusError = pickFirst(sp.status_error);
-  const [overviewsById, tagsByAccount, allTags] = await Promise.all([
+  const [overviewsById, tagsByAccount, allTags, openOppsForBids] = await Promise.all([
     listAccountOverviews(accountsRaw.map((a) => a.id)),
     listTagsForAccounts(accountsRaw.map((a) => a.id)),
     listAllDistinctTags(),
+    // R26/R44: the SQL view sums the raw bid columns, which the create forms no
+    // longer collect — pricing lives on the proposal. Without the fallback this
+    // page shows "Open bids: 3" next to "Bid range: —", the same contradiction
+    // fixed on the account scorecard, one level up.
+    listCommercialOpportunities({}),
   ]);
+  const openBidOppsByAccount = new Map<string, typeof openOppsForBids>();
+  for (const o of openOppsForBids) {
+    if (!PRE_SALE_OPEN_STATUSES.includes(o.status)) continue;
+    const list = openBidOppsByAccount.get(o.account_id);
+    if (list) list.push(o);
+    else openBidOppsByAccount.set(o.account_id, [o]);
+  }
+  const bidProposalTotals = await listCurrentProposalTotalByOpp(
+    openOppsForBids
+      .filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status))
+      .map((o) => o.id)
+  );
+  /** Open value for one account, using the same fallback every money surface uses. */
+  const openValueForAccount = (accountId: string): number =>
+    (openBidOppsByAccount.get(accountId) ?? []).reduce(
+      (sum, o) => sum + dealValueCents(o, bidProposalTotals.get(o.id) ?? null),
+      0
+    );
 
   // Apply quick-filter chips post-fetch using the overview data.
   let accounts = accountsRaw.slice();
@@ -273,6 +299,7 @@ export default async function CommercialAccountsPage({
   const totalActiveBidLowCents = matchOverviews.reduce((acc, o) => acc + (o?.total_active_bid_low_cents ?? 0), 0);
   const totalActiveBidHighCents = matchOverviews.reduce((acc, o) => acc + (o?.total_active_bid_high_cents ?? 0), 0);
   const bookBidRange = formatBidCents(totalActiveBidLowCents, totalActiveBidHighCents);
+  const bookOpenValueCents = accounts.reduce((acc, a) => acc + openValueForAccount(a.id), 0);
 
   // URL builders (unchanged behavior — link helpers for chip toggles + sort).
   const baseParams = new URLSearchParams();
@@ -403,9 +430,15 @@ export default async function CommercialAccountsPage({
           />
           <KpiCard
             tone="neutral"
-            label="Bid range"
-            value={bookBidRange !== "—" ? bookBidRange : "—"}
-            sub={bookBidRange !== "—" ? "low–high across open bids" : "log a bid to see totals"}
+            label={bookBidRange !== "—" ? "Bid range" : "Open value"}
+            value={
+              bookBidRange !== "—"
+                ? bookBidRange
+                : bookOpenValueCents > 0
+                  ? formatCentsCompact(bookOpenValueCents)
+                  : "—"
+            }
+            sub={bookBidRange !== "—" ? "low–high across open bids" : "across open bids"}
           />
         </div>
       </header>
@@ -870,6 +903,7 @@ export default async function CommercialAccountsPage({
                 key={a.id}
                 account={a}
                 overview={overviewsById.get(a.id) ?? null}
+                openValueCents={openValueForAccount(a.id)}
                 tags={tagsByAccount.get(a.id) ?? []}
               />
             ))}
@@ -1022,10 +1056,13 @@ function FilterOption({
 function AccountRow({
   account,
   overview,
+  openValueCents,
   tags,
 }: {
   account: CommercialAccount;
   overview: AccountOverview | null;
+  /** Proposal-total fallback for accounts whose deals carry no bid range. */
+  openValueCents: number;
   tags: AccountTag[];
 }) {
   const cityState = [account.billing_city, account.billing_state].filter(Boolean).join(", ");
@@ -1051,10 +1088,19 @@ function AccountRow({
   // right-side metric with dollar amount, (d) freshness stays on
   // the top-right so scanners see "active today" without hunting.
   const openBids = overview?.open_opps_count ?? 0;
-  const bidRange =
+  // "Open bids: 3" beside "Bid range: —" was the contradiction: the count and
+  // the money come from the same deals, but only the count survived the create
+  // forms dropping the bid columns.
+  const rawBidRange =
     overview && openBids > 0
       ? formatBidCents(overview.total_active_bid_low_cents, overview.total_active_bid_high_cents)
       : null;
+  const bidRange =
+    rawBidRange && rawBidRange !== "—"
+      ? rawBidRange
+      : openBids > 0 && openValueCents > 0
+        ? formatCentsCompact(openValueCents)
+        : rawBidRange;
   const contactCount = overview?.contact_count ?? 0;
   const teamCount = overview?.ppp_team_count ?? 0;
   const docCount = overview?.active_document_count ?? 0;
