@@ -160,11 +160,29 @@ Starts only when D is clean.
 
 ⏰ Reminder set for **2026-08-12, 12pm EST** covering 4, 5, 6.
 
-### Deferred by decision
-- **Google Drive / Dropbox archive + restore** of project doc drawers — Katie flagged as future, low priority.
-- **Scheduling & labor module** — the big one, deliberately last.
-- **RFP email → auto-populate the opportunity** — the endgame bonus. After it:
-  **STOP and do a joint smoke test with Karan** before calling the platform done.
+### The road to done — CONFIRMED BY KARAN 2026-08-11
+1. The ~79 audit findings — emergencies (F1, F2, F12) first
+2. Final re-audit (Phase D)
+3. Stephanie's list (Phase E)
+4. Reports — once Katie says which
+5. **Google Drive / Dropbox for LARGE FILES**
+6. RFP email → auto-populate the opportunity
+7. **Joint smoke test with Karan → done**
+
+**Scheduling & labor module — SHIPPED.** Previously listed here as "the big one,
+deliberately last." It is built. Do not re-plan it or treat it as remaining
+scope; the last big build is behind us.
+
+**#5 is about FILE SIZE, not archiving.** Earlier notes framed Drive/Dropbox as
+"archive + restore of doc drawers, low priority" — Karan's 2026-08-11 correction
+is that the driver is large files: drawing sets, marked-up submittal packages
+and closeout bundles are too big for the current upload path. The job is to
+offload storage for those, not to build an archive feature. Re-scope before
+building; the old framing will send you at the wrong problem.
+
+Step 6 is the endgame bonus — Karan wants to walk through the parsing rules
+rather than have them built from a spec. After it: **STOP and do the joint smoke
+test** before calling the platform done.
 
 ### Needs verification, not building
 - **Tap-to-sign breadth** — the stored signature is used in the closeout PDF;
