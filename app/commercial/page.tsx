@@ -194,8 +194,12 @@ export default async function CommercialDashboardPage() {
   const coldRfps = openOpps.filter((o) => isColdRfp(o, attentionToday));
   // Follow-ups due today or overdue: follow_up_at ≤ today.
   const followupsDue = openOpps.filter((o) => isFollowUpDue(o, attentionToday));
-  // Wins awaiting debrief: terminal + won + win_loss_debriefed_at NULL.
-  const winsAwaitingDebrief = wonOpps.filter((o) => !o.win_loss_debriefed_at);
+  // Wins awaiting debrief — D3: pre_sale_closed only, matching the count and
+  // every filing surface. This listed won deals at any delivery stage, which no
+  // screen can file a debrief for, so the list could never be worked to empty.
+  const winsAwaitingDebrief = wonOpps.filter(
+    (o) => o.status === "pre_sale_closed" && !o.win_loss_debriefed_at
+  );
 
   // ─── TOP 5 OPEN DEALS by weighted value ───
   const accountNameById = new Map(accounts.map((a) => [a.id, a.company_name]));

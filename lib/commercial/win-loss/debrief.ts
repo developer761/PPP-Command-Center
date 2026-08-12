@@ -415,22 +415,27 @@ export async function oppNeedsDebrief(opportunityId: string): Promise<boolean> {
   // (those are sub_status / loss_reason now), so the old check made this
   // always return false. A deal "needs debrief" when it's decided — won at
   // ANY stage (isPostSaleProject) or lost — and hasn't been debriefed yet.
-  const isDecided = isPostSaleProject(o) || isLost(o);
-  if (!isDecided) return false;
+  // D3: the debrief is a WIN/LOSS-MOMENT thing, so only a deal sitting at
+  // pre_sale_closed needs one. Counting won deals at any stage produced a badge
+  // that could never reach zero: every filing surface accepts only
+  // pre_sale_closed, so a won deal advanced into delivery was counted forever
+  // with no screen able to clear it, and a delivered deal showed a Debrief tab
+  // whose submit always errored. Advancing into delivery clears the badge.
+  if (o.status !== "pre_sale_closed") return false;
   return o.win_loss_debriefed_at === null;
 }
 
 /** Bulk count for the dashboard widget. */
 export async function countOppsNeedingDebrief(): Promise<number> {
   const sb = commercialDb();
-  // Decided = won at any stage (post-sale statuses OR pre_sale_closed+won)
-  // OR lost (pre_sale_closed+lost). Mirrors isPostSaleProject/isLost in SQL.
+  // D3, same set as `oppNeedsDebrief`: pre_sale_closed only. This counted won
+  // deals at every delivery stage too, which is why the badge never reached
+  // zero — nothing could file a debrief for those.
   const { count } = await sb
     .from("commercial_opportunities")
     .select("id", { count: "exact", head: true })
-    .or(
-      "status.in.(pre_construction,in_progress,billing,post_sale_closed),and(status.eq.pre_sale_closed,sub_status.in.(won,lost))"
-    )
+    .eq("status", "pre_sale_closed")
+    .in("sub_status", ["won", "lost"])
     .is("win_loss_debriefed_at", null)
     .is("deleted_at", null);
   return count ?? 0;
