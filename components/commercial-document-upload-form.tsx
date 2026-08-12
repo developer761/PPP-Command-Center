@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { DOCUMENT_CATEGORIES, documentCategoryLabel } from "@/lib/commercial/accounts/document-categories";
 import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { DateField } from "@/components/commercial/date-field";
@@ -11,14 +12,15 @@ import { DateField } from "@/components/commercial/date-field";
  *  audit the bucket policy in Supabase too. Last verified: 50 MB. */
 const CLIENT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
-const CATEGORIES = [
-  { value: "coi", label: "Certificate of Insurance (COI)" },
-  { value: "w9", label: "W-9" },
-  { value: "master_agreement", label: "Master Service Agreement" },
-  { value: "vendor_onboarding", label: "Vendor Onboarding / Prequal" },
-  { value: "safety", label: "Safety / OSHA" },
-  { value: "other", label: "Other" },
-] as const;
+// AUDIT 2026-08-12: this was a hardcoded copy of the category list, and it is
+// how Brendan's removal failed to reach the screen — the enum dropped four
+// categories and this form kept offering all of them, with COI still selected
+// by default. Imported from the shared pure module now, so the picker cannot
+// disagree with the enum again.
+const CATEGORIES = DOCUMENT_CATEGORIES.map((value) => ({
+  value,
+  label: documentCategoryLabel(value),
+}));
 
 /** Mirror of lib/commercial/accounts/documents.ts sanitizeFileName so the
  *  preview shows EXACTLY what the server will save. Duplicated here
@@ -291,7 +293,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
             <select
               id="category"
               name="category"
-              defaultValue="coi"
+              defaultValue={CATEGORIES[0]?.value}
               required
               className={SELECT_CLS}
               style={SELECT_BG_STYLE}

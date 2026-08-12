@@ -6015,8 +6015,6 @@ async function DealEditSheet({
   // ISO date-picker defaults — extract YYYY-MM-DD from the stored UTC
   // timestamps so <input type="date"> renders them correctly.
   const dueDateDefault = deal.proposal_due_at ? deal.proposal_due_at.slice(0, 10) : "";
-  const startDateDefault = deal.proposed_start_at ? deal.proposed_start_at.slice(0, 10) : "";
-  const endDateDefault = deal.proposed_end_at ? deal.proposed_end_at.slice(0, 10) : "";
   const rfpDateDefault = deal.rfp_received_at ? deal.rfp_received_at.slice(0, 10) : "";
   // Katie gap #1 (2026-07-28): the "Attention contact" for this job. Drives the
   // proposal's Attention / Phone / Email block (via primary_contact_id → the
@@ -6342,31 +6340,29 @@ async function DealEditSheet({
           {/* ─── Section: Timeline ─── */}
           <SheetSection
             title="Timeline"
-            hint="When did the RFP arrive, when is the proposal due, and when might we start + finish the work?"
+            hint="When the bid request arrived, and when our proposal is due."
           >
             {/* Katie 2026-07-20: RFP received sits above the work-timing
                 trio because it's the LIFECYCLE start (bid intake) vs the
                 other three which are project timing. Two separate groups
                 so users don't mistake RFP received for the start date. */}
+            {/* AUDIT 2026-08-12: Proposed start / Proposed end were removed from
+                both create forms and from inline editing, and survived HERE —
+                this sheet was the one surface that could still set the fields
+                Brendan called "too early to determine at the opportunity
+                level". Dates for the WORK live on the project. Stored values
+                are kept; only the inputs are gone.
+
+                The two bid-lifecycle dates stay: they are on Brendan's field
+                list, and this is where a wrong one gets corrected. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor="edit-rfp" className={labelCls}>RFP received</label>
                 <DateField id="edit-rfp" name="rfp_received_at" defaultValue={rfpDateDefault} placeholder="When the bid request arrived" ariaLabel="RFP received date" />
-                <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">Powers time-to-proposal and time-to-sale metrics.</span>
               </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="edit-due" className={labelCls}>Proposal due</label>
                 <DateField id="edit-due" name="proposal_due_at" defaultValue={dueDateDefault} placeholder="Pick a due date" ariaLabel="Proposal due date" />
-              </div>
-              <div>
-                <label htmlFor="edit-start" className={labelCls}>Proposed start</label>
-                <DateField id="edit-start" name="proposed_start_at" defaultValue={startDateDefault} placeholder="Pick a start date" ariaLabel="Proposed start date" />
-              </div>
-              <div>
-                <label htmlFor="edit-end" className={labelCls}>Proposed end</label>
-                <DateField id="edit-end" name="proposed_end_at" defaultValue={endDateDefault} placeholder="Pick an end date" ariaLabel="Proposed end date" />
               </div>
             </div>
           </SheetSection>

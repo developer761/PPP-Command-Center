@@ -22,46 +22,17 @@ import { MS_PER_DAY, EXPIRY_WARNING_DAYS } from "./constants";
  * when past. No cron yet — that's a follow-up.
  */
 
-/*
- * Brendan 2026-08-12: "COI is not necessary on an account level. W9s are
- * something that they request from us but we don't need to store. Remove
- * safety/OSHA — anything safety related will typically be in our subcontract
- * agreement. Subcontracts are on a per project basis not on an account level.
- * The only thing for the account level really would be prequal questionnaire."
- *
- * So: prequal, and a catch-all. Every removed category is a document Tomco was
- * being asked to collect and file for a customer who never asked them to.
- *
- * `documentCategoryLabel` still names the retired values — existing uploads
- * keep their category and stay readable rather than rendering as blanks.
- */
-export const DOCUMENT_CATEGORIES = [
-  "vendor_onboarding",
-  "other",
-] as const;
-
-/** Categories no longer offered on upload, kept so old rows still read. */
-export const RETIRED_DOCUMENT_CATEGORIES = [
-  "coi",
-  "w9",
-  "master_agreement",
-  "safety",
-] as const;
-export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
-
-export function documentCategoryLabel(c: DocumentCategory | string): string {
-  return (
-    {
-      vendor_onboarding: "Prequal Questionnaire",
-      other: "Other",
-      // Retired 2026-08-12 — still named so historical uploads read properly.
-      coi: "Certificate of Insurance (COI)",
-      w9: "W-9",
-      master_agreement: "Master Service Agreement",
-      safety: "Safety / OSHA",
-    } as Record<string, string>
-  )[c] ?? "Other";
-}
+// Categories live in the pure module so the CLIENT upload form can import the
+// same list instead of carrying its own copy — which is how Brendan's removal
+// silently failed to reach the screen. Re-exported so server callers keep one
+// import path.
+import {
+  DOCUMENT_CATEGORIES,
+  documentCategoryLabel,
+  type DocumentCategory,
+} from "./document-categories";
+export { DOCUMENT_CATEGORIES, documentCategoryLabel, type DocumentCategory };
+export { RETIRED_DOCUMENT_CATEGORIES } from "./document-categories";
 
 export type CommercialAccountDocument = {
   id: string;

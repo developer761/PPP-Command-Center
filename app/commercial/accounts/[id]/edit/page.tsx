@@ -256,7 +256,10 @@ export default async function EditCommercialAccountPage({
         <Section title="Identity" anchorId="edit-identity">
           <EditField id="company_name" label="Company name *" required defaultValue={sp.company_name ?? account.company_name} />
           <EditField id="dba" label="DBA (doing business as)" defaultValue={sp.dba ?? (account.dba ?? "")} />
-          <EditField id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" defaultValue={sp.industry ?? (account.industry ?? "")} />
+          {/* AUDIT 2026-08-12: Industry was removed from the create form and
+              the account detail, and survived HERE — so the field Brendan said
+              we don't need was still being asked for on the one screen used to
+              correct an account. The column keeps its data. */}
           <EditSelectField
             id="rating"
             label="Rating"
