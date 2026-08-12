@@ -863,3 +863,34 @@ the pipeline quick-create, and the account-scoped form) — the commit genuinely
 pipeline quick-create that "had drifted" (was dropping nickname/estimator/lead-source). Collapsibles
 removed (expanded per Brendan). proposed_start/end removed from CREATE only (harmless — create defaults
 null on a new row) while the edit sheet keeps them. No data-loss, no new findings.
+
+---
+
+## AUDIT — `d716179` (team roles → four). Clean.
+Right deprecation: `RETIRED_ROLE_LABELS` keeps Account Manager/Superintendent/Foreman/Billing Contact
+labels so existing assignments read (not blanks), no migration, no data-loss. Good catch: the `"other"`
+fallback (removed with the enum) was repointed to `"sales_rep"` at BOTH write sites (teams/db.ts) — writing
+the now-invalid `"other"` would have been a broken write. No findings.
+
+---
+
+## 🤝 COORDINATION NOTE (two sessions auditing — 2026-08-12)
+Both the build session and this verification session are auditing. To avoid overlap, one shared truth:
+
+**LANES:** build session = build + self-audit + fixes; verification session (this doc) = verify each fix,
+catch 90%-done misses, find edge-cases/data-loss, own the money/date-tz/DB/security punch-list classes.
+When you fix a punch-list item, say so in a commit and I'll verify + mark it CLOSED here.
+
+**LIVE STATE of the post-audit punch list (`docs/POST_AUDIT_PUNCHLIST_2026_08.md`):**
+- ✅ CLOSED/verified: activity email source, etDay fake-ET, account dead-code, step-10 tile↔list, the
+  proposal-page 404 embed (the 3 detail queries).
+- ⛔ RETRACTED (do NOT action): punch-list HIGH #7 (7e462d9 proposed-dates data-loss) — was my error.
+- 🔴 CONFIRMED-OPEN, highest value (each fixes many): (1) the mig-127 embed ambiguity at the OTHER 7
+  sites — Account 360 Proposals tab shows ZERO for every account, + bulk-delete + proposal_idle cron;
+  (2) margin basis — stage-KPI strip contract-based vs billed-based everywhere else (D2); (3) platform-wide
+  bare-DATE tz off-by-ones (proposal_due/follow_up/Hot/dashboard/fmtEtDate).
+- 🔴 OTHER confirmed-open: account Industry data-loss (42ee991); skipped-stage + won-not-started path bar
+  (status-path-bar, still open after 0da1676); standalone `accounts/[id]/edit` divergence (Industry +
+  inverted address); §7 gaps (retainage, warranty); the mobile 24px touch-target cluster.
+
+If you (build session) pick up any of these, note it so I don't double-audit; I'll verify your fix.
