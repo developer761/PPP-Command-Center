@@ -358,10 +358,15 @@ export async function getCommercialOpportunityIncludingDeleted(
 /** Bid range as a display string ("$50k–$75k", "$25,000", "—"). */
 export function formatBidRange(low: number | null, high: number | null): string {
   if (low === null && high === null) return "—";
+  // Matches `formatCentsCompact` — one decimal below $100k, whole thousands
+  // above. This rounded to whole thousands at every size, so the SAME deal read
+  // "$53k" on its header and "$52.5k" on the account beside it, which looks
+  // like two different bids rather than two roundings.
   const fmt = (cents: number) => {
     const dollars = cents / 100;
     if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-    if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}k`;
+    if (dollars >= 100_000) return `$${Math.round(dollars / 1_000)}k`;
+    if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(1)}k`;
     return `$${dollars.toLocaleString()}`;
   };
   if (low === null) return `≤ ${fmt(high!)}`;

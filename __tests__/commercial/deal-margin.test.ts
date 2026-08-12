@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { dealMargin, marginFrom } from "@/lib/commercial/projects/financials";
+import { formatBidRange } from "@/lib/commercial/opportunities/db";
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 
 /**
  * One margin, used everywhere. Three surfaces used to disagree about the same
@@ -170,5 +172,22 @@ describe("marginFrom", () => {
       expect(deal.provisional, `${billed}/${cost}`).toBe(core.provisional);
       expect(deal.overBudget, `${billed}/${cost}`).toBe(core.overBudget);
     }
+  });
+});
+
+describe("formatBidRange", () => {
+  it("rounds the same way as formatCentsCompact", () => {
+    // L4: the same deal read "$53k" on its header and "$52.5k" on the account
+    // beside it — two roundings of one number, which looks like two bids.
+    for (const cents of [52_500_00, 9_900_00, 250_000_00, 1_200_000_00, 999_00]) {
+      expect(formatBidRange(cents, cents), String(cents)).toBe(formatCentsCompact(cents));
+    }
+  });
+
+  it("still reads as a range, and says so when open-ended", () => {
+    expect(formatBidRange(50_000_00, 60_000_00)).toBe("$50.0k–$60.0k");
+    expect(formatBidRange(null, 60_000_00)).toMatch(/^≤/);
+    expect(formatBidRange(50_000_00, null)).toMatch(/^≥/);
+    expect(formatBidRange(null, null)).toBe("—");
   });
 });
