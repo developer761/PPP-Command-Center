@@ -11,25 +11,44 @@
  * here.
  */
 
+/*
+ * Brendan 2026-08-12: "Team Roles should be simple. PPP Staff roles: Sales Rep,
+ * Field Rep, Office Rep, Estimator."
+ *
+ * Seven became four. The three that went — Account Manager, Superintendent,
+ * Foreman, Billing Contact — were either PPP job titles that nobody assigns per
+ * customer, or a CUSTOMER-side role wearing a PPP-side label (billing contact
+ * is a person at the GC, and belongs on Contacts, not on the staff list).
+ *
+ * A picker with seven options where four are never used is a picker people
+ * choose wrongly and then stop trusting.
+ */
 export const ASSIGNMENT_ROLES = [
   "sales_rep",
-  "account_manager",
-  "primary_pm",
-  "superintendent",
-  "foreman",
-  "billing_contact",
-  "other",
+  "field_rep",
+  "office_rep",
+  "estimator",
 ] as const;
 export type AssignmentRole = (typeof ASSIGNMENT_ROLES)[number];
 
-export function assignmentRoleLabel(role: AssignmentRole): string {
-  return {
-    sales_rep: "Sales Rep",
-    account_manager: "Account Manager",
-    primary_pm: "Project Manager",
-    superintendent: "Superintendent",
-    foreman: "Foreman",
-    billing_contact: "Billing Contact",
-    other: "Other",
-  }[role];
+/** Retired 2026-08-12. Kept only so existing assignments still read. */
+const RETIRED_ROLE_LABELS: Record<string, string> = {
+  account_manager: "Account Manager",
+  primary_pm: "Project Manager",
+  superintendent: "Superintendent",
+  foreman: "Foreman",
+  billing_contact: "Billing Contact",
+  other: "Other",
+};
+
+export function assignmentRoleLabel(role: AssignmentRole | string): string {
+  return (
+    {
+      sales_rep: "Sales Rep",
+      field_rep: "Field Rep",
+      office_rep: "Office Rep",
+      estimator: "Estimator",
+      ...RETIRED_ROLE_LABELS,
+    } as Record<string, string>
+  )[role] ?? "Other";
 }

@@ -162,7 +162,10 @@ export async function addTeamMember(
   role: string,
   actorUserId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const r: AssignmentRole = isRole(role) ? role : "other";
+  // "other" was retired with the seven-role list (Brendan 2026-08-12). An
+  // unrecognised role falls back to Sales Rep — the most common assignment —
+  // rather than to a value the enum no longer contains.
+  const r: AssignmentRole = isRole(role) ? role : "sales_rep";
   const sb = commercialDb();
   // Revive a soft-removed membership instead of compounding duplicates.
   const { data: existing } = await sb
@@ -387,7 +390,7 @@ export async function updateTeamMember(
   if (!row) return { ok: false, error: "Member not found." };
   const cur = row as { team_id: string; role: AssignmentRole; is_team_admin: boolean };
   const update: { role?: AssignmentRole; is_team_admin?: boolean } = {};
-  if (patch.role !== undefined) update.role = isRole(patch.role) ? patch.role : "other";
+  if (patch.role !== undefined) update.role = isRole(patch.role) ? patch.role : "sales_rep";
   if (patch.is_team_admin !== undefined) update.is_team_admin = patch.is_team_admin;
   if (update.is_team_admin === true) {
     // One admin per team — clear the flag on the others first.
