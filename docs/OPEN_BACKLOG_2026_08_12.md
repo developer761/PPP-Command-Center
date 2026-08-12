@@ -158,3 +158,21 @@ commercial code = **empty** (all 10 now carry `!commercial_proposals_opportunity
 exists in prod (it's a query-side fix, no migration), so the Account 360 Proposals tab / bulk-delete /
 proposal_idle cron resolve as soon as `25979c7` DEPLOYS (Vercel). The rest of the CORRECTION section above
 (margin-D2, bare-DATE, mobile, §7, step-7) is still open and now carried in the list.
+
+---
+
+## VERIFY — `a576f4d` (items 2/3/4). Headlines fixed; items 2 + 3 left their TAILS.
+- ✅ **Item 2 (strip):** stage-KPI now fed `dealMargin` (billed-based, D2) with a "Margin so far" label while part-billed. Correct.
+- ✅ **Item 4:** `dealValueCents` prefers `accepted_contract_cents` once won → delivery rows priced at the contract, not the bid. Correct. (Minor: list total uses contract-without-COs while the dashboard tile is contract+COs — they can still differ by the CO amount; secondary.)
+- ✅ **Item 3 (etDateOf root):** a date-only string is now returned untouched → the stage-KPI proposal-due/follow-up "1 day overdue" is fixed, and every `etDateOf` caller heals.
+
+### 🟠 STILL OPEN — item 3's date cluster was NOT fully swept (the plan item names these explicitly)
+"Fixed at the root, every caller heals" is true only for `etDateOf`. These siblings don't call it and are untouched:
+- **Hot filter** `opportunities/page.tsx:639`: `Math.ceil((new Date(o.proposal_due_at).getTime() - Date.now())/MS_PER_DAY)` — raw getTime, a proposal due today still drops out of Hot after ~8pm ET. `daysFromTodayEt` is already imported (line 97) but not applied here.
+- **Dashboard `relativeLabel`** `page.tsx:69`: `daysBetween(iso, new Date().toISOString())` — raw getTime → "Due today" still flips to "Due yesterday" in the ET evening.
+- **`fmtEtDate`** `invoices/format.ts:63`: still `new Date(iso)` with NO bare-date guard → work-order `scheduled_*` + field-ops `work_date` (DATE cols) still render a day early. Add the same date-only guard `etDateOf` just got.
+
+### 🟠 STILL OPEN — item 2's report CAPTIONS still say contract-based (the same-page contradiction)
+- `reports/job-costs/page.tsx:73`: "Margin = contract − cost (the projected profit…)" — now contradicts the billed-based code AND the Costs tab it claims to match.
+- `reports/geography/page.tsx:95`: "Margin is contract-based." — flatly wrong; code is `marginFrom(billed, cost)`.
+Change both captions to "billed − cost" so the label matches the number.
