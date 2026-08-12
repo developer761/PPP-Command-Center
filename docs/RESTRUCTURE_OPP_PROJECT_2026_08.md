@@ -216,6 +216,59 @@ Status path bar across the top, then tabs:
 Header switches identity at the win: **"Opportunity"** → **"Project · 2026-0117"**,
 showing project owner + contract value alongside the sales owner + quoted subtotal.
 
+### 4.5 Record page anatomy
+
+From the Quote record screenshot (2026-08-12) — the shape Karan is pointing at:
+
+```
+┌ Quote · Test Testing Quote - 2026-6-25      [Test PDF][Add Line][Preview][Email ▾] ┐
+│ Quote Number   Syncing   Account ▸   Opportunity ▸   Total Discount   Grand Total  │
+│ 00033152                 Test Testing  Test Opp        $0.00           $0.05       │
+├────────────────────────────────────────────────────────────────────────────────────┤
+│  ✓ ————————— ✓ ————————— ▓ Approved ▓ ————— Rejected      [✓ Mark Status Complete] │
+├────────────────────────────────────────────────────────────────────────────────────┤
+│  ⛔ Payment Terms have not been added. Complete prior to Approving and Syncing.     │
+├──────────────────────────────────────────┬─────────────────────────────────────────┤
+│ Details │ Related │ Contract             │  Activity                               │
+│ …two-column field grid, ✏ per field…     │  Upcoming & Overdue · August 2026        │
+└──────────────────────────────────────────┴─────────────────────────────────────────┘
+```
+
+Six elements worth copying:
+
+1. **Compact stats row pinned under the title** — the four or five numbers you'd
+   otherwise scroll for, with the parent records as links. Ours: project #, account,
+   contract value, % billed, margin.
+2. **Path bar** (§6.3).
+3. **Blocking-condition banner** directly under the path — states the missing thing
+   *and* what it blocks. See §6.4 for how ours differs.
+4. **Tabs sit under the path bar, not above it** — status is page-level, tabs are
+   section-level. Ours currently has no page-level band at all.
+5. **Inline ✏ per field** — edit in place. We have a separate `/edit` route today.
+6. **Activity rail, right side, persistent** — grouped by month with an
+   *Upcoming & Overdue* block at the top, and email/task compose buttons in the
+   header. We have this as a Timeline *tab*, so it's invisible unless you go looking.
+
+### 4.6 Send-document surface
+
+The Send Email screenshots are the shape our proposal/document send should take —
+relevant to Stephanie's list, not to this restructure, but capturing it while we have it:
+
+- **Contact quick-pick dropdown** beside a free-text lookup, with a refresh — pick the
+  contact, don't retype the address
+- From **locked** to the sending identity; **Reply-To** shown explicitly
+- **To / CC / BCC**, CC comma-separated and multi-valued
+- Subject **pre-templated** from the record (`PPP Quote prepared for {Account}`)
+- **Attachments as named links** you can see before sending, plus *Attach or Remove
+  Files* / *Clear All* — standing collateral (`Surface Prep Level Definitions.pdf`)
+  rides along with the generated document
+- **Editable branded body** in a rich-text editor, logo included, greeting merged from
+  the contact
+
+Ours sends through Resend and already honours the Brendan approve → send flow
+(`project_brendan_proposal_approver`). The gaps are the contact quick-pick, standing
+collateral, and a visible attachment list before send.
+
 ---
 
 ## 5. List view spec
@@ -273,6 +326,45 @@ Pre-construction → In progress → Substantially complete → Billing → Clos
 
 **Two separate path bars, not one long one.** A single 11-stop path is unreadable, and
 the two ladders have different owners.
+
+### 6.3 Path bar — visual spec
+
+From the Quote screenshot:
+
+- **Chevron segments**, each pointing into the next — direction is the point.
+- **Passed** = filled brand blue + **✓**, label dropped once passed (the checkmark
+  carries it). Ours keeps the label on the first and last passed stage so the bar is
+  still readable out of context.
+- **Current** = filled navy `#172B4D`, label always shown.
+- **Future** = light grey, label shown.
+- **Terminal branches sit side by side at the tail** — `Approved` | `Rejected`. Ours:
+  `Closed Won` | `Closed Lost`, and only the one that happened stays filled.
+- **Advance CTA at the right end**, orange, stating the next action rather than the next
+  state — *"Mark Status as Complete."* Ours names the actual step: *"Mark proposal
+  sent."*
+
+Because status is now largely automatic, the CTA is the **manual override**, not the
+primary path. It shows only when the engine can't infer the next step from an artifact
+— which keeps a human able to move a deal that reality moved first.
+
+**Mobile:** the bar becomes `Stage 4 of 6 · Approved` with a tap to expand. Six chevrons
+do not fit on a phone, and Alex is on a phone.
+
+### 6.4 Blocking conditions — we warn where Salesforce blocks
+
+Salesforce hard-stops the quote: *"Payment Terms have not been added… complete prior to
+Approving and Syncing."*
+
+**Ours states the same thing and lets you proceed anyway** — house rule
+(`feedback_never_reject_only_warn`), and the reason is real: a GC verbally awards a job
+on Friday and the paperwork lands Tuesday. A system that refuses to record the win until
+Tuesday produces a wrong win date, which is the exact bug class we spent this month
+removing.
+
+So: same banner, same specificity about what's missing and what it affects, but it
+informs rather than gates. The unmet condition then rides along as a chip on the record
+until it's cleared, so it can't be forgotten — informing is only acceptable if it
+persists. Security boundaries still block.
 
 ---
 
@@ -391,6 +483,28 @@ The part that decides whether this lands clean.
 33. **Skipped stages render as skipped**, not complete — a dragged-forward deal never
     passed through them.
 
+### Record page (added 2026-08-12 from the Quote screenshots)
+
+34. **Path bar on a phone** collapses to `Stage 4 of 6 · Approved`. Six chevrons don't
+    fit and horizontal scroll on a status bar is unusable.
+35. **The advance CTA must not offer a step the engine already owns**, or a human and the
+    auto-advance engine fight over the same transition. It appears only where no artifact
+    can imply the move — and it routes through `changeOpportunityStatus` like everything
+    else. **One writer, still.**
+36. **Terminal branch rendering.** A lost deal shows `Closed Lost` filled and `Closed Won`
+    dropped entirely — never both greyed side by side, which reads as "not decided yet."
+37. **Blocking-condition chips must clear themselves.** A warning that persists after the
+    condition is met is worse than no warning — people learn to ignore the row.
+38. **Inline field edit needs the same permission checks as the edit page.** A pencil that
+    appears for someone who can't save is a trap; hide it, don't fail on submit.
+39. **Inline edit and autosave must not both own a field.** React 19 already form-reset
+    half-typed proposal fields on autosave once (fixed 2026-08); a second writer on the
+    same input reopens it.
+40. **Activity rail is a read of existing data, not a new table.** It reads the status log,
+    email archive, notes and tasks. If it needs its own store, the design is wrong.
+41. **The rail must not fire N queries per section.** Month grouping happens after one
+    fetch, not per month.
+
 ---
 
 ## 9. Build order
@@ -402,8 +516,8 @@ Each step ships green and leaves the app working.
 | 1 | Migration: `commercial_projects` + `project_id` on 8 tables + drift triggers + backfill | **High** — the money step |
 | 2 | Project creation wired into the status writer (§8.1–8.5) + tests | High |
 | 3 | Opportunity page absorbs the 7 tools; old routes 308; `?back=` + save-redirects (§8.18–8.19) | Medium |
-| 4 | Status path bars (sales + delivery) | Low |
-| 5 | Stage-aware KPIs | Low |
+| 4 | Status path bars (sales + delivery) + blocking-condition banner (§6.3–6.4) | Low |
+| 5 | Stage-aware KPIs + compact stats row (§4.5) | Low |
 | 6 | Account page trimmed to the shelf | Low |
 | 7 | List view: saved views, totals, filter chips, grouping, mobile cards | Medium |
 | 8 | Sidebar collapsed; AR to Reports; kanban retired | Low |
@@ -426,6 +540,16 @@ Proceeding on these; correct before step 1 if wrong.
 3. **Proposals stay on the opportunity.** The line the migration is drawn along; Karan
    confirmed 2026-08-12.
 4. **`project_number` inherited, never re-issued** (§8.6).
+
+### Deferred to their own step — not part of steps 1–10
+
+Both come from the Quote screenshots, both are page-wide rewrites, and neither blocks
+the restructure. Doing them *inside* step 3 would double its size:
+
+- **Inline ✏ field editing** replacing the `/edit` route (§4.5 item 5, §8.38–8.39).
+- **Persistent Activity rail** replacing the Timeline tab (§4.5 item 6, §8.40–8.41).
+
+Karan to say whether these ride along or wait.
 
 ---
 
