@@ -818,3 +818,15 @@ updated → the two edit surfaces diverge. **Recommend retiring `accounts/[id]/e
 editing through the detail-page inline sections** (one edit surface, can't diverge), OR sweeping the edit
 page in the SAME commit every time. (Pairs with the first systemic pattern — field-drop data-loss — both
 are "the second edit path was left behind.")
+
+---
+
+## AUDIT — `bd1de30` (contacts on new-account form). Clean.
+
+Well-built, and notably more careful than the recent field-drops. Verified: (1) 4 fixed role rows map
+to VALID roles (owner→decision_maker, estimating→estimator, billing→billing, field→site; all in
+CONTACT_ROLES). (2) Name-required skip (`if (!full_name) continue`) → no nameless contacts from a
+stray email/phone. (3) Best-effort: account created first, contacts fail independently, and failures
+are genuinely SURFACED not swallowed — `params.set("contacts_failed", …)` → the account page renders
+"N contact(s) couldn't be saved — the account was created" (page.tsx:405-406 + the render). (4) Typed
+values survive a validation bounce (client component). No new findings.
