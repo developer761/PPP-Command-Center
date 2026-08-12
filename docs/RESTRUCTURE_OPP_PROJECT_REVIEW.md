@@ -894,3 +894,29 @@ When you fix a punch-list item, say so in a commit and I'll verify + mark it CLO
   inverted address); §7 gaps (retainage, warranty); the mobile 24px touch-target cluster.
 
 If you (build session) pick up any of these, note it so I don't double-audit; I'll verify your fix.
+
+---
+
+## VERIFY — `3e6bd53` (build session's AUDIT round 1: three ladder copies). Fix good; but it was itself 90%-done — 2 MORE copies missed.
+
+The fix is correct for the 3 it names (list-row stepper now derived from shared columns; saved view uses
+the canonical stage key; Estimating hint corrected; Pending Approval view added; 2 CI tests pin it). But
+the same rename left **two more** stale ladder references the audit missed — same class:
+
+### 🟠 MISS 1 (FUNCTIONAL regression): create picker now offers "Sent" and "Pending Approval" as create stages
+`status-sub-status-picker.tsx:69` `CREATE_EXCLUDED_STAGES = ["proposal"]` filters `PRE_CONTRACT_COLUMNS`
+by **column key** — but after the rename there is no `"proposal"` key (it's `sent` + `pending_approval`,
+confirmed kanban-columns.ts:84-90). So the exclusion now matches nothing, and `CREATE_STAGES` (72) offers
+`sent` + `pending_approval` as stages you can create a NEW deal directly at — the exact thing the comment
+above it forbids ("You can't have sent a proposal you haven't built"). A user can start a deal already at
+"Sent" with no proposal behind it. **Fix:** `CREATE_EXCLUDED_STAGES = ["sent", "pending_approval"]` (both
+artifact-requiring stages, not the retired combined key).
+
+### 🟡 MISS 2 (stale label): auto-advance target still labeled "Proposal", not "Sent"
+`auto-advance-targets.ts:66` `proposal: { status:"proposal", sub_status:"sent", …, label: "Proposal" }` —
+the label wasn't renamed to "Sent" with the column, though its SIBLING (line 64, "Proposal Pending
+Approval") was updated. Wherever this target's label surfaces (picker/notification), it reads the old
+stage name. **Fix:** `label: "Sent"`.
+
+(Note: most other `"proposal"` literals in the sweep are the still-valid top-level STATUS `"proposal"`
+— unchanged by the rename — not stale. These two are the ones keyed on the retired COLUMN name.)
