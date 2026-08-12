@@ -407,7 +407,7 @@ export default async function CommercialDashboardPage() {
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue by project</h3>
-                <Link href="/commercial/opportunities?lane=post_contract" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Under contract →</Link>
+                <Link href="/commercial/opportunities?lane=under_contract" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Under contract →</Link>
               </div>
               {revProjectBars.length > 0 ? (
                 <HBars items={revProjectBars} />
@@ -432,7 +432,7 @@ export default async function CommercialDashboardPage() {
         <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
         <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={winLossMonthHref} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
         <DashStat label="Active GCs" value={accounts.length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
-        <DashStat label="Under contract" value={production.activeProjects > 0 ? formatCentsCompact(production.contractValueCents) : "—"} sub={production.activeProjects > 0 ? `${production.activeProjects} active` : "no jobs yet"} tone="navy" href="/commercial/opportunities?lane=post_contract" />
+        <DashStat label="Under contract" value={production.activeProjects > 0 ? formatCentsCompact(production.contractValueCents) : "—"} sub={production.activeProjects > 0 ? `${production.activeProjects} active` : "no jobs yet"} tone="navy" href="/commercial/opportunities?lane=under_contract" />
         <DashStat label="Owed to us" value={formatCentsCompact(arOutstandingCents)} sub={arOverdueCount > 0 ? `${formatCentsCompact(arOverdueCents)} overdue` : "all current"} tone={arOverdueCount > 0 ? "rose" : "blue"} href={arOverdueCount > 0 ? "/commercial/reports/ar-aging" : "/commercial/reports/ar-aging"} />
       </section>
 
@@ -543,7 +543,7 @@ export default async function CommercialDashboardPage() {
               — {production.activeProjects} active {production.activeProjects === 1 ? "project" : "projects"}
               {production.inProductionProjects > 0 ? ` · ${production.inProductionProjects} in production` : ""}
             </span>
-            <Link href="/commercial/opportunities?lane=post_contract" className="ml-auto text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">
+            <Link href="/commercial/opportunities?lane=under_contract" className="ml-auto text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">
               All projects →
             </Link>
           </h2>
@@ -567,7 +567,7 @@ export default async function CommercialDashboardPage() {
               />
             </div>
             <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <DashStat label="Contract" value={formatCentsCompact(production.contractValueCents)} sub={completedPctOfContract !== null ? `${completedPctOfContract}% complete` : "incl. COs"} tone="navy" href="/commercial/opportunities?lane=post_contract" />
+              <DashStat label="Contract" value={formatCentsCompact(production.contractValueCents)} sub={completedPctOfContract !== null ? `${completedPctOfContract}% complete` : "incl. COs"} tone="navy" href="/commercial/opportunities?lane=under_contract" />
               <DashStat
                 label="Billed"
                 value={formatCentsCompact(production.billedContractCents)}
@@ -579,10 +579,10 @@ export default async function CommercialDashboardPage() {
                       : "pre-tax contract billed"
                 }
                 tone={production.overBilledCents > 0 ? "amber" : "emerald"}
-                href="/commercial/opportunities?lane=post_contract"
+                href="/commercial/opportunities?lane=under_contract"
               />
-              <DashStat label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} sub="contract − billed" tone="blue" href="/commercial/opportunities?lane=post_contract" />
-              <DashStat label="Outstanding" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "open on active jobs"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/opportunities?lane=post_contract" />
+              <DashStat label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} sub="contract − billed" tone="blue" href="/commercial/opportunities?lane=under_contract" />
+              <DashStat label="Outstanding" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "open on active jobs"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/opportunities?lane=under_contract" />
             </div>
           </div>
         </section>

@@ -89,6 +89,7 @@ import {
   isDraftedCard,
 } from "@/lib/commercial/opportunities/kanban-columns";
 import { activeViewKey, filterChips } from "@/lib/commercial/opportunities/saved-views";
+import { isUnderContract } from "@/lib/commercial/opportunities/attention";
 import { SavedViewPicker } from "@/components/commercial/saved-view-picker";
 import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
 import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
@@ -453,7 +454,7 @@ export default async function CommercialOpportunitiesPage({
   const newFilter = pickFirst(sp.new) === "7d" ? 7 : undefined;
   const laneRaw = pickFirst(sp.lane);
   const laneFilter =
-    laneRaw === "post_contract" || laneRaw === "pre_contract" ? laneRaw : undefined;
+    laneRaw === "under_contract" || laneRaw === "pre_contract" ? laneRaw : undefined;
   const validColumn = statusFilter
     ? (KANBAN_COLUMNS.some((c) => c.key === statusFilter)
         ? statusFilter
@@ -653,10 +654,14 @@ export default async function CommercialOpportunitiesPage({
       .slice(0, 10);
     opps = opps.filter((o) => (o.created_at ?? "").slice(0, 10) >= cutoff);
   }
-  if (laneFilter) {
-    const laneKeys = new Set(
-      (laneFilter === "post_contract" ? POST_CONTRACT_COLUMNS : PRE_CONTRACT_COLUMNS).map((c) => c.key)
-    );
+  if (laneFilter === "under_contract") {
+    // The SAME predicate the dashboard's money tiles count, so the tile and the
+    // list it opens describe one set. Filtering by the post-contract kanban lane
+    // instead dropped won-not-started and added completed jobs — the tile
+    // counted rows the list omitted, and vice versa.
+    opps = opps.filter((o) => isUnderContract(o.status, o.sub_status));
+  } else if (laneFilter === "pre_contract") {
+    const laneKeys = new Set(PRE_CONTRACT_COLUMNS.map((c) => c.key));
     opps = opps.filter((o) => laneKeys.has(columnKeyForOpp(o.status, o.sub_status)));
   }
   if (overdueFilter) opps = opps.filter((o) => isOverdueProposal(o, attentionToday));

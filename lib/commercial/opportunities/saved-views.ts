@@ -85,7 +85,7 @@ export const SAVED_VIEWS: SavedView[] = [
     key: "under_contract",
     label: "Under contract",
     hint: "Every job we have been awarded and not yet closed out.",
-    params: { lane: "post_contract" },
+    params: { lane: "under_contract" },
     group: "delivery",
   },
   {
@@ -215,7 +215,7 @@ export function filterChips(
   if (current.lane) {
     chips.push({
       key: "lane",
-      label: current.lane === "post_contract" ? "Under contract" : "Still selling",
+      label: current.lane === "under_contract" ? "Under contract" : "Still selling",
       removeHref: without(["lane"]),
     });
   }

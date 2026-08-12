@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { attentionFor, manualNextStep, sensibleNextStatuses, type AttentionInput } from "@/lib/commercial/opportunities/attention";
+import { attentionFor, manualNextStep, sensibleNextStatuses, isUnderContract, type AttentionInput } from "@/lib/commercial/opportunities/attention";
 
 const base: AttentionInput = {
   oppId: "11111111-2222-3333-4444-555555555555",
@@ -177,5 +177,39 @@ describe("sensibleNextStatuses — only the moves with no artifact behind them",
 
   it("offers nothing once a job is closed out", () => {
     expect(sensibleNextStatuses("post_sale_closed", "closed")).toEqual([]);
+  });
+});
+
+/**
+ * The dashboard's "Under contract" tile and the list it opens must describe the
+ * SAME jobs. They briefly didn't: the tile counted `listProjects` while the list
+ * filtered by the post-contract kanban lane, so the tile counted won-not-started
+ * jobs the list omitted and the list showed completed jobs the tile omitted.
+ * Caught by the parallel session's audit of step 10.
+ */
+describe("isUnderContract — one definition for the tile and the list", () => {
+  it("counts a job the moment it is won, before anyone mobilises", () => {
+    // The half the kanban-lane filter dropped: a won job sits in the PRE-contract
+    // lane by column, but it is unambiguously under contract.
+    expect(isUnderContract("pre_sale_closed", "won")).toBe(true);
+  });
+
+  it("counts every stage of delivery", () => {
+    for (const s of ["pre_construction", "in_progress", "billing"]) {
+      expect(isUnderContract(s, null), s).toBe(true);
+    }
+  });
+
+  it("stops counting once the job is closed out", () => {
+    // The other half of the mismatch: the lane filter included completed jobs,
+    // which the tile's total deliberately excludes.
+    expect(isUnderContract("post_sale_closed", "closed")).toBe(false);
+  });
+
+  it("never counts a deal we lost or are still selling", () => {
+    expect(isUnderContract("pre_sale_closed", "lost")).toBe(false);
+    for (const s of ["qualifying", "estimating", "proposal"]) {
+      expect(isUnderContract(s, null), s).toBe(false);
+    }
   });
 });

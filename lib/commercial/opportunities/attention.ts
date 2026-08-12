@@ -227,3 +227,24 @@ export function sensibleNextStatuses(status: string, sub: string | null): string
       return [];
   }
 }
+
+/**
+ * "Under contract" — awarded and not yet closed out.
+ *
+ * ONE definition, because there were briefly two. The dashboard's money tiles
+ * (Under contract, Left to bill, Outstanding) count `listProjects`, which is
+ * won-not-started + pre-construction + in-progress + billing, excluding
+ * completed. The list they linked to filtered by the post-contract *kanban
+ * lane*, which drops won-not-started and adds completed — so the tile counted
+ * jobs the list omitted and the list showed jobs the tile omitted.
+ *
+ * Caught by the parallel session's audit of step 10, and it is precisely the
+ * number-and-destination mismatch that step claimed to be removing. Both sides
+ * call this now.
+ *
+ * Keep in step with `listProjects` in lib/commercial/projects/db.ts.
+ */
+export function isUnderContract(status: string, sub: string | null): boolean {
+  if (status === "pre_sale_closed") return sub === "won";
+  return status === "pre_construction" || status === "in_progress" || status === "billing";
+}
