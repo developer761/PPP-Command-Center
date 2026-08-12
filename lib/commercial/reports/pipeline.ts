@@ -53,7 +53,9 @@ const STAGE_ORDER: { status: string; label: string }[] = PRE_CONTRACT_COLUMNS
   .filter((c) => OPEN_COLUMN_KEYS.includes(c.key))
   .map((c) => ({
     status: c.key,
-    label: c.key === "proposal" ? "Proposal out" : c.label,
+    // The "proposal" override died with the rename — the column is called
+    // Sent now, which is what the report should say too.
+    label: c.label,
   }));
 
 /** Unweighted value of a deal in cents: the mid of the bid range, falling

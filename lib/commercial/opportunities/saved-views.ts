@@ -70,15 +70,31 @@ export const SAVED_VIEWS: SavedView[] = [
   {
     key: "estimating",
     label: "Estimating",
-    hint: "Being priced right now, including anything waiting on approval.",
+    // AUDIT 2026-08-12: the hint said "including anything waiting on approval",
+    // which stopped being true the moment Pending Approval became its own
+    // stage. A view that promises more than it filters is worse than no view.
+    hint: "Being priced right now.",
     params: { status: "estimating" },
+    group: "pipeline",
+  },
+  {
+    // Brendan's new stage deserves its own view: this IS the approval queue,
+    // and it is what the retired sidebar "Proposals" entry was really for.
+    key: "pending_approval",
+    label: "Pending approval",
+    hint: "Priced and waiting on internal sign-off.",
+    params: { status: "pending_approval", sort: "oldest" },
     group: "pipeline",
   },
   {
     key: "proposals_out",
     label: "Proposal sent",
     hint: "Out with the GC and waiting on an answer.",
-    params: { status: "proposal", sort: "oldest" },
+    // AUDIT: was `status: "proposal"`. That still WORKED — the list falls back
+    // to mapping a legacy status onto its column — but it meant two different
+    // URLs produced the same list while the picker recognised only one, so
+    // arriving via a stage chip read "Custom filter". Canonical key now.
+    params: { status: "sent", sort: "oldest" },
     group: "pipeline",
   },
   {

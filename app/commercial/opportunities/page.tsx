@@ -3117,11 +3117,25 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
  *  abbreviated here (not "Request for Proposal") purely for width — a
  *  five-pill stepper has to survive a 375px phone. Won/Lost collapse to a
  *  single terminal pill below, so one "Closed" segment covers both. */
+/*
+ * AUDIT 2026-08-12: this was a THIRD hardcoded copy of the stage ladder, and
+ * it had already drifted — it still said `proposal` (renamed `sent`) and never
+ * heard about `pending_approval`. A deal at either stage matched no segment, so
+ * the row's stepper silently showed nothing highlighted.
+ *
+ * Exactly the failure the path bar had, for the same reason: a second list that
+ * has to be remembered when the first one changes. Derived from the shared
+ * columns now, so it cannot drift again. Won/Lost still collapse into one
+ * "Closed" segment — the terminal pill above already covers the decision, and
+ * two dead segments on a 375px row buy nothing.
+ */
 const PRE_SALE_STEPPER: { key: string; label: string }[] = [
-  { key: "qualifying", label: "Qualifying" },
-  { key: "rfp", label: "RFP" },
-  { key: "estimating", label: "Estimating" },
-  { key: "proposal", label: "Proposal" },
+  ...PRE_CONTRACT_COLUMNS.filter((c) => c.key !== "won" && c.key !== "lost").map((c) => ({
+    key: c.key,
+    // "Request for Proposal" is abbreviated purely for width — a stepper has
+    // to survive a 375px phone.
+    label: c.key === "rfp" ? "RFP" : c.key === "pending_approval" ? "Approval" : c.label,
+  })),
   { key: "pre_sale_closed", label: "Closed" },
 ];
 const POST_SALE_STEPPER: { key: string; label: string }[] = [
