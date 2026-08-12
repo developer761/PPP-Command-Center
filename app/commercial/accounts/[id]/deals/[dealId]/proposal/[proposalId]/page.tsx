@@ -569,8 +569,25 @@ async function sendProposalAction(formData: FormData) {
 }
 
 // ── R1d approval workflow actions ──────────────────────────────────────
-function proposalHref(accountId: string, dealId: string, proposalId: string, suffix = "") {
-  return `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}${suffix}`;
+/** A deal drill-in URL — `/commercial/accounts/<uuid>?tab=projects&project=<uuid>…` */
+const DEAL_DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&project=[0-9a-f-]{36}/i;
+
+function proposalHref(accountId: string, dealId: string, proposalId: string, suffix = "", back = "") {
+  const url = `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}${suffix}`;
+  if (!back) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}back=${encodeURIComponent(back)}`;
+}
+
+/**
+ * The origin an action received via its hidden `back` input.
+ *
+ * The editor never carried this: every one of its actions redirected to a bare
+ * proposal URL, so the first line-item edit silently threw away where you came
+ * from and the breadcrumb reverted. Open-redirect-guarded — internal paths only.
+ */
+function proposalBack(fd: FormData): string {
+  const b = String(fd.get("back") ?? "");
+  return b.startsWith("/commercial/") ? b : "";
 }
 
 /** Any editor asks for approval: draft → pending_approval + notify approvers. */
@@ -583,10 +600,10 @@ async function requestApprovalAction(formData: FormData) {
   if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
   const result = await requestProposalApproval({ proposal_id: proposalId, actor_user_id: userId });
   if (!result.ok) {
-    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData)));
   }
   revalidatePath(proposalHref(accountId, dealId, proposalId));
-  redirect(proposalHref(accountId, dealId, proposalId, "?approval=requested"));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=requested", proposalBack(formData)));
 }
 
 /** Approver approves: pending_approval → approved. Rejects non-approvers. */
@@ -599,10 +616,10 @@ async function approveAction(formData: FormData) {
   if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
   const result = await approveProposal({ proposal_id: proposalId, actor_user_id: userId });
   if (!result.ok) {
-    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData)));
   }
   revalidatePath(proposalHref(accountId, dealId, proposalId));
-  redirect(proposalHref(accountId, dealId, proposalId, "?approval=approved"));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=approved", proposalBack(formData)));
 }
 
 /** Approver kicks it back with a note: pending_approval | approved → draft. */
@@ -616,10 +633,10 @@ async function requestChangesAction(formData: FormData) {
   if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
   const result = await requestProposalChanges({ proposal_id: proposalId, actor_user_id: userId, note });
   if (!result.ok) {
-    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData)));
   }
   revalidatePath(proposalHref(accountId, dealId, proposalId));
-  redirect(proposalHref(accountId, dealId, proposalId, "?approval=changes"));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=changes", proposalBack(formData)));
 }
 
 /** Any editor unlocks an approved proposal to edit: approved → draft (approval invalidated). */
@@ -632,10 +649,10 @@ async function unlockAction(formData: FormData) {
   if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
   const result = await unlockApprovedProposal({ proposal_id: proposalId, actor_user_id: userId });
   if (!result.ok) {
-    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData)));
   }
   revalidatePath(proposalHref(accountId, dealId, proposalId));
-  redirect(proposalHref(accountId, dealId, proposalId, "?approval=unlocked"));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=unlocked", proposalBack(formData)));
 }
 
 /** Reopen an EXPIRED proposal back to draft so it can be tweaked, re-approved,
@@ -650,15 +667,15 @@ async function reopenExpiredAction(formData: FormData) {
   const { updateProposalStatus } = await import("@/lib/commercial/proposals/db");
   const current = await getProposal(proposalId);
   if (!current || current.status !== "expired") {
-    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("Only an expired proposal can be reopened here.")}`));
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("Only an expired proposal can be reopened here.")}`, proposalBack(formData)));
   }
   const result = await updateProposalStatus({ id: proposalId, to_status: "draft", acting_user_id: userId });
   if (!result.ok) {
-    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData)));
   }
   revalidatePath(proposalHref(accountId, dealId, proposalId));
   revalidatePath(`/commercial/accounts/${accountId}`);
-  redirect(proposalHref(accountId, dealId, proposalId, "?approval=withdrawn"));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=withdrawn", proposalBack(formData)));
 }
 
 /** Sender withdraws their own pending request back to draft (any editor). */
@@ -671,10 +688,10 @@ async function withdrawAction(formData: FormData) {
   if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
   const result = await withdrawApprovalRequest({ proposal_id: proposalId, actor_user_id: userId });
   if (!result.ok) {
-    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`));
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData)));
   }
   revalidatePath(proposalHref(accountId, dealId, proposalId));
-  redirect(proposalHref(accountId, dealId, proposalId, "?approval=withdrawn"));
+  redirect(proposalHref(accountId, dealId, proposalId, "?approval=withdrawn", proposalBack(formData)));
 }
 
 async function deleteProposalAction(formData: FormData) {
@@ -941,6 +958,11 @@ export default async function ProposalEditorPage({
   // the account. Whitelisted (only the exact index path) so ?back can't be an
   // open-redirect; the deal breadcrumb stays as the secondary link.
   const fromProposalsIndex = sp.back === "/commercial/proposals";
+  // Guarded origin, re-emitted into every action's form. The deal drill-in
+  // counts: a proposal reached from the deal should return to the deal.
+  const backRaw = typeof sp.back === "string" ? sp.back : "";
+  const backParam =
+    backRaw === "/commercial/proposals" || DEAL_DRILL_IN_RE.test(backRaw) ? backRaw : "";
 
   // Hidden fields shared by every server action on this page.
   const hiddenIds = (
@@ -948,6 +970,9 @@ export default async function ProposalEditorPage({
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="deal_id" value={dealId} />
       <input type="hidden" name="proposal_id" value={proposalId} />
+      {/* Carries where the user came from through every action, so the
+          breadcrumb survives a save instead of reverting on the first edit. */}
+      <input type="hidden" name="back" value={backParam} />
     </>
   );
 

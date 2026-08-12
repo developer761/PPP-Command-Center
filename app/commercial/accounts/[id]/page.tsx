@@ -2403,6 +2403,7 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
 
 function DealProposalsSection({ accountId, oppId, proposals }: { accountId: string; oppId: string; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[] }) {
   const base = `/commercial/accounts/${accountId}/deals/${oppId}/proposal`;
+  const dealBackHref = `/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=proposals#deal-proposals`;
   const sorted = [...proposals].sort((a, b) => b.revision_number - a.revision_number);
   return (
     <section id="deal-proposals" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -2427,7 +2428,11 @@ function DealProposalsSection({ accountId, oppId, proposals }: { accountId: stri
             const tone = pr.status === "won" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : pr.status === "lost" ? "text-rose-700 bg-rose-50 border-rose-200" : pr.status === "sent" ? "text-cc-brand-800 bg-cc-brand-50 border-cc-brand-200" : pr.status === "approved" ? "text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100" : pr.status === "pending_approval" ? "text-ppp-navy-700 bg-ppp-navy-50 border-ppp-navy-200" : "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200";
             return (
               <li key={pr.id}>
-                <Link href={`${base}/${pr.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
+                {/* The editor is deliberately a full-width page — far too large
+                    to render inside the drill-in — so instead it is handed the
+                    deal to return to, and it now keeps that through every save
+                    rather than losing it on the first edit. */}
+                <Link href={`${base}/${pr.id}?back=${encodeURIComponent(dealBackHref)}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
                   <span className="min-w-0 flex items-center gap-2">
                     <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800">{num}</span>
                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{status}</span>
