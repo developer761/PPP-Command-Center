@@ -145,6 +145,16 @@ export default async function CommercialDashboardPage() {
     totalDecidedForMonth > 0
       ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)
       : null;
+  // D1: the tile and the report it opens must cover the SAME period. The tile
+  // is this month; the report defaults to the quarter, so tapping a "62% win"
+  // tile used to land on a different number with nothing explaining the gap.
+  // Carry the month through as an explicit range.
+  const monthEndDate = (() => {
+    const [y, m] = monthStartDate.split("-").map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${monthStartDate.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+  })();
+  const winLossMonthHref = `/commercial/reports/win-loss?from=${monthStartDate}&to=${monthEndDate}`;
 
   // ─── Momentum deltas (accurate, no snapshot needed) ───
   // "N new this week" from created_at — a real momentum signal for the
@@ -396,7 +406,7 @@ export default async function CommercialDashboardPage() {
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
         <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
-        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href="/commercial/reports/win-loss" delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
+        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={winLossMonthHref} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
         <DashStat label="Active GCs" value={accounts.length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
         <DashStat label="Under contract" value={production.activeProjects > 0 ? formatCentsCompact(production.contractValueCents) : "—"} sub={production.activeProjects > 0 ? `${production.activeProjects} active` : "no jobs yet"} tone="navy" href="/commercial/projects" />
         <DashStat label="Owed to us" value={formatCentsCompact(arOutstandingCents)} sub={arOverdueCount > 0 ? `${formatCentsCompact(arOverdueCents)} overdue` : "all current"} tone={arOverdueCount > 0 ? "rose" : "blue"} href={arOverdueCount > 0 ? "/commercial/invoices?status=overdue" : "/commercial/invoices"} />

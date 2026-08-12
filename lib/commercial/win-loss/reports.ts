@@ -141,75 +141,68 @@ export function previousYearRange(): DateRange & { label: string } {
 /** Get summary KPIs for a date range. */
 export async function getWinLossSummary(range: DateRange): Promise<WinLossSummary> {
   const sb = commercialDb();
-  // Fetch all debriefs in the range with their opp bid values.
+  // D1: ONE win rate — won / (won + lost) over DECIDED DEALS by `decided_at`,
+  // not debrief-gated.
+  //
+  // This read debrief ROWS by `debriefed_at`. Three things differed from the
+  // dashboard tile that links here: the source (a debrief row, not the deal),
+  // the date field, and the period. The worst was the gating — a win with no
+  // debrief filed yet is IN the dashboard tile and was OUT of this report, so
+  // the deals the dashboard flags as "awaiting debrief" were exactly the ones
+  // missing from the report it sends you to. Filing paperwork changed the win
+  // rate.
+  //
+  // Deals are the source of truth for what was won and lost. Debriefs stay the
+  // source for WHY — the competitor and deciding-factor breakdowns below still
+  // read them, which is what they are actually for.
   const { data } = await sb
-    .from("commercial_win_loss_debrief")
-    .select(`
-      opportunity_id,
-      debriefed_at,
-      outcome,
-      opportunity:commercial_opportunities!inner(id, bid_value_low_cents, bid_value_high_cents, deleted_at)
-    `)
-    .gte("debriefed_at", range.fromIso)
-    .lt("debriefed_at", range.toIso);
+    .from("commercial_opportunities")
+    .select("id, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at")
+    .eq("status", "pre_sale_closed")
+    .is("deleted_at", null)
+    .not("decided_at", "is", null)
+    .gte("decided_at", range.fromIso.slice(0, 10))
+    .lt("decided_at", range.toIso.slice(0, 10));
 
-  type OppEmbed = { bid_value_low_cents: number | null; bid_value_high_cents: number | null; deleted_at: string | null };
   type Row = {
-    opportunity_id: string;
-    debriefed_at: string;
-    outcome: "won" | "lost" | "no_bid";
-    opportunity: OppEmbed | Array<OppEmbed> | null;
+    id: string;
+    sub_status: string | null;
+    loss_reason: string | null;
+    bid_value_low_cents: number | null;
+    bid_value_high_cents: number | null;
   };
-
-  // 2026-07-29 re-audit fix: a deal that was won+debriefed, reopened, then
-  // re-closed+debriefed leaves TWO debrief rows. Counting every row double-
-  // counted one opportunity (wonCount=1 AND lostCount=1 for a single deal).
-  // Keep only the LATEST debrief per opportunity within the range so each
-  // opp contributes exactly one outcome — its most recent decision.
-  const latestByOpp = new Map<string, Row>();
-  for (const r of (data as unknown as Row[] | null) ?? []) {
-    const opp = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
-    if (opp?.deleted_at) continue; // skip debriefs whose opp was soft-deleted
-    const prev = latestByOpp.get(r.opportunity_id);
-    if (!prev || r.debriefed_at > prev.debriefed_at) latestByOpp.set(r.opportunity_id, r);
-  }
+  const rows = ((data as Row[] | null) ?? []);
 
   let wonCount = 0;
   let lostCount = 0;
   let noBidCount = 0;
   let wonValueCents = 0;
   let lostValueCents = 0;
+
   // The 2026-08 meeting removed Bid low/high from every opportunity form —
-  // pricing lives on the proposal now — so a deal created since then has NO
-  // bid range and midpointCents returns 0. Every other $ surface got the
-  // proposal-total fallback; this file was missed, which meant "Won $" and the
-  // $-won ratio read ZERO for exactly the deals the team is creating today,
-  // while the same deal showed its full weighted value on the dashboard the
-  // day before it closed.
+  // pricing lives on the proposal now — so a deal created since then has NO bid
+  // range and midpointCents returns 0. Without the proposal fallback, "Won $"
+  // reads zero for exactly the deals the team is creating today.
   const { listCurrentProposalTotalByOpp } = await import("@/lib/commercial/proposals/db");
-  const oppIds = Array.from(latestByOpp.values())
-    .map((r) => {
-      const o = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
-      return (o as { id?: string } | null)?.id ?? null;
-    })
-    .filter((v): v is string => !!v);
-  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(oppIds);
-  for (const r of latestByOpp.values()) {
-    const opp = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
-    const oppId = (opp as { id?: string } | null)?.id ?? null;
+  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(rows.map((r) => r.id));
+
+  for (const r of rows) {
     const mid =
-      midpointCents(opp?.bid_value_low_cents ?? null, opp?.bid_value_high_cents ?? null) ||
-      (oppId ? proposalTotalByOpp.get(oppId) ?? 0 : 0);
-    if (r.outcome === "won") {
+      midpointCents(r.bid_value_low_cents, r.bid_value_high_cents) ||
+      (proposalTotalByOpp.get(r.id) ?? 0);
+    if (r.sub_status === "won") {
       wonCount++;
       wonValueCents += mid;
-    } else if (r.outcome === "lost") {
+    } else if (r.loss_reason === "no_bid") {
+      // A no-bid is not a loss — we never quoted it, so it is excluded from the
+      // rate rather than counted against it.
+      noBidCount++;
+    } else {
       lostCount++;
       lostValueCents += mid;
-    } else {
-      noBidCount++;
     }
   }
+
   const decided = wonCount + lostCount;
   const winRatePct = decided > 0 ? Math.round((wonCount / decided) * 100) : 0;
   return {
