@@ -1006,16 +1006,28 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             <TrendChart data={billedMonthly} yFormat="currency-k" colorToken="ppp-blue-500" area heightClassName="h-[130px]" />
           </div>
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-center">
-            <DonutChart
-              size={128}
-              legend={false}
-              segments={[
-                { label: "On time", value: currentOutstandingCents, tone: "blue", valueLabel: formatCentsCompact(currentOutstandingCents) },
-                { label: "Overdue", value: overdueTotalCents, tone: "rose", valueLabel: formatCentsCompact(overdueTotalCents) },
-              ]}
-              centerValue={formatCentsCompact(outstandingCents)}
-              centerLabel="outstanding"
-            />
+            {/* Nothing outstanding draws a bare grey ring, which reads as "is
+                this broken?" rather than "you're all paid up" — the proposals
+                board and the dashboard already say it in words. */}
+            {outstandingCents > 0 ? (
+              <DonutChart
+                size={128}
+                legend={false}
+                segments={[
+                  { label: "On time", value: currentOutstandingCents, tone: "blue", valueLabel: formatCentsCompact(currentOutstandingCents) },
+                  { label: "Overdue", value: overdueTotalCents, tone: "rose", valueLabel: formatCentsCompact(overdueTotalCents) },
+                ]}
+                centerValue={formatCentsCompact(outstandingCents)}
+                centerLabel="outstanding"
+              />
+            ) : (
+              <div className="text-center py-6">
+                <div className="text-[13px] font-semibold text-ppp-charcoal">Nothing outstanding</div>
+                <div className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
+                  Every issued invoice is paid.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>

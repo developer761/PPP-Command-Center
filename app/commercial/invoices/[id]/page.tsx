@@ -1408,6 +1408,20 @@ export async function InvoiceDetailView({
                     <td />
                   </tr>
                 )}
+                {/* The substantiation for a $0 tax line. It was added to the
+                    milestone totals block and not to this one — the ordinary
+                    invoice, which is most of them. A zero-tax invoice with
+                    nothing explaining why is the one a GC's AP team queries. */}
+                {invoice.tax_pct === 0 && account?.tax_exempt && (
+                  <tr>
+                    <td colSpan={4} className="py-1 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+                      Tax-exempt
+                      {account.tax_exempt_cert_number ? ` — Cert #${account.tax_exempt_cert_number}` : ""}
+                    </td>
+                    <td className="py-1 pr-3 text-right text-ppp-charcoal-700 tabular-nums">{formatCentsFull(0)}</td>
+                    <td />
+                  </tr>
+                )}
                 <tr className="border-t border-ppp-charcoal-100">
                   <td colSpan={4} className="py-2 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-blue-700">Total invoiced</td>
                   <td className="py-2 pr-3 text-right font-bold text-ppp-blue-700 tabular-nums">{formatCentsFull(invoice.total_cents)}</td>
