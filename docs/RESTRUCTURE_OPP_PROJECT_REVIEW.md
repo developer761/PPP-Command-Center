@@ -375,3 +375,30 @@ to_status = stage`, and a stage before the current one with no such row is skipp
 model (i)). Until then, either wire it or remove the dead skipped/dropped styling so the code
 matches what actually renders. (When delivery moves off the opp in the model-(ii) cutover,
 this re-sources to the project log — the theme-1 item.)
+
+---
+
+## AUDIT — Step 5 shipped (`e807cb3`, stage-aware KPIs + compact stats row). No migration.
+
+**Verdict: strong.** `stage-kpis.ts` is a pure, well-tested function and hits my edge-sweep
+notes: **no age-in-stage tile** (so the "freezes at win" theme-1 concern does NOT touch this
+per-deal strip — that's the list column, a later surface); DST-safe (`daysBetweenEt` slices
+Y/M/D and uses `Date.UTC`, never timestamp subtraction); "never 0 days ago"; unset contract
+renders "not set" not $0; reads the latest **sent** proposal (a draft revision doesn't reset
+the clock); phase-gated fetches so a bid costs no extra round-trips. It also correctly leaves
+`decided_at` and `closed_out_at` **raw** (both DATE columns — wrapping them in `etDateOf`
+would shift them a day). One bug slipped through in the opposite direction:
+
+### 🟠 Finding: `proposal_due_at` + `follow_up_at` are DATE columns wrongly wrapped in `etDateOf` → off-by-one
+`page.tsx:1458-1459` builds the KPI input with `proposalDueAt: etDateOf(opp.proposal_due_at)`
+and `followUpAt: etDateOf(opp.follow_up_at)`. But both columns are **DATE**
+(`proposal_due_at` mig 028, `follow_up_at` mig 052), and `etDateOf` is for TIMESTAMPTZ — it
+does `new Date("2026-08-15").toLocaleDateString(…ET…)`, which parses the date-only string as
+**UTC midnight** and converts to ET, landing on **2026-08-14**. Empirically confirmed:
+`etDateOf("2026-08-15") === "2026-08-14"`. So the **Proposal due** and **Follow-up** tiles
+render one day early, including the tone gates in `dueLabel` — a proposal due **today** shows
+**"1 day overdue"**, one due in 4 days shows "in 3 days." That directly contradicts the
+commit's headline rule ("counted on Eastern calendar dates"). The neighbours are right for
+their types: `rfp_received_at`/`sent_at`/`issued_at` are TIMESTAMPTZ and correctly wrapped.
+**Fix:** pass `proposal_due_at` and `follow_up_at` **raw** (exactly as `decided_at`/
+`closed_out_at` already are). Platform sweep confirms these are the only two sites.
