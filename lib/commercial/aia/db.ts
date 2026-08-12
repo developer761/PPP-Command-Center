@@ -26,6 +26,16 @@ export type AiaApplication = {
   period_from: string | null;
   period_to: string | null;
   original_contract_cents: number;
+  /**
+   * G702 lines 1 and 2 as they stood when this certificate was ISSUED.
+   *
+   * Null while the application is a draft, and null on applications that predate
+   * migration 128 — those still compute live, which the UI says out loud rather
+   * than hiding.
+   */
+  contract_sum_frozen_cents: number | null;
+  net_change_orders_frozen_cents: number | null;
+  frozen_at: string | null;
   retainage_pct: number;
   status: AiaApplicationStatus;
   notes: string | null;
@@ -38,6 +48,14 @@ export type AiaApplication = {
 export type AiaLineItem = {
   id: string;
   application_id: string;
+  /**
+   * Set when this row represents an approved change order.
+   *
+   * Matching was done on `item_no` ('CO-001'), which the operator can rename —
+   * and a renamed row got re-inserted on the next sync, double-counting a change
+   * order on a live certificate. The foreign key can't be typed over.
+   */
+  change_order_id: string | null;
   position: number;
   item_no: string | null;
   description: string;
@@ -173,7 +191,7 @@ export async function createAiaApplication(
         // balance-to-finish go negative). An explicitly-provided contract wins.
         if (contractWasDefaulted) {
           const lines = await listAiaLineItems(appRow.id);
-          const sovTotal = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+          const sovTotal = lines.reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
           if (sovTotal > 0 && sovTotal !== appRow.original_contract_cents) {
             await sb
               .from("commercial_aia_applications")
@@ -229,7 +247,36 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
           from_previous_cents: l.from_previous_cents + l.this_period_cents + l.materials_stored_cents,
           this_period_cents: 0,
           materials_stored_cents: 0,
+          change_order_id: l.change_order_id ?? null,
         }));
+        // Any change order approved SINCE the prior application has to join the
+        // schedule of values here. This branch used to return without ever
+        // reaching the change-order block below, so App 2 inherited App 1's
+        // sheet verbatim: every CO approved between them showed up in line 2 of
+        // the cover sheet and nowhere in the continuation sheet underneath it.
+        // App 2 was born not adding up, before any freeze was involved.
+        const carried = new Set(
+          priorLines.map((l) => l.change_order_id).filter((x): x is string => !!x)
+        );
+        const sinceCOs = (await listChangeOrders(app.opportunity_id)).filter(
+          (c) => c.status === "approved" && !carried.has(c.id)
+        );
+        let carryNo = rows.length + 1;
+        for (const co of sinceCOs) {
+          rows.push({
+            application_id: app.id,
+            position: carryNo * 1000,
+            item_no: `CO-${String(co.co_number).padStart(3, "0")}`,
+            description: `Change Order ${co.co_number}: ${co.title}`.slice(0, 500),
+            // NOT clamped at zero — a deduct CO is a real credit line.
+            scheduled_value_cents: Math.round(Number(co.amount_cents)),
+            from_previous_cents: 0,
+            this_period_cents: 0,
+            materials_stored_cents: 0,
+            change_order_id: co.id,
+          });
+          carryNo += 1;
+        }
         await sb.from("commercial_aia_line_items").insert(rows);
         return;
       }
@@ -247,10 +294,21 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
   const items = await listLineItemsForProposal(seedProposal.id);
   const sov = items.filter((li) => !li.is_alternate);
   if (sov.length === 0) return;
-  const rows = sov.map((li, i) => ({
+  const rows: Array<{
+    application_id: string;
+    position: number;
+    item_no: string;
+    description: string;
+    scheduled_value_cents: number;
+    from_previous_cents: number;
+    this_period_cents: number;
+    materials_stored_cents: number;
+    change_order_id: string | null;
+  }> = sov.map((li, i) => ({
     application_id: app.id,
     position: (i + 1) * 1000,
     item_no: String(i + 1),
+    change_order_id: null,
     description:
       ([li.product_name, li.description].filter((x) => x && String(x).trim()).join(" — ") || "Line of work").slice(0, 500),
     scheduled_value_cents: Math.max(0, Math.round(Number(li.quantity) * li.unit_price_cents)),
@@ -291,10 +349,15 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
       position: nextNo * 1000,
       item_no: `CO-${String(co.co_number).padStart(3, "0")}`,
       description: `Change Order ${co.co_number}: ${co.title}`.slice(0, 500),
+      // NOT clamped at zero. `amount_cents` is signed and negative means a
+      // deduct — clamping made the whole batch insert fail the column's old
+      // >= 0 CHECK, and the failure was swallowed, so the operator got an
+      // application with a completely blank schedule of values and no error.
       scheduled_value_cents: Math.round(Number(co.amount_cents)),
       from_previous_cents: 0,
       this_period_cents: 0,
       materials_stored_cents: 0,
+      change_order_id: co.id,
     });
     nextNo += 1;
   }
@@ -331,6 +394,36 @@ export async function updateAiaApplication(
     }
   }
   const next: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  // ISSUING freezes G702 lines 1 and 2 onto the application.
+  //
+  // Both were recomputed on every read — line 1 from the live contract ladder,
+  // line 2 from the live approved-change-order sum — while the G703 schedule of
+  // values underneath them was written once and frozen. So approving a change
+  // order next month moved line 3 (= 1 + 2) away from the G703 grand total, and
+  // a certificate the GC already has a printed copy of quietly restated its
+  // contract sum, percent complete and balance to finish.
+  //
+  // Computed BEFORE the status write, while the application is still a draft,
+  // so `resolveG702` returns the live figures we mean to capture.
+  if (patch.status !== undefined && patch.status !== "draft" && before.status === "draft") {
+    const issued = await resolveG702(id);
+    if (issued) {
+      next.contract_sum_frozen_cents = issued.originalContractCents;
+      next.net_change_orders_frozen_cents = issued.netChangeOrdersCents;
+      next.frozen_at = new Date().toISOString();
+    }
+  }
+  // Reopening to draft releases it. The guard above already refuses this when a
+  // later application carries it forward, so the only certificates that get here
+  // are ones nobody downstream depends on — and a draft is meant to track the
+  // deal again.
+  if (patch.status === "draft" && before.status !== "draft") {
+    next.contract_sum_frozen_cents = null;
+    next.net_change_orders_frozen_cents = null;
+    next.frozen_at = null;
+  }
+
   if (patch.period_from !== undefined) next.period_from = patch.period_from;
   if (patch.period_to !== undefined) next.period_to = patch.period_to;
   if (patch.original_contract_cents !== undefined) {
@@ -419,7 +512,8 @@ export async function upsertAiaLineItem(
     application_id: applicationId,
     item_no: line.item_no ?? null,
     description: (line.description ?? "").slice(0, 500),
-    scheduled_value_cents: Math.max(0, Math.round(line.scheduled_value_cents ?? 0)),
+    // Not clamped — an operator entering a credit line means it.
+    scheduled_value_cents: Math.round(line.scheduled_value_cents ?? 0),
     from_previous_cents: Math.max(0, Math.round(line.from_previous_cents ?? 0)),
     this_period_cents: Math.max(0, Math.round(line.this_period_cents ?? 0)),
     materials_stored_cents: Math.max(0, Math.round(line.materials_stored_cents ?? 0)),
@@ -496,7 +590,26 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
   // original / SOV total — so the certificate's "Original Contract Sum" can't
   // diverge from every other surface for the same deal (2026-08 money audit #2:
   // cards showed $500k while the G702 sent to the GC showed a stale $450k).
-  const sovTotalCents = lines.reduce((sum, l) => sum + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+  const sovTotalCents = lines.reduce((sum, l) => sum + Math.round(l.scheduled_value_cents), 0);
+
+  // A certificate that has been issued is a document the GC is holding a printed
+  // copy of. Once frozen, lines 1 and 2 come from the application itself and
+  // stop tracking anything — approving a change order next month must not
+  // restate a payment application already sent, and must not push line 3 away
+  // from the G703 total underneath it.
+  //
+  // Only a DRAFT tracks live, which is what keeps a certificate being prepared
+  // in step with the deal.
+  if (app.status !== "draft" && app.frozen_at && app.contract_sum_frozen_cents != null) {
+    return computeG702({
+      originalContractCents: Number(app.contract_sum_frozen_cents) || 0,
+      netChangeOrdersCents: Number(app.net_change_orders_frozen_cents ?? 0) || 0,
+      retainagePct: app.retainage_pct,
+      lines,
+      previousCertificatesCents,
+    });
+  }
+
   const effectiveOriginalCents = pickContractBaseCents({
     hasBillingApp: true,
     originalContractCents: app.original_contract_cents,
@@ -591,7 +704,7 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
   let sovTotalCents = 0;
   if (app) {
     const lines = await listAiaLineItems(app.id);
-    sovTotalCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+    sovTotalCents = lines.reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
   }
   return pickContractBaseCents({
     hasBillingApp: !!app,

@@ -325,7 +325,8 @@ export async function listProjects(opts: {
         Math.max(0, Math.round(l.this_period_cents)) +
         Math.max(0, Math.round(l.materials_stored_cents));
       completedByApp.set(l.application_id, (completedByApp.get(l.application_id) ?? 0) + done);
-      sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.max(0, Math.round(l.scheduled_value_cents)));
+      // Credit lines count — see the note in computeG702's SOV total.
+      sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.round(l.scheduled_value_cents));
       const pct = pctByApp.get(l.application_id) ?? 0;
       retainageByApp.set(l.application_id, (retainageByApp.get(l.application_id) ?? 0) + Math.round((done * pct) / 100));
     }

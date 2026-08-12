@@ -173,3 +173,147 @@ describe("computeG702", () => {
     ).toBe(300); // negative floored to 0
   });
 });
+
+/**
+ * The invariants an AIA payment application must satisfy to be a valid
+ * certificate. A GC's accounts-payable system rejects one that doesn't add up,
+ * and the numbers here go onto a signed, notarised document.
+ */
+describe("G702 arithmetic invariants", () => {
+  const line = (scheduled: number, completedPrev: number, completedNow: number) => ({
+    scheduled_value_cents: scheduled,
+    from_previous_cents: completedPrev,
+    this_period_cents: completedNow,
+    materials_stored_cents: 0,
+  });
+
+  const cases = [
+    { orig: 450_000_00, co: 0, ret: 10, lines: [line(450_000_00, 100_000_00, 50_000_00)], prev: 0 },
+    { orig: 450_000_00, co: 25_000_00, ret: 5, lines: [line(300_000_00, 0, 300_000_00), line(175_000_00, 50_000_00, 0)], prev: 40_000_00 },
+    { orig: 100_00, co: -30_00, ret: 0, lines: [line(70_00, 0, 70_00)], prev: 0 },
+    { orig: 0, co: 0, ret: 5, lines: [], prev: 0 },
+  ];
+
+  it("keeps line 3 equal to line 1 plus line 2", () => {
+    for (const c of cases) {
+      const g = computeG702({
+        originalContractCents: c.orig,
+        netChangeOrdersCents: c.co,
+        retainagePct: c.ret,
+        lines: c.lines,
+        previousCertificatesCents: c.prev,
+      });
+      expect(g.contractSumToDateCents, JSON.stringify(c)).toBe(c.orig + c.co);
+    }
+  });
+
+  it("keeps balance-to-finish equal to line 3 minus earned-less-retainage", () => {
+    for (const c of cases) {
+      const g = computeG702({
+        originalContractCents: c.orig,
+        netChangeOrdersCents: c.co,
+        retainagePct: c.ret,
+        lines: c.lines,
+        previousCertificatesCents: c.prev,
+      });
+      expect(g.balanceToFinishCents, JSON.stringify(c)).toBe(
+        g.contractSumToDateCents - g.totalEarnedLessRetainageCents
+      );
+    }
+  });
+
+  it("keeps payment due equal to earned-less-retainage minus prior certificates", () => {
+    for (const c of cases) {
+      const g = computeG702({
+        originalContractCents: c.orig,
+        netChangeOrdersCents: c.co,
+        retainagePct: c.ret,
+        lines: c.lines,
+        previousCertificatesCents: c.prev,
+      });
+      expect(g.currentPaymentDueCents, JSON.stringify(c)).toBe(
+        g.totalEarnedLessRetainageCents - c.prev
+      );
+    }
+  });
+
+  it("ties retainage to the sum of per-line retainage, to the penny", () => {
+    // Rounding the total instead of per-line drifts by about N/2 cents against
+    // the G703's retainage column, and a GC's AP system can reject the mismatch.
+    const lines = [line(33_33, 0, 33_33), line(33_33, 0, 33_33), line(33_34, 0, 33_34)];
+    const g = computeG702({
+      originalContractCents: 100_00,
+      netChangeOrdersCents: 0,
+      retainagePct: 10,
+      lines,
+      previousCertificatesCents: 0,
+    });
+    const perLine = lines.reduce((s, l) => s + Math.round((l.this_period_cents * 10) / 100), 0);
+    expect(g.retainageCents).toBe(perLine);
+  });
+
+  it("reports no percent complete rather than dividing by a zero contract", () => {
+    const g = computeG702({
+      originalContractCents: 0,
+      netChangeOrdersCents: 0,
+      retainagePct: 5,
+      lines: [],
+      previousCertificatesCents: 0,
+    });
+    expect(g.percentCompleteBps).toBeNull();
+  });
+
+  it("handles a deduct change order that exceeds nothing it shouldn't", () => {
+    // Deduct COs are real — a descoped job. Line 3 must follow it down.
+    const g = computeG702({
+      originalContractCents: 100_00,
+      netChangeOrdersCents: -30_00,
+      retainagePct: 0,
+      lines: [line(70_00, 0, 70_00)],
+      previousCertificatesCents: 0,
+    });
+    expect(g.contractSumToDateCents).toBe(70_00);
+    expect(g.percentCompleteBps).toBe(10000); // fully complete against the reduced sum
+  });
+});
+
+describe("the AIA footing rule", () => {
+  const line = (scheduled: number, done: number) => ({
+    scheduled_value_cents: scheduled,
+    from_previous_cents: 0,
+    this_period_cents: done,
+    materials_stored_cents: 0,
+  });
+  const g = (orig: number, co: number, lines: ReturnType<typeof line>[]) =>
+    computeG702({
+      originalContractCents: orig,
+      netChangeOrdersCents: co,
+      retainagePct: 0,
+      lines,
+      previousCertificatesCents: 0,
+    });
+
+  it("reports zero variance when the sheets tie", () => {
+    expect(g(450_000_00, 0, [line(450_000_00, 0)]).sovVarianceCents).toBe(0);
+    // …including when the schedule of values was seeded with the change order
+    // already in it.
+    expect(g(450_000_00, 25_000_00, [line(450_000_00, 0), line(25_000_00, 0)]).sovVarianceCents).toBe(0);
+  });
+
+  it("reports the gap a post-seed change order opens", () => {
+    // The F2 sequence: the G703 was frozen at $450k, then a $25k change order
+    // was approved. Line 3 moves to $475k; the continuation sheet under it still
+    // totals $450k. The certificate no longer adds up.
+    expect(g(450_000_00, 25_000_00, [line(450_000_00, 0)]).sovVarianceCents).toBe(25_000_00);
+  });
+
+  it("reports a negative gap when the schedule of values runs ahead", () => {
+    expect(g(450_000_00, 0, [line(475_000_00, 0)]).sovVarianceCents).toBe(-25_000_00);
+  });
+
+  it("does not confuse work completed with the scheduled value", () => {
+    // Footing is about the SCHEDULED column, not what has been billed. A job
+    // half done still foots.
+    expect(g(100_000_00, 0, [line(100_000_00, 50_000_00)]).sovVarianceCents).toBe(0);
+  });
+});

@@ -47,6 +47,17 @@ export type AiaG702 = {
   previousCertificatesCents: number;
   /** 8 — Current Payment Due = (6) − (7). */
   currentPaymentDueCents: number;
+  /**
+   * How far line 3 sits from the G703 grand total (line 3 − Σ scheduled value).
+   *
+   * AIA's footing rule is that the continuation sheet's scheduled-value column
+   * totals to the contract sum on the cover sheet. Nothing in the data model
+   * enforces it: the G703 is written once at seed while lines 1 and 2 track the
+   * deal, so an approved change order pushes them apart. Non-zero here means the
+   * certificate does not add up — a GC's accounts-payable system can reject it —
+   * so it is reported rather than quietly tolerated.
+   */
+  sovVarianceCents: number;
   /** 9 — Balance to Finish incl. Retainage = (3) − (6). */
   balanceToFinishCents: number;
   /** % of contract completed = (4) / (3). Null when contract sum is 0. */
@@ -82,6 +93,13 @@ export function computeG702({
   previousCertificatesCents: number;
 }): AiaG702 {
   const contractSumToDate = originalContractCents + netChangeOrdersCents;
+  const sovTotal = lines.reduce(
+    // NOT clamped at zero: a deductive change order is a real, negative line
+    // on a real schedule of values, and dropping it here would make the sheet
+    // total more than the contract it is supposed to foot to.
+    (sum, l) => sum + Math.round(l.scheduled_value_cents),
+    0
+  );
   const totalCompletedStored = lines.reduce((sum, l) => sum + lineCompletedStoredCents(l), 0);
   const pct = Math.min(100, Math.max(0, retainagePct));
   // Retainage (G702 line 5) is the SUM of PER-LINE rounded retainage — the same
@@ -110,6 +128,7 @@ export function computeG702({
     currentPaymentDueCents: currentPaymentDue,
     balanceToFinishCents: balanceToFinish,
     percentCompleteBps,
+    sovVarianceCents: contractSumToDate - sovTotal,
   };
 }
 
