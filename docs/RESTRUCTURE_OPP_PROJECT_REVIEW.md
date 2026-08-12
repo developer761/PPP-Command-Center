@@ -976,3 +976,8 @@ If any delivery-artifact writer ever sets `opportunity_id` but not `project_id` 
 reverse, not this direction), such a row is invisible to the guard and the project could still be archived
 out from under it. Belt-and-suspenders: also check by the project's `opportunity_id`, or assert every
 delivery writer sets `project_id`.
+
+---
+
+## VERIFY — `2be8b8a` (round 4: account printed twice). Clean.
+Dropped the redundant Account from the step-5 identity row (breadcrumb already shows it, linking the same place); kept the Project NUMBER (unique to the page). Verified: identity row now Project-number-only, breadcrumb account link intact, tsc exit 0 / 416 tests. Correct dedup, no findings. (Also self-checked the mobile table-overflow lane — sound.)
