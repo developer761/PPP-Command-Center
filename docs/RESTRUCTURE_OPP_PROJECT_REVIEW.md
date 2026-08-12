@@ -622,3 +622,34 @@ Verified per the "test buttons after a layout change" rule: both actions ("Debri
 the picker no longer offers unusual moves by default (they're behind the disclosure), and the
 per-choice warning on an actual unusual selection stays. Sub-status hints kept visible (no
 hover-only, right call for phones). tsc + 385 tests + build green.
+
+---
+
+## AUDIT — `a9fb3b5` (Activity rail: chronology + Upcoming/Overdue). No migration.
+
+**Verdict: strong.** `activity.ts` is pure/testable, reads existing tables with NO store of its
+own (edge 40), does its source reads in parallel each `.catch(() => [])`-degrading to empty
+(edge 41 — a bad notes query can't take the page down), and is fetched only for the one tab.
+The "what's about to be late" math is correct: task `due_at` is a DATE column (mig 031), so
+`etDay`'s `slice(0,10)` is the right calendar date, `todayIso = etTodayIso()`, and `daysBetween`
+is DST-safe (`Date.UTC` on sliced Y/M/D, not timestamp subtraction). "due today", never "0 days".
+Under model (i) the status-log source still carries delivery moves, so the rail shows them today
+(the model-(ii) blind-spot stays the tracked theme-1 future item).
+
+### 🟠 Finding: the email archive is NOT read, though the doc + rationale say it is
+`loadActivityEntries` does FOUR reads (status log, notes, tasks, proposal milestones) — grep
+for `archived_emails`/`email-archive` in `activity.ts` = 0. But the file's own doc says the feed
+reads "the status log, notes, tasks **and the email archive**" (l.8), "**Five** reads" (l.120),
+and "a chronology missing its **emails**" (l.122), and `ActivityKind` includes `"email"` that is
+never produced. Worse, the commit's stated value — *"a job's real story is 'we sent it, she asked
+for a revision, we **chased her twice**'"* — is exactly email activity, and it's the one source
+omitted. `lib/commercial/email-archive/db.ts` exists and is opp-scoped, so wiring it as the 5th
+`.catch(()=>[])` read is straightforward. **Fix:** either add the email-archive source (matches
+the doc + the rationale), or correct the doc comments to "four reads" and drop the unused
+`"email"` kind. (The commit MESSAGE says "Four reads" — the in-file doc is the stale side.)
+
+### 🟡 Two trivial nits
+- `etDay(iso) = iso.slice(0,10)` returns the UTC date, not ET (harmless now — only applied to the
+  DATE `due_at` — but the name/comment mislead and it would be off-by-one on any TIMESTAMPTZ).
+- Month grouping uses `at.slice(0,7)` = UTC month, so an event in the late-evening-ET window on a
+  month's last day groups into the next month. Cosmetic.
