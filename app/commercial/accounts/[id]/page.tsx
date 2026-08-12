@@ -3400,19 +3400,6 @@ async function NewDealForm({
         </summary>
         <div className="mt-2 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="block">
-              <span className={labelCls}>Probability %</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={3}
-                name="probability_pct"
-                placeholder="auto"
-                className={`${inputCls} tabular-nums`}
-              />
-              <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Leave blank → default from status</span>
-            </label>
             <div>
               <span className={labelCls}>Proposed start</span>
               <DateField name="proposed_start_at" placeholder="Pick a start date" ariaLabel="Proposed start date" />
@@ -6399,36 +6386,10 @@ async function DealEditSheet({
             </div>
           </SheetSection>
 
-          {/* ─── Section: Pricing ─── */}
-          <SheetSection
-            title="Pricing"
-            hint="Your best guess on close probability. The dollar value comes from this deal's proposal."
-          >
-            {/* Bid low / Bid high removed per the 2026-08 meeting — pricing lives
-                on the proposal. They were dropped from both CREATE forms then but
-                left here, so the one surface that could still set them was the
-                edit sheet; Karan's ask was to remove them from the Opportunity
-                full stop. Existing values are preserved in the DB and still feed
-                the $ KPIs, which now fall back to the deal's proposal total when
-                there's no range (see listCurrentProposalTotalByOpp). */}
-            <div>
-              <label htmlFor="edit-prob" className={labelCls}>Probability (%)</label>
-              {/* Karan 2026-07-10: type="text" + inputMode="numeric"
-                  instead of type="number" so browsers don't render the
-                  up/down spinner arrows inside the box. Server action
-                  still parses as a number. */}
-              <input
-                id="edit-prob"
-                name="probability_pct"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={3}
-                defaultValue={deal.probability_pct}
-                className={`${inputCls} tabular-nums max-w-[140px]`}
-              />
-            </div>
-          </SheetSection>
+          {/* The Pricing section is gone with the probability field it held —
+              bid low/high moved to the proposal in the 2026-08 meeting, and
+              probability came out 2026-08-12. An empty titled section is worse
+              than no section: it reads as a feature that failed to load. */}
 
           {/* ─── Section: Timeline ─── */}
           <SheetSection

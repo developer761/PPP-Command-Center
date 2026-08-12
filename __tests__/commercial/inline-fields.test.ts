@@ -47,13 +47,14 @@ describe("parseInlineValue", () => {
     expect(parseInlineValue(f("proposal_due_at"), "2026-08-20")).toEqual({ value: "2026-08-20" });
   });
 
-  it("bounds probability to a percentage", () => {
-    expect(parseInlineValue(f("probability_pct"), "140")).toHaveProperty("error");
-    expect(parseInlineValue(f("probability_pct"), "-5")).toHaveProperty("error");
-    expect(parseInlineValue(f("probability_pct"), "abc")).toHaveProperty("error");
-    expect(parseInlineValue(f("probability_pct"), "65")).toEqual({ value: 65 });
-    // Rounds rather than rejecting — a typed "62.5" is a clear intent.
-    expect(parseInlineValue(f("probability_pct"), "62.5")).toEqual({ value: 63 });
+  it("no longer exposes the fields Brendan asked us to drop", () => {
+    // Probability ("I don't use this. Not sure what this is.") and the proposed
+    // start/end dates ("too early to determine at the opportunity level").
+    // Leaving any of them inline-editable would quietly reintroduce a field the
+    // forms just removed.
+    for (const gone of ["probability_pct", "proposed_start_at", "proposed_end_at"]) {
+      expect(inlineField(gone), gone).toBeUndefined();
+    }
   });
 
   it("normalises state to two upper-case letters", () => {

@@ -3029,11 +3029,6 @@ async function InfoTab({
           value={opp.source ? opportunitySourceLabel(opp.source) : "—"}
           tooltip="How this opportunity came in — phone, email, web form, plans room, repeat customer, referral, or other. Set once at create time."
         />
-        <Field
-          label="Probability"
-          value={`${opp.probability_pct}%`}
-          tooltip="Likelihood we win this bid. Defaults from status; override if you have a stronger read."
-        />
         {/* Team — the EFFECTIVE one. A deal with no team of its own inherits
             the customer's, which is what the new-deal form's "Account's team
             (default)" option always promised but nothing actually resolved.

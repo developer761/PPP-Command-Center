@@ -41,12 +41,14 @@ export const INLINE_FIELDS: InlineField[] = [
   { name: "client_name", label: "Client name", type: "text", maxLength: 160,
     hint: "The end client, when it differs from the GC." },
   { name: "description", label: "Description", type: "textarea", maxLength: 4000 },
-  { name: "probability_pct", label: "Probability", type: "number",
-    hint: "0–100. Defaults from the stage; override if you have a stronger read." },
+  // probability_pct is deliberately absent — removed from every form
+  // 2026-08-12 (Brendan: "I don't use this"). Leaving it inline-editable would
+  // have quietly reintroduced the field the forms just dropped.
   { name: "rfp_received_at", label: "RFP received", type: "date" },
   { name: "proposal_due_at", label: "Proposal due", type: "date" },
-  { name: "proposed_start_at", label: "Proposed start", type: "date" },
-  { name: "proposed_end_at", label: "Proposed end", type: "date" },
+  // proposed_start_at / proposed_end_at are absent too — Brendan 2026-08-12:
+  // "too early to determine at the opportunity level". Dates for the WORK live
+  // on the project once there is one.
   { name: "property_street", label: "Street", type: "text", maxLength: 200 },
   { name: "property_city", label: "City", type: "text", maxLength: 120 },
   { name: "property_state", label: "State", type: "text", maxLength: 2 },
@@ -77,9 +79,6 @@ export function parseInlineValue(
   if (field.type === "number") {
     const n = Number(trimmed);
     if (!Number.isFinite(n)) return { error: `${field.label} must be a number.` };
-    if (field.name === "probability_pct" && (n < 0 || n > 100)) {
-      return { error: "Probability must be between 0 and 100." };
-    }
     return { value: Math.round(n) };
   }
 
