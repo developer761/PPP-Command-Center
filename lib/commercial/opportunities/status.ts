@@ -11,6 +11,7 @@ import {
   PROBABILITY_PRESERVING_SUB_STATUSES,
   TERMINAL_STATUSES,
   PRE_SALE_OPEN_STATUSES,
+  IN_DELIVERY_STATUSES,
   WARN_TRANSITIONS,
   isValidSubStatus,
   isLost,
@@ -297,15 +298,54 @@ export async function changeOpportunityStatus(
   const isTerminal = TERMINAL_STATUSES.has(input.to_status);
   const reopensToPipeline =
     wasTerminal && PRE_SALE_OPEN_STATUSES.includes(input.to_status);
+
+  // ── decided_at: the day this deal was WON or LOST ───────────────────────
+  //
+  // One meaning, for the whole life of a deal. It is what "Wins this month"
+  // counts and what the dashboard's win-rate denominator reads, and it used to
+  // be wrong in four separate ways that were really one: it was stamped on
+  // entry to any TERMINAL status, and it was stamped only then.
+  //
+  //   * Close-out is terminal, so finishing the paperwork overwrote the win
+  //     date — a March win became an August one. Close-out now has its own
+  //     column (migration 129) and never touches this.
+  //   * A verbal yes dragged straight from Proposal into a delivery column
+  //     never passed through a terminal status at all, so the win was never
+  //     dated and vanished from both the count and the rate.
+  //   * A lost→won re-decision moves between two sub-statuses of the same
+  //     terminal status, so it kept the date of the original wrong call.
+  //   * And a reopen out of close-out left the close-out date sitting there,
+  //     which then counted as a win in the wrong month.
+  //
+  // The date the deal was DECIDED, stamped when it is first decided and
+  // restamped only if that decision changes. An automatic move supplies the day
+  // the triggering thing happened; a person deciding now defaults to today.
+  const decidedNow = input.decided_at_override ?? etTodayIso();
+  const toPreSaleClosed = input.to_status === "pre_sale_closed";
+  const wasPreSaleClosed = beforeRow.status === "pre_sale_closed";
+  const toInDelivery =
+    IN_DELIVERY_STATUSES.includes(input.to_status) || input.to_status === "post_sale_closed";
+
   let nextDecidedAt: string | null | undefined = undefined; // undefined = don't touch
-  if (isTerminal && !wasTerminal) {
-    // DATE column — ET day, so an evening close lands in the right month. An
-    // automatic move supplies the date the triggering thing happened; only a
-    // decision being made right now defaults to today.
-    nextDecidedAt = input.decided_at_override ?? etTodayIso();
+  if (toPreSaleClosed && (!wasPreSaleClosed || beforeRow.sub_status !== effectiveSubStatus)) {
+    // Won or lost — first time, or the call changed.
+    nextDecidedAt = decidedNow;
+  } else if (toInDelivery && !beforeRow.decided_at) {
+    // Straight into delivery on a verbal yes, never formally closed. The work
+    // starting IS the decision; without this the win is never counted at all.
+    nextDecidedAt = decidedNow;
   } else if (reopensToPipeline) {
+    // Genuinely back in the pipeline — undecided again.
     nextDecidedAt = null;
   }
+
+  // ── closed_out_at: the day the job finished ─────────────────────────────
+  // Its own column precisely so it can never be mistaken for the win date.
+  const toClosedOut = input.to_status === "post_sale_closed";
+  const wasClosedOut = beforeRow.status === "post_sale_closed";
+  let nextClosedOutAt: string | null | undefined = undefined;
+  if (toClosedOut && !wasClosedOut) nextClosedOutAt = decidedNow;
+  else if (wasClosedOut && !toClosedOut) nextClosedOutAt = null; // reopened
 
   // Loss tracking: clear loss_reason + loss_notes when LEAVING lost.
   // Set them inline (rather than two separate updates) when entering.
@@ -332,6 +372,7 @@ export async function changeOpportunityStatus(
   // move — would leave no trace and get silently undone on the next render.
   if ((input.source ?? "user") === "user") patch.status_user_set_at = new Date().toISOString();
   if (nextDecidedAt !== undefined) patch.decided_at = nextDecidedAt;
+  if (nextClosedOutAt !== undefined) patch.closed_out_at = nextClosedOutAt;
   if (targetIsLost) {
     patch.loss_reason = lossReason;
     patch.loss_notes = lossNote;

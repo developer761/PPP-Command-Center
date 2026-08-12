@@ -544,11 +544,17 @@ export const STALE_ACCOUNT_OPP_COOLING_MULTIPLIER = 4;
  * closed-out deal records the close-out, not the win.
  */
 export function wasWonInPeriod(
-  opp: StatusTuple & { decided_at?: string | null },
+  opp: StatusTuple & { decided_at?: string | null; closed_out_at?: string | null },
   periodStartDate: string
 ): boolean {
   if (!isPostSaleProject(opp)) return false;
-  if (opp.status === "post_sale_closed") return false;
+  // A closed job counts in the month it was WON — but only once we can trust
+  // its win date. Close-out used to overwrite `decided_at`, so on a legacy row
+  // that field holds the close-out date and counting it would move the win into
+  // the wrong month. `closed_out_at` (migration 129) is present only on rows
+  // written by the code that keeps the two dates apart, which makes it the
+  // marker for "this row's decided_at means what it says".
+  if (opp.status === "post_sale_closed" && !opp.closed_out_at) return false;
   return (opp.decided_at ?? "").slice(0, 10) >= periodStartDate;
 }
 
