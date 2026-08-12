@@ -830,3 +830,36 @@ stray email/phone. (3) Best-effort: account created first, contacts fail indepen
 are genuinely SURFACED not swallowed — `params.set("contacts_failed", …)` → the account page renders
 "N contact(s) couldn't be saved — the account was created" (page.tsx:405-406 + the render). (4) Typed
 values survive a validation bounce (client component). No new findings.
+
+---
+
+## ⚠️ CORRECTION (verification session, self-audit): my `7e462d9` data-loss finding was WRONG
+
+While auditing `33f764f` I re-checked my own `7e462d9` finding and it does not hold. I claimed editing
+a deal nulls `proposed_start_at`/`proposed_end_at`. That rested on an ASSUMPTION I never verified — that
+`7e462d9` removed those inputs from the edit SHEET. It did not: `git show 7e462d9` removes no
+`name="proposed_start_at"` line, and the edit sheet still renders them **pre-filled**
+(`accounts/[id]/page.tsx:6364-6369`, `DateField ... defaultValue={startDateDefault}`). So editing a deal
+submits the existing values and `editDealFromAccountAction` writes them back — **no data loss.**
+(`updateCommercialOpportunity` *does* write null on a null input — mutations.ts:273-274, so the code
+comment at ~1555 claiming "maps null → undefined" is itself wrong — but the input is present, so null is
+never submitted.) **Retract punch-list HIGH #7.** proposed_start/end are intentionally create-omitted but
+edit-settable ("too early at create, known later") — reasonable, not a bug.
+
+### Consequence: the "systemic data-loss pattern" is ONE confirmed instance, not two
+- **`42ee991` Industry: STILL REAL.** Verified again: no `name="industry"` input remains on the detail
+  page (the identity `<EditableField>` was removed), the identity-section save still builds
+  `industry: get("industry")=null`, and `updateCommercialAccount` spreads `{...patch}` (mutations.ts:103,
+  no null→undefined) → editing basic info nulls Industry. This one stands.
+- **`7e462d9`: RETRACTED** (above).
+So downgrade the claim: the field-drop data-loss is **1 confirmed instance (Industry)**, not a 2-instance
+pattern. I over-generalized from one real + one unverified. The SEPARATE "standalone edit page missed"
+pattern (Industry left on `accounts/[id]/edit`; inverted address direction there) is unaffected and still
+holds (2 instances).
+
+## AUDIT — `33f764f` (opportunity form expanded + reordered). Clean.
+Verified: nickname (`title_override`) is wired to BOTH create writers (opportunities/page.tsx:332/401 for
+the pipeline quick-create, and the account-scoped form) — the commit genuinely swept both, fixing the
+pipeline quick-create that "had drifted" (was dropping nickname/estimator/lead-source). Collapsibles
+removed (expanded per Brendan). proposed_start/end removed from CREATE only (harmless — create defaults
+null on a new row) while the edit sheet keeps them. No data-loss, no new findings.
