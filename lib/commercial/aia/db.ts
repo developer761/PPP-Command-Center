@@ -26,6 +26,8 @@ export type AiaApplication = {
   period_from: string | null;
   period_to: string | null;
   original_contract_cents: number;
+  /** True once a person typed the contract sum here — see migration 130. */
+  original_contract_is_manual: boolean;
   /**
    * G702 lines 1 and 2 as they stood when this certificate was ISSUED.
    *
@@ -424,6 +426,9 @@ export async function updateAiaApplication(
     next.frozen_at = null;
   }
 
+  // Typing in the contract field is what makes it authoritative — see
+  // migration 130. Without this the value saves and the ladder ignores it.
+  if (patch.original_contract_cents !== undefined) next.original_contract_is_manual = true;
   if (patch.period_from !== undefined) next.period_from = patch.period_from;
   if (patch.period_to !== undefined) next.period_to = patch.period_to;
   if (patch.original_contract_cents !== undefined) {
@@ -613,6 +618,7 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
   const effectiveOriginalCents = pickContractBaseCents({
     hasBillingApp: true,
     originalContractCents: app.original_contract_cents,
+    manualContractCents: app.original_contract_is_manual ? app.original_contract_cents : 0,
     sovTotalCents,
     acceptedProposalCents: ladder.acceptedProposalCents,
     acceptedSnapshotCents: ladder.acceptedSnapshotCents,
@@ -692,7 +698,7 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
   const [{ data: appRow }, ladder] = await Promise.all([
     sb
       .from("commercial_aia_applications")
-      .select("id, original_contract_cents")
+      .select("id, original_contract_cents, original_contract_is_manual")
       .eq("opportunity_id", opportunity_id)
       .is("deleted_at", null)
       .order("application_number", { ascending: false })
@@ -700,7 +706,11 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
       .maybeSingle(),
     contractLadderInputs(opportunity_id),
   ]);
-  const app = appRow as { id: string; original_contract_cents: number } | null;
+  const app = appRow as {
+    id: string;
+    original_contract_cents: number;
+    original_contract_is_manual: boolean;
+  } | null;
   let sovTotalCents = 0;
   if (app) {
     const lines = await listAiaLineItems(app.id);
@@ -709,6 +719,7 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
   return pickContractBaseCents({
     hasBillingApp: !!app,
     originalContractCents: app?.original_contract_cents ?? 0,
+    manualContractCents: app?.original_contract_is_manual ? app.original_contract_cents : 0,
     sovTotalCents,
     acceptedProposalCents: ladder.acceptedProposalCents,
     acceptedSnapshotCents: ladder.acceptedSnapshotCents,

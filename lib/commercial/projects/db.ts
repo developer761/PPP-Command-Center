@@ -277,16 +277,16 @@ export async function listProjects(opts: {
   // ── Batch: latest AIA application per opp. We fetch ALL apps (paginated) and
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
-  const appData = await paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; retainage_pct: number }>(
+  const appData = await paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number }>(
     () =>
       sb
         .from("commercial_aia_applications")
-        .select("id, opportunity_id, application_number, status, original_contract_cents, retainage_pct")
+        .select("id, opportunity_id, application_number, status, original_contract_cents, original_contract_is_manual, retainage_pct")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
-  const latestAppByOpp = new Map<string, { id: string; application_number: number; status: string; original_contract_cents: number; retainage_pct: number }>();
+  const latestAppByOpp = new Map<string, { id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number }>();
   for (const a of appData) {
     const cur = latestAppByOpp.get(a.opportunity_id);
     if (!cur || a.application_number > cur.application_number) latestAppByOpp.set(a.opportunity_id, a);
@@ -341,6 +341,8 @@ export async function listProjects(opts: {
     const base = pickContractBaseCents({
       hasBillingApp: latest != null,
       originalContractCents: latest?.original_contract_cents ?? 0,
+      // A contract sum a person typed on the certificate outranks the ladder.
+      manualContractCents: latest?.original_contract_is_manual ? latest.original_contract_cents : 0,
       sovTotalCents: sovTotal,
       acceptedProposalCents: acceptedProposalByOpp.get(o.id) ?? 0,
       // The signed contract remembered on the deal, for a won job whose winning

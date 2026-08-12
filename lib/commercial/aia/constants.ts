@@ -152,6 +152,15 @@ export function pickContractBaseCents(opts: {
   /** Total of the ACCEPTED (won) proposal — the signed contract number. */
   acceptedProposalCents?: number;
   /**
+   * The contract sum a PERSON typed on this application.
+   *
+   * Ranked above everything, including a won proposal, because someone typing
+   * here is correcting the number the ladder would otherwise pick — a
+   * negotiated figure, a legacy job, a correction from the GC. The field saved
+   * and was then discarded, which is worse than not offering it.
+   */
+  manualContractCents?: number;
+  /**
    * The signed contract REMEMBERED ON THE DEAL (`accepted_contract_cents`).
    *
    * Needed because winning is recorded on the proposal, and creating a revision
@@ -180,6 +189,7 @@ export function pickContractBaseCents(opts: {
   // must drive the contract EVERYWHERE — never the first proposal, never a stale
   // AIA original_contract seeded from an old bid. So the proposal sits at the
   // TOP of the ladder: won first, then the latest proposal if none is won yet.
+  if (opts.manualContractCents && opts.manualContractCents > 0) return opts.manualContractCents;
   if (opts.acceptedProposalCents && opts.acceptedProposalCents > 0) return opts.acceptedProposalCents;
   // The remembered signed contract, for a won deal whose winning proposal was
   // superseded by a re-quote. Below the live `won` total on purpose: if a

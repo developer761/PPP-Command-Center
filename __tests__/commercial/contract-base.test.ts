@@ -215,3 +215,42 @@ describe("the rungs below a real quote", () => {
     expect(ladder({})).toBe(0);
   });
 });
+
+describe("F6 — a contract sum a person typed", () => {
+  const ladder = (o: Partial<Parameters<typeof pickContractBaseCents>[0]>) =>
+    pickContractBaseCents({
+      hasBillingApp: true,
+      originalContractCents: 0,
+      sovTotalCents: 0,
+      bidMidCents: 0,
+      ...o,
+    });
+
+  it("outranks even a won proposal", () => {
+    // The field saved and was then discarded, because the ladder put the
+    // proposal above it. Someone typing there is correcting the number the
+    // ladder would otherwise pick — a negotiated figure, a legacy job, a
+    // correction from the GC — so they get the last word.
+    expect(
+      ladder({ manualContractCents: 480_000_00, acceptedProposalCents: 450_000_00 })
+    ).toBe(480_000_00);
+  });
+
+  it("outranks the remembered signed contract and the latest quote too", () => {
+    expect(
+      ladder({
+        manualContractCents: 480_000_00,
+        acceptedSnapshotCents: 450_000_00,
+        latestProposalCents: 500_000_00,
+      })
+    ).toBe(480_000_00);
+  });
+
+  it("is ignored when it was never typed", () => {
+    // Every application has a plausible-looking number in that column — it is
+    // force-set to the seeded schedule-of-values total at creation. Only an
+    // explicit edit makes it authoritative, which is why it takes a flag and
+    // not a heuristic.
+    expect(ladder({ manualContractCents: 0, acceptedProposalCents: 450_000_00 })).toBe(450_000_00);
+  });
+});

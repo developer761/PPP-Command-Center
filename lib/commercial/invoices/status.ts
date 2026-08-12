@@ -53,7 +53,7 @@ export async function changeInvoiceStatus(
 
   const { data: before } = await sb
     .from("commercial_invoices")
-    .select("status, deleted_at, issued_at")
+    .select("status, deleted_at, issued_at, paid_cents, total_cents")
     .eq("id", input.invoice_id)
     .maybeSingle();
   if (!before || before.deleted_at) return { ok: false, error: "invoice_not_found" };
@@ -70,6 +70,23 @@ export async function changeInvoiceStatus(
     updated_at: now,
   };
 
+  // Un-voiding an invoice that has been PAID must not park it back in draft.
+  //
+  // void → draft exists to undo a mis-void, and it only wrote the status — so a
+  // draft could sit there holding a $1,000 payment. "Paid this month" counts
+  // that payment (it excludes voids, not drafts) while the account and deal
+  // Collected tiles skip drafts entirely: the same $1,000 read as collected on
+  // the dashboard and $0 on the account.
+  //
+  // Rather than refusing the recovery, the invoice lands where its payments say
+  // it belongs. Nothing is lost, and the two screens agree again.
+  const paidCents = Number((before as { paid_cents?: number | string }).paid_cents ?? 0) || 0;
+  const totalCents = Number((before as { total_cents?: number | string }).total_cents ?? 0) || 0;
+  if (input.to_status === "draft" && paidCents > 0) {
+    patch.status = paidCents >= totalCents && totalCents > 0 ? "paid" : "partial";
+    patch.voided_at = null;
+  }
+
   // Lifecycle timestamps — set on the state entry, don't overwrite prior
   // ones (a sent → viewed → sent flip shouldn't clear sent_at).
   // Audit fix: issued_at is the FIRST send date (source of truth for
@@ -84,6 +101,11 @@ export async function changeInvoiceStatus(
   }
   if (input.to_status === "void") {
     patch.voided_at = now;
+  }
+  // Leaving void clears the stamp. A live invoice carrying `voided_at` reads as
+  // voided to anything that checks the timestamp rather than the status.
+  if (from_status === "void" && input.to_status !== "void") {
+    patch.voided_at = null;
   }
 
   // 2026-07-29 re-audit fix (TOCTOU): the DAG was validated against the READ

@@ -232,14 +232,23 @@ export async function writeDebrief(
   const oppPatch: Record<string, unknown> = {
     win_loss_debriefed_at: new Date().toISOString(),
   };
-  if (
-    (input.outcome === "lost" || input.outcome === "no_bid") &&
-    input.decidingFactor
-  ) {
+  // `loss_reason` carries TWO things: the deciding factor, and the fact that a
+  // deal was a no-bid rather than a loss. The debrief's factor grid deliberately
+  // excludes `no_bid` but requires a factor — so filing a no-bid debrief wrote
+  // e.g. 'price' over the 'no_bid' marker and destroyed it. From then on every
+  // report read the deal as an ordinary loss, and it started counting against
+  // the win rate, which is supposed to exclude no-bids entirely.
+  //
+  // A no-bid keeps its marker. The deciding factor is still captured — it lives
+  // on the debrief row itself, which is the source of truth for loss detail.
+  if (input.outcome === "lost" && input.decidingFactor) {
     oppPatch.loss_reason = input.decidingFactor;
     if (input.lessonsLearned?.trim()) {
       oppPatch.loss_notes = input.lessonsLearned.trim();
     }
+  } else if (input.outcome === "no_bid" && input.lessonsLearned?.trim()) {
+    // Notes still land — only the reason CODE is protected.
+    oppPatch.loss_notes = input.lessonsLearned.trim();
   }
   const { error: flagErr } = await sb
     .from("commercial_opportunities")
