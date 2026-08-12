@@ -118,3 +118,35 @@ status-vs-sub-status confusion · the proposal-page 404.
 6. **3.2 lead flow**, last, as agreed.
 
 §4 stays documented until its tripwire fires. §5 unblocks as its people reply.
+
+---
+
+## ⚠️ CORRECTION from the review session (2026-08-12) — this list MISSED live bugs + the post-audit classes
+
+Verifying this "nothing missed" list against the code, several confirmed-open items are absent, and one
+is mis-filed as DONE. Adding them so the list is actually complete:
+
+### 🔴 §1.0 — MIG-127 EMBED IS *NOT* DONE: 7 sites still ambiguous, incl. a LIVE per-account bug
+§6 marks "the migration 127 ambiguity" done, but 070f78b fixed only 3 detail-page queries. **7 more still
+use `commercial_opportunities!inner(...)` with NO fkey hint** and return PGRST201. **PROVEN against prod:**
+the un-named embed returns HTTP 300 / PGRST201; the named one returns 200. So RIGHT NOW:
+- **Account 360 → Proposals tab shows ZERO proposals for EVERY account** (`accounts/[id]/page.tsx:4213`) — LIVE.
+- **bulk-delete draft proposals errors 100%** (`proposals/db.ts:1661`).
+- **proposal_idle cron never fires** (`cron/custom-notification-rules.ts:206`).
+- also `competitors.ts:399`, `win-loss/reports.ts:323`, `cron/overdue-tasks.ts:57`, `proposals/page.tsx:250`.
+Same one-line fix as 070f78b (add `!commercial_proposals_opportunity_id_fkey`). This is the review session's
+original post-audit #1 — it was flagged, partially swept, then mis-marked done. **Second live prod bug of the
+silent-empty class.**
+
+### Also confirmed-open, absent from this list (all in `docs/POST_AUDIT_PUNCHLIST_2026_08.md`):
+- **Margin basis (D2):** stage-KPI strip is fed contract-based `grossMarginPct` (`opportunities/[id]/page.tsx:1542`)
+  while Costs tab / dashboard / reports use billed-based → same deal shows two margins a tab-click apart. HIGH.
+- **Bare-DATE timezone cluster:** `proposal_due_at`/`follow_up_at` through `etDateOf` (a proposal due today
+  reads "1 day overdue"), the list Hot filter + dashboard `relativeLabel` raw `getTime()`, `fmtEtDate` on
+  work-order/field-ops DATE columns. §4.2 names only the rfp_received_at sub-part.
+- **Mobile 24px touch targets:** inline-field pencil, stage-KPI parent links, saved-view chip remove-X,
+  activity "Add task" — all < 44px.
+- **§7 completeness:** billing-stage "retainage held" tile + closed-stage "warranty expiry" tile unbuilt.
+- **Step-7:** opportunities-LIST delivery rows show bid, not contract (`dealValueCents`).
+The full 47-item punch list with file:line + fixes is in `POST_AUDIT_PUNCHLIST_2026_08.md` — fold it in so
+"one list" is truly one list.
