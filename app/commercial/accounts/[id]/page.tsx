@@ -122,6 +122,7 @@ import {
 import {
   KANBAN_COLUMNS,
   columnKeyForOpp,
+  dealTabsFor,
   kanbanMoveToLabel,
   resolveColumnTarget,
 } from "@/lib/commercial/opportunities/kanban-columns";
@@ -1336,34 +1337,16 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           //   Post-contract → the full delivery set
           // A won deal keeps Proposals so the signed one stays one click away.
           const isPostContract = isPostSaleProject(p.opp);
-          const primary = isPostContract
-            ? [
-                { key: "overview", label: "Overview", href: dealBase },
-                { key: "proposals", label: "Proposals", href: `${dealBase}&dt=proposals` },
-                { key: "invoices", label: "Invoices", href: `${dealBase}&dt=invoices` },
-                { key: "pnl", label: "P&L", href: `${dealBase}&dt=pnl` },
-                { key: "documents", label: "Documents", href: `${dealBase}&dt=documents` },
-              ]
-            : [
-                { key: "overview", label: "Overview", href: dealBase },
-                { key: "proposals", label: "Proposals", href: `${dealBase}&dt=proposals` },
-                { key: "documents", label: "Documents", href: `${dealBase}&dt=documents` },
-              ];
-          // Delivery tools — same canonical order + labels as the sidebar's
-          // "Delivery Tools" group so the two surfaces read identically.
-          // Hidden entirely pre-contract; the URLs still resolve, so an old
-          // bookmark or a deal that gets un-won doesn't 404.
-          const tools = (isPostContract
-            ? [
-                { key: "work-order", label: "Work Order" },
-                { key: "submittals", label: "Submittals" },
-                { key: "change-orders", label: "Change Orders" },
-                { key: "aia", label: "AIA Billing" },
-                { key: "costs", label: "Transactions" },
-                { key: "closeout", label: "Closeout & Warranty" },
-              ]
-            : []
-          ).map((t) => ({ ...t, href: `${dealBase}&dt=${t.key}` }));
+          // Tab sets live in kanban-columns (dealTabsFor) so they're testable —
+          // composed inline here, nothing stopped them drifting from Katie's
+          // spec. Tools are hidden pre-contract; their URLs still resolve, so an
+          // old bookmark or an un-won deal doesn't 404.
+          const { primary: primaryDefs, tools: toolDefs } = dealTabsFor(isPostContract);
+          const primary = primaryDefs.map((t) => ({
+            ...t,
+            href: t.key === "overview" ? dealBase : `${dealBase}&dt=${t.key}`,
+          }));
+          const tools = toolDefs.map((t) => ({ ...t, href: `${dealBase}&dt=${t.key}` }));
           const tabClass = (active: boolean) =>
             `shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${active ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`;
           return (

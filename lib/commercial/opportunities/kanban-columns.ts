@@ -341,3 +341,55 @@ export function auditKanbanColumnMap(): string[] {
   }
   return problems;
 }
+
+// ── Deal-page tabs by contract phase (Katie 2026-08) ───────────────────────
+
+/**
+ * Which tabs the deal page shows, by phase. Katie's note, verbatim:
+ *   "Pre-Contract Tabs should be different from Post-Contract Tabs.
+ *    Pre Contract = Proposals, Documents.
+ *    Post Contract = Submittals, Invoices, Work Orders, Change Orders,
+ *    AIA Billing, P&L, Closeout & Warranty, Costs."
+ *
+ * Pure and exported so it can be TESTED — the page composed these inline, so
+ * nothing stopped the two lists drifting apart from Katie's spec over time.
+ *
+ * `isPostContract` is deliberately `isPostSaleProject` (true from the moment a
+ * deal is WON), not the finer 4-way `dealPhase`. A won job needs its Submittals
+ * and Work Orders immediately, before anything is billed — so tools follow the
+ * CONTRACT, while the Overview's money tiles follow the finer phase. That
+ * divergence is intentional.
+ */
+export const DEAL_PRIMARY_TABS_PRE: readonly { key: string; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "proposals", label: "Proposals" },
+  { key: "documents", label: "Documents" },
+] as const;
+
+export const DEAL_PRIMARY_TABS_POST: readonly { key: string; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "proposals", label: "Proposals" },
+  { key: "invoices", label: "Invoices" },
+  { key: "pnl", label: "P&L" },
+  { key: "documents", label: "Documents" },
+] as const;
+
+/** The six delivery tools — post-contract only. Same order + labels as the
+ *  sidebar's "Delivery Tools" group so the two surfaces read identically. */
+export const DEAL_DELIVERY_TOOLS: readonly { key: string; label: string }[] = [
+  { key: "work-order", label: "Work Order" },
+  { key: "submittals", label: "Submittals" },
+  { key: "change-orders", label: "Change Orders" },
+  { key: "aia", label: "AIA Billing" },
+  { key: "costs", label: "Transactions" },
+  { key: "closeout", label: "Closeout & Warranty" },
+] as const;
+
+export function dealTabsFor(isPostContract: boolean): {
+  primary: readonly { key: string; label: string }[];
+  tools: readonly { key: string; label: string }[];
+} {
+  return isPostContract
+    ? { primary: DEAL_PRIMARY_TABS_POST, tools: DEAL_DELIVERY_TOOLS }
+    : { primary: DEAL_PRIMARY_TABS_PRE, tools: [] };
+}
