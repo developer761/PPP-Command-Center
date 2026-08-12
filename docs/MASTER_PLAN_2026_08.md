@@ -112,6 +112,30 @@ enforce. Then A1 (`decided_at` not restamped on a won↔lost re-decision) and A3
 invisible in "Wins this month"). Also: `foldAutoAdvanceTargets` is tested but
 wired to nothing — wire it or drop it.
 
+### ▶ PHASE C.10 — Deal drill-in navigation *(NEW — Karan 2026-08-11)*
+**Owner: the session already mid-sweep on it.** Karan, verbatim: *"it brings me
+to the submittals page — it shouldn't do that, it should just keep me there, and
+the same for everything and vice versa. We talked about this so many times."*
+
+The standing rule ([[feedback_page_flow_navigation]]) is that a deal's tools live
+UNDER the deal. Tools already honour it — they render embedded in the drill-in —
+but drilling into an ITEM breaks straight out to a standalone page:
+
+| Route | Breaks out from |
+|---|---|
+| `accounts/[id]/submittals/[dealId]/[sid]` | Submittals tab → SUB-001 |
+| `accounts/[id]/deals/[dealId]/proposal` | Proposals tab → a proposal |
+| `/commercial/invoices/[id]` | Invoices tab → an invoice (jumps to the GLOBAL section) |
+
+`?back=` returns you afterwards, but the trip already happened — the deal chrome,
+the tab you were on, and your scroll position are all gone.
+
+Treat as a CLASS, not three links: any item opened from a deal tab stays inside
+the deal (embedded panel or right slide-out per the RUX conventions), and the
+reverse — an item reached from a global list — carries enough context to get back
+to its deal. Sweep every tool in the table above plus change-orders, AIA, costs,
+work-order, closeout and debrief for the same shape before calling it done.
+
 ### ▶ PHASE D — Full re-audit
 Fresh persona + adversarial agents over everything from A–C. Non-negotiable:
 this round's audits caught a live security leak and two bugs in code written
@@ -171,3 +195,33 @@ all 9 findings from the 2026-08 persona audit.
 - Migrations: add the file to `supabase/migrations/` even when the DDL was
   applied by hand, or a fresh environment breaks with an error that reads like
   a code bug.
+
+---
+
+## 4. Handoff — start here
+
+Work from THIS doc. The specs and punch-lists it references are the *how*; this
+is the *what and when*.
+
+**Apply first:** `supabase/migrations/126_status_log_source.sql` — the
+auto-advance engine's notification suppression and manual-override guard both
+need the `source` + `status_user_set_at` columns. Confirm 122–125 are applied in
+a fresh environment. *(Applied on production 2026-08-11.)*
+
+**Order:** C.9 → C.10 → C.7 → C.6 → C.8 remainder → C.5 → D → E.
+
+**The two real emergencies are F1 and F2** (Phase C.7). They corrupt the numbers
+on a signed contract and on AIA payment applications already sent to a GC.
+Everything else is polish by comparison — do these before any feature work.
+
+**Do not re-touch** anything marked verified-correct in the audit docs
+(`AUTOADVANCE_AUDIT_2026_08.md`, `REAUDIT_SHIPPED_2026_08.md` § "Verified
+CORRECT"). Re-auditing settled code burns the budget that F1/F2 need.
+
+**Two sessions share this repo.** Commit surgically — `git add <specific files>`,
+never `git add -A`, or you will bundle the other session's in-flight work into
+your commit. Check `git log --oneline -5` before starting: the other session may
+have already shipped what you're about to build.
+
+**Every commit:** `npx tsc --noEmit` + `npx vitest run` + `npm run build`, all
+green, before committing.
