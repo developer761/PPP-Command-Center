@@ -163,24 +163,32 @@ Starts only when D is clean.
 ### The road to done — CONFIRMED BY KARAN 2026-08-11
 1. The ~79 audit findings — emergencies (F1, F2, F12) first
 2. Final re-audit (Phase D)
-3. Stephanie's list (Phase E)
+3. **Stephanie's list** — includes the large-file / Drive-Dropbox issue
 4. Reports — once Katie says which
-5. **Google Drive / Dropbox for LARGE FILES**
-6. RFP email → auto-populate the opportunity
-7. **Joint smoke test with Karan → done**
+5. RFP email → auto-populate the opportunity
+6. **Joint smoke test with Karan → done**
 
 **Scheduling & labor module — SHIPPED.** Previously listed here as "the big one,
-deliberately last." It is built. Do not re-plan it or treat it as remaining
-scope; the last big build is behind us.
+deliberately last." It is built and connected, verified 2026-08-11 against
+Katie's spec: Week Grid (`field-ops/schedule`), Calendar, Job Board
+(`field-ops/board`), Approvals, Payroll export, Employees/Jobs admin, clock
+station, crew self-service (`/commercial/crew/*`), the `/f/[token]` field page,
+and `commercial_field_ops_jobs.work_order_id` so work orders feed the scheduler
+rather than sitting in a silo. Do not re-plan it or quote it as remaining scope.
 
-**#5 is about FILE SIZE, not archiving.** Earlier notes framed Drive/Dropbox as
-"archive + restore of doc drawers, low priority" — Karan's 2026-08-11 correction
-is that the driver is large files: drawing sets, marked-up submittal packages
-and closeout bundles are too big for the current upload path. The job is to
-offload storage for those, not to build an archive feature. Re-scope before
-building; the old framing will send you at the wrong problem.
+*One spec item not found:* the foreman **Daily Log** (§5.4 — mobile, <30s, a
+foreman submits actuals for the whole crew). Per-person clock in/out exists and
+covers the same need from the other direction, which was Katie's own open
+question #1 ("actuals capture owner"). Ask before building — it may be
+deliberately replaced, not missing.
 
-Step 6 is the endgame bonus — Karan wants to walk through the parsing rules
+**The Drive/Dropbox item is a FILE-SIZE problem and belongs to Stephanie's
+list.** Earlier notes framed it as "archive + restore of doc drawers, low
+priority" — wrong problem. Karan 2026-08-11: drawing sets, marked-up submittal
+packages and closeout bundles are too big for the current upload path, and the
+issue arrives via Stephanie's notes. Re-scope from her notes before building.
+
+Step 5 is the endgame bonus — Karan wants to walk through the parsing rules
 rather than have them built from a spec. After it: **STOP and do the joint smoke
 test** before calling the platform done.
 
