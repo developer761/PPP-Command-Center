@@ -748,3 +748,18 @@ fixed neither:**
 While you're in this file: wire `stateFor` to a reached-set (the opp status log gives it) so skipped
 stages render `"skipped"` not `"passed"`, and pass a sentinel (not null) for won-not-started so the
 delivery bar reads all-ahead.
+
+---
+
+## AUDIT — `e68f4c2` ("approved didn't ask won/lost"). Clean.
+
+Correct diagnosis + fix. Approval is INTERNAL (Brendan signs off before the GC sees it), so it rightly
+closes nothing — the real gap was "ready to SEND." Verified: (1) `approvedNotSentCount` is wired from
+`dealProposals.filter(p => p.status === "approved")` (page.tsx:1504), and `"approved"` is a real
+ProposalStatus with a live `pending_approval → approved → (send) → sent` machine (constants.ts:14/85,
+db.ts:1410 approveProposal) — so the count matches a genuine approved-but-unsent state, not dead code.
+(2) `manualNextStep` ordering is right: Build → **Send it** (110) → Mark won/lost (113), so an approved
+-unsent proposal prompts "Send it" and only a SENT one prompts the win/loss decision Karan wanted, at
+the point it can be made. (3) The "Approved and not sent" attention item is warn-not-block + names the
+consequence. Brendan's 2nd trigger (submit → pending_approval) was verified already-wired, not rebuilt.
+tsc + 412 tests (4 new). No new findings.
