@@ -103,7 +103,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
-import { formatProposalNumber, listProposalsForOpp, getProposal, listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
+import { proposalDisplayId, listProposalsForOpp, getProposal, listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 import { listDocumentsForParent } from "@/lib/commercial/documents/db";
 import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/commercial/documents/categories";
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
@@ -2392,7 +2392,7 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
         const remaining = Math.max(0, pr.total_cents - billed);
         return {
           id: pr.id,
-          label: `${formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`} · ${formatCentsFull(pr.total_cents)}${billed > 0 ? ` · ${formatCentsFull(remaining)} left` : ""} · ${pr.status}`,
+          label: `${proposalDisplayId(pr) || `R${pr.revision_number}`} · ${formatCentsFull(pr.total_cents)}${billed > 0 ? ` · ${formatCentsFull(remaining)} left` : ""} · ${pr.status}`,
           totalCents: pr.total_cents,
           remainingCents: remaining,
         };
@@ -2423,7 +2423,7 @@ function DealProposalsSection({ accountId, oppId, proposals }: { accountId: stri
       ) : (
         <ul className="divide-y divide-ppp-charcoal-50">
           {sorted.map((pr) => {
-            const num = formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`;
+            const num = proposalDisplayId(pr) || `R${pr.revision_number}`;
             const status = proposalStatusLabel(pr.status);
             const tone = pr.status === "won" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : pr.status === "lost" ? "text-rose-700 bg-rose-50 border-rose-200" : pr.status === "sent" ? "text-cc-brand-800 bg-cc-brand-50 border-cc-brand-200" : pr.status === "approved" ? "text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100" : pr.status === "pending_approval" ? "text-ppp-navy-700 bg-ppp-navy-50 border-ppp-navy-200" : "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200";
             return (
@@ -6249,9 +6249,9 @@ async function AccountProposalsTab({
                               <span className={`font-bold text-ppp-charcoal tabular-nums shrink-0 ${isCurrent ? "text-[15px]" : "text-[12.5px] text-ppp-charcoal-600"}`}>
                                 {proposalRevisionLabel(r, dealAnySent) || "Proposal"}
                               </span>
-                              {formatProposalNumber(r.proposal_seq) && (
+                              {proposalDisplayId(r) && (
                                 <span className="font-mono text-[10px] text-ppp-navy-600 shrink-0" title="Global proposal number">
-                                  {formatProposalNumber(r.proposal_seq)}
+                                  {proposalDisplayId(r)}
                                 </span>
                               )}
                               {isCurrent && (

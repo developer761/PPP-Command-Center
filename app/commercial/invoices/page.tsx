@@ -23,7 +23,7 @@ import { DateField } from "@/components/commercial/date-field";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
-import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
+import { listProposalsForOpp, proposalDisplayId, type CommercialProposal } from "@/lib/commercial/proposals/db";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
@@ -136,7 +136,7 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
  *  per-deal revision as "R{n}" (single fallback used everywhere — matches the
  *  chips on the proposals + proposal-detail pages). */
 function proposalDisplayNumber(p: CommercialProposal): string {
-  return formatProposalNumber(p.proposal_seq) || `R${p.revision_number}`;
+  return proposalDisplayId(p) || `R${p.revision_number}`;
 }
 
 

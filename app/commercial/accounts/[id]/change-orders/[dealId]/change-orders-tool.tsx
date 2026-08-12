@@ -24,7 +24,7 @@ import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { getInvoiceContext, listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
+import { listProposalsForOpp, proposalDisplayId, type CommercialProposal } from "@/lib/commercial/proposals/db";
 import { formatCentsFull } from "@/lib/commercial/invoices/format";
 import {
   createChangeOrder,
@@ -98,7 +98,7 @@ function signedAmountCents(rawAmount: string, direction: string): number | null 
 
 /** Human label for a proposal in the CO "which proposal" dropdown. */
 function proposalPickerLabel(p: CommercialProposal): string {
-  const num = formatProposalNumber(p.proposal_seq) || `R${p.revision_number}`;
+  const num = proposalDisplayId(p) || `R${p.revision_number}`;
   const status = p.status.charAt(0).toUpperCase() + p.status.slice(1);
   return `${num} · ${formatCentsFull(p.total_cents)} · ${status}`;
 }

@@ -15,6 +15,7 @@
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { paginateAll } from "@/lib/commercial/paginate";
+import { proposalRecordId } from "@/lib/commercial/record-ids";
 import type { ProposalStatus } from "./constants";
 import { targetForProposalStatus } from "@/lib/commercial/opportunities/auto-advance-targets";
 
@@ -52,6 +53,16 @@ export type ProposalEstimatorSnapshot = {
 export type CommercialProposal = {
   id: string;
   opportunity_id: string;
+  /**
+   * The DEAL's shared record number (`2026-0042`), flattened onto the proposal
+   * by the readers below.
+   *
+   * A proposal's id is meant to be part of one family that follows a deal —
+   * OPP-2026-0042 → PROP-2026-0042 → WO-2026-0042. It can't be derived from the
+   * proposal alone, and threading it through every render site by hand is how
+   * half of them end up on the old scheme. Supplied here instead.
+   */
+  project_number?: string | null;
   revision_number: number;
   parent_proposal_id: string | null;
   header_json: ProposalHeaderJson;
@@ -94,12 +105,37 @@ export type CommercialProposal = {
   proposal_seq: number | null;
 };
 
-/** Format a proposal_seq int → "PROP-0001" for UI. Null → empty
- *  string so callers can `{formatProposalNumber(p.proposal_seq)}`
- *  without a truthy check. */
-export function formatProposalNumber(seq: number | null | undefined): string {
-  if (seq == null) return "";
-  return `PROP-${String(seq).padStart(4, "0")}`;
+/** Lift the embedded opportunity's project_number onto the proposal row. */
+function flattenProjectNumber(row: unknown): CommercialProposal {
+  const r = row as CommercialProposal & {
+    opportunity?: { project_number?: string | null } | Array<{ project_number?: string | null }> | null;
+  };
+  const embed = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity ?? null;
+  const { opportunity: _drop, ...rest } = r;
+  void _drop;
+  return { ...(rest as CommercialProposal), project_number: embed?.project_number ?? null };
+}
+
+/**
+ * The proposal's record id — part of the family that follows a deal.
+ *
+ * `PROP-2026-0042`, and `PROP-2026-0042-R2` for later revisions, matching
+ * OPP/WO/TRANS. It used to be an independent global counter (`PROP-0031`), so
+ * `OPP-2026-0042` and `PROP-0031` sat about twenty lines apart on an invoice
+ * header describing the same job, reading as two unrelated documents.
+ *
+ * Falls back to the old sequence when the deal has no shared number — that only
+ * happens on a deal whose OPP id is blank too, so the two stay consistent with
+ * each other rather than one inventing an id the other doesn't have.
+ */
+export function proposalDisplayId(p: {
+  project_number?: string | null;
+  revision_number?: number | null;
+  proposal_seq?: number | null;
+}): string {
+  const shared = proposalRecordId(p.project_number, p.revision_number);
+  if (shared) return shared;
+  return p.proposal_seq == null ? "" : `PROP-${String(p.proposal_seq).padStart(4, "0")}`;
 }
 
 export type CommercialProposalLineItem = {
@@ -1618,11 +1654,11 @@ export async function getProposal(
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_proposals")
-    .select("*")
+    .select("*, opportunity:commercial_opportunities(project_number)")
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
-  return (data as CommercialProposal | null) ?? null;
+  return data ? flattenProjectNumber(data) : null;
 }
 
 export async function listProposalsForOpp(
@@ -1631,11 +1667,11 @@ export async function listProposalsForOpp(
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_proposals")
-    .select("*")
+    .select("*, opportunity:commercial_opportunities(project_number)")
     .eq("opportunity_id", opportunityId)
     .is("deleted_at", null)
     .order("revision_number", { ascending: false });
-  return (data as CommercialProposal[] | null) ?? [];
+  return ((data as unknown[] | null) ?? []).map(flattenProjectNumber);
 }
 
 /**
