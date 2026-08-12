@@ -106,3 +106,7 @@ The `c6c9f9f` sweep made the **Margin** card NEUTRAL for $0-costs/provisional (k
 **Fix:** tone Net profit `neutral` when `provisional` (reuse the flag these blocks already compute) so the whole row reads "nothing spent yet."
 
 ### R29. Cosmetic: malformed import line (`app/commercial/page.tsx:43`) — two `import` statements on one physical line. Compiles + runs; split for hygiene.
+
+### R30. F1 fix — the AIA READ of `accepted_contract_cents` is unguarded (soft R25-class pre-127 issue)
+F1 (`7f5ba29`) is **verified correct** — snapshot-on-win ladder, write-on-win (updates on a newly-won R2), 284 tests pass, tsc clean. But the AIA input read (`aia/db.ts:540`) does `.select("bid_value_low_cents, bid_value_high_cents, accepted_contract_cents")` with **no `isMissingColumn` guard** (the *write* path in `projects/accepted-contract.ts:95-97` has one; `projects/db.ts` reads via `SELECT *` so it degrades fine). Pre-migration-127, that explicit SELECT errors → `oppRow=null` → `o=null` → the AIA contract base loses BOTH the bid-mid fallback and the snapshot (resolves off proposals only). Not a crash (the error is swallowed by `maybeSingle`), but a wrong contract number on the AIA app until 127 is applied. Same class as R25 (the 126 UPDATE), lower severity.
+**Fix:** either apply migration 127 as a hard pre-deploy gate (alongside 126), or guard the `aia/db.ts:540` read — retry the SELECT without `accepted_contract_cents` on a `/accepted_contract/i` error, reusing the existing `isMissingColumn` helper.
