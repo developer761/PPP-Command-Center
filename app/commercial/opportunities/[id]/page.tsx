@@ -1541,14 +1541,14 @@ export default async function OpportunityDetailPage({
   });
   // The identity line: what am I looking at, and whose is it. A won job leads
   // with its project number — that is the number on the paperwork in the field.
-  const stageIdentity = [
-    ...(pathIsWon && (pathProject?.project_number ?? opp.project_number)
-      ? [{ label: "Project", value: (pathProject?.project_number ?? opp.project_number)! }]
-      : []),
-    ...(account
-      ? [{ label: "Account", value: account.company_name, href: `/commercial/accounts/${account.id}` }]
-      : []),
-  ];
+  // AUDIT 2026-08-12: the ACCOUNT used to sit here too, and the breadcrumb six
+  // lines above already shows it as a link to the same page — the same fact
+  // twice, which is the duplication Karan flagged on the tools. The project
+  // NUMBER stays: it appears nowhere else, and it is the number printed on the
+  // paperwork in the field.
+  const stageIdentity = pathIsWon && (pathProject?.project_number ?? opp.project_number)
+    ? [{ label: "Project", value: (pathProject?.project_number ?? opp.project_number)! }]
+    : [];
 
   // ── The bounce to the account page is GONE (Karan 2026-08-12, step 3) ────
   //
