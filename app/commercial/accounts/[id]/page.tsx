@@ -75,7 +75,7 @@ import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIds
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commercial/invoices/lien-waiver";
 import { DonutChart, GaugeRing, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
-import { getProjectFinancials } from "@/lib/commercial/projects/financials";
+import { getProjectFinancials, dealMargin } from "@/lib/commercial/projects/financials";
 import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { costBreakdownForOpps } from "@/lib/commercial/purchases/db";
@@ -1159,8 +1159,13 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   const dealNetCents = dealGrossCents - dealCostsTotalCents;
   // Margin is null until real costs are logged — otherwise it's a fake 100%
   // "healthy" (persona-audit blocker), same guard as the dashboard.
-  const dealMarginPct =
-    dealCostsTotalCents > 0 && dealGrossCents > 0 ? Math.round((dealNetCents / dealGrossCents) * 100) : null;
+  // ONE margin definition (dealMargin) — this page and the P&L tab used to
+  // compute their own, billed-based and differently guarded, so the same deal
+  // read "—" here and "100%" two clicks away. Contract-based, because gross
+  // margin means "what we expect to make on this contract"; billed-based
+  // measures invoicing progress and swings wildly early on.
+  const dealMarginInfo = dealMargin(dealFin);
+  const dealMarginPct = dealMarginInfo.pct;
   const dealHasRollup = dealCostsTotalCents > 0 || dealTotalHours > 0;
   // Show the P&L for any real project: won/post-sale, under contract, billed, or
   // with costs logged — so a won deal shows its Profitability (prompting costs)
@@ -2387,7 +2392,11 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
   // match the deal Overview, the account rollup, and the platform P&L.
   const costsCents = fin.totalCostCents;
   const netProfitCents = grossRevenueCents - costsCents;
-  const marginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
+  // Same dealMargin() the Overview uses. This computed its own billed-based
+  // number with NO cost guard, so a deal with $200k billed and nothing spent
+  // read "100%" here and "—" on the Overview — the same deal, two clicks apart.
+  const pnlMargin = dealMargin(fin);
+  const marginPct = pnlMargin.pct;
   const collectedPct = fin.invoicedCents > 0 ? Math.min(100, Math.round((fin.collectedCents / fin.invoicedCents) * 100)) : 0;
   const revenueMonthly = monthlyBilledSeries(dealInvoices);
   const costSegments: DonutSegment[] = [

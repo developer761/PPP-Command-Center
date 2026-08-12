@@ -116,3 +116,82 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     grossMarginPct,
   };
 }
+
+// ── ONE margin definition (2026-08) ────────────────────────────────────────
+
+export type DealMargin = {
+  /** Whole-percent margin, or null when it can't be stated honestly. */
+  pct: number | null;
+  /** Margin dollars — meaningful even when pct is null. */
+  cents: number;
+  /** What to call it. "Projected" until real costs are booked. */
+  label: string;
+  /** A one-line caveat to render under the number, or null. */
+  caveat: string | null;
+  /** True when the number is a loss big enough that a raw % misleads. */
+  overBudget: boolean;
+};
+
+/**
+ * The single margin every surface must use.
+ *
+ * There were THREE visible margins for one deal, disagreeing:
+ *   - the deal Overview  — billed-based, guarded on costs > 0  → "—"
+ *   - the P&L tab        — billed-based, NO cost guard         → "100%"
+ *   - the Transactions chip — contract-based                   → different again
+ * $200k billed with no costs booked yet showed "—" and "100%" two clicks apart.
+ *
+ * Contract-based wins. Gross margin on a construction job means "what we expect
+ * to make on this contract" — billed-based measures invoicing progress, not
+ * profitability, and it swings wildly early on (bill 10% up front before any
+ * costs land and it reads 100%).
+ *
+ * Because costs accrue over the job, contract − costs-to-date is a PROJECTION,
+ * not a result. The label says so until costs exist, so nobody reads a fresh
+ * job's "100%" as money in the bank.
+ */
+export function dealMargin(fin: {
+  contractCents: number;
+  hasContract: boolean;
+  totalCostCents: number;
+  grossMarginCents: number;
+  grossMarginPct: number | null;
+  laborUnratedHours: number;
+}): DealMargin {
+  // No contract → every ratio is undefined. Show dollars, never a NaN/∞ %.
+  if (!fin.hasContract || fin.contractCents <= 0) {
+    return {
+      pct: null,
+      cents: fin.grossMarginCents,
+      label: "Gross margin",
+      caveat: "Contract not set yet — add a proposal total to see margin.",
+      overBudget: false,
+    };
+  }
+  const pct = fin.grossMarginPct;
+  // Zero costs is not a 100% margin, it's an unstarted job. Saying "100%" on a
+  // deal nobody has spent anything on reads as a triumph and is meaningless.
+  if (fin.totalCostCents === 0) {
+    return {
+      pct,
+      cents: fin.grossMarginCents,
+      label: "Projected gross margin",
+      caveat: "No costs booked yet — this is the full contract, not profit.",
+      overBudget: false,
+    };
+  }
+  const overBudget = pct !== null && pct < -100;
+  const caveat =
+    fin.laborUnratedHours > 0
+      ? `Margin understated — ${fin.laborUnratedHours} crew hour${fin.laborUnratedHours === 1 ? "" : "s"} have no cost rate.`
+      : null;
+  return {
+    pct,
+    cents: fin.grossMarginCents,
+    label: "Gross margin",
+    caveat,
+    // Below −100% a raw percentage stops communicating ("-4900%"); the words
+    // do the work instead.
+    overBudget,
+  };
+}
