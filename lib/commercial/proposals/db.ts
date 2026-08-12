@@ -2761,7 +2761,18 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     // as drift meant the user could never keep a deal in the Request for
     // Proposal column or hold the Follow-Up tag for longer than one page
     // load.
+    // The carve-outs above (RFP-holding-a-draft, Follow-Up-holding-a-sent) are
+    // about the NEWEST proposal, and they short-circuited before the folded
+    // advance could run — so the case the fold exists for never fired: a deal
+    // sitting behind its own WON R1 while R3 is a fresh draft looks perfectly
+    // consistent with that draft, and stayed behind forever. Only skip when the
+    // fold agrees with the newest; when it points further along, that is the
+    // signal the fold was added to act on.
+    const foldedForDeal = foldedByDeal.get(deal.id);
+    const foldAgreesWithNewest =
+      !foldedForDeal || foldedForDeal.key === targetForProposalStatus(bestProp.status);
     if (
+      foldAgreesWithNewest &&
       dealAlreadyConsistentWithProposal(
         { status: deal.status, sub_status: deal.sub_status },
         target
@@ -2790,10 +2801,9 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     const { autoAdvanceOpportunity } = await import(
       "@/lib/commercial/opportunities/auto-advance"
     );
-    const { targetForProposalStatus } = await import(
-      "@/lib/commercial/opportunities/auto-advance-targets"
-    );
-    const folded = foldedByDeal.get(deal.id);
+    // (targetForProposalStatus comes from the module import at the top — the
+    // local re-import here shadowed it and put the guard above in its TDZ.)
+    const folded = foldedForDeal;
     if (!folded) continue;
     const res = await autoAdvanceOpportunity({
       oppId: deal.id,

@@ -980,12 +980,11 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
   // Proposal was RED here and blue there, Estimating blue here and amber there.
   // Red is the ACTION colour platform-wide and never a status — that rule is
   // written into statusPillTone and was being broken twenty rows above it.
-  const tone =
-    opp.status === "proposal"
-      ? { stripe: "bg-ppp-blue-500", pill: "border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700", bar: "bg-ppp-blue-500", val: "text-ppp-blue-700" }
-      : opp.status === "estimating"
-      ? { stripe: "bg-amber-500", pill: "border-amber-200 bg-amber-50 text-amber-800", bar: "bg-amber-500", val: "text-amber-800" }
-      : { stripe: "bg-ppp-charcoal-300", pill: "border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600", bar: "bg-ppp-charcoal-400", val: "text-ppp-charcoal-600" };
+  // ONE source for a status's colour — `statusPillTone`, which reads the
+  // sub-status too. Hand-aligning two maps closed the cases anyone had noticed
+  // and left the rest: `proposal·follow_up` was blue here and amber there,
+  // `qualifying·rfp` charcoal here and blue there, on the same account.
+  const tone = pipelineBlockTone(opp.status, opp.sub_status);
   // Bid-due urgency (proposal_due_at). Overdue → rose, ≤3 days → amber.
   const dueMs = opp.proposal_due_at ? new Date(opp.proposal_due_at).getTime() - Date.now() : null;
   const dueDays = dueMs != null ? Math.ceil(dueMs / 86_400_000) : null;
@@ -5892,6 +5891,41 @@ function AccountOpportunityRow({
  *    Post-Sale statuses (Pre-Construction, In Progress, Billing, Closed).
  *  Sub-status choice picks the tone when the parent status is ambiguous
  *  (e.g. Pre-Sale/Closed is either won emerald or lost rose). */
+/**
+ * The pipeline block's stripe/bar tones, derived from the ONE status→colour
+ * map rather than a parallel copy of it.
+ */
+function pipelineBlockTone(
+  status: string,
+  subStatus?: string | null
+): { stripe: string; pill: string; bar: string; val: string } {
+  const pill = statusPillTone(status, subStatus).cls;
+  // Written out in full on purpose: Tailwind generates classes by scanning the
+  // source, so a composed `bg-${family}-500` produces NO class at all — it type
+  // -checks, it builds, and the stripe renders colourless.
+  const byFamily: Record<string, { solid: string; text: string }> = {
+    amber: { solid: "bg-amber-500", text: "text-amber-800" },
+    rose: { solid: "bg-rose-500", text: "text-rose-700" },
+    emerald: { solid: "bg-emerald-500", text: "text-emerald-700" },
+    "ppp-navy": { solid: "bg-ppp-navy-500", text: "text-ppp-navy-700" },
+    "ppp-blue": { solid: "bg-ppp-blue-500", text: "text-ppp-blue-700" },
+    "ppp-charcoal": { solid: "bg-ppp-charcoal-300", text: "text-ppp-charcoal-600" },
+  };
+  const family = pill.includes("amber")
+    ? "amber"
+    : pill.includes("rose")
+      ? "rose"
+      : pill.includes("emerald")
+        ? "emerald"
+        : pill.includes("ppp-navy")
+          ? "ppp-navy"
+          : pill.includes("ppp-blue")
+            ? "ppp-blue"
+            : "ppp-charcoal";
+  const t = byFamily[family];
+  return { stripe: t.solid, pill, bar: t.solid, val: t.text };
+}
+
 function statusPillTone(
   status: OpportunityStatus | string,
   sub_status?: string | null,
