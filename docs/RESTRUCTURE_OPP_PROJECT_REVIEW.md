@@ -593,3 +593,32 @@ verified against a real proposal (200). I independently swept BOTH FK directions
 un-disambiguated embeds. Confirmed mig-131's new `project_id` FKs add no new double-FK pair (each
 of the 8 delivery tables has a single FK per target), so no further ambiguity. Sweep genuinely
 complete. Good catch + honest write-up by the build session.
+
+---
+
+## ✅ CLOSED — Step-10 HIGH fixed (`57f7f16`), verified
+
+The "Under contract" tile↔list mismatch is genuinely resolved:
+- `isUnderContract(status, sub)` = `pre_sale_closed/won OR pre_construction OR in_progress OR
+  billing` — won-not-started included, completed excluded.
+- The LIST's `?lane=under_contract` now filters by `isUnderContract` (page.tsx:657/662); the
+  dashboard tiles all link to `?lane=under_contract`.
+- The tile's `listProjects` WHERE (`postSale − post_sale_closed OR pre_sale_closed/won`)
+  **provably equals** `isUnderContract`'s set. Tile and list now describe the same jobs. ✅
+- Param renamed `post_contract → under_contract` (matches the view name); `pre_contract`
+  ("Still selling") still works via `PRE_CONTRACT_COLUMNS`.
+
+Three LOW residuals (not blockers): (a) the set is now encoded twice — `listProjects`' SQL
+WHERE (tile) and the `isUnderContract` TS predicate (list) — they agree today but could drift;
+a shared status-list constant would make them provably one. (b) old `?lane=post_contract` is
+now silently ignored rather than aliased (negligible — only internal tiles used it, all
+updated). (c) `POST_CONTRACT_COLUMNS` is now an unused import in `opportunities/page.tsx:80`.
+
+## AUDIT — `5597c2f` (slim status picker). Clean cosmetic.
+Verified per the "test buttons after a layout change" rule: both actions ("Debrief later"
+`type=submit name=debrief_skip`, "Save" `type=submit`) sit in the single
+`<form action={changeStatusAction}>` with no nesting, and keep `min-h-[44px] sm:min-h-[36px]`
+(mobile target preserved). Removing the persistent amber "valid but unusual" block is correct —
+the picker no longer offers unusual moves by default (they're behind the disclosure), and the
+per-choice warning on an actual unusual selection stays. Sub-status hints kept visible (no
+hover-only, right call for phones). tsc + 385 tests + build green.
