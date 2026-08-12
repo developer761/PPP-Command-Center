@@ -1501,6 +1501,7 @@ export default async function OpportunityDetailPage({
     sentProposalCount: dealProposals.filter((p) =>
       ["sent", "won", "lost"].includes(p.status)
     ).length,
+    approvedNotSentCount: dealProposals.filter((p) => p.status === "approved").length,
     hasWorkOrder: !!pathWorkOrder,
     hasBilling: pathInvoices.length > 0,
     // Grace periods: a work order does not exist five minutes after a GC says

@@ -38,6 +38,8 @@ export type AttentionInput = {
   followUpAt: string | null | undefined;
   proposalCount: number;
   sentProposalCount: number;
+  /** Signed off internally but not yet in front of the GC. */
+  approvedNotSentCount?: number;
   hasWorkOrder: boolean;
   hasBilling: boolean;
   /** ET calendar dates. Drive the grace periods below. */
@@ -92,7 +94,7 @@ function isWonLike(status: string, sub: string | null): boolean {
  *   - the job is won and someone has to decide the work has actually started
  */
 export function manualNextStep(
-  i: Pick<AttentionInput, "oppId" | "status" | "subStatus" | "proposalCount" | "sentProposalCount">
+  i: Pick<AttentionInput, "oppId" | "status" | "subStatus" | "proposalCount" | "sentProposalCount" | "approvedNotSentCount">
 ): { label: string; href: string } | null {
   const { status, subStatus, oppId } = i;
   if (status === "pre_sale_closed" && subStatus === "won") {
@@ -102,6 +104,11 @@ export function manualNextStep(
   if (WON_OR_DELIVERING.has(status)) return null; // the engine owns delivery
   if (i.proposalCount === 0) {
     return { label: "Build a proposal", href: `/commercial/opportunities/${oppId}?tab=proposals` };
+  }
+  // Approved but not out. The next move is to SEND it, not to decide it — the
+  // GC cannot say yes to something they have not received.
+  if ((i.approvedNotSentCount ?? 0) > 0) {
+    return { label: "Send it", href: `/commercial/opportunities/${oppId}?tab=proposals` };
   }
   if (i.sentProposalCount > 0) {
     // Sent and waiting. A verbal yes leaves nothing for the engine to read, so
@@ -161,6 +168,24 @@ export function attentionFor(i: AttentionInput): Attention[] {
       title: "This job is in Billing but nothing has been billed",
       consequence: "No invoice and no payment application exist, so none of it is showing up in AR.",
       href: `/commercial/opportunities/${i.oppId}?tab=invoices`,
+      tone: "warn",
+    });
+  }
+
+  // ── Approved, and still sitting here ────────────────────────────────────
+  //
+  // Karan 2026-08-12: "I approved the proposal and it didn't close status and
+  // ask me closed won or lost." Approval is INTERNAL — Brendan signing off
+  // before it goes out — so it correctly closes nothing. What was missing is
+  // the step in between: nobody told you it was ready to send. An approved
+  // proposal that never goes out is the most expensive kind of stall, because
+  // every hour of pricing is already spent.
+  if (!won && (i.approvedNotSentCount ?? 0) > 0) {
+    out.push({
+      key: "approved_not_sent",
+      title: "Approved and not sent",
+      consequence: "The GC hasn't seen it yet, so nothing can come back — won or lost.",
+      href: `/commercial/opportunities/${i.oppId}?tab=proposals`,
       tone: "warn",
     });
   }

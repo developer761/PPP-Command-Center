@@ -222,3 +222,36 @@ describe("isUnderContract — one definition for the tile and the list", () => {
     }
   });
 });
+
+/**
+ * Karan 2026-08-12: "I approved the proposal and it didn't close status and ask
+ * me closed won or lost."
+ *
+ * Approval is INTERNAL — Brendan signing off before it goes out — so it
+ * correctly closes nothing. What was missing is the step between: nobody said
+ * it was ready to send. An approved proposal that never goes out is the most
+ * expensive kind of stall, because the pricing is already paid for.
+ */
+describe("approved but not sent", () => {
+  const approved = { ...base, status: "estimating", subStatus: "proposal_pending_approval", proposalCount: 1, approvedNotSentCount: 1 };
+
+  it("says so, and says what it costs", () => {
+    const item = attentionFor(approved).find((a) => a.key === "approved_not_sent")!;
+    expect(item).toBeDefined();
+    expect(item.consequence).toMatch(/won or lost|hasn't seen/i);
+  });
+
+  it("offers SEND, not a decision — the GC can't answer what they don't have", () => {
+    expect(manualNextStep(approved)?.label).toBe("Send it");
+  });
+
+  it("switches to the decision once it is actually out", () => {
+    const sent = { ...base, status: "proposal", subStatus: "sent", proposalCount: 1, sentProposalCount: 1, approvedNotSentCount: 0 };
+    expect(manualNextStep(sent)?.label).toBe("Mark won or lost");
+    expect(keys(sent)).not.toContain("approved_not_sent");
+  });
+
+  it("stops nagging once the job is won", () => {
+    expect(keys(won({ approvedNotSentCount: 1 }))).not.toContain("approved_not_sent");
+  });
+});
