@@ -2519,8 +2519,12 @@ function KanbanBoard({
                       <span className="text-[12px] font-bold text-ppp-charcoal tracking-tight">
                         Closed
                       </span>
+                      {/* Counts the account's REAL decided deals, not the ones
+                          that survived the display cap. This summed the sliced
+                          lists, so an account with 31 closed deals showed "10" —
+                          a number that looked precise and was simply the cap. */}
                       <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100 tabular-nums">
-                        {TERMINAL_COLUMNS.reduce((sum, s) => sum + (acct.byStatus.get(s)?.length ?? 0), 0)}
+                        {acct.opps.filter((o) => TERMINAL_COLUMNS.includes(columnKeyForOpp(o.status, o.sub_status ?? null) ?? "")).length}
                       </span>
                     </div>
                     <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">

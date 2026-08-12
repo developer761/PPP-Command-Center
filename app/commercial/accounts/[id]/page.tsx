@@ -855,7 +855,14 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
     listCommercialOpportunities({ accountId: account.id }),
   ]);
   const postSaleIds = new Set(projects.map((p) => p.opp.id));
-  const activeProjects = projects.filter((p) => p.opp.status !== "post_sale_closed");
+  // A just-won deal is NOT "in delivery" — nothing has been billed, nothing
+  // scheduled, no crew on it. It read as in-delivery here while the deal page
+  // itself said "Won · ready to start", so the same deal described itself two
+  // ways one click apart. Its own group, with the honest heading.
+  const wonNotStarted = projects.filter((p) => dealPhase(p.opp) === "won_not_started");
+  const activeProjects = projects.filter(
+    (p) => p.opp.status !== "post_sale_closed" && dealPhase(p.opp) !== "won_not_started"
+  );
   const completedProjects = projects.filter((p) => p.opp.status === "post_sale_closed");
   const pipelineDeals = allOpps.filter(
     (o) => !postSaleIds.has(o.id) && PRE_SALE_OPEN_STATUSES.includes(o.status),
@@ -905,6 +912,14 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
         </div>
       ) : (
         <>
+          {wonNotStarted.length > 0 && (
+            <section className="space-y-2.5">
+              <h2 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Won · ready to start · {wonNotStarted.length}</h2>
+              <ul className="space-y-2.5">
+                {wonNotStarted.map((p) => <ProjectCard key={p.opp.id} p={p} hideAccountName />)}
+              </ul>
+            </section>
+          )}
           {activeProjects.length > 0 && (
             <section className="space-y-2.5">
               <h2 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">In delivery · {activeProjects.length}</h2>
@@ -965,11 +980,15 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
   const href = `/commercial/accounts/${accountId}?tab=projects&project=${opp.id}`;
   // Stage tone — the accent stripe + pill read the pipeline stage at a glance
   // (Proposal = hot/brand, Estimating = blue, earlier = neutral).
+  // Matches `statusPillTone` on this same page, which they used to contradict:
+  // Proposal was RED here and blue there, Estimating blue here and amber there.
+  // Red is the ACTION colour platform-wide and never a status — that rule is
+  // written into statusPillTone and was being broken twenty rows above it.
   const tone =
     opp.status === "proposal"
-      ? { stripe: "bg-cc-brand-500", pill: "border-cc-brand-200 bg-cc-brand-50 text-cc-brand-700", bar: "bg-cc-brand-500", val: "text-cc-brand-700" }
-      : opp.status === "estimating"
       ? { stripe: "bg-ppp-blue-500", pill: "border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700", bar: "bg-ppp-blue-500", val: "text-ppp-blue-700" }
+      : opp.status === "estimating"
+      ? { stripe: "bg-amber-500", pill: "border-amber-200 bg-amber-50 text-amber-800", bar: "bg-amber-500", val: "text-amber-800" }
       : { stripe: "bg-ppp-charcoal-300", pill: "border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600", bar: "bg-ppp-charcoal-400", val: "text-ppp-charcoal-600" };
   // Bid-due urgency (proposal_due_at). Overdue → rose, ≤3 days → amber.
   const dueMs = opp.proposal_due_at ? new Date(opp.proposal_due_at).getTime() - Date.now() : null;
@@ -1322,7 +1341,13 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   if (p.opp.rfp_received_at) bidDetails.push({ label: "RFP received", value: fmtEtDate(p.opp.rfp_received_at) ?? "—" });
   if (p.opp.proposal_due_at) bidDetails.push({ label: "Proposal due", value: fmtEtDate(p.opp.proposal_due_at) ?? "—" });
   if (p.opp.follow_up_at) bidDetails.push({ label: "Follow-up", value: fmtEtDate(p.opp.follow_up_at) ?? "—" });
-  if (p.opp.bid_value_low_cents != null || p.opp.bid_value_high_cents != null) {
+  // Pre-sale only. A bid range is what we GUESSED the job was worth; once the
+  // deal is won, lost or in delivery there is a real contract value, and showing
+  // the old guess beside it invites reading the wrong one.
+  if (
+    dealPhase(p.opp) === "pre_sale" &&
+    (p.opp.bid_value_low_cents != null || p.opp.bid_value_high_cents != null)
+  ) {
     const lo = p.opp.bid_value_low_cents;
     const hi = p.opp.bid_value_high_cents;
     const range = lo != null && hi != null ? `${formatCentsCompact(lo)} – ${formatCentsCompact(hi)}` : formatCentsCompact((lo ?? hi)!);
@@ -1545,8 +1570,22 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                 </div>
               </div>
             </div>
+            {/* A deposit or mobilization invoice can be raised on a won deal
+                without any status change, so this used to assert "nothing is
+                billed" directly above a Profitability block showing money
+                billed. Gate the claim on the actual number. */}
             <p className="text-[12px] text-ppp-navy-900 mt-2.5">
-              Nothing is billed yet. Move it to <strong>Pre-Construction</strong> when the crew is scheduled.
+              {dealFin.billedPreTaxCents > 0 ? (
+                <>
+                  Billing has started. Move it to <strong>Pre-Construction</strong> when the crew is
+                  scheduled.
+                </>
+              ) : (
+                <>
+                  Nothing is billed yet. Move it to <strong>Pre-Construction</strong> when the crew
+                  is scheduled.
+                </>
+              )}
             </p>
           </section>
         )}
