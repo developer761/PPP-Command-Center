@@ -113,9 +113,20 @@ export function AiaApplicationDetail({
   // (line 3). If it drifts — a change order approved AFTER this application was
   // seeded, or a legacy app seeded before the reconciliation fix — warn the
   // estimator (draft only) so the two sheets don't leave matching to chance.
-  const sovTotalCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+  // Credit lines count toward the total — a deductive change order is a real
+  // negative line, and dropping it here would report drift that isn't there.
+  const sovTotalCents = lines.reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
   const sovDriftCents = g702.contractSumToDateCents - sovTotalCents;
-  const showSovDrift = editable && Math.abs(sovDriftCents) > 1;
+  const hasDrift = Math.abs(sovDriftCents) > 1;
+  const showSovDrift = editable && hasDrift;
+
+  // Is this certificate frozen as issued, or still recomputing?
+  const isFrozen = !editable && application.frozen_at != null;
+  // Issued BEFORE the freeze shipped: lines 1 and 2 still track the live deal,
+  // so this document can still restate itself. It was showing no warning at all
+  // — the drift banner above is draft-only, and this is by definition not a
+  // draft — which is the one case where saying nothing is worst.
+  const isLegacyLive = !editable && application.frozen_at == null;
 
   return (
     <div className="space-y-3">
@@ -123,6 +134,26 @@ export function AiaApplicationDetail({
         <div className="rounded-lg px-4 py-3 text-sm bg-rose-50 border border-rose-200 text-rose-700 flex items-start justify-between gap-3">
           <span>{errorMessage}</span>
           <Link href={selfHref} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
+        </div>
+      )}
+
+      {isFrozen && (
+        <div className="rounded-lg px-4 py-3 text-[12.5px] bg-ppp-charcoal-50 border border-ppp-charcoal-200 text-ppp-charcoal-700">
+          <span className="font-semibold">Figures shown as issued.</span>{" "}
+          The Original Contract Sum and Net Change by Change Orders were locked when
+          this application was issued, so it still says what the GC received. Change
+          orders approved since then appear on the next application, and the tiles
+          above show today&rsquo;s totals.
+        </div>
+      )}
+
+      {isLegacyLive && (
+        <div className="rounded-lg px-4 py-3 text-[12.5px] bg-amber-50 border border-amber-200 text-amber-800">
+          <span className="font-semibold">This certificate is not locked.</span>{" "}
+          It was issued before applications started locking their figures, so lines 1
+          and 2 still follow the deal — approving a change order will change what this
+          document says{hasDrift ? `, and it is already off by ${formatCentsFull(Math.abs(sovDriftCents))} from its schedule of values` : ""}.
+          Compare it against the copy you sent before relying on these numbers.
         </div>
       )}
 

@@ -519,6 +519,10 @@ async function AiaApplicationList({
   const latestG702 = latestApp ? await resolveG702(latestApp.id) : null;
   const completedToDateCents = latestG702?.totalCompletedStoredCents ?? 0;
   const billedPct = contractToDateCents && contractToDateCents > 0 ? Math.min(100, Math.round((completedToDateCents / contractToDateCents) * 100)) : null;
+  // Certificates issued since the freeze shipped hold their own figures, so the
+  // strip above them can legitimately disagree. Say so rather than letting it
+  // read as two numbers for the same thing.
+  const frozenCount = applications.filter((a) => a.status !== "draft" && a.frozen_at != null).length;
   const appsHint = applications.length === 0
     ? "None yet"
     : [paidCount > 0 ? `${paidCount} paid` : null, submittedCount > 0 ? `${submittedCount} submitted` : null]
@@ -534,7 +538,12 @@ async function AiaApplicationList({
           </span>
           <div>
             <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Contract to date</h2>
-            <p className="text-[11px] text-ppp-charcoal-500 leading-snug">The base contract plus approved change orders — what each G702 certifies against.</p>
+            <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
+              The base contract plus approved change orders, as of today.{" "}
+              {frozenCount > 0
+                ? "An issued certificate keeps the figures it was sent with, so it can read lower than this — that difference is the change orders approved since, and they belong on the next application."
+                : "This is what each G702 certifies against."}
+            </p>
           </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
