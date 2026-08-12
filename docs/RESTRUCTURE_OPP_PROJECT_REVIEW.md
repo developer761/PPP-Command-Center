@@ -402,3 +402,25 @@ commit's headline rule ("counted on Eastern calendar dates"). The neighbours are
 their types: `rfp_received_at`/`sent_at`/`issued_at` are TIMESTAMPTZ and correctly wrapped.
 **Fix:** pass `proposal_due_at` and `follow_up_at` **raw** (exactly as `decided_at`/
 `closed_out_at` already are). Platform sweep confirms these are the only two sites.
+
+---
+
+## AUDIT — Step 6 shipped (`deeef3e`, account is a shelf: one deals list, not two). No migration.
+
+**Verdict: clean.** Removing the duplicate Projects tab is right (it was a second view of the
+same rows). Verified the two subtle risks are handled: (1) the `?tab=projects` alias
+coexists correctly with the step-3 deal-drill-in redirect — `inDealDrillIn` requires a valid
+`project=<uuid>`, so `?tab=projects&project=<uuid>` still redirects to the opportunity page
+while a bare `?tab=projects` aliases to the deals list (`resolveTabParam` → primary "deals");
+(2) the two live links (`post-job-tool-index`, `tool-back-header`) were repointed to
+`?tab=deals` directly so nothing relies on the alias, and the archived-settings `#deal-row`
+anchor was dropped. `resolveTabParam` is defensively thorough. No orphans (tsc/tests/build green).
+
+### 🟡 Micro-nit: stale breadcrumb LABEL (same-commit partial)
+`tool-back-header.tsx:97` repointed the breadcrumb href `?tab=projects → ?tab=deals` in THIS
+commit, but the label two lines down (line 99) still reads `"{accountName} · Projects"`, while
+that `deals` tab is labeled **"Opportunities"** (`page.tsx:355 { key:"deals", label:"Opportunities" }`).
+So the breadcrumb says "· Projects" and lands on a tab titled "Opportunities." Change the
+label to "· Opportunities" (and the stale doc-comment at lines 10-11/94 that still says
+"account Projects tab"). Low severity, but it's the label-consistency class and it's a
+changed-the-href-missed-the-label-below partial.
