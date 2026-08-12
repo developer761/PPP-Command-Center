@@ -3713,7 +3713,13 @@ function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
   );
 }
 
-function StatusPill({ status }: { status: OpportunityStatus | string }) {
+function StatusPill({
+  status,
+  subStatus,
+}: {
+  status: OpportunityStatus | string;
+  subStatus?: string | null;
+}) {
   // Karan 2026-07-09 Phase A.1: CEO status-model correction. Map covers
   // the 8 Pre-Contract values + retired v1.0 values so any un-migrated
   // historic row still tints correctly. Fallback to neutral if a truly
@@ -3741,7 +3747,10 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
   const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}>
-      {opportunityStatusLabel(status)}
+      {/* Won and Lost both map to "Closed" on the status alone, so the board
+          could not tell them apart — every other surface uses the display
+          label. */}
+      {oppStatusDisplayLabel(status, subStatus ?? null)}
     </span>
   );
 }
@@ -4030,7 +4039,7 @@ function CustomerQuickSheet({
                             {derivedOppName(d, account.company_name)}
                           </div>
                           <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
-                            <StatusPill status={d.status} />
+                            <StatusPill status={d.status} subStatus={d.sub_status} />
                             <span>{formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}</span>
                             <span>· {d.probability_pct}%</span>
                           </div>
@@ -4103,7 +4112,7 @@ function CustomerQuickSheet({
                           : "px-2 py-0.5"
                       }`}
                     >
-                      <StatusPill status={d.status} />
+                      <StatusPill status={d.status} subStatus={d.sub_status} />
                       <span className="truncate flex-1">{derivedOppName(d, account.company_name)}</span>
                       {isPostSaleProject(d) && (
                         <Link

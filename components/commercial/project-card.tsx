@@ -20,7 +20,10 @@ import type { ProjectRow } from "@/lib/commercial/projects/db";
 function projectStatusTone(status: string): { stripe: string; pill: string } {
   switch (status) {
     case "pre_sale_closed":
-      return { stripe: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+      // Navy, matching the status pills and the won-not-started card. An
+      // emerald stripe under a navy "Won · ready to start" heading read as two
+      // different states for one deal.
+      return { stripe: "bg-ppp-navy-500", pill: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
     case "pre_construction":
       return { stripe: "bg-ppp-navy-500", pill: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
     case "in_progress":

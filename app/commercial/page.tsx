@@ -26,7 +26,6 @@ import {
   derivedOppName,
   formatOpportunityNumber,
   listCommercialOpportunities,
-  opportunityStatusLabel,
   weightedPipelineCents,
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
@@ -320,6 +319,10 @@ export default async function CommercialDashboardPage() {
       <div className="flex items-center gap-3 sm:gap-4 bg-surface border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-2.5 shadow-sm">
         <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 shrink-0">
           <Image
+            // Still the file on disk — `logo_asset_key` exists on the operating
+            // company but nothing serves it yet. Flagged rather than silently
+            // paired with dynamic alt text, which would make the label and the
+            // picture disagree after a rename.
             src="/brand/tomco-logo.jpg"
             alt={operatingCompany.name}
             width={268}

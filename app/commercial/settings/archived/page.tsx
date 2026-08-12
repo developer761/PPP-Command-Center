@@ -10,7 +10,6 @@ import {
   derivedOppName,
   formatOpportunityNumber,
   unarchiveOpportunity,
-  opportunityStatusLabel,
 } from "@/lib/commercial/opportunities/db";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
