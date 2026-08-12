@@ -342,3 +342,36 @@ unused-import hand-sweep.
   "jump to invoices/proposals" links went with them.
 
 Both restructure audit findings resolved. Nothing open on steps 1-3 + cleanup.
+
+---
+
+## AUDIT — Step 4 shipped (`24de890`, status path bar + attention). No migration.
+
+**Verdict: strong.** `attention.ts` is excellent and maps straight onto Karan's rules —
+warns-never-blocks (`feedback_never_reject_only_warn`, with the concrete win-date reason),
+every item names the *consequence* not just the absence, persistent (no dismiss), and
+`manualNextStep` returns a move ONLY where the auto-advance engine is structurally blind
+(nothing quoted / verbal yes / decide the job started) so the CTA never fights the engine
+(my edge-35). `status-path-bar.tsx` is two bars (Sale + Delivery), reads `opp.status`
+(correct under today's model (i)), suppresses the CTA once decided/in-delivery, and collapses
+to a JS-free `<details>` "Stage N of M" on mobile (Alex's phone). It does NOT show age-in-stage,
+so my theme-1 "age freezes at win" concern does not touch this component. Good.
+
+### 🟠 Finding: the "skipped" stage state is scaffolded but never computed (edge 33 not actually done)
+`StageState` defines `"skipped"` (and `"dropped"`), `chevronCls` gives skipped a distinct
+color, and `Chevron` renders a "skipped" label — but `stateFor` only ever returns
+`passed | current | future` (`i < currentIdx ? passed : i === currentIdx ? current : future`).
+So **no stage is ever marked skipped**: a deal created/dragged straight to Proposal (skipping
+Qualifying/Estimating), or won straight into Billing (skipping Pre-Construction/In-Progress),
+renders those stages as **"passed" — a green check — claiming a stage that never happened**,
+which is exactly what the component's own comment says is wrong. Edge 33 is therefore not
+satisfied despite the scaffolding.
+
+**And it's cheaply fixable NOW** — contrary to my earlier theme-1 note, skipped-detection
+does **not** need the (still-absent) project status log: `commercial_opportunity_status_log`
+already records every `to_status` transition, so `visited(stage) = a log row exists with
+to_status = stage`, and a stage before the current one with no such row is skipped. Wire
+`stateFor` to a `visitedKeys` set derived from the opp log (works for both bars today under
+model (i)). Until then, either wire it or remove the dead skipped/dropped styling so the code
+matches what actually renders. (When delivery moves off the opp in the model-(ii) cutover,
+this re-sources to the project log — the theme-1 item.)
