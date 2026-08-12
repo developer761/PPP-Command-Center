@@ -1588,6 +1588,22 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                 </>
               )}
             </p>
+            {/* Katie's one-click ask. The only control that moved a won deal
+                into delivery lived on the debrief page, so the panel someone
+                actually lands on after winning offered a SENTENCE telling them
+                to move it and no way to do it. Same action the pipeline
+                dropdown uses. */}
+            <form action={quickFlipFromAccountAction} className="mt-3">
+              <input type="hidden" name="account_id" value={accountId} />
+              <input type="hidden" name="opp_id" value={p.opp.id} />
+              <input type="hidden" name="to_status" value="pre_construction" />
+              <PendingSubmitButton
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ppp-navy-700 text-white text-[12.5px] font-semibold hover:bg-ppp-navy-800 min-h-[44px] touch-manipulation disabled:hover:bg-ppp-navy-700"
+                pendingLabel="Starting…"
+              >
+                Start project
+              </PendingSubmitButton>
+            </form>
           </section>
         )}
 
