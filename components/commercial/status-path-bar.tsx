@@ -5,6 +5,7 @@ import {
 } from "@/lib/commercial/opportunities/constants";
 import {
   PRE_CONTRACT_COLUMNS,
+  POST_CONTRACT_COLUMNS,
   columnKeyForOpp,
 } from "@/lib/commercial/opportunities/kanban-columns";
 
@@ -53,13 +54,19 @@ type StageState = "passed" | "current" | "future" | "skipped" | "dropped";
 const SALES_STAGES: PathStage[] = PRE_CONTRACT_COLUMNS
   .filter((c) => c.key !== "won" && c.key !== "lost")
   .map((c) => ({ key: c.key, label: c.label }));
-/** Delivery ladder — the project's own path, shown once the job is won. */
-const DELIVERY_STAGES: PathStage[] = [
-  { key: "pre_construction", label: "Pre-Construction" },
-  { key: "in_progress", label: "In Progress" },
-  { key: "billing", label: "Billing" },
-  { key: "post_sale_closed", label: "Closed Out" },
-];
+/**
+ * Delivery ladder — the project's own path, shown once the job is won.
+ *
+ * AUDIT 2026-08-12: this was hardcoded, and had already drifted — it called the
+ * last stage "Closed Out" while the pipeline, the filters and the reports all
+ * called it "Completed". Two words for one stage, on two screens somebody looks
+ * at in the same minute. Derived from the shared columns now, like the sales
+ * ladder above it.
+ */
+const DELIVERY_STAGES: PathStage[] = POST_CONTRACT_COLUMNS.map((c) => ({
+  key: c.key,
+  label: c.label,
+}));
 
 function chevronCls(state: StageState): string {
   switch (state) {

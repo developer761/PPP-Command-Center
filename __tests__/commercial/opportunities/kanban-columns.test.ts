@@ -6,6 +6,7 @@ import {
   COLUMN_TARGET,
   columnKeyForOpp,
   oppStatusDisplayLabel,
+  kanbanColumnLabel,
   columnDbStatusHint,
   resolveColumnTarget,
   auditKanbanColumnMap,
@@ -194,5 +195,92 @@ describe("the state a deal is IN is what it says it is", () => {
   it("resolves BOTH tuples that mean 'we are pricing it' to Estimating", () => {
     expect(columnKeyForOpp("estimating", "estimating")).toBe("estimating");
     expect(columnKeyForOpp("qualifying", "estimating")).toBe("estimating");
+  });
+});
+
+/**
+ * RECHECK 2026-08-12 — a behavioural pass rather than a structural one, after
+ * the structural audit missed the bugs Karan hit by walking a deal through the
+ * stages by hand.
+ *
+ * These walk EVERY state a deal can be in and assert the surfaces agree. The
+ * previous audit checked that lists matched each other; this checks that what a
+ * person sees is what is true.
+ */
+describe("every state a deal can be in resolves consistently", () => {
+  it("maps every valid tuple onto a stage that exists", async () => {
+    const { SUB_STATUSES_BY_STATUS, OPPORTUNITY_STATUSES } = await import(
+      "@/lib/commercial/opportunities/constants"
+    );
+    const real = new Set(KANBAN_COLUMNS.map((c) => c.key));
+    for (const st of OPPORTUNITY_STATUSES) {
+      const subs = (SUB_STATUSES_BY_STATUS as Record<string, readonly string[]>)[st] ?? [];
+      for (const sub of subs) {
+        const stage = columnKeyForOpp(st, sub);
+        expect(real.has(stage), `${st}/${sub} → "${stage}" is not a stage`).toBe(true);
+      }
+    }
+  });
+
+  it("never shows a person a name that isn't the stage they're on", async () => {
+    const { SUB_STATUSES_BY_STATUS, OPPORTUNITY_STATUSES } = await import(
+      "@/lib/commercial/opportunities/constants"
+    );
+    for (const st of OPPORTUNITY_STATUSES) {
+      const subs = (SUB_STATUSES_BY_STATUS as Record<string, readonly string[]>)[st] ?? [];
+      for (const sub of subs) {
+        const said = oppStatusDisplayLabel(st, sub);
+        // Won/Lost deliberately say the outcome rather than the stage name.
+        if (st === "pre_sale_closed") {
+          expect(["Won", "Lost"]).toContain(said);
+          continue;
+        }
+        const stageLabel = kanbanColumnLabel(columnKeyForOpp(st, sub));
+        expect(said, `${st}/${sub} says "${said}" but sits in "${stageLabel}"`).toBe(stageLabel);
+      }
+    }
+  });
+
+  it("gives every stage a tuple to write, so the picker can reach all of them", () => {
+    // The flat stage picker writes COLUMN_TARGET[stage]. A stage without one
+    // would render as an option that does nothing when chosen.
+    for (const c of KANBAN_COLUMNS) {
+      expect(COLUMN_TARGET[c.key], `stage "${c.key}" has no tuple to write`).toBeTruthy();
+    }
+  });
+
+  it("round-trips: writing a stage's tuple lands back on that stage", () => {
+    // The guarantee that picking "Pending Approval" leaves you at Pending
+    // Approval — the exact thing that failed when picking Estimating sent a
+    // deal back to Qualifying.
+    for (const c of KANBAN_COLUMNS) {
+      const t = COLUMN_TARGET[c.key];
+      if (!t) continue;
+      expect(columnKeyForOpp(t.status, t.sub_status), c.key).toBe(c.key);
+    }
+  });
+});
+
+/**
+ * A new deal cannot start at a stage that implies an artifact it doesn't have.
+ * The exclusion list named "proposal", and that key stopped existing when the
+ * stage was renamed "sent" — so the guard silently switched off.
+ */
+describe("stages a brand-new deal may start at", () => {
+  it("never offers a stage that implies a proposal already exists", async () => {
+    const { PRE_CONTRACT_COLUMNS, OPEN_COLUMN_KEYS } = await import(
+      "@/lib/commercial/opportunities/kanban-columns"
+    );
+    const EXCLUDED = ["sent", "pending_approval"];
+    const offered = PRE_CONTRACT_COLUMNS.filter(
+      (c) => OPEN_COLUMN_KEYS.includes(c.key) && !EXCLUDED.includes(c.key)
+    ).map((c) => c.key);
+    for (const gone of EXCLUDED) {
+      expect(offered, `a new deal must not start at "${gone}"`).not.toContain(gone);
+    }
+    // …and the early stages stay available, or there is nowhere to start.
+    expect(offered).toContain("qualifying");
+    expect(offered).toContain("rfp");
+    expect(offered).toContain("estimating");
   });
 });

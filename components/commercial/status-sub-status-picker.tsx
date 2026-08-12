@@ -24,12 +24,12 @@ import {
   SUB_STATUSES_BY_STATUS,
   OFFERED_SUB_STATUSES,
   DEFAULT_SUB_STATUS_BY_STATUS,
-  opportunityStatusLabelV2,
-  opportunitySubStatusLabel,
   TERMINAL_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import {
   PRE_CONTRACT_COLUMNS,
+  POST_CONTRACT_COLUMNS,
+  columnKeyForOpp,
   OPEN_COLUMN_KEYS,
   COLUMN_TARGET,
 } from "@/lib/commercial/opportunities/kanban-columns";
@@ -67,11 +67,36 @@ const CREATE_ALLOWED_STATUSES = OPPORTUNITY_STATUSES.filter(
 // You can't have sent a proposal you haven't built. If one genuinely went out
 // already, build it and hit Send — the deal advances to Proposal on its own,
 // with an actual proposal behind it. (Karan 2026-08, option (a).)
-const CREATE_EXCLUDED_STAGES: readonly string[] = ["proposal"];
+// AUDIT 2026-08-12: this said ["proposal"], and that key stopped existing when
+// the stage was renamed `sent` — so the guard silently switched off and BOTH
+// "Sent" and "Pending Approval" became creatable. You cannot have sent, or be
+// awaiting sign-off on, a proposal that does not exist; a deal created there
+// would sit in a stage with nothing behind it and no way for the engine to
+// reconcile it.
+//
+// Caught by the parallel session, which noted I had edited this file three
+// times since the rename without fixing it.
+const CREATE_EXCLUDED_STAGES: readonly string[] = ["sent", "pending_approval"];
 
 const CREATE_STAGES = PRE_CONTRACT_COLUMNS.filter(
   (c) => OPEN_COLUMN_KEYS.includes(c.key) && !CREATE_EXCLUDED_STAGES.includes(c.key)
 ).map((c) => ({ key: c.key, label: c.label, target: COLUMN_TARGET[c.key] }));
+
+/**
+ * FLIP mode stages — the whole ladder, both lanes.
+ *
+ * AUDIT 2026-08-12. Create mode has offered a flat Stage select since it was
+ * built; changing a status still asked for a top-level status AND a
+ * sub-status. That is how you reach RFP by picking "Qualifying" again and
+ * changing a second dropdown, and it is what Karan hit and what Brendan meant
+ * by "we have a lot of duplicated, a lot of things are a bit confusing".
+ *
+ * One list, in order, writing the same tuple the server action already
+ * expects — the identical pattern create mode uses.
+ */
+const FLIP_STAGES = [...PRE_CONTRACT_COLUMNS, ...POST_CONTRACT_COLUMNS]
+  .filter((c) => COLUMN_TARGET[c.key])
+  .map((c) => ({ key: c.key, label: c.label, target: COLUMN_TARGET[c.key], lane: c.lane }));
 
 const CREATE_STAGE_HINT: Record<string, string> = {
   qualifying: "They invited a bid — we're deciding whether to chase it.",
@@ -188,19 +213,6 @@ export function StatusSubStatusPicker({
     CREATE_STAGES.find((st) => st.key === createStage)?.target ??
     COLUMN_TARGET.qualifying;
 
-  const handleStatusChange = (next: string) => {
-    setStatus(next);
-    const nextSubs = (SUB_STATUSES_BY_STATUS as Record<string, readonly string[]>)[next] ?? [];
-    // If the current sub_status isn't valid for the new status, reset it.
-    if (!nextSubs.includes(subStatus)) {
-      const nextDefault =
-        (DEFAULT_SUB_STATUS_BY_STATUS as Record<string, string>)[next] ??
-        nextSubs[0] ??
-        "";
-      setSubStatus(nextDefault);
-    }
-    onStatusChange?.(next);
-  };
 
   // CREATE: one flat Stage select over the pre-contract lane. See CREATE_STAGES.
   if (mode === "create") {
@@ -233,63 +245,51 @@ export function StatusSubStatusPicker({
     );
   }
 
+  // FLIP: one flat Stage select, same as create mode. It used to be a
+  // top-level status PLUS a sub-status, which is how you reached RFP by
+  // choosing "Qualifying" again and changing a second dropdown — the exact
+  // confusion Karan hit and Brendan described as "a lot of duplicated, a lot
+  // of things are a bit confusing".
+  const flipStage = columnKeyForOpp(status, subStatus);
+  const setStage = (key: string) => {
+    const t = COLUMN_TARGET[key];
+    if (!t) return;
+    setStatus(t.status);
+    setSubStatus(t.sub_status);
+    onStatusChange?.(t.status);
+  };
+
   return (
     <div className={`space-y-3 ${className}`}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block">
-          <span className={LABEL_CLS}>{statusLabel}</span>
-          <select
-            name={statusField}
-            value={status}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            className={SELECT_CLS}
-            style={SELECT_BG_STYLE}
-            required
-          >
-            {statusOptions.map((s) => (
-              <option key={s} value={s}>
-                {opportunityStatusLabelV2(s)}
-              </option>
+      <label className="block">
+        <span className={LABEL_CLS}>{statusLabel}</span>
+        <select
+          value={flipStage}
+          onChange={(e) => setStage(e.target.value)}
+          className={SELECT_CLS}
+          style={SELECT_BG_STYLE}
+          aria-label="Stage"
+          required
+        >
+          <optgroup label="Sales">
+            {FLIP_STAGES.filter((st) => st.lane === "pre_contract").map((st) => (
+              <option key={st.key} value={st.key}>{st.label}</option>
             ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className={LABEL_CLS}>{subStatusLabel}</span>
-          <select
-            name={subStatusField}
-            value={subStatus}
-            onChange={(e) => setSubStatus(e.target.value)}
-            className={SELECT_CLS}
-            style={SELECT_BG_STYLE}
-            required
-          >
-            {subOptionsForStatus.map((s) => (
-              <option key={s} value={s}>
-                {opportunitySubStatusLabel(s)}
-              </option>
+          </optgroup>
+          <optgroup label="Delivery">
+            {FLIP_STAGES.filter((st) => st.lane === "post_contract").map((st) => (
+              <option key={st.key} value={st.key}>{st.label}</option>
             ))}
-          </select>
-          {/* Karan 2026-08-12 ("not so bulky"): these were full sentences and
-              cost a two-line paragraph on a card people barely use. Same
-              distinctions, told in a phrase. Kept VISIBLE rather than moved to
-              a hover tooltip — there is no hover on a phone. */}
-          <p className={HINT_CLS}>
-            {status === "proposal"
-              ? "Sent = out with the GC · Follow Up = chasing"
-              : status === "qualifying"
-              ? "Solicitation = invited · RFP = package landed · Estimating = pricing"
-              : status === "estimating"
-              ? "Estimating = pricing · Pending Approval = waiting on sign-off"
-              : status === "in_progress"
-              ? "On Site = crew working · On Hold = paused"
-              : status === "billing"
-              ? "Substantial Completion = walkthrough done · Invoiced = final out"
-              : status === "post_sale_closed"
-              ? "Close-Out Docs = warranty/O&M pending · Closed = done"
-              : "Where this sits inside the stage."}
-          </p>
-        </label>
-      </div>
+          </optgroup>
+        </select>
+        <p className={HINT_CLS}>
+          Most of these move on their own as proposals get built and sent.
+        </p>
+      </label>
+      {/* The tuple the server action parses — unchanged contract, exactly as
+          create mode already does it. */}
+      <input type="hidden" name={statusField} value={status} />
+      <input type="hidden" name={subStatusField} value={subStatus} />
 
       {/* Follow-up scheduling — auto-shown when sub_status is "follow_up",
           otherwise behind a small opt-in toggle so pre-sale bids can still
