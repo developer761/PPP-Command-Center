@@ -4,7 +4,7 @@ import { useState } from "react";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 
 /**
- * Wraps the Primary Site Address section with a "Same as billing"
+ * Wraps the BILLING address section with a "Same as company address"
  * checkbox. When checked, the address fields collapse and a hidden flag
  * (`site_same_as_billing=1`) is submitted so the server can copy
  * billing_* into site_* without the user re-typing 4 fields.
@@ -43,7 +43,7 @@ export default function CommercialSiteAddressToggle({
           onChange={(e) => setSame(e.target.checked)}
           className="h-4 w-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/30"
         />
-        <span className="text-ppp-charcoal-700">Same as billing address</span>
+        <span className="text-ppp-charcoal-700">Same as company address</span>
       </label>
       {!same && (
         <CommercialAddressFields prefix="site" defaults={defaults} />

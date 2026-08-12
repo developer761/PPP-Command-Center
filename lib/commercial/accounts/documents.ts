@@ -22,25 +22,45 @@ import { MS_PER_DAY, EXPIRY_WARNING_DAYS } from "./constants";
  * when past. No cron yet — that's a follow-up.
  */
 
+/*
+ * Brendan 2026-08-12: "COI is not necessary on an account level. W9s are
+ * something that they request from us but we don't need to store. Remove
+ * safety/OSHA — anything safety related will typically be in our subcontract
+ * agreement. Subcontracts are on a per project basis not on an account level.
+ * The only thing for the account level really would be prequal questionnaire."
+ *
+ * So: prequal, and a catch-all. Every removed category is a document Tomco was
+ * being asked to collect and file for a customer who never asked them to.
+ *
+ * `documentCategoryLabel` still names the retired values — existing uploads
+ * keep their category and stay readable rather than rendering as blanks.
+ */
 export const DOCUMENT_CATEGORIES = [
+  "vendor_onboarding",
+  "other",
+] as const;
+
+/** Categories no longer offered on upload, kept so old rows still read. */
+export const RETIRED_DOCUMENT_CATEGORIES = [
   "coi",
   "w9",
   "master_agreement",
-  "vendor_onboarding",
   "safety",
-  "other",
 ] as const;
 export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
 
-export function documentCategoryLabel(c: DocumentCategory): string {
-  return {
-    coi: "Certificate of Insurance (COI)",
-    w9: "W-9",
-    master_agreement: "Master Service Agreement",
-    vendor_onboarding: "Vendor Onboarding / Prequal",
-    safety: "Safety / OSHA",
-    other: "Other",
-  }[c];
+export function documentCategoryLabel(c: DocumentCategory | string): string {
+  return (
+    {
+      vendor_onboarding: "Prequal Questionnaire",
+      other: "Other",
+      // Retired 2026-08-12 — still named so historical uploads read properly.
+      coi: "Certificate of Insurance (COI)",
+      w9: "W-9",
+      master_agreement: "Master Service Agreement",
+      safety: "Safety / OSHA",
+    } as Record<string, string>
+  )[c] ?? "Other";
 }
 
 export type CommercialAccountDocument = {
@@ -352,7 +372,8 @@ export async function uploadDocument(
   // with the default, locking admin out of "no expiry" semantics.
   // Renewable categories: COI (yearly renewal) + W-9 (annual refresh)
   // + master_agreement (often annual).
-  const RENEWABLE_CATEGORIES = new Set(["coi", "w9", "master_agreement"]);
+  // Nothing renews annually any more — the four categories that did are retired.
+  const RENEWABLE_CATEGORIES = new Set<string>();
   const computedExpiresAt =
     input.expires_at !== undefined
       ? input.expires_at
@@ -682,11 +703,7 @@ export type ComplianceItem = {
 /** Required categories for "compliant" state. `other` is excluded —
  *  it's a catch-all bucket, not a compliance gate. */
 export const REQUIRED_DOCUMENT_CATEGORIES: ReadonlyArray<DocumentCategory> = [
-  "coi",
-  "w9",
-  "master_agreement",
   "vendor_onboarding",
-  "safety",
 ];
 
 export function buildComplianceChecklist(

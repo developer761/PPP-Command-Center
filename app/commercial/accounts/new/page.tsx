@@ -27,16 +27,12 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commerc
 
 const VALID_ROLES = new Set<AssignmentRole>(ASSIGNMENT_ROLES);
 
-// Karan 2026-07-08: on-create doc upload categories. Skips "other" —
-// only the compliance-critical 5 that appear in the checklist. Alex
-// can upload "other" from the Documents tab after landing.
-const ON_CREATE_DOC_CATEGORIES: DocumentCategory[] = [
-  "coi",
-  "w9",
-  "master_agreement",
-  "vendor_onboarding",
-  "safety",
-];
+// On-create doc upload. Was the five compliance categories; Brendan cut four
+// of them 2026-08-12 ("the only thing for the account level really would be
+// prequal questionnaire"), so one remains — and a one-item upload row on the
+// create form is more friction than it saves. Uploads happen from the account's
+// Documents tab, where the file usually arrives anyway.
+const ON_CREATE_DOC_CATEGORIES: DocumentCategory[] = [];
 
 export const dynamic = "force-dynamic";
 
@@ -83,23 +79,25 @@ async function createAction(formData: FormData) {
     }
   }
 
+  // The checkbox still posts its original name; only what it MEANS changed.
+  const same = get("site_same_as_billing") === "1";
   const result = await createCommercialAccount({
     company_name: company,
     dba: get("dba"),
     rating: (get("rating") as "A" | "B" | "C" | null) ?? null,
     is_key_relationship: formData.get("is_key_relationship") === "on",
-    billing_street: get("billing_street"),
-    billing_city: get("billing_city"),
-    billing_state: get("billing_state"),
-    billing_zip: get("billing_zip"),
-    // "Same as billing" toggle: when the checkbox is set, copy billing
-    // into site so the user doesn't retype the same 4 fields. The site
-    // fields aren't even rendered in this case (the toggle hides them),
-    // so we fall back to billing values explicitly.
-    site_street: get("site_same_as_billing") === "1" ? get("billing_street") : get("site_street"),
-    site_city: get("site_same_as_billing") === "1" ? get("billing_city") : get("site_city"),
-    site_state: get("site_same_as_billing") === "1" ? get("billing_state") : get("site_state"),
-    site_zip: get("site_same_as_billing") === "1" ? get("billing_zip") : get("site_zip"),
+    // "Same as company address": when set, billing copies the company address
+    // so nobody retypes the same four fields. The billing inputs are hidden in
+    // that case, so the fallback has to be explicit — reading the empty hidden
+    // inputs would blank the billing address instead of mirroring it.
+    billing_street: same ? get("site_street") : get("billing_street"),
+    billing_city: same ? get("site_city") : get("billing_city"),
+    billing_state: same ? get("site_state") : get("billing_state"),
+    billing_zip: same ? get("site_zip") : get("billing_zip"),
+    site_street: get("site_street"),
+    site_city: get("site_city"),
+    site_state: get("site_state"),
+    site_zip: get("site_zip"),
     phone: get("phone"),
     ap_phone: get("ap_phone"),
     website: get("website"),
@@ -403,26 +401,33 @@ export default async function NewCommercialAccountPage({
           </label>
         </Section>
 
-        <Section title="Billing address">
+        {/* Brendan 2026-08-12: "Primary Site Address should not be on the
+            account level. It should just be the company address then billing
+            address with an option to click same as company address."
+            A general contractor has one office and many job sites — the sites
+            belong to the jobs, which is where they already live. So the
+            account keeps the company's own address, and billing defaults to
+            it. Same two column sets as before, read the right way round. */}
+        <Section title="Company address">
           <CommercialAddressFields
-            prefix="billing"
-            defaults={{
-              street: sp.billing_street ?? "",
-              city: sp.billing_city ?? "",
-              state: sp.billing_state ?? "",
-              zip: sp.billing_zip ?? "",
-            }}
-          />
-        </Section>
-
-        <Section title="Primary site address">
-          <CommercialSiteAddressToggle
-            defaultChecked={sp.site_same === "1"}
+            prefix="site"
             defaults={{
               street: sp.site_street ?? "",
               city: sp.site_city ?? "",
               state: sp.site_state ?? "",
               zip: sp.site_zip ?? "",
+            }}
+          />
+        </Section>
+
+        <Section title="Billing address">
+          <CommercialSiteAddressToggle
+            defaultChecked={sp.site_same === "1"}
+            defaults={{
+              street: sp.billing_street ?? "",
+              city: sp.billing_city ?? "",
+              state: sp.billing_state ?? "",
+              zip: sp.billing_zip ?? "",
             }}
           />
         </Section>

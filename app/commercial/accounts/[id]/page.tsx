@@ -2096,7 +2096,7 @@ function InfoCards({ account }: { account: CommercialAccount }) {
         </div>
       </Card>
 
-      <Card title="Primary site address" section="site" accountId={account.id}>
+      <Card title="Company address" section="site" accountId={account.id}>
         <EditableField name="site_street" label="Street" defaultValue={account.site_street} />
         {/* Responsive like the billing block above — grid-cols-3 crushed
             City to ~90px at 320px. City spans 6, State/ZIP 3 each on sm+. */}
