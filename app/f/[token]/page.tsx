@@ -65,11 +65,17 @@ export default async function PainterPage({ params }: { params: Promise<{ token:
     await Promise.all(
       Array.from(new Set(day.assignments.map((a) => a.job_id))).map(async (jobId) => ({
         jobId,
+        // The job's own name, so two jobs in one day are tellable apart. Without
+        // it a painter split across two sites saw two identical "Your work
+        // today" headings over two bullet lists and no way to know which was
+        // which.
+        jobName: day.assignments.find((a) => a.job_id === jobId)?.job_name ?? null,
         scope: await getCrewScopeForJob(jobId).catch(() => null),
       }))
     )
   ).filter((x) => x.scope && x.scope.lines.length > 0) as Array<{
     jobId: string;
+    jobName: string | null;
     scope: NonNullable<Awaited<ReturnType<typeof getCrewScopeForJob>>>;
   }>;
 
@@ -78,10 +84,14 @@ export default async function PainterPage({ params }: { params: Promise<{ token:
       <div className="max-w-md mx-auto space-y-4">
         <PainterClock token={token} firstName={employee.first_name} day={day} dateLabel={dateLabel} es={es} />
 
-        {scopesToday.map(({ jobId, scope }) => (
+        {scopesToday.map(({ jobId, jobName, scope }) => (
           <section key={jobId} className="rounded-xl border border-ppp-charcoal-200 bg-white p-4">
             <h2 className="text-[13px] font-bold text-ppp-charcoal">
-              {scope.areaLabel ? `${scope.areaLabel} — ` : ""}
+              {scopesToday.length > 1 && jobName
+                ? `${jobName} — `
+                : scope.areaLabel
+                  ? `${scope.areaLabel} — `
+                  : ""}
               {es ? "Tu trabajo hoy" : "Your work today"}
               {scope.isPartial && (
                 <span className="font-normal text-ppp-charcoal-500">

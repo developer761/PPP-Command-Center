@@ -221,7 +221,8 @@ async function autoFileWorkOrder(
       // Unfiltered, so we can say "4 of 8" rather than just listing 4.
       buildWorkOrderContent(dealId, null),
     ]);
-    const allScopeCount = allScope.inclusions.length + allScope.alternates.length;
+    // Base inclusions only — see the note in the work-order PDF route.
+    const allScopeCount = allScope.inclusions.length;
     if (!opp || !account) return null;
     const dealName = derivedOppName(opp, account.company_name);
     const oc = await getOperatingCompany();
@@ -235,7 +236,7 @@ async function autoFileWorkOrder(
         opp,
         account,
         dealName,
-        content.inclusions.length + content.alternates.length,
+        content.inclusions.length,
         allScopeCount
       ),
       company: { name: oc.name, phone: oc.phone, website: oc.website },
@@ -348,7 +349,7 @@ export async function WorkOrderTool({
     listUnassignedScopeForOpp(dealId),
   ]);
   const editable = wo ? isWorkOrderEditable(wo.status) : false;
-  const scopeCount = content.inclusions.length + content.alternates.length;
+  const scopeCount = content.inclusions.length;
   // Quick-links so the empty/partial hints aren't dead-ends (RUX-4): finishes
   // live on the opportunity's Finishes tab; proposals on the deal's Proposals tab.
   const finishesHref = `/commercial/opportunities/${dealId}?tab=finishes`;

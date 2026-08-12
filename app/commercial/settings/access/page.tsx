@@ -78,8 +78,9 @@ async function toggleCrewAction(formData: FormData) {
 async function toggleOptOutAction(formData: FormData) {
   "use server";
   const userId = await requireAccessAdmin();
-  await updateEmployee(String(formData.get("id") ?? ""), { schedule_email_opt_out: String(formData.get("opt_out") ?? "") === "1" }, userId);
+  const res = await updateEmployee(String(formData.get("id") ?? ""), { schedule_email_opt_out: String(formData.get("opt_out") ?? "") === "1" }, userId);
   revalidatePath(ACCESS);
+  if (!res.ok) redirect(`${ACCESS}?error=${encodeURIComponent(res.error ?? "Could not change that setting.")}`);
   redirect(ACCESS);
 }
 

@@ -63,8 +63,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     // downloaded PDF must carry the same warning as the one that was sent.
     buildWorkOrderContent(wo.opportunity_id, null),
   ]);
-  const sheetScopeLines = content.inclusions.length + content.alternates.length;
-  const totalScopeLines = allScope.inclusions.length + allScope.alternates.length;
+  // Base inclusions only — alternates are optional add-ons nobody has bought,
+  // and counting them made a sheet covering ALL the real work print
+  // "PARTIAL SCOPE — covers 5 of 7" with no other work order in existence.
+  const sheetScopeLines = content.inclusions.length;
+  const totalScopeLines = allScope.inclusions.length;
 
   const addr = [opp.property_street, [opp.property_city, opp.property_state].filter(Boolean).join(", ")]
     .filter(Boolean)

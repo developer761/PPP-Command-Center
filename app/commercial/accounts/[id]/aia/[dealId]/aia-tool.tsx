@@ -332,8 +332,15 @@ async function deleteLineAction(formData: FormData) {
   const lineId = String(formData.get("line_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(lineId)) redirect("/commercial/accounts");
   if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
-  await deleteAiaLineItem(lineId, appId, userId);
+  // A swallowed failure here leaves the payment application's total wrong while
+  // the row appears to have gone.
+  const res = await deleteAiaLineItem(lineId, appId, userId);
   revalidateAia(id, dealId);
+  if (!res.ok) {
+    redirect(
+      `${base(id, dealId, origin)}&app=${appId}&error=${encodeURIComponent(res.error ?? "Could not remove that line.")}${backQ(back)}`
+    );
+  }
   redirect(`${base(id, dealId, origin)}&app=${appId}${backQ(back)}`);
 }
 

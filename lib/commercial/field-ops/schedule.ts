@@ -153,8 +153,14 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
         })
       : Promise.resolve(),
     empIds.length > 0
-      ? sb.from("commercial_employees").select("id, display_name").in("id", empIds).then(({ data }) => {
-          for (const e of (data ?? []) as { id: string; display_name: string }[]) empName.set(e.id, e.display_name);
+      // `active` is read so a person who has left is LABELLED rather than
+      // silently present. Deactivation cancels future shifts, but assignments
+      // written before that shipped are still on the calendar — and a manager
+      // reading a name with no marker will dispatch them.
+      ? sb.from("commercial_employees").select("id, display_name, active").in("id", empIds).then(({ data }) => {
+          for (const e of (data ?? []) as { id: string; display_name: string; active: boolean }[]) {
+            empName.set(e.id, e.active === false ? `${e.display_name} (inactive)` : e.display_name);
+          }
         })
       : Promise.resolve(),
   ]);
@@ -238,10 +244,16 @@ export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> 
   const empIds = [...new Set(assigns.map((a) => a.employee_id))];
   const jobIds = [...new Set(assigns.map((a) => a.job_id))];
   const [empRes, jobRes] = await Promise.all([
-    sb.from("commercial_employees").select("id, display_name").in("id", empIds),
+    sb.from("commercial_employees").select("id, display_name, active").in("id", empIds),
     sb.from("commercial_jobs").select("id, name, job_code, status, prevailing_wage, site_address, site_city").in("id", jobIds).is("deleted_at", null),
   ]);
-  const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
+  const empName = new Map(
+    (empRes.data ?? []).map((r) => {
+      const e = r as { id: string; display_name: string; active: boolean };
+      // See the note above: shown with a marker, not hidden.
+      return [e.id, e.active === false ? `${e.display_name} (inactive)` : e.display_name];
+    })
+  );
   const jobsById = new Map(
     (jobRes.data ?? []).map((r) => {
       const j = r as { id: string; name: string; job_code: string; status: JobStatus; prevailing_wage: boolean; site_address: string | null; site_city: string | null };

@@ -113,8 +113,9 @@ async function editJobAction(formData: FormData) {
 async function deleteJobAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
-  await softDeleteJob(String(formData.get("id") ?? ""), userId);
+  const res = await softDeleteJob(String(formData.get("id") ?? ""), userId);
   revalidatePath(BASE);
+  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error ?? "Could not delete that job.")}`);
   redirect(BASE);
 }
 

@@ -279,8 +279,13 @@ async function deleteItemAction(formData: FormData) {
   const itemId = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId) || !UUID_RE.test(itemId)) redirect("/commercial/accounts");
   if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
-  await deleteCloseoutItem(itemId, pkgId, userId);
+  const res = await deleteCloseoutItem(itemId, pkgId, userId);
   revalidateCloseout(id, dealId);
+  if (!res.ok) {
+    redirect(
+      `${base(id, dealId, origin)}&pkg=${pkgId}&error=${encodeURIComponent(res.error ?? "Could not remove that item.")}${backQ(back)}`
+    );
+  }
   redirect(`${base(id, dealId, origin)}&pkg=${pkgId}${backQ(back)}`);
 }
 
