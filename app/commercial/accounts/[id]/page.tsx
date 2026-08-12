@@ -1497,26 +1497,26 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             showing the delivery money block would be a wall of $0 on a deal
             that was just won — the thing that made this phase necessary. */}
         {dealTab === "overview" && phase === "won_not_started" && (
-          <section className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 sm:p-5">
-            <h3 className="text-sm font-bold text-emerald-900 flex items-center gap-2">
-              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-emerald-600" />
+          <section className="mt-4 rounded-xl border border-ppp-navy-200 bg-ppp-navy-50/40 p-4 sm:p-5">
+            <h3 className="text-sm font-bold text-ppp-navy-900 flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-navy-600" />
               Won — ready to start
             </h3>
             <div className="grid grid-cols-2 gap-2 mt-3">
-              <div className="rounded-lg border border-emerald-200 bg-surface px-2.5 py-2">
+              <div className="rounded-lg border border-ppp-navy-200 bg-surface px-2.5 py-2">
                 <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Contract</div>
                 <div className="text-sm font-bold text-ppp-charcoal mt-0.5 tabular-nums break-all">
                   {dealFin.hasContract ? formatCentsFull(dealFin.contractCents) : "—"}
                 </div>
               </div>
-              <div className="rounded-lg border border-emerald-200 bg-surface px-2.5 py-2">
+              <div className="rounded-lg border border-ppp-navy-200 bg-surface px-2.5 py-2">
                 <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Proposed start</div>
                 <div className="text-sm font-bold text-ppp-charcoal mt-0.5">
                   {p.opp.proposed_start_at ? fmtEtDate(p.opp.proposed_start_at) : "—"}
                 </div>
               </div>
             </div>
-            <p className="text-[12px] text-emerald-900 mt-2.5">
+            <p className="text-[12px] text-ppp-navy-900 mt-2.5">
               Nothing is billed yet. Move it to <strong>Pre-Construction</strong> when the crew is scheduled.
             </p>
           </section>
@@ -1573,7 +1573,16 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             <StatCard label="Gross revenue" value={formatCentsCompact(dealGrossCents)} tone="brand" sub="billed to date · pre-tax" spark={dealRevenueMonthly.map((r) => r.value)} sparkLabels={dealRevenueMonthly.map((r) => r.label)} />
             <StatCard label="Job costs" value={formatCentsCompact(dealCostsTotalCents)} tone="amber" sub={dealCostsTotalCents === 0 ? "none logged" : dealFin.fieldOpsLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
             <StatCard label="Net profit" value={`${dealNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(dealNetCents))}`} tone={dealNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
-            <StatCard label="Margin" value={dealMarginPct === null ? "—" : `${dealMarginPct}%`} tone={dealMarginTone} sub={dealMarginPct === null ? "log costs to see" : "net ÷ gross"} />
+            {/* The label travels with the number. Reconciling the VALUE alone
+                still showed "100% · net ÷ gross" on a job with $0 costs — which
+                reads as a triumph when it actually means nothing's been spent
+                yet. dealMargin() carries the honest wording. */}
+            <StatCard
+              label={dealMarginInfo.label}
+              value={dealMarginInfo.pct === null ? "—" : dealMarginInfo.overBudget ? "Over budget" : `${dealMarginInfo.pct}%`}
+              tone={dealMarginTone}
+              sub={dealMarginInfo.caveat ?? "contract − costs"}
+            />
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
             <div className="lg:col-span-2">
@@ -2561,7 +2570,12 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
           <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
           <StatCard label="Job costs" value={formatCentsCompact(costsCents)} tone="amber" sub={costsCents === 0 ? "none logged" : fin.fieldOpsLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
           <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
-          <StatCard label="Margin" value={marginPct === null ? "—" : `${marginPct}%`} tone={marginTone} sub={marginPct === null ? "no revenue yet" : "net ÷ gross"} />
+          <StatCard
+            label={pnlMargin.label}
+            value={pnlMargin.pct === null ? "—" : pnlMargin.overBudget ? "Over budget" : `${pnlMargin.pct}%`}
+            tone={marginTone}
+            sub={pnlMargin.caveat ?? "contract − costs"}
+          />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 items-center">
           <div className="lg:col-span-2">
