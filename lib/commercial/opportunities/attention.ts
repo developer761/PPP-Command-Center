@@ -184,3 +184,46 @@ export function attentionFor(i: AttentionInput): Attention[] {
 
   return out;
 }
+
+/**
+ * The status moves a PERSON actually needs to make.
+ *
+ * Karan 2026-08-12: "shouldnt the opportunity move forward on its own?" — it
+ * does. The picker predates the auto-advance engine, back when a human drove
+ * every transition, so it offered all eight statuses and needed a banner
+ * warning that half of them were "valid but unusual". A control that has to
+ * apologise for its own options is offering the wrong options.
+ *
+ * The engine owns every move an artifact implies: building a proposal moves a
+ * deal to Estimating, sending it moves it to Proposal, marking it won closes
+ * it. What it cannot see is anything that happens off-system — a GC saying yes
+ * on the phone, a decision not to bid, a crew actually arriving on site.
+ *
+ * So this returns the short list of moves with no artifact behind them. The
+ * full set stays available behind a disclosure for the rare correction, which
+ * is where the "unusual" warning belongs — on the exception, not the default.
+ */
+export function sensibleNextStatuses(status: string, sub: string | null): string[] {
+  switch (status) {
+    case "qualifying":
+    case "estimating":
+      // Forward is driven by the proposal. What a person knows and the system
+      // cannot is that we're out — declined, or beaten before we quoted.
+      return ["pre_sale_closed"];
+    case "proposal":
+      // The verbal yes/no. This is the single most common manual move there is.
+      return ["pre_sale_closed"];
+    case "pre_sale_closed":
+      // Won → the work starts. Lost → nothing ahead; reopening is a correction
+      // and belongs behind the disclosure.
+      return sub === "won" ? ["pre_construction"] : [];
+    case "pre_construction":
+      return ["in_progress"];
+    case "in_progress":
+      return ["billing"];
+    case "billing":
+      return ["post_sale_closed"];
+    default:
+      return [];
+  }
+}

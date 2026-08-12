@@ -424,6 +424,17 @@ export default async function CommercialOpportunitiesPage({
   searchParams: SP;
 }) {
   const sp = await searchParams;
+  // Who is looking — only needed for the "My opportunities" view, so it is
+  // resolved once here rather than threaded through every row.
+  const viewerUserId = await (async () => {
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      return user?.id ?? null;
+    } catch {
+      return null;
+    }
+  })();
   const search = pickFirst(sp.q);
   // `?status=` now names a KANBAN COLUMN, not a raw status — that's what
   // the snapshot pills show and what the board is organised by, so a pill
@@ -436,6 +447,10 @@ export default async function CommercialOpportunitiesPage({
   // being sold. The dashboard's money tiles ("Under contract", "Left to bill")
   // span won + in-progress + billing, which a single-stage filter cannot
   // express, so they used to link at the retired Projects page instead.
+  // "My opportunities" and "New this week" — the two views on Karan's actual
+  // Salesforce screenshot. Both are filters the list did not have.
+  const mineFilter = pickFirst(sp.mine) === "1";
+  const newFilter = pickFirst(sp.new) === "7d" ? 7 : undefined;
   const laneRaw = pickFirst(sp.lane);
   const laneFilter =
     laneRaw === "post_contract" || laneRaw === "pre_contract" ? laneRaw : undefined;
@@ -627,6 +642,17 @@ export default async function CommercialOpportunitiesPage({
   // dashboard card that linked here — these had drifted on BOTH the status set
   // and the date comparison, so "3 overdue" could open a list of 4.
   const attentionToday = todayEtIso; // computed above, ET calendar day
+  if (mineFilter && viewerUserId) {
+    opps = opps.filter((o) => o.estimator_user_id === viewerUserId);
+  }
+  if (newFilter) {
+    // Calendar days in ET, matching every other elapsed-time figure on the
+    // platform — subtracting timestamps miscounts across the DST change.
+    const cutoff = new Date(Date.UTC(+todayEtIso.slice(0, 4), +todayEtIso.slice(5, 7) - 1, +todayEtIso.slice(8, 10)) - newFilter * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    opps = opps.filter((o) => (o.created_at ?? "").slice(0, 10) >= cutoff);
+  }
   if (laneFilter) {
     const laneKeys = new Set(
       (laneFilter === "post_contract" ? POST_CONTRACT_COLUMNS : PRE_CONTRACT_COLUMNS).map((c) => c.key)
@@ -681,6 +707,8 @@ export default async function CommercialOpportunitiesPage({
     q: search || undefined,
     status: statusFilter || undefined,
     lane: laneFilter || undefined,
+    mine: mineFilter ? "1" : undefined,
+    new: newFilter ? "7d" : undefined,
     sources: sourcesRaw || undefined,
     sort: sortRaw || undefined,
     view: viewRaw || undefined,

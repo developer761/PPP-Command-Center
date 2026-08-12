@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { attentionFor, manualNextStep, type AttentionInput } from "@/lib/commercial/opportunities/attention";
+import { attentionFor, manualNextStep, sensibleNextStatuses, type AttentionInput } from "@/lib/commercial/opportunities/attention";
 
 const base: AttentionInput = {
   oppId: "11111111-2222-3333-4444-555555555555",
@@ -132,5 +132,50 @@ describe("manualNextStep", () => {
   it("offers starting the job once it is won, and nothing at all once it is lost", () => {
     expect(manualNextStep({ ...base, status: "pre_sale_closed", subStatus: "won" })?.label).toBe("Start the job");
     expect(manualNextStep({ ...base, status: "pre_sale_closed", subStatus: "lost" })).toBeNull();
+  });
+});
+
+/**
+ * Karan 2026-08-12: "shouldnt the opportunity move forward on its own?" It does.
+ * The picker predates the auto-advance engine and offered all eight statuses,
+ * which is why it needed a banner warning half of them were "valid but
+ * unusual" — a control that has to apologise for its own options is offering
+ * the wrong options.
+ */
+describe("sensibleNextStatuses — only the moves with no artifact behind them", () => {
+  it("offers a pre-sale deal only the outcome, because forward is driven by the proposal", () => {
+    // Building a proposal moves it to Estimating; sending it moves it to
+    // Proposal. Neither needs a person. Losing does.
+    for (const s of ["qualifying", "estimating", "proposal"]) {
+      expect(sensibleNextStatuses(s, null), s).toEqual(["pre_sale_closed"]);
+    }
+  });
+
+  it("offers a won job the start of work, and a lost one nothing", () => {
+    expect(sensibleNextStatuses("pre_sale_closed", "won")).toEqual(["pre_construction"]);
+    // Reopening a lost deal is a correction, and corrections belong behind the
+    // disclosure rather than in the default list.
+    expect(sensibleNextStatuses("pre_sale_closed", "lost")).toEqual([]);
+  });
+
+  it("walks delivery one step at a time, never sideways", () => {
+    expect(sensibleNextStatuses("pre_construction", "coordination")).toEqual(["in_progress"]);
+    expect(sensibleNextStatuses("in_progress", "wip_on_site")).toEqual(["billing"]);
+    expect(sensibleNextStatuses("billing", "substantial_completion")).toEqual(["post_sale_closed"]);
+  });
+
+  it("never offers a jump the old picker had to warn about", () => {
+    // Qualifying → Billing was offered, and flagged "valid but unusual". It is
+    // simply not offered now.
+    for (const s of ["qualifying", "estimating", "proposal"]) {
+      const offered = sensibleNextStatuses(s, null);
+      for (const jump of ["pre_construction", "in_progress", "billing", "post_sale_closed"]) {
+        expect(offered, `${s} → ${jump}`).not.toContain(jump);
+      }
+    }
+  });
+
+  it("offers nothing once a job is closed out", () => {
+    expect(sensibleNextStatuses("post_sale_closed", "closed")).toEqual([]);
   });
 });

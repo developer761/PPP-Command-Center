@@ -159,7 +159,7 @@ import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submit
 import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
 import { AttentionBanner } from "@/components/commercial/attention-banner";
-import { attentionFor, manualNextStep } from "@/lib/commercial/opportunities/attention";
+import { attentionFor, manualNextStep, sensibleNextStatuses } from "@/lib/commercial/opportunities/attention";
 import { getProjectForOpportunity } from "@/lib/commercial/projects/ensure";
 import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
 
@@ -2922,10 +2922,18 @@ async function InfoTab({
   // ever be set at deal-creation time and never afterwards. The server
   // already handles it: changeOpportunityStatus skips the DAG check when
   // only the sub is moving, and no-ops when neither has.
+  // The picker offers the moves a PERSON needs (see `sensibleNextStatuses`),
+  // plus the current status so a sub-status can still be refined in place.
+  // Everything else stays reachable behind the "show every status" disclosure —
+  // the exception, where the "unusual" warning actually belongs.
+  const sensible = sensibleNextStatuses(opp.status, opp.sub_status);
   const nextStatuses = [
     opp.status,
-    ...allowedNextStatuses(opp.status),
+    ...sensible,
   ] as ReadonlyArray<OpportunityStatus>;
+  const allOtherStatuses = allowedNextStatuses(opp.status).filter(
+    (st) => !sensible.includes(st) && st !== opp.status
+  ) as ReadonlyArray<OpportunityStatus>;
   // Katie 2026-07-20: lifecycle strip — 4 canonical dates + 2 derived
   // durations. fetch happens here (server component, one extra query)
   // so the Bid lifecycle card renders in the same paint. Time metrics
@@ -3321,6 +3329,9 @@ function ChangeStatusCard({
   // "(unusual)" suffix already labels them in the dropdown, but the
   // up-front block makes the warning visible BEFORE the user picks).
   const warnNext = nextStatuses.filter((s) => shouldWarnTransition(opp.status, s));
+  // Recomputed here rather than threaded through as a prop — it is a pure
+  // function of the tuple, so a second call cannot disagree with the first.
+  const sensible = sensibleNextStatuses(opp.status, opp.sub_status);
   return (
     <section className={`bg-surface border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
@@ -3330,7 +3341,13 @@ function ChangeStatusCard({
             Move this opportunity forward
           </h2>
           <p className="text-[12px] text-ppp-charcoal-600 mt-1">
-            Currently <strong className="text-ppp-charcoal">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>. Pick the next state — closed states (Won / Lost / No-bid) need a short note.
+            Currently <strong className="text-ppp-charcoal">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>.
+            {" "}
+            {sensible.length > 0 ? (
+              <>Most moves happen on their own as proposals get built and sent — this is for the ones we can&rsquo;t see, like a verbal yes or a decision not to bid. Closing needs a short note.</>
+            ) : (
+              <>This job moves on its own as work gets recorded. Use this only to correct it.</>
+            )}
           </p>
         </div>
       </div>

@@ -33,6 +33,8 @@ export type SavedView = {
 export const VIEW_OWNED_PARAMS = [
   "status",
   "lane",
+  "mine",
+  "new",
   "hot",
   "stale",
   "overdue",
@@ -52,6 +54,20 @@ export const SAVED_VIEWS: SavedView[] = [
     group: "pipeline",
   },
   {
+    key: "mine",
+    label: "My opportunities",
+    hint: "Everything you are the estimator on.",
+    params: { mine: "1" },
+    group: "pipeline",
+  },
+  {
+    key: "new_this_week",
+    label: "New this week",
+    hint: "Came in over the last seven days.",
+    params: { new: "7d" },
+    group: "pipeline",
+  },
+  {
     key: "estimating",
     label: "Estimating",
     hint: "Being priced right now, including anything waiting on approval.",
@@ -60,8 +76,8 @@ export const SAVED_VIEWS: SavedView[] = [
   },
   {
     key: "proposals_out",
-    label: "Proposals out",
-    hint: "Sent to the GC and waiting on an answer.",
+    label: "Proposal sent",
+    hint: "Out with the GC and waiting on an answer.",
     params: { status: "proposal", sort: "oldest" },
     group: "pipeline",
   },
@@ -74,14 +90,14 @@ export const SAVED_VIEWS: SavedView[] = [
   },
   {
     key: "won_not_started",
-    label: "Won — not started",
-    hint: "Awarded, but nobody has mobilised yet.",
+    label: "Awarded",
+    hint: "Won, but nobody has mobilised yet.",
     params: { status: "won" },
     group: "delivery",
   },
   {
     key: "active_projects",
-    label: "Active projects",
+    label: "In production",
     hint: "Crews are on site.",
     params: { status: "in_progress" },
     group: "delivery",
@@ -109,15 +125,15 @@ export const SAVED_VIEWS: SavedView[] = [
   },
   {
     key: "stale",
-    label: "Gone quiet",
+    label: "Stalled",
     hint: "No movement in a while.",
     params: { stale: "1", sort: "oldest" },
     group: "attention",
   },
   {
     key: "cold_rfp",
-    label: "Cold RFPs",
-    hint: "Plans arrived and nothing has been quoted.",
+    label: "Unquoted RFPs",
+    hint: "Plans arrived and nothing has been priced.",
     params: { coldrfp: "1", sort: "oldest" },
     group: "attention",
   },
@@ -203,6 +219,8 @@ export function filterChips(
       removeHref: without(["lane"]),
     });
   }
+  flag("mine", "Mine");
+  if (current.new) chips.push({ key: "new", label: "New this week", removeHref: without(["new"]) });
   flag("overdue", "Overdue");
   flag("followup", "Follow-up due");
   flag("stale", "Gone quiet");
