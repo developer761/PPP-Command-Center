@@ -763,3 +763,31 @@ db.ts:1410 approveProposal) — so the count matches a genuine approved-but-unse
 the point it can be made. (3) The "Approved and not sent" attention item is warn-not-block + names the
 consequence. Brendan's 2nd trigger (submit → pending_approval) was verified already-wired, not rebuilt.
 tsc + 412 tests (4 new). No new findings.
+
+---
+
+## 🔴 AUDIT — `42ee991` (drop Industry): DATA-LOSS, and it's now a SYSTEMIC pattern (2nd occurrence)
+
+The commit claims "The column stays so nothing already typed is lost." **False — same class as `7e462d9`.**
+Confirmed chain:
+1. Diff removed the industry `<EditableField>` from the detail page's **identity** section.
+2. `accounts/[id]/page.tsx:1197` still builds `industry: get("industry")` in that section's patch; `get()`
+   returns **`null`** when the removed input isn't submitted (unlike `company_name`, which uses `?? undefined`).
+3. `updateCommercialAccount` (mutations.ts:103) does `.update({ ...patch })` — spreads the whole patch, so
+   `industry: null` is written.
+→ **Editing the identity section (company name / dba / website) silently NULLs `industry`.** The column
+survives the migration but its value is wiped on the next ordinary edit.
+
+**⚠️ SYSTEMIC: this is the 2nd field-removal in a row with the identical defect.** `7e462d9` (proposed
+start/end) and `42ee991` (industry) both removed the *input* but left the *patch-builder line*, and both
+patch-builders write a non-undefined value → data loss on edit. **Recommend:** (a) fix both; (b) sweep ALL
+recent field-drops (probability_pct? the Brendan drops) for a lingering `field: get("field")` / `field: ...?? null`
+in a patch that a `.update({...patch})` spreads; (c) adopt the rule: when you remove a field input, remove it
+from the patch-builder in the SAME commit (or set it `undefined`, not `null`). Fix here: delete the `industry`
+line from the identity patch (1197).
+
+### Two lower incomplete-sweep nits on the same commit
+- `accounts/[id]/edit/page.tsx:259` still renders the Industry `<EditField>` — the standalone edit page
+  wasn't swept, so Industry is removed from create + detail-inline + list-filter but still editable there.
+- `accounts/page.tsx:730` + `1156-1159` still DISPLAY `account.industry` in list rows — the commit removed
+  the list *filter* but not the row *display*. Inconsistent with "no longer shown."
