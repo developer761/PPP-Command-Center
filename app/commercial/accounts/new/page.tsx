@@ -22,6 +22,7 @@ import {
 import { addAccountTag } from "@/lib/commercial/accounts/tags";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import CommercialSiteAddressToggle from "@/components/commercial-site-address-toggle";
+import { NewAccountContacts } from "@/components/commercial/new-account-contacts";
 import CommercialNewAccountTeamPicker from "@/components/commercial-new-account-team-picker";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
@@ -114,6 +115,47 @@ async function createAction(formData: FormData) {
     redirect(`/commercial/accounts/new?error=${encodeURIComponent(result.error)}`);
   }
   const newAccountId = result.account.id;
+
+  // ── Contacts typed on this form (Brendan 2026-08-12) ─────────────────────
+  //
+  // "While entering a new builder we can add an estimator's contact at the
+  // same time, so when we go to send the proposal it's already pre-populated."
+  //
+  // A NAME is what makes a row real: an email or phone with nobody attached
+  // would create a nameless contact that shows as a blank line forever. Rows
+  // without one are skipped silently — they are empty inputs, not mistakes.
+  //
+  // Best-effort, like the team rows below: a contact that fails to save must
+  // not lose the company details somebody just typed. Failures are counted and
+  // surfaced on the destination page rather than swallowed.
+  const CONTACT_ROWS = [
+    { key: "owner", role: "decision_maker" },
+    { key: "estimating", role: "estimator" },
+    { key: "billing", role: "billing" },
+    { key: "field", role: "site" },
+  ] as const;
+  let contactsAdded = 0;
+  let contactsFailed = 0;
+  {
+    const { addContactToAccount } = await import("@/lib/commercial/accounts/contacts");
+    for (const row of CONTACT_ROWS) {
+      const full_name = String(formData.get(`c_${row.key}_name`) ?? "").trim();
+      if (!full_name) continue;
+      const res = await addContactToAccount({
+        account_id: newAccountId,
+        full_name,
+        email: String(formData.get(`c_${row.key}_email`) ?? "").trim() || null,
+        phone: String(formData.get(`c_${row.key}_phone`) ?? "").trim() || null,
+        role: row.role,
+        created_by_user_id: user.id,
+      });
+      if (res.ok) contactsAdded++;
+      else {
+        contactsFailed++;
+        console.warn(`[accounts/new] contact "${row.key}" failed: ${res.error}`);
+      }
+    }
+  }
 
   // Process team rows from the picker — each row writes an assignment +
   // fires the team-assignment email (fire-and-forget via the existing
@@ -252,6 +294,10 @@ async function createAction(formData: FormData) {
       .join(" · ");
     params.set("team_skipped", sanitized);
   }
+  if (contactsAdded > 0) params.set("contacts_added", String(contactsAdded));
+  // Counted, not swallowed: a contact that failed to save is a person somebody
+  // typed and expects to find later.
+  if (contactsFailed > 0) params.set("contacts_failed", String(contactsFailed));
   if (tagsAddedCount > 0) params.set("tags_added", String(tagsAddedCount));
   if (tagSkipReasons.length > 0) {
     params.set(
@@ -432,7 +478,14 @@ export default async function NewCommercialAccountPage({
           />
         </Section>
 
-        <Section title="Contact">
+        {/* Brendan 2026-08-12: contacts, captured while the builder is being
+            entered — "so when we go to send the proposal it's already
+            pre-populated". */}
+        <Section title="Contacts">
+          <NewAccountContacts defaults={sp as Record<string, string | undefined>} />
+        </Section>
+
+        <Section title="Company phone">
           <Field id="phone" label="Main phone" type="tel" defaultValue={sp.phone ?? ""} />
           <Field id="ap_phone" label="Accounts Payable phone" type="tel" defaultValue={sp.ap_phone ?? ""} />
           <Field id="website" label="Website" type="url" defaultValue={sp.website ?? ""} />

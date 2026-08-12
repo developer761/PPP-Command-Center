@@ -99,6 +99,8 @@ type SP = Promise<{
   /** Which invoice is open inside the deal drill-in. See `sid`. */
   inv?: string;
   team_added?: string;
+  contacts_added?: string;
+  contacts_failed?: string;
   /** What assigning a team just applied, e.g. "Added 4 team members". */
   team_applied?: string;
   team_skipped?: string;
@@ -400,6 +402,8 @@ export default async function CommercialAccountDetailPage({
     getInvoiceRollupForAccount(account.id),
   ]);
 
+  const contactsAdded = sp.contacts_added ? Number(sp.contacts_added) : 0;
+  const contactsFailed = sp.contacts_failed ? Number(sp.contacts_failed) : 0;
   const teamAddedCount = sp.team_added ? Number(sp.team_added) : 0;
   const teamSkippedMsg = sp.team_skipped ?? null;
   const tagsAddedCount = sp.tags_added ? Number(sp.tags_added) : 0;
@@ -431,6 +435,26 @@ export default async function CommercialAccountDetailPage({
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
           <span>Changes saved.</span>
+        </div>
+      )}
+      {/* Contacts typed on the create form. Reported rather than assumed —
+          somebody entered a person and expects to find them. */}
+      {contactsAdded > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2 flex-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+          <span className="flex-1 min-w-0">
+            Saved {contactsAdded} contact{contactsAdded === 1 ? "" : "s"}. An
+            estimator here is pre-filled when you send them a proposal.
+          </span>
+          <Link href={`/commercial/accounts/${account.id}?tab=people`} className="font-semibold underline underline-offset-2 shrink-0">
+            View
+          </Link>
+        </div>
+      )}
+      {contactsFailed > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900">
+          {contactsFailed} contact{contactsFailed === 1 ? "" : "s"} couldn&rsquo;t
+          be saved — the account was created. Add them from the Contacts tab.
         </div>
       )}
       {teamAddedCount > 0 && (
