@@ -981,3 +981,22 @@ delivery writer sets `project_id`.
 
 ## VERIFY — `2be8b8a` (round 4: account printed twice). Clean.
 Dropped the redundant Account from the step-5 identity row (breadcrumb already shows it, linking the same place); kept the Project NUMBER (unique to the page). Verified: identity row now Project-number-only, breadcrumb account link intact, tsc exit 0 / 416 tests. Correct dedup, no findings. (Also self-checked the mobile table-overflow lane — sound.)
+
+---
+
+## VERIFY — `b883a66` (fix status flow Karan reported: 3 bugs). Correct + complete.
+All three verified: (1) `oppStatusDisplayLabel` moved to kanban-columns and now names the STAGE via the
+shared mapper (so "RFP"/"Pending Approval" no longer read as their top-level status across the 37 call
+sites); (2) `(qualifying,estimating)` and `(estimating,estimating)` both resolve to the Estimating column,
+the picker no longer offers the qualifying variant, the tuple stays valid, and — the subtle part — the
+estimating column now spans two statuses so it fetches wide + filters in memory. **Miss-check PASSED:** grep
+finds NO remaining server-side `.eq("status","estimating")` that would silently drop the (qualifying,estimating)
+rows — the fix is complete, not 90%. (3) `sensibleNextStatuses` forward-only (no more double-Qualifying).
+
+### 🔔 REMINDER: my two round-1 misses are STILL OPEN — this commit touched the same file (3rd time) and skipped them
+- **FUNCTIONAL:** `status-sub-status-picker.tsx:70` `CREATE_EXCLUDED_STAGES = ["proposal"]` — still the retired
+  column key, so it excludes nothing; the CREATE picker still offers "Sent" + "Pending Approval" as stages to
+  start a new deal at (no proposal behind it). Fix: `["sent", "pending_approval"]`.
+- **LABEL:** `auto-advance-targets.ts:66` still `label: "Proposal"` — should be "Sent".
+`status-sub-status-picker.tsx` has now been edited by 0da1676, 3e6bd53, b883a66 without fixing
+CREATE_EXCLUDED_STAGES — good candidate to fold into the next status-flow touch.
