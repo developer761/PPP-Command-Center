@@ -299,14 +299,36 @@ function fmtEt(iso: string): string {
   }
 }
 
+/**
+ * Read a flash message out of a searchParam without crashing on it.
+ *
+ * Next.js has already decoded `searchParams`, so decoding again is a second
+ * pass — harmless until the message contains a literal `%` ("50% of rows
+ * failed"), at which point `decodeURIComponent` throws `URIError` and takes the
+ * page down. An error message crashing the page that exists to show it is the
+ * worst version of this bug.
+ *
+ * Deliberately a local copy: Commercial has its own, and the two platforms do
+ * not import from each other.
+ */
+function flashText(raw: string | undefined): string {
+  if (!raw) return "";
+  if (!/%[0-9a-f]{2}/i.test(raw)) return raw;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 export default async function WritebackSettingsPage({ searchParams }: { searchParams: SP }) {
   await requireAdmin();
   const sp = await searchParams;
   const [mode, allowlist] = await Promise.all([getWritebackMode(), loadAllowlist()]);
 
-  const ok = sp.ok ? decodeURIComponent(sp.ok) : "";
-  const err = sp.err ? decodeURIComponent(sp.err) : "";
-  const removed = sp.removed ? decodeURIComponent(sp.removed) : "";
+  const ok = flashText(sp.ok);
+  const err = flashText(sp.err);
+  const removed = flashText(sp.removed);
 
   return (
     <div className="animate-fade-up space-y-6 max-w-5xl">
