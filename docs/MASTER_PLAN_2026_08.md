@@ -82,6 +82,16 @@ confirm understates cascade; C5 deactivated employee still scheduled), then the
 one mechanical batch (C7–C10: ~9 mutations swallow their failure Result), then
 the rest. C1 (proposal PDF hardcoded footer) is high — thread getOperatingCompany.
 
+### ▶ PHASE C.7 — Flow + logic punch-list *(doc: FLOW_LOGIC_PUNCHLIST_2026_08.md)*
+11 verified broken-flow / wrong-logic items. **F1 + F2 first, above everything**:
+re-quoting a WON deal silently swaps the signed contract for an in-progress
+draft (contract/margin/AIA all follow it), and AIA G702/G703 stop footing on any
+post-seed change order while issued certificates silently restate. Then the
+other money ones (F3 decided_at, F4 no-bid reclassified, F5 void→draft keeps a
+payment, F6 AIA original-contract ignored), then the flow breaks (F7 drag-to-
+Proposal reverts — ties to auto-advance; F8 Start-Project maze; F9 lost-flip
+leaves the account; F10 due-date TZ off by a day).
+
 ### ▶ PHASE D — Full re-audit
 Fresh persona + adversarial agents over everything from A–C. Non-negotiable:
 this round's audits caught a live security leak and two bugs in code written
