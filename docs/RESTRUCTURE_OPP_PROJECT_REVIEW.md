@@ -574,3 +574,22 @@ Two low nits (not blockers): (a) `created_at` is sliced as UTC while the cutoff 
 a ≤1-day boundary imprecision for late-evening-ET creations on the 7-day window; `etDateOf(created_at)`
 would make it exact. (b) `mine` with an unresolved `viewerUserId` falls through to showing ALL
 deals under a "Mine" chip — harmless soft-fail, but the chip then lies; consider empty-or-guard.
+
+---
+
+## AUDIT — `070f78b` (FIX 404: mig-127 second FK made proposal embeds ambiguous). Clean + complete.
+
+Serious LIVE bug: every proposal detail page 404'd. Root cause (honestly owned): migration 127's
+`accepted_contract_proposal_id` created a SECOND FK between proposals↔opportunities, so every
+PostgREST embed between them went ambiguous (PGRST201 → HTTP 300 → null data → the not-found
+guard turned it into a 404). A null read is indistinguishable from a missing row, which is why
+nothing surfaced it. This is the migration-runtime class I flagged at the start (126-131) — though
+it's a mig-127 issue, pre-dating the restructure, that the restructure work happened to expose.
+
+**Fix verified correct + complete.** The 3 broken queries (getProposal + sibling + palette search)
+now name the FK explicitly (`commercial_opportunities!commercial_proposals_opportunity_id_fkey`),
+verified against a real proposal (200). I independently swept BOTH FK directions — every embed of
+`commercial_proposals` and `commercial_opportunities` in lib/ + app/ — and found **zero** remaining
+un-disambiguated embeds. Confirmed mig-131's new `project_id` FKs add no new double-FK pair (each
+of the 8 delivery tables has a single FK per target), so no further ambiguity. Sweep genuinely
+complete. Good catch + honest write-up by the build session.
