@@ -47,13 +47,17 @@ async function applyAction(formData: FormData) {
   const userId = await requireAdminUser();
   const kind = String(formData.get("kind") ?? "");
   const id = String(formData.get("id") ?? "");
+  // The exact figure the admin read on screen. The apply refuses if the
+  // underlying data has moved since — approving "$450,000" must never write
+  // some other number just because the page was open a while.
+  const approved = String(formData.get("approved") ?? "");
   const res =
     kind === "contract"
-      ? await applyContractRepair(id, userId)
+      ? await applyContractRepair(id, userId, approved)
       : kind === "certificate"
-        ? await applyCertificateRepair(id, userId)
+        ? await applyCertificateRepair(id, userId, approved)
         : kind === "win_date"
-          ? await applyWinDateRepair(id, userId)
+          ? await applyWinDateRepair(id, userId, approved)
           : { ok: false as const, error: "Unknown repair." };
   revalidatePath("/commercial/settings/repairs");
   redirect(
@@ -207,6 +211,7 @@ function RepairSection({
                 <form action={applyAction}>
                   <input type="hidden" name="kind" value={kind} />
                   <input type="hidden" name="id" value={r.id} />
+                  <input type="hidden" name="approved" value={r.proposed} />
                   <button
                     type="submit"
                     className="inline-flex items-center px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-surface text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[44px] sm:min-h-[36px]"

@@ -1255,6 +1255,12 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
       : []),
   ];
   const dealProposals = await listProposalsForOpp(p.opp.id);
+  // Which invoice the drill-in is showing, resolved against THIS deal's own
+  // invoices. An id that isn't one of them simply falls through to the list —
+  // no error page, and no chance of another customer's invoice rendering under
+  // this customer's header.
+  const openInvoiceId =
+    sp?.inv && dealInvoices.some((i) => i.id === String(sp.inv)) ? String(sp.inv) : null;
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
   // Milestones (2026-08): an invoice can be broken into a schedule of milestones
   // (name · amount · due · lien waiver). Fetch them for the deal's invoices so
@@ -1877,13 +1883,13 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
 
       {/* ── Deal invoices — invoices live under the deal (Katie 2026-08). List
           + create here; the global Invoices page is a read-only open list. ── */}
-      {dealTab === "invoices" && sp?.inv && UUID_RE.test(String(sp.inv)) && (
+      {dealTab === "invoices" && openInvoiceId && (
         // One invoice, rendered INSIDE the deal. This used to open the GLOBAL
         // invoices route — not just another page, a different section of the
         // app — so you lost the account, the deal and the tab in one click.
-        <InvoiceDetailView invoiceId={String(sp.inv)} sp={sp as never} inline />
+        <InvoiceDetailView invoiceId={openInvoiceId} sp={sp as never} inline />
       )}
-      {dealTab === "invoices" && !(sp?.inv && UUID_RE.test(String(sp.inv))) && (
+      {dealTab === "invoices" && !openInvoiceId && (
       <>
       <DealPanelLead
         stats={[

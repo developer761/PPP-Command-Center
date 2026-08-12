@@ -426,9 +426,20 @@ export async function updateAiaApplication(
     next.frozen_at = null;
   }
 
-  // Typing in the contract field is what makes it authoritative — see
-  // migration 130. Without this the value saves and the ladder ignores it.
-  if (patch.original_contract_cents !== undefined) next.original_contract_is_manual = true;
+  // Only a CHANGED value counts as hand-typed.
+  //
+  // The settings form posts every field on every autosave, so `!== undefined`
+  // meant editing the period or the retainage silently flagged the contract as
+  // manual — pinning the platform-wide contract to whatever this application
+  // happened to store, above the won proposal. That is the same divergence
+  // migrations 127/128 exist to prevent, reintroduced from the other side, and
+  // it defeated migration 130's whole premise of a flag rather than a guess.
+  if (
+    patch.original_contract_cents !== undefined &&
+    Number(patch.original_contract_cents) !== Number(before.original_contract_cents)
+  ) {
+    next.original_contract_is_manual = true;
+  }
   if (patch.period_from !== undefined) next.period_from = patch.period_from;
   if (patch.period_to !== undefined) next.period_to = patch.period_to;
   if (patch.original_contract_cents !== undefined) {

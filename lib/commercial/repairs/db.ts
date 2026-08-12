@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { logUpdate } from "@/lib/commercial/audit-log";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { etDateOf } from "@/lib/date-et";
 
 /**
  * Historical data repairs — the rows three bug fixes could not safely touch.
@@ -127,15 +128,36 @@ export async function findContractRepairs(): Promise<RepairRow[]> {
           ? `From the audit log: this deal's proposal was superseded while it read "won".`
           : "No audit-log entry shows a won proposal being superseded — set this by hand from the signed document.",
         applicable: !!found && found.cents > 0,
-        apply: found ? { accepted_contract_cents: found.cents } : undefined,
+        apply: found
+          ? {
+              accepted_contract_cents: found.cents,
+              accepted_contract_proposal_id: found.proposalId,
+              accepted_contract_set_at: found.at,
+            }
+          : undefined,
       };
     });
 }
 
-export async function applyContractRepair(oppId: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+export async function applyContractRepair(
+  oppId: string,
+  userId: string,
+  approvedProposal: string
+): Promise<{ ok: boolean; error?: string }> {
   const rows = await findContractRepairs();
   const row = rows.find((r) => r.id === oppId);
   if (!row || !row.applicable) return { ok: false, error: "This deal is no longer repairable — reload the page." };
+  // The screen shows a figure and the button posts an id, so the apply used to
+  // write whatever a FRESH computation returned — which is not necessarily what
+  // the admin read and approved. If someone re-marks a proposal won between the
+  // render and the click, a different contract value gets stamped under their
+  // name. Refuse when the proposal has moved.
+  if (row.proposed !== approvedProposal) {
+    return {
+      ok: false,
+      error: "This deal changed while the page was open — reload and check the new figure before approving.",
+    };
+  }
 
   const sb = commercialDb();
   const { data: before } = await sb
@@ -148,7 +170,13 @@ export async function applyContractRepair(oppId: string, userId: string): Promis
 
   const { data: after, error } = await sb
     .from("commercial_opportunities")
-    .update({ accepted_contract_cents: cents })
+    .update({
+      accepted_contract_cents: cents,
+      // Provenance — migration 127 added these so a repaired figure can be
+      // traced to a document instead of appearing unexplained on the deal.
+      accepted_contract_proposal_id: row.apply?.accepted_contract_proposal_id ?? null,
+      accepted_contract_set_at: row.apply?.accepted_contract_set_at ?? null,
+    })
     // Only if still unset — someone may have fixed it while this page was open.
     .eq("id", oppId)
     .is("accepted_contract_cents", null)
@@ -225,10 +253,20 @@ export async function findCertificateRepairs(): Promise<RepairRow[]> {
   });
 }
 
-export async function applyCertificateRepair(appId: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+export async function applyCertificateRepair(
+  appId: string,
+  userId: string,
+  approvedProposal: string
+): Promise<{ ok: boolean; error?: string }> {
   const rows = await findCertificateRepairs();
   const row = rows.find((r) => r.id === appId);
   if (!row || !row.applicable) return { ok: false, error: "This application is no longer repairable — reload the page." };
+  if (row.proposed !== approvedProposal) {
+    return {
+      ok: false,
+      error: "This application changed while the page was open — reload and check the new figures before approving.",
+    };
+  }
 
   const sb = commercialDb();
   const { data: lineRows } = await sb
@@ -296,9 +334,15 @@ export async function findWinDateRepairs(): Promise<RepairRow[]> {
 
   const { data: logRows } = await sb
     .from("commercial_opportunity_status_log")
-    .select("opportunity_id, to_status, changed_at")
+    .select("opportunity_id, to_status, changed_at, loss_reason")
     .in("opportunity_id", opps.map((o) => o.id))
     .eq("to_status", "pre_sale_closed")
+    // A LOSS lands in pre_sale_closed too, and the pair only differ by
+    // sub-status — which this log doesn't carry. Without this filter a deal
+    // that was lost, later re-won inside the same status (a sub-status-only
+    // move, so no second log row), and eventually closed out would have its
+    // win dated to the day it was LOST, in another quarter, presented as exact.
+    .is("loss_reason", null)
     .order("changed_at", { ascending: true });
   const wins = new Map<string, string[]>();
   for (const r of (logRows ?? []) as Array<{ opportunity_id: string; changed_at: string }>) {
@@ -310,7 +354,10 @@ export async function findWinDateRepairs(): Promise<RepairRow[]> {
   return opps.map((o) => {
     const entries = wins.get(o.id) ?? [];
     const one = entries.length === 1;
-    const winDate = entries[0]?.slice(0, 10) ?? null;
+    // ET, not UTC. Slicing the timestamp took the UTC day, so a win recorded
+    // at 19:30 ET on 31 March became 1 April — moving a win into the wrong
+    // month, which is the exact defect this repair exists to remove.
+    const winDate = etDateOf(entries[0] ?? null);
     return {
       id: o.id,
       label: derivedOppName(o as never, null),
@@ -330,10 +377,20 @@ export async function findWinDateRepairs(): Promise<RepairRow[]> {
   });
 }
 
-export async function applyWinDateRepair(oppId: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+export async function applyWinDateRepair(
+  oppId: string,
+  userId: string,
+  approvedProposal: string
+): Promise<{ ok: boolean; error?: string }> {
   const rows = await findWinDateRepairs();
   const row = rows.find((r) => r.id === oppId);
   if (!row || !row.applicable) return { ok: false, error: "This deal is no longer repairable — reload the page." };
+  if (row.proposed !== approvedProposal) {
+    return {
+      ok: false,
+      error: "This deal changed while the page was open — reload and check the new dates before approving.",
+    };
+  }
   const decidedAt = String(row.apply?.decided_at ?? "");
   const closedOutAt = String(row.apply?.closed_out_at ?? "");
   if (!decidedAt || !closedOutAt) return { ok: false, error: "Could not read the recovered dates." };

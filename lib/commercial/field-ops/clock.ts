@@ -316,6 +316,21 @@ export async function clockIn(input: {
   actor_note?: string;
 }): Promise<{ ok: true; punchId: string } | { ok: false; error: string; code?: string }> {
   const sb = commercialDb();
+  // The employee must still work here.
+  //
+  // Deactivating someone kills their magic link and their crew login, and takes
+  // them off the schedule — but the shop-floor PIN kept working, and this path
+  // deliberately does not require an assignment (unplanned work is legitimate).
+  // So a terminated worker could walk up to the tablet, enter their PIN, and
+  // book payroll hours dated after their last day.
+  const { data: emp } = await sb
+    .from("commercial_employees")
+    .select("active")
+    .eq("id", input.employee_id)
+    .maybeSingle();
+  if (!emp || (emp as { active: boolean }).active === false) {
+    return { ok: false, error: "This crew member is no longer active.", code: "inactive_employee" };
+  }
   // The job must exist + not be soft-deleted. Both clock endpoints only validate
   // that job_id is a well-formed UUID, so a raw API call could otherwise clock
   // hours onto a garbage / deleted / arbitrary work order (audit round 16). We

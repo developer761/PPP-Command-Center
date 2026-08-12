@@ -657,15 +657,23 @@ export async function InvoiceDetailView({
   expectAccountId?: string;
   expectOppId?: string;
 }) {
-  if (!UUID_RE.test(id)) notFound();
+  // Inline, a miss must DEGRADE — `notFound()` here trips the account page's
+  // not-found boundary and blanks the entire account, so bookmarking a deal's
+  // invoice and then voiding-and-deleting it 404s the customer, not the
+  // invoice. Standalone keeps notFound(), which is correct for a route.
+  const miss = () => {
+    if (inline) return null;
+    notFound();
+  };
+  if (!UUID_RE.test(id)) return miss();
   const errorMsg = pickFirst(sp.error);
   const savedTarget = pickFirst(sp.saved);
 
   const invoice = await getCommercialInvoice(id);
-  if (!invoice) notFound();
+  if (!invoice) return miss();
   // Belongs to the deal it is being shown under, or it is not shown.
-  if (expectAccountId && invoice.account_id !== expectAccountId) notFound();
-  if (expectOppId && invoice.opportunity_id !== expectOppId) notFound();
+  if (expectAccountId && invoice.account_id !== expectAccountId) return miss();
+  if (expectOppId && invoice.opportunity_id !== expectOppId) return miss();
   const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver, milestones, attachments] = await Promise.all([
     listInvoiceLineItems(invoice.id),
     listInvoicePayments(invoice.id),

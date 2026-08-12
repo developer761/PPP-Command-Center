@@ -248,6 +248,16 @@ export async function updateEmployee(
   // the hours and payroll were built from, and rewriting them would change what
   // someone was paid for work they actually did.
   if (deactivated) {
+    // Revoke the shop-floor PIN too. The magic link and the crew login both
+    // filter on `active`, but the PIN is checked against a stored hash and was
+    // left in place — the one credential that outlived the deactivation.
+    const { error: pinErr } = await sb
+      .from("commercial_employees")
+      .update({ clock_pin_hash: null })
+      .eq("id", id);
+    if (pinErr) {
+      console.warn(`[field-ops/employees] could not clear the clock PIN for ${id}:`, pinErr.message);
+    }
     const { todayEtIso } = await import("./schedule");
     const { error: cancelErr } = await sb
       .from("commercial_assignments")
