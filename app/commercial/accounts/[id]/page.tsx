@@ -5958,7 +5958,7 @@ async function AccountProposalsTab({
     .from("commercial_proposals")
     .select(
       `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, header_json, snapshot_document_id,
-       opportunity:commercial_opportunities!inner(id, title, title_override, client_name, property_street, account_id, deleted_at, archived_at, status, sub_status)`
+       opportunity:commercial_opportunities!inner(id, title, title_override, client_name, property_street, project_number, account_id, deleted_at, archived_at, status, sub_status)`
     )
     .is("deleted_at", null)
     .eq("opportunity.account_id", accountId)
@@ -5988,6 +5988,7 @@ async function AccountProposalsTab({
       title_override: string | null;
       client_name: string | null;
       property_street: string | null;
+      project_number: string | null;
       account_id: string;
       deleted_at: string | null;
       archived_at: string | null;
@@ -5997,9 +5998,13 @@ async function AccountProposalsTab({
   };
   // SQL already enforced account_id + soft-delete + archived filters;
   // defensively filter again in JS in case the join shape ever drops a row.
-  const proposals = ((proposalsData as unknown as Row[]) ?? []).filter(
-    (r) => r.opportunity && !r.opportunity.deleted_at && !r.opportunity.archived_at
-  );
+  const proposals = ((proposalsData as unknown as Row[]) ?? [])
+    .filter((r) => r.opportunity && !r.opportunity.deleted_at && !r.opportunity.archived_at)
+    // `proposalDisplayId` needs the DEAL's shared number, which only the
+    // proposal readers hydrate. This query builds its own rows, so without
+    // this the same proposal renders `PROP-2026-0042` on the deal and
+    // `PROP-0031` here — the exact two-ids-one-document problem H6 removed.
+    .map((r) => ({ ...r, project_number: r.opportunity?.project_number ?? null }));
 
   // Group by parent deal. Within each deal, sort by revision_number
   // desc so R3 always appears above R2 above R1 (the query orders by

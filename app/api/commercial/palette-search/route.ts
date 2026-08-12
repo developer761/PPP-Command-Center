@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { proposalDisplayId } from "@/lib/commercial/proposals/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
@@ -112,7 +113,7 @@ export async function GET(request: Request) {
       .limit(MAX_PER_KIND),
     sb
       .from("commercial_proposals")
-      .select("id, proposal_seq, revision_number, status, opportunity_id, header_json, commercial_opportunities(account_id, client_name, title)")
+      .select("id, proposal_seq, revision_number, status, opportunity_id, header_json, commercial_opportunities(account_id, client_name, title, project_number)")
       .is("deleted_at", null)
       .or(propOr)
       .order("updated_at", { ascending: false })
@@ -196,7 +197,15 @@ export async function GET(request: Request) {
       : pr.commercial_opportunities;
     const acctId = opp?.account_id;
     if (!acctId) continue; // can't build a link without the account
-    const propNo = pr.proposal_seq != null ? `PROP-${String(pr.proposal_seq).padStart(4, "0")}` : null;
+    // The shared family id — `PROP-2026-0042` — matching every other surface.
+    // Built inline here, so it kept printing the retired global number while the
+    // rest of the app moved on.
+    const propNo =
+      proposalDisplayId({
+        project_number: (opp as { project_number?: string | null } | null)?.project_number ?? null,
+        revision_number: pr.revision_number,
+        proposal_seq: pr.proposal_seq,
+      }) || null;
     const label =
       pr.header_json?.project_name?.trim() ||
       [opp?.client_name, opp?.title].filter(Boolean).join(" — ") ||
