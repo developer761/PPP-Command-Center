@@ -125,7 +125,15 @@ export type CommercialOpportunity = {
   proposed_start_at: string | null;
   proposed_end_at: string | null;
   proposal_due_at: string | null;
+  /** The day the deal was WON or LOST. One meaning for the whole life of the
+   *  deal — close-out has its own column precisely so it can never overwrite
+   *  this (that bug put March wins in August). */
   decided_at: string | null;
+  /** The day the JOB finished (migration 129). Separate from `decided_at`, and
+   *  typed here only now — it has been written by `changeOpportunityStatus`
+   *  since 129 landed but was missing from this interface, so every reader had
+   *  to cast to reach it. */
+  closed_out_at: string | null;
   loss_reason: OpportunityLossReason | null;
   loss_notes: string | null;
   // Per-opp project address (migration 035). Null when not set — UI

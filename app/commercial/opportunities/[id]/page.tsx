@@ -151,6 +151,13 @@ import {
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
+import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
+import { stageKpis, isDeliveryPhase } from "@/lib/commercial/opportunities/stage-kpis";
+import { getProjectFinancials } from "@/lib/commercial/projects/financials";
+import { listChangeOrders } from "@/lib/commercial/change-orders/db";
+import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submittal-constants";
+import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
+import { etTodayIso, etDateOf } from "@/lib/date-et";
 import { AttentionBanner } from "@/components/commercial/attention-banner";
 import { attentionFor, manualNextStep } from "@/lib/commercial/opportunities/attention";
 import { getProjectForOpportunity } from "@/lib/commercial/projects/ensure";
@@ -1418,6 +1425,69 @@ export default async function OpportunityDetailPage({
   const attentionItems = attentionFor(attentionInput);
   const manualNext = manualNextStep(attentionInput);
 
+  // ── Stage-aware KPIs (step 5) ────────────────────────────────────────────
+  // Financials + change orders only once the job is actually won — a bid has no
+  // contract, no billing and no costs, so those reads would be three round-trips
+  // to learn nothing.
+  const pathIsWon = isWon(opp) || isDeliveryPhase(opp.status);
+  // Open submittals and crew hours are only rendered while a job is on site, so
+  // they are only fetched then — two round-trips a bid would never use.
+  const pathOnSite = opp.status === "in_progress";
+  const [pathFin, pathChangeOrders, pathSubmittals, pathLabor] = pathIsWon
+    ? await Promise.all([
+        getProjectFinancials(opp.id).catch(() => null),
+        listChangeOrders(opp.id).catch(() => []),
+        pathOnSite ? listOpportunitySubmittals(opp.id).catch(() => []) : Promise.resolve([]),
+        pathOnSite ? laborByWorkerForProject(opp.id).catch(() => []) : Promise.resolve([]),
+      ])
+    : [null, [], [], []];
+  // The latest proposal the CUSTOMER IS HOLDING — not the latest created. A
+  // drafted revision must not reset "sent 9 days ago" on the one they have.
+  const sentProposals = dealProposals
+    .filter((p) => ["sent", "won", "lost"].includes(p.status) && p.sent_at)
+    .sort((a, b) => String(b.sent_at).localeCompare(String(a.sent_at)));
+  const latestSent = sentProposals[0];
+  const oldestUnpaid = pathInvoices
+    .filter((inv) => (inv.balance_cents ?? 0) > 0 && inv.issued_at)
+    .sort((a, b) => String(a.issued_at).localeCompare(String(b.issued_at)))[0];
+  const stageKpiList = stageKpis({
+    status: opp.status,
+    subStatus: opp.sub_status,
+    todayIso: etTodayIso(),
+    rfpReceivedAt: etDateOf(opp.rfp_received_at),
+    proposalDueAt: etDateOf(opp.proposal_due_at),
+    followUpAt: etDateOf(opp.follow_up_at),
+    decidedAt: opp.decided_at,
+    closedOutAt: opp.closed_out_at,
+    latestSentProposalCents: latestSent ? Number(latestSent.total_cents) : null,
+    latestSentProposalAt: etDateOf(latestSent?.sent_at),
+    currentQuoteCents: pageProposalTotal ?? null,
+    contractCents: pathFin?.contractCents ?? null,
+    hasContract: pathFin?.hasContract ?? false,
+    billedPreTaxCents: pathFin?.billedPreTaxCents ?? null,
+    collectedCents: pathFin?.collectedCents ?? null,
+    openBalanceCents: pathFin?.openBalanceCents ?? null,
+    grossMarginCents: pathFin?.grossMarginCents ?? null,
+    grossMarginPct: pathFin?.grossMarginPct ?? null,
+    approvedChangeOrderCents: pathChangeOrders
+      .filter((c) => c.status === "approved")
+      .reduce((a, c) => a + (c.amount_cents ?? 0), 0),
+    openSubmittals: pathSubmittals.filter((sm) => !isTerminalSubmittalStatus(sm.status)).length,
+    // Whole hours — a crew-hours tile reading "412.75" is noise at a glance.
+    crewHours: Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)) || null,
+    oldestUnpaidInvoiceDate: etDateOf(oldestUnpaid?.issued_at),
+  });
+  // The identity line: what am I looking at, and whose is it. A won job leads
+  // with its project number — that is the number on the paperwork in the field.
+  const stageIdentity = [
+    ...(pathIsWon && (pathProject?.project_number ?? opp.project_number)
+      ? [{ label: "Project", value: (pathProject?.project_number ?? opp.project_number)! }]
+      : []),
+    ...(account
+      ? [{ label: "Account", value: account.company_name, href: `/commercial/accounts/${account.id}` }]
+      : []),
+  ];
+
   // ── The bounce to the account page is GONE (Karan 2026-08-12, step 3) ────
   //
   // From 2026-07-08 until now, landing on a deal without an explicit tab threw
@@ -1819,6 +1889,13 @@ export default async function OpportunityDetailPage({
           Salesforce banner it copies, it informs and lets you through — but it
           persists until the thing is actually fixed, because a warning you can
           dismiss is one people learn to dismiss. */}
+      {/* The numbers that matter at THIS stage, and only those (step 5).
+          A bid never shows retainage; a finished job never shows a proposal
+          due date. */}
+      {!isDeletedDeal && (
+        <StageKpiStrip kpis={stageKpiList} identity={stageIdentity} />
+      )}
+
       {!isDeletedDeal && <AttentionBanner items={attentionItems} />}
 
       {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than

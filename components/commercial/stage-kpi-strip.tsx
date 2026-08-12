@@ -1,0 +1,86 @@
+import Link from "next/link";
+import type { StageKpi, KpiTone } from "@/lib/commercial/opportunities/stage-kpis";
+
+/**
+ * The compact stats row, from the Quote screenshot — the four or five numbers
+ * you would otherwise scroll for, pinned under the title with the parent
+ * records as links.
+ *
+ * Which numbers appear is decided by `stageKpis`, not here: a bid shows when
+ * the plans arrived and when the proposal is due, a job on site shows what's
+ * billed and the margin. This component only renders whatever it is handed,
+ * and renders nothing at all when handed nothing — an empty strip is better
+ * than a row of dashes.
+ */
+
+function toneCls(tone: KpiTone | undefined): string {
+  switch (tone) {
+    case "good":
+      return "text-emerald-700";
+    case "warn":
+      return "text-amber-700";
+    case "bad":
+      return "text-rose-700";
+    default:
+      return "text-ppp-charcoal";
+  }
+}
+
+export function StageKpiStrip({
+  kpis,
+  identity,
+}: {
+  kpis: StageKpi[];
+  /** Project number / account — the "what am I looking at" line. */
+  identity?: { label: string; value: string; href?: string }[];
+}) {
+  if (kpis.length === 0 && !identity?.length) return null;
+  return (
+    <div className="rounded-xl border border-ppp-charcoal-100 bg-surface overflow-hidden">
+      {identity && identity.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-3.5 py-2 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/60">
+          {identity.map((it) => (
+            <div key={it.label} className="min-w-0">
+              <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+                {it.label}
+              </div>
+              {it.href ? (
+                <Link
+                  href={it.href}
+                  className="text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 truncate block min-h-[24px]"
+                >
+                  {it.value}
+                </Link>
+              ) : (
+                <div className="text-[12.5px] font-semibold text-ppp-charcoal truncate">{it.value}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {kpis.length > 0 && (
+        // Scrolls as one row rather than wrapping — a wrapped strip on a phone
+        // reads as two unrelated groups of numbers.
+        <div className="flex items-stretch gap-x-6 gap-y-2 px-3.5 py-2.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {kpis.map((k) => (
+            <div key={k.key} className="min-w-max">
+              <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500 whitespace-nowrap">
+                {k.label}
+              </div>
+              <div
+                className={`font-condensed text-[17px] font-black tabular-nums leading-tight whitespace-nowrap ${toneCls(k.tone)}`}
+              >
+                {k.value}
+              </div>
+              {k.sub && (
+                <div className="text-[10.5px] text-ppp-charcoal-500 whitespace-nowrap tabular-nums">
+                  {k.sub}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
