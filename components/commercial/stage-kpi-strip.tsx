@@ -47,7 +47,7 @@ export function StageKpiStrip({
               {it.href ? (
                 <Link
                   href={it.href}
-                  className="text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 truncate block min-h-[24px]"
+                  className="text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 truncate block min-h-[44px] sm:min-h-[24px] pt-1.5 sm:pt-0"
                 >
                   {it.value}
                 </Link>

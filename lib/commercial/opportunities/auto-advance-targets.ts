@@ -61,9 +61,9 @@ export const AUTO_ADVANCE_TARGETS: Record<AutoAdvanceTargetKey, AutoAdvanceTarge
     sub_status: "proposal_pending_approval",
     order: 1,
     subOrder: 1,
-    label: "Proposal Pending Approval",
+    label: "Pending Approval",
   },
-  proposal: { status: "proposal", sub_status: "sent", order: 2, subOrder: 0, label: "Proposal" },
+  proposal: { status: "proposal", sub_status: "sent", order: 2, subOrder: 0, label: "Sent" },
   won: {
     status: "pre_sale_closed",
     sub_status: "won",

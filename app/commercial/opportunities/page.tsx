@@ -94,7 +94,7 @@ import { SavedViewPicker } from "@/components/commercial/saved-view-picker";
 import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
 import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
 import { proposalTrailsDeal } from "@/lib/commercial/opportunities/auto-advance-targets";
-import { daysFromTodayEt } from "@/lib/date-et";
+import { daysFromTodayEt, etDateOf } from "@/lib/date-et";
 import {
   changeOpportunityStatus,
   listCurrentStatusEnteredAtByOpp,
@@ -627,8 +627,8 @@ export default async function CommercialOpportunitiesPage({
   if (staleFilter) {
     opps = opps.filter((o) => {
       if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
-      const days = Math.floor((Date.now() - new Date(o.updated_at).getTime()) / MS_PER_DAY);
-      return Number.isFinite(days) && days >= STALE_OPP_DAYS;
+      const d = etDateOf(o.updated_at);
+      return d !== null && -daysFromTodayEt(d) >= STALE_OPP_DAYS;
     });
   }
   if (hotFilter) {
@@ -636,10 +636,8 @@ export default async function CommercialOpportunitiesPage({
       if (!(HOT_DEAL_ACTIVE_STATUSES as readonly string[]).includes(o.status)) return false;
       if (!o.bid_value_high_cents || o.bid_value_high_cents < HOT_DEAL_BID_CENTS) return false;
       if (!o.proposal_due_at) return false;
-      const daysUntilDue = Math.ceil(
-        (new Date(o.proposal_due_at).getTime() - Date.now()) / MS_PER_DAY
-      );
-      return Number.isFinite(daysUntilDue) && daysUntilDue >= 0 && daysUntilDue <= HOT_DEAL_DECISION_DAYS;
+      const daysUntilDue = daysFromTodayEt(o.proposal_due_at);
+      return daysUntilDue >= 0 && daysUntilDue <= HOT_DEAL_DECISION_DAYS;
     });
   }
   // Dashboard "Needs attention" deep-link filters — mirror the exact

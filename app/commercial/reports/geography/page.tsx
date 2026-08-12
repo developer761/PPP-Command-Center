@@ -92,7 +92,7 @@ export default async function GeographyReportPage() {
           </div>
 
           <p className="text-[11px] text-ppp-charcoal-400 leading-snug">
-            Location comes from each deal&rsquo;s job-site address (property city / state / zip). Contract, cost, and margin match the Job costs report. Margin is contract-based.
+            Location comes from each deal&rsquo;s job-site address (property city / state / zip). Contract, cost, and margin match the Job costs report. Margin is billed &minus; cost — the same basis as every deal page.
           </p>
         </>
       )}

@@ -60,6 +60,15 @@ export function parseDollarsToCents(s: string): number | null {
 /** "Jul 6, 2026" in America/New_York for invoice header dates. */
 export function fmtEtDate(iso: string | null): string {
   if (!iso) return "—";
+  // A bare DATE is already the calendar day somebody typed — `new Date` reads
+  // it as UTC midnight, which is the day BEFORE in Eastern. Parse it as local
+  // so the printed day matches the stored one. (Mirrors etDateOf.)
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (m) {
+    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString("en-US", {
+      year: "numeric", month: "short", day: "numeric",
+    });
+  }
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "—";
   return d.toLocaleDateString("en-US", {

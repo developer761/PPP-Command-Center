@@ -101,16 +101,18 @@ async function updateAction(formData: FormData) {
       dba: get("dba"),
       industry: get("industry"),
       rating: (get("rating") as "A" | "B" | "C" | null) ?? null,
-      billing_street: get("billing_street"),
-      billing_city: get("billing_city"),
-      billing_state: get("billing_state"),
-      billing_zip: get("billing_zip"),
-      // "Same as billing" toggle: if set, copy billing → site so the
-      // user doesn't retype. Site fields aren't rendered in this case.
-      site_street: get("site_same_as_billing") === "1" ? get("billing_street") : get("site_street"),
-      site_city: get("site_same_as_billing") === "1" ? get("billing_city") : get("site_city"),
-      site_state: get("site_same_as_billing") === "1" ? get("billing_state") : get("site_state"),
-      site_zip: get("site_same_as_billing") === "1" ? get("billing_zip") : get("site_zip"),
+      // Direction flipped with the sections: billing mirrors the COMPANY
+      // address now, not the other way round. The billing inputs are hidden
+      // when the box is ticked, so the fallback has to be explicit — reading
+      // the empty hidden inputs would blank billing instead of mirroring it.
+      billing_street: get("site_same_as_billing") === "1" ? get("site_street") : get("billing_street"),
+      billing_city: get("site_same_as_billing") === "1" ? get("site_city") : get("billing_city"),
+      billing_state: get("site_same_as_billing") === "1" ? get("site_state") : get("billing_state"),
+      billing_zip: get("site_same_as_billing") === "1" ? get("site_zip") : get("billing_zip"),
+      site_street: get("site_street"),
+      site_city: get("site_city"),
+      site_state: get("site_state"),
+      site_zip: get("site_zip"),
       phone: get("phone"),
       ap_phone: get("ap_phone"),
       website: get("website"),
@@ -268,36 +270,43 @@ export default async function EditCommercialAccountPage({
           />
         </Section>
 
-        <Section title="Billing address" anchorId="edit-billing">
+        {/* AUDIT 2026-08-12: the create form was reordered for Brendan
+            ("company address then billing address with an option to click same
+            as company address") and this page was not — so the toggle inherited
+            the new LABEL while keeping the old BEHAVIOUR, and read exactly
+            backwards: "Same as company address" while copying billing into the
+            company address. Second time an edit page was missed after a
+            create-form change; same class as the data loss. */}
+        <Section title="Company address" anchorId="edit-site">
           <CommercialAddressFields
-            prefix="billing"
-            defaults={{
-              street: sp.billing_street ?? (account.billing_street ?? ""),
-              city: sp.billing_city ?? (account.billing_city ?? ""),
-              state: sp.billing_state ?? (account.billing_state ?? ""),
-              zip: sp.billing_zip ?? (account.billing_zip ?? ""),
-            }}
-          />
-        </Section>
-
-        <Section title="Primary site address" anchorId="edit-site">
-          {/* Default the "Same as billing" toggle to ON when the existing
-              site address matches billing (common case for accounts
-              created before the toggle existed — they had to retype). */}
-          <CommercialSiteAddressToggle
-            defaultChecked={
-              duplicateCandidates.length > 0
-                ? sp.site_same === "1"
-                : (account.site_street ?? "") === (account.billing_street ?? "") &&
-                  (account.site_city ?? "") === (account.billing_city ?? "") &&
-                  (account.site_state ?? "") === (account.billing_state ?? "") &&
-                  (account.site_zip ?? "") === (account.billing_zip ?? "")
-            }
+            prefix="site"
             defaults={{
               street: sp.site_street ?? (account.site_street ?? ""),
               city: sp.site_city ?? (account.site_city ?? ""),
               state: sp.site_state ?? (account.site_state ?? ""),
               zip: sp.site_zip ?? (account.site_zip ?? ""),
+            }}
+          />
+        </Section>
+
+        <Section title="Billing address" anchorId="edit-billing">
+          {/* Ticked when billing already matches the company address — the
+              common case, and it means an untouched save cannot silently
+              un-link two addresses that were the same a moment ago. */}
+          <CommercialSiteAddressToggle
+            defaultChecked={
+              duplicateCandidates.length > 0
+                ? sp.site_same === "1"
+                : (account.billing_street ?? "") === (account.site_street ?? "") &&
+                  (account.billing_city ?? "") === (account.site_city ?? "") &&
+                  (account.billing_state ?? "") === (account.site_state ?? "") &&
+                  (account.billing_zip ?? "") === (account.site_zip ?? "")
+            }
+            defaults={{
+              street: sp.billing_street ?? (account.billing_street ?? ""),
+              city: sp.billing_city ?? (account.billing_city ?? ""),
+              state: sp.billing_state ?? (account.billing_state ?? ""),
+              zip: sp.billing_zip ?? (account.billing_zip ?? ""),
             }}
           />
         </Section>

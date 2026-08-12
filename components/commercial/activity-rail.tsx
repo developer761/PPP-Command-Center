@@ -69,7 +69,7 @@ export function ActivityRail({
         <h2 className="text-[13px] font-bold text-ppp-charcoal">Activity</h2>
         <Link
           href={`/commercial/opportunities/${oppId}?tab=activity&sub=tasks`}
-          className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] inline-flex items-center"
+          className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px] inline-flex items-center px-1 -mx-1"
         >
           Add task
         </Link>

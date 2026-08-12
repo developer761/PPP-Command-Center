@@ -1829,6 +1829,7 @@ export default async function OpportunityDetailPage({
                 status={opp.status}
                 subStatus={opp.sub_status}
                 oppId={opp.id}
+                hasWinDate={!!opp.decided_at}
                 manualNext={manualNext}
               />
             </div>

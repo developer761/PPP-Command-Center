@@ -116,13 +116,13 @@ export function SavedViewPicker({
           {chips.map((c) => (
             <span
               key={c.key}
-              className="inline-flex items-center gap-1 h-7 pl-2.5 pr-1 rounded-full bg-cc-brand-50 border border-cc-brand-200 text-[11.5px] font-semibold text-cc-brand-800"
+              className="inline-flex items-center gap-1 h-11 sm:h-7 pl-3 sm:pl-2.5 pr-1 rounded-full bg-cc-brand-50 border border-cc-brand-200 text-[11.5px] font-semibold text-cc-brand-800"
             >
               {c.label}
               <Link
                 href={c.removeHref}
                 aria-label={`Remove filter: ${c.label}`}
-                className="inline-flex items-center justify-center h-6 w-6 rounded-full hover:bg-cc-brand-100 text-cc-brand-700"
+                className="inline-flex items-center justify-center h-9 w-9 sm:h-6 sm:w-6 rounded-full hover:bg-cc-brand-100 text-cc-brand-700"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
                   <path d="M18 6 6 18M6 6l12 12" />

@@ -38,7 +38,11 @@ export type PathStage = {
   sub?: string | null;
 };
 
-type StageState = "passed" | "current" | "future" | "skipped" | "dropped";
+// `dropped` was never produced and is gone. `skipped` WAS never produced
+// either — stateFor only ever returned passed/current/future — so a deal that
+// jumped stages showed every stage behind it as completed, ticks and all,
+// claiming work that never happened. It is wired now.
+type StageState = "passed" | "current" | "future" | "skipped";
 
 /**
  * Sales ladder — Brendan's stages, with Qualifying kept at the front.
@@ -128,6 +132,11 @@ function PathRow({
   stages,
   currentKey,
   currentSub,
+  /** Stages behind the current one that were never actually entered. */
+  skipped,
+  /** With no current stage: is the ladder entirely AHEAD (a won job that has
+   *  not started) rather than entirely behind (a closed sale)? */
+  notStarted,
   /** Terminal outcomes rendered side by side at the tail. */
   outcomes,
   cta,
@@ -136,14 +145,25 @@ function PathRow({
   stages: PathStage[];
   currentKey: string | null;
   currentSub?: string | null;
+  skipped?: string[];
+  notStarted?: boolean;
   outcomes?: { key: string; label: string; reached: boolean }[];
   cta?: { label: string; href: string } | null;
 }) {
   const idx = stages.findIndex((s) => s.key === currentKey);
-  // Past the ladder entirely (won / lost / in delivery) — every stage is behind.
-  const currentIdx = currentKey === null ? stages.length : idx;
-  const stateFor = (i: number): StageState =>
-    i < currentIdx ? "passed" : i === currentIdx ? "current" : "future";
+  // `null` means "not on this ladder". For the SALES path that means the deal
+  // is past it (won/lost/in delivery), so everything is behind. For the
+  // DELIVERY path it means the job hasn't started, so everything is ahead —
+  // opposite ends, same absent key, which is why `notStarted` says which.
+  const currentIdx = currentKey === null ? (notStarted ? -1 : stages.length) : idx;
+  const stateFor = (i: number): StageState => {
+    if (i > currentIdx) return "future";
+    if (i === currentIdx) return "current";
+    // Behind the current stage — but did it actually go through here? A deal
+    // dragged from Proposal straight into delivery never passed Closed Won, and
+    // ticking it says the sale was recorded when it wasn't.
+    return skipped?.includes(stages[i]?.key ?? "") ? "skipped" : "passed";
+  };
 
   const shown = outcomes?.filter((o) => o.reached) ?? [];
   const anyOutcomeReached = shown.length > 0;
@@ -254,12 +274,16 @@ export function StatusPathBar({
   status,
   subStatus,
   oppId,
+  /** Was a decision date ever recorded? A job dragged into delivery on a verbal
+   *  yes has none, and never passed through Closed Won. */
+  hasWinDate,
   /** The next step a person can take when no artifact implies it. */
   manualNext,
 }: {
   status: string;
   subStatus: string | null;
   oppId: string;
+  hasWinDate?: boolean;
   manualNext?: { label: string; href: string } | null;
 }) {
   const won = isWon({ status, sub_status: subStatus });
@@ -285,19 +309,27 @@ export function StatusPathBar({
         // would print the same word twice.
         currentSub={null}
         outcomes={[
-          { key: "won", label: "Closed Won", reached: won || inDelivery },
+          // Reached only if it genuinely was — see `skipped` above.
+          { key: "won", label: "Closed Won", reached: won || (inDelivery && (decided || !!hasWinDate)) },
           { key: "lost", label: "Closed Lost", reached: lost },
         ]}
+        // A job in delivery that was never recorded as won never passed
+        // Closed Won — ticking it would claim a sale nobody logged, and the
+        // win date is what "wins this month" counts.
+        skipped={inDelivery && !decided && !hasWinDate ? ["won"] : []}
         cta={decided || inDelivery ? null : manualNext ?? null}
       />
       {(won || inDelivery) && (
         <PathRow
           title="Delivery"
           stages={DELIVERY_STAGES}
-          // A won deal that hasn't started sits BEFORE pre-construction, so
-          // nothing is current yet — the path reads as all-ahead rather than
-          // pretending the job is already being coordinated.
-          currentKey={inDelivery ? status : "pre_construction"}
+          // AUDIT: the comment said "nothing is current yet" and then passed
+          // "pre_construction" anyway, so a job won this morning showed
+          // Pre-Construction as underway before anyone had touched it. Null
+          // means nothing is highlighted — the whole path reads as ahead of
+          // you, which is what "won, not started" actually means.
+          currentKey={inDelivery ? status : null}
+          notStarted={!inDelivery}
           currentSub={inDelivery ? subStatus : null}
           cta={inDelivery ? null : manualNext ?? null}
         />

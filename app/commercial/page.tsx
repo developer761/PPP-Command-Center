@@ -31,7 +31,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
 import { isPostSaleProject, isLost, wasWonInPeriod, isOverdueProposal, isColdRfp, isFollowUpDue, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
-import { etTodayIso } from "@/lib/date-et";
+import { etTodayIso, etDateOf, daysFromTodayEt } from "@/lib/date-et";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, BILLABLE_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
@@ -55,18 +55,20 @@ export const dynamic = "force-dynamic";
 
 
 /** Days between two ISO dates (positive = a before b). Null-safe. */
-function daysBetween(fromIso: string | null | undefined, toIso: string): number | null {
-  if (!fromIso) return null;
-  const a = new Date(fromIso).getTime();
-  const b = new Date(toIso).getTime();
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return Math.floor((b - a) / 86_400_000);
+function daysBetween(fromIso: string | null | undefined): number | null {
+  // ET CALENDAR days, not a UTC subtraction. Two reasons the old math lied:
+  // a DST week is 23 or 25 hours so the floor rounded a day away, and a bare
+  // DATE ("2026-08-12") parses as UTC midnight, which is the 11th in Eastern.
+  // etDateOf leaves date-only strings alone and zone-shifts real timestamps.
+  const d = etDateOf(fromIso);
+  if (!d) return null;
+  return -daysFromTodayEt(d);
 }
 
 /** "3 days ago" / "in 2 weeks" / "today". */
 function relativeLabel(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const days = daysBetween(iso, new Date().toISOString());
+  const days = daysBetween(iso);
   if (days === null) return "—";
   if (days === 0) return "today";
   if (days === 1) return "yesterday";
@@ -201,13 +203,8 @@ export default async function CommercialDashboardPage() {
   const winsDelta = wonThisMonth.length - wonLastMonthToDate;
 
   // ─── NEEDS ATTENTION signals ───
-  const nowIso = new Date().toISOString();
   // One read of the ET calendar day for every needs-attention predicate below.
   const attentionToday = etTodayIso();
-  const todayEt = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
-  );
-  const todayEtIso = todayEt.toISOString();
   // Overdue proposals: open opp, proposal_due_at is in the past, and
   // no proposal was ever sent (heuristic: status still in Proposal-*
   // or earlier). We approximate by counting any open opp whose

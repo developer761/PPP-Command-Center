@@ -28,7 +28,7 @@ describe("dealValueCents", () => {
   });
 
   it("uses it through every delivery stage too", () => {
-    for (const s of ["pre_construction", "in_progress", "billing", "post_sale_closed"]) {
+    for (const s of ["pre_construction", "in_progress", "billing", "post_sale_closed"] as const) {
       expect(dealValueCents(opp({ status: s, accepted_contract_cents: 120_000_00, bid_value_low_cents: 90_000_00, bid_value_high_cents: 90_000_00 })), s).toBe(120_000_00);
     }
   });
