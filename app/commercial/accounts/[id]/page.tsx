@@ -1008,7 +1008,7 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
   // so a new (bid-less) deal doesn't read $0 here while the dashboard shows it.
   const weighted = weightedPipelineCents(opp, proposalTotal);
   const location = opp.property_street?.trim() || null;
-  const href = `/commercial/accounts/${accountId}?tab=projects&project=${opp.id}`;
+  const href = `/commercial/opportunities/${opp.id}`;
   // Stage tone — the accent stripe + pill read the pipeline stage at a glance
   // (Proposal = hot/brand, Estimating = blue, earlier = neutral).
   // Matches `statusPillTone` on this same page, which they used to contradict:
@@ -1157,61 +1157,6 @@ async function AccountProjectsTab({ accountId, sp }: { accountId: string; sp?: S
   );
 }
 
-/**
- * A single project's HOME, folded under the account (?tab=projects&project=…).
- * Read-only overview — status + contract KPIs — plus one card per production
- * tool (Change Orders / AIA Billing / Submittals / Closeout). Editing the
- * deal's details is an explicit "Edit opportunity details" button, so navigating here
- * never auto-pops the edit form (that was the 2026-07-29 bug).
- */
-const PROJECT_TOOLS: { key: string; label: string; docCategory: string; docLabel: string }[] = [
-  { key: "change-orders", label: "Change Orders", docCategory: "change_order", docLabel: "Change order" },
-  { key: "aia", label: "AIA Billing", docCategory: "aia_billing", docLabel: "AIA billing" },
-  { key: "costs", label: "Transactions", docCategory: "receipt", docLabel: "Receipt" },
-  { key: "submittals", label: "Submittals", docCategory: "submittal", docLabel: "Submittal" },
-  { key: "closeout", label: "Closeout & Warranty", docCategory: "closeout", docLabel: "Closeout" },
-  { key: "work-order", label: "Work Order", docCategory: "work_order", docLabel: "Work order" },
-];
-
-async function ProjectToolDocuments({ dealId, category, label }: { dealId: string; category: string; label: string }) {
-  const all = await listDocumentsForParent("opportunity", dealId);
-  const docs = all.filter((d) => d.category === category);
-  return (
-    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
-        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-surface shrink-0">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-        </span>
-        <h3 className="text-[13px] font-bold text-ppp-charcoal">{label} documents</h3>
-        <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{docs.length}</span>
-      </div>
-      <div className="p-4 space-y-3">
-        <CommercialFilesUploadForm parentType="opportunity" parentId={dealId} defaultCategory={category} />
-        {docs.length === 0 ? (
-          <p className="text-[11.5px] text-ppp-charcoal-500">No {label.toLowerCase()} documents yet — upload signed copies, PDFs + backup here. They also show on the opportunity&rsquo;s Documents tab.</p>
-        ) : (
-          <ul className="divide-y divide-ppp-charcoal-50">
-            {docs.map((d) => (
-              <li key={d.id}>
-                <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-3 py-2 px-1 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] group">
-                  <span className="min-w-0 flex items-center gap-2">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-                    <span className="min-w-0">
-                      <span className="block text-[12.5px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
-                      <span className="block text-[10.5px] text-ppp-charcoal-500 truncate">{d.notes ? d.notes : `${(d.size_bytes / 1024 / 1024).toFixed(1)} MB`}</span>
-                    </span>
-                  </span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  );
-}
-
 /** Quick-KPI lead strip for a deal sub-tab (B1) — a few tab-scoped stats and an
  *  optional progress bar, so each swapped panel opens with its numbers at a
  *  glance above the list. Distinct from the persistent deal financial header. */
@@ -1258,7 +1203,7 @@ export async function createDealInvoiceAction(formData: FormData) {
   // its own page in the Invoices section — so New-invoice from the Invoices list
   // stays in Invoices instead of teleporting to the account (Karan 2026-08).
   // Whitelisted to those two shapes so it can never be an open redirect.
-  const dealTab = `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}&dt=invoices`;
+  const dealTab = `/commercial/opportunities/${opp_id}?tab=invoices`;
   const rt = String(formData.get("return_to") ?? "");
   const back = rt.startsWith("/commercial/invoices") ? rt : dealTab;
   const mode = String(formData.get("mode") ?? "flat") === "milestones" ? "milestones" : "flat";
@@ -1559,7 +1504,7 @@ async function DealPnLView({ oppId, accountId }: { oppId: string; accountId: str
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         <div className="flex items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Collections</h3>
-          <Link href={`/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=invoices`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Invoices →</Link>
+          <Link href={`/commercial/opportunities/${oppId}?tab=invoices`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Invoices →</Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           <MiniFig label="Invoiced" value={formatCentsCompact(fin.invoicedCents)} tone="brand" sub={fin.invoicedCents > 0 ? undefined : "none yet"} />
@@ -1884,7 +1829,7 @@ async function quickFlipFromAccountAction(formData: FormData) {
     redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?just_closed=1`);
   }
   // Non-Won flip → land on the deal itself, not the retired opportunities list.
-  redirect(`/commercial/accounts/${account_id}?tab=projects&project=${opp_id}`);
+  redirect(`/commercial/opportunities/${opp_id}`);
 }
 
 /** Karan 2026-07-08 — inline "+ New opportunity" server action for the Account
@@ -2064,7 +2009,7 @@ async function createDealInlineAction(formData: FormData) {
   // B1 (Katie 2026-08): land on the new deal's drill-in with a distinct
   // deal-created flash (NOT `created=1`, which the Invoices sub-tab reads as
   // "Invoice created"). The drill-in Overview now shows the bid fields entered.
-  redirect(`/commercial/accounts/${account_id}?tab=projects&project=${result.opportunity.id}&deal_created=1`);
+  redirect(`/commercial/opportunities/${result.opportunity.id}?deal_created=1`);
 }
 
 /**
@@ -2507,7 +2452,7 @@ function RecentActivityCard({
                   <span className="font-medium">{describeActivity(entry)}</span>
                   <span className="text-ppp-charcoal-400">on</span>
                   <Link
-                    href={accountId ? `/commercial/accounts/${accountId}?tab=projects&project=${entry.opportunity_id}` : `/commercial/opportunities/${entry.opportunity_id}`}
+                    href={accountId ? `/commercial/opportunities/${entry.opportunity_id}` : `/commercial/opportunities/${entry.opportunity_id}`}
                     className="text-cc-brand-700 hover:text-cc-brand-800 underline break-words"
                   >
                     {entry.opportunity_title || "(untitled)"}
@@ -3717,7 +3662,7 @@ async function NewDealForm({
           <div>
             Another opportunity on this account already has the same client + location:{" "}
             <Link
-              href={`/commercial/accounts/${accountId}?tab=projects&project=${duplicateWarning.id}`}
+              href={`/commercial/opportunities/${duplicateWarning.id}`}
               className="underline decoration-amber-500 underline-offset-2 hover:text-amber-950"
             >
               {duplicateWarning.label}
@@ -4502,7 +4447,7 @@ function AccountOpportunityRow({
           submittals awaiting, primary lead, days-stuck. No cluttered 6-chip soup
           on every row — the empty state is quiet. */}
       <Link
-        href={`/commercial/accounts/${accountId}?tab=projects&project=${opp.id}`}
+        href={`/commercial/opportunities/${opp.id}`}
         className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px] touch-manipulation"
       >
         <div className="flex items-start justify-between gap-3">
@@ -5049,7 +4994,7 @@ async function AccountProposalsTab({
                 <header className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap bg-surface">
                   <div className="min-w-0">
                     <Link
-                      href={`/commercial/accounts/${accountId}?tab=projects&project=${dealId}`}
+                      href={`/commercial/opportunities/${dealId}`}
                       className="block truncate text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700"
                       title={dealTitle}
                     >
@@ -5217,7 +5162,7 @@ async function AccountProposalsTab({
                                 tab with no link). */}
                             {r.status === "won" && (
                               <Link
-                                href={`/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=invoices#deal-invoices`}
+                                href={`/commercial/opportunities/${dealId}?tab=invoices#deal-invoices`}
                                 className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 border-r border-ppp-charcoal-100 touch-manipulation"
                                 title="Create an invoice for this opportunity"
                                 aria-label={`Bill this deal from revision ${r.revision_number}`}
@@ -6120,7 +6065,7 @@ async function AccountInvoicesTab({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <Link
-                          href={`/commercial/accounts/${accountId}?tab=projects&project=${opp.id}&dt=invoices`}
+                          href={`/commercial/opportunities/${opp.id}?tab=invoices`}
                           title={derivedOppName(opp, null)}
                           className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
                         >
@@ -6534,7 +6479,7 @@ async function AccountKpisTab({
         tone: (pctBilled >= 100 ? "emerald" : "blue") as ChartTone,
         valueLabel: formatCentsCompact(contract),
         sub: `${formatCentsCompact(billed)} billed · ${pctBilled}%`,
-        href: `/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}`,
+        href: `/commercial/opportunities/${p.opp.id}`,
       };
     });
 

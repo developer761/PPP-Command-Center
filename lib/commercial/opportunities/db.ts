@@ -542,6 +542,9 @@ export async function archiveOpportunity(
   // Audit trail (2026-07-28 re-audit) — archiving is a pipeline-visibility
   // change and must record who/when, like every other mutation.
   await logUpdate("commercial_opportunities", id, { archived_at: null }, { archived_at: "now" }, actorUserId);
+  // Mirror onto the deal's project (migration 131) — archiving hid the deal but
+  // left its project live, so an archived job's contract value stayed in scope.
+  await syncArchivedProject(id);
   return { ok: true };
 }
 
@@ -576,5 +579,23 @@ export async function unarchiveOpportunity(
     .not("archived_at", "is", null);
   if (error) return { ok: false, error: error.message };
   await logUpdate("commercial_opportunities", id, { archived_at: b.archived_at }, { archived_at: null }, actorUserId);
+  await syncArchivedProject(id);
   return { ok: true };
+}
+
+/**
+ * Re-reconcile the deal's project after an archive / unarchive.
+ *
+ * Same single routine the delete and restore paths use — it re-reads the deal
+ * and mirrors `archived_at`, so there is one copy of the rule rather than four.
+ * Best-effort: archiving must never fail on the project row.
+ */
+async function syncArchivedProject(id: string): Promise<void> {
+  try {
+    const { ensureProjectForOpportunity } = await import("@/lib/commercial/projects/ensure");
+    const res = await ensureProjectForOpportunity(id);
+    if (!res.ok) console.warn("[opportunities] project archive sync failed:", res.error);
+  } catch (err) {
+    console.warn("[opportunities] project archive sync threw:", err);
+  }
 }

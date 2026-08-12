@@ -420,6 +420,18 @@ export async function softDeleteCommercialOpportunity(
     console.warn("[opportunities] field-ops cascade delete failed:", err);
   }
 
+  // Cascade: the PROJECT (migration 131). Caught by the parallel session's audit
+  // of the restructure — this list tombstoned the invoices, the costs and the
+  // crew schedule but not the record that now carries the CONTRACT VALUE, so a
+  // deleted deal left a live project holding money behind it. Invisible only
+  // because nothing lists projects yet, which makes it exactly the kind of stale
+  // number that corrupts a total the day the project list ships.
+  //
+  // `ensureProjectForOpportunity` re-reads the deal and mirrors `deleted_at`
+  // onto the project, so the same call is correct on delete, restore, archive
+  // and unarchive — one routine, no fourth copy of the rule to drift.
+  await syncProjectForOpportunity(id);
+
   await logDelete("commercial_opportunities", id, before, deletedByUserId);
   void after; // logDelete captures the row
   return { ok: true };
@@ -505,6 +517,30 @@ export async function restoreCommercialOpportunity(
     console.warn("[opportunities] field-ops cascade restore failed:", err);
   }
 
+  // …and un-tombstone the project, so Undo is symmetric with the delete above.
+  await syncProjectForOpportunity(id);
+
   await logUpdate("commercial_opportunities", id, before, after, restoredByUserId);
   return { ok: true };
+}
+
+/**
+ * Make the deal's project row match the deal again.
+ *
+ * Delete, restore, archive and unarchive all change a flag the project mirrors,
+ * and all four used to leave it untouched. `ensureProjectForOpportunity` re-reads
+ * the deal and reconciles, so one call is right on every path — the alternative
+ * was four copies of the mirroring rule, which is how they drift.
+ *
+ * Best-effort: a deal must never fail to delete because its project row
+ * wouldn't update. Dynamic import keeps the module cycle broken.
+ */
+async function syncProjectForOpportunity(id: string): Promise<void> {
+  try {
+    const { ensureProjectForOpportunity } = await import("@/lib/commercial/projects/ensure");
+    const res = await ensureProjectForOpportunity(id);
+    if (!res.ok) console.warn("[opportunities] project sync failed:", res.error);
+  } catch (err) {
+    console.warn("[opportunities] project sync threw:", err);
+  }
 }
