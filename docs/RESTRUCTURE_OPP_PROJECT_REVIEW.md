@@ -716,3 +716,8 @@ ProjectToolbar are gone, the replacements (`StatusPathBar` 1804, `StageKpiStrip`
 ZERO render sites — the grids that used it were removed but the component definition was left,
 so it's now dead (tsc doesn't error on an unused function). Remove it to match the commit's own
 intent (zero dead duplication).
+
+---
+
+## Post-audit punch list (2026-08-12)
+Full multi-persona post-audit complete — 47 verified findings (6+ high). See `docs/POST_AUDIT_PUNCHLIST_2026_08.md`. Plus `7e462d9` audit: DATA-LOSS (edit nulls proposed_start/end) + display-still-shows nit, folded into the punch list.
