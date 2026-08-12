@@ -397,10 +397,15 @@ The part that decides whether this lands clean.
    board, the debrief and the repair screen each need their own copy.
 2. **Idempotency.** Status can bounce won → lost → won. `UNIQUE(opportunity_id)` plus
    an upsert; never a second project.
-3. **Deals that skip the win.** `WARN_TRANSITIONS` exists precisely because a deal can
-   be dragged from `proposal` straight into `in_progress`. Project creation must fire
-   on **entering any delivery status**, not on the `won` transition alone. Missing this
-   reproduces the "won, working, invisible" bug from the decided_at cluster.
+3. **Trigger = WON **or** in a delivery status. Corrected 2026-08-12 by the pre-flight.**
+   An earlier draft said "entering any delivery status." **That is wrong and would have
+   missed 7 of the 9 real deals.** Live data: only 1 deal sits in `pre_construction`,
+   while **7 sit in `pre_sale_closed/won`** and are already carrying invoices, AIA
+   applications, work orders, submittals and closeout packages. Being won *is* the
+   trigger — which is exactly what Karan's notebook said (`= Closed Won └ Creates
+   Project`) and what a ladder-position rule fails to capture. Delivery statuses are an
+   additional entry point (a deal dragged past the win, per `WARN_TRANSITIONS`), not the
+   primary one.
 4. **Un-winning a deal that has a project.** Do **not** delete the project — it may
    hold invoices. Mark it `archived_at` and warn. (`feedback_never_reject_only_warn`.)
 5. **Backfill.** One project per won/delivering/closed opp, including legacy rows whose
@@ -504,6 +509,40 @@ The part that decides whether this lands clean.
     email archive, notes and tasks. If it needs its own store, the design is wrong.
 41. **The rail must not fire N queries per section.** Month grouping happens after one
     fetch, not per month.
+
+---
+
+## 8b. Pre-flight against live data (2026-08-12)
+
+Run before planning the backfill, via the service key. Numbers are real, not estimated.
+
+| | |
+|---|---|
+| Opportunities | **23** (11 soft-deleted, 0 archived) |
+| Accounts / Proposals | 19 / 52 |
+| Status spread | `qualifying` 9 · `pre_sale_closed` 9 · `estimating` 4 · `pre_construction` 1 |
+| Delivery rows | 63 across the 8 tables |
+| **Orphans** (delivery row → missing opp) | **0** |
+| **Projects the backfill creates** | **9** |
+
+**Four findings that change the build:**
+
+1. **🔴 Migration 126 is HALF-APPLIED.** `commercial_opportunity_status_log.source`
+   landed; **`commercial_opportunities.status_user_set_at` did not.** The R25 retry
+   means writes don't fail — they silently drop the column — so this degraded quietly:
+   `humanDecidedMoreRecently` can never fire, and **the auto-advance engine can
+   overwrite a person's manual status change.** Exactly the sub-status case migration
+   126's own comment describes. **Re-run 126 (idempotent) before step 1** — project
+   creation hangs off the same writer.
+2. **🟠 The creation trigger was wrong** — see §8.3, corrected.
+3. **🟢 The backfill is 9 rows.** Step 1 was rated the high-risk step on the assumption
+   of a populated database. It isn't populated. Risk collapses; be decisive.
+4. **🟡 Schema traps:** the column is **`title`, not `name`**. Opportunities are
+   **soft-deleted** via `deleted_at` (11 of 23) — the backfill creates projects for
+   these too, inheriting the flag, so money rows never dangle.
+
+One data oddity, not a blocker: a `qualifying/solicitation` deal carries 8 invoices.
+Test data, and the won-or-carries-artifacts union rule catches it either way.
 
 ---
 
