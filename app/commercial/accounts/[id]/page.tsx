@@ -381,7 +381,12 @@ const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
   // 2026-08: Overview (all-deal KPI dashboard) is the default landing.
   if (!raw) return { primary: "overview", sub: null };
-  if (raw === "overview" || raw === "deals" || raw === "documents" || raw === "people" || raw === "proposals" || raw === "activity" || raw === "invoices" || raw === "projects") {
+  // `projects` was a SECOND list of the same deals, split by phase. Step 6
+  // collapsed it into the one Opportunities list — an account shows its deals
+  // once. Bookmarks and the two sidebar tool indexes still send `?tab=projects`,
+  // so it aliases rather than rendering an empty tab.
+  if (raw === "projects") return { primary: "deals", sub: null };
+  if (raw === "overview" || raw === "deals" || raw === "documents" || raw === "people" || raw === "proposals" || raw === "activity" || raw === "invoices") {
     return { primary: raw, sub: null };
   }
   // Legacy links remap onto the 3 leaf tabs so bookmarks/bells don't 404:
@@ -851,9 +856,7 @@ export default async function CommercialAccountDetailPage({
           appliedNote={typeof sp.team_applied === "string" ? sp.team_applied : undefined}
         />
       )}
-      {tab === "projects" && (
-        <AccountProjectsTab accountId={account.id} sp={sp} />
-      )}
+
     </div>
   );
 }
@@ -1090,76 +1093,6 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
 // bookmark, bell link and back-href keeps working.
 const DEAL_TOOL_KEYS = ["work-order", "submittals", "change-orders", "aia", "costs", "transactions", "closeout"];
 
-async function AccountProjectsTab({ accountId, sp }: { accountId: string; sp?: SPShape }) {
-  // The deal DRILL-IN used to live here — a full project view folded inside the
-  // account page, plus the tool/tab normalisation that fed it. Restructure step
-  // 3 (2026-08-12) gave a deal its own page, and `?tab=projects&project=<uuid>`
-  // redirects there before this component is reached. What remains is what an
-  // account should be: the list of its deals.
-
-  // includeClosed so finished jobs still show on the account (they were
-  // vanishing into "No projects yet" — 2026-07-29 audit finding).
-  const projects = await listProjects({ accountId, includeClosed: true });
-  const active = projects.filter((p) => p.opp.status !== "post_sale_closed");
-  const completed = projects.filter((p) => p.opp.status === "post_sale_closed");
-  const summary = summarizeProduction(active);
-
-  if (projects.length === 0) {
-    return (
-      <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
-        <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-400">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 18h20 M4 18v-3a8 8 0 0 1 16 0v3 M10 6.3V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2.3" /></svg>
-        </span>
-        <p className="text-sm font-semibold text-ppp-charcoal">No projects yet</p>
-        <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">An opportunity becomes a project once it&rsquo;s Won. Win one from the Opportunities tab and it&rsquo;ll show here with its change orders, AIA billing, submittals, and closeout.</p>
-        <Link href={`/commercial/accounts/${accountId}?tab=opportunities`} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
-          Go to Opportunities
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
-        </Link>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {active.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {/* Active-jobs scope (excludes closed) — deliberately narrower than the
-              Invoices tab's account-wide AR rollup. Each money tile says "active"
-              so the two don't read as the same number (2026-08 money audit #7). */}
-          <ProjectStat label="Under contract" value={formatCentsCompact(summary.contractValueCents)} sub={`${active.length} active project${active.length === 1 ? "" : "s"}`} />
-          <ProjectStat label="Invoiced · active" value={formatCentsCompact(summary.invoicedCents)} tone="emerald" sub={`${formatCentsCompact(summary.paidCents)} paid`} />
-          <ProjectStat label="Left to bill" value={formatCentsCompact(summary.leftToBillCents)} sub="active jobs" />
-          <ProjectStat label="Outstanding · active" value={formatCentsCompact(summary.outstandingCents)} sub={summary.pendingCoCount > 0 ? `${summary.pendingCoCount} CO${summary.pendingCoCount === 1 ? "" : "s"} pending` : "open balance"} tone={summary.outstandingCents > 0 ? "amber" : undefined} />
-        </div>
-      )}
-      {active.length > 0 && (
-        <ul className="space-y-2.5">
-          {active.map((p) => (
-            <ProjectCard key={p.opp.id} p={p} hideAccountName />
-          ))}
-        </ul>
-      )}
-      {completed.length > 0 && (
-        <details className="group" open={active.length === 0}>
-          <summary className="list-none cursor-pointer flex items-center gap-2 text-[12px] font-semibold text-ppp-charcoal-600 min-h-[44px] sm:min-h-[36px] select-none">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
-            Completed projects · {completed.length}
-          </summary>
-          <ul className="space-y-2.5 mt-2">
-            {completed.map((p) => (
-              <ProjectCard key={p.opp.id} p={p} hideAccountName />
-            ))}
-          </ul>
-        </details>
-      )}
-    </div>
-  );
-}
-
-/** Quick-KPI lead strip for a deal sub-tab (B1) — a few tab-scoped stats and an
- *  optional progress bar, so each swapped panel opens with its numbers at a
- *  glance above the list. Distinct from the persistent deal financial header. */
 function DealPanelLead({
   stats,
   bar,

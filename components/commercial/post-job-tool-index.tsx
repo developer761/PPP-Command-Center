@@ -107,7 +107,7 @@ function AccountGroup({
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <div className={`flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100 bg-gradient-to-br ${a.groupTint}`}>
         <AccountAvatar accountId={group.accountId} name={group.accountName} size="xs" />
-        <Link href={`/commercial/accounts/${group.accountId}?tab=projects`} className="text-[13px] font-bold text-ppp-charcoal truncate hover:text-cc-brand-700">
+        <Link href={`/commercial/accounts/${group.accountId}?tab=deals`} className="text-[13px] font-bold text-ppp-charcoal truncate hover:text-cc-brand-700">
           {group.accountName}
         </Link>
         <span className="ml-auto shrink-0 text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums">
