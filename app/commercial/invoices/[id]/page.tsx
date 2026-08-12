@@ -882,7 +882,7 @@ export async function InvoiceDetailView({
                   sheet never opens (archived deals are excluded from the
                   account tab's list) and the user lands on a bare page. */}
               <Link
-                href={`/commercial/accounts/${opp.account_id}?tab=opportunities&edit=${opp.id}${opp.archived_at ? "&archived=1" : ""}#deal-row-${opp.id}`}
+                href={`/commercial/accounts/${opp.account_id}?tab=projects&project=${opp.id}${opp.archived_at ? "&archived=1" : ""}`}
                 className="text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2"
               >
                 {derivedOppName(opp, account?.company_name ?? null)}
@@ -1039,7 +1039,7 @@ export async function InvoiceDetailView({
                   {/* Route to the opportunity's real home (account drill-in
                       sheet), archived-safe — /opportunities/[id] bounces. */}
                   <Link
-                    href={`/commercial/accounts/${opp.account_id}?tab=opportunities&edit=${opp.id}${opp.archived_at ? "&archived=1" : ""}#deal-row-${opp.id}`}
+                    href={`/commercial/accounts/${opp.account_id}?tab=projects&project=${opp.id}${opp.archived_at ? "&archived=1" : ""}`}
                     className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2"
                   >
                     {derivedOppName(opp, account?.company_name ?? null)}
