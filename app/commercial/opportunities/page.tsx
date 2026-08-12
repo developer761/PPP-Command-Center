@@ -106,7 +106,6 @@ import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
-import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
 import { HBars } from "@/components/commercial/charts";
@@ -496,8 +495,12 @@ export default async function CommercialOpportunitiesPage({
   // filters reads better at that count. Kanban stays available via
   // ?view=kanban for the Pre-Contract subset.
   const viewRaw = pickFirst(sp.view);
-  const viewMode: "list" | "kanban" | "customer" =
-    viewRaw === "kanban" ? "kanban" : viewRaw === "customer" ? "customer" : "list";
+  // Step 8: KANBAN IS RETIRED. Dragging a card between columns is manual status
+  // entry, and status advances on its own now from what has actually been built
+  // and sent (auto-advance, 2026-08-11) — so the board offered a second way to
+  // set a value the engine already owns, and the engine wins on the next render.
+  // A stale ?view=kanban link lands on the list rather than 404ing.
+  const viewMode: "list" | "customer" = viewRaw === "customer" ? "customer" : "list";
 
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently updated" },
@@ -741,7 +744,6 @@ export default async function CommercialOpportunitiesPage({
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
   if (viewMode === "list") baseParams.set("view", "list");
-  else if (viewMode === "kanban") baseParams.set("view", "kanban");
   else if (viewMode === "customer") baseParams.set("view", "customer");
   // Attention deep-link filters live in baseParams so every builder that
   // clones it preserves them automatically (unlike stale/hot/archived,
@@ -756,7 +758,7 @@ export default async function CommercialOpportunitiesPage({
   // builders, so sort/clear/drill/source/customer/export silently dropped
   // `archived` (export even produced the wrong dataset). All builders now
   // re-add all three sticky filters.
-  const viewToggleHref = (target: "list" | "kanban" | "customer") => {
+  const viewToggleHref = (target: "list" | "customer") => {
     const p = new URLSearchParams(baseParams);
     p.delete("view");
     p.set("view", target);
@@ -819,7 +821,6 @@ export default async function CommercialOpportunitiesPage({
     // 2026-07-21 audit #5: preserve kanban too — was list-only, so a
     // kanban user changing sort got kicked back to list view.
     if (viewMode === "list") p.set("view", "list");
-    else if (viewMode === "kanban") p.set("view", "kanban");
     else if (viewMode === "customer") p.set("view", "customer");
     if (newSort !== "recent") p.set("sort", newSort);
     const qs = p.toString();
@@ -838,7 +839,6 @@ export default async function CommercialOpportunitiesPage({
     if (coldRfpFilter) p.set("coldrfp", "1");
     if (followupFilter) p.set("followup", "1");
     if (viewMode === "list") p.set("view", "list");
-    else if (viewMode === "kanban") p.set("view", "kanban");
     else if (viewMode === "customer") p.set("view", "customer");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
@@ -1104,7 +1104,6 @@ export default async function CommercialOpportunitiesPage({
           </div>
           {validColumn && <input type="hidden" name="status" value={validColumn} />}
           {viewMode === "list" && <input type="hidden" name="view" value="list" />}
-          {viewMode === "kanban" && <input type="hidden" name="view" value="kanban" />}
           {hotFilter && <input type="hidden" name="hot" value="1" />}
           {staleFilter && <input type="hidden" name="stale" value="1" />}
           {sourceSet.size > 0 && (
@@ -1129,21 +1128,6 @@ export default async function CommercialOpportunitiesPage({
                 <path d="M3 21h18 M6 21V7l6-4 6 4v14 M10 9h4 M10 13h4 M10 17h4" />
               </svg>
               By customer
-            </Link>
-            <Link
-              href={viewToggleHref("kanban")}
-              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1.5 touch-manipulation border-l border-ppp-charcoal-200 ${
-                viewMode === "kanban"
-                  ? "bg-cc-brand-50 text-cc-brand-700"
-                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-              }`}
-              title="Kanban — drag opportunities through the pipeline"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <rect x="3" y="3" width="7" height="18" rx="1" />
-                <rect x="14" y="3" width="7" height="12" rx="1" />
-              </svg>
-              Kanban
             </Link>
             <Link
               href={viewToggleHref("list")}
@@ -1391,21 +1375,6 @@ export default async function CommercialOpportunitiesPage({
           accountById={accountById}
           proposalTotalByOpp={proposalTotalByOpp}
           sheetHref={customerSheetHref}
-        />
-      ) : viewMode === "kanban" ? (
-        <KanbanBoard
-          opps={opps}
-          accountById={accountById}
-          proposalTotalByOpp={proposalTotalByOpp}
-          currentProposalByOpp={currentProposalByOpp}
-          statusEnteredAtMap={statusEnteredAtMap}
-          taskStatsMap={taskStatsMap}
-          primaryLeadMap={primaryLeadMap}
-          fileCountMap={fileCountMap}
-          submittalCountMap={submittalCountMap}
-          finishCountMap={finishCountMap}
-          sheetHref={customerSheetHref}
-          flipReturnHref={flipReturnHref}
         />
       ) : (
         (() => {
@@ -2211,554 +2180,6 @@ function CustomerBoardRow({
   );
 }
 
-/**
- * Kanban board — same shape as the prior implementation. Columns +
- * terminal drop targets + overflow drawer preserved unchanged. Only
- * the drag-hint header re-worded slightly for clarity.
- */
-function KanbanBoard({
-  opps,
-  accountById,
-  proposalTotalByOpp,
-  currentProposalByOpp,
-  statusEnteredAtMap,
-  taskStatsMap,
-  primaryLeadMap,
-  fileCountMap,
-  submittalCountMap,
-  finishCountMap,
-  sheetHref,
-  flipReturnHref,
-}: {
-  opps: CommercialOpportunity[];
-  accountById: Map<string, CommercialAccount>;
-  /** See CustomerBoard — same bid-less-deal fallback. */
-  proposalTotalByOpp: Map<string, number>;
-  /** Newest live revision per deal, for the "proposal is behind" card badge. */
-  currentProposalByOpp: Map<string, { status: string; revision: number; totalCents: number }>;
-  statusEnteredAtMap: Map<string, string>;
-  taskStatsMap: Map<string, { open: number; overdue: number; due_soon: number }>;
-  primaryLeadMap: Map<string, { user_email: string; user_full_name: string | null; role: string }>;
-  fileCountMap: Map<string, number>;
-  submittalCountMap: Map<string, { total: number; awaiting_response: number }>;
-  finishCountMap: Map<string, number>;
-  sheetHref: (accountId: string, focus?: string) => string;
-  flipReturnHref: string;
-}) {
-  // Karan 2026-08: the board's PRE-CONTRACT lane is the flat six he named —
-  //   Qualifying → Request for Proposal → Estimating → Proposal →
-  //   Closed Won → Closed Lost
-  // and POST-CONTRACT stays the delivery tree:
-  //   Pre-Construction → In Progress → Billing → Closed
-  //
-  // These are DISPLAY columns over the (status, sub_status) tuple — no
-  // migration. RFP was already a sub-status of `qualifying`; the old
-  // "Proposal Drafted"/"Proposal Sent" split was one stage wearing two
-  // hats. columnKeyForOpp (lib/commercial/opportunities/kanban-columns)
-  // owns the tuple→column mapping and COLUMN_TARGET owns column→tuple,
-  // so the board and the drop handler can't drift apart.
-  const OPEN_COLUMNS_PRE_SALE: readonly string[] = OPEN_COLUMN_KEYS.filter((k) =>
-    ["qualifying", "rfp", "estimating", "proposal"].includes(k)
-  );
-  const OPEN_COLUMNS_POST_SALE: readonly string[] = OPEN_COLUMN_KEYS.filter((k) =>
-    ["pre_construction", "in_progress", "billing"].includes(k)
-  );
-  const OPEN_COLUMNS: readonly string[] = OPEN_COLUMN_KEYS;
-  // Terminal drop targets — Won + Lost sit in the pre-contract closed
-  // cluster (a bid decision is the last pre-contract event). Post-sale
-  // Closed has no column of its own on the board; those deals fall into
-  // the overflow drawer so the strip stays about live work.
-  const TERMINAL_COLUMNS: readonly string[] = TERMINAL_COLUMN_KEYS;
-  const TERMINAL_DISPLAY_CAP = 10;
-
-  /** Per-account bucketer — extracts the current global-kanban logic
-   *  into a helper so we can call it per-account. Returns the same
-   *  {byStatus, overflowClosed} shape the render expects.
-   *
-   *  Karan 2026-07-15 (round 5): powers the per-account mini-kanban
-   *  restructure — each account gets its own instance of this
-   *  bucketing so cards from Account A never mix with Account B in
-   *  any column. */
-  const bucketOpps = (
-    subset: CommercialOpportunity[]
-  ): {
-    byStatus: Map<string, CommercialOpportunity[]>;
-    overflowClosed: CommercialOpportunity[];
-  } => {
-    const bs = new Map<string, CommercialOpportunity[]>();
-    for (const s of OPEN_COLUMNS) bs.set(s, []);
-    for (const s of TERMINAL_COLUMNS) bs.set(s, []);
-    const overflow: CommercialOpportunity[] = [];
-    for (const o of subset) {
-      // columnKeyForOpp is TOTAL — an unrecognised status lands in
-      // Qualifying rather than vanishing. The old chain of else-ifs had
-      // no final else, so a legacy v1 row that escaped migration 052
-      // (status "rfp"/"follow_up"/"won" as a TOP-LEVEL value) was
-      // silently dropped from the board with no trace.
-      const col = columnKeyForOpp(o.status, o.sub_status);
-      // `?? overflow` rather than `!`: this renders inside a server
-      // component, so if a future column is added to columnKeyForOpp
-      // without being added to OPEN_COLUMN_KEYS, a non-null assertion
-      // turns a misplaced card into a TypeError — i.e. a blank pipeline
-      // page for Alex. Worst case here is a card in the overflow drawer.
-      (bs.get(col) ?? overflow).push(o);
-    }
-    for (const s of TERMINAL_COLUMNS) {
-      const list = bs.get(s) ?? [];
-      list.sort((a, b) => (b.decided_at ?? "").localeCompare(a.decided_at ?? ""));
-      if (list.length > TERMINAL_DISPLAY_CAP) {
-        const visible = list.slice(0, TERMINAL_DISPLAY_CAP);
-        const overf = list.slice(TERMINAL_DISPLAY_CAP);
-        bs.set(s, visible);
-        overflow.push(...overf);
-      }
-    }
-    return { byStatus: bs, overflowClosed: overflow };
-  };
-
-  // Group opps by account for per-account mini-kanbans. Sort accounts
-  // by open-count desc, then alpha. Missing account (shouldn't happen
-  // in prod but defensive) lands in a "__none__" bucket.
-  type AccountKanbanBucket = {
-    accountId: string;
-    account: CommercialAccount | null;
-    opps: CommercialOpportunity[];
-    byStatus: Map<string, CommercialOpportunity[]>;
-    overflowClosed: CommercialOpportunity[];
-    openCount: number;
-    weightedCents: number;
-  };
-  const accountGroups = new Map<string, AccountKanbanBucket>();
-  for (const o of opps) {
-    const key = o.account_id || "__none__";
-    let g = accountGroups.get(key);
-    if (!g) {
-      g = {
-        accountId: key,
-        account: accountById.get(key) ?? null,
-        opps: [],
-        byStatus: new Map(),
-        overflowClosed: [],
-        openCount: 0,
-        weightedCents: 0,
-      };
-      accountGroups.set(key, g);
-    }
-    g.opps.push(o);
-  }
-  const globalOverflow: CommercialOpportunity[] = [];
-  for (const g of accountGroups.values()) {
-    const bucketed = bucketOpps(g.opps);
-    g.byStatus = bucketed.byStatus;
-    g.overflowClosed = bucketed.overflowClosed;
-    globalOverflow.push(...bucketed.overflowClosed);
-    // Open count = anything not in pre_sale_closed / post_sale_closed
-    g.openCount = g.opps.filter(
-      (o) => o.status !== "pre_sale_closed" && o.status !== "post_sale_closed"
-    ).length;
-    // Weighted via the shared helper (2026-07-28 re-audit) — the inline
-    // midpoint math here re-introduced the halved-bid bug (a high-only opp
-    // yielded high/2), disagreeing with the header KPI which uses the helper
-    // (single-sided value = point estimate, not halved).
-    // Same pre-sale-only basis as the header KPI and the customer board —
-    // excluding just the two closed statuses left delivery-stage deals in,
-    // so an account's kanban rollup disagreed with the KPI above it.
-    g.weightedCents = g.opps
-      .filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status))
-      .reduce((sum, o) => sum + weightedPipelineCents(o, proposalTotalByOpp.get(o.id)), 0);
-  }
-  // Karan 2026-07-15 edge-case: an account whose opps are ALL finished would
-  // render a wall of empty columns. Filter those accounts off the live board —
-  // they're still reachable through the overflow drawer at the bottom.
-  //
-  // Counted over the OPEN columns only. Once `post_sale_closed` became a real
-  // column, a fully-closed account had a non-empty bucket again and came
-  // straight back onto the board: seven empty columns beside one Completed
-  // cluster, which is the exact thing this filter exists to prevent.
-  const accountBuckets = Array.from(accountGroups.values())
-    .filter((a) => OPEN_COLUMN_KEYS.some((k) => (a.byStatus.get(k)?.length ?? 0) > 0))
-    .sort((a, b) => {
-      if (a.openCount !== b.openCount) return b.openCount - a.openCount;
-      const an = a.account?.company_name ?? "";
-      const bn = b.account?.company_name ?? "";
-      return an.localeCompare(bn);
-    });
-  // Column labels + tone tokens. Each column gets a top accent stripe
-  // in the header (like the CustomerBoardRow left border) so the eye
-  // catches the stage identity in one glance.
-  const COLUMN_META: Record<
-    string,
-    { label: string; accent: string; head: string; empty: string }
-  > = {
-    // 2026-07-28 color audit: a pipeline reads as a PROGRESSION, not a rainbow.
-    // Pre-sale = deepening ppp-blue; crossing into post-sale (won) = deepening
-    // emerald. No raw slate/indigo/teal/cyan/fuchsia, no cc-brand-red.
-    qualifying: {
-      label: "Qualifying",
-      accent: "bg-ppp-charcoal-400",
-      head: "bg-surface",
-      empty: "Drop a bid here",
-    },
-    rfp: {
-      label: "Request for Proposal",
-      accent: "bg-ppp-blue-300",
-      head: "bg-surface",
-      empty: "Drop when the RFP lands",
-    },
-    estimating: {
-      label: "Estimating",
-      accent: "bg-ppp-blue-400",
-      head: "bg-surface",
-      empty: "Drop while we're pricing",
-    },
-    proposal: {
-      label: "Proposal",
-      accent: "bg-ppp-blue-600",
-      head: "bg-surface",
-      empty: "Drop once the proposal is out to GC",
-    },
-    pre_construction: {
-      label: "Pre-Construction",
-      accent: "bg-emerald-400",
-      head: "bg-surface",
-      empty: "Drop when scheduling with GC",
-    },
-    in_progress: {
-      label: "In Progress",
-      accent: "bg-emerald-500",
-      head: "bg-surface",
-      empty: "Drop when crews start",
-    },
-    billing: {
-      label: "Billing",
-      accent: "bg-emerald-600",
-      head: "bg-surface",
-      empty: "Drop when we're closing out",
-    },
-  };
-  const bidRangeTotal = (list: CommercialOpportunity[]) =>
-    list.reduce(
-      (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
-      0
-    );
-  // Karan 2026-07-15 (round 5): per-account mini-kanban restructure.
-  // Each account gets its own collapsible section with its own kanban
-  // strip (mirrors the /commercial/proposals AccountMiniKanbans
-  // layout). Cards from Account A can't visually mingle with Account
-  // B's cards in the same column — deals belong to accounts, and the
-  // eye can scan "everything happening for THIS customer" without
-  // filtering.
-  //
-  // Single KanbanDnDProvider wraps ALL account sections so drag state
-  // is shared. Dropping a card in another account's column would be a
-  // no-op on the DB (opp.account_id doesn't change on status flip) —
-  // so it's harmless. In practice the visual context keeps users from
-  // trying it.
-  return (
-    <KanbanDnDProvider>
-      <div className="space-y-3">
-        <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-surface border border-ppp-charcoal-100 rounded-full px-3 py-1.5">
-          <IconBulb size={13} className="text-ppp-navy-500 shrink-0" />
-          <span>
-            <span className="hidden sm:inline">Drag between stages inside a customer to move an opportunity. Drop into <strong>Won / Lost</strong> to close.</span>
-            <span className="sm:hidden">On mobile, use the <strong>Move to…</strong> menu on each card to move or close an opportunity.</span>
-          </span>
-        </div>
-        {accountBuckets.map((acct) => {
-          const acctName = acct.account?.company_name ?? "(no customer)";
-          const acctInitials = acctName
-            .split(/\s+/)
-            .slice(0, 2)
-            .map((w) => w.charAt(0).toUpperCase())
-            .join("") || "?";
-          const acctTone = accountColorTone(acct.accountId);
-          const totalDeals = acct.opps.length;
-          const closedCount = totalDeals - acct.openCount;
-          return (
-        <details
-          key={acct.accountId}
-          open
-          className="group/acct border border-ppp-charcoal-200 bg-surface rounded-xl overflow-hidden border-l-4 shadow-sm"
-          style={acctTone.border}
-        >
-          <summary
-            className="cursor-pointer px-4 py-3 hover:bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap list-none [&::-webkit-details-marker]:hidden"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <span
-                className="shrink-0 w-9 h-9 rounded-full inline-flex items-center justify-center text-[12px] font-bold shadow-sm ring-1 ring-ppp-charcoal-200"
-                style={acctTone.avatar}
-                aria-hidden
-              >
-                {acctInitials}
-              </span>
-              <div className="min-w-0">
-                {acct.account ? (
-                  <Link
-                    href={`/commercial/accounts/${acct.account.id}`}
-                    className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
-                  >
-                    {acctName}
-                  </Link>
-                ) : (
-                  <span className="text-[14px] font-bold text-ppp-charcoal-500 italic truncate">
-                    {acctName}
-                  </span>
-                )}
-                <div className="text-[11px] text-ppp-charcoal-500 tabular-nums">
-                  {totalDeals} opportunit{totalDeals === 1 ? "y" : "ies"}
-                  {acct.openCount > 0 && <> · {acct.openCount} open</>}
-                  {closedCount > 0 && <> · {closedCount} closed</>}
-                  {acct.weightedCents > 0 && (
-                    <> · <span className="text-emerald-700 font-semibold">{formatCentsCompact(acct.weightedCents)} weighted</span></>
-                  )}
-                </div>
-              </div>
-            </div>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-              className="shrink-0 text-ppp-charcoal-400 transition-transform group-open/acct:rotate-180"
-            >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </summary>
-          <div className="border-t border-ppp-charcoal-100 overflow-x-auto snap-x snap-mandatory p-2 sm:p-3 bg-surface-muted">
-            <div className="flex gap-2 min-w-max items-stretch">
-            {OPEN_COLUMNS.map((status) => {
-              const colOpps = acct.byStatus.get(status) ?? [];
-              const colTotal = bidRangeTotal(colOpps);
-              const meta = COLUMN_META[status] ?? {
-                label: opportunityStatusLabel(status as OpportunityStatus),
-                accent: "bg-ppp-charcoal-300",
-                head: "bg-surface",
-                empty: "Drop a bid here",
-              };
-              // Karan 2026-07-15: bring back the Pre-Sale / Post-Sale
-              // visual boundary he liked from the earlier design, but
-              // as a subtle rule (not the loud rotated-vertical label
-              // + tinted background that made the earlier version look
-              // busy). Inserted right before Pre-Construction (the
-              // first Post-Sale column) so the eye sees the pipeline
-              // split into "selling" and "delivering" at a glance.
-              const isFirstPostSale = status === "pre_construction";
-              // Karan 2026-08: the Closed cluster sits BETWEEN the lanes,
-              // not after Billing. Winning or losing a bid is the LAST
-              // pre-contract event and every post-contract column is
-              // downstream of a win, so rendering Closed at the far right
-              // read as "closed comes after delivery" — backwards.
-              // Two narrow stacked drop targets grouped inside one "Closed"
-              // card. Same accent-stripe treatment as the open pipeline:
-              // white card body, emerald/rose stripe on each sub-column, so
-              // it reads as a single Closed section rather than two loud
-              // tinted boxes shouting for attention.
-              const closedCluster = isFirstPostSale ? (
-                <div key="closed-cluster" className="shrink-0 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-surface shadow-sm">
-                  <div className="h-1 bg-ppp-charcoal-300" aria-hidden />
-                  <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-surface">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-bold text-ppp-charcoal tracking-tight">
-                        Closed
-                      </span>
-                      {/* Counts the account's REAL decided deals, not the ones
-                          that survived the display cap. This summed the sliced
-                          lists, so an account with 31 closed deals showed "10" —
-                          a number that looked precise and was simply the cap. */}
-                      <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100 tabular-nums">
-                        {acct.opps.filter((o) => TERMINAL_COLUMNS.includes(columnKeyForOpp(o.status, o.sub_status ?? null) ?? "")).length}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
-                      Drop here to close
-                    </div>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2 p-2 bg-ppp-charcoal-50/30">
-                    {TERMINAL_COLUMNS.map((status) => {
-                      const colOpps = acct.byStatus.get(status) ?? [];
-                      const accent =
-                        status === "won"
-                          ? "bg-emerald-500"
-                          : status === "lost"
-                          ? "bg-rose-500"
-                          : "bg-ppp-navy-600";
-                      return (
-                        <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
-                          <div className="w-full sm:w-44 lg:w-48 shrink-0 border border-ppp-charcoal-100 rounded-lg overflow-hidden flex flex-col h-full bg-surface">
-                            <div className={`h-0.5 ${accent}`} aria-hidden />
-                            <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-surface">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal">
-                                  {kanbanColumnLabel(status)}
-                                </span>
-                                {/* Real total, with the cap stated when it bites.
-                                    The cluster header counts every decided deal
-                                    while these counted the ≤10 shown, so an
-                                    account with 31 read "Closed 31" directly
-                                    above "WON 10 · LOST 0". */}
-                                {(() => {
-                                  const real = acct.opps.filter(
-                                    (o) => columnKeyForOpp(o.status, o.sub_status ?? null) === status
-                                  ).length;
-                                  return (
-                                    <span
-                                      className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100"
-                                      title={
-                                        real > colOpps.length
-                                          ? `Showing the ${colOpps.length} most recent of ${real}`
-                                          : undefined
-                                      }
-                                    >
-                                      {real > colOpps.length ? `${colOpps.length}/${real}` : real}
-                                    </span>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                            <ul className="p-1.5 space-y-1.5 overflow-y-auto max-h-[70vh] min-h-[64px]">
-                              {colOpps.length === 0 ? (
-                                <li className="text-[10px] text-ppp-charcoal-400 italic text-center py-3 leading-tight">
-                                  {status === "won" ? "Drop a winning opportunity" : status === "lost" ? "Drop a lost opportunity" : "Drop a finished job"}
-                                </li>
-                              ) : (
-                                colOpps.map((opp) => (
-                                  <KanbanDnDCard key={opp.id} oppId={opp.id} accountId={opp.account_id} fromStatus={opp.status}>
-                                    <KanbanCard
-                                      opp={opp}
-                                      account={accountById.get(opp.account_id) ?? null}
-                                      statusEnteredAt={statusEnteredAtMap.get(opp.id) ?? null}
-                                      taskStats={taskStatsMap.get(opp.id) ?? null}
-                                      primaryLead={primaryLeadMap.get(opp.id) ?? null}
-                                      fileCount={fileCountMap.get(opp.id) ?? 0}
-                                      submittalStats={submittalCountMap.get(opp.id) ?? null}
-                                      finishCount={finishCountMap.get(opp.id) ?? 0}
-                                      currentProposal={currentProposalByOpp.get(opp.id) ?? null}
-                                      sheetHref={sheetHref}
-                                      flipReturnHref={flipReturnHref}
-                                      compact
-                                    />
-                                  </KanbanDnDCard>
-                                ))
-                              )}
-                            </ul>
-                          </div>
-                        </KanbanDnDColumn>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null;
-              const divider = isFirstPostSale ? (
-                <div
-                  key={`lane-divider-${status}`}
-                  className="shrink-0 flex items-center justify-center"
-                  aria-hidden
-                >
-                  <div className="w-px self-stretch bg-gradient-to-b from-transparent via-ppp-charcoal-200 to-transparent" />
-                  <span className="ml-2 mr-1 -rotate-90 origin-center text-[9px] font-bold uppercase tracking-widest text-ppp-charcoal-400 whitespace-nowrap">
-                    Post-Sale
-                  </span>
-                </div>
-              ) : null;
-              const column = (
-                <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
-                  <div className="w-60 sm:w-64 shrink-0 snap-start border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-surface shadow-sm">
-                    {/* Colored accent stripe on top — the whole card is
-                        white; only the 3px stripe carries the stage
-                        tone, so a row of 7 columns reads as a unified
-                        board with color-coded "spines" rather than 7
-                        clashing pastel boxes. */}
-                    <div className={`h-1 ${meta.accent}`} aria-hidden />
-                    <div className={`px-3 py-2 border-b border-ppp-charcoal-100 ${meta.head}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[12px] font-bold text-ppp-charcoal tracking-tight">
-                          {meta.label}
-                        </span>
-                        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100 tabular-nums">
-                          {colOpps.length}
-                        </span>
-                      </div>
-                      {colTotal > 0 && (
-                        <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 tabular-nums">
-                          {formatCentsCompact(colTotal)} top-of-range
-                        </div>
-                      )}
-                    </div>
-                    <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px] bg-ppp-charcoal-50/30">
-                      {colOpps.length === 0 ? (
-                        <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
-                          {meta.empty}
-                        </li>
-                      ) : (
-                        colOpps.map((opp) => (
-                          <KanbanDnDCard key={opp.id} oppId={opp.id} accountId={opp.account_id} fromStatus={opp.status}>
-                            <KanbanCard
-                              opp={opp}
-                              account={accountById.get(opp.account_id) ?? null}
-                              statusEnteredAt={statusEnteredAtMap.get(opp.id) ?? null}
-                              taskStats={taskStatsMap.get(opp.id) ?? null}
-                              primaryLead={primaryLeadMap.get(opp.id) ?? null}
-                              fileCount={fileCountMap.get(opp.id) ?? 0}
-                              submittalStats={submittalCountMap.get(opp.id) ?? null}
-                              finishCount={finishCountMap.get(opp.id) ?? 0}
-                              currentProposal={currentProposalByOpp.get(opp.id) ?? null}
-                              sheetHref={sheetHref}
-                              flipReturnHref={flipReturnHref}
-                            />
-                          </KanbanDnDCard>
-                        ))
-                      )}
-                    </ul>
-                  </div>
-                </KanbanDnDColumn>
-              );
-              return isFirstPostSale ? [closedCluster, divider, column] : column;
-            })}
-
-          </div>
-          </div>
-        </details>
-          );
-        })}
-        {accountBuckets.length === 0 && (
-          <div className="bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
-            <p className="text-[13px] font-semibold text-ppp-charcoal">No open opportunities yet.</p>
-            <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">Add an opportunity above to start populating the pipeline.</p>
-          </div>
-        )}
-        {globalOverflow.length > 0 && (
-          <details className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-            <summary className="px-4 py-2.5 cursor-pointer text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
-              <span>Older decided opportunities · {globalOverflow.length}</span>
-              <span aria-hidden className="text-ppp-charcoal-400">▾</span>
-            </summary>
-            <ul className="divide-y divide-ppp-charcoal-100 px-3 py-2">
-              {globalOverflow.map((opp) => (
-                <li key={opp.id} className="py-2">
-                  <Link
-                    href={sheetHref(opp.account_id, opp.id)}
-                    className="text-[13px] text-cc-brand-700 hover:text-cc-brand-800 underline"
-                  >
-                    {derivedOppName(opp, accountById.get(opp.account_id)?.company_name ?? null)}
-                  </Link>
-                  <span className="text-[11px] text-ppp-charcoal-500 ml-2">
-                    {oppStatusDisplayLabel(opp.status, opp.sub_status)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </div>
-    </KanbanDnDProvider>
-  );
-}
 
 function KanbanCard({
   opp,

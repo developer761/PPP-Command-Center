@@ -60,44 +60,35 @@ const navSections: NavSection[] = [
       { label: "Notifications", href: "/commercial/notifications", icon: <IconBell /> },
     ],
   },
-  // Karan 2026-07-09 Phase A / 07-10 Phase A.2: post-meeting restructure.
-  // Two-lobe platform — Pre-Contract (sell + build proposal) vs
-  // Post-Contract (deliver + bill). Labels match Brendan's email verbatim.
-  // Project + Submittals + Closeout ship in Phases H, I, L. Product /
-  // Exclusions libraries ship in Phases D, E.
+  // ── Restructure step 8 (Karan 2026-08-12) ────────────────────────────────
+  //
+  // Was: Pre-Contract (5 rows) + Post-Contract (Projects, Invoices, and a
+  // Delivery Tools group of six). Eleven destinations, nine of which listed the
+  // same jobs through a different lens.
+  //
+  // The job is the thing now, and every one of those lenses is a saved view on
+  // the Opportunities list — Proposals out, Active projects, Billing — or a tab
+  // on the job itself. A separate page per tool made the platform feel like six
+  // apps that happened to share a database.
+  //
+  // The retired routes still resolve, so bookmarks, bell links and anything
+  // already emailed keep working. They are unlinked, not deleted.
+  //
+  // AR aging lives under Reports: "who owes us across every job" is a genuinely
+  // cross-job question that a per-job page structurally cannot answer, which is
+  // exactly why it is a report rather than a tool.
   {
-    heading: "Pre-Contract",
+    heading: "Work",
     items: [
       { label: "Accounts", href: "/commercial/accounts", icon: <IconBuilding /> },
       { label: "Opportunities", href: "/commercial/opportunities", icon: <IconTarget /> },
-      { label: "Proposals", href: "/commercial/proposals", icon: <IconChart /> },
-      { label: "Products", href: "/commercial/pre-job/products", icon: <IconDollar /> },
-      { label: "Exclusions", href: "/commercial/pre-job/exclusions", icon: <IconCheckSquare /> },
     ],
   },
   {
-    heading: "Post-Contract",
+    heading: "Libraries",
     items: [
-      // Karan 2026-07-29: Projects is the hub, Invoices second. RUX-1 (2026-08):
-      // the six production tools were 6 flat rows crowding this section (8 total)
-      // — collapsed under a "Delivery Tools" group so Post-Contract reads as 3
-      // rows. The group auto-opens when one of its tools (or a tool detail page)
-      // is active. Canonical tool order: Work Order → Submittals → Change Orders
-      // → AIA → Costs → Closeout (production sequence).
-      { label: "Projects", href: "/commercial/projects", icon: <IconHardHat /> },
-      { label: "Invoices", href: "/commercial/invoices", icon: <IconDollar /> },
-      {
-        group: "Delivery Tools",
-        icon: <IconTools />,
-        items: [
-          { label: "Work Orders", href: "/commercial/post-job/work-orders", icon: <IconClipboard /> },
-          { label: "Submittals", href: "/commercial/post-job/submittals", icon: <IconChangeOrder /> },
-          { label: "Change Orders", href: "/commercial/post-job/change-orders", icon: <IconRefresh /> },
-          { label: "AIA Billing", href: "/commercial/post-job/aia", icon: <IconFileText /> },
-          { label: "Transactions", href: "/commercial/post-job/costs", icon: <IconTrendingUp /> },
-          { label: "Closeout & Warranty", href: "/commercial/post-job/closeout", icon: <IconCheckSquare /> },
-        ],
-      },
+      { label: "Products", href: "/commercial/pre-job/products", icon: <IconDollar /> },
+      { label: "Exclusions", href: "/commercial/pre-job/exclusions", icon: <IconCheckSquare /> },
     ],
   },
   {
@@ -412,27 +403,6 @@ function IconHardHat() {
     </svg>
   );
 }
-function IconChangeOrder() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13l3 3 5-5" />
-    </svg>
-  );
-}
-function IconRefresh() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5" />
-    </svg>
-  );
-}
-function IconFileText() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" />
-    </svg>
-  );
-}
 function IconCheckSquare() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -457,37 +427,6 @@ function IconChart() {
 
 
 
-function IconTools() {
-  // Wrench + screwdriver crossed — the "Delivery Tools" group parent. Reads as
-  // "a set of tools" distinct from any single tool's icon.
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M14.7 6.3a4 4 0 0 0 5 5l-9 9a2.83 2.83 0 0 1-4-4z" />
-      <path d="M14.5 9.5 4 20" />
-      <path d="m17 3 4 4-2 2-4-4z" />
-    </svg>
-  );
-}
-function IconClipboard() {
-  // Clipboard-with-check — the crew Work Order (a checklist handed to the field).
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="8" y="2" width="8" height="4" rx="1" />
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-      <path d="m9 14 2 2 4-4" />
-    </svg>
-  );
-}
-function IconTrendingUp() {
-  // Rising line — Costs & P&L (margin/profit trend), distinct from the $ glyph
-  // that Invoices already uses.
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-      <polyline points="16 7 22 7 22 13" />
-    </svg>
-  );
-}
 function IconChevronDown() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
