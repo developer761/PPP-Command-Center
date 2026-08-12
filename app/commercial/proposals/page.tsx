@@ -18,6 +18,7 @@
  *      tab under Deals, in a sibling file).
  */
 
+import { proposalDisplayId } from "@/lib/commercial/proposals/db";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import type { ReactNode } from "react";
@@ -66,6 +67,7 @@ type ProposalRow = {
     title: string | null;
     client_name: string | null;
     property_street: string | null;
+    project_number: string | null;
     account_id: string;
     deleted_at: string | null;
     account: { id: string; company_name: string; deleted_at: string | null } | null;
@@ -246,7 +248,7 @@ export default async function ProposalsIndexPage({
     .select(
       `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, snapshot_document_id, header_json,
        opportunity:commercial_opportunities!inner(
-         id, title, client_name, property_street, account_id, deleted_at,
+         id, title, client_name, property_street, project_number, account_id, deleted_at,
          account:commercial_accounts!inner(id, company_name, deleted_at)
        )`
     )
@@ -642,7 +644,11 @@ function ProposalCard({
               className="text-[9.5px] font-mono text-ppp-charcoal-400 shrink-0"
               title="Unique proposal ID"
             >
-              PROP-{String(row.proposal_seq).padStart(4, "0")}
+              {proposalDisplayId({
+                project_number: row.opportunity?.project_number ?? null,
+                revision_number: row.revision_number,
+                proposal_seq: row.proposal_seq,
+              })}
             </span>
           )}
         </Link>
@@ -1387,7 +1393,11 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                                   className="text-[10.5px] font-mono text-ppp-charcoal-400 shrink-0"
                                   title="Unique proposal ID"
                                 >
-                                  PROP-{String(r.proposal_seq).padStart(4, "0")}
+                                  {proposalDisplayId({
+                                    project_number: r.opportunity?.project_number ?? null,
+                                    revision_number: r.revision_number,
+                                    proposal_seq: r.proposal_seq,
+                                  })}
                                 </span>
                               )}
                               <span

@@ -471,7 +471,7 @@ export async function updateAiaApplication(
   // 2026-07-29 re-audit fix (TOCTOU): compare-and-swap on the status we read,
   // so a concurrent "Submit application" can't interleave with an edit and
   // land a change on a certificate that just became issued.
-  const { data: updated, error } = await sb
+  let { data: updated, error } = await sb
     .from("commercial_aia_applications")
     .update(next)
     .eq("id", id)
@@ -479,6 +479,28 @@ export async function updateAiaApplication(
     .is("deleted_at", null)
     .select(COLS)
     .maybeSingle();
+  // Pre-migration-128/130 safety net, same reasoning as the opportunities
+  // update: issuing an application writes the freeze columns, so a deploy that
+  // lands ahead of the migration would fail every submit outright. Drop the new
+  // columns and retry once — an unfrozen certificate is the behaviour that
+  // existed before, a rejected submit is not.
+  if (error && /contract_sum_frozen_cents|net_change_orders_frozen_cents|frozen_at|original_contract_is_manual/i.test(error.message)) {
+    console.warn(
+      "[commercial/aia] applications table is missing a freeze column — run migrations 128 and 130. Writing without them."
+    );
+    delete next.contract_sum_frozen_cents;
+    delete next.net_change_orders_frozen_cents;
+    delete next.frozen_at;
+    delete next.original_contract_is_manual;
+    ({ data: updated, error } = await sb
+      .from("commercial_aia_applications")
+      .update(next)
+      .eq("id", id)
+      .eq("status", before.status)
+      .is("deleted_at", null)
+      .select(COLS)
+      .maybeSingle());
+  }
   if (error) return { ok: false, error: error.message };
   if (!updated) return { ok: false, error: "This application changed status in another tab — reload and try again." };
   const appRow = updated as AiaApplication;

@@ -395,7 +395,23 @@ export async function changeOpportunityStatus(
   // The forward-only guard rides on the UPDATE rather than sitting in front of
   // it, so the database is the one deciding whether this move is still legal.
   if (input._requireFrom) q = q.or(input._requireFrom);
-  const { data: after, error: updateErr } = await q.select("*").maybeSingle();
+  let { data: after, error: updateErr } = await q.select("*").maybeSingle();
+  // Pre-migration-126/129 safety net. Two of the three paths that touch those
+  // columns already degrade; THIS one didn't — and it is the human path, so
+  // deploying ahead of the migrations would reject every manual status change
+  // (kanban drag, status dropdown, win/loss close) with "column does not
+  // exist". That is strictly worse than before the columns were introduced:
+  // status changes used to work. Drop the new columns and retry once.
+  if (updateErr && /status_user_set_at|closed_out_at/i.test(updateErr.message)) {
+    console.warn(
+      "[commercial/opportunities/status] opportunities table is missing a status column — run migrations 126 and 129. Writing without them."
+    );
+    delete patch.status_user_set_at;
+    delete patch.closed_out_at;
+    let retry = sb.from("commercial_opportunities").update(patch).eq("id", input.opp_id);
+    if (input._requireFrom) retry = retry.or(input._requireFrom);
+    ({ data: after, error: updateErr } = await retry.select("*").maybeSingle());
+  }
   if (updateErr) return { ok: false, error: updateErr.message };
   // No row matched: the deal moved on between the read and the write, or it was
   // already at least this far along. Nothing to do, and nothing went wrong.

@@ -1745,7 +1745,7 @@ export default async function OpportunityDetailPage({
         <KpiTile
           label="Probability"
           value={`${opp.probability_pct}%`}
-          tooltip="Likelihood we win this bid. Defaults from the stage (Qualifying → Estimating → Proposal → Closed Won), and you can override it per deal if you have a stronger read. The old tooltip listed Inquiry and Negotiating, which are v1 statuses that no longer exist."
+          tooltip="Likelihood we win this bid. Defaults from the stage (Qualifying → Estimating → Proposal → Closed Won), and you can override it per deal if you have a stronger read."
         />
         <KpiTile
           label="Weighted"
