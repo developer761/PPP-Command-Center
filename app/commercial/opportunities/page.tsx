@@ -3240,7 +3240,7 @@ function OpportunityRow({
                 compact chip: "Status · sub_status" (e.g. "Proposal ·
                 Proposal Sent" or the display label like "Won" on
                 decided opportunities). Clean, one-line, scannable at 50+
-                deals per screen. Full DealJourneyStrip lives on the
+                deals per screen. Full status path lives on the
                 opp detail page. */}
             <div className="flex items-center gap-2 flex-wrap">
               {formatOpportunityNumber(opportunity.project_number) && (
@@ -3536,7 +3536,7 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
  *   Proposal · Proposal Sent
  */
 /** Karan 2026-07-15 rework: full pill-stepper on every pipeline row.
- *  Same structure as the deal-detail DealJourneyStrip (Pre-Sale row
+ *  Same structure as the deal-detail status path (Pre-Sale row
  *  or Post-Sale row of stages) but sized tight for list use:
  *
  *    ● Qualifying ── Estimating ── ● Proposal ── ─ Closed

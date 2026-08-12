@@ -150,7 +150,11 @@ import {
 // InfoDot import removed 2026-07-08 Batch 2b — labels now use native
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
-import { DealJourneyStrip } from "@/components/commercial/deal-journey-strip";
+import { StatusPathBar } from "@/components/commercial/status-path-bar";
+import { AttentionBanner } from "@/components/commercial/attention-banner";
+import { attentionFor, manualNextStep } from "@/lib/commercial/opportunities/attention";
+import { getProjectForOpportunity } from "@/lib/commercial/projects/ensure";
+import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
 
 export const dynamic = "force-dynamic";
 
@@ -1390,6 +1394,30 @@ export default async function OpportunityDetailPage({
   // Every revision, for the Proposals tab (step 3). Cheap — one deal's worth.
   const dealProposals = await listProposalsForOpp(opp.id);
 
+  // ── Status path + what needs attention (step 4) ──────────────────────────
+  // Three small reads, in parallel, all scoped to this one deal.
+  const [pathProject, pathWorkOrder, pathInvoices] = await Promise.all([
+    getProjectForOpportunity(opp.id),
+    getWorkOrderForOpp(opp.id).catch(() => null),
+    listCommercialInvoices({ opportunityId: opp.id }).catch(() => []),
+  ]);
+  const attentionInput = {
+    oppId: opp.id,
+    status: opp.status,
+    subStatus: opp.sub_status,
+    contractBaseCents: pathProject?.contract_base_cents,
+    hasProject: !!pathProject,
+    followUpAt: opp.follow_up_at,
+    proposalCount: dealProposals.length,
+    sentProposalCount: dealProposals.filter((p) =>
+      ["sent", "won", "lost"].includes(p.status)
+    ).length,
+    hasWorkOrder: !!pathWorkOrder,
+    hasBilling: pathInvoices.length > 0,
+  };
+  const attentionItems = attentionFor(attentionInput);
+  const manualNext = manualNextStep(attentionInput);
+
   // ── The bounce to the account page is GONE (Karan 2026-08-12, step 3) ────
   //
   // From 2026-07-08 until now, landing on a deal without an explicit tab threw
@@ -1628,11 +1656,18 @@ export default async function OpportunityDetailPage({
                 </>
               )}
             </div>
-            {/* Karan 2026-07-11 signature-moments Tier 2: deal-journey
-                strip on the hero — visualize the pipeline stages so
-                users see how far along the deal is at a glance. */}
+            {/* The status path (step 4). Replaces the pill stepper that lived
+                here: chevrons that point forward, the terminal outcome at the
+                tail, and a second bar for the delivery ladder once the job is
+                won — the sale and the work have different stages and different
+                owners, so they are two paths, not one eleven-stop one. */}
             <div className="mt-2">
-              <DealJourneyStrip status={opp.status} sub_status={opp.sub_status} />
+              <StatusPathBar
+                status={opp.status}
+                subStatus={opp.sub_status}
+                oppId={opp.id}
+                manualNext={manualNext}
+              />
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -1778,6 +1813,13 @@ export default async function OpportunityDetailPage({
           />
         </div>
       )}
+
+      {/* What's missing on this job (step 4). Sits between the status path and
+          the tabs, so it reads as a property of where the job IS. Unlike the
+          Salesforce banner it copies, it informs and lets you through — but it
+          persists until the thing is actually fixed, because a warning you can
+          dismiss is one people learn to dismiss. */}
+      {!isDeletedDeal && <AttentionBanner items={attentionItems} />}
 
       {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
           the previous 9-tab row; each group has its own sub-nav below
