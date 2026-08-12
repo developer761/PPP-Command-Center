@@ -50,7 +50,6 @@ import { listTeams, setOwnerTeam, getEffectiveOwnerTeam } from "@/lib/commercial
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
-import { ProjectToolbar } from "@/components/commercial/project-toolbar";
 import EmailArchiveTab from "@/components/commercial/email-archive-tab";
 import { FocusTrapAside } from "@/components/commercial/focus-trap-aside";
 import { DateField } from "@/components/commercial/date-field";
@@ -1877,83 +1876,12 @@ export default async function OpportunityDetailPage({
 
       {/* Compact KPI strip — bid range, probability, weighted, decision
           countdown if a due date is set. */}
-      {/* Forecast tiles — only while the deal is still being SOLD.
-          Reached by a deep-link from a bell or a debrief, a won or lost deal
-          used to show a probability, a weighted forecast and a "Decision in —
-          overdue" countdown for a decision that had already been made. The
-          account page got this gate; this page was missed, and it is exactly
-          where those deep-links land. */}
-      {/* A decided deal gets the numbers that actually exist. Gating the
-          forecast strip left a won or lost deal — reached by exactly the bell
-          and debrief deep-links that land here — with a header and no money at
-          all. */}
-      {dealPhase(opp) !== "pre_sale" && (
-        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <KpiTile
-            label="Status"
-            value={oppStatusDisplayLabel(opp.status, opp.sub_status)}
-            tooltip="Where this deal stands today."
-          />
-          <KpiTile
-            label={isLost(opp) ? "Lost on" : "Won on"}
-            value={opp.decided_at ? fmtEtDate(opp.decided_at) ?? "—" : "—"}
-            tooltip="The day this deal was decided — what 'Wins this month' counts."
-          />
-          <KpiTile
-            label="Contract"
-            value={
-              pageProposalTotal && pageProposalTotal > 0
-                ? formatCentsCompact(pageProposalTotal)
-                : "—"
-            }
-            tooltip="The signed proposal total for this deal."
-          />
-          <KpiTile
-            label="Probability"
-            value={`${opp.probability_pct}%`}
-            tooltip="Where this deal ended up — 100% on a win, 0% on a loss."
-          />
-        </section>
-      )}
-
-      {dealPhase(opp) === "pre_sale" && (
-      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiTile
-          label="Bid"
-          value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
-          tooltip="Low–high range for this opportunity. Pulled from the bid range fields you set on the new-opportunity or edit form."
-        />
-        <KpiTile
-          label="Probability"
-          value={`${opp.probability_pct}%`}
-          tooltip="Likelihood we win this bid. Defaults from the stage (Qualifying → Estimating → Proposal → Closed Won), and you can override it per deal if you have a stronger read."
-        />
-        <KpiTile
-          label="Weighted"
-          value={formatCentsCompact(weightedPipelineCents(opp, pageProposalTotal))}
-          tooltip={`Probability × midpoint bid. ${weightedTooltip(opp)} Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing.`}
-        />
-        <KpiTile
-          label="Decision in"
-          value={daysUntilDisplay(opp.proposal_due_at)}
-          tooltip="Days until the proposal is due (or how overdue it is). Pulled from proposal_due_at on the new-opp or edit form."
-        />
-      </section>
-      )}
-
-      {/* Phase H: on a post-sale project, a toolbar to the production tools
-          (Change Orders / AIA Billing / Submittals / Invoices) so they're
-          reachable from the project page, not just the deal drawer. */}
-      {isPostSaleProject(opp) && account && (
-        <div className="mb-3">
-          <ProjectToolbar
-            accountId={account.id}
-            dealId={opp.id}
-            active="overview"
-          />
-        </div>
-      )}
-
+      {/* Karan 2026-08-12: the money tiles and the production toolbar that
+          used to sit here are GONE — steps 4 and 5 replaced both and I left the
+          originals, so a won job showed Contract and Won twice, and the six
+          delivery tools appeared as pills AND as the Project sub-tabs. The
+          status path, the stage-aware strip and the Project tab cover all of
+          it, and cover it once. */}
       {/* What's missing on this job (step 4). Sits between the status path and
           the tabs, so it reads as a property of where the job IS. Unlike the
           Salesforce banner it copies, it informs and lets you through — but it
@@ -5453,18 +5381,6 @@ function KpiTile({
   );
 }
 
-/** Weighted tooltip — turns the bare $ value into a one-line data
- *  story Alex can quote. "$12.5k = 25% × $50k midpoint" tells him at
- *  a glance whether the weighted number is "confident" or "we're
- *  hedging." */
-function weightedTooltip(opp: CommercialOpportunity): string {
-  const low = opp.bid_value_low_cents ?? 0;
-  const high = opp.bid_value_high_cents ?? 0;
-  if (low === 0 && high === 0) return "No bid value set yet.";
-  const mid = (low + (high || low)) / 2;
-  const midDollars = (mid / 100).toLocaleString(undefined, { maximumFractionDigits: 0 });
-  return `${opp.probability_pct}% probability × $${midDollars} midpoint bid.`;
-}
 
 function StatusPill({ status }: { status: OpportunityStatus | string }) {
   // Karan 2026-07-09 Phase A.1: v1.1 CEO status model. Map covers the
@@ -5495,11 +5411,3 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
   );
 }
 
-function daysUntilDisplay(iso: string | null): string {
-  if (!iso) return "—";
-  const days = daysFromTodayEt(iso); // whole ET days (was UTC-midnight → overdue 1d early in ET evenings)
-  if (days < 0) return `${Math.abs(days)}d overdue`;
-  if (days === 0) return "today";
-  if (days === 1) return "tomorrow";
-  return `${days}d`;
-}
