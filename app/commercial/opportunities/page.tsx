@@ -87,6 +87,8 @@ import {
   isFollowUpCard,
   isDraftedCard,
 } from "@/lib/commercial/opportunities/kanban-columns";
+import { activeViewKey, filterChips } from "@/lib/commercial/opportunities/saved-views";
+import { SavedViewPicker } from "@/components/commercial/saved-view-picker";
 import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
 import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
 import { proposalTrailsDeal } from "@/lib/commercial/opportunities/auto-advance-targets";
@@ -649,6 +651,39 @@ export default async function CommercialOpportunitiesPage({
   // MUST use the pre-sale-only set so they match the dashboard — including
   // post-sale here double-counted contract dollars already under the "Under
   // contract" strip (2026-07-29 re-audit: same metric showed two numbers).
+  // ── Saved view + header totals (step 7) ─────────────────────────────────
+  //
+  // The count and the sum are taken from `opps` — the SAME array the rows
+  // render from — so the header can never disagree with what is on screen.
+  // Deriving them from a second query is how a list ends up claiming 23 items
+  // above a table showing 19.
+  //
+  // And a true count, where Salesforce prints "50+". A capped count on a list
+  // of money is the kind of small lie that costs somebody an afternoon.
+  const viewParams: Record<string, string | undefined> = {
+    q: search || undefined,
+    status: statusFilter || undefined,
+    sources: sourcesRaw || undefined,
+    sort: sortRaw || undefined,
+    view: viewRaw || undefined,
+    hot: hotFilter ? "1" : undefined,
+    stale: staleFilter ? "1" : undefined,
+    overdue: overdueFilter ? "1" : undefined,
+    coldrfp: coldRfpFilter ? "1" : undefined,
+    followup: followupFilter ? "1" : undefined,
+    archived: includeArchived ? "1" : undefined,
+  };
+  const activeSavedView = activeViewKey(viewParams);
+  const savedViewCount = opps.length;
+  const savedViewTotalCents = opps.reduce(
+    (acc, o) => acc + dealValueCents(o, proposalTotalByOpp.get(o.id) ?? null),
+    0
+  );
+  // Only claim a total when there is one. "$0" across a filtered list reads as
+  // "these are worth nothing" rather than "none of these are priced yet".
+  const savedViewTotal = savedViewTotalCents > 0 ? formatCentsCompact(savedViewTotalCents) : null;
+  const viewChips = filterChips(viewParams, (k) => kanbanColumnLabel(k) || k);
+
   const openOpps = opps.filter((o) => (OPEN_OPP_STATUSES as readonly string[]).includes(o.status));
   const presaleOpenOpps = opps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
   const totalPipelineCents = presaleOpenOpps.reduce((acc, o) => acc + oppValue(o), 0);
@@ -921,15 +956,18 @@ export default async function CommercialOpportunitiesPage({
       {/* ─── Hero + slim KPI strip ─── */}
       <header className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-          <div>
-            <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
-              Pipeline
-            </h1>
-            <p className="mt-1 text-sm text-ppp-charcoal-500">
-              Every commercial opportunity across every customer. Filter, sort, drag.
-            </p>
-          </div>
+          {/* The saved view IS the page identity (step 7) — you open
+              "Proposals out", not "Pipeline, filtered". The status line under
+              it carries a TRUE count and the summed value, so a filtered list
+              never feels like it is hiding something. */}
+          <SavedViewPicker
+            activeKey={activeSavedView}
+            current={viewParams}
+            totalCount={savedViewCount}
+            totalLabel={savedViewTotal}
+            sortLabel={SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated"}
+            chips={viewChips}
+          />
           <Link
             href="?new_deal=1#new-deal-sheet"
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px] shrink-0"
