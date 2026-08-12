@@ -3,6 +3,10 @@
 import { useState, useRef, useTransition, type DragEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { resolveColumnTarget } from "@/lib/commercial/opportunities/kanban-columns";
+import {
+  WARN_TRANSITIONS,
+  opportunityStatusLabelV2,
+} from "@/lib/commercial/opportunities/constants";
 
 /**
  * Tiny client wrapper that adds HTML5 drag-and-drop on top of the
@@ -50,21 +54,27 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
   const inFlightRef = useRef(false);
   const [inFlight, setInFlight] = useState(false);
 
+  // The column a card was picked up from — needed on drop to judge the move.
+  const dragFromStatusRef = useRef<string | null>(null);
+
   const handleDragStart = (
     e: DragEvent<HTMLDivElement>,
     oppId: string,
-    accountId?: string
+    accountId?: string,
+    fromStatus?: string
   ) => {
     if (!e.dataTransfer) return;
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", oppId);
     setDragOppId(oppId);
     if (accountId) setDragAccountId(accountId);
+    dragFromStatusRef.current = fromStatus ?? null;
   };
 
   const handleDragEnd = () => {
     setDragOppId(null);
     setDragAccountId(null);
+    dragFromStatusRef.current = null;
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -78,6 +88,24 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     const oppId = (e.dataTransfer?.getData("text/plain") ?? "") || dragOppId;
     setDragOppId(null);
     if (!oppId) return;
+
+    // Unusual moves get a question first.
+    //
+    // The status picker has consulted `shouldWarnTransition` for a while; the
+    // BOARD never did — so the case the warning was written for, dragging a
+    // pre-sale card straight onto a delivery or Completed column, happened
+    // silently. That jump crosses the contract divider on a deal nobody
+    // recorded as won: a close date gets stamped and the deal skips the Win/Loss
+    // debrief entirely.
+    const from = dragFromStatusRef.current;
+    const warnTarget = resolveColumnTarget(toStatus);
+    if (from && warnTarget && WARN_TRANSITIONS.has(`${from}→${warnTarget.status}`)) {
+      const ok = window.confirm(
+        `Move this from ${opportunityStatusLabelV2(from)} to ${opportunityStatusLabelV2(warnTarget.status)}?\n\n` +
+          `That's an unusual jump — it skips the stages in between, and a deal that was never marked Won won't be counted as a win.`
+      );
+      if (!ok) return;
+    }
 
     // Lost / No-bid need loss_reason — bounce to the detail page so
     // the user can pick a reason via the structured DebriefFields
@@ -253,7 +281,7 @@ type Ctx = {
   dragOppId: string | null;
   dragAccountId: string | null;
   optimisticMove: { oppId: string; toStatus: string } | null;
-  onCardDragStart: (e: DragEvent<HTMLDivElement>, oppId: string, accountId?: string) => void;
+  onCardDragStart: (e: DragEvent<HTMLDivElement>, oppId: string, accountId?: string, fromStatus?: string) => void;
   onCardDragEnd: () => void;
   onColumnDragOver: (e: DragEvent<HTMLDivElement>) => void;
   onColumnDrop: (e: DragEvent<HTMLDivElement>, toStatus: string) => void;
@@ -269,10 +297,14 @@ const KanbanDnDContext = createContext<Ctx | null>(null);
 export function KanbanDnDCard({
   oppId,
   accountId,
+  fromStatus,
   children,
 }: {
   oppId: string;
   accountId?: string;
+  /** The card's current top-level status, so a drop can tell whether the move
+   *  is one worth asking about before it happens. */
+  fromStatus?: string;
   children: ReactNode;
 }) {
   const ctx = useContext(KanbanDnDContext);
@@ -282,7 +314,7 @@ export function KanbanDnDCard({
   return (
     <div
       draggable
-      onDragStart={(e) => ctx.onCardDragStart(e, oppId, accountId)}
+      onDragStart={(e) => ctx.onCardDragStart(e, oppId, accountId, fromStatus)}
       onDragEnd={ctx.onCardDragEnd}
       className={`cursor-grab active:cursor-grabbing transition-opacity duration-100 ${
         isOptimisticallyMoved

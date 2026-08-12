@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { wasWonInPeriod } from "@/lib/commercial/opportunities/constants";
+import { wasWonInPeriod, WARN_TRANSITIONS } from "@/lib/commercial/opportunities/constants";
 
 /**
  * `decided_at` means the day a deal was WON or LOST — one meaning, for the whole
@@ -75,5 +75,33 @@ describe("wasWonInPeriod", () => {
     // and invisible to every win metric. The stamping fix stops new ones; this
     // pins that an undated row is not silently counted as won today.
     expect(wasWonInPeriod(won({ decided_at: null }), MARCH)).toBe(false);
+  });
+});
+
+/**
+ * R14 — the board's lane-jump warning. `WARN_TRANSITIONS` is the shared set the
+ * status picker has always consulted and the drag-and-drop board never did.
+ */
+describe("WARN_TRANSITIONS covers the lane jump", () => {
+  it("flags a pre-sale deal dropped straight into delivery or Completed", () => {
+    // Crossing the contract divider without ever being recorded as won: a close
+    // date gets stamped and the deal skips the Win/Loss debrief.
+    for (const from of ["qualifying", "estimating", "proposal"]) {
+      for (const to of ["pre_construction", "in_progress", "billing", "post_sale_closed"]) {
+        expect(WARN_TRANSITIONS.has(`${from}→${to}`), `${from}→${to}`).toBe(true);
+      }
+    }
+  });
+
+  it("does not nag on the ordinary path through the pipeline", () => {
+    for (const pair of [
+      "qualifying→estimating",
+      "estimating→proposal",
+      "proposal→pre_sale_closed",
+      "pre_construction→in_progress",
+      "billing→post_sale_closed",
+    ]) {
+      expect(WARN_TRANSITIONS.has(pair), pair).toBe(false);
+    }
   });
 });

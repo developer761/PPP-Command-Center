@@ -2561,7 +2561,7 @@ function KanbanBoard({
                                 </li>
                               ) : (
                                 colOpps.map((opp) => (
-                                  <KanbanDnDCard key={opp.id} oppId={opp.id} accountId={opp.account_id}>
+                                  <KanbanDnDCard key={opp.id} oppId={opp.id} accountId={opp.account_id} fromStatus={opp.status}>
                                     <KanbanCard
                                       opp={opp}
                                       account={accountById.get(opp.account_id) ?? null}
@@ -2630,7 +2630,7 @@ function KanbanBoard({
                         </li>
                       ) : (
                         colOpps.map((opp) => (
-                          <KanbanDnDCard key={opp.id} oppId={opp.id} accountId={opp.account_id}>
+                          <KanbanDnDCard key={opp.id} oppId={opp.id} accountId={opp.account_id} fromStatus={opp.status}>
                             <KanbanCard
                               opp={opp}
                               account={accountById.get(opp.account_id) ?? null}
