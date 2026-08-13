@@ -737,3 +737,24 @@ daily paths (101 → 96) and DEFERRED 96 Settings forms to "when each area is ne
 (two scripted sweeps broke things that week) and a tracking script (`audit-pending-forms.cjs`). It's reasoned +
 tracked, not silent — but it directly runs against Karan's hard rule *"never defer / do them all now."* Not my call
 to adjudicate the risk trade-off; flagging so Karan decides whether the rationale holds or he wants all 101 done now.
+
+---
+
+## ✅ RESOLVED — Lost-flip miss fixed + a checker blind spot that hid 4 MORE bugs (`b092810`).
+My `page.tsx:275` Lost-flip finding is fixed: now `?tab=info&to=pre_sale_closed&to_sub=lost#change-status` (exactly
+the recommended fix); **0** `action=change-status` emitters remain platform-wide. The build session generalized it —
+the param-checker had only read `href=`, so `redirect()`, `window.location.href` (kanban drag-drop) and
+`router.push/replace` were all invisible; it reported ZERO while 4 live sites carried the dead param. Checker now
+covers all four paths (`scripts/audit-link-params.cjs`), and widening it surfaced **4 more unread-param bugs**, all
+verified fixed:
+- **`debrief_warn`** (the serious one) — a debrief that FAILED to save carried its error in a param nobody read: the
+  status moved, the note was lost, silence. Now READ + rendered page-level at `[id]/page.tsx:1966`. ✅
+- **`deal_created` / `unarchived`** — silent success confirmations, now rendered. ✅
+- **`archived`** on the accounts list (no banner slot) — fallback now lands on the archive view where the row itself
+  is the confirmation. ✅
+Page-level render (not inside a tab) is correct — each arrives on whichever tab its action chose. 514 tests, tsc clean.
+
+**Handoff tracker — down to ONE:**
+1. 🟡 **Probability CSV export** (`export.ts:43/197`) — the only remaining open code handoff.
+2. ✅ Lost-flip navigation — RESOLVED (`b092810`).
+3. ✅ Mobile select-zoom + scanner — RESOLVED (`c64aec3`).
