@@ -18,8 +18,8 @@ Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
 
 | # | Next | Depends on |
 |---|---|---|
-| **A** | **Run migration 133.** RFP-received dates still save a day early from two of three forms until it lands. | You, 2 minutes |
-| **B** | **Full re-audit / walkthrough** of everything shipped today — the restructure, Katie's notes + screenshots, Brendan's list. Scope at the bottom of this file. | Nothing. This is next. |
+| **A** | **Run migrations 133 and 134.** 133 = RFP-received dates (still saving a day early from two of three forms until it lands). 134 = the warranty/work-order signer name + title. | You, 5 minutes |
+| ~~**B**~~ | ~~Full re-audit / walkthrough~~ **DONE 2026-08-12.** All six lanes run: the restructure walked as a flow (now a test), Brendan's list item-by-item, Katie's notes, edge cases, the mobile pass, and the recurring failure classes swept platform-wide. Nine real findings, four of them live in production. Detail below. | — |
 | ~~**C**~~ | ~~Decide 1.1~~ **SETTLED 2026-08-12 (Karan: "use best judgement").** Archiving a won deal keeps its project archived. The distinction that makes it safe: archiving is an explicit "hide this", un-winning is a status correction — which is why un-winning refuses when the project holds anything. Verified the money does not disappear: reports read opportunities, not projects, so an archived job's invoices, costs and margin still count in AR, P&L, job-costs and geography. Only project-scoped views hide it, which is what archiving is for. | — |
 | **D** | **Stephanie's list** | Her findings (0.1) — still not received |
 | **E** | **RFP email → auto-populate an opportunity** | Walking real emails through with you |
