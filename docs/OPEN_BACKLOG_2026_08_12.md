@@ -783,3 +783,25 @@ summarises Jan–today while the report it links to shows the fiscal year: the e
 surface ignores it" shape this commit set out to kill (the fiscal knob was dead; now it's dead on ONE of two
 surfaces). **Fix:** have the card read `fiscal_year_start_month` too (or share a `fiscalYearRange(today, fyStart)`
 helper between card and report). Low severity (dormant while FY=Jan), but flagged for the "perfect" bar. Handed off.
+
+---
+
+## 🔎 REVIEW-SESSION RECONCILIATION of §1 OPEN AUDIT FINDINGS (2026-08-13) — the table above is STALE.
+Checked each against current code so the baseline is accurate as Karan's session starts:
+- **1.1** — SETTLED by Karan ("use best judgement") AND the money-guard branch is fixed (`3716e73` + mig 135 live).
+  The report-hiding-of-a-deliberately-archived-won-deal remains a policy choice he accepted. **CLOSED.**
+- **1.2** (address toggle backwards) — **FIXED.** `accounts/[id]/edit/page.tsx:271-309`: page reordered (Company →
+  Billing) and the toggle now copies Company→Billing correctly, with an audit comment documenting exactly this fix.
+- **1.3** (skipped stages render as future) — **FIXED.** `status-path-bar.tsx` has a real `skipped` StageState
+  (line 47/86/125) rendering a "skipped" chip, distinct from future. `skippedStages` wired.
+- **1.4** (won-not-started highlights Pre-Construction) — **LIKELY FINE / low-pri.** Path bar reworked; a won deal
+  awaiting mobilisation genuinely sits AT pre-construction, so highlighting it reads as correct. Flagging for a visual
+  confirm only, not asserting a bug.
+- **1.5** ("Proposal" label where the stage is "Sent") — **POSSIBLY STILL OPEN.** `constants.ts:182` still maps
+  status `proposal → "Proposal"`, and `opportunityStatusLabel` (used in timeline/move-error text, status.ts:221)
+  emits "Proposal" while the board column for that status is "Sent" (`columnKeyForOpp`). So a timeline entry can say
+  "moved to Proposal" for a deal shown in the "Sent" column — the dual-naming the finding described. Cosmetic; worth
+  a decision: rename the status label to "Sent", or have the timeline use the column label.
+- **1.6** (project_id hardening) — **DONE** via migration 135 (trigger fills it + backfill), guard reads both columns.
+- **1.7** (trivial nit) — n/a.
+**Net: 1.1/1.2/1.3/1.6 closed; 1.4 likely-fine; only 1.5 (cosmetic dual-naming) still worth action.**
