@@ -277,7 +277,7 @@ async function quickFlipStatusAction(formData: FormData) {
     // more here than anywhere: this redirect exists to capture a LOSS REASON,
     // and landing at the top of a long page meant the form it came for was
     // off-screen.
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&to=pre_sale_closed&to_sub=lost#change-status`);
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&focus=status&to=pre_sale_closed&to_sub=lost#change-status`);
   }
   const result = await changeOpportunityStatus({
     opp_id,

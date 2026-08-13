@@ -56,7 +56,7 @@ describe("every next-step button goes somewhere the page handles", () => {
 
       // 1. Every query param must be one the page actually reads. `action` was
       //    invented and read by nothing, which is the whole bug.
-      const READS = ["tab", "sub", "to", "to_sub", "back", "ef"];
+      const READS = ["tab", "sub", "to", "to_sub", "back", "ef", "focus"];
       for (const key of url.searchParams.keys()) {
         expect(READS, `"${step.label}" passes ?${key}=, which the page never reads`).toContain(key);
       }
@@ -121,7 +121,7 @@ describe("every warning's Fix lands somewhere usable", () => {
     } as never);
 
   it("only passes params the page reads", () => {
-    const READS = ["tab", "sub", "to", "to_sub", "back", "ef"];
+    const READS = ["tab", "sub", "to", "to_sub", "back", "ef", "focus"];
     for (const w of warnings()) {
       // A warning with no href is legitimate — `no_project` explains itself
       // rather than offering a link to nowhere, which is the right shape.

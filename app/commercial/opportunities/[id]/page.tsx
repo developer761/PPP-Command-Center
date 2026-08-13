@@ -182,6 +182,8 @@ type SP = Promise<{
    *  Read by the change-status card; ignoring it opened the Lost flow on Won. */
   to_sub?: string;
   status_ok?: string;
+  /** `status` when a next-step button sent the user here to change it. */
+  focus?: string;
   /** Carries the reason a debrief failed to save. Was emitted and never read —
    *  a failed save that said nothing. */
   debrief_warn?: string;
@@ -1475,12 +1477,17 @@ export default async function OpportunityDetailPage({
   // Open submittals and crew hours are only rendered while a job is on site, so
   // they are only fetched then — two round-trips a bid would never use.
   const pathOnSite = opp.status === "in_progress";
+  // Submittals are a PRE-CONSTRUCTION activity — the GC wants product data and
+  // samples approved before anyone mobilises — so they must load one stage
+  // earlier than the on-site tools, or the "Send the submittals" step can
+  // never fire on the stage it belongs to.
+  const pathNeedsSubmittals = pathOnSite || opp.status === "pre_construction";
   const pathIsClosedOut = opp.status === "post_sale_closed";
   const [pathFin, pathChangeOrders, pathSubmittals, pathLabor, pathCloseouts, pathRetainageCents] = pathIsWon
     ? await Promise.all([
         getProjectFinancials(opp.id).catch(() => null),
         listChangeOrders(opp.id).catch(() => []),
-        pathOnSite ? listOpportunitySubmittals(opp.id).catch(() => []) : Promise.resolve([]),
+        pathNeedsSubmittals ? listOpportunitySubmittals(opp.id).catch(() => []) : Promise.resolve([]),
         pathOnSite ? laborByWorkerForProject(opp.id).catch(() => []) : Promise.resolve([]),
         // Only a closed-out job renders a warranty tile; anything earlier would
         // pay for a query whose result is thrown away.
@@ -1554,6 +1561,12 @@ export default async function OpportunityDetailPage({
     ...attentionInput,
     proposal: latestProposal ? { id: latestProposal.id, status: latestProposal.status } : null,
     accountId: opp.account_id,
+    // Submittals come BEFORE the crew mobilises (Karan 2026-08-13), so the
+    // pre-construction step needs to know whether any exist. Only loaded once
+    // the job is on site, so on an earlier stage this stays undefined — which
+    // nextStep reads as "unknown", not "none".
+    submittalCount: pathNeedsSubmittals ? pathSubmittals.length : undefined,
+    hasWorkOrder: !!pathWorkOrder,
   });
 
   // The one margin the whole platform agrees on — billed-based, per D2.
@@ -2060,6 +2073,7 @@ export default async function OpportunityDetailPage({
           statusOk={pickFirst(sp.status_ok) === "1"}
           preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
           preselectSub={pickFirst(sp.to_sub)}
+          focusStatus={pickFirst(sp.focus) === "status"}
           confirmDelete={pickFirst(sp.confirm_delete) === "1"}
           invoicesCreated={
             pickFirst(sp.invoices_created) ? Number(pickFirst(sp.invoices_created)) : 0
@@ -2949,6 +2963,7 @@ async function InfoTab({
   statusOk,
   preselectTo,
   preselectSub,
+  focusStatus,
   confirmDelete,
   invoicesCreated,
   invoiceErrors,
@@ -2960,6 +2975,8 @@ async function InfoTab({
   errorMessage?: string;
   statusOk?: boolean;
   preselectTo?: OpportunityStatus;
+  /** True when a next-step button sent the user here to change the status. */
+  focusStatus?: boolean;
   /** Sub-status the caller wants pre-selected alongside preselectTo. The
    *  quick-flips send `&to_sub=lost` with a terminal target; ignoring it
    *  meant the form opened on Closed - WON, so one click marked a deal the
@@ -3050,6 +3067,21 @@ async function InfoTab({
   };
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Sent here BY a next-step button ("Start the job", "Mark won or lost").
+          The card normally sits well down this tab, and a hash alone does not
+          reliably scroll after a soft navigation — so the click looked like it
+          did nothing, twice, which is exactly what Karan reported. Rendering it
+          FIRST removes the dependence on scrolling entirely. */}
+      {focusStatus && (!isTerminal || preselectTo) && (
+        <div className="lg:col-span-2 rounded-xl ring-2 ring-cc-brand-400 ring-offset-2 ring-offset-surface-sunken">
+          <ChangeStatusCard
+            opp={opp}
+            nextStatuses={nextStatuses}
+            preselectTo={preselectTo}
+            preselectSub={preselectSub}
+          />
+        </div>
+      )}
       {errorMessage && (
         <div className="lg:col-span-2 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
           {errorMessage}
@@ -3077,7 +3109,7 @@ async function InfoTab({
           loss-reason capture; suppressing the card on an ALREADY-terminal deal
           meant "→ Closed Lost" on a Closed Won card landed on Overview with no
           form, no error and no explanation, and the deal stayed Won. */}
-      {(!isTerminal || preselectTo) && (
+      {!focusStatus && (!isTerminal || preselectTo) && (
         <ChangeStatusCard
           opp={opp}
           nextStatuses={nextStatuses}

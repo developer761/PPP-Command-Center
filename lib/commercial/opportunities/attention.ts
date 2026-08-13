@@ -132,6 +132,11 @@ export function nextStep(
     AttentionInput,
     "oppId" | "status" | "subStatus" | "proposalCount" | "sentProposalCount" | "approvedNotSentCount"
   > & {
+    /** How many submittals exist at all. Zero = none sent yet; an OPEN one is
+     *  normal, since it is sitting with the GC. Optional so a caller that
+     *  doesn't load them (the pipeline list) still gets a sensible step. */
+    submittalCount?: number;
+    hasWorkOrder?: boolean;
     /** Latest proposal's id + status, so the button can point AT it. */
     proposal?: { id: string; status: string } | null;
     accountId?: string | null;
@@ -152,16 +157,44 @@ export function nextStep(
       // which NOTHING handles — the button navigated and the page looked
       // unchanged, so it read as broken because it was. The anchor lands you on
       // the card, and `to` pre-picks the one sensible next stage.
-      href: `/commercial/opportunities/${oppId}?tab=info&to=pre_construction#change-status`,
+      href: `/commercial/opportunities/${oppId}?tab=info&focus=status&to=pre_construction#change-status`,
       why: "Move it into pre-construction so the crew can be scheduled.",
     };
   }
   if (status === "pre_construction") {
-    return {
-      label: "Write the work order",
-      href: `/commercial/opportunities/${oppId}?tab=project&sub=work-order`,
-      why: "The crew needs the scope before they mobilise.",
-    };
+    // Karan 2026-08-13: "submittals is before they start the job." Pre-
+    // construction is where a GC wants product data and samples approved, and
+    // on a job that needs them nobody mobilises until they come back. So they
+    // come first; the work order is the step once that is moving.
+    //
+    // Not started at all is the signal — an OPEN submittal is normal (it is
+    // with the GC), so this only fires when none exist yet.
+    // `=== 0`, not `?? 0` — a caller that didn't load submittals passes
+    // undefined, and treating "I don't know" as "there are none" would tell
+    // the pipeline list to send submittals on every won job.
+    if (i.submittalCount === 0) {
+      return {
+        label: "Send the submittals",
+        href: `/commercial/opportunities/${oppId}?tab=project&sub=submittals`,
+        why: "Product data and samples go to the GC before the crew mobilises.",
+      };
+    }
+    if (i.hasWorkOrder === true) {
+      return {
+        label: "Put it in progress",
+        href: `/commercial/opportunities/${oppId}?tab=info&focus=status&to=in_progress#change-status`,
+        why: "Submittals are out and the crew has its scope.",
+      };
+    }
+    // Either we know there is no work order, or we don't know — both point at
+    // writing one, which is the safe default for this stage.
+    {
+      return {
+        label: "Write the work order",
+        href: `/commercial/opportunities/${oppId}?tab=project&sub=work-order`,
+        why: "The crew needs the scope before they mobilise.",
+      };
+    }
   }
   if (status === "in_progress") {
     return {
@@ -239,8 +272,8 @@ export function nextStep(
     return {
       label: `Move it to ${STAGE_LABEL[proposalStage]}`,
       href: target
-        ? `/commercial/opportunities/${oppId}?tab=info&to=${target.to}&to_sub=${target.sub}#change-status`
-        : `/commercial/opportunities/${oppId}?tab=info#change-status`,
+        ? `/commercial/opportunities/${oppId}?tab=info&focus=status&to=${target.to}&to_sub=${target.sub}#change-status`
+        : `/commercial/opportunities/${oppId}?tab=info&focus=status#change-status`,
       why: `The proposal is already at ${STAGE_LABEL[proposalStage]} — the deal hasn't caught up.`,
     };
   }
@@ -251,7 +284,7 @@ export function nextStep(
       label: "Mark won or lost",
       // No `to=` on purpose: won vs lost is the user's answer to give, and
       // pre-picking either is how a mis-click books a loss as a win.
-      href: `/commercial/opportunities/${oppId}?tab=info#change-status`,
+      href: `/commercial/opportunities/${oppId}?tab=info&focus=status#change-status`,
       why: "It's with them — record the answer when it comes.",
     };
   }

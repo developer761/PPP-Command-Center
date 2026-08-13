@@ -256,3 +256,60 @@ describe("warnings consult the deal, not just its proposal", () => {
     expect(warn("qualifying", "rfp", { sentProposalCount: 1 })).toContain("no_follow_up");
   });
 });
+
+/**
+ * Karan 2026-08-13: *"when they start the job what's the first thing they'd
+ * do? Submittals is before they start the job."*
+ *
+ * The delivery sequence had "Write the work order" as the whole of
+ * pre-construction. On a commercial job the GC wants product data and samples
+ * approved before anyone mobilises, so submittals come first.
+ */
+describe("delivery follows the order the work actually happens in", () => {
+  const at = (status: string, over: Record<string, unknown> = {}) =>
+    nextStep({
+      oppId: "o1",
+      accountId: "a1",
+      status,
+      subStatus: null,
+      proposal: null,
+      proposalCount: 1,
+      sentProposalCount: 1,
+      approvedNotSentCount: 0,
+      ...over,
+    } as never);
+
+  it("pre-construction asks for submittals before the work order", () => {
+    expect(at("pre_construction", { submittalCount: 0 })?.label).toBe("Send the submittals");
+  });
+
+  it("once submittals exist, the work order is next", () => {
+    expect(at("pre_construction", { submittalCount: 2, hasWorkOrder: false })?.label)
+      .toBe("Write the work order");
+  });
+
+  it("with both done, it asks to put the job in progress", () => {
+    const s = at("pre_construction", { submittalCount: 2, hasWorkOrder: true })!;
+    expect(s.label).toBe("Put it in progress");
+    // …pre-picking the stage, so the button doesn't land on an empty dropdown.
+    expect(new URL(s.href, "https://x.test").searchParams.get("to")).toBe("in_progress");
+  });
+
+  it("an OPEN submittal doesn't restart the sequence — it's with the GC", () => {
+    // The signal is "none exist", not "none are closed". A submittal awaiting
+    // a GC response is the normal state and means the step is already done.
+    expect(at("pre_construction", { submittalCount: 1, hasWorkOrder: false })?.label)
+      .toBe("Write the work order");
+  });
+
+  it("not knowing about submittals is not the same as there being none", () => {
+    // The pipeline list doesn't load them. Reading undefined as zero would tell
+    // every won job on that list to go and send submittals.
+    expect(at("pre_construction")?.label).toBe("Write the work order");
+  });
+
+  it("the rest of delivery is unchanged", () => {
+    expect(at("in_progress")?.label).toBe("Bill the work");
+    expect(at("billing")?.label).toBe("Close it out");
+  });
+});

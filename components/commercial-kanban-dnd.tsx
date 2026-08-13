@@ -113,7 +113,7 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     if (toStatus === "lost" || toStatus === "no_bid") {
       setNavigating(toStatus);
       requestAnimationFrame(() => {
-        window.location.href = `/commercial/opportunities/${oppId}?tab=info&to=${toStatus}#change-status`;
+        window.location.href = `/commercial/opportunities/${oppId}?tab=info&focus=status&to=${toStatus}#change-status`;
       });
       return;
     }
@@ -160,7 +160,7 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
         setOptimisticMove(null);
         setNavigating(toStatus);
         requestAnimationFrame(() => {
-          window.location.href = `/commercial/opportunities/${oppId}?tab=info&to=${toStatus}#change-status`;
+          window.location.href = `/commercial/opportunities/${oppId}?tab=info&focus=status&to=${toStatus}#change-status`;
         });
         return;
       }
