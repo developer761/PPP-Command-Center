@@ -1450,10 +1450,13 @@ export default async function OpportunityDetailPage({
 
   // ── Status path, attention and stage KPIs (steps 4–5) ────────────────────
   // Reads first, so everything below is derived from ONE set of numbers.
-  const [pathProject, pathWorkOrder, pathInvoices] = await Promise.all([
+  const [pathProject, pathWorkOrder, pathInvoices, pathStatusLog] = await Promise.all([
     getProjectForOpportunity(opp.id),
     getWorkOrderForOpp(opp.id).catch(() => null),
     listCommercialInvoices({ opportunityId: opp.id }).catch(() => []),
+    // Feeds the progress bar's "skipped" marks. Unconditional: the SALES path
+    // renders for every deal, bids included, not just won ones.
+    listOpportunityStatusLog(opp.id).catch(() => []),
   ]);
 
   // Financials + change orders only once the job is actually won — a bid has no
@@ -1855,6 +1858,7 @@ export default async function OpportunityDetailPage({
                 subStatus={opp.sub_status}
                 oppId={opp.id}
                 hasWinDate={!!opp.decided_at}
+                statusLog={pathStatusLog}
                 manualNext={manualNext}
               />
             </div>

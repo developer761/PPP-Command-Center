@@ -24,15 +24,16 @@ describe("date write paths store the day that was typed", () => {
 
     it(`${name}: no time component, no zone shift`, () => {
       const r = parseInlineValue(field, "2026-08-12");
-      expect(r.error).toBeUndefined();
-      expect(r.value).toBe("2026-08-12");
+      expect("error" in r).toBe(false);
+      const v = "value" in r ? r.value : null;
+      expect(v).toBe("2026-08-12");
       // The failure this guards: anything that turns the day into an instant.
-      expect(String(r.value)).not.toMatch(/T|Z|:/);
+      expect(String(v)).not.toMatch(/T|Z|:/);
     });
 
     it(`${name}: refuses a value it can't store as a day`, () => {
-      expect(parseInlineValue(field, "08/12/2026").error).toBeTruthy();
-      expect(parseInlineValue(field, "2026-08-12T12:00:00Z").error).toBeTruthy();
+      expect("error" in parseInlineValue(field, "08/12/2026")).toBe(true);
+      expect("error" in parseInlineValue(field, "2026-08-12T12:00:00Z")).toBe(true);
     });
   }
 });

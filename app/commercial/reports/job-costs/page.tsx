@@ -70,7 +70,7 @@ export default async function JobCostsReportPage() {
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-bold text-ppp-charcoal">Job costs &amp; profit</h2>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">Every job&rsquo;s real cost — materials, crew, subs — vs its contract, rolled up per GC and company-wide. Margin = contract − cost (the projected profit, same as each deal&rsquo;s Costs tab).</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">Every job&rsquo;s real cost — materials, crew, subs — vs its contract, rolled up per GC and company-wide. Margin = billed − cost, the same basis as every deal&rsquo;s Costs tab.</p>
         </div>
         {t.dealCount > 0 && (
           <a

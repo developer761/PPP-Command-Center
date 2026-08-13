@@ -473,3 +473,64 @@ export function oppStatusDisplayLabel(
   if (!status) return opportunityStatusLabelV2(status);
   return kanbanColumnLabel(columnKeyForOpp(status, sub_status ?? null)) || opportunityStatusLabelV2(status);
 }
+
+/**
+ * Which STATUS backs each stage on the progress bar.
+ *
+ * Needed because the status log records `to_status` and nothing else — a
+ * sub-status move (Qualifying → RFP, Estimating → Pending Approval) leaves no
+ * row at all. So the log can prove a whole status was never entered, but it
+ * can never prove a sub-stage within one was skipped.
+ */
+const STATUS_BEHIND_STAGE: Record<string, string> = {
+  qualifying: "qualifying",
+  rfp: "qualifying",
+  estimating: "estimating",
+  pending_approval: "estimating",
+  sent: "proposal",
+  won: "pre_sale_closed",
+  lost: "pre_sale_closed",
+  pre_construction: "pre_construction",
+  in_progress: "in_progress",
+  billing: "billing",
+  post_sale_closed: "post_sale_closed",
+};
+
+/**
+ * Stages this deal demonstrably never sat in — the ones the progress bar
+ * should mark "skipped" rather than tick as completed work.
+ *
+ * The bug: `stateFor` only ever returned passed/current/future, so a deal
+ * dragged straight from RFP to Sent showed Estimating and Pending Approval
+ * with completion ticks. The bar claimed work nobody did, on the one screen
+ * people read to find out what has been done.
+ *
+ * Two deliberate refusals to guess:
+ *
+ *  - **No log, no claim.** A deal predating status logging returns nothing.
+ *    Marking every earlier stage "skipped" because we have no record would
+ *    trade over-claiming for accusing, which is worse.
+ *  - **Sub-stages are never accused.** If a deal's status log shows it was
+ *    `qualifying`, neither Qualifying nor RFP is marked, because nothing
+ *    recorded which of the two it sat in. Only a status absent from the log
+ *    ENTIRELY proves its stages were jumped.
+ *
+ * Pure, so the rule is testable without a database.
+ */
+export function skippedStages(
+  stageKeys: readonly string[],
+  log: readonly { from_status?: string | null; to_status: string }[]
+): string[] {
+  if (log.length === 0) return [];
+  const seen = new Set<string>();
+  for (const row of log) {
+    seen.add(row.to_status);
+    // The first entry's `from_status` is where the deal started, and it is the
+    // only evidence of a status the deal held before anything was logged.
+    if (row.from_status) seen.add(row.from_status);
+  }
+  return stageKeys.filter((k) => {
+    const backing = STATUS_BEHIND_STAGE[k];
+    return backing !== undefined && !seen.has(backing);
+  });
+}

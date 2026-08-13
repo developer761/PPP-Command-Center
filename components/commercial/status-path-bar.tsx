@@ -7,6 +7,7 @@ import {
   PRE_CONTRACT_COLUMNS,
   POST_CONTRACT_COLUMNS,
   columnKeyForOpp,
+  skippedStages,
 } from "@/lib/commercial/opportunities/kanban-columns";
 
 /**
@@ -277,6 +278,10 @@ export function StatusPathBar({
   /** Was a decision date ever recorded? A job dragged into delivery on a verbal
    *  yes has none, and never passed through Closed Won. */
   hasWinDate,
+  /** The deal's status history. Only evidence of a status it NEVER held can
+   *  mark a stage skipped — see `skippedStages`. Empty (or absent, for a deal
+   *  predating logging) means no stage is accused. */
+  statusLog = [],
   /** The next step a person can take when no artifact implies it. */
   manualNext,
 }: {
@@ -284,6 +289,7 @@ export function StatusPathBar({
   subStatus: string | null;
   oppId: string;
   hasWinDate?: boolean;
+  statusLog?: readonly { from_status?: string | null; to_status: string }[];
   manualNext?: { label: string; href: string } | null;
 }) {
   const won = isWon({ status, sub_status: subStatus });
@@ -313,16 +319,30 @@ export function StatusPathBar({
           { key: "won", label: "Closed Won", reached: won || (inDelivery && (decided || !!hasWinDate)) },
           { key: "lost", label: "Closed Lost", reached: lost },
         ]}
-        // A job in delivery that was never recorded as won never passed
-        // Closed Won — ticking it would claim a sale nobody logged, and the
-        // win date is what "wins this month" counts.
-        skipped={inDelivery && !decided && !hasWinDate ? ["won"] : []}
+        // Two ways a stage gets marked rather than ticked.
+        //
+        // The general one: the status log proves the deal never held the
+        // status behind that stage — a bid dragged from RFP straight to Sent
+        // was never `estimating`, so Estimating and Pending Approval are
+        // jumped, not done.
+        //
+        // The specific one: a job in delivery that was never recorded as won
+        // never passed Closed Won. Ticking it would claim a sale nobody
+        // logged, and the win date is what "wins this month" counts.
+        skipped={[
+          ...skippedStages(
+            SALES_STAGES.map((st) => st.key),
+            statusLog
+          ),
+          ...(inDelivery && !decided && !hasWinDate ? ["won"] : []),
+        ]}
         cta={decided || inDelivery ? null : manualNext ?? null}
       />
       {(won || inDelivery) && (
         <PathRow
           title="Delivery"
           stages={DELIVERY_STAGES}
+          skipped={skippedStages(DELIVERY_STAGES.map((st) => st.key), statusLog)}
           // AUDIT: the comment said "nothing is current yet" and then passed
           // "pre_construction" anyway, so a job won this morning showed
           // Pre-Construction as underway before anyone had touched it. Null
