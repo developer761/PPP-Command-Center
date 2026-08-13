@@ -997,3 +997,30 @@ billedPreTaxCents — fine.) Handed off.
 `[proposalId]/page.tsx` + `new/page.tsx`), referencing `sp.kept` before the searchParams type carries it → a
 transient `tsc` error. NOT in cd901b9 (0 mentions of `kept`) and NOT flagged as a bug. Will verify caller-completeness
 when it commits (same discipline as the date-et refactor — check before crying wolf).
+
+---
+
+## 🟠 VERIFY — analytics rebuild + strip revert (`fe0d958`). New visuals are strong. But my tax-basis finding is STILL NOT FIXED, and the rebuild added a 2nd instance inside the same component.
+Good: strip reverted to one row (Karan's stated preference — "I like the other bar better"); the new visuals earn
+their place — donut of cost composition (costs, no tax issue), margin gauge swept to 40% (dealMargin/D2,
+platform-agreed), KPI cards + sparklines, and `collectedPct = collectedCents/invoicedCents` is CORRECT (both
+tax-inclusive → paid/total). Billing months keyed on issued, drafts excluded. tsc clean, tests green, revision-rule
+WIP committed cleanly.
+
+**🟠 STILL OPEN + now WORSE — the tax-basis bug persists in the money chain AND a new form appeared in the monthly chart.**
+The rebuild changed the visuals but not the underlying bases:
+- **Money chain** (deal-analytics.tsx:57, 85-109) — unchanged from my a48a758 flag: `unbilled = contractToDateCents
+  (PRE-tax) − invoicedCents (TAX-INCL)`, and both invoiced + collected bars (tax-incl) are measured against the
+  pre-tax contract. A fully-billed taxed job still reads "over-invoiced." NOT FIXED.
+- **NEW — the billing-over-time chart mixes bases internally** (page.tsx:1610-1611 → deal-analytics.tsx:223-224):
+  monthly `invoicedCents = subtotal_cents` (PRE-tax) but `collectedCents = paid_cents` (TAX-INCL). So a month's
+  collected bar can exceed its invoiced bar (paid includes tax the subtotal doesn't), inverting the "widening gap =
+  money going out faster than coming back" story the chart is built to tell.
+- Minor: the Invoiced KPI value is tax-incl (`invoicedCents`) but its sparkline is pre-tax (monthly subtotal) — same
+  number, two bases.
+**Coherent fix (pre-tax throughout, since the contract is inherently pre-tax):** money-chain invoiced →
+`billedPreTaxCents` (financials already provides it, labeled "compared to the contract"); collected → a pre-tax
+collected figure (net tax from `paid_cents`, or add `collectedPreTaxCents` to financials); monthly collected → same
+net-of-tax. Then every bar shares the contract's basis.
+**This is now 3 tax-basis sites (F3 cash-flow · deal money-chain · deal monthly chart) — a systematic pattern, not
+one-offs.** Re-flagged; handed off.
