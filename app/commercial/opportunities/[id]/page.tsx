@@ -2241,9 +2241,15 @@ export default async function OpportunityDetailPage({
             <h2 className="text-[15px] font-bold text-ppp-charcoal leading-tight truncate">
               {PROJECT_SUB_TABS.find((t) => t.key === sub)?.label ?? "Project"}
             </h2>
-            <p className="text-[11.5px] text-ppp-charcoal-500 truncate">
+            {/* The deal name is a link, so a tool is never more than one click
+                from the job itself — the back arrow goes up one level to the
+                tool list, this goes all the way out. */}
+            <Link
+              href={`/commercial/opportunities/${opp.id}`}
+              className="block text-[11.5px] text-ppp-charcoal-500 hover:text-cc-brand-700 hover:underline truncate"
+            >
               {derivedOppName(opp, account?.company_name ?? null)}
-            </p>
+            </Link>
           </div>
         </div>
       ) : (
