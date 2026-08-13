@@ -1,4 +1,5 @@
 import "server-only";
+import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logUpdate } from "@/lib/commercial/audit-log";
@@ -67,7 +68,7 @@ export async function findContractRepairs(): Promise<RepairRow[]> {
     .select("id, title, project_number, account_id, status, sub_status, accepted_contract_cents")
     .is("deleted_at", null)
     .is("accepted_contract_cents", null)
-    .in("status", ["pre_sale_closed", "pre_construction", "in_progress", "billing", "post_sale_closed"]);
+    .in("status", ["pre_sale_closed", ...POST_SALE_STATUSES]);
   const opps = (oppRows ?? []) as Array<{
     id: string;
     title: string | null;

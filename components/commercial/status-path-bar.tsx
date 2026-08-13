@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   isWon,
   isLost,
+  POST_SALE_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import {
   PRE_CONTRACT_COLUMNS,
@@ -295,7 +296,7 @@ export function StatusPathBar({
   const won = isWon({ status, sub_status: subStatus });
   const lost = isLost({ status, sub_status: subStatus });
   const decided = won || lost;
-  const inDelivery = ["pre_construction", "in_progress", "billing", "post_sale_closed"].includes(status);
+  const inDelivery = (POST_SALE_STATUSES as readonly string[]).includes(status);
 
   // Where the SALES path sits. A deal in delivery is past the whole sales
   // ladder, so it shows as fully passed with Closed Won at the tail — the sale

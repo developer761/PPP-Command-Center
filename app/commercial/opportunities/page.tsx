@@ -72,6 +72,7 @@ import {
   isLost,
   isFollowUp,
   opportunitySubStatusLabel,
+  POST_SALE_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import {
   KANBAN_COLUMNS,
@@ -3182,8 +3183,7 @@ function StageChip({
   // stepper (Pre-Const → In Progress → Billing → Closed) with cyan
   // tinting; pre-sale statuses render the sales stepper (Qualifying
   // → Estimating → Proposal → Closed) with brand blue.
-  const postSaleStatuses = ["pre_construction", "in_progress", "billing", "post_sale_closed"];
-  const isPostSale = postSaleStatuses.includes(status);
+  const isPostSale = (POST_SALE_STATUSES as readonly string[]).includes(status);
   const stages = isPostSale ? POST_SALE_STEPPER : PRE_SALE_STEPPER;
   const laneLabel = isPostSale ? "Post-Sale" : "Pre-Sale";
   // Column consistency — the stepper advances to the segment matching the

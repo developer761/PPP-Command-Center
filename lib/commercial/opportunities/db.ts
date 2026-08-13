@@ -31,6 +31,7 @@ import {
   type OpportunityStatus,
   type OpportunitySubStatus,
   type OpportunityLane,
+  POST_SALE_STATUSES,
 } from "./constants";
 export {
   OPPORTUNITY_STATUSES,
@@ -429,7 +430,7 @@ export function dealValueCents(
   if (signed !== null && signed !== undefined && signed > 0) {
     const decided =
       (opp.status === "pre_sale_closed" && opp.sub_status === "won") ||
-      ["pre_construction", "in_progress", "billing", "post_sale_closed"].includes(opp.status);
+      (POST_SALE_STATUSES as readonly string[]).includes(opp.status);
     if (decided) return signed;
   }
   const low = opp.bid_value_low_cents;

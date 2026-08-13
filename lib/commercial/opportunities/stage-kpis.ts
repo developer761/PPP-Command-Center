@@ -1,4 +1,5 @@
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 
 /**
  * The numbers that matter at THIS stage of a job — and only those.
@@ -110,7 +111,7 @@ function warrantyLabel(dateIso: string, todayIso: string): { text: string; tone:
   return { text: `${Math.round(d / 30)} months left`, tone: "default" };
 }
 
-const DELIVERY = new Set(["pre_construction", "in_progress", "billing", "post_sale_closed"]);
+const DELIVERY = new Set<string>(POST_SALE_STATUSES);
 
 /** Which phase's tiles to show. Separate from the status ladder because a won
  *  job that hasn't started reads differently from one on site. */
