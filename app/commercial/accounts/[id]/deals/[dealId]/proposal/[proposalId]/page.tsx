@@ -19,6 +19,7 @@
  */
 
 import { flashMessage } from "@/lib/commercial/flash";
+import { makeCarries, FIELDS_INPUT_NAME, fieldsFor } from "@/lib/commercial/proposals/form-fields";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
@@ -205,44 +206,75 @@ async function saveProposalAction(formData: FormData) {
   const existing = await getProposal(proposalId);
   if (!existing || existing.opportunity_id !== dealId) notFound();
 
-  const header = {
-    ...existing.header_json,
-    gc_company: String(formData.get("gc_company") ?? "").trim() || undefined,
-    attention: String(formData.get("attention") ?? "").trim() || undefined,
-    phone: String(formData.get("phone") ?? "").trim() || undefined,
-    email: String(formData.get("email") ?? "").trim() || undefined,
-    project_name: String(formData.get("project_name") ?? "").trim() || undefined,
-    project_address:
-      String(formData.get("project_address") ?? "").trim() || undefined,
-    date_iso: String(formData.get("date_iso") ?? "").trim() || undefined,
-    show_capital_improvement_notice:
-      formData.get("show_cip_notice") === "on",
-  };
-  const gcAddrRaw = String(formData.get("gc_address_lines") ?? "").trim();
-  header.gc_address_lines = gcAddrRaw
-    ? gcAddrRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-    : undefined;
+  // ── PATCH-ONLY SAVE ────────────────────────────────────────────────
+  //
+  // This action used to read EVERY field and write all of them, so a form
+  // that carried only some of them silently blanked the rest. That is why a
+  // separate rename action had to exist, and it is the thing standing between
+  // us and Stephanie's requested section order — her sequence interleaves the
+  // autosave block with the line-item forms, which means splitting the big
+  // form, which under the old behaviour meant each part erasing the others.
+  //
+  // A form now DECLARES what it carries via a hidden `__fields` list, and
+  // only those fields are touched. `updateProposal` already treats undefined
+  // as "leave alone", so the whole fix lives here.
+  //
+  // A form with no declaration keeps the old whole-form behaviour, which is
+  // correct for the single combined editor and means nothing changes until a
+  // form opts in.
+  //
+  // The declaration is required rather than inferred from what FormData
+  // contains, because an unchecked checkbox is simply ABSENT from FormData —
+  // inferring presence would make "unchecked" indistinguishable from "not on
+  // this form", and unticking a box would never save.
+  const carries = makeCarries(String(formData.get(FIELDS_INPUT_NAME) ?? ""));
+  const text = (name: string) => String(formData.get(name) ?? "").trim();
 
-  const estimator = {
-    ...existing.estimator_snapshot_json,
-    name: String(formData.get("est_name") ?? "").trim() || undefined,
-    title: String(formData.get("est_title") ?? "").trim() || undefined,
-    phone: String(formData.get("est_phone") ?? "").trim() || undefined,
-    email: String(formData.get("est_email") ?? "").trim() || undefined,
-  };
+  const header = { ...existing.header_json };
+  if (carries("gc_company")) header.gc_company = text("gc_company") || undefined;
+  if (carries("attention")) header.attention = text("attention") || undefined;
+  if (carries("phone")) header.phone = text("phone") || undefined;
+  if (carries("email")) header.email = text("email") || undefined;
+  if (carries("project_name")) header.project_name = text("project_name") || undefined;
+  if (carries("project_address")) header.project_address = text("project_address") || undefined;
+  if (carries("date_iso")) header.date_iso = text("date_iso") || undefined;
+  if (carries("show_cip_notice")) {
+    header.show_capital_improvement_notice = formData.get("show_cip_notice") === "on";
+  }
+  if (carries("gc_address_lines")) {
+    const gcAddrRaw = text("gc_address_lines");
+    header.gc_address_lines = gcAddrRaw
+      ? gcAddrRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+      : undefined;
+  }
+  const headerTouched = [
+    "gc_company", "attention", "phone", "email", "project_name",
+    "project_address", "date_iso", "show_cip_notice", "gc_address_lines",
+  ].some(carries);
 
-  const introOverride = String(formData.get("intro_text_override") ?? "").trim();
-  const altNotes = String(formData.get("alternate_notes") ?? "").trim();
-  const bidNotes = String(formData.get("bid_notes") ?? "").trim();
+  const estimator = { ...existing.estimator_snapshot_json };
+  if (carries("est_name")) estimator.name = text("est_name") || undefined;
+  if (carries("est_title")) estimator.title = text("est_title") || undefined;
+  if (carries("est_phone")) estimator.phone = text("est_phone") || undefined;
+  if (carries("est_email")) estimator.email = text("est_email") || undefined;
+  const estimatorTouched = ["est_name", "est_title", "est_phone", "est_email"].some(carries);
+
+  const introOverride = text("intro_text_override");
+  const altNotes = text("alternate_notes");
+  const bidNotes = text("bid_notes");
   const pdfShowPrices = formData.get("pdf_show_line_prices") === "on";
   // R1c: Bid Set date (empty → null). R1b: final price override — blank field
   // means "clear back to the line-item sum" (null), NOT $0; a typed value
   // overrides the total (dollarsInputToCents clamps ≥0).
-  const bidSetDate = String(formData.get("bid_set_date") ?? "").trim() || null;
-  const finalPriceRaw = String(formData.get("final_price_override") ?? "").trim();
+  const bidSetDate = carries("bid_set_date") ? text("bid_set_date") || null : undefined;
+  const finalPriceRaw = text("final_price_override");
   // A typo/unparseable entry -> null (clears the override; total falls back to the
   // real subtotal) rather than $0, which would silently zero the contract + AIA.
-  const finalPriceOverride = finalPriceRaw === "" ? null : dollarsInputToCentsOrNull(finalPriceRaw);
+  const finalPriceOverride = !carries("final_price_override")
+    ? undefined
+    : finalPriceRaw === ""
+    ? null
+    : dollarsInputToCentsOrNull(finalPriceRaw);
 
   let exclusionIds: string[] = existing.exclusion_ids;
   const rawIds = String(formData.get("exclusion_ids") ?? "").trim();
@@ -296,14 +328,14 @@ async function saveProposalAction(formData: FormData) {
 
   const result = await updateProposal({
     id: proposalId,
-    header_json: header,
-    estimator_snapshot_json: estimator,
-    intro_text_override: introOverride || null,
-    alternate_notes: altNotes || null,
-    bid_notes: bidNotes || null,
-    exclusion_ids: exclusionIds,
-    custom_exclusions: customExclusions,
-    pdf_show_line_prices: pdfShowPrices,
+    header_json: headerTouched ? header : undefined,
+    estimator_snapshot_json: estimatorTouched ? estimator : undefined,
+    intro_text_override: carries("intro_text_override") ? introOverride || null : undefined,
+    alternate_notes: carries("alternate_notes") ? altNotes || null : undefined,
+    bid_notes: carries("bid_notes") ? bidNotes || null : undefined,
+    exclusion_ids: carries("exclusion_ids") ? exclusionIds : undefined,
+    custom_exclusions: carries("custom_exclusions") ? customExclusions : undefined,
+    pdf_show_line_prices: carries("pdf_show_line_prices") ? pdfShowPrices : undefined,
     final_price_override_cents: finalPriceOverride,
     bid_set_date: bidSetDate,
     updated_by_user_id: userId,
@@ -1652,8 +1684,10 @@ export default async function ProposalEditorPage({
           items. Karan 2026-07-20: no manual Save button, every field
           change debounces (800ms) → server action fires. Only wired on
           draft proposals — sent/won/lost render read-only above. */}
+      {/* Header + Intro */}
       <AutosaveProposalForm action={saveProposalAction} disabled={proposal.status !== "draft"}>
         {hiddenIds}
+        <input type="hidden" name={FIELDS_INPUT_NAME} value={fieldsFor("header", "intro")} />
 
         {/* Header block. Karan 2026-07-20: the GC is the Account holder
             (who we send TO), the Project is the specific job at their
@@ -1765,171 +1799,6 @@ export default async function ProposalEditorPage({
         >
           <textarea name="intro_text_override" defaultValue={proposal.intro_text_override ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="Leave blank to use the Tomco default." />
         </EditorSection>
-
-        {/* Exclusions */}
-        <EditorSection
-          title="Exclusions"
-          subtitle="What the proposal explicitly does NOT cover — bulleted on the PDF."
-          icon={
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <circle cx="12" cy="12" r="10" />
-              <line x1="8" y1="12" x2="16" y2="12" />
-            </svg>
-          }
-        >
-          <ExclusionPicker
-            label="Add"
-            initialSelected={selectedExclusions.map((e) => ({
-              id: e.id,
-              text: e.text,
-              category: e.category,
-              use_count: e.use_count,
-            }))}
-            initialCustom={proposal.custom_exclusions ?? []}
-          />
-        </EditorSection>
-
-        {/* Qualifications (fka "Alternate description") — Karan meeting 2026-08 */}
-        <EditorSection
-          title="Qualifications"
-          subtitle="Optional qualifications paragraph shown above the alternate line items on the proposal."
-          icon={
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M7 7h10 M7 12h10 M7 17h6" /><path d="M3 7h.01 M3 12h.01 M3 17h.01" />
-            </svg>
-          }
-        >
-          <textarea name="alternate_notes" defaultValue={proposal.alternate_notes ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="e.g. Exterior: Power wash exterior of building." />
-        </EditorSection>
-
-        {/* Bid notes — INTERNAL ONLY. Rendered on the ?mode=internal
-            PDF for Alex/Katie's estimator review; never on the customer
-            PDF. Karan 2026-07-15: prior label said "hidden on PDF
-            unless populated" which was misleading — the customer PDF
-            renderer never rendered this field at all. Now honest. */}
-        <EditorSection
-          title={<>Bid notes <span className="ml-1 text-[10px] font-semibold uppercase tracking-widest text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Internal only</span></>}
-          subtitle="Estimator scratch-pad — only on the internal-mode PDF, never on the customer copy."
-          icon={
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" />
-            </svg>
-          }
-        >
-          <textarea name="bid_notes" defaultValue={proposal.bid_notes ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="e.g. Called Michael on Tuesday to confirm scope. Assumes existing HM doors are still on-site." />
-
-          {/* R1c: marked-up plan set / bid-doc attach. Files to the DEAL's
-              documents (bid_set), so it survives revision bumps and shows in
-              the deal's Documents. Internal only — never on the customer PDF. */}
-          <div className="mt-4 pt-4 border-t border-ppp-charcoal-100">
-            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-              <div className="min-w-0">
-                <div className="text-[12px] font-bold text-ppp-charcoal">Marked-up plans / bid set</div>
-                <div className="text-[11px] text-ppp-charcoal-500 leading-snug">Attach a marked-up plan set or the GC&rsquo;s bid document. Filed to this opportunity — internal only.</div>
-              </div>
-              <ProposalMarkupUpload opportunityId={dealId} />
-            </div>
-            {bidSetDocs.length > 0 ? (
-              <ul className="space-y-1">
-                {bidSetDocs.map((d) => (
-                  <li key={d.id}>
-                    <a
-                      href={`/api/commercial/documents/${d.id}/download`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-[12.5px] text-cc-brand-700 hover:text-cc-brand-800 hover:underline min-h-[36px]"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
-                      <span className="truncate max-w-[240px]">{d.file_name}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-[11.5px] text-ppp-charcoal-400 italic">No marked-up docs attached yet.</p>
-            )}
-          </div>
-        </EditorSection>
-
-        {/* Estimator sign-off */}
-        <EditorSection
-          title="Estimator sign-off"
-          subtitle="Prints in the sign-off block at the bottom of the PDF."
-          icon={
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-          }
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="block">
-              <span className={LABEL_CLS}>Name</span>
-              <input type="text" name="est_name" defaultValue={proposal.estimator_snapshot_json.name ?? ""} className={INPUT_CLS} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>Title</span>
-              <input type="text" name="est_title" defaultValue={proposal.estimator_snapshot_json.title ?? ""} className={INPUT_CLS} placeholder="e.g. Lead Estimator, Tomco Painting" />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>Phone</span>
-              <input type="text" name="est_phone" defaultValue={proposal.estimator_snapshot_json.phone ?? ""} className={INPUT_CLS} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>Email</span>
-              <input type="email" name="est_email" defaultValue={proposal.estimator_snapshot_json.email ?? ""} className={INPUT_CLS} />
-            </label>
-          </div>
-        </EditorSection>
-
-        {/* PDF options */}
-        <EditorSection
-          title="PDF options"
-          icon={
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          }
-        >
-          <label className="flex items-center gap-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
-            <input type="checkbox" name="pdf_show_line_prices" defaultChecked={proposal.pdf_show_line_prices} className="w-4 h-4 accent-cc-brand-600" />
-            <span className="text-[12.5px] text-ppp-charcoal-700">
-              Show per-line prices on the customer PDF (Tomco default hides them — customer sees only the TOTAL)
-            </span>
-          </label>
-          {/* R1b: adjustable final price. Blank = the line-item sum; a value here
-              becomes the proposal TOTAL AND the contract number (AIA + invoicing). */}
-          <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
-            <span className="text-[12.5px] font-semibold text-ppp-charcoal-700">Final price override <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
-            <div className="flex items-center gap-1.5 mt-1 max-w-[240px]">
-              <span className="text-ppp-charcoal-500 text-[13px]">$</span>
-              <input
-                type="text"
-                aria-label="Final price override"
-                inputMode="decimal"
-                name="final_price_override"
-                defaultValue={proposal.final_price_override_cents != null ? centsToDollarInput(proposal.final_price_override_cents) : ""}
-                placeholder="Auto (from line items)"
-                className={`${INPUT_CLS} tabular-nums`}
-              />
-            </div>
-            <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-              Leave blank to use the line-item total ({formatDollars(lineItemSumCents)}). A value here becomes the TOTAL the customer sees — and the contract number used for AIA billing + invoicing.
-            </p>
-          </div>
-        </EditorSection>
-
-        {/* Karan 2026-07-20: killed the manual "Save proposal" button.
-            AutosaveProposalForm debounces every field change (800ms) →
-            fires saveProposalAction and shows a "Saving… / Saved" pill
-            top-right. Line items still save independently below. */}
-        <p className="text-[12px] text-ppp-charcoal-500 text-center">
-          Changes save automatically. Line items save independently below.
-        </p>
       </AutosaveProposalForm>
 
       {/* Line items — separate forms outside the main save form so each
@@ -1987,6 +1856,71 @@ export default async function ProposalEditorPage({
         </div>
       </EditorSection>
 
+      {/* Alternates */}
+      <EditorSection
+        title="Alternates"
+        subtitle="Optional add-ons — shown separately and NOT counted in the TOTAL."
+        icon={
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        }
+      >
+        <div className="space-y-4">
+          {alternates.length === 0 ? (
+            <p className="text-[13px] text-ppp-charcoal-500 italic">No alternates.</p>
+          ) : canEditLines ? (
+            <LineItemsTable
+              rows={alternates}
+              accountId={accountId}
+              dealId={dealId}
+              proposalId={proposalId}
+              updateAction={updateLineItemAction}
+              deleteAction={deleteLineItemAction}
+              products={products.map((p) => ({
+                ...p,
+                is_parent_only: parentIdsWithChildren.has(p.id),
+              }))}
+            />
+          ) : (
+            <ReadOnlyLineItems rows={alternates} />
+          )}
+          {canEditLines && (
+            <AddLineItemForm
+              accountId={accountId}
+              dealId={dealId}
+              proposalId={proposalId}
+              products={products.map((p) => ({
+                ...p,
+                is_parent_only: parentIdsWithChildren.has(p.id),
+              }))}
+              submitAction={addLineItemAction}
+              isAlternate={true}
+            />
+          )}
+        </div>
+      </EditorSection>
+
+      {/* Qualifications */}
+      <AutosaveProposalForm action={saveProposalAction} disabled={proposal.status !== "draft"}>
+        {hiddenIds}
+        <input type="hidden" name={FIELDS_INPUT_NAME} value={fieldsFor("qualifications")} />
+
+        {/* Qualifications (fka "Alternate description") — Karan meeting 2026-08 */}
+        <EditorSection
+          title="Qualifications"
+          subtitle="Optional qualifications paragraph shown above the alternate line items on the proposal."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M7 7h10 M7 12h10 M7 17h6" /><path d="M3 7h.01 M3 12h.01 M3 17h.01" />
+            </svg>
+          }
+        >
+          <textarea name="alternate_notes" defaultValue={proposal.alternate_notes ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="e.g. Exterior: Power wash exterior of building." />
+        </EditorSection>
+      </AutosaveProposalForm>
+
       {/* Labor — migration 063 (2026-07-19, Katie). Included in TOTAL
           (same as inclusions) but renders under its own "Labor:" PDF
           section. Row shape: qty=hours, unit="hour", price=hourly rate. */}
@@ -2042,51 +1976,165 @@ export default async function ProposalEditorPage({
         </div>
       </EditorSection>
 
-      {/* Alternates */}
-      <EditorSection
-        title="Alternates"
-        subtitle="Optional add-ons — shown separately and NOT counted in the TOTAL."
-        icon={
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        }
-      >
-        <div className="space-y-4">
-          {alternates.length === 0 ? (
-            <p className="text-[13px] text-ppp-charcoal-500 italic">No alternates.</p>
-          ) : canEditLines ? (
-            <LineItemsTable
-              rows={alternates}
-              accountId={accountId}
-              dealId={dealId}
-              proposalId={proposalId}
-              updateAction={updateLineItemAction}
-              deleteAction={deleteLineItemAction}
-              products={products.map((p) => ({
-                ...p,
-                is_parent_only: parentIdsWithChildren.has(p.id),
-              }))}
-            />
-          ) : (
-            <ReadOnlyLineItems rows={alternates} />
-          )}
-          {canEditLines && (
-            <AddLineItemForm
-              accountId={accountId}
-              dealId={dealId}
-              proposalId={proposalId}
-              products={products.map((p) => ({
-                ...p,
-                is_parent_only: parentIdsWithChildren.has(p.id),
-              }))}
-              submitAction={addLineItemAction}
-              isAlternate={true}
-            />
-          )}
-        </div>
-      </EditorSection>
+      {/* Exclusions + Bid notes + PDF options + Estimator sign-off */}
+      <AutosaveProposalForm action={saveProposalAction} disabled={proposal.status !== "draft"}>
+        {hiddenIds}
+        <input type="hidden" name={FIELDS_INPUT_NAME} value={fieldsFor("exclusions", "bidNotes", "pdfOptions", "estimator")} />
+
+        {/* Exclusions */}
+        <EditorSection
+          title="Exclusions"
+          subtitle="What the proposal explicitly does NOT cover — bulleted on the PDF."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+            </svg>
+          }
+        >
+          <ExclusionPicker
+            label="Add"
+            initialSelected={selectedExclusions.map((e) => ({
+              id: e.id,
+              text: e.text,
+              category: e.category,
+              use_count: e.use_count,
+            }))}
+            initialCustom={proposal.custom_exclusions ?? []}
+          />
+        </EditorSection>
+
+        {/* Bid notes — INTERNAL ONLY. Rendered on the ?mode=internal
+            PDF for Alex/Katie's estimator review; never on the customer
+            PDF. Karan 2026-07-15: prior label said "hidden on PDF
+            unless populated" which was misleading — the customer PDF
+            renderer never rendered this field at all. Now honest. */}
+        <EditorSection
+          title={<>Bid notes <span className="ml-1 text-[10px] font-semibold uppercase tracking-widest text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Internal only</span></>}
+          subtitle="Estimator scratch-pad — only on the internal-mode PDF, never on the customer copy."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" />
+            </svg>
+          }
+        >
+          <textarea name="bid_notes" defaultValue={proposal.bid_notes ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="e.g. Called Michael on Tuesday to confirm scope. Assumes existing HM doors are still on-site." />
+
+          {/* R1c: marked-up plan set / bid-doc attach. Files to the DEAL's
+              documents (bid_set), so it survives revision bumps and shows in
+              the deal's Documents. Internal only — never on the customer PDF. */}
+          <div className="mt-4 pt-4 border-t border-ppp-charcoal-100">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+              <div className="min-w-0">
+                <div className="text-[12px] font-bold text-ppp-charcoal">Marked-up plans / bid set</div>
+                <div className="text-[11px] text-ppp-charcoal-500 leading-snug">Attach a marked-up plan set or the GC&rsquo;s bid document. Filed to this opportunity — internal only.</div>
+              </div>
+              <ProposalMarkupUpload opportunityId={dealId} />
+            </div>
+            {bidSetDocs.length > 0 ? (
+              <ul className="space-y-1">
+                {bidSetDocs.map((d) => (
+                  <li key={d.id}>
+                    <a
+                      href={`/api/commercial/documents/${d.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[12.5px] text-cc-brand-700 hover:text-cc-brand-800 hover:underline min-h-[36px]"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      <span className="truncate max-w-[240px]">{d.file_name}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11.5px] text-ppp-charcoal-400 italic">No marked-up docs attached yet.</p>
+            )}
+          </div>
+        </EditorSection>
+
+        {/* PDF options */}
+        <EditorSection
+          title="PDF options"
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          }
+        >
+          <label className="flex items-center gap-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
+            <input type="checkbox" name="pdf_show_line_prices" defaultChecked={proposal.pdf_show_line_prices} className="w-4 h-4 accent-cc-brand-600" />
+            <span className="text-[12.5px] text-ppp-charcoal-700">
+              Show per-line prices on the customer PDF (Tomco default hides them — customer sees only the TOTAL)
+            </span>
+          </label>
+          {/* R1b: adjustable final price. Blank = the line-item sum; a value here
+              becomes the proposal TOTAL AND the contract number (AIA + invoicing). */}
+          <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
+            <span className="text-[12.5px] font-semibold text-ppp-charcoal-700">Final price override <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
+            <div className="flex items-center gap-1.5 mt-1 max-w-[240px]">
+              <span className="text-ppp-charcoal-500 text-[13px]">$</span>
+              <input
+                type="text"
+                aria-label="Final price override"
+                inputMode="decimal"
+                name="final_price_override"
+                defaultValue={proposal.final_price_override_cents != null ? centsToDollarInput(proposal.final_price_override_cents) : ""}
+                placeholder="Auto (from line items)"
+                className={`${INPUT_CLS} tabular-nums`}
+              />
+            </div>
+            <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+              Leave blank to use the line-item total ({formatDollars(lineItemSumCents)}). A value here becomes the TOTAL the customer sees — and the contract number used for AIA billing + invoicing.
+            </p>
+          </div>
+        </EditorSection>
+
+        {/* Estimator sign-off */}
+        <EditorSection
+          title="Estimator sign-off"
+          subtitle="Prints in the sign-off block at the bottom of the PDF."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          }
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block">
+              <span className={LABEL_CLS}>Name</span>
+              <input type="text" name="est_name" defaultValue={proposal.estimator_snapshot_json.name ?? ""} className={INPUT_CLS} />
+            </label>
+            <label className="block">
+              <span className={LABEL_CLS}>Title</span>
+              <input type="text" name="est_title" defaultValue={proposal.estimator_snapshot_json.title ?? ""} className={INPUT_CLS} placeholder="e.g. Lead Estimator, Tomco Painting" />
+            </label>
+            <label className="block">
+              <span className={LABEL_CLS}>Phone</span>
+              <input type="text" name="est_phone" defaultValue={proposal.estimator_snapshot_json.phone ?? ""} className={INPUT_CLS} />
+            </label>
+            <label className="block">
+              <span className={LABEL_CLS}>Email</span>
+              <input type="email" name="est_email" defaultValue={proposal.estimator_snapshot_json.email ?? ""} className={INPUT_CLS} />
+            </label>
+          </div>
+        </EditorSection>
+      </AutosaveProposalForm>
+
+      {/* Karan 2026-07-20: no manual "Save proposal" button — every field
+          autosaves. Stephanie 2026-08-13 asked for this order, which
+          interleaves these panels with the line-item tables, so the single
+          save form is now three declared forms (see form-fields.ts): each
+          writes only the fields it carries, and they cannot blank each
+          other. */}
+      <p className="text-[12px] text-ppp-charcoal-500 text-center">
+        Changes save automatically. Line items save independently below.
+      </p>
 
       {/* Danger zone */}
       <form action={deleteProposalAction} className="flex justify-center pt-2">
