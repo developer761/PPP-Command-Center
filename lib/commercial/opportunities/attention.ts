@@ -17,6 +17,8 @@
  * Pure — no I/O — so the rules are testable without a database.
  */
 
+import { columnKeyForOpp } from "./kanban-columns";
+
 export type Attention = {
   key: string;
   /** What's missing, in the user's words. */
@@ -174,7 +176,45 @@ export function nextStep(
   if (status === "post_sale_closed") return null;
   if (status === "pre_sale_closed") return null; // lost — nothing ahead
 
-  // ── Pre-sale. Driven by the PROPOSAL, which is what makes these useful. ──
+  // ── Pre-sale ────────────────────────────────────────────────────────────
+  //
+  // AUDIT 2026-08-12 (Karan: "if I manually move a status back and forth this
+  // button stays there, which is misleading"). These branches read ONLY the
+  // proposal, so a deal a person had dragged to Sent still said "Send it for
+  // approval" because the proposal was never taken out of draft. The one
+  // instruction on screen contradicted the stage printed directly above it.
+  //
+  // The deal and its proposal are two clocks, and they legitimately disagree:
+  // `proposalTrailsDeal` exists precisely because a deal stays ahead of a
+  // proposal that was revised, and the platform is forward-only everywhere
+  // else. So take whichever is FURTHER ALONG. A person who moved the deal to
+  // Sent meant it; the draft proposal is the lagging artifact, not the truth.
+  const DEAL_STAGE_ORDER = ["qualifying", "rfp", "estimating", "pending_approval", "sent"];
+  const PROPOSAL_IMPLIES: Record<string, string> = {
+    draft: "estimating",
+    pending_approval: "pending_approval",
+    approved: "pending_approval",
+    sent: "sent",
+  };
+  const rankOf = (k: string) => DEAL_STAGE_ORDER.indexOf(k);
+  const dealStage = columnKeyForOpp(status, subStatus ?? null);
+  const proposalStage =
+    (p?.status ? PROPOSAL_IMPLIES[p.status] : undefined) ??
+    (i.sentProposalCount > 0 ? "sent" : (i.approvedNotSentCount ?? 0) > 0 ? "pending_approval" : undefined);
+  const here =
+    proposalStage && rankOf(proposalStage) > rankOf(dealStage) ? proposalStage : dealStage;
+
+  // Out with the GC — the only thing left is the answer. Checked first because
+  // it is the state a manual move most often lands on, and the state where a
+  // proposal-driven label was most wrong.
+  if (here === "sent") {
+    return {
+      label: "Mark won or lost",
+      href: `/commercial/opportunities/${oppId}?action=change-status`,
+      why: "It's with them — record the answer when it comes.",
+    };
+  }
+
   if (i.proposalCount === 0) {
     return {
       label: "Build a proposal",
@@ -182,20 +222,10 @@ export function nextStep(
       why: "Nothing is priced yet.",
     };
   }
-  if (p?.status === "draft") {
-    return {
-      label: "Send it for approval",
-      href: proposalHref,
-      why: "It's priced — get it signed off internally.",
-    };
-  }
-  if (p?.status === "pending_approval") {
-    return {
-      label: "Mark it approved",
-      href: proposalHref,
-      why: "Waiting on internal sign-off before it can go out.",
-    };
-  }
+
+  // Approved and sitting here is its own step, and it outranks the stage:
+  // the deal being parked at Pending Approval doesn't change the fact that a
+  // signed-off proposal hasn't gone out.
   if (p?.status === "approved" || (i.approvedNotSentCount ?? 0) > 0) {
     return {
       label: "Send it to the GC",
@@ -203,13 +233,23 @@ export function nextStep(
       why: "Approved and still sitting here — they can't answer what they don't have.",
     };
   }
-  if (i.sentProposalCount > 0) {
+
+  if (here === "pending_approval" || p?.status === "pending_approval") {
     return {
-      label: "Mark won or lost",
-      href: `/commercial/opportunities/${oppId}?action=change-status`,
-      why: "It's with them — record the answer when it comes.",
+      label: "Mark it approved",
+      href: proposalHref,
+      why: "Waiting on internal sign-off before it can go out.",
     };
   }
+
+  if (p?.status === "draft") {
+    return {
+      label: "Send it for approval",
+      href: proposalHref,
+      why: "It's priced — get it signed off internally.",
+    };
+  }
+
   return null;
 }
 
@@ -284,7 +324,19 @@ export function attentionFor(i: AttentionInput): Attention[] {
   // the step in between: nobody told you it was ready to send. An approved
   // proposal that never goes out is the most expensive kind of stall, because
   // every hour of pricing is already spent.
-  if (!won && (i.approvedNotSentCount ?? 0) > 0) {
+  //
+  // AUDIT 2026-08-12, same class as the next-step button: these two rules read
+  // only the PROPOSAL, so they disagreed with a deal a person had moved by
+  // hand. `dealIsOut` is the deal's own claim that the GC has it.
+  const dealIsOut = columnKeyForOpp(i.status, i.subStatus ?? null) === "sent";
+
+  // Suppressed once the deal says Sent. Somebody moved it there deliberately —
+  // a GC often gets the PDF by email or in person before anyone updates the
+  // proposal record — and a warning insisting "the GC hasn't seen it yet" over
+  // the top of their own stage change is exactly the contradiction Karan
+  // flagged. The warning is for a proposal nobody has acted on, not for
+  // bookkeeping that lags reality.
+  if (!won && !dealIsOut && (i.approvedNotSentCount ?? 0) > 0) {
     out.push({
       key: "approved_not_sent",
       title: "Approved and not sent",
@@ -296,7 +348,11 @@ export function attentionFor(i: AttentionInput): Attention[] {
 
   // Pre-sale: a sent proposal with nothing scheduled after it is how bids go
   // quiet. Info, not warn — it is a nudge, not a defect.
-  if (!won && i.sentProposalCount > 0 && !i.followUpAt) {
+  // The mirror image, and it was a FALSE NEGATIVE: a deal moved to Sent by
+  // hand, with the proposal record never marked sent, had no follow-up nudge
+  // at all — the bid most likely to be forgotten was the one the platform said
+  // nothing about.
+  if (!won && (i.sentProposalCount > 0 || dealIsOut) && !i.followUpAt) {
     out.push({
       key: "no_follow_up",
       title: "No follow-up scheduled",
