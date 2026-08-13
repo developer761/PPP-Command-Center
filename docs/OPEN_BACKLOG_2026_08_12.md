@@ -242,3 +242,20 @@ sweep breaks more than it fixes. Sites, if it ever matters:
 `opportunities/export.ts` 90, `accounts/overview.ts` 91,
 `cron/invoice-dunning.ts` 130 (invoice `due_at` IS timestamptz — checked),
 `proposals/db.ts` 253.
+
+---
+
+## ✅ VERIFY — `3acace9` (item 9: next-step buttons on rows + dashboard). Correct + complete.
+Reuses the shared `nextStep` (not re-implemented), "Mark it approved" opens THAT proposal (`listCurrentProposalByOpp`
+now returns the id), dashboard calls the fuller query directly (perf-neutral). **My "no nested anchor" rule handled
+explicitly:** dashboard renders `<NextStepButton>` AFTER `</Link>` (both in the `<li>`); the pipeline row puts it in
+a separate `<div>` outside the row `<Link>`, with a comment. No `<a>`-in-`<a>` → the row link still fires. Edge cases
+(lost/closed → no button) inherit from `nextStep`'s null.
+
+**Bonus — 5th date-cluster site fixed here:** `debrief-overdue.ts` was doing raw `getTime()` on `decided_at` (a bare
+DATE) → the "won N days ago" NOTIFICATION was a day early. Now `daysFromTodayEt`.
+**Date cluster now PROVABLY swept:** I swept every remaining raw-`getTime()`/`Date.now()` site in commercial code —
+the survivors all operate on TIMESTAMPTZ columns (invoice `due_at`, doc `expires_at`, clock punches, created_at/occurred_at
+= real instants), NOT bare DATE. So no systematic day-early bugs remain. Item 3 CLOSED.
+
+## 🔔 STILL OPEN (unchanged — tracking to a fix): job-costs:73 caption · path-bar skipped heuristic. Both grep-confirmed still present.
