@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { DOCUMENT_CATEGORIES, documentCategoryLabel } from "@/lib/commercial/documents/categories";
 import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { directUploadDocument } from "@/lib/commercial/uploads/direct-upload-client";
@@ -17,27 +18,21 @@ const CLIENT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
  *  4.5 MB for headroom (multipart boundary + fields add overhead). */
 const DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024;
 
-/** Mirror of DOCUMENT_CATEGORIES + labels from lib/commercial/documents/
- *  categories.ts. Duplicated for the same server-only-import reason. */
-const CATEGORIES = [
-  { value: "bid_set", label: "Bid Set (Plans + Specs)" },
-  { value: "rfi", label: "RFI" },
-  { value: "meeting_minutes", label: "Meeting Minutes" },
-  { value: "permit", label: "Permit" },
-  { value: "insurance", label: "Insurance (per-job)" },
-  { value: "contract", label: "Contract" },
-  { value: "site_photo", label: "Site Photo" },
-  { value: "correspondence", label: "Correspondence" },
-  { value: "change_order", label: "Change Order" },
-  { value: "aia_billing", label: "AIA Billing" },
-  { value: "submittal", label: "Submittal" },
-  { value: "closeout", label: "Closeout" },
-  { value: "lien_waiver", label: "Lien Waiver" },
-  { value: "receipt", label: "Receipt" },
-  { value: "invoice_attachment", label: "Invoice Attachment" },
-  { value: "proposal", label: "Proposal" },
-  { value: "other", label: "Other" },
-] as const;
+/**
+ * The canonical category list — imported, never mirrored.
+ *
+ * This file used to carry its own copy "for the same server-only-import
+ * reason". That reason had lapsed: categories.ts is pure data with no imports
+ * at all, so a client component can read it directly. The copy had already
+ * drifted — `work_order` was in the real list and missing here, so nobody
+ * could file a document under it — and a mirror in the account-side form is
+ * exactly how Brendan's 2026-08-12 category change failed to reach the screen.
+ * One list, one place.
+ */
+const CATEGORIES = DOCUMENT_CATEGORIES.map((value) => ({
+  value,
+  label: documentCategoryLabel(value),
+}));
 
 function previewSanitized(name: string): string {
   const base = name.replace(/\\/g, "/").split("/").pop() ?? name;

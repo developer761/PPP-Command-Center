@@ -17,6 +17,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { isTaxExempt } from "@/lib/commercial/tax/exemption";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import {
   createCommercialInvoice,
@@ -416,7 +417,16 @@ async function dealTaxPct(oppId: string): Promise<number> {
       .select("tax_exempt")
       .eq("id", opp.account_id)
       .maybeSingle();
-    if ((acct as { tax_exempt?: boolean } | null)?.tax_exempt) return 0;
+    // The job's own setting wins over the customer's when it is set at all
+    // (Stephanie 2026-08-13 — NY certificates are per project).
+    if (
+      isTaxExempt({
+        opportunityTaxExempt: (opp as { tax_exempt?: boolean | null }).tax_exempt,
+        accountTaxExempt: (acct as { tax_exempt?: boolean } | null)?.tax_exempt ?? null,
+      })
+    ) {
+      return 0;
+    }
   }
   const hit = resolveTaxForZip(opp?.property_zip ?? null, await listTaxJurisdictions({ activeOnly: true }));
   return hit ? thouToPct(hit.jurisdiction.combined_rate_thou) : 0;

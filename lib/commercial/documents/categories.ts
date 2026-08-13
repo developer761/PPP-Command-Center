@@ -35,6 +35,22 @@ export const DOCUMENT_CATEGORIES = [
   // Phase 2 (2026-08): the cost + attachment spine.
   "receipt",           // material/labor/sub purchase receipts (job cost backup)
   "invoice_attachment",// arbitrary files attached to a specific invoice
+  // Compliance we PROVIDE to the GC (Stephanie 2026-08-13): "COI's, W-9,
+  // Master Service Agreement, Vendor On Boarding, Safety/OSHA is all for if we
+  // were hiring a subcontractor. In this instance where we are creating a
+  // proposal, technically we are the subcontractor. All this information
+  // should be in the opportunity for when we provide it to the GC."
+  //
+  // This is the other half of a change Brendan already made: he retired those
+  // same categories from the ACCOUNT on 2026-08-12 ("the only thing for the
+  // account level really would be prequal questionnaire"). They agree — the
+  // account stopped collecting them, and the job now carries them.
+  //
+  // Per-job COI already existed above as `insurance`.
+  "w9",                // our W-9, sent to the GC's AP department
+  "master_agreement",  // MSA / subcontract agreement signed with this GC
+  "safety",            // site safety plan, OSHA certs, toolbox talks
+  "prequal",           // prequal questionnaire completed FOR this job
   "other",             // fallback
 ] as const;
 
@@ -46,7 +62,7 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "rfi": return "RFI";
     case "meeting_minutes": return "Meeting Minutes";
     case "permit": return "Permit";
-    case "insurance": return "Insurance (per-job)";
+    case "insurance": return "Certificate of Insurance (COI)";
     case "contract": return "Contract";
     case "site_photo": return "Site Photo";
     case "correspondence": return "Correspondence";
@@ -59,6 +75,10 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "lien_waiver": return "Lien Waiver";
     case "receipt": return "Receipt";
     case "invoice_attachment": return "Invoice Attachment";
+    case "w9": return "W-9";
+    case "master_agreement": return "Master Service Agreement";
+    case "safety": return "Safety / OSHA";
+    case "prequal": return "Prequal Questionnaire";
     case "other": return "Other";
     default: return cat;
   }

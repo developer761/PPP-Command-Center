@@ -8,6 +8,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { isTaxExempt } from "@/lib/commercial/tax/exemption";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { softDeleteDocument } from "@/lib/commercial/documents/db";
@@ -395,7 +396,7 @@ export async function createCommercialInvoice(
   // Chain-of-trust: verify opportunity + account exist + aren't deleted.
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
+    .select("id, account_id, deleted_at, tax_exempt")
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || opp.deleted_at) return { ok: false, error: "opportunity_not_found" };
@@ -407,11 +408,18 @@ export async function createCommercialInvoice(
     .eq("id", input.account_id)
     .maybeSingle();
   if (!acct || acct.deleted_at) return { ok: false, error: "account_not_found" };
-  // Tax exemption is a property of the CUSTOMER, so it is enforced here rather
-  // than trusted to each caller. The deal invoice form forced 0% correctly; the
-  // change-order path computed tax from the ZIP alone and auto-created drafts
-  // charging an exempt GC sales tax. Any future path gets this for free.
-  const taxExempt = Boolean((acct as { tax_exempt?: boolean }).tax_exempt);
+  // Enforced here rather than trusted to each caller. The deal invoice form
+  // forced 0% correctly; the change-order path computed tax from the ZIP alone
+  // and auto-created drafts charging an exempt GC sales tax. Any future path
+  // gets this for free.
+  //
+  // The JOB may override the customer (Stephanie 2026-08-13): a NY exemption
+  // certificate is issued per project, so the same GC can be exempt on a
+  // municipal job and taxable on the private one next door.
+  const taxExempt = isTaxExempt({
+    opportunityTaxExempt: (opp as { tax_exempt?: boolean | null }).tax_exempt,
+    accountTaxExempt: (acct as { tax_exempt?: boolean }).tax_exempt,
+  });
 
   const invoice_number = await nextInvoiceNumber();
 
@@ -595,15 +603,28 @@ export async function updateInvoiceCoreFields(
       .eq("id", invoice_id)
       .maybeSingle();
     const acctId = (inv as { account_id?: string } | null)?.account_id ?? null;
-    let exempt = false;
+    const oppId = (inv as { opportunity_id?: string } | null)?.opportunity_id ?? null;
+    let acctExempt: boolean | null = null;
+    let oppExempt: boolean | null = null;
     if (acctId) {
       const { data: acct } = await sb
         .from("commercial_accounts")
         .select("tax_exempt")
         .eq("id", acctId)
         .maybeSingle();
-      exempt = Boolean((acct as { tax_exempt?: boolean } | null)?.tax_exempt);
+      acctExempt = (acct as { tax_exempt?: boolean } | null)?.tax_exempt ?? null;
     }
+    if (oppId) {
+      const { data: o } = await sb
+        .from("commercial_opportunities")
+        .select("tax_exempt")
+        .eq("id", oppId)
+        .maybeSingle();
+      oppExempt = (o as { tax_exempt?: boolean | null } | null)?.tax_exempt ?? null;
+    }
+    // Editing an invoice must honour the job's override too, or a rate typed
+    // here would quietly reinstate tax the job is exempt from.
+    const exempt = isTaxExempt({ opportunityTaxExempt: oppExempt, accountTaxExempt: acctExempt });
     clean.tax_pct = exempt ? 0 : patch.tax_pct;
   }
   if (patch.payment_terms !== undefined) clean.payment_terms = patch.payment_terms.slice(0, 60);

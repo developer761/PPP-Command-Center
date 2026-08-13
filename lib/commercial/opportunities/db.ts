@@ -192,6 +192,12 @@ export type CommercialOpportunity = {
   // When set, derivedOppName returns this verbatim instead of the
   // computed {account}—{client}—{street}. Leave NULL to auto-derive.
   title_override: string | null;
+  /** Per-job tax exemption (migration 139). NULL inherits the account;
+   *  true/false overrides it for this job only — NY exemption certificates
+   *  are issued per project. Resolve via lib/commercial/tax/exemption.ts,
+   *  never by reading this directly. */
+  tax_exempt: boolean | null;
+  tax_exempt_cert_number: string | null;
 };
 
 /**
