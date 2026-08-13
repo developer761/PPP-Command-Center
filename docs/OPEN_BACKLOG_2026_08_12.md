@@ -394,3 +394,27 @@ and a CSV is arguably worse than a UI tile — it lands in a spreadsheet and get
 **Fix (pick one, consistent with the weighted-pipeline decision):** derive it —
 `csvEscape(probabilityFor(o.status, o.sub_status))` (matches everything else, honest for old + new rows), OR drop
 the column + header from the export. Deriving is the coherent choice. Handed to build session.
+
+---
+
+## ✅ VERIFY — Brendan's list re-audit (`92d7226`): both asks CORRECT. One soft survivor + dead code.
+**(1) Remove Industry from accounts** — verified swept from all display sites: 8 named places gone, the account
+hover-card only *types* `industry` (never renders it), the Industry filter *control* is gone from the accounts
+page, and `distinctIndustries` (db.ts:147) is now uncalled. Column + data kept (recoverable). ✅
+**(2) Team Roles → 4 (Sales Rep, Field Rep, Office Rep, Estimator)** — verified: `OPPORTUNITY_ASSIGNMENT_ROLES`
+now aliases the single `ASSIGNMENT_ROLES` list, no picker offers a retired role, retired names still LABEL, and the
+seniority map is migration-safe — `primary_pm:0 / lead_estimator:1 / estimator:1 / sales_rep:2 / field_rep:3 /
+office_rep:4 / superintendent:5`, so the ★ primary lead does NOT shift on existing deals. Typecheck clean. ✅
+(Harmless wrinkle: `estimator` and `lead_estimator` share rank 1 — a deal won't hold both, and either reading as ★
+is conceptually "estimator." Not a bug.)
+
+**🟡 SOFT SURVIVOR — accounts CSV export still has an "Industry" column.** `export.ts:24` (header) + `:93`
+(`csvEscape(a.industry)`), reachable via the **Export CSV** button on the accounts page (`page.tsx:381`). UNLIKE
+the probability CSV miss, this column holds REAL historical data, not a dead default — so it's not emitting a lie,
+it's a scope question: does "remove Industry from accounts" extend to the export? If Brendan wants Industry gone
+from the accounts experience entirely, drop the header + field. If the export is a data dump where historical
+Industry is fine to keep, leave it. Karan's/Brendan's call — flagging, not asserting a bug.
+
+**🧹 CLEANUP (minor):** with the filter control and `distinctIndustries` caller gone, `db.ts:102`
+(`filters.industry` eq) + `db.ts:147` `distinctIndustries` + the `industry?` field on `AccountsListFilters` are now
+dead code. Safe to leave, but worth a sweep-line.
