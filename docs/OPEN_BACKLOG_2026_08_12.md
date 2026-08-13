@@ -1131,3 +1131,19 @@ No tax-basis sites remain. The systematic "with-tax figure compared against a pr
 - **Intro help text** clarified (typing replaces the Tomco default). ✓
 tsc clean, 44 test files pass. Katie's other 5 (Contact edit btn, estimator sign-off from opp team, Alternate freeze
 in Save, 2 PDF items) honestly listed as still being worked.
+
+---
+
+## ✅ VERIFY — Katie: edit contacts (`c69d6fe`). CLEAN, no miss.
+There was no contact writer at all (add/detach/set-primary only), so fixing a typo meant detach+re-add (losing history).
+- `updateAccountContact` writes the PERSON (full_name/email/phone/title) on `commercial_contacts`; name required,
+  `trim() || null` so empty CLEARS (a departed contact can lose their line), audit-logged with `before`. Real columns
+  only. ✓
+- **"Changes everywhere" claim validated against the data model** — `commercial_contacts` is the shared person, linked
+  to accounts via the `commercial_account_contacts` junction, so editing the person correctly propagates to every
+  account it's on. Role/default-for stay on the junction (relationship, not person). ✓
+- **Good discipline (my class):** removed the Notes box from BOTH form and writer on finding `CommercialContact` has
+  no `notes` (notes lives on the junction) — "a field that silently saves nothing is worse than no field." Exactly the
+  render/writer-parity rule. ✓
+- Action auth-gated: `getUser` + `assertCommercialAccess(user.id)`; form is a `<details>` (closed until wanted).
+tsc clean, 44 test files pass.
