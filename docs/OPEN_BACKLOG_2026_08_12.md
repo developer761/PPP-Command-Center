@@ -29,6 +29,7 @@ Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
 | **9** | **Brendan's sign-off screen** — which screen forced "first + last". | Him, or a screenshot |
 | **10** | **Katie #3 / #8 / F2** — the typo and its screen; whether the $8,000 auto-created proposal was a Proposal row or the deal's Bid estimate; whether submittals should be SENT from the platform or mark-as-Sent is enough. | Her |
 | **11** | **`PPP_ADMIN_EMAILS` in Vercel.** Production runs on the hardcoded bootstrap list. | You, 2 minutes |
+| **12** | **Ask Katie to retry adding an Alternate.** It froze in Save mode for her and needed a refresh — though it HAD saved. That is the exact signature of the swallowed-`NEXT_REDIRECT` bug fixed in all three autosave components today: the save succeeded, the redirect got eaten, the pill never moved. It may already be gone. Retrying on the current deploy is worth more than a second fix built on a guess. | Katie, 1 minute |
 
 ~~Two smaller things carried~~ **BOTH CLOSED 2026-08-12**, and the first was
 not the hardening item it looked like:
