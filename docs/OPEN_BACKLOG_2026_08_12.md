@@ -473,3 +473,29 @@ lands in Estimating.
   DIFFERENT, correct signer (per-proposal estimator, not the company) — so no inconsistency introduced. Transmittals /
   lien-waivers-we-sign-back are called out as forward-looking and don't render a company sig block today. ✅
 - Typecheck clean. Nothing handed back.
+
+---
+
+## 🟡 VERIFY — mobile pass (`7d5c902`): strong, but one iOS-zoom survivor the scanner is BLIND to.
+Ran the scanner + independent sweeps. Most of it holds up:
+- **iOS-zoom inputs** — scanner says 0; my independent sweep of every `<input>`/`<textarea>` (arbitrary `text-[Npx]`
+  AND named `text-xs`/`text-sm`, un-guarded) confirms **0 among inputs/textareas**. ✅
+- **Tap targets** — the 2 remaining scanner hits are BOTH genuine false-positives, independently re-verified:
+  `submittals/[sid]:1120` is a real `<label>` carrying `min-h-[44px]` (line 1111); `change-orders-panel:541` uses
+  `seg` (line 528) which contains `min-h-[44px]`. Both clean. ✅
+- **Fixed widths** — 0; the wide tables scroll in their own `overflow-x-auto`, the `sm:w-[440px]` is a full-width
+  mobile sheet. Sound. ✅
+
+**🟡 MISS — a `<select>` that zooms iOS on focus. `app/commercial/settings/teams/page.tsx:204`.**
+The role picker: `className={\`${SELECT_CLS} !py-1.5 text-[12px] w-[150px]\`}`. `SELECT_CLS` correctly bases at
+`text-base sm:text-sm` (16px mobile — the whole point of this pass), but the `text-[12px]` override has **no `sm:`
+guard**, so on a phone it renders at 12px → iOS Safari zooms on focus and stays zoomed. This is the exact class the
+commit set out to zero ("Nine inputs would zoom … Zero remain") — the claim is false for selects.
+**Why the scanner can't see it:** its zoom check (`audit-mobile.cjs:68`) gates on `<input|textarea>` and **excludes
+`<select>`** — yet iOS zooms on select focus too. **Fix:** `text-[12px]` → `sm:text-[12px]` (mirrors the commit's own
+`text-base sm:text-[12.5px]` input fix — 16px on mobile, 12px from sm: up).
+
+**🧹 SCANNER HARDENING (so this can't recur invisibly):** two gaps in `audit-mobile.cjs`'s zoom check —
+(a) it excludes `<select>` (the live miss above); (b) it only matches arbitrary `text-[Npx]`, not named `text-xs`/
+`text-sm` (no live input victims today, but latent). Extend the check to `<select>` and to the named small classes,
+or the tool trains the next person to trust a green "iOS zoom: 0" that doesn't cover selects.
