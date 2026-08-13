@@ -1310,3 +1310,20 @@ c33e74d files tsc-clean (accounts-page tsc error is separate uncommitted WIP), 6
 
 ## ⏳ PENDING VERIFY (uncommitted WIP) — opportunity-contacts feature (`migration 141`, `lib/commercial/contacts/`,
 `contact-roles.test.ts`, `contacts.ts`). Verify when committed.
+
+---
+
+## ✅ VERIFY — per-job contacts + editable Attention (`00e032b`, Stephanie). CLEAN, no miss. My DB-CHECK lane applied thoroughly.
+- **Migration 141** — `commercial_opportunity_contacts` junction (person reused from commercial_contacts, role on the
+  link), `UNIQUE(opp,contact,role)`, a PARTIAL UNIQUE INDEX `WHERE is_primary` (one Attention/primary per job, enforced
+  in the DB not app code — "two primaries only shows on a printed proposal"), widens the ACCOUNT CHECK to the same 9
+  roles (incl. `apm`) so the vocabulary is one list. Idempotent. 🟡 run 141. ✓
+- **Roles list — 3 homes unified + parity-tested (MY DB-CHECK lane):** moved to `lib/commercial/contacts/roles.ts`
+  (pure data, was server-only with client copies — the mirrored-constants class). `contact-roles.test.ts` reads the
+  CHECKs out of the migrations PER-STATEMENT (they caught their own test bug: scanning per-file read the wrong table's
+  CHECK since 141 defines two) and asserts BOTH the opportunity and account CHECK equal the app list. Re-verified by
+  breaking it. ✓
+- **Attention contact backward-compatible** — proposal now reads the job's `is_primary` contact, falling back to the
+  deal's single `primary_contact_id` (hydrate.ts), so existing opps print exactly as before. ✓
+- Phone/email tel:/mailto:; the clipped-popover audit caught the new picker's Card clipping (self-introduced) and it
+  was fixed. tsc clean, 647 tests.
