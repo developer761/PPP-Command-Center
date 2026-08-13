@@ -742,13 +742,26 @@ function ItemLine({ item }: { item: CommercialProposalLineItem }) {
       ? [raw]
       : [];
     return (
+      // Katie 2026-08-13: "the bulleting formatting is weird on the proposal,
+      // some lines are bulleted and others are not."
+      //
+      // Two inconsistencies, both here. Inclusions rendered with NO bullet
+      // while Labor and Exclusions both got one — so a single PDF used two
+      // grammars for the same kind of list. And within Inclusions, whether a
+      // line got sub-bullets depended on whether its description happened to
+      // contain a newline, which is a storage detail the reader can't see.
+      //
+      // Every scope line now leads with the same dot as every other list on
+      // the page. Sub-bullets stay for a genuinely multi-line description,
+      // because that IS a list — it is just no longer the only bulleted thing.
       <View style={styles.itemLine}>
-        <Text style={{ fontSize: 11 }}>
-          <Text style={styles.bulletLead}>{productName}</Text>
-          {/* Single-line description sits inline after an em-dash; a
-              multi-line description drops to indented sub-bullets below. */}
-          {bodyLines.length === 1 ? <Text>{" — " + bodyLines[0]}</Text> : null}
-        </Text>
+        <View style={styles.bulletRow}>
+          <View style={styles.bulletDot} />
+          <Text style={styles.bulletBody}>
+            <Text style={styles.bulletLead}>{productName}</Text>
+            {bodyLines.length === 1 ? <Text>{" — " + bodyLines[0]}</Text> : null}
+          </Text>
+        </View>
         {bodyLines.length > 1 &&
           bodyLines.map((sub, i) => (
             <View key={i} style={styles.bulletSubRow}>
@@ -1345,6 +1358,22 @@ export function ProposalPdfDocument({
           <InclusionsInternal items={laborRows} internal={mode === "internal"} heading="Labor" />
         )}
 
+        {/* Karan 2026-07-19 (1:1 reference match): Exclusions come
+            BEFORE the TOTAL row, not after. Reference flow is
+            intro → scope items → exclusions → TOTAL → estimator. */}
+        <ExclusionsBlock exclusions={exclusions} />
+
+        <TotalRow label={totalLabel} cents={proposal.total_cents} />
+
+        {/* Katie 2026-08-13: "on the proposal PDF the Alternates should be
+            below the final price so that it doesn't look like those items are
+            included in the full price."
+
+            They never were — `total_cents` sums only `is_alternate = false`
+            (the rollup rule in proposals/db). But printing them ABOVE the
+            total made them read as part of it, and a GC reading a bid does not
+            check our rollup rule. Below the total they read as what they are:
+            priced options the customer can add. */}
         {showLineTable ? (
           <AlternateSectionInternal
             items={alternates}
@@ -1358,12 +1387,6 @@ export function ProposalPdfDocument({
           />
         )}
 
-        {/* Karan 2026-07-19 (1:1 reference match): Exclusions come
-            BEFORE the TOTAL row, not after. Reference flow is
-            intro → scope items → exclusions → TOTAL → estimator. */}
-        <ExclusionsBlock exclusions={exclusions} />
-
-        <TotalRow label={totalLabel} cents={proposal.total_cents} />
 
         {/* CIP notice: inline yellow-highlighted bold line above the
             sign-and-return heading — matches Tomco reference PDF exactly
