@@ -48,6 +48,14 @@ const CARDS: Card[] = [
     adminOnly: true,
   },
   {
+    href: "/commercial/settings/ratings",
+    label: "Account ratings",
+    blurb:
+      "What A, B and C actually mean. The letters stay put; the meaning prints beside them everywhere, so a grade is worth reading.",
+    icon: <IconUsers />,
+    adminOnly: true,
+  },
+  {
     href: "/commercial/settings/tax",
     label: "Sales tax",
     blurb:

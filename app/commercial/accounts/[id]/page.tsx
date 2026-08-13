@@ -1,4 +1,5 @@
 import { flashMessage } from "@/lib/commercial/flash";
+import { getRatingLabels } from "@/lib/commercial/accounts/rating-labels";
 import { notFound, redirect } from "next/navigation";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
@@ -398,10 +399,11 @@ export default async function CommercialAccountDetailPage({
   // pasted yet (graceful degradation; the KPI strip just hides).
   // Primary contact loads in parallel so the header can show the
   // quick-email button without an extra round-trip.
-  const [overview, primary, invoiceRollup] = await Promise.all([
+  const [overview, primary, invoiceRollup, ratingLabels] = await Promise.all([
     getAccountOverview(account.id),
     getPrimaryContact(account.id),
     getInvoiceRollupForAccount(account.id),
+    getRatingLabels(),
   ]);
 
   const contactsAdded = sp.contacts_added ? Number(sp.contacts_added) : 0;
@@ -564,7 +566,14 @@ export default async function CommercialAccountDetailPage({
               {!account.is_key_relationship && (overview?.won_opps_count ?? 0) > 0 && (
                 <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Repeat customer</Pill>
               )}
-              {account.rating && <Pill tone={ratingTone(account.rating)}>{account.rating}</Pill>}
+              {account.rating && (
+                <Pill tone={ratingTone(account.rating)}>
+                  {account.rating}
+                  {ratingLabels[account.rating]?.label
+                    ? ` · ${ratingLabels[account.rating].label}`
+                    : ""}
+                </Pill>
+              )}
               {/* Industry pill removed 2026-08-12 — Brendan: "We don't need
                   Industry on accounts." This was the last place it still
                   showed; the second one the parallel session caught. */}

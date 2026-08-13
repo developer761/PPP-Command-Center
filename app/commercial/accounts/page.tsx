@@ -25,6 +25,7 @@
  *   5. **Mobile = 44px tap targets throughout + card layout.**
  */
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { getRatingLabels } from "@/lib/commercial/accounts/rating-labels";
 import { daysAgoEt } from "@/lib/date-et";
 import { listCommercialOpportunities, dealValueCents } from "@/lib/commercial/opportunities/db";
 import { PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
@@ -167,9 +168,10 @@ export default async function CommercialAccountsPage({
   const filterExpiring = pickFirst(sp.expiring) === "1";
   const filterIssue = pickFirst(sp.issue) === "1";
 
-  const [accountsRaw, assignableStaff] = await Promise.all([
+  const [accountsRaw, assignableStaff, ratingLabels] = await Promise.all([
     listCommercialAccounts({ search, rating, compliance }),
     listAssignableStaff(),
+    getRatingLabels(),
   ]);
   const bulkResult = pickFirst(sp.bulk_result);
   const bulkError = pickFirst(sp.bulk_error);
@@ -884,6 +886,7 @@ export default async function CommercialAccountsPage({
                 overview={overviewsById.get(a.id) ?? null}
                 openValueCents={openValueForAccount(a.id)}
                 tags={tagsByAccount.get(a.id) ?? []}
+                ratingLabels={ratingLabels}
               />
             ))}
           </ul>
@@ -1037,12 +1040,15 @@ function AccountRow({
   overview,
   openValueCents,
   tags,
+  ratingLabels,
 }: {
   account: CommercialAccount;
   overview: AccountOverview | null;
   /** Proposal-total fallback for accounts whose deals carry no bid range. */
   openValueCents: number;
   tags: AccountTag[];
+  /** What A/B/C mean, from Settings → Ratings. */
+  ratingLabels: Record<string, { label: string; description: string | null }>;
 }) {
   const cityState = [account.billing_city, account.billing_state].filter(Boolean).join(", ");
   const activity = overview ? relativeActivity(overview.last_activity_at) : null;
@@ -1132,7 +1138,7 @@ function AccountRow({
                 {account.dba && (
                   <span className="text-[11px] text-ppp-charcoal-500">d/b/a {account.dba}</span>
                 )}
-                {account.rating && <RatingPill rating={account.rating} />}
+                {account.rating && <RatingPill rating={account.rating} labels={ratingLabels} />}
                 {/* Only show the compliance pill for non-default states.
                     "not_started" was the default on every fresh account;
                     surfacing it as a gray chip on every row was clutter. */}
@@ -1386,7 +1392,16 @@ function SignalPill({
   );
 }
 
-function RatingPill({ rating }: { rating: "A" | "B" | "C" }) {
+function RatingPill({
+  rating,
+  labels,
+}: {
+  rating: "A" | "B" | "C";
+  /** What the letter MEANS (Settings → Ratings). Stephanie 2026-08-13: a bare
+   *  letter with a tooltip that repeats the letter tells nobody anything, so
+   *  the field gets ignored. */
+  labels?: Record<string, { label: string; description: string | null }>;
+}) {
   // Quality ramp A→C: emerald (top) → ppp-blue (good) → amber (watch).
   // Was A+B both cc-brand red, which read as an alert (2026-07-28 color audit).
   const cls =
@@ -1398,9 +1413,19 @@ function RatingPill({ rating }: { rating: "A" | "B" | "C" }) {
   return (
     <span
       className={`inline-flex items-center justify-center px-1.5 py-0 rounded text-[10px] font-bold border ${cls}`}
-      title={`Rating: ${rating}`}
+      title={
+        labels?.[rating]
+          ? `${rating} · ${labels[rating].label}${labels[rating].description ? ` — ${labels[rating].description}` : ""}`
+          : `Rating: ${rating}`
+      }
     >
       {rating}
+      {labels?.[rating] && (
+        // Named on the row itself, not just on hover — a tooltip is invisible
+        // on the phone Alex reads this on. Hidden on the narrowest screens
+        // where the row is already tight.
+        <span className="ml-1 hidden sm:inline font-semibold">{labels[rating].label}</span>
+      )}
     </span>
   );
 }
