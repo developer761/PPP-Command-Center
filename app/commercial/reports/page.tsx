@@ -7,6 +7,7 @@ import { getJobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getLaborReport } from "@/lib/commercial/reports/labor";
 import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
+import { getCashFlowReport } from "@/lib/commercial/reports/cash-flow";
 import { etTodayIso } from "@/lib/date-et";
 import { getGeographyReport } from "@/lib/commercial/reports/geography";
 import { getWinLossSummary, currentQuarterRange } from "@/lib/commercial/win-loss/reports";
@@ -56,7 +57,13 @@ export default async function ReportsOverviewPage() {
   // a month of bids is too few to read a win rate from.
   const estYearLabel = labourToday.slice(0, 4);
   const estimatorRange = { fromYmd: `${estYearLabel}-01-01`, toYmd: labourToday };
-  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator] = await Promise.all([
+  // Six months on the card, matching that report's own default.
+  const cashFromTotal = Number(labourToday.slice(0, 4)) * 12 + (Number(labourToday.slice(5, 7)) - 1) - 5;
+  const cashRange = {
+    fromYmd: `${Math.floor(cashFromTotal / 12)}-${String((cashFromTotal % 12) + 1).padStart(2, "0")}-01`,
+    toYmd: labourToday,
+  };
+  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash] = await Promise.all([
     getPipelineReport(),
     getJobCostsReport(),
     getArAging(),
@@ -64,6 +71,7 @@ export default async function ReportsOverviewPage() {
     getGeographyReport(),
     getLaborReport(labourRange),
     getEstimatorReport(estimatorRange),
+    getCashFlowReport(cashRange),
   ]);
   const topTown = geo.byCity[0] ?? null;
 
@@ -118,6 +126,18 @@ export default async function ReportsOverviewPage() {
       icon: <><path d="M12 21s-6-5.686-6-10a6 6 0 1 1 12 0c0 4.314-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></>,
       primary: { label: "Towns", value: String(geo.totals.cityCount), tone: "navy" },
       secondary: { label: "Top town", value: topTown ? `${topTown.label} · ${topTown.dealCount}` : "—" },
+    },
+    {
+      href: "/commercial/reports/cash-flow",
+      title: "Cash flow & collections",
+      blurb: "What actually arrived, and how long it took.",
+      icon: <><path d="M3 6h18v12H3z" /><circle cx="12" cy="12" r="2.5" /><path d="M7 12h.01 M17 12h.01" /></>,
+      primary: { label: "Collected · 6 mo", value: formatCentsCompact(cash.totals.collectedCents), tone: "emerald" as const },
+      secondary: {
+        label: "Days to pay",
+        value: cash.totals.avgDaysToPay === null ? "—" : `${cash.totals.avgDaysToPay}d`,
+        tone: cash.totals.avgDaysToPay !== null && cash.totals.avgDaysToPay > 60 ? "amber" as const : undefined,
+      },
     },
     {
       href: "/commercial/reports/ar-aging",

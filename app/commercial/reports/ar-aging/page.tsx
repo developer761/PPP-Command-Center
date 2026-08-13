@@ -36,6 +36,15 @@ export default async function ArAgingReportPage() {
         <div>
           <h2 className="text-lg font-bold text-ppp-charcoal">AR aging</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">Open invoice balances by how far past due, per customer. The composition bar shows how much of what you&rsquo;re owed is current vs slipping.</p>
+          {/* The other half of this book. Aging is the snapshot; cash flow is
+              the trend of the same money, so each links to the other rather
+              than making someone remember which page holds which half. */}
+          <Link
+            href="/commercial/reports/cash-flow"
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] sm:min-h-0 mt-1"
+          >
+            What actually came in →
+          </Link>
         </div>
         {aging.invoiceCount > 0 && (
           <a
