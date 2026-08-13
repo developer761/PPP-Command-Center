@@ -18,6 +18,8 @@
  * overdue rule are testable without a clock or a database.
  */
 
+import { etDateOf, daysFromTodayEt, etTodayIso } from "@/lib/date-et";
+
 export type ActivityKind = "status" | "note" | "task" | "email" | "proposal";
 
 export type ActivityEntry = {
@@ -143,7 +145,25 @@ function daysBetween(fromIso: string, toIso: string): number {
  * emails is far better than a job page that won't open because the email
  * archive is unhappy.
  */
+
+/**
+ * "3 days" · "yesterday" · "today" — the age of a thing that is still waiting.
+ *
+ * ET calendar days, like every other elapsed figure on the platform, so a
+ * proposal sent last night doesn't read as two days old.
+ */
+function agoWords(at: string | null | undefined, todayIso: string): string {
+  const d = etDateOf(at);
+  if (!d) return "a while";
+  const days = -daysFromTodayEt(d);
+  if (days <= 0) return "today";
+  if (days === 1) return "1 day";
+  return `${days} days`;
+}
+
 export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[]> {
+  // One read of the ET day for every "waiting N days" line below.
+  const todayIso = etTodayIso();
   const [log, notes, tasks, proposals, emails] = await Promise.all([
     import("./status").then((m) => m.listOpportunityStatusLog(oppId)).catch(() => []),
     import("./notes").then((m) => m.listOpportunityNotes(oppId)).catch(() => []),
@@ -202,6 +222,59 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
         kind: "proposal",
         at: p.sent_at,
         title: `Proposal R${p.revision_number} sent`,
+      });
+    }
+    // Karan 2026-08-13: "it should show important updates, what's been
+    // created, how long the proposal has been waiting to be approved for,
+    // when it was sent for approval, sent to GC."
+    //
+    // The feed listed the status hops the ENGINE made and almost nothing about
+    // the proposal itself, so the two questions people actually ask — how long
+    // has this been sitting, and with whom — weren't answerable from it.
+    if (p.created_at) {
+      out.push({
+        id: `prop-created:${p.id}`,
+        kind: "proposal",
+        at: p.created_at,
+        title: `Proposal R${p.revision_number} created`,
+      });
+    }
+    if (p.approved_at) {
+      out.push({
+        id: `prop-approved:${p.id}`,
+        kind: "proposal",
+        at: p.approved_at,
+        title: `Proposal R${p.revision_number} approved`,
+      });
+    }
+    // The waiting ones. An age on a live proposal is the whole point — a
+    // pending approval nobody has looked at for nine days is the single most
+    // actionable line this feed can carry.
+    if (p.status === "pending_approval" && p.updated_at) {
+      out.push({
+        id: `prop-pending:${p.id}`,
+        kind: "proposal",
+        at: p.updated_at,
+        title: `Proposal R${p.revision_number} sent for approval`,
+        detail: `Waiting ${agoWords(p.updated_at, todayIso)} for sign-off.`,
+      });
+    }
+    if (p.status === "approved" && p.approved_at && !p.sent_at) {
+      out.push({
+        id: `prop-approved-unsent:${p.id}`,
+        kind: "proposal",
+        at: p.approved_at,
+        title: `Proposal R${p.revision_number} approved, not sent`,
+        detail: `Signed off ${agoWords(p.approved_at, todayIso)} and still here.`,
+      });
+    }
+    if (p.status === "sent" && p.sent_at) {
+      out.push({
+        id: `prop-awaiting:${p.id}`,
+        kind: "proposal",
+        at: p.sent_at,
+        title: `Proposal R${p.revision_number} with the GC`,
+        detail: `Sent ${agoWords(p.sent_at, todayIso)}. No answer yet.`,
       });
     }
     if ((p.status === "won" || p.status === "lost") && p.updated_at) {

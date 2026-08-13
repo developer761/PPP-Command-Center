@@ -837,6 +837,11 @@ export default async function ProposalEditorPage({
   if (!account) notFound();
   if (!opp || opp.account_id !== accountId) notFound();
   if (!proposal || proposal.opportunity_id !== dealId) notFound();
+  // The deal's own answer. Won/lost, or anywhere past the sale — all of them
+  // mean the outcome is recorded and this proposal is history.
+  const dealDecided =
+    opp.status === "pre_sale_closed" ||
+    ["pre_construction", "in_progress", "billing", "post_sale_closed"].includes(opp.status);
 
   const [lineItems, products, allExclusions, accountDeals] = await Promise.all([
     listLineItemsForProposal(proposalId),
@@ -1308,7 +1313,14 @@ export default async function ProposalEditorPage({
               Alex doesn't have to touch two surfaces to close out a
               bid. Lost routes into the account debrief flow to capture
               the reason. */}
-          {proposal.status === "sent" && (
+          {/* AUDIT 2026-08-13 (Karan: "I marked it as won using the button but
+              the proposal still says mark as won"). The deal-side cascade does
+              flip a sent proposal to Won — but the proposal page offered the
+              button purely off its OWN status, so any moment the two drifted,
+              this screen invited you to decide something already decided.
+              Same class as the stage bar contradicting the next-step button:
+              two surfaces describing one deal must not disagree. */}
+          {proposal.status === "sent" && !dealDecided && (
             <>
               <form action={markProposalOutcomeAction} className="inline-flex">
                 {hiddenIds}

@@ -2134,7 +2134,13 @@ export default async function OpportunityDetailPage({
       {/* Page-level, above the tab bar, so the delivery tools are visible from
           whichever tab you happen to be on — the complaint was that standing
           on a job in delivery, none of them were on screen. */}
-      {!isDeletedDeal && (
+      {/* Hidden once you are INSIDE the delivery tools. Karan 2026-08-13:
+          "it's 8 lines that pop up when I click one of these — it should just
+          bring me to that page." On the Project or Invoices tab the sub-tab row
+          IS the navigation, so the strip becomes a third layer of chrome above
+          the thing you just asked for. It earns its space on the surfaces that
+          don't already list these tools. */}
+      {!isDeletedDeal && primary !== "project" && primary !== "invoices" && (
         <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
       )}
 
