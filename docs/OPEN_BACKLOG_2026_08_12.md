@@ -18,18 +18,20 @@ Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
 
 | # | Next | Depends on |
 |---|---|---|
-| **A** | **Run migrations 133 and 134.** 133 = RFP-received dates (still saving a day early from two of three forms until it lands). 134 = the warranty/work-order signer name + title. | You, 5 minutes |
-| ~~**B**~~ | ~~Full re-audit / walkthrough~~ **DONE 2026-08-12.** All six lanes run: the restructure walked as a flow (now a test), Brendan's list item-by-item, Katie's notes, edge cases, the mobile pass, and the recurring failure classes swept platform-wide. Nine real findings, four of them live in production. Detail below. | — |
-| ~~**C**~~ | ~~Decide 1.1~~ **SETTLED 2026-08-12 (Karan: "use best judgement").** Archiving a won deal keeps its project archived. The distinction that makes it safe: archiving is an explicit "hide this", un-winning is a status correction — which is why un-winning refuses when the project holds anything. Verified the money does not disappear: reports read opportunities, not projects, so an archived job's invoices, costs and margin still count in AR, P&L, job-costs and geography. Only project-scoped views hide it, which is what archiving is for. | — |
-| **D** | **Stephanie's list** | Her findings (0.1) — still not received |
-| **E** | **RFP email → auto-populate an opportunity** | Walking real emails through with you |
-| **E.1** | **`PPP_ADMIN_EMAILS` in Vercel** — production runs on the hardcoded bootstrap admin list until it is set. Fine while it is you and Katie; set it before more logins exist. | You, 2 minutes |
-| **E.2** | **Brendan's sign-off screen** — what he wants to see when approving a proposal | Him describing it |
-| **F** | **Reports — UNBLOCKED, decisions taken 2026-08-12** | — |
-| **G** | **Foreman Daily Log** | Writes payroll — recommend starting fresh, not extending |
-| **H** | **Joint smoke test** — notifications, Field Ops clock in/out, work-order notes reaching the crew | A session with you |
-| **I** | **Lead flow** — Brendan wants Qualifying out of opportunities into a lead object that converts in | Largest remaining item; you deferred it to the end |
-| **J** | **Finish the 96 remaining pending-state forms** (from `9b6aa8b`, tracked by `audit-pending-forms.cjs`). Karan's directive 2026-08-13: do NOT leave them to incremental rollout — "never defer." Apply `SubmitButton` to all 96. Method: address the stated sweep-breakage risk by doing them **deliberately + verifying the batch** (no blind scripted find-replace), not by leaving them undone. Review session will smoke-test the batch after. | Karan added 2026-08-13 |
+| ~~A~~ | ~~Migrations 133 / 134 / 135~~ **ALL RUN.** Confirmed live in prod by the review session. | — |
+| ~~B~~ | ~~Full re-audit / walkthrough~~ **DONE 2026-08-12.** Six lanes; nine real findings, four live in production. | — |
+| ~~C~~ | ~~Archiving decision~~ **SETTLED** — archiving keeps the project archived; the money still counts company-wide because reports read opportunities, not projects. | — |
+| **1** | **Reports F2 — Estimator / proposal performance.** Bids sent, win rate, average turnaround from RFP received to proposal sent. The "how is Kim doing" report, and the reason `rfp_received_at` had to be right. Wire `fiscal_year_start_month` here too — it is seeded and read by nothing. | Nothing |
+| **2** | **The 96 remaining forms with no pending state.** Same class as "Just mark as sent": a plain submit inside a server-action form shows nothing for the whole round trip, so it reads as dead and people click twice. High-traffic ones already done; these are mostly Settings. Shared fix exists (`SubmitButton`); `scripts/audit-pending-forms.cjs` keeps the count honest. | Nothing |
+| **3** | **Reports F3 — Cash flow & collections.** Money in by month, average days to pay, what is still out. AR aging with a time axis. | Nothing |
+| **4** | **Reports F4 — Change orders & vendor spend.** CO volume, approval rate, spend by supplier across all jobs. | Nothing |
+| **5** | **RFP email → auto-populate an opportunity.** The endgame feature. | A session walking real RFP emails through with you |
+| **6** | **Foreman Daily Log.** It writes payroll, so I recommend starting fresh rather than extending the hours code. | Nothing |
+| **7** | **Stephanie's list.** Proposal page order, Submittals feedback, Letter of Transmittal + signature, the large-file issue were the headings. No content has reached me. | Her findings |
+| **8** | **Joint smoke test** — notifications, Field Ops clock in/out, work-order notes reaching the crew. Your own note: the platform isn't done until this happens. | You in the room |
+| **9** | **Lead flow** — Brendan wants Qualifying out of opportunities into a separate lead object that converts in. Largest remaining item. | Nothing; you deferred it to last |
+| **10** | **Brendan's sign-off screen** — what he wants to see when approving a proposal. | Him describing it |
+| **11** | **`PPP_ADMIN_EMAILS` in Vercel.** Production runs on the hardcoded bootstrap admin list until it is set. Also gates the per-person half of the Labour report. Moved to the end at Karan's request 2026-08-13. | You, 2 minutes |
 
 ~~Two smaller things carried~~ **BOTH CLOSED 2026-08-12**, and the first was
 not the hardening item it looked like:
