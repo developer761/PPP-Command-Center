@@ -977,3 +977,23 @@ to the contract"), and a pre-tax collected figure for the collected bar (net tax
 **🧹 This is the 2nd instance of the class → SWEEP:** anywhere a tax-inclusive invoiced/collected is compared against
 the pre-tax contract. (The AIA tile's collected-of-invoiced is fine — both tax-inclusive. `billedSoFar` uses
 billedPreTaxCents — fine.) Handed off.
+
+---
+
+## ✅ VERIFY — analytics-tab + phase blocks + add-inclusion refresh (`cd901b9`). CLEAN. (Plus an uncommitted WIP note.)
+- **Analytics promoted to a primary tab** on won deals (unfindable as a sub-tab). Link-reachability lane applied: old
+  `?tab=analytics` links resolve via `raw === "analytics" → {primary:"analytics", sub:null}` (page.tsx:1443) and it's
+  in the direct-primary list (1419). ✅
+- **Add-inclusion no longer asks to leave the site / needs a manual refresh** — the action `redirect()`'d to the URL
+  it was already on (a no-op in the App Router → the revalidated total never painted, and the real navigation tripped
+  the autosave "Leave site?" guard). Now `revalidatePath` alone: action returns, server re-renders fresh, user stays
+  put. Form-behavior lane: correct. ✅
+- **Phase grouping** into bordered blocks with heading + open-count, phases DERIVED from the tools
+  (`[...new Set(tools.map(t => t.phase))]`) so a new tool can't introduce a phase the strip forgets. ✅
+- Deferred-with-rationale (not silently dropped): the revision-rule gate ("+ New revision" only after a proposal has
+  gone to the GC) — "it is next."
+
+**⏳ UNCOMMITTED WIP (not a defect):** the working tree has the revision-rule feature mid-edit (proposal
+`[proposalId]/page.tsx` + `new/page.tsx`), referencing `sp.kept` before the searchParams type carries it → a
+transient `tsc` error. NOT in cd901b9 (0 mentions of `kept`) and NOT flagged as a bug. Will verify caller-completeness
+when it commits (same discipline as the date-et refactor — check before crying wolf).
