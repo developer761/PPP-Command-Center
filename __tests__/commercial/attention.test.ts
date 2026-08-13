@@ -292,11 +292,22 @@ describe("nextStep", () => {
   });
 
   it("walks the proposal's own lifecycle, one action at a time", () => {
-    const withProp = (status: string) =>
-      at({ status: "estimating", proposalCount: 1, proposal: { id: PROP, status } })!.label;
-    expect(withProp("draft")).toBe("Send it for approval");
-    expect(withProp("pending_approval")).toBe("Mark it approved");
-    expect(withProp("approved")).toBe("Send it to the GC");
+    // Each state read from the STAGE it belongs to. The deal leads (see
+    // nextStep), so asking about an approved proposal while the deal is parked
+    // back at Estimating is a different question — covered below.
+    const withProp = (sub: string, status: string) =>
+      at({ status: "estimating", subStatus: sub, proposalCount: 1, proposal: { id: PROP, status } })!.label;
+    expect(withProp("estimating", "draft")).toBe("Send it for approval");
+    expect(withProp("proposal_pending_approval", "pending_approval")).toBe("Mark it approved");
+    expect(withProp("proposal_pending_approval", "approved")).toBe("Send it to the GC");
+  });
+
+  it("when the paperwork has run ahead, it asks you to catch the deal up", () => {
+    // Karan 2026-08-13: a deal moved back to Qualifying still said "Send it
+    // for approval" while the bar above read Qualifying. The bar and the
+    // button must never contradict each other.
+    const behind = at({ status: "estimating", subStatus: "estimating", proposalCount: 1, proposal: { id: PROP, status: "pending_approval" } })!;
+    expect(behind.label).toBe("Move it to Pending Approval");
   });
 
   it("asks for the answer only once the GC actually has it", () => {

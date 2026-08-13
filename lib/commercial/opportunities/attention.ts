@@ -194,6 +194,18 @@ export function nextStep(
   // else. So take whichever is FURTHER ALONG. A person who moved the deal to
   // Sent meant it; the draft proposal is the lagging artifact, not the truth.
   const DEAL_STAGE_ORDER = ["qualifying", "rfp", "estimating", "pending_approval", "sent"];
+  const STAGE_LABEL: Record<string, string> = {
+    qualifying: "Qualifying",
+    rfp: "RFP",
+    estimating: "Estimating",
+    pending_approval: "Pending Approval",
+    sent: "Sent",
+  };
+  const COLUMN_TARGET: Record<string, { to: string; sub: string }> = {
+    estimating: { to: "estimating", sub: "estimating" },
+    pending_approval: { to: "estimating", sub: "proposal_pending_approval" },
+    sent: { to: "proposal", sub: "sent" },
+  };
   const PROPOSAL_IMPLIES: Record<string, string> = {
     draft: "estimating",
     pending_approval: "pending_approval",
@@ -205,17 +217,40 @@ export function nextStep(
   const proposalStage =
     (p?.status ? PROPOSAL_IMPLIES[p.status] : undefined) ??
     (i.sentProposalCount > 0 ? "sent" : (i.approvedNotSentCount ?? 0) > 0 ? "pending_approval" : undefined);
-  const here =
-    proposalStage && rankOf(proposalStage) > rankOf(dealStage) ? proposalStage : dealStage;
 
-  // Out with the GC — the only thing left is the answer. Checked first because
-  // it is the state a manual move most often lands on, and the state where a
-  // proposal-driven label was most wrong.
-  if (here === "sent") {
+  // ── The rule: the stage bar and this button never contradict each other ──
+  //
+  // The first version let whichever clock was FURTHER ALONG win. That fixed a
+  // deal dragged to Sent still saying "Send it for approval" — and produced
+  // exactly the same nonsense in reverse, which Karan hit next: move a Sent
+  // deal back to Qualifying and the button still said "Send it for approval"
+  // while the bar above it read Qualifying.
+  //
+  // The deal's stage is a PERSON'S statement about where this job is. The
+  // proposal is an artifact. Auto-advance already drags the deal forward when
+  // an artifact moves, so a deal sitting BEHIND its paperwork means a human put
+  // it there — and the answer to that is never to ignore them.
+  //
+  // So the deal always leads. When its paperwork has run ahead, the honest next
+  // step is to bring the DEAL up to it, which is both actionable and can't
+  // disagree with the bar.
+  if (proposalStage && rankOf(proposalStage) > rankOf(dealStage)) {
+    const target = COLUMN_TARGET[proposalStage];
+    return {
+      label: `Move it to ${STAGE_LABEL[proposalStage]}`,
+      href: target
+        ? `/commercial/opportunities/${oppId}?tab=info&to=${target.to}&to_sub=${target.sub}#change-status`
+        : `/commercial/opportunities/${oppId}?tab=info#change-status`,
+      why: `The proposal is already at ${STAGE_LABEL[proposalStage]} — the deal hasn't caught up.`,
+    };
+  }
+
+  // Out with the GC — the only thing left is the answer.
+  if (dealStage === "sent") {
     return {
       label: "Mark won or lost",
-      // No `to=` here on purpose: won vs lost is the user's answer to give, and
-      // pre-picking either one is how a mis-click books a loss as a win.
+      // No `to=` on purpose: won vs lost is the user's answer to give, and
+      // pre-picking either is how a mis-click books a loss as a win.
       href: `/commercial/opportunities/${oppId}?tab=info#change-status`,
       why: "It's with them — record the answer when it comes.",
     };
@@ -229,18 +264,16 @@ export function nextStep(
     };
   }
 
-  // Approved and sitting here is its own step, and it outranks the stage:
-  // the deal being parked at Pending Approval doesn't change the fact that a
-  // signed-off proposal hasn't gone out.
-  if (p?.status === "approved" || (i.approvedNotSentCount ?? 0) > 0) {
-    return {
-      label: "Send it to the GC",
-      href: proposalHref,
-      why: "Approved and still sitting here — they can't answer what they don't have.",
-    };
-  }
-
-  if (here === "pending_approval" || p?.status === "pending_approval") {
+  if (dealStage === "pending_approval") {
+    // Approved-but-unsent is the one refinement WITHIN this stage: the deal is
+    // where it should be, and the proposal says which half of it you're on.
+    if (p?.status === "approved" || (i.approvedNotSentCount ?? 0) > 0) {
+      return {
+        label: "Send it to the GC",
+        href: proposalHref,
+        why: "Approved and still sitting here — they can't answer what they don't have.",
+      };
+    }
     return {
       label: "Mark it approved",
       href: proposalHref,
@@ -248,7 +281,7 @@ export function nextStep(
     };
   }
 
-  if (p?.status === "draft") {
+  if (dealStage === "estimating") {
     return {
       label: "Send it for approval",
       href: proposalHref,
@@ -256,6 +289,14 @@ export function nextStep(
     };
   }
 
+  // Qualifying / RFP with a proposal already on file and nothing further along:
+  // there is pricing work in flight, so point at it rather than inventing a
+  // stage move nobody asked for.
+  return {
+    label: "Open the proposal",
+    href: proposalHref,
+    why: "It's still early, but there's already a proposal on this deal.",
+  };
   return null;
 }
 

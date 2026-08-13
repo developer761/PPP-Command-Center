@@ -95,11 +95,14 @@ describe("every open stage offers a next step, and terminal ones don't", () => {
   });
 
   it("each proposal state names the action, not the state", () => {
-    const at = (s: string) =>
-      step("estimating", "estimating", { id: "p1", status: s }, { proposalCount: 1, sentProposalCount: 0 })?.label;
-    expect(at("draft")).toBe("Send it for approval");
-    expect(at("pending_approval")).toBe("Mark it approved");
-    expect(at("approved")).toBe("Send it to the GC");
+    // Read from the stage each state belongs to — the deal leads, so a
+    // proposal ahead of its deal is a different question (see below).
+    expect(step("estimating", "estimating", { id: "p1", status: "draft" }, { proposalCount: 1, sentProposalCount: 0 })?.label)
+      .toBe("Send it for approval");
+    expect(step("estimating", "proposal_pending_approval", { id: "p1", status: "pending_approval" }, { proposalCount: 1, sentProposalCount: 0 })?.label)
+      .toBe("Mark it approved");
+    expect(step("estimating", "proposal_pending_approval", { id: "p1", status: "approved" }, { proposalCount: 1, sentProposalCount: 0 })?.label)
+      .toBe("Send it to the GC");
   });
 
   it("the approval step opens the PROPOSAL, not the tab it lives in", () => {
@@ -171,17 +174,34 @@ describe("the next step follows the deal when a human moved it", () => {
     }
   });
 
-  it("moved BACK to Qualifying, it stops claiming the deal is out", () => {
-    // Back-and-forth is the other half of the report. With the deal returned
-    // to the start and only a draft on file, the step is the draft's.
-    expect(step("qualifying", "solicitation", "draft")?.label).toBe("Send it for approval");
+  it("moved BACK to Qualifying, it never says 'Send it for approval'", () => {
+    // Karan 2026-08-13, and the reason this file is worth reading: the version
+    // of this test written the day before ASSERTED "Send it for approval"
+    // here. It codified the exact contradiction he then reported — the bar
+    // reading Qualifying with a button offering to send a proposal for
+    // approval underneath it.
+    const s = step("qualifying", "solicitation", "draft")!;
+    expect(s.label).not.toBe("Send it for approval");
+    expect(s.label).toBe("Move it to Estimating");
   });
 
-  it("a proposal ahead of the deal still leads — neither clock always wins", () => {
-    // Sending a proposal auto-advances the deal, but if that ever lags, the
-    // proposal is the further-along signal and the button follows it.
-    expect(step("qualifying", "rfp", "sent", { sentProposalCount: 1 })?.label).toBe("Mark won or lost");
-    expect(step("qualifying", "rfp", "pending_approval")?.label).toBe("Mark it approved");
+  it("when paperwork runs ahead, it offers to catch the DEAL up", () => {
+    // The deal's stage is a person's statement; the proposal is an artifact.
+    // Auto-advance already drags the deal forward when an artifact moves, so a
+    // deal sitting behind its paperwork means a human put it there — and the
+    // answer to that is never to ignore them. The step brings the deal up,
+    // which is actionable and can't disagree with the bar.
+    expect(step("qualifying", "rfp", "sent", { sentProposalCount: 1 })?.label).toBe("Move it to Sent");
+    expect(step("qualifying", "rfp", "pending_approval")?.label).toBe("Move it to Pending Approval");
+  });
+
+  it("the catch-up step pre-picks the stage it names", () => {
+    // Otherwise "Move it to Sent" lands on an unset dropdown and the person
+    // has to work out what the button meant.
+    const s = step("qualifying", "rfp", "pending_approval")!;
+    const u = new URL(s.href, "https://x.test");
+    expect(u.searchParams.get("to")).toBe("estimating");
+    expect(u.searchParams.get("to_sub")).toBe("proposal_pending_approval");
   });
 
   it("an approved proposal sitting unsent outranks the stage it's parked at", () => {
