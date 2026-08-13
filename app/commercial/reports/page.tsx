@@ -8,6 +8,7 @@ import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getLaborReport } from "@/lib/commercial/reports/labor";
 import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
 import { getCashFlowReport } from "@/lib/commercial/reports/cash-flow";
+import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orders-vendors";
 import { etTodayIso } from "@/lib/date-et";
 import { getGeographyReport } from "@/lib/commercial/reports/geography";
 import { getWinLossSummary, currentQuarterRange } from "@/lib/commercial/win-loss/reports";
@@ -63,7 +64,7 @@ export default async function ReportsOverviewPage() {
     fromYmd: `${Math.floor(cashFromTotal / 12)}-${String((cashFromTotal % 12) + 1).padStart(2, "0")}-01`,
     toYmd: labourToday,
   };
-  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash] = await Promise.all([
+  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor] = await Promise.all([
     getPipelineReport(),
     getJobCostsReport(),
     getArAging(),
@@ -72,6 +73,8 @@ export default async function ReportsOverviewPage() {
     getLaborReport(labourRange),
     getEstimatorReport(estimatorRange),
     getCashFlowReport(cashRange),
+    // Year to date, matching that report's own default preset.
+    getChangeOrderVendorReport({ fromYmd: `${estYearLabel}-01-01`, toYmd: labourToday }),
   ]);
   const topTown = geo.byCity[0] ?? null;
 
@@ -172,6 +175,18 @@ export default async function ReportsOverviewPage() {
           : formatCentsCompact(labor.totalCostCents),
         tone: labor.unratedHours > 0 ? "amber" : "neutral",
       },
+    },
+    {
+      href: "/commercial/reports/change-orders",
+      title: "Change orders & vendor spend",
+      blurb: "Scope beyond contract, and who got paid.",
+      icon: <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
+      primary: {
+        label: coVendor.co.unbilledCents > 0 ? "Approved, unbilled" : "Added scope",
+        value: formatCentsCompact(coVendor.co.unbilledCents > 0 ? coVendor.co.unbilledCents : coVendor.co.approvedAddCents),
+        tone: coVendor.co.unbilledCents > 0 ? "amber" as const : "emerald" as const,
+      },
+      secondary: { label: "Vendor spend", value: formatCentsCompact(coVendor.vendorTotalCents) },
     },
     {
       href: "/commercial/reports/win-loss",
