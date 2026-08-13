@@ -303,3 +303,21 @@ Lanes:
   was provably never entered, and it REFUSES to conclude for sub-status-backed stages the log can't prove
   (`backing === undefined`). Honest + correct. Tests added.
 Both my open tails are now CLOSED. Nothing of mine left tracking-open on the current batch.
+
+---
+
+## ✅ VERIFY — `45c49de` (item 10: two latent items). Complete + correct.
+- **§4.2 rfp_received_at → DATE (migration 133):** verified. The history-repair `USING (rfp_received_at AT TIME
+  ZONE 'UTC')::date` is the CORRECT choice — all 3 write conventions (bare-midnight ×2, noon-UTC ×1) put the typed
+  day in the UTC portion, so UTC-truncate recovers the intent; Eastern-truncate would have corrupted the bare-path
+  rows (the migration's own reasoning, confirmed). Idempotent (type-guarded), post-flight checks documented. All 3
+  write paths now write a bare DATE (no noon-anchor — grep for `T12:00`/`.000Z` on rfp = empty). Closes my inline-rfp
+  finding too.
+- **§4.1 null-opp reporting:** an `orphan_projects` probe on `/api/admin/commercial-health` now WARNS the day a
+  project with no opportunity appears ("costs are missing from every report", fix in the hint) — non-silent, the
+  warn-don't-defer approach. Correct.
+
+**🟡 ACTION: migration 133 must be RUN in prod** (rfp_received_at is still TIMESTAMPTZ until then; the "Plans
+received" tile reads a day early for the bare-path rows). No deploy-gate risk.
+
+## ✅ Plan items 1–10 ALL verified complete (2/6 tails also closed by c4fbd7c). Nothing of mine tracking-open.
