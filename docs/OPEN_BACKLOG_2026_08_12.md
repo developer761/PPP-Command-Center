@@ -935,3 +935,19 @@ Fixes verified:
    "does the link resolve" — I failed to apply it to the strip I'd just passed. **New lane:** verifying any nav/strip
    → confirm its link targets are reachable in the SAME states, not just that the source renders.
 Both are exactly the cross-surface classes I catch in others; recording them so the standard is symmetric.
+
+---
+
+## ✅ VERIFY — proposal/deal agreement + strip step-aside + Activity feed (`3c7a69b`). CLEAN, no miss.
+- **Proposal vs deal consistency** — the proposal page's Won/Lost buttons now gate on `!dealDecided` (deal is
+  pre_sale_closed OR any delivery stage), not just `proposal.status === "sent"`. So once the outcome is recorded (or
+  the job is past the sale), the proposal can't invite you to re-decide. Same "two surfaces, one deal, must agree"
+  rule as the path bar + next-step button. ✅
+- **Strip step-aside** — hidden on Project/Invoices tabs (`primary !== "project" && primary !== "invoices"`), where
+  the sub-tab row IS the nav, killing the triple-chrome. **Applied my link-reachability lane** (the one I missed on
+  2f68d83): verified the SubTab type (page.tsx:1335) + sub-tab row (1359-1365) list ALL SIX strip tools — submittals,
+  work-order, change-orders, aia, transactions, closeout — so nothing is stranded when the strip hides. Reachable. ✅
+- **Activity feed** — added proposal lifecycle (created, sent-for-approval with wait, approved, approved-not-sent
+  with age, with-the-GC with age), aged in ET calendar days via `etDateOf` + `daysFromTodayEt` (activity.ts:156-158)
+  — a proposal sent last night reads "today," not two days. No bare-date bug. ✅
+tsc clean, suite green. No miss.
