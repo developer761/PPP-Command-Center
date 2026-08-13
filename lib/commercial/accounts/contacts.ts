@@ -13,30 +13,12 @@ import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
  * contact, role) — UNIQUE constraint enforces this in the DB.
  */
 
-export const CONTACT_ROLES = [
-  "decision_maker",
-  "estimator",
-  "pm",
-  "superintendent",
-  "ap",
-  "billing",
-  "site",
-  "other",
-] as const;
-export type ContactRole = (typeof CONTACT_ROLES)[number];
-
-export function roleLabel(role: ContactRole): string {
-  return {
-    decision_maker: "Decision Maker",
-    estimator: "Estimator",
-    pm: "PM",
-    superintendent: "Superintendent",
-    ap: "AP",
-    billing: "Billing",
-    site: "Site",
-    other: "Other",
-  }[role];
-}
+// Roles moved to lib/commercial/contacts/roles.ts (pure data) so client
+// components can import them instead of keeping their own copies. Re-exported
+// here so existing server callers keep one import path.
+import { type ContactRole } from "@/lib/commercial/contacts/roles";
+export { CONTACT_ROLES, roleLabel, isContactRole } from "@/lib/commercial/contacts/roles";
+export type { ContactRole };
 
 export type CommercialContact = {
   id: string;

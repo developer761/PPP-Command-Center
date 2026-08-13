@@ -79,12 +79,29 @@ export async function hydrateProposalContext(
   // Attention/phone/email — pull the primary contact if set. commercial_contacts
   // stores a single `full_name` (NOT first_name/last_name — selecting those 400s
   // and PostgREST returns null, which silently blanked the whole block).
-  if (opp.primary_contact_id) {
+  // WHO the proposal is addressed to. Stephanie 2026-08-13 asked how to edit
+  // the Attention contact; it is now the job's own contact list, so the job's
+  // marked contact wins and the deal's single primary_contact_id remains the
+  // fallback for every opportunity created before that existed.
+  let attentionContactId: string | null = opp.primary_contact_id ?? null;
+  {
+    const sb0 = commercialDb();
+    const { data: primaryLink } = await sb0
+      .from("commercial_opportunity_contacts")
+      .select("contact_id")
+      .eq("opportunity_id", opp.id)
+      .eq("is_primary", true)
+      .maybeSingle();
+    const linked = (primaryLink as { contact_id?: string } | null)?.contact_id;
+    if (linked) attentionContactId = linked;
+  }
+
+  if (attentionContactId) {
     const sb = commercialDb();
     const { data, error } = await sb
       .from("commercial_contacts")
       .select("full_name, email, phone")
-      .eq("id", opp.primary_contact_id)
+      .eq("id", attentionContactId)
       .maybeSingle();
     if (error) {
       console.warn("[proposals/hydrate] contact lookup failed:", error.message);

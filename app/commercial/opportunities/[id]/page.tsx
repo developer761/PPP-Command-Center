@@ -1,4 +1,6 @@
 import { notFound, redirect } from "next/navigation";
+import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
+import { CONTACT_ROLES, roleLabel as contactRoleLabel } from "@/lib/commercial/contacts/roles";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
@@ -464,6 +466,74 @@ async function setDealTeamAction(formData: FormData) {
   const result = await setOwnerTeam("opportunity", opp_id, team_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
+  }
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
+/** Add someone to this job's contact list. */
+async function addOppContactAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const contact_id = String(formData.get("contact_id") ?? "");
+  if (!UUID_RE.test(contact_id)) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent("Pick a person."));
+  }
+  const { addOpportunityContact } = await import("@/lib/commercial/opportunities/contacts");
+  const res = await addOpportunityContact({
+    opportunityId: opp_id,
+    contactId: contact_id,
+    role: String(formData.get("role") ?? ""),
+    isPrimary: formData.get("is_primary") === "on",
+    actorUserId: user.id,
+  });
+  if (!res.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(res.error));
+  }
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
+/** Remove someone from this job. The PERSON is untouched — they stay on the
+ *  account and on any other job. */
+async function removeOppContactAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const link_id = String(formData.get("link_id") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(link_id)) redirect("/commercial/opportunities");
+  const { removeOpportunityContact } = await import("@/lib/commercial/opportunities/contacts");
+  const res = await removeOpportunityContact(link_id, user.id);
+  if (!res.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(res.error));
+  }
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
+/** Make someone the "Attention" contact — who the proposal is addressed to.
+ *  Stephanie 2026-08-13: "Attention Contact? How do I edit that". */
+async function setOppPrimaryContactAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const link_id = String(formData.get("link_id") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(link_id)) redirect("/commercial/opportunities");
+  const { setPrimaryOpportunityContact } = await import("@/lib/commercial/opportunities/contacts");
+  const res = await setPrimaryOpportunityContact(opp_id, link_id, user.id);
+  if (!res.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(res.error));
   }
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
@@ -3393,6 +3463,26 @@ async function InfoTab({
     listCurrentProposalTotalByOpp([opp.id]),
   ]);
   const oppProposalTotal = proposalTotalByOpp.get(opp.id);
+
+  // Per-job contacts, plus the account's people offered as the source to pick
+  // from — a job contact is a REUSE of an existing person, not a new record,
+  // so one superintendent across three jobs keeps one phone number.
+  const { listOpportunityContacts } = await import("@/lib/commercial/opportunities/contacts");
+  const [oppContacts, accountContactRows] = await Promise.all([
+    listOpportunityContacts(opp.id),
+    account ? listAccountContacts(account.id) : Promise.resolve([]),
+  ]);
+  const alreadyOnJob = new Set(oppContacts.map((c) => c.contact_id));
+  const accountContactOptions = accountContactRows
+    // Someone already on the job is dropped from the picker: re-adding them in
+    // a second role is legitimate, but offering the same name repeatedly is
+    // how a list of eight people becomes unreadable. They can be removed and
+    // re-added if the role was wrong.
+    .filter((r) => !alreadyOnJob.has(r.contact.id))
+    .map((r) => ({
+      value: r.contact.id,
+      label: r.contact.full_name + (r.contact.title ? ` — ${r.contact.title}` : ""),
+    }));
   const accountTeamName = account?.team_id
     ? allTeams.find((t) => t.id === account.team_id)?.name ?? null
     : null;
@@ -3726,6 +3816,148 @@ async function InfoTab({
           </p>
         </form>
       </Card>
+
+      {/* Stephanie 2026-08-13: "each job may have different contacts for site
+          supers, pms, apms, estimators... Add many spaces." The account's
+          contacts are the GC's office; these are the people on THIS job, and
+          they change between jobs at the same builder and during a job.
+
+          The person is reused from the account's contact list rather than
+          retyped, so one superintendent across three jobs stays one record
+          with one phone number instead of three that drift apart. */}
+      <Card
+        title="Contacts on this job"
+        tone="neutral"
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        }
+      >
+        {oppContacts.length === 0 ? (
+          <p className="text-[12.5px] text-ppp-charcoal-500 italic">
+            Nobody added yet. The proposal falls back to the account&rsquo;s primary contact.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {oppContacts.map((c) => (
+              <li
+                key={c.id}
+                className="rounded-lg border border-ppp-charcoal-100 bg-surface px-3 py-2.5"
+              >
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="min-w-0">
+                    <span className="text-[13.5px] font-semibold text-ppp-charcoal">
+                      {c.full_name}
+                    </span>
+                    {c.is_primary && (
+                      <span className="ml-1.5 text-[10px] font-bold uppercase tracking-widest text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-100 rounded px-1.5 py-0.5">
+                        Attention
+                      </span>
+                    )}
+                    <span className="block text-[11.5px] text-ppp-charcoal-500">
+                      {contactRoleLabel(c.role)}
+                      {c.title ? ` · ${c.title}` : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Tappable on a phone, which is where a site number gets
+                        used — nobody transcribes a number off a screen. */}
+                    {c.phone && (
+                      <a
+                        href={`tel:${c.phone.replace(/[^\d+]/g, "")}`}
+                        className="inline-flex items-center min-h-[44px] px-2 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
+                      >
+                        {c.phone}
+                      </a>
+                    )}
+                    {c.email && (
+                      <a
+                        href={`mailto:${c.email}`}
+                        className="inline-flex items-center min-h-[44px] px-2 text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 max-w-[13rem] truncate"
+                      >
+                        {c.email}
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 mt-1">
+                  {!c.is_primary && (
+                    <form action={setOppPrimaryContactAction}>
+                      <input type="hidden" name="opp_id" value={opp.id} />
+                      <input type="hidden" name="link_id" value={c.id} />
+                      <SubmitButton
+                        pendingLabel="Saving…"
+                        className="inline-flex items-center min-h-[44px] text-[11.5px] font-semibold text-ppp-charcoal-600 hover:text-cc-brand-700 underline underline-offset-2"
+                      >
+                        Make Attention contact
+                      </SubmitButton>
+                    </form>
+                  )}
+                  <form action={removeOppContactAction}>
+                    <input type="hidden" name="opp_id" value={opp.id} />
+                    <input type="hidden" name="link_id" value={c.id} />
+                    <SubmitButton
+                      pendingLabel="Removing…"
+                      className="inline-flex items-center min-h-[44px] text-[11.5px] text-ppp-charcoal-400 hover:text-rose-600 underline underline-offset-2"
+                    >
+                      Remove from job
+                    </SubmitButton>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {accountContactOptions.length > 0 ? (
+          <form action={addOppContactAction} className="mt-3 pt-3 border-t border-ppp-charcoal-100 space-y-2">
+            <input type="hidden" name="opp_id" value={opp.id} />
+            <SearchableSelect
+              name="contact_id"
+              options={accountContactOptions}
+              placeholder="Search the customer's people…"
+              ariaLabel="Person to add to this job"
+            />
+            <div className="flex items-end gap-2 flex-wrap">
+              <label className="flex-1 min-w-[8rem]">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+                  Role on this job
+                </span>
+                <select
+                  name="role"
+                  defaultValue="superintendent"
+                  className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[13px] min-h-[44px]"
+                >
+                  {CONTACT_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {contactRoleLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <SubmitButton
+                pendingLabel="Adding…"
+                className="inline-flex items-center px-3 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-navy-900"
+              >
+                Add to job
+              </SubmitButton>
+            </div>
+            <label className="flex items-center gap-2 text-[12px] text-ppp-charcoal-600 min-h-[44px]">
+              <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-ppp-charcoal-300" />
+              Make this the Attention contact on the proposal
+            </label>
+          </form>
+        ) : (
+          <p className="mt-3 pt-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-500">
+            This customer has no contacts on file yet. Add them on the account first, then they can
+            be put on a job.
+          </p>
+        )}
+      </Card>
+
       <Card
         title="Account"
         tone="neutral"
@@ -5788,8 +6020,12 @@ function Card({
       ? "bg-amber-500"
       : "bg-ppp-charcoal-200";
   return (
-    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm ${className ?? ""}`}>
-      <header className="px-5 pt-4 pb-3 flex items-center gap-3 border-b border-ppp-charcoal-50">
+    // No `overflow-hidden`: this Card now holds a searchable contact picker,
+    // and a clipping card cuts its dropdown off at the border — the same fault
+    // Stephanie hit on the exclusion picker. The header rounds its own corners
+    // instead. Caught by scripts/audit-clipped-popovers.cjs on this very card.
+    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl shadow-sm ${className ?? ""}`}>
+      <header className="px-5 pt-4 pb-3 flex items-center gap-3 border-b border-ppp-charcoal-50 rounded-t-xl">
         {icon && (
           <span aria-hidden className={`inline-flex items-center justify-center h-8 w-8 rounded-lg shrink-0 ${iconCls}`}>
             {icon}
