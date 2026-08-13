@@ -1195,3 +1195,18 @@ Stephanie: "Exclusion dropdown cuts off, can't scroll to see options." Root caus
 - **Accepted hits documented with reason (no silent caps):** a drawer dropdown that scrolls with its field stays
   reachable; the complete fix is a portal in `SearchableSelect`, tracked as its own change. ✓
 tsc clean, 608 tests / 46 files pass.
+
+---
+
+## ✅ VERIFY — editable saved product + PROJECT name (`0eae521`, Stephanie). CLEAN, no miss.
+- **Product editable after save** — a saved inclusion snapshotted its product with no picker, so the only outs were
+  Remove-and-re-add (lose qty/price/phase) or Clear (drop the link). Now Change / Clear / Remove, nothing commits
+  until Save row. **Data integrity verified (the "name-B, link-A" risk):** the ProductPicker sets BOTH the visible
+  fields AND the hidden `product_id` on select (`product-picker.tsx:223`), the action reads `product_id`
+  (`page.tsx`), and `updateLineItem` carries it (undefined-safe) — so the catalogue link moves WITH the name. Clear
+  clears both. ✓
+- **PROJECT name autofilled the GC** — fell through to `derivedOppName` ("{account} - {client} - {street}"), so a
+  customer PDF's PROJECT line opened with the builder (already printed above as gc_company). New pure helper
+  `proposalProjectName`: title_override wins (Katie's rule) → else client + street (the job) → fallback. Moved out of
+  server-only `hydrate` so it's testable — it decides what every GC sees. 5/5 test. ✓
+tsc clean, 613 tests.
