@@ -1147,3 +1147,20 @@ There was no contact writer at all (add/detach/set-primary only), so fixing a ty
   render/writer-parity rule. ✓
 - Action auth-gated: `getUser` + `assertCommercialAccess(user.id)`; form is a `<details>` (closed until wanted).
 tsc clean, 44 test files pass.
+
+---
+
+## ✅ VERIFY — Foreman Daily Log (`bf51ff3`). CLEAN, no miss. Payroll-writing feature done right + my DB-parity lane is now a test.
+Item 4 / R10.4 (writes payroll → security + correctness critical). Verified every guard:
+- **SECURITY: employee from SESSION, never the form** — `getEmployeeForUser(user.id)`; the form carries job/date/
+  hours/type but NO `employee_id`, and the writer filters by the session employee, so nobody can file time against
+  anyone else. Non-employee → redirect to /commercial/crew (only real employees log). ✓
+- **Lock is a real guard, not a flag** — `SETTLED = {approved, exported}`; the writer REFUSES (`ok:false`, "already
+  approved — ask your scheduler") before any update, so a painter can't revise payroll after approval/export. ✓
+- **24h capped, not rejected** (`Math.min(24, …)`) — warn-not-reject, because refusing on site = a day unrecorded. ✓
+- **Published assignments only** (`.eq("status","published")`); scheduled hours pre-fill but never assert (confirm =
+  one tap); built fresh off the read-only crew surface as flagged. ✓
+- **Absence list vs Postgres CHECK constraint is TESTED** (`daily-log.test.ts:72-82` reads migration 112 and asserts
+  every `ABSENCE_TYPES` value is in the CHECK) — the exact app-list-vs-DB-CHECK parity lane from my team-roles miss,
+  now a durable test. ✓
+- Mobile-clean (no crew/log scanner hits — the phone-at-5pm surface). tsc clean, 8/8 daily-log tests.
