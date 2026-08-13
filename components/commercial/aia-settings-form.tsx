@@ -87,7 +87,18 @@ export function AiaSettingsForm({
           setErrMsg(res.error ?? "Save failed.");
           dirty.current = true;
         }
-      } catch {
+      } catch (err) {
+        // Never swallow NEXT_REDIRECT — a server action that redirects would
+        // have its navigation eaten and the pill would show a false "Save
+        // failed" on a save that actually succeeded. Same rule as
+        // autosave-form and autosave-proposal-form (audit 2026-08-13).
+        if (
+          err &&
+          typeof (err as { digest?: unknown }).digest === "string" &&
+          (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+        ) {
+          throw err;
+        }
         setStatus("error");
         setErrMsg("Save failed — check your connection.");
         dirty.current = true;

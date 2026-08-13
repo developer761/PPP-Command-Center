@@ -149,3 +149,38 @@ describe("every warning's Fix lands somewhere usable", () => {
     expect(f!.type).toBe("date");
   });
 });
+
+/**
+ * Karan 2026-08-13: "the Fix buttons also don't do anything."
+ *
+ * `follow_up_at` was added to INLINE_FIELDS so the follow-up warning could
+ * deep-link to it with `?ef=` — and the ROW was never added to the page, so
+ * the link opened a field that did not exist. Being on the editable list is
+ * not the same as being on the screen.
+ *
+ * That is the third time this week a list and its render were changed
+ * separately, so it is checked here rather than remembered.
+ */
+describe("every inline-editable field is actually rendered", () => {
+  it("has an inlineRow() call on the deal page", async () => {
+    const { INLINE_FIELDS } = await import("@/lib/commercial/opportunities/inline-fields");
+    // Fields the page renders through a different control than inlineRow are
+    // listed here WITH their reason, so an exemption is a decision rather than
+    // a hole. Empty today.
+    const renderedElsewhere = new Set<string>([
+      "client_name",
+      "description",
+      "property_street",
+      "property_city",
+      "property_state",
+      "property_zip",
+    ]);
+    for (const f of INLINE_FIELDS) {
+      if (renderedElsewhere.has(f.name)) continue;
+      expect(
+        PAGE.includes(`inlineRow("${f.name}"`),
+        `"${f.name}" is inline-editable but the deal page never renders it — a ?ef=${f.name} link opens nothing`
+      ).toBe(true);
+    }
+  });
+});

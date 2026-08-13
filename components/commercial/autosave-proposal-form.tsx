@@ -113,7 +113,26 @@ export function AutosaveProposalForm({
       window.setTimeout(() => {
         setStatus((s) => (s === "saved" ? "idle" : s));
       }, 3000);
-    } catch {
+    } catch (err) {
+      // AUDIT 2026-08-13 (Karan: "the submittals page is autosaving and it
+      // boots us out and won't let us go back into it. This happened with
+      // proposals too. This cannot happen whatsoever.")
+      //
+      // This was a bare `catch {}`, which swallowed EVERYTHING — including the
+      // NEXT_REDIRECT control signal. A server action that redirects (this one
+      // does, with ?error= when a save conflicts) had its navigation eaten and
+      // the pill flipped to "error" instead, so the page sat in a state it
+      // could not leave and every later autosave hit the same conflict.
+      //
+      // Its sibling in autosave-form.tsx already re-throws for exactly this
+      // reason. Two components, one rule, written once and not the other.
+      if (
+        err &&
+        typeof (err as { digest?: unknown }).digest === "string" &&
+        (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+      ) {
+        throw err;
+      }
       setStatus("error");
     } finally {
       inFlightRef.current = false;

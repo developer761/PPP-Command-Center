@@ -3457,6 +3457,14 @@ async function InfoTab({
           tooltip="First time a proposal was Sent (MIN sent_at across revisions). Auto-computed from proposals — no manual entry."
         />
         {inlineRow("proposal_due_at", opp.proposal_due_at?.slice(0, 10) ?? "")}
+        {/* AUDIT 2026-08-13 (Karan: "the Fix buttons also don't do anything").
+            `follow_up_at` was added to INLINE_FIELDS so the "No follow-up
+            scheduled" warning could deep-link to it with ?ef= — and the ROW
+            was never rendered, so the link opened a field that did not exist
+            on the page. Being on the editable list is not the same as being on
+            the screen; that is the third time this week the list and the render
+            were changed separately. */}
+        {inlineRow("follow_up_at", opp.follow_up_at?.slice(0, 10) ?? "")}
         <Field
           label="Close date"
           value={opp.decided_at?.slice(0, 10) ?? "—"}
