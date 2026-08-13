@@ -758,3 +758,28 @@ Page-level render (not inside a tab) is correct — each arrives on whichever ta
 1. 🟡 **Probability CSV export** (`export.ts:43/197`) — the only remaining open code handoff.
 2. ✅ Lost-flip navigation — RESOLVED (`b092810`).
 3. ✅ Mobile select-zoom + scanner — RESOLVED (`c64aec3`).
+
+---
+
+## ✅ VERIFY — Reports F2: Estimator performance (`87a6447`). Excellent. One latent consistency gap.
+Verified against all lanes (review session now holding to Karan's "perfect" bar + the 4 SF screenshots):
+- **KPI correctness** — one bid per DEAL (folds proposal revisions to earliest send), period = when the bid WENT OUT,
+  turnaround excludes null RFP AND negative (sent-before-RFP typo, surfaced not absorbed, line 234), win rate =
+  decided-only → "—" not 0% when nothing decided, thin-sample (`decided < 3`) flagged so nobody quotes 100% off one.
+  Outcome via `columnKeyForOpp` (shared mapper — self-caught the same-deal-two-answers sin). ✅
+- **Scale** — both proposals + opps queries use `paginateAll` (no 1000-row undercount). ✅
+- **RBAC** — server-gated (`role admin|account_manager` redirect, estimator/page.tsx:91) AND the index card is
+  render-gated (`canSeePeople ? [card] : []`, reports/page.tsx:130) — no offer-then-bounce. ✅
+- **Self-caught the dead-param class** — the row link's `?estimator=` is now actually READ by the pipeline
+  (page.tsx:473/666), so "show me Kim's bids" works. ✅
+- **`fiscal_year_start_month` wired** (was seeded, read by nothing) — the standalone report reads + clamps it (1–12)
+  and passes to `rangeFor`, so setting it actually moves boundaries. Matches the SF "Opportunity Pipeline Manager"
+  report shape (grouped per-person, win rate, subtotals). 14 tests, tsc clean, mobile clean. ✅
+
+**🟡 LATENT CONSISTENCY GAP — the fiscal setting is only HALF-wired.** The standalone report respects
+`fiscal_year_start_month`, but the **index card** hardcodes January: `estimatorRange = { fromYmd: \`${estYearLabel}-01-01\` }`
+(reports/page.tsx:58). Today both are January (Tomco's FY), so they agree — but change the setting and the card
+summarises Jan–today while the report it links to shows the fiscal year: the exact "knob that looks live but a second
+surface ignores it" shape this commit set out to kill (the fiscal knob was dead; now it's dead on ONE of two
+surfaces). **Fix:** have the card read `fiscal_year_start_month` too (or share a `fiscalYearRange(today, fyStart)`
+helper between card and report). Low severity (dormant while FY=Jan), but flagged for the "perfect" bar. Handed off.
