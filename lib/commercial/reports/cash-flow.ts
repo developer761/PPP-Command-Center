@@ -216,13 +216,22 @@ export async function getCashFlowReport(range: {
   }
 
   // Billed in the same window, so the two lines on the chart answer the same
-  // question: what went out vs what came in. PRE-tax, matching every other
-  // "billed" figure on the platform — tax is collected for the state, not us.
+  // question: what went out vs what came in.
+  //
+  // TAX BASIS (review session 2026-08-13): this is a COLLECTIONS report, so
+  // both sides are with-tax. `collected` sums payments, which cover the invoice
+  // TOTAL (tax included — the customer owes the tax and pays it to us to remit).
+  // Billing it against pre-tax `subtotal_cents` reported ~108% collection on a
+  // fully-paid taxable job and put the collected bar above billed for the same
+  // money. Billed is the with-tax `total_cents` — the amount actually invoiced
+  // to the customer — so the rate is cash-in ÷ invoiced-to-customer and the two
+  // chart lines share a basis. (Same principle the deal analytics settled in
+  // 6d972cf: a with-tax figure is measured against the with-tax total.)
   let billed = 0;
   for (const inv of invoices) {
     const issued = etDateOf(inv.issued_at);
     if (!issued || issued < range.fromYmd || issued > range.toYmd) continue;
-    const amt = Number(inv.subtotal_cents) || 0;
+    const amt = Number(inv.total_cents) || 0;
     billed += amt;
     const mKey = issued.slice(0, 7);
     const m = months.get(mKey) ?? { key: mKey, label: monthLabel(mKey), collectedCents: 0, billedCents: 0, paymentCount: 0 };

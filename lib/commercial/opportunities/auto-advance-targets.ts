@@ -35,13 +35,22 @@ export type AutoAdvanceTarget = {
    * The exact state this move may start from, when it is a sub-status
    * refinement rather than a climb up the ladder.
    *
-   * Only `closed` uses it, and it is load-bearing: `post_sale_closed` is in
-   * `TERMINAL_STATUSES`, so writing it from any earlier status stamps
-   * `decided_at` with today's date. The dashboard builds its win-rate
-   * DENOMINATOR from raw `decided_at`, so auto-closing an old job would quietly
-   * move a win into the wrong month. Restricting the source to
-   * `post_sale_closed·closeout` keeps the top-level status unchanged, which
-   * means no `decided_at` write, no log row and no notification.
+   * Only `closed` uses it, and it is load-bearing — but NOT for the reason
+   * originally written here.
+   *
+   * The old note said `post_sale_closed` is in `TERMINAL_STATUSES` so writing
+   * it stamps `decided_at` and would move a win into the wrong month. That
+   * stopped being true: `decided_at` is keyed on `to_status ===
+   * "pre_sale_closed"` (status.ts), never on `post_sale_closed`. Audited
+   * 2026-08-13 — leaving a stale reason in place is how a guard gets relaxed
+   * on a false premise, or kept for one.
+   *
+   * The REAL reason it stays: completing the close-out PAPERWORK is not the
+   * same as the job being finished. Punchlist signed and warranty issued while
+   * retainage is still held means money is out and the job is not done.
+   * `post_sale_closed` claims both. So the artifact alone may only refine the
+   * sub-status; moving the top-level status waits until the money is clear
+   * too, which is what the "Mark it completed" next step checks.
    */
   exactFrom?: { status: string; sub_status: string };
 };

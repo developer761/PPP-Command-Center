@@ -31,6 +31,11 @@ export type StageKpi = {
   value: string;
   sub?: string | null;
   tone?: KpiTone;
+  /** Where this number lives. Karan 2026-08-13: "add more small KPIs or
+   *  important details with quick links if needed" — a figure you can click
+   *  through to is worth more than one you have to go and find. Relative to
+   *  the deal, so callers pass the tab. */
+  href?: string;
 };
 
 export type StageKpiInput = {
@@ -65,6 +70,8 @@ export type StageKpiInput = {
   approvedChangeOrderCents?: number | null;
 
   openSubmittals?: number | null;
+  /** Change orders raised and undecided — scope the GC hasn't answered on. */
+  pendingChangeOrders?: number | null;
   crewHours?: number | null;
   oldestUnpaidInvoiceDate?: string | null;
   /** Retainage withheld on the latest AIA application — earned, not yet
@@ -178,6 +185,18 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if (i.decidedAt) {
       out.push({ key: "won_ago", label: "Won", value: agoLabel(i.decidedAt, i.todayIso), sub: i.decidedAt });
     }
+    // Pre-construction is a checklist, so the two things blocking mobilisation
+    // belong on the board rather than one click down.
+    if ((i.openSubmittals ?? 0) > 0) {
+      out.push({
+        key: "submittals",
+        label: "Open submittals",
+        value: String(i.openSubmittals),
+        sub: "with the GC",
+        tone: "warn",
+        href: "?tab=project&sub=submittals",
+      });
+    }
     // Karan 2026-08-13: "the overview when we're on delivery should have KPIs
     // of how much we have to bill them, how much we have billed so far."
     // `won_not_started` covers Pre-Construction, which IS delivery — so the
@@ -191,6 +210,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         label: left < 0 ? "Over-billed" : "Left to bill",
         value: money(Math.abs(left)),
         tone: left < 0 ? "warn" : left === 0 ? "good" : "default",
+        href: "?tab=project&sub=aia",
       });
       // Only once something HAS been billed — a deposit can go out before the
       // crew mobilises, and "Billed 0%" on a job nobody has started is noise.
@@ -259,7 +279,24 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
 
   if (phase === "in_progress") {
     if ((i.openSubmittals ?? 0) > 0) {
-      out.push({ key: "submittals", label: "Open submittals", value: String(i.openSubmittals), tone: "warn" });
+      out.push({
+        key: "submittals",
+        label: "Open submittals",
+        value: String(i.openSubmittals),
+        tone: "warn",
+        href: "?tab=project&sub=submittals",
+      });
+    }
+    // A change order nobody has answered is scope in limbo — the crew may
+    // already be doing the work.
+    if ((i.pendingChangeOrders ?? 0) > 0) {
+      out.push({
+        key: "pending_cos",
+        label: "COs awaiting a decision",
+        value: String(i.pendingChangeOrders),
+        tone: "warn",
+        href: "?tab=project&sub=change-orders",
+      });
     }
     if ((i.crewHours ?? 0) > 0) {
       out.push({ key: "hours", label: "Crew hours", value: `${i.crewHours}` });
@@ -270,6 +307,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if ((i.openBalanceCents ?? 0) > 0) {
       out.push({
         key: "ar",
+        href: "?tab=project&sub=invoices",
         label: "Outstanding",
         value: money(i.openBalanceCents),
         sub: i.oldestUnpaidInvoiceDate
@@ -287,6 +325,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if ((i.retainageHeldCents ?? 0) > 0) {
       out.push({
         key: "retainage",
+        href: "?tab=project&sub=aia",
         label: "Retainage held",
         value: money(i.retainageHeldCents),
         sub:

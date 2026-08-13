@@ -29,8 +29,12 @@ function toneCls(tone: KpiTone | undefined): string {
 export function StageKpiStrip({
   kpis,
   identity,
+  basePath,
 }: {
   kpis: StageKpi[];
+  /** Deal URL a KPI's relative href hangs off, so the tile can be clicked
+   *  through to the tool that owns the number. */
+  basePath: string;
   /** Project number / account — the "what am I looking at" line. */
   identity?: { label: string; value: string; href?: string }[];
 }) {
@@ -62,10 +66,14 @@ export function StageKpiStrip({
         // Scrolls as one row rather than wrapping — a wrapped strip on a phone
         // reads as two unrelated groups of numbers.
         <div className="flex items-stretch gap-x-6 gap-y-2 px-3.5 py-2.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {kpis.map((k) => (
-            <div key={k.key} className="min-w-max">
+          {kpis.map((k) => {
+            const body = (
+              <>
               <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500 whitespace-nowrap">
                 {k.label}
+                {k.href && (
+                  <span aria-hidden className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                )}
               </div>
               <div
                 className={`font-condensed text-[17px] font-black tabular-nums leading-tight whitespace-nowrap ${toneCls(k.tone)}`}
@@ -77,8 +85,26 @@ export function StageKpiStrip({
                   {k.sub}
                 </div>
               )}
-            </div>
-          ))}
+              </>
+            );
+            // A tile with an href becomes a link to the tool that owns the
+            // number; one without stays a div. Branched rather than a dynamic
+            // component, because `Link` and `div` do not share a prop type and
+            // the union silently widens `href` to `string | undefined`.
+            return k.href ? (
+              <Link
+                key={k.key}
+                href={`${basePath}${k.href}`}
+                className="group min-w-max rounded-lg -mx-1 px-1 hover:bg-cc-brand-50/60 transition-colors"
+              >
+                {body}
+              </Link>
+            ) : (
+              <div key={k.key} className="min-w-max">
+                {body}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

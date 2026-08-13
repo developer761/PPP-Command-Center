@@ -354,3 +354,49 @@ describe("the first proposal moves the deal, so no catch-up step appears", () =>
     expect(at("qualifying", "solicitation", "draft")?.label).toBe("Move it to Estimating");
   });
 });
+
+/**
+ * The status-update seam: which delivery events may move a deal on their own.
+ *
+ * The one that matters is completion. A job is finished when the PAPERWORK and
+ * the MONEY are both done — close-out complete with retainage still held is
+ * not a finished job, it is a job whose last payment hasn't arrived, and
+ * `post_sale_closed` claims both.
+ */
+describe("a job is only completed when the paperwork AND the money are done", () => {
+  const at = (over: Record<string, unknown>) =>
+    nextStep({
+      oppId: "o1",
+      accountId: "a1",
+      status: "billing",
+      subStatus: "substantial_completion",
+      proposal: null,
+      proposalCount: 1,
+      sentProposalCount: 1,
+      approvedNotSentCount: 0,
+      ...over,
+    } as never);
+
+  it("offers completion only when both are true", () => {
+    const s = at({ closeoutComplete: true, moneyClear: true })!;
+    expect(s.label).toBe("Mark it completed");
+    expect(s.move).toEqual({ to: "post_sale_closed", sub: "closed" });
+  });
+
+  it("close-out done but money still out points at the money", () => {
+    // Retainage is the usual culprit: it sits inside each application, so the
+    // invoice balance can read zero while 5% is still held.
+    expect(at({ closeoutComplete: true, moneyClear: false })?.label).toBe("Chase the last payment");
+  });
+
+  it("money clear but close-out unfinished still points at close-out", () => {
+    expect(at({ closeoutComplete: false, moneyClear: true })?.label).toBe("Close it out");
+  });
+
+  it("not knowing is not the same as done", () => {
+    // Undefined means the caller didn't load it. Treating that as "complete"
+    // would offer to close a job nobody has checked.
+    expect(at({})?.label).toBe("Close it out");
+    expect(at({ moneyClear: true })?.label).toBe("Close it out");
+  });
+});

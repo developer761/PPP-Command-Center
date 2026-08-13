@@ -153,6 +153,11 @@ export function nextStep(
      *  doesn't load them (the pipeline list) still gets a sensible step. */
     submittalCount?: number;
     hasWorkOrder?: boolean;
+    /** Close-out package finished. Undefined = not loaded, which is not the
+     *  same as "no" — see the submittalCount note. */
+    closeoutComplete?: boolean;
+    /** Nothing outstanding: no open balance AND no retainage held. */
+    moneyClear?: boolean;
     /** Latest proposal's id + status, so the button can point AT it. */
     proposal?: { id: string; status: string } | null;
     accountId?: string | null;
@@ -222,6 +227,26 @@ export function nextStep(
     };
   }
   if (status === "billing") {
+    // A job is finished when the PAPERWORK and the MONEY are both done.
+    // Close-out complete with retainage still held is not a finished job — it
+    // is a job whose last payment hasn't arrived — and `post_sale_closed`
+    // claims both. So the step only offers to complete it when nothing is
+    // outstanding; until then it points at whichever half is unfinished.
+    if (i.closeoutComplete === true && i.moneyClear === true) {
+      return {
+        label: "Mark it completed",
+        move: { to: "post_sale_closed", sub: "closed" },
+        href: `/commercial/opportunities/${oppId}?tab=info&focus=status&to=post_sale_closed#change-status`,
+        why: "Close-out is done and nothing is outstanding.",
+      };
+    }
+    if (i.closeoutComplete === true && i.moneyClear === false) {
+      return {
+        label: "Chase the last payment",
+        href: `/commercial/opportunities/${oppId}?tab=project&sub=invoices`,
+        why: "Close-out is done, but money is still out — including any retainage.",
+      };
+    }
     return {
       label: "Close it out",
       href: `/commercial/opportunities/${oppId}?tab=project&sub=closeout`,

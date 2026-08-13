@@ -1561,6 +1561,17 @@ export default async function OpportunityDetailPage({
     ).length,
     approvedNotSentCount: dealProposals.filter((p) => p.status === "approved").length,
     hasWorkOrder: !!pathWorkOrder,
+    // Both loaded for any won deal, so these are real answers rather than
+    // "didn't look" — the mistake this strip has already made three times.
+    closeoutComplete: pathIsWon
+      ? pathCloseouts.some((c) => !c.voided_at && c.status === "complete")
+      : undefined,
+    // Retainage counts. A job with a zero balance and 5% still held is not
+    // clear — that money is exactly why close-out gets chased.
+    moneyClear: pathIsWon
+      ? pathInvoices.reduce((n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0), 0) === 0 &&
+        pathRetainageCents === 0
+      : undefined,
     hasBilling: pathInvoices.length > 0,
     // Grace periods: a work order does not exist five minutes after a GC says
     // yes, and a row that is always on is wallpaper.
@@ -1811,7 +1822,9 @@ export default async function OpportunityDetailPage({
     approvedChangeOrderCents: pathChangeOrders
       .filter((c) => c.status === "approved")
       .reduce((a, c) => a + (c.amount_cents ?? 0), 0),
-    openSubmittals: pathSubmittals.filter((sm) => !isTerminalSubmittalStatus(sm.status)).length,
+    // Live rows only — a voided submittal is cancelled, not outstanding.
+    openSubmittals,
+    pendingChangeOrders: pathChangeOrders.filter((c) => c.status === "pending").length,
     // Whole hours — a crew-hours tile reading "412.75" is noise at a glance.
     crewHours: Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)) || null,
     oldestUnpaidInvoiceDate: etDateOf(oldestUnpaid?.issued_at),
@@ -2191,7 +2204,7 @@ export default async function OpportunityDetailPage({
           A bid never shows retainage; a finished job never shows a proposal
           due date. */}
       {!isDeletedDeal && (
-        <StageKpiStrip kpis={stageKpiList} identity={stageIdentity} />
+        <StageKpiStrip basePath={`/commercial/opportunities/${opp.id}`} kpis={stageKpiList} identity={stageIdentity} />
       )}
 
       {/* AUDIT 2026-08-13: three redirects landed here carrying params the page
