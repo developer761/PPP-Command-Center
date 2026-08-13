@@ -10,7 +10,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/format";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
-import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { jobDisplayName } from "@/lib/commercial/opportunities/job-name";
 import { KpiTile } from "@/components/commercial/kpi-tile";
 import { ProjectCard } from "@/components/commercial/project-card";
 import { DonutChart, HBars, type ChartTone } from "@/components/commercial/charts";
@@ -43,7 +43,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
     .map((p) => {
       const pctBilled = p.contractToDateCents > 0 ? Math.min(100, Math.round((p.billedContractCents / p.contractToDateCents) * 100)) : 0;
       return {
-        label: derivedOppName(p.opp, ""),
+        label: jobDisplayName(p.opp, ""),
         value: p.contractToDateCents,
         tone: (pctBilled >= 100 ? "emerald" : "blue") as ChartTone,
         valueLabel: formatCentsCompact(p.contractToDateCents),

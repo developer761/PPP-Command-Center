@@ -11,7 +11,7 @@
  */
 import Link from "next/link";
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
-import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { jobDisplayName } from "@/lib/commercial/opportunities/job-name";
 import { projectRecordId } from "@/lib/commercial/record-ids";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { AIA_STATUS_META } from "@/lib/commercial/aia/constants";
@@ -56,7 +56,9 @@ const FOOTER_LINK =
   "bg-surface inline-flex items-center justify-center gap-1.5 min-h-[44px] px-1 text-center text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:text-cc-brand-800 touch-manipulation";
 
 export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hideAccountName?: boolean }) {
-  const name = derivedOppName(p.opp, p.accountName);
+  // The name someone typed, not a recomposition of builder + address
+  // (Stephanie 2026-08-13). See jobDisplayName.
+  const name = jobDisplayName(p.opp, p.accountName);
   const pct = p.percentCompleteBps != null ? Math.min(100, Math.round(p.percentCompleteBps / 100)) : null;
   // A won opportunity IS the project — same record, same number — so on the
   // project card it reads as PROJ- rather than OPP-. Karan 2026-08: the

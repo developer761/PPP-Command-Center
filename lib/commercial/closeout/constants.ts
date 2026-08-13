@@ -53,6 +53,12 @@ export const CLOSEOUT_ITEM_KINDS = [
   "final_invoice",
   "punchlist_signoff",
   "coi",
+  // Stephanie 2026-08-13: "Add finish schedule." For a painting contractor
+  // this IS the close-out record — product, colour, sheen, room — and it is
+  // what an owner needs two years later to touch up a wall. Migration 142
+  // widens the DB CHECK to match; a kind added here alone is offered on
+  // screen and rejected at save.
+  "finish_schedule",
   "other",
 ] as const;
 export type CloseoutItemKind = (typeof CLOSEOUT_ITEM_KINDS)[number];
@@ -65,6 +71,7 @@ export const CLOSEOUT_ITEM_KIND_LABEL: Record<CloseoutItemKind, string> = {
   final_invoice: "Final invoice",
   punchlist_signoff: "Punchlist sign-off",
   coi: "Certificate of Insurance",
+  finish_schedule: "Finish schedule",
   other: "Other",
 };
 
@@ -83,8 +90,17 @@ export const CLOSEOUT_ITEM_KIND_LABEL: Record<CloseoutItemKind, string> = {
  */
 export const DEFAULT_CLOSEOUT_ITEMS: ReadonlyArray<{ kind: CloseoutItemKind }> = [
   { kind: "punchlist_signoff" },
-  { kind: "as_built" },
-  { kind: "om_manual" },
+  // Stephanie 2026-08-13: "Don't need Certificate of Insurance, drawings,
+  // manuals. Add finish schedule."
+  //
+  // As-builts and O&M manuals are gone from the SEEDED list — a painter
+  // produces neither on a normal job, so both were rows somebody marked N/A
+  // on every package, which is how a checklist stops being read. They remain
+  // ADDABLE, because a GC's close-out spec occasionally demands product data
+  // and losing the ability to satisfy a contract term is worse than one extra
+  // row. (Same reasoning Katie applied to COI, which she had removed earlier
+  // for being a pre-construction document.)
+  { kind: "finish_schedule" },
   { kind: "warranty" },
   { kind: "lien_waiver" },
   { kind: "final_invoice" },
