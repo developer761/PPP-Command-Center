@@ -677,3 +677,37 @@ The build session accepted the severity correction and fixed the guard properly.
   of a deliberately-archived won deal via `listProjects` filtering `archived_at` still stands as the open call).
 - 🟡 **`PPP_ADMIN_EMAILS`** not set in Vercel.
 ### Open build-session handoffs: probability CSV export, mobile select-zoom (`teams:204`) — still not landed.
+
+---
+
+## ✅ VERIFY — broken buttons + send-sheet + scanner (`c64aec3`). Excellent. My handoff #2 CLOSED. One miss found.
+Karan: *"Mark won or lost doesn't work… Start the job doesn't work either."* Root cause verified: the links used
+`?action=change-status`, a param the page reads NOWHERE (the page reads `?to=` → `preselectTo` at page.tsx:2031).
+Fix verified:
+- `attention.ts` links now `?to=pre_construction#change-status` (Start) and `?tab=info#change-status` (Mark won/lost,
+  deliberately no `to=` prefill so a mis-click can't book a loss as a win). `to` IS consumed (`preselectTo`/
+  `preselectSub`), `#change-status` anchor added to the card. New `next-step-links.test.ts` checks DESTINATIONS
+  against the page's own params (verified FAILS on the old href) — replacing the label-only test that passed on every
+  version of the bug. 13/13.
+- **Send-proposal sheet:** "Just mark as sent" now has a "Marking…" pending state; `useScrollLock` correctly locks
+  `<main>` (the shell's real scroller, NOT `<body>`) with body fallback + cleanup, applied to all 5 overlays;
+  `FIELD` class fixed `text-[13.5px]` → `text-base sm:text-[13.5px]` (was zooming iOS in the very sheet complained
+  about). ✅
+- **Scanner widened (3rd time) — closes BOTH my gaps:** now covers `<select>` (cites the teams miss), named
+  `text-xs`/`text-sm`, and local field constants (`FIELD`) via a border+padding heuristic, with `(?<!sm:)` lookbehind
+  and a `text-base` guard check. Reports 0 zoom inputs now (teams:204 fixed to `sm:text-[12px]`). Also self-found +
+  fixed a 40px copy-link tap target. ✅
+
+**Handoff tracker:**
+1. 🟡 **Probability CSV export** (`export.ts:43/197`) — STILL OPEN (only remaining code handoff).
+2. ✅ **Mobile select-zoom + scanner gaps** — RESOLVED (`c64aec3`): teams:204 guarded, scanner now sees select +
+   named classes + local constants.
+
+**🟡 NEW MISS — the Lost quick-flip redirect wasn't swept.** `app/commercial/opportunities/page.tsx:274`:
+`redirect(...?action=change-status&to=pre_sale_closed&to_sub=lost)` — the pipeline's "flip to Lost" path. It
+FUNCTIONALLY works (the `to=`/`to_sub=` params are read → card pre-fills Lost), but it's the 3rd navigation path to
+the change-status card and the ONLY one the sweep missed: it still carries the now-dead `action=change-status` param
+AND lacks the `#change-status` anchor, so flipping a card to Lost lands the user at the TOP of a long deal page to
+hunt for the pre-filled reason form — the exact "arrives at the top, looks unchanged" papercut this commit fixed for
+the other two. **Fix (mirror attention.ts:155):**
+`redirect(\`/commercial/opportunities/${opp_id}?tab=info&to=pre_sale_closed&to_sub=lost#change-status\`)`. Handed off.
