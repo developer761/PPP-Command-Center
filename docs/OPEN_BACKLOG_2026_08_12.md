@@ -638,3 +638,22 @@ data is the one thing here that could land badly, so it stays scoped.
    is still out. AR aging with a time axis.
 4. **Change orders & vendor spend** — CO volume and approval rate, and spend by
    supplier across all jobs.
+
+---
+
+## ✅ VERIFY — Reports F1: Labour & payroll (`9ebde92`). CLEAN, no miss.
+New report (hours + cost by person / job / week). Verified the things that make a report trustworthy:
+- **RBAC is server-side.** `labor/page.tsx` is a pure server component; the by-person half is gated by
+  `canSeePeople = role admin|account_manager` and only conditionally RENDERED — the report is never passed to a
+  client component and there is no CSV/export route, so per-person names/costs never reach a non-privileged browser.
+  (Minor, non-issue: the full report is computed server-side even for non-privileged users, then discarded — data
+  minimisation nit, not a leak.) ✅
+- **Counts the SAME as the deal P&L** (the "worse than no report" risk): all three constraints REUSED not copied —
+  `SETTLED_STATUSES` is actually APPLIED in the query (`.in("status", …)` at labor.ts:115, not just imported), the
+  W-2 filter is byte-identical to labor-cost.ts (`worker_type === "w2"`), and effective-dated rates use the same
+  `loadRates`/`rateOn`. ✅
+- **Scale:** `paginateAll` on `commercial_time_entries` — no silent 1000-row PostgREST truncation (the class that
+  undercounts payroll). ✅
+- **Correct columns** (`display_name`, `name`, not `full_name`/`title`) — verified against schema, the silent-empty
+  class avoided. Unrated hours carried separately with an amber "set their rate" band, not folded into $0. Week
+  bucketing Mon–Sun string-math, tested incl. both 2026 DST changeovers. 4/4 tests, tsc clean. Nothing handed back.
