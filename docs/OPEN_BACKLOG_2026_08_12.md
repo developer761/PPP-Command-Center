@@ -1079,3 +1079,33 @@ Re-verified every outstanding handoff against LIVE code + prod:
 **🟡 STILL OPEN — low priority / latent:**
 - **Report fiscal cards hardcode January** (`reports/page.tsx:60,77`) — estimator + CO-vendor summary cards use
   `${year}-01-01` instead of `fiscal_year_start_month`. Dormant while Tomco's FY = Jan; agrees today.
+
+---
+
+## 🟢 TAX-BASIS SWEEP — 2 of 3 fixed (incl. one by me), 1 handed off. + `6d972cf`/`4aeb5a0` verified.
+Karan 2026-08-13: "make sure everything is getting fixed either in this session or the other one."
+- ✅ **Deal money chain** — FIXED by build session (`6d972cf`): invoiced bar → `billedPreTaxCents` (pre-tax vs the
+  pre-tax contract); collected bar scaled to pre-tax (`invoicedCents × collected/invoicedWithTax`) so all three bars
+  share a basis; collected % uses the honest with-tax ratio, labeled "(incl. tax)". Correct. Verified.
+- ✅ **F3 cash-flow rate/chart** — FIXED by ME (review session; shipped inside `4aeb5a0` after a `git add -A` swept my
+  edit in): `billed` now sums `total_cents` (with-tax), so the collection rate is cash-in ÷ amount-invoiced (both
+  with-tax) and the two chart lines share a basis. Same principle as the deal fix.
+- 🟡 **Deal monthly-billing chart** — LAST one, still open (`page.tsx:1627-1628`): monthly `invoicedCents = subtotal`
+  (pre-tax) but `collectedCents = paid` (with-tax), so a month's collected bar can exceed its invoiced bar, inverting
+  the "gap = money slower than work" story. **Precise fix (match the money chain's pre-tax basis):** keep
+  `invoicedCents = subtotal_cents`, change `collectedCents` to net-of-tax = `paid_cents × (subtotal_cents/total_cents)`
+  (guard total>0). Needs `total_cents` on `pathInvoices` — confirm it's selected. HANDED to build session: page.tsx is
+  their active file and they just did the money-chain fix, so this is one edit right next to it. (I'll take it if it's
+  quiet and they haven't.)
+
+**4aeb5a0 (status-update seam + completion guard) — VERIFIED correct:** the `post_sale_closed` guard's stated reason
+was stale (decided_at keys on pre_sale_closed, not post) — corrected in place, guard kept for the TRUE reason
+(close-out paperwork done ≠ job done while retainage held). Step now: closeout+moneyClear → "Mark it completed";
+closeout+money-out → "Chase the last payment" (points at invoices, doesn't hide the money); either half → "Close it
+out"; `=== true/false` so an unloaded signal never offers completion. Sound.
+
+## 🔴 REVIEW-SESSION SELF-CORRECTION #3 — the voided-submittal bug was in code I passed.
+`6d972cf` caught that a VOIDED submittal counted as "1 closed" and (worse) suppressed the "send submittals" step
+(`submittalCount` non-zero). That strip is the one I verified "clean" in `2f68d83` — I checked the open-vs-closed
+split but NOT the voided case. Third own-miss this session; the lane it belongs to (verify status enums handle
+ALL values incl. void/cancelled, not just the happy split) is now noted.
