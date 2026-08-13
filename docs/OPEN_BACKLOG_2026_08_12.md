@@ -593,3 +593,19 @@ orders / work orders, hiding that money from job-costs / geography / dashboard-P
 shape). Migration 135's backfill + trigger DOES repair it — but only once RUN. **Net: 135 is not "hardening," it
 closes a live money-hiding guard; run it promptly.** (Fix is correct and complete; this is a severity/urgency note,
 not a gap.)
+
+---
+
+## ✅ RESOLVED — Industry CSV column dropped (`6de94f8`). Handoff #3 closed (verified aligned).
+Karan called it: drop it. Verified the removal is CLEAN — the "Industry" header AND its `csvEscape(a.industry)` field
+came out of the SAME column position, so header count = field count = **23 = 23**, every remaining column still maps
+to its correct field in order (no shift — the classic CSV-removal trap avoided). The filename token
+(`industry-…`, keyed off a filter the UI no longer offers) went too. Typecheck clean. ✅
+
+**Handoff tracker update:**
+1. 🟡 **Probability CSV export** (`export.ts:43/197`) — still OPEN.
+2. 🟡 **Mobile select-zoom** (`teams:204` + scanner gaps) — still OPEN.
+3. ✅ **Industry CSV** — RESOLVED (`6de94f8`).
+   🧹 residual: `db.ts` industry dead code (`filters.industry` eq :102, `distinctIndustries` :147, the `industry?`
+   filter field :75) is now fully unreachable — inert, compiles clean, but per "never defer" it's the cleanup tail on
+   this item. Low priority; flagging so it isn't silently dropped.
