@@ -35,6 +35,7 @@ import {
 import { writeDebrief, listDebriefsForOpp } from "@/lib/commercial/win-loss/debrief";
 import DebriefFields from "@/components/commercial/debrief-fields";
 import { UUID_RE } from "@/lib/commercial/uuid";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 type PP = Promise<{ id: string; dealId: string }>;
 type SP = Promise<{
@@ -350,12 +351,11 @@ export default async function AccountDebriefPage({
             >
               Cancel
             </Link>
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-[13px] font-semibold hover:bg-ppp-charcoal-800 min-h-[44px]"
             >
               Close as lost
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </div>
@@ -547,12 +547,11 @@ function DebriefFormCard({
           initialSubStatus={opp.sub_status ?? undefined}
         />
         <div className="flex justify-end pt-3 border-t border-ppp-charcoal-100 mt-4">
-          <button
-            type="submit"
+          <SubmitButton
             className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
           >
             Save debrief
-          </button>
+          </SubmitButton>
         </div>
       </form>
     </section>
@@ -697,8 +696,7 @@ function StartProjectCard({
       <form action={startProjectAction} className="flex justify-end">
         <input type="hidden" name="account_id" value={accountId} />
         <input type="hidden" name="opp_id" value={oppId} />
-        <button
-          type="submit"
+        <SubmitButton
           className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-600 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
         >
           <svg
@@ -715,7 +713,7 @@ function StartProjectCard({
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
           Start project
-        </button>
+        </SubmitButton>
       </form>
     </section>
   );

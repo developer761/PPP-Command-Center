@@ -36,6 +36,7 @@ import {
   INPUT_CLS,
   LABEL_CLS,
 } from "@/lib/commercial/form-classnames";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -303,12 +304,11 @@ export default async function ExclusionsLibraryPage({
               <span className="text-[13px] text-ppp-charcoal-700">Active</span>
             </label>
           )}
-          <button
-            type="submit"
+          <SubmitButton
             className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]"
           >
             {editing ? "Save changes" : "Add exclusion"}
-          </button>
+          </SubmitButton>
         </form>
       )}
 

@@ -70,6 +70,7 @@ import { pickFirst } from "@/lib/commercial/form-utils";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import DueDatePickerWithPresets from "@/components/commercial/due-date-picker-with-presets";
 import CopyInvoiceLinkButton from "@/components/commercial/copy-invoice-link";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -1132,13 +1133,12 @@ export async function InvoiceDetailView({
                   opened from an account or opp Invoices tab lands the
                   undo toast on THAT tab, not the global invoices list. */}
               {fromRaw && <input type="hidden" name="from" value={fromRaw} />}
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
                 title="Remove this invoice from the list. The row stays in the DB for audit but is hidden everywhere."
               >
                 Delete invoice
-              </button>
+              </SubmitButton>
             </form>
             {/* Karan 2026-07-08: bulk-delete siblings when the parent
                 (deal or account) is soft-deleted. Same guards as the
@@ -1182,12 +1182,11 @@ export async function InvoiceDetailView({
                       <input type="hidden" name="parent_id" value={parent_id} />
                       <input type="hidden" name="confirm" value="yes" />
                       <input type="hidden" name="back_href" value={backHref} />
-                      <button
-                        type="submit"
+                      <SubmitButton
                         className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                       >
                         Yes, delete all {siblingsForBulk.length}
-                      </button>
+                      </SubmitButton>
                     </form>
                   </div>
                 </details>
@@ -1286,8 +1285,7 @@ export async function InvoiceDetailView({
                     Void
                   </ConfirmSubmitButton>
                 ) : (
-                <button
-                  type="submit"
+                <SubmitButton
                   className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors ${
                     s === "void"
                       ? "border border-rose-200 text-rose-700 bg-surface hover:bg-rose-50"
@@ -1295,7 +1293,7 @@ export async function InvoiceDetailView({
                   }`}
                 >
                   {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : s === "draft" && invoice.status === "void" ? "Reopen as draft" : invoiceStatusLabel(s)}
-                </button>
+                </SubmitButton>
                 )}
               </form>
             ))}
@@ -1386,13 +1384,12 @@ export async function InvoiceDetailView({
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="item_id" value={li.id} />
-                          <button
-                            type="submit"
+                          <SubmitButton
                             title="Remove line item — recalculates total + progress"
                             className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-ppp-charcoal-500 hover:bg-rose-50 hover:text-rose-700 touch-manipulation"
                           >
                             ×
-                          </button>
+                          </SubmitButton>
                         </form>
                       )}
                     </td>
@@ -1583,12 +1580,11 @@ export async function InvoiceDetailView({
               <input id="pmt-reference" name="reference" type="text" maxLength={80} placeholder="Check #, wire memo" className={INPUT_CLS} />
             </div>
             <div className="sm:col-span-1 flex items-end">
-              <button
-                type="submit"
+              <SubmitButton
                 className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 active:bg-ppp-blue-800 min-h-[44px] shadow-sm shadow-ppp-blue-600/30"
               >
                 Record
-              </button>
+              </SubmitButton>
             </div>
             <div className="sm:col-span-12">
               <label htmlFor="pmt-notes" className={LABEL_CLS}>Notes</label>
@@ -1616,7 +1612,9 @@ export async function InvoiceDetailView({
             <div className="min-w-[220px]">
               <DueDatePickerWithPresets id="dt-due" name="due_at" defaultValue={invoice.due_at ? invoice.due_at.slice(0, 10) : ""} />
             </div>
-            <button type="submit" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px]">Save</button>
+            <SubmitButton
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px]"
+            >Save</SubmitButton>
           </form>
         </section>
       )}
@@ -1714,7 +1712,9 @@ export async function InvoiceDetailView({
                             <input id={`mp-notes-${m.id}`} name="notes" maxLength={500} placeholder="Optional — deposit received, partial, etc." className={INPUT_CLS} />
                           </div>
                           <div className="flex justify-end">
-                            <button type="submit" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation">Record payment</button>
+                            <SubmitButton
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+                            >Record payment</SubmitButton>
                           </div>
                         </form>
                       </details>
@@ -1775,14 +1775,19 @@ export async function InvoiceDetailView({
                               <span className={LABEL_CLS}>Due date</span>
                               <DateField ariaLabel="Due date" name="due_at" defaultValue={m.due_at ? m.due_at.slice(0, 10) : ""} placeholder="Pick a date" className="mt-1" />
                             </div>
-                            <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">Save</button>
+                            <SubmitButton
+                              className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+                            >Save</SubmitButton>
                           </form>
                         </details>
                         <form action={deleteMilestoneAction} className="inline shrink-0">
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="milestone_id" value={m.id} />
-                          <button type="submit" className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[32px] px-1.5" title="Remove this milestone (also removes its charge from the invoice)">Remove</button>
+                          <SubmitButton
+                            className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[32px] px-1.5"
+                            title="Remove this milestone (also removes its charge from the invoice)"
+                          >Remove</SubmitButton>
                         </form>
                       </div>
                     )}
@@ -1827,7 +1832,9 @@ export async function InvoiceDetailView({
                 <span className={LABEL_CLS}>Due date</span>
                 <DateField ariaLabel="Due date" name="due_at" placeholder="Pick a date" className="mt-1" />
               </div>
-              <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-ppp-blue-600 text-white text-[12px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation">Add</button>
+              <SubmitButton
+                className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-ppp-blue-600 text-white text-[12px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation"
+              >Add</SubmitButton>
             </form>
             <p className="text-[10.5px] text-ppp-charcoal-400 mt-1.5">Adds a scheduled charge to this invoice (raises the total by the amount). Each milestone then carries its own lien waiver.</p>
           </details>
@@ -1868,7 +1875,9 @@ export async function InvoiceDetailView({
           <textarea name="notes" rows={3} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={isVoid} placeholder="Add a note — payment arrangement, GC contact, anything the team should see." className={TEXTAREA_CLS} />
           {!isVoid && (
             <div className="flex justify-end">
-              <button type="submit" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px]">Save notes</button>
+              <SubmitButton
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px]"
+              >Save notes</SubmitButton>
             </div>
           )}
         </form>

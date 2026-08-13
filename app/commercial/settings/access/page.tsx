@@ -18,6 +18,7 @@ import {
 } from "@/lib/commercial/field-ops/schedule-emails";
 import { listEmployees, updateEmployee } from "@/lib/commercial/field-ops/employees";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 const ACCESS = "/commercial/settings/access";
 
@@ -215,8 +216,7 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
                   <form action={toggleCrewAction} className="shrink-0">
                     <input type="hidden" name="user_id" value={u.user_id} />
                     <input type="hidden" name="make_crew" value={isCrew ? "0" : "1"} />
-                    <button
-                      type="submit"
+                    <SubmitButton
                       className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation ${
                         isCrew
                           ? "border-cc-brand-600 bg-cc-brand-50 text-cc-brand-800"
@@ -224,7 +224,7 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
                       }`}
                     >
                       {isCrew ? "Crew — restricted" : "Make crew"}
-                    </button>
+                    </SubmitButton>
                   </form>
                 )}
               </li>
@@ -250,7 +250,9 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
           <form action={addRecipientAction} className="flex flex-col sm:flex-row gap-2 my-3">
             <input name="email" type="email" required placeholder="stephanie@tomcopainting.com" className={`${INPUT_CLS} flex-1`} />
             <input name="label" placeholder="Name (optional)" className={`${INPUT_CLS} sm:w-44`} />
-            <button type="submit" className="inline-flex items-center justify-center px-4 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add</button>
+            <SubmitButton
+              className="inline-flex items-center justify-center px-4 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+            >Add</SubmitButton>
           </form>
           {scheduleRecipients.length === 0 ? (
             <p className="text-[12.5px] text-ppp-charcoal-500">No office recipients yet.</p>
@@ -259,7 +261,9 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
               {scheduleRecipients.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-2 py-2">
                   <div className="min-w-0"><span className="text-[13px] font-medium text-ppp-charcoal">{r.label ? `${r.label} · ` : ""}</span><span className="text-[12.5px] text-ppp-charcoal-600">{r.email}</span></div>
-                  <form action={removeRecipientAction}><input type="hidden" name="id" value={r.id} /><button type="submit" className="inline-flex items-center px-2 rounded-lg text-base sm:text-[12px] font-semibold text-rose-600 hover:bg-rose-50 min-h-[44px] touch-manipulation">Remove</button></form>
+                  <form action={removeRecipientAction}><input type="hidden" name="id" value={r.id} /><SubmitButton
+                                                                                                       className="inline-flex items-center px-2 rounded-lg text-base sm:text-[12px] font-semibold text-rose-600 hover:bg-rose-50 min-h-[44px] touch-manipulation"
+                                                                                                     >Remove</SubmitButton></form>
                 </li>
               ))}
             </ul>
@@ -288,7 +292,9 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
                       <form action={toggleOptOutAction} className="shrink-0">
                         <input type="hidden" name="id" value={e.id} />
                         <input type="hidden" name="opt_out" value={on ? "1" : "0"} />
-                        <button type="submit" className={`inline-flex items-center px-3 rounded-lg text-[12px] font-semibold min-h-[44px] touch-manipulation ${on ? "bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100" : "bg-ppp-charcoal-50 text-ppp-charcoal-500 hover:bg-ppp-charcoal-100"}`}>{on ? "Email: on" : "Email: off"}</button>
+                        <SubmitButton
+                          className={`inline-flex items-center px-3 rounded-lg text-[12px] font-semibold min-h-[44px] touch-manipulation ${on ? "bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100" : "bg-ppp-charcoal-50 text-ppp-charcoal-500 hover:bg-ppp-charcoal-100"}`}
+                        >{on ? "Email: on" : "Email: off"}</SubmitButton>
                       </form>
                     )}
                   </li>

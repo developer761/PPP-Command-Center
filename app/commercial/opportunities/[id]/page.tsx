@@ -1884,8 +1884,7 @@ export default async function OpportunityDetailPage({
             </Link>
             <form action={cloneOpportunityAction} className="contents">
               <input type="hidden" name="opp_id" value={opp.id} />
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
                 title="Re-bidding the same site? Clone the opp so you don't retype the scope + bid range."
               >
@@ -1894,7 +1893,7 @@ export default async function OpportunityDetailPage({
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
                 Duplicate
-              </button>
+              </SubmitButton>
             </form>
             {/* Convert to invoice — Won opps only. Deep-links to the
                 invoices/new server route which spins up a draft in one
@@ -1920,8 +1919,7 @@ export default async function OpportunityDetailPage({
             {(isTerminalOpportunityStatus(opp.status)) && (
               <form action={reopenOpportunityAction} className="contents">
                 <input type="hidden" name="opp_id" value={opp.id} />
-                <button
-                  type="submit"
+                <SubmitButton
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-cc-brand-200 bg-surface text-cc-brand-700 text-[12px] font-semibold hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[44px] touch-manipulation"
                   title="Customer's back in play? Reopen puts this opportunity back into the active pipeline."
                 >
@@ -1930,7 +1928,7 @@ export default async function OpportunityDetailPage({
                     <path d="M3 3v5h5" />
                   </svg>
                   Reopen
-                </button>
+                </SubmitButton>
               </form>
             )}
           </div>
@@ -2641,12 +2639,11 @@ async function OpportunityInvoicesPanel({
                           </select>
                         </label>
                         <div className="flex items-end">
-                          <button
-                            type="submit"
+                          <SubmitButton
                             className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                           >
                             Record
-                          </button>
+                          </SubmitButton>
                         </div>
                         <label className="block sm:col-span-4">
                           <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
@@ -3306,12 +3303,11 @@ async function InfoTab({
             </div>
             <form action={unarchiveOpportunityAction}>
               <input type="hidden" name="opp_id" value={opp.id} />
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cc-brand-200 text-cc-brand-800 text-[12px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
                 ↺ Unarchive opportunity
-              </button>
+              </SubmitButton>
             </form>
           </div>
         ) : (
@@ -3321,8 +3317,7 @@ async function InfoTab({
             </div>
             <form action={archiveOpportunityAction}>
               <input type="hidden" name="opp_id" value={opp.id} />
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -3331,7 +3326,7 @@ async function InfoTab({
                   <line x1="10" y1="13" x2="14" y2="13" />
                 </svg>
                 Archive deal
-              </button>
+              </SubmitButton>
             </form>
           </div>
         )}
@@ -3374,12 +3369,11 @@ async function InfoTab({
               <form action={softDeleteOpportunityAction}>
                 <input type="hidden" name="opp_id" value={opp.id} />
                 <input type="hidden" name="account_id" value={opp.account_id} />
-                <button
-                  type="submit"
+                <SubmitButton
                   className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 min-h-[44px] touch-manipulation"
                 >
                   Delete
-                </button>
+                </SubmitButton>
               </form>
               <Link
                 href={`/commercial/opportunities/${opp.id}?tab=info`}
@@ -3635,12 +3629,11 @@ function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
           {/* Karan 2026-07-07: "Skip for now" removed — the user is
               already on the Debrief tab intentionally + can just click
               any other tab to skip. A dedicated Skip button was noise. */}
-          <button
-            type="submit"
+          <SubmitButton
             className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
           >
             Save debrief
-          </button>
+          </SubmitButton>
         </div>
       </form>
     </section>
@@ -3796,12 +3789,11 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                 ))}
               </select>
             </div>
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 min-h-[44px] touch-manipulation"
             >
               Assign me
-            </button>
+            </SubmitButton>
           </form>
         </section>
       )}
@@ -3869,12 +3861,11 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
               />
             </div>
             <div className="flex justify-end">
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
               >
                 Add to team
-              </button>
+              </SubmitButton>
             </div>
           </form>
         </section>
@@ -3919,13 +3910,12 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                       <form action={removeTeamAction} className="inline">
                         <input type="hidden" name="opportunity_id" value={oppId} />
                         <input type="hidden" name="assignment_id" value={a.id} />
-                        <button
-                          type="submit"
+                        <SubmitButton
                           aria-label={`Remove ${opportunityAssignmentRoleLabel(a.role)} role`}
                           className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-cc-brand-700/80 hover:text-cc-brand-800"}`}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18"/></svg>
-                        </button>
+                        </SubmitButton>
                       </form>
                     </span>
                   ))}
@@ -4010,12 +4000,11 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
             </div>
           </div>
           <div className="flex justify-end">
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Add task
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </section>
@@ -4080,8 +4069,7 @@ function TaskList({
                   <input type="hidden" name="opportunity_id" value={oppId} />
                   <input type="hidden" name="task_id" value={t.id} />
                   <input type="hidden" name="make_complete" value={t.completed_at ? "false" : "true"} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     aria-label={t.completed_at ? `Reopen ${t.title}` : `Complete ${t.title}`}
                     className={`rounded border-2 inline-flex items-center justify-center touch-manipulation min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] text-base ${
                       t.completed_at
@@ -4090,7 +4078,7 @@ function TaskList({
                     }`}
                   >
                     {t.completed_at ? "✓" : ""}
-                  </button>
+                  </SubmitButton>
                 </form>
                 <div className="flex-1 min-w-0">
                   <div className={`text-sm ${t.completed_at ? "line-through text-ppp-charcoal-500" : "text-ppp-charcoal"}`}>
@@ -4112,14 +4100,13 @@ function TaskList({
                 <form action={deleteTaskAction} className="shrink-0">
                   <input type="hidden" name="opportunity_id" value={oppId} />
                   <input type="hidden" name="task_id" value={t.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     aria-label={`Delete ${t.title}`}
                     title="Delete task"
                     className="px-2 py-1 text-[11px] text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] inline-flex items-center touch-manipulation"
                   >
                     Delete
-                  </button>
+                  </SubmitButton>
                 </form>
               </li>
             );
@@ -4195,12 +4182,11 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
             helperText="Tip: type @ to tag a teammate — they'll get a personal notification."
           />
           <div className="flex justify-end">
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Add note
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </section>
@@ -4280,20 +4266,18 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               className={TEXTAREA_CLS + " min-h-[88px]"}
             />
             <div className="flex justify-end gap-2">
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center px-3 py-1.5 rounded-lg bg-ppp-charcoal text-surface text-[12px] font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
               >
                 Save edit
-              </button>
+              </SubmitButton>
             </div>
           </form>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <form action={togglePinNoteAction}>
               <input type="hidden" name="opportunity_id" value={oppId} />
               <input type="hidden" name="note_id" value={note.id} />
-              <button
-                type="submit"
+              <SubmitButton
                 className={`inline-flex items-center gap-1.5 text-[11px] underline min-h-[44px] touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ppp-blue px-1 ${
                   isPinned
                     ? "text-ppp-charcoal-700 hover:text-ppp-charcoal-900"
@@ -4304,17 +4288,16 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
                   <path d="M16 4l-4 4-4-4-2 2 4 4-6 6v2h2l6-6 4 4 2-2-4-4 4-4z" />
                 </svg>
                 {isPinned ? "Unpin" : "Pin to top"}
-              </button>
+              </SubmitButton>
             </form>
             <form action={deleteNoteAction}>
               <input type="hidden" name="opportunity_id" value={oppId} />
               <input type="hidden" name="note_id" value={note.id} />
-              <button
-                type="submit"
+              <SubmitButton
                 className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[44px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1"
               >
                 Delete note
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </div>
@@ -4452,13 +4435,12 @@ function AttachmentRow({
         <form action={archiveAttachmentAction} className="shrink-0">
           <input type="hidden" name="opportunity_id" value={oppId} />
           <input type="hidden" name="attachment_id" value={attachment.id} />
-          <button
-            type="submit"
+          <SubmitButton
             title="Archive without replacement. File stays downloadable in History."
             className="px-3 py-1.5 text-[12px] font-medium text-ppp-charcoal-700 border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
           >
             Archive
-          </button>
+          </SubmitButton>
         </form>
       )}
     </li>
@@ -4643,12 +4625,11 @@ async function FinishesTab({
           </div>
 
           <div className="flex justify-end">
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
             >
               Add finish
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </section>
@@ -4731,12 +4712,11 @@ function FinishRow({
           <form action={deleteFinishAction} className="inline">
             <input type="hidden" name="opportunity_id" value={oppId} />
             <input type="hidden" name="finish_id" value={finish.id} />
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
             >
               Yes, delete
-            </button>
+            </SubmitButton>
           </form>
           <Link
             href={`/commercial/opportunities/${oppId}?tab=finishes`}
@@ -4907,12 +4887,11 @@ function FinishRow({
             >
               Delete
             </Link>
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation"
             >
               Save changes
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </details>

@@ -22,6 +22,7 @@ import {
   removeTeamMember,
   updateTeamMember,
 } from "@/lib/commercial/teams/db";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/settings/teams";
@@ -153,7 +154,9 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
         <div>
           <form action={createTeamAction} className="flex items-end gap-2 mb-3">
             <label className="block flex-1"><span className={LABEL_CLS}>New team</span><input name="name" required maxLength={120} placeholder="e.g. Manhattan Crew" className={INPUT_CLS} /></label>
-            <button type="submit" className="px-3 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700">Create</button>
+            <SubmitButton
+              className="px-3 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700"
+            >Create</SubmitButton>
           </form>
           {teams.length === 0 ? (
             <p className="text-[12.5px] text-ppp-charcoal-500">No teams yet — create one above.</p>
@@ -178,7 +181,9 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
               <form action={renameTeamAction} className="flex items-end gap-2 min-w-0 flex-1">
                 <input type="hidden" name="team_id" value={selected.id} />
                 <label className="block flex-1 min-w-[160px]"><span className={LABEL_CLS}>Team name</span><input name="name" defaultValue={selected.name} required maxLength={120} className={INPUT_CLS} /></label>
-                <button type="submit" className="px-3 min-h-[44px] rounded-lg border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50">Rename</button>
+                <SubmitButton
+                  className="px-3 min-h-[44px] rounded-lg border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50"
+                >Rename</SubmitButton>
               </form>
               <form action={deleteTeamAction} className="self-end">
                 <input type="hidden" name="team_id" value={selected.id} />
@@ -204,7 +209,9 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
                       <select name="role" defaultValue={m.role} className={`${SELECT_CLS} !py-1.5 text-base sm:text-[12px] w-[150px]`} style={SELECT_BG_STYLE}>
                         {ASSIGNMENT_ROLES.map((r) => <option key={r} value={r}>{assignmentRoleLabel(r)}</option>)}
                       </select>
-                      <button type="submit" className="text-[11px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] px-1">Set</button>
+                      <SubmitButton
+                        className="text-[11px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] px-1"
+                      >Set</SubmitButton>
                     </form>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {!m.is_team_admin && (
@@ -212,13 +219,17 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
                           <input type="hidden" name="team_id" value={selected.id} />
                           <input type="hidden" name="member_id" value={m.id} />
                           <input type="hidden" name="field" value="admin" />
-                          <button type="submit" className="text-[11px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] px-1.5">Make admin</button>
+                          <SubmitButton
+                            className="text-[11px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] px-1.5"
+                          >Make admin</SubmitButton>
                         </form>
                       )}
                       <form action={removeMemberAction}>
                         <input type="hidden" name="team_id" value={selected.id} />
                         <input type="hidden" name="member_id" value={m.id} />
-                        <button type="submit" className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 min-h-[44px] px-1.5">Remove</button>
+                        <SubmitButton
+                          className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 min-h-[44px] px-1.5"
+                        >Remove</SubmitButton>
                       </form>
                     </div>
                   </li>
@@ -238,7 +249,9 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
                     {ASSIGNMENT_ROLES.map((r) => <option key={r} value={r}>{assignmentRoleLabel(r)}</option>)}
                   </select>
                 </label>
-                <button type="submit" className="px-3 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700">Add</button>
+                <SubmitButton
+                  className="px-3 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700"
+                >Add</SubmitButton>
               </form>
             )}
           </div>

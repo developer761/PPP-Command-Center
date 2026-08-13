@@ -23,6 +23,7 @@ import { submittalStatusLabel, submittalStatusTone } from "@/lib/commercial/oppo
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { DonutChart } from "@/components/commercial/charts";
 import { UUID_RE } from "@/lib/commercial/uuid";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 type PP = Promise<{ id: string; dealId: string }>;
 type SP = Promise<{ error?: string; back?: string }>;
@@ -183,9 +184,11 @@ export async function SubmittalsTool({
           <input type="hidden" name="opportunity_id" value={dealId} />
           <input type="hidden" name="origin" value={variant} />
           <input type="hidden" name="back" value={sp.back ?? ""} />
-          <button type="submit" className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm min-h-[44px] touch-manipulation shrink-0">
+          <SubmitButton
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm min-h-[44px] touch-manipulation shrink-0"
+          >
             + New submittal
-          </button>
+          </SubmitButton>
         </form>
       </section>
 

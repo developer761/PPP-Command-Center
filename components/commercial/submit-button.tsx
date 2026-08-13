@@ -33,6 +33,7 @@ export function SubmitButton({
   value,
   title,
   "aria-label": ariaLabel,
+  form,
 }: {
   children: React.ReactNode;
   /** What to say while it runs. Defaults to the label plus an ellipsis, which
@@ -46,6 +47,8 @@ export function SubmitButton({
   value?: string;
   title?: string;
   "aria-label"?: string;
+  /** For a button rendered OUTSIDE its form, linked by the form id. */
+  form?: string;
 }) {
   const { pending } = useFormStatus();
   const label =
@@ -67,6 +70,7 @@ export function SubmitButton({
       value={value}
       title={title}
       aria-label={ariaLabel}
+      form={form}
       className={`${className} disabled:opacity-60 disabled:cursor-not-allowed transition-opacity`}
     >
       {label}

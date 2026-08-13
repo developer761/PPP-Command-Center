@@ -14,6 +14,7 @@ import {
 } from "@/lib/commercial/field-ops/approvals";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 import { INPUT_CLS } from "@/lib/commercial/form-classnames";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/approvals";
@@ -87,7 +88,9 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
         </div>
         {zeroCount > 0 && (
           <form action={bulkApproveAction}>
-            <button type="submit" className="inline-flex items-center px-3 py-2 rounded-lg bg-ppp-green-600 text-white text-[12.5px] font-semibold hover:bg-ppp-green-700 min-h-[44px] sm:min-h-[40px]">Approve {zeroCount} matching</button>
+            <SubmitButton
+              className="inline-flex items-center px-3 py-2 rounded-lg bg-ppp-green-600 text-white text-[12.5px] font-semibold hover:bg-ppp-green-700 min-h-[44px] sm:min-h-[40px]"
+            >Approve {zeroCount} matching</SubmitButton>
           </form>
         )}
       </div>
@@ -124,7 +127,9 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                       </div>
                       <form action={approveAction}>
                         <input type="hidden" name="id" value={r.id} />
-                        <button type="submit" className="inline-flex items-center px-3 rounded-lg bg-ppp-green-50 text-ppp-green-700 text-[12px] font-semibold hover:bg-ppp-green-100 min-h-[44px] touch-manipulation">Approve</button>
+                        <SubmitButton
+                          className="inline-flex items-center px-3 rounded-lg bg-ppp-green-50 text-ppp-green-700 text-[12px] font-semibold hover:bg-ppp-green-100 min-h-[44px] touch-manipulation"
+                        >Approve</SubmitButton>
                       </form>
                       <details className="relative">
                         <summary className="list-none cursor-pointer text-[12px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal px-2 min-h-[44px] inline-flex items-center touch-manipulation">More</summary>
@@ -132,12 +137,16 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                           <form action={overrideAction} className="flex items-center gap-2">
                             <input type="hidden" name="id" value={r.id} />
                             <input name="hours" type="number" min="0" max="24" step="0.25" defaultValue={r.actual} className={`${INPUT_CLS} w-20`} />
-                            <button type="submit" className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 touch-manipulation">Set hours</button>
+                            <SubmitButton
+                              className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 touch-manipulation"
+                            >Set hours</SubmitButton>
                           </form>
                           <form action={questionAction} className="flex items-center gap-2">
                             <input type="hidden" name="id" value={r.id} />
                             <input name="reason" placeholder="What's wrong?" className={`${INPUT_CLS} flex-1`} />
-                            <button type="submit" className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-amber-700 hover:bg-amber-50 touch-manipulation">Question</button>
+                            <SubmitButton
+                              className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-amber-700 hover:bg-amber-50 touch-manipulation"
+                            >Question</SubmitButton>
                           </form>
                         </div>
                       </details>

@@ -15,6 +15,7 @@ import { KpiTile } from "@/components/commercial/kpi-tile";
 import { ProjectCard } from "@/components/commercial/project-card";
 import { DonutChart, HBars, type ChartTone } from "@/components/commercial/charts";
 import { ProgressMeter } from "@/components/commercial/progress-meter";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 type SP = Promise<{ q?: string; closed?: string }>;
 
@@ -129,7 +130,9 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
           <input name="q" defaultValue={search} placeholder="Search projects…" className="w-full pl-9 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]" />
         </div>
         {includeClosed && <input type="hidden" name="closed" value="1" />}
-        <button type="submit" className="px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">Search</button>
+        <SubmitButton
+          className="px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
+        >Search</SubmitButton>
         <Link
           href={`/commercial/projects${includeClosed ? (search ? `?q=${encodeURIComponent(search)}` : "") : `?closed=1${search ? `&q=${encodeURIComponent(search)}` : ""}`}`}
           className={`px-3 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] inline-flex items-center ${includeClosed ? "bg-cc-brand-50 border-cc-brand-300 text-cc-brand-800" : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}

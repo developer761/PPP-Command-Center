@@ -19,6 +19,7 @@ import {
 import { opportunityLossReasonLabel, type OpportunityLossReason, OPPORTUNITY_LOSS_REASONS } from "@/lib/commercial/opportunities/db";
 import { IconGlobe, IconMapPin, IconDollar } from "@/components/commercial/inline-icons";
 import Link from "next/link";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 function formatCentsCompact(cents: number): string {
   const dollars = cents / 100;
@@ -265,12 +266,11 @@ export default async function CompetitorsAdminPage({
             maxLength={200}
             className="flex-1 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-600 min-h-[44px]"
           />
-          <button
-            type="submit"
+          <SubmitButton
             className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]"
           >
             Add
-          </button>
+          </SubmitButton>
         </form>
         <p className="text-[11px] text-ppp-charcoal-400 mt-2">
           The Win/Loss Debrief typeahead can also add new competitors inline —
@@ -379,12 +379,11 @@ export default async function CompetitorsAdminPage({
                       <form action={toggleActiveAction}>
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="set_to" value="inactive" />
-                        <button
-                          type="submit"
+                        <SubmitButton
                           className="text-xs font-medium px-3 py-2 rounded-md border border-amber-200 text-amber-800 hover:bg-amber-50 min-h-[44px]"
                         >
                           Retire
-                        </button>
+                        </SubmitButton>
                       </form>
                       <MergeForm sourceId={c.id} sourceName={c.name} candidates={active.filter((x) => x.id !== c.id)} />
                     </div>
@@ -417,12 +416,11 @@ export default async function CompetitorsAdminPage({
                 <form action={toggleActiveAction}>
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="set_to" value="active" />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="text-xs font-medium px-3 py-2 rounded-md border border-cc-brand-200 text-cc-brand-800 hover:bg-cc-brand-50 min-h-[44px]"
                   >
                     Reactivate
-                  </button>
+                  </SubmitButton>
                 </form>
               </li>
             ))}
@@ -469,12 +467,11 @@ function RenameForm({ competitorId, currentName }: { competitorId: string; curre
           maxLength={200}
           className="flex-1 min-w-0 px-2 py-1.5 rounded border border-ppp-charcoal-200 text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-cc-brand-600"
         />
-        <button
-          type="submit"
+        <SubmitButton
           className="text-xs font-semibold px-3 py-1.5 rounded bg-cc-brand-600 text-white hover:bg-cc-brand-700"
         >
           Save
-        </button>
+        </SubmitButton>
       </form>
     </details>
   );
@@ -597,9 +594,11 @@ function IntelEditor({ competitor }: { competitor: Competitor }) {
           <textarea name="notes" defaultValue={competitor.notes ?? ""} maxLength={4000} rows={3} placeholder="Anything else the team should know — pricing tendencies, key contacts, past incidents…" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
         </label>
         <div className="sm:col-span-2 flex justify-end">
-          <button type="submit" className="inline-flex items-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[40px]">
+          <SubmitButton
+            className="inline-flex items-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[40px]"
+          >
             Save intel
-          </button>
+          </SubmitButton>
         </div>
       </form>
     </details>

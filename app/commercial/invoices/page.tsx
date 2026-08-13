@@ -42,6 +42,7 @@ import { listProducts } from "@/lib/commercial/products/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { type TaxJurisdictionLite } from "@/lib/commercial/tax/constants";
 import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -699,12 +700,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   <form action={deleteAllForm.action}>
                     <input type="hidden" name={deleteAllForm.key} value={deleteAllForm.value} />
                     <input type="hidden" name="confirm" value="yes" />
-                    <button
-                      type="submit"
+                    <SubmitButton
                       className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                     >
                       Yes, delete all {scopedInvoiceCount}
-                    </button>
+                    </SubmitButton>
                   </form>
                 </div>
               </details>
@@ -1963,12 +1963,11 @@ function FullDetailByOpp({
                         <input type="hidden" name="opp_id" value={oppId} />
                         <input type="hidden" name="confirm" value="yes" />
                         <input type="hidden" name="return_account_id" value={accountId} />
-                        <button
-                          type="submit"
+                        <SubmitButton
                           className="flex-1 inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12.5px] font-semibold hover:bg-rose-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                         >
                           Delete all
-                        </button>
+                        </SubmitButton>
                       </form>
                     </div>
                   </details>
@@ -2169,12 +2168,11 @@ function FullDetailByOpp({
                             </select>
                           </label>
                           <div className="flex items-end">
-                            <button
-                              type="submit"
+                            <SubmitButton
                               className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30 focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/40"
                             >
                               Record
-                            </button>
+                            </SubmitButton>
                           </div>
                           <label className="block sm:col-span-4">
                             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">

@@ -17,6 +17,7 @@
  *    warns if you leave with an unsaved / failed row.
  */
 import { useEffect, useRef, useState, useTransition } from "react";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export type AiaLineSaveResult =
   | {
@@ -220,9 +221,12 @@ export function AiaLineRow({
           <input type="hidden" name="back" value={back} />
           <input type="hidden" name="origin" value={origin} />
           <input type="hidden" name="line_id" value={line.id} />
-          <button type="submit" aria-label="Remove line" className="h-[44px] w-[44px] inline-flex items-center justify-center rounded text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 touch-manipulation">
+          <SubmitButton
+            aria-label="Remove line"
+            className="h-[44px] w-[44px] inline-flex items-center justify-center rounded text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 touch-manipulation"
+          >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18 M6 6l12 12" /></svg>
-          </button>
+          </SubmitButton>
         </form>
       </div>
       {status === "error" && errMsg && (

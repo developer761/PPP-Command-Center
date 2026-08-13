@@ -71,6 +71,7 @@ import { proposalStatusLabel, isProposalEligibleOpp } from "@/lib/commercial/pro
 import NewProposalPicker from "@/components/commercial/new-proposal-picker";
 import { commercialDb } from "@/lib/commercial/db";
 import { listAccountTags, listAllDistinctTags, addAccountTag, removeAccountTag, MAX_TAG_LENGTH, type AccountTag } from "@/lib/commercial/accounts/tags";
+import { SubmitButton } from "@/components/commercial/submit-button";
 // InfoDot import removed 2026-07-08 Batch 2b — labels use native `title`
 // attribute for hover tooltips instead of the visible `?` badge.
 
@@ -2083,13 +2084,12 @@ function TagsCard({
               <form action={removeTagAction} className="inline">
                 <input type="hidden" name="account_id" value={accountId} />
                 <input type="hidden" name="tag_id" value={t.id} />
-                <button
-                  type="submit"
+                <SubmitButton
                   aria-label={`Remove ${t.tag}`}
                   className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-cc-brand-700/60 hover:text-cc-brand-800 touch-manipulation"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18"/></svg>
-                </button>
+                </SubmitButton>
               </form>
             </span>
           ))}
@@ -2121,12 +2121,11 @@ function TagsCard({
             </datalist>
           )}
         </div>
-        <button
-          type="submit"
+        <SubmitButton
           className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] shrink-0"
         >
           Add
-        </button>
+        </SubmitButton>
       </form>
     </section>
   );
@@ -2365,12 +2364,11 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
             />
           </div>
           <div className="flex justify-end">
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Add contact
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </section>
@@ -2474,13 +2472,12 @@ function ContactRow({
               <form action={detachContactAction} className="inline">
                 <input type="hidden" name="account_id" value={accountId} />
                 <input type="hidden" name="account_contact_id" value={a.account_contact_id} />
-                <button
-                  type="submit"
+                <SubmitButton
                   aria-label={`Remove ${roleLabel(a.role)} role`}
                   className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-cc-brand-700/80 hover:text-cc-brand-800 touch-manipulation"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18"/></svg>
-                </button>
+                </SubmitButton>
               </form>
             </span>
           ))}
@@ -2495,23 +2492,21 @@ function ContactRow({
               <input type="hidden" name="account_id" value={accountId} />
               <input type="hidden" name="account_contact_id" value={attachments[0].account_contact_id} />
               <input type="hidden" name="make_primary" value={primaryAttachment ? "false" : "true"} />
-              <button
-                type="submit"
+              <SubmitButton
                 className="text-[11px] text-ppp-charcoal-500 hover:text-amber-700 underline underline-offset-2 touch-manipulation min-h-[44px] px-1 inline-flex items-center"
               >
                 {primaryAttachment ? "Unstar primary" : "Mark as primary"}
-              </button>
+              </SubmitButton>
             </form>
             <form action={touchContactAction} className="inline">
               <input type="hidden" name="account_id" value={accountId} />
               <input type="hidden" name="account_contact_id" value={attachments[0].account_contact_id} />
-              <button
-                type="submit"
+              <SubmitButton
                 className="text-[11px] text-ppp-charcoal-500 hover:text-cc-brand-700 underline underline-offset-2 touch-manipulation min-h-[44px] px-1 inline-flex items-center"
                 title="Record that you just emailed or called this contact"
               >
                 I just touched base
-              </button>
+              </SubmitButton>
             </form>
           </div>
         )}
@@ -2765,7 +2760,9 @@ async function TeamTab({
               <option value="">— No team —</option>
               {allTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-            <button type="submit" className="px-3 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700">Set</button>
+            <SubmitButton
+              className="px-3 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700"
+            >Set</SubmitButton>
           </form>
         </div>
         {allTeams.length === 0 && <p className="text-[11px] text-ppp-charcoal-400 mt-2">No teams yet — create one in <Link href="/commercial/settings/teams" className="font-semibold text-cc-brand-700 hover:underline">Settings → Teams</Link>.</p>}
@@ -2865,12 +2862,11 @@ async function TeamTab({
             />
           </div>
           <div className="flex justify-end">
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Add to team
-            </button>
+            </SubmitButton>
           </div>
         </form>
 
@@ -2951,12 +2947,11 @@ async function TeamTab({
               />
             </div>
             <div className="flex justify-end">
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cc-brand-300 bg-surface text-cc-brand-700 text-sm font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
                 Add by email
-              </button>
+              </SubmitButton>
             </div>
           </form>
         </details>
@@ -3057,13 +3052,12 @@ function TeamRow({
               <form action={removeAssignmentAction} className="inline">
                 <input type="hidden" name="account_id" value={accountId} />
                 <input type="hidden" name="assignment_id" value={a.id} />
-                <button
-                  type="submit"
+                <SubmitButton
                   aria-label={`Remove ${assignmentRoleLabel(a.role)} role from ${person.user_full_name ?? person.user_email}`}
                   className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-cc-brand-700/80 hover:text-cc-brand-800"}`}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18"/></svg>
-                </button>
+                </SubmitButton>
               </form>
             </span>
           );
@@ -4916,26 +4910,24 @@ function DocumentRow({
         <form action={restoreDocumentAction} className="shrink-0 w-full sm:w-auto">
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="document_id" value={doc.id} />
-          <button
-            type="submit"
+          <SubmitButton
             className="w-full sm:w-auto px-3 py-2 text-[12px] font-medium text-cc-brand-700 border border-cc-brand-200 rounded-lg hover:bg-cc-brand-50 min-h-[44px] touch-manipulation whitespace-nowrap"
             title="Make this the active version. Adds a new entry to the chain so the audit trail stays intact."
           >
             Restore as active
-          </button>
+          </SubmitButton>
         </form>
       )}
       {isActive && !doc.archived && (
         <form action={archiveDocumentAction} className="shrink-0 w-full sm:w-auto">
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="document_id" value={doc.id} />
-          <button
-            type="submit"
+          <SubmitButton
             className="w-full sm:w-auto px-3 py-2 text-[12px] font-medium text-ppp-charcoal-700 border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation whitespace-nowrap"
             title="Archive without replacement. File stays downloadable in History."
           >
             Archive
-          </button>
+          </SubmitButton>
         </form>
       )}
     </div>

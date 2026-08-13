@@ -123,6 +123,9 @@ describe("every warning's Fix lands somewhere usable", () => {
   it("only passes params the page reads", () => {
     const READS = ["tab", "sub", "to", "to_sub", "back", "ef"];
     for (const w of warnings()) {
+      // A warning with no href is legitimate — `no_project` explains itself
+      // rather than offering a link to nowhere, which is the right shape.
+      if (!w.href) continue;
       const url = new URL(w.href, "https://x.test");
       for (const key of url.searchParams.keys()) {
         expect(READS, `"${w.title}" passes ?${key}=, which the page never reads`).toContain(key);

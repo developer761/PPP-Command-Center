@@ -14,6 +14,7 @@ import {
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 /**
  * Commercial CC · Archived deals — admin-only bulk-unarchive surface.
@@ -182,12 +183,11 @@ export default async function ArchivedDealsPage({
             <span className="text-xs text-ppp-charcoal-500">
               {archived.length} archived deal{archived.length === 1 ? "" : "s"}
             </span>
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center gap-1.5 rounded-md bg-cc-brand-600 px-3 py-2 min-h-[44px] touch-manipulation text-sm font-medium text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 disabled:opacity-50"
             >
               Unarchive selected
-            </button>
+            </SubmitButton>
           </div>
 
           {/* Desktop table */}
@@ -260,13 +260,12 @@ export default async function ArchivedDealsPage({
                             the surrounding bulk form so a per-row click
                             doesn't accidentally unarchive whatever else
                             is checked. */}
-                        <button
-                          type="submit"
+                        <SubmitButton
                           form={`unarchive-one-${o.id}`}
                           className="inline-flex items-center rounded border border-ppp-charcoal-200 px-2 py-1 text-xs font-medium text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                         >
                           Unarchive
-                        </button>
+                        </SubmitButton>
                       </td>
                     </tr>
                   );
@@ -327,13 +326,12 @@ export default async function ArchivedDealsPage({
                       </span>
                       <span>Archived {archivedAt}</span>
                     </div>
-                    <button
-                      type="submit"
+                    <SubmitButton
                       form={`unarchive-one-${o.id}`}
                       className="mt-2 inline-flex items-center rounded border border-ppp-charcoal-200 px-3 py-2 min-h-[44px] touch-manipulation text-xs font-medium text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                     >
                       Unarchive
-                    </button>
+                    </SubmitButton>
                   </div>
                 </div>
               );

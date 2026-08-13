@@ -16,6 +16,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import CommercialSiteAddressToggle from "@/components/commercial-site-address-toggle";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -361,12 +362,11 @@ export default async function EditCommercialAccountPage({
           >
             Cancel
           </Link>
-          <button
-            type="submit"
+          <SubmitButton
             className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
           >
             {duplicateCandidates.length > 0 ? "Save anyway" : "Save changes"}
-          </button>
+          </SubmitButton>
         </div>
       </form>
 
@@ -404,12 +404,11 @@ export default async function EditCommercialAccountPage({
               </Link>
               <form action={deleteAction} className="flex-1 sm:order-2">
                 <input type="hidden" name="id" value={account.id} />
-                <button
-                  type="submit"
+                <SubmitButton
                   className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 active:bg-rose-800 min-h-[44px] touch-manipulation"
                 >
                   Delete
-                </button>
+                </SubmitButton>
               </form>
             </div>
           </div>

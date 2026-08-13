@@ -88,6 +88,7 @@ import {
   SELECT_BG_STYLE,
 } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -1221,12 +1222,11 @@ export default async function ProposalEditorPage({
                     placeholder="e.g. Bump the markup on the labor lines, and add the parking exclusion."
                     className={TEXTAREA_CLS}
                   />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 min-h-[44px] sm:min-h-[40px]"
                   >
                     Send back for changes
-                  </button>
+                  </SubmitButton>
                   <p className="text-[10.5px] text-ppp-charcoal-400 leading-snug">
                     Returns R{proposal.revision_number} to draft and notifies whoever requested approval.
                   </p>
@@ -2110,9 +2110,11 @@ function LineItemsTable({
                 >
                   Remove
                 </ConfirmSubmitButton>
-                <button type="submit" className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[13px] font-semibold hover:bg-ppp-navy-900 touch-manipulation">
+                <SubmitButton
+                  className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[13px] font-semibold hover:bg-ppp-navy-900 touch-manipulation"
+                >
                   Save row
-                </button>
+                </SubmitButton>
               </div>
             </div>
           </form>

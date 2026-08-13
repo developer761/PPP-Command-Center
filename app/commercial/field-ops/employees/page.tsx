@@ -20,6 +20,7 @@ import {
 } from "@/lib/commercial/field-ops/employees";
 import { currentCostRatesForEmployees, currentCostRate, setCostRate } from "@/lib/commercial/field-ops/rates";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 /** Parse a loose "$25.50" / "25" cost-rate string to whole cents, or null when
  *  blank/invalid. Blank = "don't change the rate", never "set to $0". */
@@ -244,7 +245,9 @@ export default async function FieldOpsEmployeesPage({
                     <label className="block"><span className={LABEL_CLS}>Clock Station PIN (4 digits)</span><input name="clock_pin" inputMode="numeric" pattern="\d{4}" maxLength={4} placeholder="set / replace" className={INPUT_CLS} /></label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Save</button>
+                    <SubmitButton
+                      className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+                    >Save</SubmitButton>
                   </div>
                 </form>
                 <form action={toggleActiveAction} className="px-4 pb-4">
@@ -259,7 +262,9 @@ export default async function FieldOpsEmployeesPage({
                       Deactivate
                     </ConfirmSubmitButton>
                   ) : (
-                    <button type="submit" className="inline-flex items-center px-3 min-h-[44px] rounded-lg border border-ppp-green-200 text-[12px] font-semibold text-ppp-green-700 hover:bg-ppp-green-50 touch-manipulation">Reactivate</button>
+                    <SubmitButton
+                      className="inline-flex items-center px-3 min-h-[44px] rounded-lg border border-ppp-green-200 text-[12px] font-semibold text-ppp-green-700 hover:bg-ppp-green-50 touch-manipulation"
+                    >Reactivate</SubmitButton>
                   )}
                 </form>
               </details>

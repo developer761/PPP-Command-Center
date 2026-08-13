@@ -13,6 +13,7 @@ import {
 } from "@/lib/commercial/tax/db";
 import { thouToPct } from "@/lib/commercial/tax/constants";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 /**
  * Sales-tax jurisdictions admin — the source of truth for the ZIP → tax-rate
@@ -204,9 +205,11 @@ export default async function TaxJurisdictionsAdminPage({
             I&apos;ve confirmed this is the current rate
           </label>
           <div className="sm:col-span-2 flex justify-end">
-            <button type="submit" className="inline-flex items-center px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+            <SubmitButton
+              className="inline-flex items-center px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+            >
               Add jurisdiction
-            </button>
+            </SubmitButton>
           </div>
         </form>
         <p className="text-[11px] text-ppp-charcoal-400 mt-2 leading-relaxed">
@@ -249,17 +252,21 @@ export default async function TaxJurisdictionsAdminPage({
                     {!j.verified && (
                       <form action={verifyAction}>
                         <input type="hidden" name="id" value={j.id} />
-                        <button type="submit" className="text-xs font-medium px-3 py-2 rounded-md border border-emerald-200 text-emerald-800 hover:bg-emerald-50 min-h-[44px]">
+                        <SubmitButton
+                          className="text-xs font-medium px-3 py-2 rounded-md border border-emerald-200 text-emerald-800 hover:bg-emerald-50 min-h-[44px]"
+                        >
                           Mark verified
-                        </button>
+                        </SubmitButton>
                       </form>
                     )}
                     <form action={toggleActiveAction}>
                       <input type="hidden" name="id" value={j.id} />
                       <input type="hidden" name="set_to" value="inactive" />
-                      <button type="submit" className="text-xs font-medium px-3 py-2 rounded-md border border-amber-200 text-amber-800 hover:bg-amber-50 min-h-[44px]">
+                      <SubmitButton
+                        className="text-xs font-medium px-3 py-2 rounded-md border border-amber-200 text-amber-800 hover:bg-amber-50 min-h-[44px]"
+                      >
                         Deactivate
-                      </button>
+                      </SubmitButton>
                     </form>
                   </div>
                 </div>
@@ -283,9 +290,11 @@ export default async function TaxJurisdictionsAdminPage({
                   <form action={toggleActiveAction}>
                     <input type="hidden" name="id" value={j.id} />
                     <input type="hidden" name="set_to" value="active" />
-                    <button type="submit" className="text-xs font-medium px-3 py-2 rounded-md border border-cc-brand-200 text-cc-brand-800 hover:bg-cc-brand-50 min-h-[44px]">
+                    <SubmitButton
+                      className="text-xs font-medium px-3 py-2 rounded-md border border-cc-brand-200 text-cc-brand-800 hover:bg-cc-brand-50 min-h-[44px]"
+                    >
                       Reactivate
-                    </button>
+                    </SubmitButton>
                   </form>
                   <form action={deleteActionFn}>
                     <input type="hidden" name="id" value={j.id} />
@@ -344,9 +353,11 @@ function EditForm({ j }: { j: TaxJurisdiction }) {
           Rate confirmed / current
         </label>
         <div className="sm:col-span-2 flex justify-end">
-          <button type="submit" className="inline-flex items-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[40px]">
+          <SubmitButton
+            className="inline-flex items-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[40px]"
+          >
             Save
-          </button>
+          </SubmitButton>
         </div>
       </form>
     </details>

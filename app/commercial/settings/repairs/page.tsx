@@ -14,6 +14,7 @@ import {
   applyWinDateRepair,
   type RepairRow,
 } from "@/lib/commercial/repairs/db";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -212,12 +213,11 @@ function RepairSection({
                   <input type="hidden" name="kind" value={kind} />
                   <input type="hidden" name="id" value={r.id} />
                   <input type="hidden" name="approved" value={r.proposed} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="inline-flex items-center px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-surface text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[44px] sm:min-h-[36px]"
                   >
                     Apply
-                  </button>
+                  </SubmitButton>
                 </form>
               ) : (
                 <span className="text-[11.5px] text-ppp-charcoal-400 shrink-0 self-center">

@@ -18,6 +18,7 @@ import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { DateField } from "@/components/commercial/date-field";
 import { KpiTile } from "@/components/commercial/kpi-tile";
 import { GaugeRing, DonutChart } from "@/components/commercial/charts";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 type Preset = "this_quarter" | "last_quarter" | "this_year" | "last_year";
 const PRESETS: ReadonlyArray<{ key: Preset; label: string }> = [
@@ -241,8 +242,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                 ariaLabel="To date"
               />
             </div>
-            <button
-              type="submit"
+            <SubmitButton
               className={`inline-flex items-center px-3.5 py-2 rounded-lg text-[13px] font-semibold border min-h-[44px] touch-manipulation transition-colors ${
                 range.activeKey === "custom"
                   ? "bg-cc-brand-600 text-white border-cc-brand-700 shadow-sm shadow-cc-brand-600/30"
@@ -250,7 +250,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
               }`}
             >
               Apply
-            </button>
+            </SubmitButton>
           </form>
         </div>
         {range.rejected && (

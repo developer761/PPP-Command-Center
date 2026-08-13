@@ -27,6 +27,7 @@ import { DateField } from "@/components/commercial/date-field";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import InfoDot from "@/components/info-dot";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 const PW_HELP =
   "Prevailing wage: on government / public-works jobs (schools, DOT/highway, municipal buildings) the law requires paying workers a set, usually higher, hourly wage plus benefits. Flagging a work order PW tells the crew and payroll it's a special-rate job. It's a label here — it does not change any pay math yet.";
@@ -182,7 +183,9 @@ export default async function FieldOpsJobsPage({
         </div>
         <div className="flex items-center gap-1.5"><label className="flex items-center gap-2 text-base sm:text-[13px] text-ppp-charcoal-700 min-h-[44px] sm:min-h-0"><input type="checkbox" name="prevailing_wage" className="h-4 w-4" /> Prevailing wage (PW)</label><InfoDot text={PW_HELP} /></div>
         <label className="block"><span className={LABEL_CLS}>Notes</span><textarea name="notes" rows={2} className={TEXTAREA_CLS} /></label>
-        <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add work order</button>
+        <SubmitButton
+          className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+        >Add work order</SubmitButton>
       </form>
 
       <div className="flex items-center justify-between mb-2">
@@ -248,7 +251,9 @@ export default async function FieldOpsJobsPage({
                   </div>
                   <div className="flex items-center gap-1.5"><label className="flex items-center gap-2 text-base sm:text-[13px] text-ppp-charcoal-700 min-h-[44px] sm:min-h-0"><input type="checkbox" name="prevailing_wage" defaultChecked={j.prevailing_wage} className="h-4 w-4" /> Prevailing wage (PW)</label><InfoDot text={PW_HELP} /></div>
                   <label className="block"><span className={LABEL_CLS}>Notes</span><textarea name="notes" rows={2} defaultValue={j.notes ?? ""} className={TEXTAREA_CLS} /></label>
-                  <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Save</button>
+                  <SubmitButton
+                    className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+                  >Save</SubmitButton>
                 </form>
                 <form action={deleteJobAction} className="px-4 pb-4">
                   <input type="hidden" name="id" value={j.id} />

@@ -61,6 +61,7 @@ import {
   type SubmittalStatus,
   type TransmittedAs,
 } from "@/lib/commercial/opportunities/submittal-constants";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 /**
  * Submittal detail page — `/commercial/opportunities/[id]/submittals/[sid]`.
@@ -1285,12 +1286,11 @@ export async function SubmittalDetailView({
             </datalist>
 
             <div className="flex justify-end">
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] touch-manipulation"
               >
                 Add item
-              </button>
+              </SubmitButton>
             </div>
           </form>
         )}
@@ -1390,12 +1390,11 @@ export async function SubmittalDetailView({
                         </div>
                       </div>
                       <div className="flex items-center justify-between gap-2">
-                        <button
-                          type="submit"
+                        <SubmitButton
                           className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] touch-manipulation"
                         >
                           Save item
-                        </button>
+                        </SubmitButton>
                       </div>
                     </form>
 
@@ -1544,13 +1543,12 @@ export async function SubmittalDetailView({
                 <input type="hidden" name="back" value={backTo ?? ""} />
                 <input type="hidden" name="account_id" value={account_id} />
                         <input type="hidden" name="attachment_id" value={att.id} />
-                        <button
-                          type="submit"
+                        <SubmitButton
                           title="Unlink — file stays on Plans & Specs"
                           className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] sm:min-h-[36px] sm:min-h-[36px] touch-manipulation"
                         >
                           Unlink
-                        </button>
+                        </SubmitButton>
                       </form>
                     )}
                   </div>
@@ -1611,12 +1609,11 @@ export async function SubmittalDetailView({
                 })}
               </ul>
               <div className="flex justify-end pt-1 border-t border-emerald-100">
-                <button
-                  type="submit"
+                <SubmitButton
                   className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
                 >
                   Attach selected
-                </button>
+                </SubmitButton>
               </div>
             </form>
           </details>
@@ -1801,8 +1798,7 @@ function StatusActionsPanel({
           <form action={changeStatusAction} className="flex flex-wrap items-center gap-2">
             {hiddenIds}
             <input type="hidden" name="to_status" value="submitted" />
-            <button
-              type="submit"
+            <SubmitButton
               disabled={itemCount === 0}
               title={itemCount === 0 ? "Add at least one item first" : "Marks this submittal as delivered — you still email the GC separately with the Letter of Transmittal PDF attached."}
               className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
@@ -1811,7 +1807,7 @@ function StatusActionsPanel({
                 <path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z" />
               </svg>
               Mark as sent to GC
-            </button>
+            </SubmitButton>
           </form>
           <p className="text-[11px] text-ppp-charcoal-500 leading-snug max-w-2xl">
             <strong className="text-ppp-charcoal-700">What this does:</strong> flips the submittal status to <em>Submitted</em> and starts the &ldquo;days waiting for GC response&rdquo; clock.{" "}
@@ -1826,12 +1822,11 @@ function StatusActionsPanel({
           <form action={changeStatusAction} className="flex flex-wrap items-center gap-2">
             {hiddenIds}
             <input type="hidden" name="to_status" value="under_review" />
-            <button
-              type="submit"
+            <SubmitButton
               className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
             >
               Mark received by GC
-            </button>
+            </SubmitButton>
             <span className="text-[12px] text-ppp-charcoal-500">
               Use when the GC acknowledges they got the package — &ldquo;under review&rdquo; period starts.
             </span>
@@ -1932,12 +1927,11 @@ function StatusActionsPanel({
               />
             </div>
             <div>
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
               >
                 Close submittal
-              </button>
+              </SubmitButton>
             </div>
           </form>
         </div>
@@ -1953,23 +1947,21 @@ function StatusActionsPanel({
           <div className="flex flex-wrap items-center gap-2">
             <form action={createRevisionAction}>
               {hiddenIds}
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
               >
                 + Create revision
-              </button>
+              </SubmitButton>
             </form>
             {/* Manual close fallback — for the rare case where Alex doesn't actually need a revision */}
             <form action={changeStatusAction}>
               {hiddenIds}
               <input type="hidden" name="to_status" value="closed" />
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
               >
                 Close without revision
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </div>
@@ -2013,12 +2005,11 @@ function StatusActionsPanel({
               />
             </div>
             <div className="flex justify-end">
-              <button
-                type="submit"
+              <SubmitButton
                 className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
               >
                 Void submittal
-              </button>
+              </SubmitButton>
             </div>
           </form>
         </details>
@@ -2155,12 +2146,11 @@ function ResponseRecorder({
         </div>
 
         <div className="flex justify-end">
-          <button
-            type="submit"
+          <SubmitButton
             className={`inline-flex items-center justify-center px-4 py-2 rounded-lg ${toneStyles.btn} text-white text-sm font-semibold transition-colors shadow-sm min-h-[44px] touch-manipulation`}
           >
             Record {label.toLowerCase()}
-          </button>
+          </SubmitButton>
         </div>
       </form>
     </details>
