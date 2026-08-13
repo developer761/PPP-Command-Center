@@ -1923,6 +1923,11 @@ export default async function OpportunityDetailPage({
       ? "proposals"
       : sub!;
 
+  // A delivery tool is open — the page becomes that tool, with a back arrow.
+  // `work-order` is the DEFAULT sub for `project`, so arriving at `?tab=project`
+  // with no sub lands on the tool list rather than jumping straight into one.
+  const toolView = primary === "project" && !!rawSub;
+
   // The Activity rail. A read of records that already exist — status log,
   // notes, tasks, proposals — merged into one chronology. Fetched only for the
   // tab that renders it, so every other tab pays nothing for it.
@@ -2205,10 +2210,44 @@ export default async function OpportunityDetailPage({
           IS the navigation, so the strip becomes a third layer of chrome above
           the thing you just asked for. It earns its space on the surfaces that
           don't already list these tools. */}
-      {!isDeletedDeal && primary !== "project" && primary !== "invoices" && (
+      {/* On `?tab=project` with no tool chosen, this strip IS the tool list —
+          which is why it renders there and steps aside once a tool is open. */}
+      {!isDeletedDeal && !toolView && (
         <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
       )}
 
+      {/* ── Focused tool view ──────────────────────────────────────────────
+          Karan 2026-08-13: "when I click on something like change orders it
+          should bring me to a separate page with a back arrow, not here... this
+          is too many blocks and buttons, it's overwhelming."
+
+          Opening a delivery tool used to leave BOTH nav rows on screen plus
+          the delivery strip — three layers of furniture above the one thing
+          you asked for. A tool now takes the page: a back arrow, its name, and
+          itself. Same URL, so links and bookmarks are unaffected; it is the
+          CHROME that steps aside, not the routing. */}
+      {toolView ? (
+        <div className="flex items-center gap-2.5 border-b border-ppp-charcoal-100 pb-3">
+          <Link
+            href={`/commercial/opportunities/${opp.id}?tab=project`}
+            aria-label="Back to the project tools"
+            className="inline-flex items-center justify-center h-11 w-11 -ml-2 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 shrink-0"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-bold text-ppp-charcoal leading-tight truncate">
+              {PROJECT_SUB_TABS.find((t) => t.key === sub)?.label ?? "Project"}
+            </h2>
+            <p className="text-[11.5px] text-ppp-charcoal-500 truncate">
+              {derivedOppName(opp, account?.company_name ?? null)}
+            </p>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
           the previous 9-tab row; each group has its own sub-nav below
           for the underlying surfaces so nothing's lost — just quieter.
@@ -2273,6 +2312,8 @@ export default async function OpportunityDetailPage({
             );
           })}
         </div>
+      )}
+      </>
       )}
 
       {/* Overview + the Activity rail (Salesforce's record layout). The rail
@@ -2344,7 +2385,7 @@ export default async function OpportunityDetailPage({
           }}
         />
       )}
-      {tab === "invoices" && (isOppWon || isDeletedDeal) && (
+      {tab === "invoices" && toolView && (isOppWon || isDeletedDeal) && (
         <OpportunityInvoicesPanel
           oppId={opp.id}
           propertyZip={opp.property_zip}
@@ -2413,7 +2454,10 @@ export default async function OpportunityDetailPage({
           backHref={`/commercial/opportunities/${opp.id}?tab=proposals#deal-proposals`}
         />
       )}
-      {isOppWon && !isDeletedDeal && (
+      {/* `toolView` gates the bodies: arriving at `?tab=project` with no tool
+          chosen shows the strip AS the list, rather than the list plus whatever
+          the default sub happens to be. Choosing one opens it alone. */}
+      {isOppWon && !isDeletedDeal && toolView && (
         <>
           {tab === "work-order" && (
             <WorkOrderTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
