@@ -1053,3 +1053,29 @@ Karan: "too many blocks and buttons, it's overwhelming" → opening a tool shoul
   `/opportunities/${id}` (job overview, a0435f9). Nothing stranded. Invoices (a project sub) gets the focused view
   consistently; Analytics (a primary tab) stays top-level. ✅
 - tsc clean, tests green. Good IA cleanup; my link-reachability lane confirms the graph is whole.
+
+---
+
+## 📊 OPEN-HANDOFF STATUS CHECK (review session, 2026-08-13) — "make sure things are getting fixed."
+Re-verified every outstanding handoff against LIVE code + prod:
+**✅ CLOSED since last check:**
+- **Probability CSV export** — FIXED: `export.ts:201` now derives `probabilityFor(o.status, o.sub_status)` (not the
+  dead column). My exact recommendation.
+- **Migration 136 (team roles)** — CONFIRMED LIVE in prod: an `estimator`-role insert clears the CHECK constraint
+  (fails only on a dummy user FK, code 23503, not a role check-violation). Team members can be added again.
+- All per-commit items across today's session verified fixed (tabs, roles-DB, billing completeness, buttons 1-2-3,
+  autosave redirect, submittals-first, delivery strip, analytics visuals, tool-as-page).
+
+**🟠 STILL OPEN — the ONE thing not landing (flagged 4×, and the analytics rebuild touched the code without fixing it):**
+- **Tax-basis, 3 sites — same class:**
+  1. `cash-flow.ts:225-226,263` — `billed` sums `subtotal_cents` (pre-tax); `collected` sums tax-incl payments →
+     collection rate ~108% at full collection.
+  2. `opportunities/[id]/page.tsx:2379` → deal-analytics money chain — tax-incl `invoicedCents`/`collectedCents`
+     against pre-tax contract → "over-invoiced" on taxed jobs.
+  3. deal-analytics monthly chart — pre-tax `subtotal` invoiced vs tax-incl `paid` collected → gap inverts.
+  **One coherent fix:** pre-tax throughout — `billedPreTaxCents` for invoiced (already provided by financials), a
+  pre-tax collected figure (net tax from `paid_cents`, or add `collectedPreTaxCents`). Numbers Alex/Karan read.
+
+**🟡 STILL OPEN — low priority / latent:**
+- **Report fiscal cards hardcode January** (`reports/page.tsx:60,77`) — estimator + CO-vendor summary cards use
+  `${year}-01-01` instead of `fiscal_year_start_month`. Dormant while Tomco's FY = Jan; agrees today.
