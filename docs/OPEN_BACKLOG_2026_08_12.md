@@ -566,3 +566,30 @@ Uncommitted (build session, seen 2026-08-12): `lib/date-et.ts` + callers `accoun
 that aren't defined yet, so a transient `tsc` catches errors — **expected for WIP, NOT flagged as a defect.** When it
 COMMITS I will verify ALL callers were updated (this is precisely the shape that ships with a caller or two left on the
 old name → red build → blocked Vercel deploy), and that migration 135 is sound.
+
+---
+
+## ✅ VERIFY — carried items + date-et consolidation (`07c8b9f`). CORRECT & complete. Plus one severity correction.
+The in-flight refactor I was tracking is now committed and **caller-complete**: `tsc` clean (my caller-completeness
+concern closed), date-et 11/11, full commercial suite **498 passed / 1 skipped** — the 5→1 relative-time
+consolidation regressed nothing. Import-mangling in `accounts/page.tsx:1` fixed (clean doc-comment now). The two
+`ms`-math sites kept are genuinely durations (proposal-reuse window), not calendar counts. ✅
+
+**Migration 135 (project_id fills itself)** — verified sound:
+- Trigger handles BOTH directions: mirror fills `project_id` from `opportunity_id` when a project exists (the
+  missing half), 131's `opportunity_id`-from-`project_id` preserved, disagreement still RAISES. Pre-sale rows (no
+  project yet) and T&M rows (no opp) correctly stay permissive.
+- Backfill is idempotent (`WHERE project_id IS NULL AND opportunity_id IS NOT NULL`), `UPDATE OF` list re-stated so
+  re-running 131 can't narrow the trigger. Safe to re-run.
+- Read-path safety: NO delivery-row read was switched to the (until-135) empty `project_id`. ✅
+
+**🟠 SEVERITY CORRECTION — the project_id-read bug was NOT hypothetical. One live read already depended on it.**
+The commit frames it as "switching reads to project_id WOULD have been a live bug." But `projectHoldsAnything`
+(`ensure.ts:322`, called at :210) — the guard that decides *whether un-winning a deal may archive its project*,
+whose whole purpose is "do not hide money" — ALREADY reads delivery tables by `.eq("project_id", …)`. With
+`project_id` NULL on every delivery row created after the project existed (the common case), this guard has been
+**under-reporting to FALSE** → un-winning such a deal would archive a project that actually holds invoices / change
+orders / work orders, hiding that money from job-costs / geography / dashboard-P&L (the exact §1.1 money-hiding
+shape). Migration 135's backfill + trigger DOES repair it — but only once RUN. **Net: 135 is not "hardening," it
+closes a live money-hiding guard; run it promptly.** (Fix is correct and complete; this is a severity/urgency note,
+not a gap.)
