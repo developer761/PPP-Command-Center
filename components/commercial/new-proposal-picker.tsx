@@ -21,6 +21,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 export type PickerAccount = {
   id: string;
@@ -54,6 +55,7 @@ export default function NewProposalPicker({
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  useScrollLock(open);
   const [pickedAccount, setPickedAccount] = useState<string | null>(
     lockedAccountId ?? null
   );

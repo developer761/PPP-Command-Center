@@ -25,6 +25,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconBuilding, IconTarget, IconReceipt, IconFileDoc } from "./inline-icons";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 type PaletteKind = "account" | "opportunity" | "proposal" | "invoice" | "document";
 
@@ -184,6 +185,9 @@ export function CommandPalette() {
       if (target) commit(target);
     }
   };
+
+  // The shell scrolls <main>, not <body> — see useScrollLock.
+  useScrollLock(open);
 
   if (!open) return null;
 

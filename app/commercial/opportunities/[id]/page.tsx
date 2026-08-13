@@ -3408,7 +3408,14 @@ function ChangeStatusCard({
     // exception now, so it should read like one: a quiet bordered card with a
     // one-line explanation. The warning block is gone because the picker no
     // longer offers the moves it was warning about.
-    <section className={`bg-surface border border-ppp-charcoal-200 rounded-xl p-3.5 ${className ?? ""}`}>
+    // `id` so a next-step button can land ON this card. Without it the link
+    // dropped you at the top of a long Overview and you had to hunt for the
+    // control the button had just promised — which reads as "the button does
+    // nothing". scroll-mt clears the sticky header.
+    <section
+      id="change-status"
+      className={`scroll-mt-24 bg-surface border border-ppp-charcoal-200 rounded-xl p-3.5 ${className ?? ""}`}
+    >
       <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2.5">
         <h2 className="text-[13px] font-bold text-ppp-charcoal">Change status</h2>
         <p className="text-[11.5px] text-ppp-charcoal-500">

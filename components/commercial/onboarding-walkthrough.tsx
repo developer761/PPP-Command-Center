@@ -23,6 +23,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 const LS_KEY = "cc_onboarding_seen_v1";
 const SS_STEP = "cc_onboarding_step_v1";
@@ -234,6 +235,9 @@ export function OnboardingWalkthrough({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [active, finish, go]);
+
+  // The shell scrolls <main>, not <body> — see useScrollLock.
+  useScrollLock(active);
 
   if (!active) return null;
 

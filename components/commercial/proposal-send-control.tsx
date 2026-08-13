@@ -11,13 +11,36 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
+
+/**
+ * "Just mark as sent" was a bare submit with no pending state, so it looked
+ * dead for as long as the server action took — sitting right next to a button
+ * that says "Sending…". Karan: "there's like a delay and the UX isn't good."
+ * A separate component because useFormStatus only reports for the form ABOVE
+ * it in the tree.
+ */
+function MarkSentButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="w-full sm:w-auto inline-flex items-center justify-center px-3 py-2 rounded-lg text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 disabled:opacity-60 min-h-[44px]"
+    >
+      {pending ? "Marking…" : "Just mark as sent"}
+    </button>
+  );
+}
 
 type Contact = { name: string; email: string };
 
 const LABEL = "block text-[12px] font-semibold text-ppp-charcoal-700 mb-1";
 const FIELD =
-  "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[13.5px] text-ppp-charcoal focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
+  "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[13.5px] text-ppp-charcoal focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
 
 export function ProposalSendControl({
   proposalId,
@@ -98,6 +121,21 @@ export function ProposalSendControl({
     };
   }, [open, status]);
 
+  // The shell scrolls <main>, not <body>, so the page went on moving behind
+  // the open sheet. Karan: "it sticks to the top of the page" — a fixed sheet
+  // over a moving background is exactly that. Shared, because every other
+  // overlay on the platform had it too.
+  useScrollLock(open);
+
+  // Portalled to <body> so no ancestor can become its containing block. A
+  // transform, filter or backdrop-filter anywhere up the tree re-anchors
+  // `position: fixed` to that element instead of the viewport, and the sheet
+  // lands wherever that ancestor happens to be — the classic "modal stuck to
+  // the top". The shell already uses transforms for the mobile drawer, so this
+  // is one refactor away from happening even where it doesn't today.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const hasContacts = contacts.length > 0;
 
   async function sendEmail() {
@@ -155,7 +193,7 @@ export function ProposalSendControl({
         </button>
       )}
 
-      {open && (
+      {open && mounted && createPortal(
         <div
           className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center"
           role="dialog"
@@ -279,9 +317,7 @@ export function ProposalSendControl({
                       <input type="hidden" name="account_id" value={accountId} />
                       <input type="hidden" name="deal_id" value={dealId} />
                       <input type="hidden" name="proposal_id" value={proposalId} />
-                      <button type="submit" className="w-full sm:w-auto inline-flex items-center justify-center px-3 py-2 rounded-lg text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px]">
-                        Just mark as sent
-                      </button>
+                      <MarkSentButton />
                     </form>
                   )}
                   <button
@@ -299,7 +335,8 @@ export function ProposalSendControl({
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

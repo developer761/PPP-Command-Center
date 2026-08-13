@@ -75,9 +75,23 @@ for (const f of files) {
       // too, even when the <select> tag itself sits on another line. The
       // shared constants are all correctly guarded — every real miss so far
       // has been a per-site OVERRIDE landing after them, which wins.
+      // Three ways a line is a form field, learned one miss at a time:
+      //   the tag itself · a shared class constant · a LOCAL class constant.
+      // The last one is how `FIELD` in proposal-send-control zoomed every
+      // input in the send-proposal sheet while this scanner reported zero.
+      // A string carrying both a size and field chrome (a border and a
+      // padding) is a field classname whatever it happens to be called.
+      // …but a BUTTON is not a field: it never focuses a keyboard, so it
+      // never zooms. Its size is the tap-target check's business, not this one.
+      const looksLikeFieldClass =
+        /^\s*(const\s+[A-Z_][A-Z0-9_]*\s*=|["`])/.test(line) &&
+        /\bborder\b/.test(line) &&
+        /\bp[xy]?-[\d.]+/.test(line) &&
+        !/inline-flex|items-center|hover:bg-|cursor-pointer/.test(line);
       const isField =
         /<(input|textarea|select)\b/.test(line) ||
-        /\b(SELECT_CLS|INPUT_CLS|TEXTAREA_CLS)\b/.test(line);
+        /\b(SELECT_CLS|INPUT_CLS|TEXTAREA_CLS|FIELD|INPUT|TEXTAREA)\b/.test(line) ||
+        looksLikeFieldClass;
       // A base `text-base` elsewhere on the line is the guard we want to see.
       const guarded = /\btext-base\b/.test(line);
       if (isField && size !== null && size < 16 && !guarded) {

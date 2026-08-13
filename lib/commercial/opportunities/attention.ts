@@ -148,7 +148,11 @@ export function nextStep(
   if (status === "pre_sale_closed" && subStatus === "won") {
     return {
       label: "Start the job",
-      href: `/commercial/opportunities/${oppId}?action=change-status`,
+      // `?to=` is the param the page actually reads. It was `?action=change-status`,
+      // which NOTHING handles — the button navigated and the page looked
+      // unchanged, so it read as broken because it was. The anchor lands you on
+      // the card, and `to` pre-picks the one sensible next stage.
+      href: `/commercial/opportunities/${oppId}?tab=info&to=pre_construction#change-status`,
       why: "Move it into pre-construction so the crew can be scheduled.",
     };
   }
@@ -210,7 +214,9 @@ export function nextStep(
   if (here === "sent") {
     return {
       label: "Mark won or lost",
-      href: `/commercial/opportunities/${oppId}?action=change-status`,
+      // No `to=` here on purpose: won vs lost is the user's answer to give, and
+      // pre-picking either one is how a mis-click books a loss as a win.
+      href: `/commercial/opportunities/${oppId}?tab=info#change-status`,
       why: "It's with them — record the answer when it comes.",
     };
   }

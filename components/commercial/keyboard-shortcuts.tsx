@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 export function KeyboardShortcuts() {
   const router = useRouter();
@@ -129,6 +130,9 @@ export function KeyboardShortcuts() {
       lastFocusRef.current?.focus?.();
     }
   }, [helpOpen]);
+
+  // The shell scrolls <main>, not <body> — see useScrollLock.
+  useScrollLock(helpOpen);
 
   if (!helpOpen) return null;
 

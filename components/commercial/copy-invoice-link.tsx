@@ -48,7 +48,7 @@ export default function CopyInvoiceLinkButton({ className }: { className?: strin
       title="Copy this invoice's link so you can paste it into an email or Slack"
       className={
         className ??
-        "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-blue-300 hover:text-ppp-blue-700 min-h-[40px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
+        "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-blue-300 hover:text-ppp-blue-700 min-h-[44px] sm:min-h-[40px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
       }
     >
       {state === "copied" ? (
