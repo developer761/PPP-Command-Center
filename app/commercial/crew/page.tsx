@@ -40,6 +40,13 @@ export default async function CrewHomePage() {
   // member straight back with no message — three dead tiles out of four.
   const tiles: { href: string; title: string; body: string }[] = [
     {
+      // First, deliberately. It is the only tile that asks something OF the
+      // crew member, and it has to be done today — the others can wait.
+      href: "/commercial/crew/log",
+      title: "Today's hours",
+      body: "Confirm what you worked. Takes a few seconds.",
+    },
+    {
       href: "/commercial/crew/schedule",
       title: "My schedule",
       body: "Where you're working, and when.",
