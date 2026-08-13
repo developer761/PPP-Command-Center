@@ -1024,3 +1024,20 @@ collected figure (net tax from `paid_cents`, or add `collectedPreTaxCents` to fi
 net-of-tax. Then every bar shares the contract's basis.
 **This is now 3 tax-basis sites (F3 cash-flow · deal money-chain · deal monthly chart) — a systematic pattern, not
 one-offs.** Re-flagged; handed off.
+
+---
+
+## ✅ VERIFY — swallowed redirect + Fix-link-to-nonexistent-field (`7a3a497`). CLEAN, no miss. Systematized my link-reachability class.
+- **"Autosave boots us out and won't let us back in" (submittals + proposals)** — root cause: a bare `catch {}` in
+  `autosave-proposal-form` swallowed the `NEXT_REDIRECT` control signal, so the action's `?error=` conflict-redirect
+  never navigated and the pill stuck on "error." Fixed in all three affected forms (autosave-proposal-form,
+  aia-settings-form, aia-line-row) with the correct pattern: `if (err.digest?.startsWith("NEXT_REDIRECT")) throw err`
+  — re-throw the redirect, handle only genuine errors. Verified in each. Commit is honest that it didn't reproduce the
+  full boot-out end-to-end, but the swallowed redirect is a real defect on exactly the named surfaces. ✅
+- **"Fix buttons don't do anything"** — the follow-up warning deep-links `?ef=follow_up_at`; the field was on
+  `INLINE_FIELDS` but never had a ROW on the page, so the link opened nothing. This is exactly my LINK-REACHABILITY
+  class ("on the editable list ≠ rendered"). Now fixed AND systematized into a test: `next-step-links.test.ts`
+  asserts every `INLINE_FIELDS` entry has an `inlineRow("<name>")` on the deal page, with exemptions named (the ones
+  rendered via other controls). `follow_up_at` is NOT exempted → the passing test proves it renders. Verified it fails
+  if the row is removed. ✅
+tsc clean, suite green. Good to see the render-parity class I flagged now guarded by a test rather than vigilance.
