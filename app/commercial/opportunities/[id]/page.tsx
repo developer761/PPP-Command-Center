@@ -3864,7 +3864,9 @@ function ChangeStatusCard({
             initialFollowUpAt={opp.follow_up_at ?? undefined}
             initialFollowUpNotes={opp.follow_up_notes ?? undefined}
             allowedStatuses={nextStatuses}
-            statusLabel="Next status"
+            // "Next status" while showing the current one is a
+            // contradiction (Katie 2026-08-13). This says what the control does.
+            statusLabel="Move this deal to"
           />
           {defaultTo && shouldWarnTransition(opp.status, defaultTo) && (
             <p className="text-[11px] text-amber-700 -mt-1">

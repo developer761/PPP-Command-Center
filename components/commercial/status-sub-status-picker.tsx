@@ -251,6 +251,8 @@ export function StatusSubStatusPicker({
   // confusion Karan hit and Brendan described as "a lot of duplicated, a lot
   // of things are a bit confusing".
   const flipStage = columnKeyForOpp(status, subStatus);
+  // Where the deal is RIGHT NOW, so the option that matches can say so.
+  const currentStage = columnKeyForOpp(status, subStatus);
   // Picking a delivery stage on a deal that was never marked won. Real and
   // common (a verbal award), so this warns rather than refusing.
   const DELIVERY_KEYS = POST_CONTRACT_COLUMNS.map((c) => c.key);
@@ -279,12 +281,16 @@ export function StatusSubStatusPicker({
         >
           <optgroup label="Sales">
             {FLIP_STAGES.filter((st) => st.lane === "pre_contract").map((st) => (
-              <option key={st.key} value={st.key}>{st.label}</option>
+              // Katie 2026-08-13: the field said "Next status" and showed the
+              // CURRENT one, because the current stage is in the list (you need
+              // it to refine a sub-status in place). Marking it says which is
+              // which instead of pre-picking a move nobody asked for.
+              <option key={st.key} value={st.key}>{st.label}{st.key === currentStage ? " (current)" : ""}</option>
             ))}
           </optgroup>
           <optgroup label="Delivery">
             {FLIP_STAGES.filter((st) => st.lane === "post_contract").map((st) => (
-              <option key={st.key} value={st.key}>{st.label}</option>
+              <option key={st.key} value={st.key}>{st.label}{st.key === currentStage ? " (current)" : ""}</option>
             ))}
           </optgroup>
         </select>

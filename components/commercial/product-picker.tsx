@@ -46,8 +46,19 @@ function centsToDollarStr(cents: number): string {
 /** Collapse runs of tabs/spaces to a single space so descriptions like
  *  "Install\tlabor priced by square foot" render clean on the PDF.
  *  Preserves newlines (BulletLine treats them as sub-item markers). */
+/**
+ * Katie 2026-08-13: "when adding a product to the Inclusions list, the
+ * automatic text comes on 2 lines but should be on 1 line."
+ *
+ * This used to preserve newlines, so a catalogue description stored with a
+ * line break — "Per column — round\nor rectangular." — autofilled as two
+ * lines and printed that way on the client PDF. An inclusion description is
+ * one sentence about one line of work, not a paragraph, so every run of
+ * whitespace collapses to a single space. Anyone who wants a break can still
+ * type one; the difference is that they meant it.
+ */
 function normalizeWs(s: string): string {
-  return s.replace(/[\t ]+/g, " ").replace(/ *\n */g, "\n").trim();
+  return s.replace(/\s+/g, " ").trim();
 }
 
 function formatDollars(cents: number): string {

@@ -1502,11 +1502,12 @@ export default async function ProposalEditorPage({
           <strong>Sent for approval.</strong> The designated approvers were notified. This proposal can&rsquo;t be sent to the GC until it&rsquo;s approved.
         </div>
       )}
-      {sp.approval === "approved" && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900" role="status">
-          <strong>Approved.</strong> This proposal is cleared to send. Use <em>Send proposal</em> above when you&rsquo;re ready.
-        </div>
-      )}
+      {/* Katie 2026-08-13, on the spacing between "Send proposal" and "above":
+          the real problem was that TWO approved banners stacked. This transient
+          toast fired on `?approval=approved` while the persistent
+          `status === "approved"` banner below said strictly more — locked from
+          editing, and what Unlock does. One state, one banner; the persistent
+          one wins because it is still true tomorrow. */}
       {sp.approval === "changes" && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900" role="status">
           <strong>Changes requested.</strong> This proposal is back to draft and whoever requested approval was notified. Make the edits, then send for approval again.
@@ -1721,7 +1722,7 @@ export default async function ProposalEditorPage({
         {/* Intro override */}
         <EditorSection
           title="Intro paragraph"
-          subtitle={<>Blank = the Tomco default: <em>&ldquo;{TOMCO_DEFAULT_INTRO}&rdquo;</em></>}
+          subtitle={<>Blank = the Tomco default: <em>&ldquo;{TOMCO_DEFAULT_INTRO}&rdquo;</em> Anything you type here replaces it.</>}
           icon={
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2 M9 20h6 M12 4v16" />
