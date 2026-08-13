@@ -1624,8 +1624,17 @@ export default async function OpportunityDetailPage({
       if (!ymd) continue; // a draft that never went out is not billing yet
       const key = ymd.slice(0, 7);
       const cur = m.get(key) ?? { invoicedCents: 0, collectedCents: 0 };
-      cur.invoicedCents += Number(inv.subtotal_cents) || 0;
-      cur.collectedCents += Number(inv.paid_cents) || 0;
+      // Both pre-tax, matching the money chain's basis (6d972cf). `invoicedCents`
+      // is the pre-tax subtotal; `paid_cents` is WITH-tax cash, so it is scaled
+      // to pre-tax by the invoice's subtotal/total ratio. Summing raw `paid`
+      // against pre-tax `subtotal` let a month's collected line exceed its
+      // invoiced line by the sales tax alone, inverting the "gap = money slower
+      // than work" story the chart exists to tell.
+      const subC = Number(inv.subtotal_cents) || 0;
+      const totC = Number(inv.total_cents) || 0;
+      const paidC = Number(inv.paid_cents) || 0;
+      cur.invoicedCents += subC;
+      cur.collectedCents += totC > 0 ? Math.round(paidC * (subC / totC)) : paidC;
       m.set(key, cur);
     }
     return [...m.entries()]
