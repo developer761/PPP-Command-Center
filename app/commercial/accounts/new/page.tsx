@@ -66,8 +66,8 @@ async function createAction(formData: FormData) {
       // re-added; the warning copy notes that.
       const p = new URLSearchParams({ duplicate: ids, typed_name: company });
       for (const k of [
-        "dba", "rating", "billing_street", "billing_city", "billing_state",
-        "billing_zip", "site_street", "site_city", "site_state", "site_zip", "phone",
+        "dba", "rating", "billing_street", "billing_street2", "billing_city", "billing_state",
+        "billing_zip", "site_street", "site_street2", "site_city", "site_state", "site_zip", "phone",
         "ap_phone", "website", "tax_exempt_cert_number", "notes",
       ]) {
         const v = get(k);
@@ -92,10 +92,12 @@ async function createAction(formData: FormData) {
     // that case, so the fallback has to be explicit — reading the empty hidden
     // inputs would blank the billing address instead of mirroring it.
     billing_street: same ? get("site_street") : get("billing_street"),
+    billing_street2: same ? get("site_street2") : get("billing_street2"),
     billing_city: same ? get("site_city") : get("billing_city"),
     billing_state: same ? get("site_state") : get("billing_state"),
     billing_zip: same ? get("site_zip") : get("billing_zip"),
     site_street: get("site_street"),
+    site_street2: get("site_street2"),
     site_city: get("site_city"),
     site_state: get("site_state"),
     site_zip: get("site_zip"),
@@ -330,10 +332,12 @@ export default async function NewCommercialAccountPage({
     dba?: string;
     rating?: string;
     billing_street?: string;
+    billing_street2?: string;
     billing_city?: string;
     billing_state?: string;
     billing_zip?: string;
     site_street?: string;
+    site_street2?: string;
     site_city?: string;
     site_state?: string;
     site_zip?: string;
@@ -459,6 +463,7 @@ export default async function NewCommercialAccountPage({
             prefix="site"
             defaults={{
               street: sp.site_street ?? "",
+              street2: sp.site_street2 ?? "",
               city: sp.site_city ?? "",
               state: sp.site_state ?? "",
               zip: sp.site_zip ?? "",
@@ -471,6 +476,7 @@ export default async function NewCommercialAccountPage({
             defaultChecked={sp.site_same === "1"}
             defaults={{
               street: sp.billing_street ?? "",
+              street2: sp.billing_street2 ?? "",
               city: sp.billing_city ?? "",
               state: sp.billing_state ?? "",
               zip: sp.billing_zip ?? "",

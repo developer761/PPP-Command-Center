@@ -58,15 +58,16 @@ async function createSubmittalAction(formData: FormData) {
   const sb = commercialDb();
   const { data: acctRow } = await sb
     .from("commercial_accounts")
-    .select("company_name, billing_street, billing_city, billing_state, billing_zip")
+    .select("company_name, billing_street, billing_street2, billing_city, billing_state, billing_zip")
     .eq("id", account_id)
     .maybeSingle();
-  type AcctLite = { company_name: string | null; billing_street: string | null; billing_city: string | null; billing_state: string | null; billing_zip: string | null };
+  type AcctLite = { company_name: string | null; billing_street: string | null; billing_street2: string | null; billing_city: string | null; billing_state: string | null; billing_zip: string | null };
   const acct = acctRow as AcctLite | null;
   let to_address_lines: string[] | null = null;
   if (acct) {
     const lines: string[] = [];
     if (acct.billing_street?.trim()) lines.push(acct.billing_street.trim());
+    if (acct.billing_street2?.trim()) lines.push(acct.billing_street2.trim());
     const cityState = [acct.billing_city?.trim(), acct.billing_state?.trim()].filter(Boolean).join(", ");
     const csz = [cityState, acct.billing_zip?.trim()].filter(Boolean).join(" ");
     if (csz) lines.push(csz);

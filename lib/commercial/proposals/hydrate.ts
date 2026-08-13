@@ -40,6 +40,8 @@ export async function hydrateProposalContext(
   // Header — snapshotted from account + deal fields at create.
   const gcAddressLines: string[] = [];
   if (account?.billing_street) gcAddressLines.push(account.billing_street);
+  // Suite / floor prints on its own line, the way an envelope is addressed.
+  if (account?.billing_street2) gcAddressLines.push(account.billing_street2);
   const cityLine = [account?.billing_city, account?.billing_state, account?.billing_zip]
     .filter((s): s is string => Boolean(s?.trim()))
     .join(", ");

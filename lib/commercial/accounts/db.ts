@@ -21,10 +21,13 @@ export type CommercialAccount = {
   industry: string | null;
   rating: CommercialAccountRating | null;
   billing_street: string | null;
+  /** Floor / unit / suite — typed by hand, never geocoded (migration 138). */
+  billing_street2: string | null;
   billing_city: string | null;
   billing_state: string | null;
   billing_zip: string | null;
   site_street: string | null;
+  site_street2: string | null;
   site_city: string | null;
   site_state: string | null;
   site_zip: string | null;

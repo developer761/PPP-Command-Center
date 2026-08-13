@@ -29,10 +29,12 @@ type SP = Promise<{
   dba?: string;
   rating?: string;
   billing_street?: string;
+  billing_street2?: string;
   billing_city?: string;
   billing_state?: string;
   billing_zip?: string;
   site_street?: string;
+  site_street2?: string;
   site_city?: string;
   site_state?: string;
   site_zip?: string;
@@ -80,8 +82,8 @@ async function updateAction(formData: FormData) {
       const p = new URLSearchParams({ duplicate: ids });
       p.set("company_name", company);
       for (const k of [
-        "dba", "rating", "billing_street", "billing_city", "billing_state",
-        "billing_zip", "site_street", "site_city", "site_state", "site_zip", "phone",
+        "dba", "rating", "billing_street", "billing_street2", "billing_city", "billing_state",
+        "billing_zip", "site_street", "site_street2", "site_city", "site_state", "site_zip", "phone",
         "ap_phone", "website", "tax_exempt_cert_number", "notes",
       ]) {
         const v = get(k);
@@ -105,10 +107,12 @@ async function updateAction(formData: FormData) {
       // when the box is ticked, so the fallback has to be explicit — reading
       // the empty hidden inputs would blank billing instead of mirroring it.
       billing_street: get("site_same_as_billing") === "1" ? get("site_street") : get("billing_street"),
+      billing_street2: get("site_same_as_billing") === "1" ? get("site_street2") : get("billing_street2"),
       billing_city: get("site_same_as_billing") === "1" ? get("site_city") : get("billing_city"),
       billing_state: get("site_same_as_billing") === "1" ? get("site_state") : get("billing_state"),
       billing_zip: get("site_same_as_billing") === "1" ? get("site_zip") : get("billing_zip"),
       site_street: get("site_street"),
+      site_street2: get("site_street2"),
       site_city: get("site_city"),
       site_state: get("site_state"),
       site_zip: get("site_zip"),
@@ -281,6 +285,7 @@ export default async function EditCommercialAccountPage({
             prefix="site"
             defaults={{
               street: sp.site_street ?? (account.site_street ?? ""),
+              street2: sp.site_street2 ?? (account.site_street2 ?? ""),
               city: sp.site_city ?? (account.site_city ?? ""),
               state: sp.site_state ?? (account.site_state ?? ""),
               zip: sp.site_zip ?? (account.site_zip ?? ""),
@@ -303,6 +308,7 @@ export default async function EditCommercialAccountPage({
             }
             defaults={{
               street: sp.billing_street ?? (account.billing_street ?? ""),
+              street2: sp.billing_street2 ?? (account.billing_street2 ?? ""),
               city: sp.billing_city ?? (account.billing_city ?? ""),
               state: sp.billing_state ?? (account.billing_state ?? ""),
               zip: sp.billing_zip ?? (account.billing_zip ?? ""),

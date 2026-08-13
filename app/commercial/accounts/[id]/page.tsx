@@ -1233,6 +1233,8 @@ async function updateAccountSectionAction(formData: FormData) {
     case "billing":
       patch = {
         billing_street: get("billing_street"),
+        billing_street2: get("billing_street2"),
+        site_street2: get("site_street2"),
         billing_city: get("billing_city"),
         billing_state: get("billing_state"),
         billing_zip: get("billing_zip"),
@@ -2152,6 +2154,7 @@ function InfoCards({ account }: { account: CommercialAccount }) {
 
       <Card title="Billing address" section="billing" accountId={account.id}>
         <EditableField name="billing_street" label="Street" defaultValue={account.billing_street} />
+        <EditableField name="billing_street2" label="Floor / unit / suite" defaultValue={account.billing_street2} />
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
           <div className="sm:col-span-6">
             <EditableField name="billing_city" label="City" defaultValue={account.billing_city} />
@@ -2167,6 +2170,7 @@ function InfoCards({ account }: { account: CommercialAccount }) {
 
       <Card title="Company address" section="site" accountId={account.id}>
         <EditableField name="site_street" label="Street" defaultValue={account.site_street} />
+        <EditableField name="site_street2" label="Floor / unit / suite" defaultValue={account.site_street2} />
         {/* Responsive like the billing block above — grid-cols-3 crushed
             City to ~90px at 320px. City spans 6, State/ZIP 3 each on sm+. */}
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -3227,10 +3231,12 @@ async function NewDealForm({
   account: {
     company_name: string | null;
     billing_street: string | null;
+    billing_street2: string | null;
     billing_city: string | null;
     billing_state: string | null;
     billing_zip: string | null;
     site_street: string | null;
+    site_street2: string | null;
     site_city: string | null;
     site_state: string | null;
     site_zip: string | null;

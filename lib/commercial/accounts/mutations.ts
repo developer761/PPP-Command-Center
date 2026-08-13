@@ -16,10 +16,12 @@ export type CreateAccountInput = {
   industry?: string | null;
   rating?: "A" | "B" | "C" | null;
   billing_street?: string | null;
+  billing_street2?: string | null;
   billing_city?: string | null;
   billing_state?: string | null;
   billing_zip?: string | null;
   site_street?: string | null;
+  site_street2?: string | null;
   site_city?: string | null;
   site_state?: string | null;
   site_zip?: string | null;
@@ -54,10 +56,12 @@ export async function createCommercialAccount(
       industry: input.industry?.trim() || null,
       rating: input.rating ?? null,
       billing_street: input.billing_street?.trim() || null,
+      billing_street2: input.billing_street2?.trim() || null,
       billing_city: input.billing_city?.trim() || null,
       billing_state: input.billing_state?.trim() || null,
       billing_zip: input.billing_zip?.trim() || null,
       site_street: input.site_street?.trim() || null,
+      site_street2: input.site_street2?.trim() || null,
       site_city: input.site_city?.trim() || null,
       site_state: input.site_state?.trim() || null,
       site_zip: input.site_zip?.trim() || null,

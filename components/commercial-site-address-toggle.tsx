@@ -19,6 +19,7 @@ import CommercialAddressFields from "@/components/commercial-address-fields";
  */
 type Defaults = {
   street?: string;
+  street2?: string;
   city?: string;
   state?: string;
   zip?: string;

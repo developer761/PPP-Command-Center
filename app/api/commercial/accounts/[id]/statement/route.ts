@@ -46,6 +46,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const billTo = [
     account.billing_street,
+    account.billing_street2,
     [account.billing_city, account.billing_state, account.billing_zip].filter(Boolean).join(", ").replace(/, ([^,]+)$/, " $1"),
   ].filter((l): l is string => !!l && l.trim().length > 0);
 
