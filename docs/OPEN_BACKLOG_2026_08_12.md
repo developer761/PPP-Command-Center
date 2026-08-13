@@ -523,3 +523,31 @@ Re-audit produced its findings; not every handed-off fix has landed. Open code i
 3. 🟢 **Industry CSV export** (soft/decision) — `accounts/export.ts:24/93` still has an "Industry" column; real data,
    so a scope question for Brendan, not a bug. (`92d7226` handoff.) **OPEN — needs a decision, not a fix.**
 ✅ Resolved this pass: estimator-on-create (`e15c0e1`). — Review session tracking, will re-verify each when it lands.
+
+---
+
+## ✅ VERIFY — next-step button vs printed stage (`95d5f04`). CORRECT.
+Karan: *"if I manually move a status back and forth this button stays there."* Root cause was real: the pre-sale
+next-step + two warnings read ONLY the proposal, so a deal dragged to Sent still said "Send it for approval."
+Fix takes the FURTHER-ALONG of the two clocks (deal stage vs proposal state). Traced every branch:
+- `DEAL_STAGE_ORDER` = {qualifying, rfp, estimating, pending_approval, sent} — **exactly** the pre-sale keys
+  `columnKeyForOpp` can emit (verified against kanban-columns.ts:184-226). No `rankOf === -1` edge.
+- Lost/closed deals `return null` at attention.ts:177-178 BEFORE the pre-sale section, so "lost" never reaches the
+  ranker. ✅
+- Branch order is right: `proposalCount === 0 → "Build a proposal"` fires before the pending_approval branch (a deal
+  manually moved to pending-approval with no proposal correctly says "Build a proposal", not "Mark it approved"); and
+  `approved` outranks `pending_approval` (approved-but-unsent → "Send it to the GC" even on a parked deal — the stated
+  exception). Warnings: "approved not sent" suppressed once `dealIsOut`, "no follow-up" now also fires on `dealIsOut`
+  (fixed false negative). 41 tests pass; attention.ts clean.
+- **Considered, intentional (not a bug):** dragging a deal BACKWARD (e.g. to Qualifying) while its proposal is Sent
+  makes the button lead the printed stage ("Mark won or lost"). That's the forward-only / furthest-along design the
+  commit reasons about — the sent proposal is the truth, the reverted stage is the lagging artifact. Flagging only so
+  it's a known trade-off, not an oversight.
+
+## ⏳ PENDING VERIFY (NOT yet committed) — an in-flight `lib/date-et.ts` refactor is in the working tree.
+Uncommitted (build session, seen 2026-08-12): `lib/date-et.ts` + callers `accounts/[id]/page.tsx`, `accounts/page.tsx`,
+`opportunities/page.tsx`, `accounts/overview.ts`, `opportunities/export.ts`, `date-et.test.ts`, plus new
+`supabase/migrations/135_project_id_fills_itself.sql`. Mid-edit it references `daysAgoEt` / `relativeAgoEt` / `ms`
+that aren't defined yet, so a transient `tsc` catches errors — **expected for WIP, NOT flagged as a defect.** When it
+COMMITS I will verify ALL callers were updated (this is precisely the shape that ships with a caller or two left on the
+old name → red build → blocked Vercel deploy), and that migration 135 is sound.
