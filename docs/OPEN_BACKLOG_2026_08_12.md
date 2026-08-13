@@ -711,3 +711,26 @@ AND lacks the `#change-status` anchor, so flipping a card to Lost lands the user
 hunt for the pre-filled reason form — the exact "arrives at the top, looks unchanged" papercut this commit fixed for
 the other two. **Fix (mirror attention.ts:155):**
 `redirect(\`/commercial/opportunities/${opp_id}?tab=info&to=pre_sale_closed&to_sub=lost#change-status\`)`. Handed off.
+
+---
+
+## ✅ VERIFY — platform button/form recheck (`9b6aa8b`). Sound. But my Lost-flip miss is STILL open + a deferral to surface.
+Three classes swept. Verified the deliverable: `SubmitButton` (`submit-button.tsx`) is a correct `"use client"` leaf
+using `useFormStatus` (rightly its own component — the hook reports on the form ABOVE it), applied to the daily paths
+(status card, inline field, 3 quick-flips, send-sheet). tsc clean, 514 tests pass. Dead-link sweep (212 files → 0)
+and the param-read sweep are reasonable. ✅
+
+**🟡 STILL OPEN — my `page.tsx:275` Lost-flip miss was NOT picked up (2nd commit running).** The recheck claims
+"every link param is read by its destination — clean, one hit and it was fine." But `opportunities/page.tsx:275`
+STILL emits `redirect(...?action=change-status&to=pre_sale_closed&to_sub=lost)` — the dead param + no `#change-status`
+anchor. It sits in the checker's OWN admitted blind spot: *"my checker doesn't follow redirects"* — and this is a
+server-side `redirect()`, not a Link href, so the "clean" claim structurally never covered it. Still a live
+navigation papercut (flip-to-Lost lands at the top of a long page). **Fix unchanged:**
+`?tab=info&to=pre_sale_closed&to_sub=lost#change-status`. Also worth hardening the param-checker to scan `redirect()`
+string literals, not just hrefs — that's the class this lives in.
+
+**🟠 SURFACE TO KARAN — 96 forms deferred, against the "never defer" rule.** The sweep applied `SubmitButton` to the
+daily paths (101 → 96) and DEFERRED 96 Settings forms to "when each area is next opened," with a stated rationale
+(two scripted sweeps broke things that week) and a tracking script (`audit-pending-forms.cjs`). It's reasoned +
+tracked, not silent — but it directly runs against Karan's hard rule *"never defer / do them all now."* Not my call
+to adjudicate the risk trade-off; flagging so Karan decides whether the rationale holds or he wants all 101 done now.
