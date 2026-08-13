@@ -18,20 +18,17 @@ Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
 
 | # | Next | Depends on |
 |---|---|---|
-| ~~A~~ | ~~Migrations 133 / 134 / 135~~ **ALL RUN.** Confirmed live in prod by the review session. | — |
-| ~~B~~ | ~~Full re-audit / walkthrough~~ **DONE 2026-08-12.** Six lanes; nine real findings, four live in production. | — |
-| ~~C~~ | ~~Archiving decision~~ **SETTLED** — archiving keeps the project archived; the money still counts company-wide because reports read opportunities, not projects. | — |
-| **1** | **Reports F2 — Estimator / proposal performance.** Bids sent, win rate, average turnaround from RFP received to proposal sent. The "how is Kim doing" report, and the reason `rfp_received_at` had to be right. Wire `fiscal_year_start_month` here too — it is seeded and read by nothing. | Nothing |
-| **2** | **The 96 remaining forms with no pending state.** Same class as "Just mark as sent": a plain submit inside a server-action form shows nothing for the whole round trip, so it reads as dead and people click twice. High-traffic ones already done; these are mostly Settings. Shared fix exists (`SubmitButton`); `scripts/audit-pending-forms.cjs` keeps the count honest. **→ KARAN DIRECTIVE 2026-08-13: "never defer" — do ALL 96, not incremental rollout. Method: apply `SubmitButton` deliberately + verify the batch (NOT a blind scripted find-replace — that is what broke things before). Review session will smoke-test after. Karan asked for this at the END of the priority list; keep it tracked here but treat as after the Reports work.** | Nothing |
-| **3** | **Reports F3 — Cash flow & collections.** Money in by month, average days to pay, what is still out. AR aging with a time axis. | Nothing |
-| **4** | **Reports F4 — Change orders & vendor spend.** CO volume, approval rate, spend by supplier across all jobs. | Nothing |
-| **5** | **RFP email → auto-populate an opportunity.** The endgame feature. | A session walking real RFP emails through with you |
-| **6** | **Foreman Daily Log.** It writes payroll, so I recommend starting fresh rather than extending the hours code. | Nothing |
-| **7** | **Stephanie's list.** Proposal page order, Submittals feedback, Letter of Transmittal + signature, the large-file issue were the headings. No content has reached me. | Her findings |
-| **8** | **Joint smoke test** — notifications, Field Ops clock in/out, work-order notes reaching the crew. Your own note: the platform isn't done until this happens. | You in the room |
-| **9** | **Lead flow** — Brendan wants Qualifying out of opportunities into a separate lead object that converts in. Largest remaining item. | Nothing; you deferred it to last |
-| **10** | **Brendan's sign-off screen** — what he wants to see when approving a proposal. | Him describing it |
-| **11** | **`PPP_ADMIN_EMAILS` in Vercel.** Production runs on the hardcoded bootstrap admin list until it is set. Also gates the per-person half of the Labour report. Moved to the end at Karan's request 2026-08-13. | You, 2 minutes |
+| **1** | **Finish the smoke test with Katie.** It is finding more, and better, than my reading does — 14 real bugs in one sitting, several in code I had written the day before. | In progress |
+| **2** | **Verify the revision rule end to end.** Button and route are both gated on the proposal having gone to the GC, with a banner explaining the bounce. Builds clean; never walked. Try "+ New revision" on a draft — it should bounce you back to the original, not mint an R2. | You, 1 minute |
+| **3** | **Reports F3/F4 follow-ups** — none outstanding. F1–F4 all shipped. | — |
+| **4** | **RFP email → auto-populate an opportunity.** The endgame feature. | A session on real RFP emails with you |
+| **5** | **Foreman Daily Log.** Writes payroll, so I would start fresh rather than extend the hours code. | Nothing |
+| **6** | **Stephanie's list.** Proposal page order, Submittals feedback, LoT + signature, the large-file issue. **The LoT blocks the last piece of tap-to-sign** — the transmittal is the only document still missing a signature block. | Her findings |
+| **7** | **Joint smoke test of the un-watched surfaces** — notifications, Field Ops clock in/out, work-order notes reaching the crew, clock-PIN revocation, the crew magic link. Shipped 2026-08-11/12, reasoned about, never watched run. | A session with you |
+| **8** | **Lead flow** — Qualifying out into a lead object that converts in. Largest remaining item. | Nothing; you deferred it to last |
+| **9** | **Brendan's sign-off screen** — which screen forced "first + last". | Him, or a screenshot |
+| **10** | **Katie #3 / #8 / F2** — the typo and its screen; whether the $8,000 auto-created proposal was a Proposal row or the deal's Bid estimate; whether submittals should be SENT from the platform or mark-as-Sent is enough. | Her |
+| **11** | **`PPP_ADMIN_EMAILS` in Vercel.** Production runs on the hardcoded bootstrap list. | You, 2 minutes |
 
 ~~Two smaller things carried~~ **BOTH CLOSED 2026-08-12**, and the first was
 not the hardening item it looked like:
