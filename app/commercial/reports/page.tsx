@@ -6,6 +6,7 @@ import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
 import { getJobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getLaborReport } from "@/lib/commercial/reports/labor";
+import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
 import { etTodayIso } from "@/lib/date-et";
 import { getGeographyReport } from "@/lib/commercial/reports/geography";
 import { getWinLossSummary, currentQuarterRange } from "@/lib/commercial/win-loss/reports";
@@ -37,6 +38,13 @@ export default async function ReportsOverviewPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
+  // The estimator report is per-person performance and redirects a rep. A card
+  // that offers it and then bounces you is worse than one that isn't there —
+  // same reason the inline-edit pencil is hidden rather than shown-and-failing.
+  const { normalizeRole } = await import("@/lib/auth/roles");
+  const { isAdminEmail } = await import("@/lib/auth/admin");
+  const viewerRole = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  const canSeePeople = viewerRole === "admin" || viewerRole === "account_manager";
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
 
   const quarter = currentQuarterRange();
@@ -44,13 +52,18 @@ export default async function ReportsOverviewPage() {
   // own default, so the number on the card is the number you land on.
   const labourToday = etTodayIso();
   const labourRange = { fromYmd: `${labourToday.slice(0, 7)}-01`, toYmd: labourToday };
-  const [pipeline, jobCosts, aging, winLoss, geo, labor] = await Promise.all([
+  // The estimator card summarises the YEAR, matching that report's default —
+  // a month of bids is too few to read a win rate from.
+  const estYearLabel = labourToday.slice(0, 4);
+  const estimatorRange = { fromYmd: `${estYearLabel}-01-01`, toYmd: labourToday };
+  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator] = await Promise.all([
     getPipelineReport(),
     getJobCostsReport(),
     getArAging(),
     getWinLossSummary(quarter),
     getGeographyReport(),
     getLaborReport(labourRange),
+    getEstimatorReport(estimatorRange),
   ]);
   const topTown = geo.byCity[0] ?? null;
 
@@ -114,6 +127,18 @@ export default async function ReportsOverviewPage() {
       primary: { label: "Total AR", value: formatCentsCompact(aging.totals.total), tone: "brand" },
       secondary: { label: "Overdue", value: formatCentsCompact(overdue), tone: overdue > 0 ? "amber" : "neutral" },
     },
+    ...(canSeePeople ? [{
+      href: "/commercial/reports/estimator",
+      title: "Estimator performance",
+      blurb: "Bids sent, win rate, and how fast they go out.",
+      icon: <><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
+      primary: {
+        label: `Win rate · ${estYearLabel}`,
+        value: estimator.totals.winRatePct === null ? "—" : `${estimator.totals.winRatePct}%`,
+        tone: "emerald" as const,
+      },
+      secondary: { label: "Bids sent", value: String(estimator.totals.bidsSent) },
+    }] : []),
     {
       href: "/commercial/reports/labor",
       title: "Labour & payroll",

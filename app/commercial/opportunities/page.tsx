@@ -467,6 +467,10 @@ export default async function CommercialOpportunitiesPage({
   // "My opportunities" and "New this week" — the two views on Karan's actual
   // Salesforce screenshot. Both are filters the list did not have.
   const mineFilter = pickFirst(sp.mine) === "1";
+  // Deep link from the Estimator report — "show me Kim's bids" is the obvious
+  // next click from that table, and without this the link would have been a
+  // dead param landing on an unfiltered pipeline.
+  const estimatorFilter = pickFirst(sp.estimator) ?? null;
   const newFilter = pickFirst(sp.new) === "7d" ? 7 : undefined;
   const laneRaw = pickFirst(sp.lane);
   const laneFilter =
@@ -658,6 +662,9 @@ export default async function CommercialOpportunitiesPage({
   const attentionToday = todayEtIso; // computed above, ET calendar day
   if (mineFilter && viewerUserId) {
     opps = opps.filter((o) => o.estimator_user_id === viewerUserId);
+  }
+  if (estimatorFilter) {
+    opps = opps.filter((o) => o.estimator_user_id === estimatorFilter);
   }
   if (newFilter) {
     // Calendar days in ET, matching every other elapsed-time figure on the
