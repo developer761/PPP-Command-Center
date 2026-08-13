@@ -91,7 +91,18 @@ export async function createCommercialOpportunity(
     [low, high] = [high, low];
   }
 
-  const status: OpportunityStatus = input.status ?? "qualifying";
+  // Brendan's ladder: RFP -> Estimating, and Estimating "triggers on estimator
+  // assign". The update path already honours that; the CREATE path did not, so
+  // a deal typed in with an estimator already picked — which is exactly what
+  // the form invites, since Estimator is one of its fields — landed in
+  // Qualifying and sat there until someone drafted a proposal.
+  //
+  // Only when the caller did not ask for a stage themselves. An explicit
+  // status is a person's decision and outranks the inference.
+  const inferredFromEstimator =
+    !input.status && input.estimator_user_id ? "estimating" : null;
+  const status: OpportunityStatus =
+    input.status ?? ((inferredFromEstimator ?? "qualifying") as OpportunityStatus);
   // v2 (migration 052): sub_status is NOT NULL. Fall back to the default
   // sub-status for the picked status if the caller didn't supply one.
   // If they DID supply one, validate it against the parent-status whitelist.
