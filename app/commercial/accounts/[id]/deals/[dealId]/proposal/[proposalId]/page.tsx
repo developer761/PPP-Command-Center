@@ -432,11 +432,22 @@ async function addLineItemAction(formData: FormData) {
       proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
+  // Karan 2026-08-13: "I'm adding an inclusion and it asked me to leave the
+  // site and it's on the adding screen still. It makes me refresh then it comes
+  // up to the total."
+  //
+  // This used to `redirect()` to the URL it was ALREADY on. Navigating to the
+  // current path is a no-op in the App Router — the hash never reaches the
+  // server, so there is nothing to change — which meant the revalidated total
+  // never painted until the user refreshed by hand. It also fired a real
+  // navigation, which is what triggered the autosave form's "Leave site?"
+  // guard mid-edit.
+  //
+  // `revalidatePath` alone is the idiomatic answer: the action returns, React
+  // re-renders the server component with fresh data, and the user stays put
+  // with the new line and the new total on screen.
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
-  );
-  redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}#line-items`
   );
 }
 

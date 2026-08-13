@@ -1332,6 +1332,7 @@ type PrimaryTab =
   | "proposals"
   | "project"
   | "invoices"
+  | "analytics"
   | "debrief";
 type SubTab =
   | "info"
@@ -1350,7 +1351,6 @@ type SubTab =
   | "aia"
   | "transactions"
   | "invoices"
-  | "analytics"
   | "closeout";
 /** Delivery tools, in the order the work actually happens. */
 const PROJECT_SUB_TABS: { key: SubTab; label: string }[] = [
@@ -1364,7 +1364,6 @@ const PROJECT_SUB_TABS: { key: SubTab; label: string }[] = [
   { key: "aia", label: "AIA Billing" },
   { key: "invoices", label: "Invoices" },
   { key: "transactions", label: "Transactions" },
-  { key: "analytics", label: "Analytics" },
   { key: "closeout", label: "Closeout" },
 ];
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
@@ -1376,7 +1375,7 @@ const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
   { key: "activity", label: "Activity" },
 ];
 /** Primaries that carry sub-tabs. `proposals`, `invoices` and `debrief` are leaves. */
-type GroupTab = Exclude<PrimaryTab, "debrief" | "invoices" | "proposals">;
+type GroupTab = Exclude<PrimaryTab, "debrief" | "invoices" | "proposals" | "analytics">;
 const SUB_TABS_BY_PRIMARY: Record<GroupTab, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
@@ -1417,6 +1416,7 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
     raw === "activity" ||
     raw === "proposals" ||
     raw === "project" ||
+    raw === "analytics" ||
     // `invoices` is deliberately NOT here any more — it moved under `project`
     // on 2026-08-13, and this early return would have short-circuited the
     // mapping below, leaving every old link pointing at a primary tab that no
@@ -1440,7 +1440,7 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   // `costs` is the old route name; `transactions` is what Katie calls it.
   if (raw === "transactions" || raw === "costs") return { primary: "project", sub: "transactions" };
   if (raw === "closeout") return { primary: "project", sub: "closeout" };
-  if (raw === "analytics") return { primary: "project", sub: "analytics" };
+  if (raw === "analytics") return { primary: "analytics", sub: null };
   // Was a primary tab until 2026-08-13. Old links, bells and bookmarks carry it.
   if (raw === "invoices") return { primary: "project", sub: "invoices" };
   if (raw === "proposal") return { primary: "proposals", sub: null };
@@ -1852,6 +1852,9 @@ export default async function OpportunityDetailPage({
         // its `commercial_projects` row. Before that there is no work to show,
         // and a bid has no submittals, change orders or closeout.
         ...(isOppWon ? [{ key: "project" as PrimaryTab, label: "Project" }] : []),
+        // Karan 2026-08-13: "it seems like there's no analytics page." It was a
+        // Project sub-tab — two clicks from the KPIs it explains. Promoted.
+        ...(isOppWon ? [{ key: "analytics" as PrimaryTab, label: "Analytics" }] : []),
         ...(isOppTerminal ? [{ key: "debrief" as PrimaryTab, label: "Debrief" }] : []),
       ];
   const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
@@ -1864,6 +1867,8 @@ export default async function OpportunityDetailPage({
     resolvedPrimary === "debrief" && !isOppTerminal
       ? "overview"
       : resolvedPrimary === "invoices" && !isOppWon && !isDeletedDeal
+      ? "overview"
+      : resolvedPrimary === "analytics" && !isOppWon
       ? "overview"
       : resolvedPrimary === "project" && !isOppWon
       ? "overview"
@@ -1886,9 +1891,11 @@ export default async function OpportunityDetailPage({
   // `?tab=team&error=...` etc. The `tab` variable below stays a flat
   // SubTab | "debrief" so all the existing tab === "team" checks below
   // continue to work — we just derive it from the resolved primary+sub.
-  const tab: SubTab | "debrief" | "invoices" | "proposals" =
+  const tab: SubTab | "debrief" | "invoices" | "proposals" | "analytics" =
     primary === "debrief"
       ? "debrief"
+      : primary === "analytics"
+      ? "analytics"
       : primary === "invoices"
       ? "invoices"
       : primary === "proposals"
