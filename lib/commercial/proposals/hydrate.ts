@@ -110,16 +110,43 @@ export async function hydrateProposalContext(
   }
 
   // Estimator sign-off.
+  // Katie 2026-08-13: "Estimator Sign-off — IF an Estimator is added to the
+  // Opportunity team, this should pull automatically from that contact."
+  //
+  // It only ever read `estimator_user_id`, the single Estimator field on the
+  // deal. A job where the estimator was added to the TEAM instead — which is
+  // where Brendan's four roles live, and the more natural place to put one —
+  // printed a proposal with a blank sign-off.
+  //
+  // Order is explicit-first: the Estimator FIELD wins when set, because
+  // somebody chose it for this deal; the team assignment is the fallback; the
+  // free-text name is last.
+  const sb = commercialDb();
   const estimator: ProposalEstimatorSnapshot = {};
-  if (opp.estimator_user_id) {
-    const sb = commercialDb();
+  let estimatorUserId = opp.estimator_user_id ?? null;
+  if (!estimatorUserId) {
+    const { data: assigned } = await sb
+      .from("commercial_opportunity_assignments")
+      .select("user_id, is_primary")
+      .eq("opportunity_id", opp.id)
+      .eq("role", "estimator")
+      // The primary one first, so a job with two estimators signs with the
+      // person marked as THE estimator rather than whoever was added first.
+      .order("is_primary", { ascending: false })
+      .limit(1);
+    estimatorUserId = (assigned?.[0] as { user_id: string } | undefined)?.user_id ?? null;
+  }
+  if (estimatorUserId) {
     const { data } = await sb
       .from("profiles")
-      .select("sf_user_name, email")
-      .eq("user_id", opp.estimator_user_id)
+      .select("full_name, sf_user_name, email")
+      .eq("user_id", estimatorUserId)
       .maybeSingle();
-    const p = data as { sf_user_name: string | null; email: string | null } | null;
-    if (p?.sf_user_name) estimator.name = p.sf_user_name;
+    const p = data as { full_name: string | null; sf_user_name: string | null; email: string | null } | null;
+    // `full_name` first: a provisioned user (an admin-created login, which is
+    // how Kim exists) has no Salesforce mapping, so reading only sf_user_name
+    // left their name blank on the signed proposal.
+    if (p?.full_name || p?.sf_user_name) estimator.name = (p.full_name || p.sf_user_name) as string;
     if (p?.email) estimator.email = p.email;
   }
   // Fall back to free-text estimator name if no user linked.
