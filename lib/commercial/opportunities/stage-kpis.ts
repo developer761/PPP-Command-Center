@@ -178,6 +178,31 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if (i.decidedAt) {
       out.push({ key: "won_ago", label: "Won", value: agoLabel(i.decidedAt, i.todayIso), sub: i.decidedAt });
     }
+    // Karan 2026-08-13: "the overview when we're on delivery should have KPIs
+    // of how much we have to bill them, how much we have billed so far."
+    // `won_not_started` covers Pre-Construction, which IS delivery — so the
+    // billing picture has to start here, not only once the crew is on site.
+    // At this stage "left to bill" is usually the whole contract, which is
+    // exactly the answer to "how much do we have to bill them".
+    if (hasContract) {
+      const left = (i.contractCents ?? 0) - (i.billedPreTaxCents ?? 0);
+      out.push({
+        key: "left_to_bill",
+        label: left < 0 ? "Over-billed" : "Left to bill",
+        value: money(Math.abs(left)),
+        tone: left < 0 ? "warn" : left === 0 ? "good" : "default",
+      });
+      // Only once something HAS been billed — a deposit can go out before the
+      // crew mobilises, and "Billed 0%" on a job nobody has started is noise.
+      if ((i.billedPreTaxCents ?? 0) > 0) {
+        out.push({
+          key: "billed",
+          label: "Billed",
+          value: `${Math.round(((i.billedPreTaxCents ?? 0) / (i.contractCents || 1)) * 100)}%`,
+          sub: `${money(i.billedPreTaxCents)} of ${money(i.contractCents)}`,
+        });
+      }
+    }
     if (hasContract && i.grossMarginPct != null) {
       out.push({
         key: "margin",
