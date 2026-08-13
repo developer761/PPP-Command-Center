@@ -30,6 +30,7 @@ import {
 import {
   CLOSEOUT_STATUS_META,
   CLOSEOUT_ITEM_KIND_LABEL,
+  ADDABLE_CLOSEOUT_ITEM_KINDS,
   CLOSEOUT_ITEM_STATUS_LABEL,
   CLOSEOUT_TRANSMITTED_AS,
   CLOSEOUT_TRANSMITTED_AS_LABEL,
@@ -171,7 +172,13 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
     if (!opp || !account) return;
     const dealName = derivedOppName(opp, account.company_name);
     const oc = await getOperatingCompany();
-    const company = { name: oc.name, phone: oc.phone, website: oc.website };
+    const company = {
+      name: oc.name,
+      phone: oc.phone,
+      website: oc.website,
+      signature_name: oc.signature_name,
+      signature_title: oc.signature_title,
+    };
     const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
     const logo = await getBrandLogoBuffer();
     const signature = await getBrandSignatureBuffer();
@@ -504,7 +511,10 @@ export async function CloseoutTool({
                   <Ctx />
                   <label className="block"><span className={LABEL_CLS}>Kind</span>
                     <select name="kind" className={SELECT_CLS} style={SELECT_BG_STYLE} defaultValue="other">
-                      {(Object.keys(CLOSEOUT_ITEM_KIND_LABEL) as CloseoutItemKind[]).map((k) => <option key={k} value={k}>{CLOSEOUT_ITEM_KIND_LABEL[k]}</option>)}
+                      {/* Katie: COI comes off the close-out cover letter. It stays in
+                          the LABEL map so packages that already carry the row still
+                          read correctly — it is just no longer offered. */}
+                      {ADDABLE_CLOSEOUT_ITEM_KINDS.map((k) => <option key={k} value={k}>{CLOSEOUT_ITEM_KIND_LABEL[k]}</option>)}
                     </select>
                   </label>
                   <label className="block"><span className={LABEL_CLS}>Label (optional)</span><input name="label" className={INPUT_CLS} placeholder="e.g. HVAC O&M binder" /></label>

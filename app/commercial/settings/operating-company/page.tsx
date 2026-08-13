@@ -54,6 +54,8 @@ async function saveAction(formData: FormData) {
       fax: get("fax"),
       email: get("email"),
       website: get("website"),
+      signature_name: get("signature_name"),
+      signature_title: get("signature_title"),
     },
     user.id,
   );
@@ -160,6 +162,14 @@ export default async function OperatingCompanyPage({
                   On file
                 </span>
               )}
+            </div>
+            {/* Katie's captured Form of Warranty signs "Brendan Dwyer, VP" —
+                a signature image over a company name doesn't say WHO stood
+                behind a twelve-month guarantee. Both optional: left blank, the
+                block keeps reading "Authorized signature". */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <Field id="signature_name" label="Signs as (name)" value={c.signature_name} placeholder="Brendan Dwyer" />
+              <Field id="signature_title" label="Title" value={c.signature_title} placeholder="VP" />
             </div>
             <SignaturePad hasSignature={!!c.signature_asset_key} />
             <details className="mt-3">

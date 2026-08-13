@@ -60,7 +60,17 @@ function fmtDate(ymd: string | null): string {
   return `${months[parseInt(m[2], 10) - 1]} ${parseInt(m[3], 10)}, ${m[1]}`;
 }
 
-export type CompanyContact = { name: string; phone?: string | null; website?: string | null };
+export type CompanyContact = {
+  name: string;
+  phone?: string | null;
+  website?: string | null;
+  /** Who signs, and as what. Tomco's Form of Warranty names the signer
+   *  ("Brendan Dwyer, VP"); "Authorized signature" over a company name does
+   *  not say who stood behind a twelve-month guarantee. Null keeps the old
+   *  line rather than printing an empty Title, which reads as a mistake. */
+  signature_name?: string | null;
+  signature_title?: string | null;
+};
 
 function LogoBlock({ company, logo }: { company: CompanyContact; logo?: Buffer | null }) {
   const website = (company.website ?? "").replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -185,7 +195,14 @@ function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature }: {
           {signature ? <Image src={signature} style={styles.sigImage} /> : null}
           <View style={{ borderTopWidth: signature ? 0 : 1, borderTopColor: "#9ca3af", width: 200, paddingTop: 2 }}>
             <Text style={styles.bold}>{fromCompany}</Text>
-            <Text style={{ fontSize: 8, color: "#6b7280" }}>Authorized signature</Text>
+            {company.signature_name ? (
+              <Text style={{ fontSize: 8, color: "#6b7280" }}>
+                {company.signature_name}
+                {company.signature_title ? `, ${company.signature_title}` : ""}
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 8, color: "#6b7280" }}>Authorized signature</Text>
+            )}
           </View>
         </View>
 

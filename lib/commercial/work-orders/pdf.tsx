@@ -39,7 +39,17 @@ const styles = StyleSheet.create({
   footer: { position: "absolute", bottom: 30, left: 54, right: 54, fontSize: 7.5, color: "#9ca3af", textAlign: "center", borderTopWidth: 0.5, borderTopColor: "#e5e7eb", paddingTop: 6 },
 });
 
-export type CompanyContact = { name: string; phone?: string | null; website?: string | null };
+export type CompanyContact = {
+  name: string;
+  phone?: string | null;
+  website?: string | null;
+  /** Who signs, and as what. Tomco's Form of Warranty names the signer
+   *  ("Brendan Dwyer, VP"); "Authorized signature" over a company name does
+   *  not say who stood behind a twelve-month guarantee. Null keeps the old
+   *  line rather than printing an empty Title, which reads as a mistake. */
+  signature_name?: string | null;
+  signature_title?: string | null;
+};
 
 export type WorkOrderPdfInput = {
   content: WorkOrderContent;
@@ -256,7 +266,14 @@ function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPd
           {signature ? <Image src={signature} style={styles.sigImage} /> : null}
           <View style={{ borderTopWidth: signature ? 0 : 1, borderTopColor: "#9ca3af", width: 220, paddingTop: 2 }}>
             <Text style={styles.bold}>{company.name}</Text>
-            <Text style={{ fontSize: 8, color: "#6b7280" }}>Authorized signature</Text>
+            {company.signature_name ? (
+              <Text style={{ fontSize: 8, color: "#6b7280" }}>
+                {company.signature_name}
+                {company.signature_title ? `, ${company.signature_title}` : ""}
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 8, color: "#6b7280" }}>Authorized signature</Text>
+            )}
           </View>
         </View>
 

@@ -238,7 +238,13 @@ async function autoFileWorkOrder(
         content.inclusions.length,
         allScopeCount
       ),
-      company: { name: oc.name, phone: oc.phone, website: oc.website },
+      company: {
+        name: oc.name,
+        phone: oc.phone,
+        website: oc.website,
+        signature_name: oc.signature_name,
+        signature_title: oc.signature_title,
+      },
       logo,
       signature,
     });

@@ -23,6 +23,11 @@ export type OperatingCompany = {
   website: string | null;
   logo_asset_key: string | null;
   signature_asset_key: string | null;
+  /** Who signs generated docs, and as what — Tomco's Form of Warranty names
+   *  the signer ("Brendan Dwyer, VP"), not just the company. Null falls back
+   *  to the old "Authorized signature" line. */
+  signature_name: string | null;
+  signature_title: string | null;
   /** R1d: emails allowed to approve proposals (in addition to any admin). */
   approver_emails: string[];
   /** RUX-6: emails pinged when a proposal is approved / sent back with changes. */
@@ -30,7 +35,7 @@ export type OperatingCompany = {
 };
 
 const COLS =
-  "name, legal_name, address_line1, address_line2, city, state, zip, phone, fax, email, website, logo_asset_key, signature_asset_key, approver_emails, receiver_emails";
+  "name, legal_name, address_line1, address_line2, city, state, zip, phone, fax, email, website, logo_asset_key, signature_asset_key, signature_name, signature_title, approver_emails, receiver_emails";
 
 /** Fallback used when the migration hasn't been applied yet (graceful — every
  *  generator keeps working). Matches the seed row. */
@@ -48,6 +53,9 @@ const DEFAULTS: OperatingCompany = {
   website: "www.tomcopainting.com",
   logo_asset_key: null,
   signature_asset_key: null,
+  // Katie's captured Form of Warranty signs "Brendan Dwyer, VP".
+  signature_name: "Brendan Dwyer",
+  signature_title: "VP",
   approver_emails: [],
   receiver_emails: [],
 };
@@ -92,6 +100,8 @@ export async function updateOperatingCompany(
     ...(patch.fax !== undefined ? { fax: clean(patch.fax) } : {}),
     ...(patch.email !== undefined ? { email: clean(patch.email) } : {}),
     ...(patch.website !== undefined ? { website: clean(patch.website) } : {}),
+    ...(patch.signature_name !== undefined ? { signature_name: clean(patch.signature_name) } : {}),
+    ...(patch.signature_title !== undefined ? { signature_title: clean(patch.signature_title) } : {}),
     ...(patch.logo_asset_key !== undefined ? { logo_asset_key: patch.logo_asset_key } : {}),
     ...(patch.signature_asset_key !== undefined ? { signature_asset_key: patch.signature_asset_key } : {}),
     ...(patch.approver_emails !== undefined

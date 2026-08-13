@@ -68,7 +68,19 @@ export const CLOSEOUT_ITEM_KIND_LABEL: Record<CloseoutItemKind, string> = {
   other: "Other",
 };
 
-/** The standard close-out checklist seeded on a new package. */
+/**
+ * The standard close-out checklist seeded on a new package.
+ *
+ * Katie: "REMOVE COI from the LoT (closeout cover letter)." A Certificate of
+ * Insurance is a PRE-construction document — the GC has it before anyone sets
+ * foot on site — so seeding it into the close-out checklist meant every
+ * package opened with a row that was already satisfied months earlier, and
+ * someone had to mark it N/A on every job to clear the list.
+ *
+ * `coi` stays in CLOSEOUT_ITEM_KINDS: packages created before this still carry
+ * the row, and it must keep its label rather than rendering as "Other". It is
+ * simply no longer seeded, and no longer offered as an addable kind.
+ */
 export const DEFAULT_CLOSEOUT_ITEMS: ReadonlyArray<{ kind: CloseoutItemKind }> = [
   { kind: "punchlist_signoff" },
   { kind: "as_built" },
@@ -76,8 +88,12 @@ export const DEFAULT_CLOSEOUT_ITEMS: ReadonlyArray<{ kind: CloseoutItemKind }> =
   { kind: "warranty" },
   { kind: "lien_waiver" },
   { kind: "final_invoice" },
-  { kind: "coi" },
 ];
+
+/** Kinds a person may ADD to a package. `coi` is excluded — see above. */
+export const ADDABLE_CLOSEOUT_ITEM_KINDS = CLOSEOUT_ITEM_KINDS.filter(
+  (k) => k !== "coi"
+);
 
 export const CLOSEOUT_ITEM_STATUSES = ["pending", "received", "na"] as const;
 export type CloseoutItemStatus = (typeof CLOSEOUT_ITEM_STATUSES)[number];
