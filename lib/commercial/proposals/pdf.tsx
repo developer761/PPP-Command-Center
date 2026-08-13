@@ -19,7 +19,7 @@ import { join } from "node:path";
 
 import {
   TOMCO_COMPANY_FOOTER,
-  TOMCO_DEFAULT_INTRO,
+  tomcoDefaultIntro,
   proposalTotalLabel,
 } from "./constants";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
@@ -1281,10 +1281,14 @@ export function ProposalPdfDocument({
   // intro: an estimator who wrote their own paragraph owns it, and silently
   // editing their words would be worse than a missing date.
   const baseIntro = proposal.intro_text_override?.trim();
-  const bidSetSentence = proposal.bid_set_date
-    ? ` This proposal is based on the bid set dated ${formatDateLong(proposal.bid_set_date)}.`
-    : "";
-  const intro = baseIntro || `${TOMCO_DEFAULT_INTRO}${bidSetSentence}`;
+  // Stephanie 2026-08-13 wants the bid set inside the opening sentence
+  // ("...the following proposal based on plans dated ..."), not trailing after
+  // the paragraph as a footnote. Only applied to the DEFAULT intro: an
+  // estimator who wrote their own paragraph owns it, and silently rewording
+  // their sentence would be worse than a missing date.
+  const intro =
+    baseIntro ||
+    tomcoDefaultIntro(proposal.bid_set_date ? formatDateLong(proposal.bid_set_date) : null);
   const dateLabel = formatDateLong(proposal.header_json.date_iso);
   // Round-3 audit fix: pdf_show_line_prices was a dead toggle — the
   // editor checkbox existed but the renderer ignored it. Now: internal
@@ -1327,13 +1331,21 @@ export function ProposalPdfDocument({
         {/* Bid Set date. Folded into the intro sentence when we're using the
             default intro (see above); still printed as its own line when the
             estimator supplied a custom intro, so the date is never lost. */}
-        {proposal.bid_set_date && baseIntro && (
+        {/* On the INTERNAL report the date always prints as its own line,
+            because the intro paragraph it would otherwise live inside is not
+            rendered there (see below) — and which set was priced is exactly
+            what an internal reviewer is checking. */}
+        {proposal.bid_set_date && (baseIntro || mode === "internal") && (
           <Text style={{ fontSize: 10, color: CHARCOAL, marginTop: 4 }}>
             <Text style={{ fontFamily: "Times-Bold" }}>Bid Set Date: </Text>
             {formatDateLong(proposal.bid_set_date)}
           </Text>
         )}
-        <Text style={styles.intro}>{intro}</Text>
+        {/* Stephanie 2026-08-13: "Don't need the intro paragraph on report,
+            this is for internal review only." The sales paragraph is addressed
+            to the GC; on an estimator's review copy it is a screenful of
+            boilerplate between them and the numbers they opened it for. */}
+        {mode !== "internal" && <Text style={styles.intro}>{intro}</Text>}
 
         {showLineTable ? (
           <InclusionsInternal items={inclusions} internal={mode === "internal"} groupByPhase />

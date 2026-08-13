@@ -105,8 +105,31 @@ export const PROPOSAL_ALLOWED_TRANSITIONS: Record<
 
 /** Verbatim intro from every real 2026 Tomco proposal. Editable per
  *  proposal via `commercial_proposals.intro_text_override`. */
-export const TOMCO_DEFAULT_INTRO =
-  "Tomco is pleased to provide the following proposal. Provide all necessary material, equipment, and skilled labor to complete the project in a quality and professional manner.";
+/**
+ * The default intro paragraph, with the bid set folded into the opening
+ * sentence when one is on file.
+ *
+ * Stephanie 2026-08-13: *"There is a place when building the proposal that
+ * adds the bid plan set date, it should carry onto the customers proposal in
+ * the intro paragraph. Tomco is pleased to provide the following proposal
+ * based on plans dated 11/11/11."*
+ *
+ * It previously trailed as a separate sentence after the paragraph, which
+ * reads as a footnote. Which drawing set was priced is part of WHAT is being
+ * proposed, so it belongs in the first sentence — the clause a GC checks
+ * first when the drawings have been revised twice since the walk-through.
+ *
+ * The date is spelled out (November 11, 2011) rather than 11/11/11, matching
+ * every other date on the document.
+ */
+export function tomcoDefaultIntro(bidSetDateLabel?: string | null): string {
+  const lead = bidSetDateLabel?.trim()
+    ? `Tomco is pleased to provide the following proposal based on plans dated ${bidSetDateLabel.trim()}`
+    : "Tomco is pleased to provide the following proposal";
+  return `${lead}. Provide all necessary material, equipment, and skilled labor to complete the project in a quality and professional manner.`;
+}
+
+export const TOMCO_DEFAULT_INTRO = tomcoDefaultIntro(null);
 
 // ────────────── Company footer (bottom of every Tomco PDF) ──────────────
 

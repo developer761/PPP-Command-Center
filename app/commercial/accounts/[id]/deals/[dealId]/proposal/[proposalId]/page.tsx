@@ -58,7 +58,7 @@ import {
 } from "@/lib/commercial/proposals/db";
 import { opportunityStatusLabelV2 } from "@/lib/commercial/opportunities/constants";
 import {
-  TOMCO_DEFAULT_INTRO,
+  tomcoDefaultIntro,
   proposalStatusLabel,
   proposalTotalLabel,
   proposalRevisionLabel,
@@ -1037,6 +1037,12 @@ export default async function ProposalEditorPage({
   );
 
   const gcAddrText = (proposal.header_json.gc_address_lines ?? []).join("\n");
+  // What the intro will actually read if left blank — bid-set clause included,
+  // matching the PDF exactly (Stephanie 2026-08-13).
+  const defaultIntroPreview = tomcoDefaultIntro(
+    proposal.bid_set_date ? fmtEtDate(proposal.bid_set_date) : null
+  );
+
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
@@ -1744,10 +1750,13 @@ export default async function ProposalEditorPage({
           </div>
         </EditorSection>
 
-        {/* Intro override */}
+        {/* Intro override. The preview shows the intro that will ACTUALLY
+            print, bid-set clause and all — showing the date-less boilerplate
+            while the PDF says something else is how someone concludes the date
+            "didn't carry over" and retypes the paragraph by hand. */}
         <EditorSection
           title="Intro paragraph"
-          subtitle={<>Blank = the Tomco default: <em>&ldquo;{TOMCO_DEFAULT_INTRO}&rdquo;</em> Anything you type here replaces it.</>}
+          subtitle={<>Blank = the Tomco default: <em>&ldquo;{defaultIntroPreview}&rdquo;</em> Anything you type here replaces it.</>}
           icon={
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2 M9 20h6 M12 4v16" />

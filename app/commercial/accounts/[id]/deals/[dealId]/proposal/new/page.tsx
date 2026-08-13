@@ -11,6 +11,7 @@
  */
 
 import { notFound, redirect } from "next/navigation";
+import { proposalWentOut } from "@/lib/commercial/proposals/revision-policy";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -80,9 +81,9 @@ export default async function CreateProposalRoute({
     // an R2 on an untouched draft and split the work across two rows with
     // nobody able to say which one is live. A hidden button is a suggestion; a
     // guard is the rule.
-    const parentWentOut =
-      !!parent?.sent_at ||
-      ["sent", "won", "lost", "superseded", "expired"].includes(parent?.status ?? "");
+    // The rule itself lives in revision-policy.ts so it can be tested; see
+    // there for why each terminal status counts as "went out".
+    const parentWentOut = proposalWentOut(parent);
     if (parent && parent.opportunity_id === dealId && !parentWentOut) {
       // Land on the original rather than erroring — it is the thing they
       // actually want to work on, and saying "no" with no way forward is the
