@@ -60,7 +60,7 @@ import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submitta
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
 import { findDuplicateOpportunities } from "@/lib/commercial/opportunities/duplicates";
-import { PRE_SALE_OPEN_STATUSES, IN_DELIVERY_STATUSES, TERMINAL_STATUSES, isWon, isLost, isPostSale, isPostSaleProject, dealPhase } from "@/lib/commercial/opportunities/constants";
+import { PRE_SALE_OPEN_STATUSES, IN_DELIVERY_STATUSES, TERMINAL_STATUSES, isWon, isLost, isPostSale, isPostSaleProject, dealPhase, probabilityFor } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
 import { BidLifecycleTimeline } from "@/components/commercial/bid-lifecycle-timeline";
 import { IconClock, IconAlertTriangle, IconFileDoc, IconStar } from "@/components/commercial/inline-icons";
@@ -926,7 +926,8 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
   const lo = opp.bid_value_low_cents;
   const hi = opp.bid_value_high_cents;
   const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : "—";
-  const prob = opp.probability_pct ?? 0;
+  // Stage-derived, not the stored column — see `probabilityFor`.
+  const stageProb = probabilityFor(opp.status, opp.sub_status);
   // Weighted falls back to the proposal total when the deal has no bid range,
   // so a new (bid-less) deal doesn't read $0 here while the dashboard shows it.
   const weighted = weightedPipelineCents(opp, proposalTotal);
@@ -971,17 +972,19 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
               <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Bid range</div>
               <div className="font-condensed text-[15px] font-black text-ppp-charcoal tabular-nums leading-none mt-0.5">{bid}</div>
             </div>
-            <div>
-              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Win prob.</div>
-              <div className={`font-condensed text-[15px] font-black tabular-nums leading-none mt-0.5 ${tone.val}`}>{prob}%</div>
-            </div>
+            {/* "Win prob." tile + its bar removed — Brendan: "Probability? I
+                don't use this." Weighted stays, because it is a real pipeline
+                number; the title says what weights it, since a weighted figure
+                with no stated basis is the kind of number people distrust. */}
             <div>
               <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Weighted</div>
-              <div className="font-condensed text-[15px] font-black text-ppp-charcoal tabular-nums leading-none mt-0.5">{weighted > 0 ? formatCentsCompact(weighted) : "—"}</div>
+              <div
+                className="font-condensed text-[15px] font-black text-ppp-charcoal tabular-nums leading-none mt-0.5"
+                title={`${stageProb}% of value — the standard weighting for ${oppStatusDisplayLabel(opp.status, opp.sub_status)}`}
+              >
+                {weighted > 0 ? formatCentsCompact(weighted) : "—"}
+              </div>
             </div>
-          </div>
-          <div className="mt-2.5 h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${tone.bar}`} style={{ width: `${Math.min(100, Math.max(0, prob))}%` }} aria-label={`${prob}% win probability`} />
           </div>
         </div>
 
@@ -3944,14 +3947,6 @@ function AccountOpportunityRow({
               <span className="font-semibold text-ppp-charcoal-800">
                 {bidLabel !== "—" ? bidLabel : "No bid set"}
               </span>
-              {!isTerminal && (
-                <>
-                  <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                  <span className="text-ppp-charcoal-500">
-                    {opp.probability_pct}% likely
-                  </span>
-                </>
-              )}
               {isTerminal && daysInStatus !== null && (
                 <>
                   <span aria-hidden className="text-ppp-charcoal-300">·</span>

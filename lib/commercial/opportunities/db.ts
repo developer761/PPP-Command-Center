@@ -27,6 +27,7 @@ import {
   SUB_STATUSES_BY_STATUS,
   isValidSubStatus,
   DEFAULT_SUB_STATUS_BY_STATUS,
+  probabilityFor,
   type OpportunityStatus,
   type OpportunitySubStatus,
   type OpportunityLane,
@@ -447,7 +448,10 @@ export function weightedPipelineCents(
 ): number {
   const value = dealValueCents(opp, proposalTotalCents);
   if (value === 0) return 0;
-  return Math.round((value * opp.probability_pct) / 100);
+  // Derived from the stage, NOT the stored column — see `probabilityFor`. The
+  // column is uneditable since probability left the forms, and it defaults to
+  // 10, so this used to weight every new deal at a tenth of its value.
+  return Math.round((value * probabilityFor(opp.status, opp.sub_status)) / 100);
 }
 
 // ────────────── Migration 065 (Phase G Q1) — deal number ──────────────

@@ -236,3 +236,46 @@ describe("warranty expiry", () => {
     expect(keys({ ...base, status: "in_progress", warrantyThroughAt: "2027-08-12" })).not.toContain("warranty");
   });
 });
+
+/**
+ * RE-AUDIT 2026-08-12. Brendan: "Probability? I don't use this." It came out
+ * of every form — and `weightedPipelineCents` kept multiplying by the stored
+ * column, which is `NOT NULL DEFAULT 10` and no longer editable anywhere.
+ *
+ * So every deal created after that change was born at 10% and stuck there. A
+ * $400k bid at Sent contributed $40k to the weighted pipeline on the dashboard
+ * Alex reads every morning, and the gap widened with every new deal.
+ */
+describe("weighted pipeline reads the stage, not the dead column", () => {
+  it("weights by where the deal SITS, ignoring a stale stored probability", async () => {
+    const { weightedPipelineCents } = await import("@/lib/commercial/opportunities/db");
+    const deal = {
+      status: "proposal",
+      sub_status: "sent",
+      bid_value_low_cents: 400_000_00,
+      bid_value_high_cents: 400_000_00,
+      probability_pct: 10, // the default nobody could change
+    } as never;
+    // Sent is a 65% stage. The old code returned 10% of value.
+    expect(weightedPipelineCents(deal)).toBe(260_000_00);
+  });
+
+  it("a won deal weights at full value and a lost one at nothing", async () => {
+    const { weightedPipelineCents } = await import("@/lib/commercial/opportunities/db");
+    const at = (sub: string) =>
+      weightedPipelineCents({
+        status: "pre_sale_closed",
+        sub_status: sub,
+        bid_value_low_cents: 100_000_00,
+        bid_value_high_cents: 100_000_00,
+        probability_pct: 10,
+      } as never);
+    expect(at("won")).toBe(100_000_00);
+    expect(at("lost")).toBe(0);
+  });
+
+  it("an unrecognised stage behaves exactly as the old default did", async () => {
+    const { probabilityFor } = await import("@/lib/commercial/opportunities/constants");
+    expect(probabilityFor("something_new", "nonsense")).toBe(10);
+  });
+});

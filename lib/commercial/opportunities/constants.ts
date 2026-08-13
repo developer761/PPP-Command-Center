@@ -802,3 +802,40 @@ export function advanceFromFilter(targetStatus: string, targetSub: string): stri
   if (clauses.length === 0) return "id.is.null";
   return clauses.join(",");
 }
+
+/**
+ * How likely this deal is to close, derived from where it sits.
+ *
+ * AUDIT 2026-08-12 (re-audit). Brendan: *"Probability? I don't use this."* We
+ * removed it from every form — and left `weightedPipelineCents` multiplying by
+ * the stored column, which is `NOT NULL DEFAULT 10`.
+ *
+ * So every opportunity created since that change was born at 10% and stayed
+ * there, because nothing on the platform could edit it any more. A $400k bid
+ * sitting at Sent contributed $40k to the weighted pipeline on the dashboard
+ * Alex reads every morning, and the error grew with every new deal while old
+ * deals kept whatever number somebody had typed months ago. The pipeline was a
+ * mix of stale hand-set values and a hardcoded 10.
+ *
+ * The stage already carries the information the field was asking a human for,
+ * so it is read from the stage instead. That is what makes removing the field
+ * honest rather than merely invisible: the number it fed still means something,
+ * and it is now right for old and new deals alike with no backfill.
+ *
+ * The stored `probability_pct` column is left alone — untouched data is
+ * recoverable, and dropping a column to prove a point is not worth a migration.
+ */
+export function probabilityFor(
+  status: string | null | undefined,
+  subStatus: string | null | undefined
+): number {
+  if (subStatus && subStatus in DEFAULT_PROBABILITY_BY_SUB_STATUS) {
+    return DEFAULT_PROBABILITY_BY_SUB_STATUS[subStatus];
+  }
+  if (status && status in DEFAULT_PROBABILITY_BY_STATUS) {
+    return DEFAULT_PROBABILITY_BY_STATUS[status];
+  }
+  // Unknown tuple: 10 matches the old column default, so an unrecognised row
+  // behaves exactly as it did rather than jumping to a number nobody expects.
+  return 10;
+}

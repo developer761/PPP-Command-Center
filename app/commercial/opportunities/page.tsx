@@ -57,7 +57,6 @@ import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   OPEN_OPP_STATUSES,
   PRE_SALE_OPEN_STATUSES,
-  DEFAULT_PROBABILITY_BY_STATUS,
   STALE_OPP_DAYS,
   HOT_DEAL_BID_CENTS,
   HOT_DEAL_DECISION_DAYS,
@@ -541,7 +540,6 @@ export default async function CommercialOpportunitiesPage({
     { key: "oldest", label: "Oldest / stuck opportunities" },
     { key: "bid_high", label: "Highest bid first" },
     { key: "due_soon", label: "Proposal due soonest" },
-    { key: "probability_high", label: "Most likely to win" },
   ] as const;
   type SortKey = (typeof SORT_OPTIONS)[number]["key"];
   const sortRaw = pickFirst(sp.sort);
@@ -693,10 +691,6 @@ export default async function CommercialOpportunitiesPage({
       const av = a.proposal_due_at ? new Date(a.proposal_due_at).getTime() : Infinity;
       const bv = b.proposal_due_at ? new Date(b.proposal_due_at).getTime() : Infinity;
       const diff = av - bv;
-      return diff !== 0 ? diff : stableTie(a, b);
-    }
-    if (sortKey === "probability_high") {
-      const diff = (b.probability_pct ?? 0) - (a.probability_pct ?? 0);
       return diff !== 0 ? diff : stableTie(a, b);
     }
     return stableTie(a, b);
@@ -1048,7 +1042,7 @@ export default async function CommercialOpportunitiesPage({
             tone="blue"
             label="Weighted pipeline"
             value={formatCentsCompact(totalPipelineCents)}
-            sub="Σ midpoint × probability"
+            sub="Σ value × stage odds"
           />
           <KpiCard
             tone="neutral"
@@ -2215,10 +2209,6 @@ function CustomerBoardRow({
               : o.bid_value_low_cents
               ? formatCentsCompact(o.bid_value_low_cents)
               : null;
-            const prob =
-              o.probability_pct ??
-              DEFAULT_PROBABILITY_BY_STATUS[o.status] ??
-              null;
             return (
               <Link
                 key={o.id}
@@ -2238,11 +2228,9 @@ function CustomerBoardRow({
                       <StageChip status={o.status} sub_status={o.sub_status} compact />
                     </span>
                   </div>
-                  {(bidRange || prob !== null) && (
+                  {bidRange && (
                     <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 tabular-nums flex items-center gap-1.5 flex-wrap">
-                      {bidRange && <span>{bidRange} bid</span>}
-                      {bidRange && prob !== null && <span aria-hidden className="text-ppp-charcoal-300">·</span>}
-                      {prob !== null && <span>{prob}% confident</span>}
+                      <span>{bidRange} bid</span>
                     </div>
                   )}
                 </div>
@@ -2769,8 +2757,6 @@ function OpportunityRow({
   const daysInStatus = statusEnteredAt
     ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
     : null;
-  const defaultProb = DEFAULT_PROBABILITY_BY_STATUS[opportunity.status] ?? null;
-  const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
   const moveToOptions = moveToOptionsFor(opportunity);
   const next = nextStep({
     oppId: opportunity.id,
@@ -2863,11 +2849,6 @@ function OpportunityRow({
               {!hideAccount && account && <span aria-hidden>·</span>}
               <span>
                 <strong className="text-ppp-charcoal">{bid}</strong> bid
-              </span>
-              <span aria-hidden>·</span>
-              <span title={probOverridden ? `Default ${defaultProb}% for ${opportunityStatusLabel(opportunity.status)} — overridden` : undefined}>
-                {opportunity.probability_pct}% confident
-                {probOverridden && <span className="ml-0.5 text-amber-700" aria-label="Probability overridden from status default">*</span>}
               </span>
             </div>
 
@@ -3650,7 +3631,6 @@ function CustomerQuickSheet({
                           <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
                             <StatusPill status={d.status} subStatus={d.sub_status} />
                             <span>{formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}</span>
-                            <span>· {d.probability_pct}%</span>
                           </div>
                         </div>
                       </div>
