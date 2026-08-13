@@ -25,7 +25,7 @@ export function StatusMoveSelect({ current }: { current: JobStatus }) {
         const form = e.currentTarget.form;
         if (form) startTransition(() => form.requestSubmit());
       }}
-      className={`${SELECT_CLS} ${pending ? "opacity-50" : ""} !text-[12px] min-h-[44px]`}
+      className={`${SELECT_CLS} ${pending ? "opacity-50" : ""} text-base sm:!text-[12px] min-h-[44px]`}
       style={SELECT_BG_STYLE}
     >
       {JOB_STATUSES.map((s) => (

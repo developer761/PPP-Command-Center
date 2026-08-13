@@ -3098,7 +3098,7 @@ async function InfoTab({
               name="team_id"
               defaultValue={opp.team_id ?? ""}
               aria-label="Team on this opportunity"
-              className={`${SELECT_CLS} text-[12px] py-1 min-h-[36px] max-w-[190px]`}
+              className={`${SELECT_CLS} text-base sm:text-[12px] py-1 min-h-[44px] sm:min-h-[36px] max-w-[190px]`}
               style={SELECT_BG_STYLE}
             >
               <option value="">

@@ -201,7 +201,7 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
                       <input type="hidden" name="team_id" value={selected.id} />
                       <input type="hidden" name="member_id" value={m.id} />
                       <input type="hidden" name="field" value="role" />
-                      <select name="role" defaultValue={m.role} className={`${SELECT_CLS} !py-1.5 text-[12px] w-[150px]`} style={SELECT_BG_STYLE}>
+                      <select name="role" defaultValue={m.role} className={`${SELECT_CLS} !py-1.5 text-base sm:text-[12px] w-[150px]`} style={SELECT_BG_STYLE}>
                         {ASSIGNMENT_ROLES.map((r) => <option key={r} value={r}>{assignmentRoleLabel(r)}</option>)}
                       </select>
                       <button type="submit" className="text-[11px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] px-1">Set</button>

@@ -93,7 +93,7 @@ export function CloseoutItemControls({
           setItemStatus(v);
           save(included, v);
         }}
-        className={`${SELECT_CLS} !min-h-[44px] !py-1 text-[12px] w-[7.5rem]`}
+        className={`${SELECT_CLS} !min-h-[44px] !py-1 text-base sm:text-[12px] w-[7.5rem]`}
         style={SELECT_BG_STYLE}
       >
         {(["pending", "received", "na"] as ItemStatus[]).map((s) => (

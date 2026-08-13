@@ -65,9 +65,23 @@ for (const f of files) {
 
     // 2. inputs whose base font is under 16px
     if (/<(input|textarea|select)\b/.test(line) || /className=\{?["`][^"`]*\}?/.test(line) === false) {
-      const m = line.match(/text-\[(\d+(?:\.\d+)?)px\]/);
-      if (m && /<(input|textarea)\b/.test(line) && Number(m[1]) < 16 && !/sm:text-/.test(line)) {
-        zoom.push(`${at}  input text ${m[1]}px — iOS will zoom on focus`);
+      // <select> counts too — it was missed on the teams page, where the role
+      // dropdown zoomed the page on every tap. Named sizes count as well:
+      // text-xs is 12px and text-sm is 14px, both under the 16px threshold.
+      const px = line.match(/(?<!sm:)text-\[(\d+(?:\.\d+)?)px\]/);
+      const named = /(?<!sm:)\btext-(xs|sm)\b/.exec(line);
+      const size = px ? Number(px[1]) : named ? (named[1] === "xs" ? 12 : 14) : null;
+      // A line interpolating SELECT_CLS / INPUT_CLS / TEXTAREA_CLS is a field
+      // too, even when the <select> tag itself sits on another line. The
+      // shared constants are all correctly guarded — every real miss so far
+      // has been a per-site OVERRIDE landing after them, which wins.
+      const isField =
+        /<(input|textarea|select)\b/.test(line) ||
+        /\b(SELECT_CLS|INPUT_CLS|TEXTAREA_CLS)\b/.test(line);
+      // A base `text-base` elsewhere on the line is the guard we want to see.
+      const guarded = /\btext-base\b/.test(line);
+      if (isField && size !== null && size < 16 && !guarded) {
+        zoom.push(`${at}  field text ${size}px — iOS will zoom on focus`);
       }
     }
 

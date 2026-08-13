@@ -16,6 +16,7 @@ import { listLastNoteByOpp } from "./notes";
 import { listOpenTaskStatsByOpp } from "./tasks";
 import { listAttachmentCountByOpp } from "./attachments";
 import { commercialDb } from "@/lib/commercial/db";
+import { probabilityFor } from "./constants";
 
 /**
  * CSV export of the global Opportunities pipeline.
@@ -41,7 +42,7 @@ const HEADERS = [
   "Status",
   "Bid low ($)",
   "Bid high ($)",
-  "Probability %",
+  "Stage odds %",
   "Source",
   "Proposal due",
   "Proposed start",
@@ -193,7 +194,11 @@ export async function exportOpportunitiesCsv(
         csvEscape(opportunityStatusLabel(o.status)),
         csvEscape(centsToDollars(o.bid_value_low_cents)),
         csvEscape(centsToDollars(o.bid_value_high_cents)),
-        csvEscape(o.probability_pct ?? ""),
+        // Derived from the stage, like every other surface. The stored
+        // `probability_pct` is the dead column that defaults to 10 and hasn't
+        // been editable since probability left the forms — exporting it would
+        // hand somebody a spreadsheet full of 10s to plan against.
+        csvEscape(probabilityFor(o.status, o.sub_status)),
         csvEscape(o.source ? opportunitySourceLabel(o.source) : ""),
         csvEscape(isoDate(o.proposal_due_at)),
         csvEscape(isoDate(o.proposed_start_at)),
