@@ -26,6 +26,10 @@ export type DeliveryTool = {
   state: string;
   /** done = there and finished · active = in flight · todo = nothing yet. */
   status: "done" | "active" | "todo";
+  /** Which delivery phase this belongs to. Karan 2026-08-13: "none of these
+   *  say what phase they are correlated with." Without it the strip is six
+   *  tools in a row and nothing tells you which ones are this week's. */
+  phase: string;
 };
 
 const DOT: Record<DeliveryTool["status"], string> = {
@@ -58,15 +62,21 @@ export function DeliveryToolsStrip({
           {tools.filter((t) => t.status === "todo").length} not started
         </span>
       </div>
-      {/* Scrolls as one row rather than wrapping — a wrapped strip reads as two
-          unrelated groups. Each tile is its own 44px tap target. */}
+      {/* Grouped by phase, in the order the work runs. A flat row of six told
+          you nothing about WHEN each belongs, so the tools for next month sat
+          beside the ones for today looking equally urgent. */}
       <div className="flex items-stretch divide-x divide-ppp-charcoal-100 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        {tools.map((t) => (
+        {tools.map((t, i) => (
           <Link
             key={t.key}
             href={t.href}
             className="group min-w-[8.5rem] flex-1 px-3.5 py-2.5 min-h-[44px] hover:bg-cc-brand-50/50 transition-colors"
           >
+            {/* The phase label prints once per group, so the eye reads
+                "Pre-Construction: these three" rather than six equal tiles. */}
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-0.5 whitespace-nowrap">
+              {i === 0 || tools[i - 1].phase !== t.phase ? t.phase : "\u00A0"}
+            </span>
             <span className="flex items-center gap-1.5">
               <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOT[t.status]}`} />
               <span className="text-[11.5px] font-semibold text-ppp-charcoal group-hover:text-cc-brand-800 whitespace-nowrap">

@@ -151,6 +151,7 @@ import {
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
 import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
+import { DealAnalytics } from "@/components/commercial/deal-analytics";
 import { STAGE_MEANING } from "@/lib/commercial/opportunities/kanban-columns";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
@@ -1348,14 +1349,22 @@ type SubTab =
   | "change-orders"
   | "aia"
   | "transactions"
+  | "invoices"
+  | "analytics"
   | "closeout";
 /** Delivery tools, in the order the work actually happens. */
 const PROJECT_SUB_TABS: { key: SubTab; label: string }[] = [
-  { key: "work-order", label: "Work Order" },
+  // Karan 2026-08-13: Invoices belongs down here with the other delivery
+  // tools, not as a peer of Overview and Proposals. Ordered the way the work
+  // runs — submittals and the work order before anyone mobilises, money in the
+  // middle, closeout last.
   { key: "submittals", label: "Submittals" },
+  { key: "work-order", label: "Work Order" },
   { key: "change-orders", label: "Change Orders" },
   { key: "aia", label: "AIA Billing" },
+  { key: "invoices", label: "Invoices" },
   { key: "transactions", label: "Transactions" },
+  { key: "analytics", label: "Analytics" },
   { key: "closeout", label: "Closeout" },
 ];
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
@@ -1408,7 +1417,10 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
     raw === "activity" ||
     raw === "proposals" ||
     raw === "project" ||
-    raw === "invoices" ||
+    // `invoices` is deliberately NOT here any more — it moved under `project`
+    // on 2026-08-13, and this early return would have short-circuited the
+    // mapping below, leaving every old link pointing at a primary tab that no
+    // longer exists.
     raw === "debrief"
   ) {
     return { primary: raw as PrimaryTab, sub: null };
@@ -1428,6 +1440,9 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   // `costs` is the old route name; `transactions` is what Katie calls it.
   if (raw === "transactions" || raw === "costs") return { primary: "project", sub: "transactions" };
   if (raw === "closeout") return { primary: "project", sub: "closeout" };
+  if (raw === "analytics") return { primary: "project", sub: "analytics" };
+  // Was a primary tab until 2026-08-13. Old links, bells and bookmarks carry it.
+  if (raw === "invoices") return { primary: "project", sub: "invoices" };
   if (raw === "proposal") return { primary: "proposals", sub: null };
   // Unknown / stale keys → fall through to Overview.
   return { primary: "overview", sub: null };
@@ -1583,6 +1598,16 @@ export default async function OpportunityDetailPage({
   // Per-invoice clamp so one overpayment can't mask another invoice's debt —
   // the same rule as ProjectFinancials.openBalanceCents.
   const contractToDate = pathFin?.contractCents ?? 0;
+  // Signed sum of APPROVED change orders — deducts stay negative so the
+  // analytics note can say "+ 12k" or "− 3k" honestly rather than netting the
+  // sign away. `contractCents` already includes this; the base is the
+  // remainder, which is what makes the two lines add up on screen.
+  const pathApprovedCoCents = pathChangeOrders
+    .filter((c) => c.status === "approved")
+    .reduce((n, c) => n + (c.amount_cents ?? 0), 0);
+  const pathContractBaseCents = contractToDate - pathApprovedCoCents;
+  const invoicedCents = pathFin?.invoicedCents ?? 0;
+  const collectedCents = pathFin?.collectedCents ?? 0;
   const openInvoiceCents = pathInvoices.reduce(
     (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
     0
@@ -1592,6 +1617,7 @@ export default async function OpportunityDetailPage({
     ? [
         {
           key: "submittals",
+          phase: "Pre-Construction",
           label: "Submittals",
           href: tabHref("submittals"),
           state:
@@ -1604,6 +1630,7 @@ export default async function OpportunityDetailPage({
         },
         {
           key: "work-order",
+          phase: "Pre-Construction",
           label: "Work Order",
           href: tabHref("work-order"),
           state: pathWorkOrder ? "Written" : "Not written",
@@ -1611,6 +1638,7 @@ export default async function OpportunityDetailPage({
         },
         {
           key: "change-orders",
+          phase: "In Progress",
           label: "Change Orders",
           href: tabHref("change-orders"),
           state:
@@ -1622,7 +1650,16 @@ export default async function OpportunityDetailPage({
           status: pathChangeOrders.length === 0 ? "todo" : pendingCoCount > 0 ? "active" : "done",
         },
         {
+          key: "transactions",
+          phase: "In Progress",
+          label: "Costs",
+          href: tabHref("transactions"),
+          state: costsSoFar > 0 ? `${formatCentsCompact(costsSoFar)} logged` : "None logged",
+          status: costsSoFar > 0 ? "active" : "todo",
+        },
+        {
           key: "aia",
+          phase: "Billing",
           label: "AIA Billing",
           href: tabHref("aia"),
           // Karan 2026-08-13: "we bill in chunks — when does the bar fully
@@ -1644,18 +1681,12 @@ export default async function OpportunityDetailPage({
               : "active",
         },
         {
-          key: "transactions",
-          label: "Costs",
-          href: tabHref("transactions"),
-          state: costsSoFar > 0 ? `${formatCentsCompact(costsSoFar)} logged` : "None logged",
-          status: costsSoFar > 0 ? "active" : "todo",
-        },
-        {
           // Karan 2026-08-13: "where is the invoicing and stuff." A delivery
           // checklist without the money isn't one — invoicing IS delivery, and
           // its tab is top-level rather than under Project, which is exactly
           // why it fell out of a strip built from the Project sub-tabs.
           key: "invoices",
+          phase: "Billing",
           label: "Invoices",
           href: `/commercial/opportunities/${opp.id}?tab=invoices`,
           // Retainage is the sting: it is withheld INSIDE each application, so
@@ -1663,14 +1694,20 @@ export default async function OpportunityDetailPage({
           // with 5% still held reads "Paid in full" — which is exactly the
           // detail that matters, because that money is the reason closeout
           // gets chased.
+          // Karan 2026-08-13: "invoicing is weird because it can be invoiced
+          // multiple times." Right — this is progress billing, so a COUNT
+          // ("3 paid") says nothing about how far through the money you are.
+          // It reads like the AIA tile: collected against what has been
+          // invoiced, with what is outstanding, and retainage last because it
+          // is the chunk that arrives after everything else.
           state:
             pathInvoices.length === 0
               ? "None raised"
               : openInvoiceCents > 0
-              ? `${formatCentsCompact(openInvoiceCents)} outstanding`
+              ? `${formatCentsCompact(collectedCents)} of ${formatCentsCompact(invoicedCents)} · ${formatCentsCompact(openInvoiceCents)} out`
               : pathRetainageCents > 0
               ? `${formatCentsCompact(pathRetainageCents)} retainage held`
-              : "Paid in full",
+              : `${formatCentsCompact(invoicedCents)} paid in full`,
           status:
             pathInvoices.length === 0
               ? "todo"
@@ -1680,6 +1717,7 @@ export default async function OpportunityDetailPage({
         },
         {
           key: "closeout",
+          phase: "Closeout",
           label: "Closeout & Warranty",
           href: tabHref("closeout"),
           state:
@@ -1814,7 +1852,6 @@ export default async function OpportunityDetailPage({
         // its `commercial_projects` row. Before that there is no work to show,
         // and a bid has no submittals, change orders or closeout.
         ...(isOppWon ? [{ key: "project" as PrimaryTab, label: "Project" }] : []),
-        ...(isOppWon ? [{ key: "invoices" as PrimaryTab, label: "Invoices" }] : []),
         ...(isOppTerminal ? [{ key: "debrief" as PrimaryTab, label: "Debrief" }] : []),
       ];
   const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
@@ -2248,6 +2285,26 @@ export default async function OpportunityDetailPage({
           debriefSaved={pickFirst(sp.debrief_saved) === "1"}
           statusOk={pickFirst(sp.status_ok) === "1"}
           errorMessage={pickFirst(sp.error)}
+        />
+      )}
+      {tab === "analytics" && isOppWon && pathFin && (
+        <DealAnalytics
+          a={{
+            contractBaseCents: pathContractBaseCents,
+            approvedCoCents: pathApprovedCoCents,
+            contractToDateCents: pathFin.contractCents,
+            invoicedCents: pathFin.invoicedCents,
+            collectedCents: pathFin.collectedCents,
+            openBalanceCents: pathFin.openBalanceCents,
+            retainageCents: pathRetainageCents,
+            costsCents: pathFin.totalCostCents,
+            crewLaborCents: pathFin.fieldOpsLaborCents,
+            purchasesCents: pathFin.costs.total,
+            // The ONE margin the platform agrees on — billed-based, per D2.
+            marginCents: pathMargin?.cents ?? 0,
+            marginPct: pathMargin?.pct ?? null,
+            unratedHours: pathFin.laborUnratedHours,
+          }}
         />
       )}
       {tab === "invoices" && (isOppWon || isDeletedDeal) && (
