@@ -657,3 +657,23 @@ New report (hours + cost by person / job / week). Verified the things that make 
 - **Correct columns** (`display_name`, `name`, not `full_name`/`title`) — verified against schema, the silent-empty
   class avoided. Unrated hours carried separately with an amber "set their rate" band, not folded into $0. Week
   bucketing Mon–Sun string-math, tested incl. both 2026 DST changeovers. 4/4 tests, tsc clean. Nothing handed back.
+
+---
+
+## ✅ RESOLVED — money guard hardened (`3716e73`) + migrations 133/134/135 all confirmed LIVE.
+The build session accepted the severity correction and fixed the guard properly. Verified:
+- `projectHoldsAnything(projectId, opportunityId)` now queries by BOTH columns via PostgREST `.or()`
+  (`project_id.eq.…,opportunity_id.eq.…`), one round trip per table; caller passes `oppId` (ensure.ts:210).
+  UUID-only interpolation (no filter-injection risk), safe error→TRUE fallback kept. So the guard no longer depends
+  on `project_id` being populated — defense-in-depth, works even if 135 hadn't run. ✅
+- **Prod confirmation (independent):** migration **135 LIVE** — `commercial_invoices`/`change_orders`/`work_orders`
+  show **0 rows** with an opportunity_id but NULL project_id (backfill took effect, no stranded rows). Migration
+  **134 LIVE** — `commercial_operating_company.signature_name/title` resolve 200. Migration **133** confirmed live
+  earlier. **All three run.** ✅
+
+### 📋 Action-item status (mine to track): migrations 133/134/135 ✅ DONE. Still open for Karan:
+- 🟡 **1.1 archiving decision** — re-decide on real facts (now doubly relevant: the guard bug WAS the money-hiding it
+  warns about; with the guard fixed + 135 run, archiving a money-holding project is blocked, but the *report-hiding*
+  of a deliberately-archived won deal via `listProjects` filtering `archived_at` still stands as the open call).
+- 🟡 **`PPP_ADMIN_EMAILS`** not set in Vercel.
+### Open build-session handoffs: probability CSV export, mobile select-zoom (`teams:204`) — still not landed.
