@@ -142,7 +142,7 @@ export function ActivityRail({
                 </ul>
               ) : (
                 <details className="group">
-                  <summary className="list-none px-3.5 py-1.5 cursor-pointer text-[11.5px] text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[36px] flex items-center gap-1">
+                  <summary className="list-none px-3.5 py-1.5 cursor-pointer text-[11.5px] text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[44px] sm:min-h-[36px] flex items-center gap-1">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-90 transition-transform">
                       <path d="m9 18 6-6-6-6" />
                     </svg>

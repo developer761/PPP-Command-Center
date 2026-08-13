@@ -2533,7 +2533,7 @@ async function OpportunityInvoicesPanel({
                   </Link>
                   {canRecordPayment && (
                     <details className="group/pay border-t border-ppp-charcoal-100">
-                      <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 rounded-b-lg min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                      <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 rounded-b-lg min-h-[44px] sm:min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
                         <span className="inline-flex items-center gap-1.5">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                             <path d="M12 5v14 M5 12h14" />
@@ -3811,7 +3811,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
             </div>
             <div className="flex items-center gap-2">
               <input id="team_primary" name="is_primary" type="checkbox" className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40" />
-              <label htmlFor="team_primary" className="text-[12px] text-ppp-charcoal-700">
+              <label htmlFor="team_primary" className="text-[12px] text-ppp-charcoal-700 inline-flex items-center min-h-[44px] sm:min-h-0">
                 Mark as primary in this role
               </label>
             </div>

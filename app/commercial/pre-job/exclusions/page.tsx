@@ -225,7 +225,7 @@ export default async function ExclusionsLibraryPage({
             ))}
           </select>
         </label>
-        <label className="inline-flex items-center gap-2 pb-2">
+        <label className="inline-flex items-center gap-2 pb-2 min-h-[44px] sm:min-h-0">
           <input
             type="checkbox"
             name="archived"
@@ -293,7 +293,7 @@ export default async function ExclusionsLibraryPage({
             </label>
           </div>
           {editing && (
-            <label className="inline-flex items-center gap-2">
+            <label className="inline-flex items-center gap-2 min-h-[44px] sm:min-h-0">
               <input
                 type="checkbox"
                 name="is_active"

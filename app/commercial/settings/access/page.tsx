@@ -259,7 +259,7 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
               {scheduleRecipients.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-2 py-2">
                   <div className="min-w-0"><span className="text-[13px] font-medium text-ppp-charcoal">{r.label ? `${r.label} · ` : ""}</span><span className="text-[12.5px] text-ppp-charcoal-600">{r.email}</span></div>
-                  <form action={removeRecipientAction}><input type="hidden" name="id" value={r.id} /><button type="submit" className="inline-flex items-center px-2 rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 min-h-[44px] touch-manipulation">Remove</button></form>
+                  <form action={removeRecipientAction}><input type="hidden" name="id" value={r.id} /><button type="submit" className="inline-flex items-center px-2 rounded-lg text-base sm:text-[12px] font-semibold text-rose-600 hover:bg-rose-50 min-h-[44px] touch-manipulation">Remove</button></form>
                 </li>
               ))}
             </ul>

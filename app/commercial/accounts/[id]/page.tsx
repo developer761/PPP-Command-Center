@@ -2855,7 +2855,7 @@ async function TeamTab({
               </select>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm min-h-[44px] sm:min-h-0">
             <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30" />
             Mark as primary in this role (replaces any current primary)
           </label>
@@ -2941,7 +2941,7 @@ async function TeamTab({
                 </select>
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm min-h-[44px] sm:min-h-0">
               <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30" />
               Mark as primary in this role
             </label>

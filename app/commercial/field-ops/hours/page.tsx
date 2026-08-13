@@ -94,9 +94,9 @@ export default async function FieldOpsHoursPage({
         })}
         <form action={BASE} method="get" className="flex items-center gap-1.5 ml-auto">
           <input type="hidden" name="range" value="custom" />
-          <input type="date" name="from" defaultValue={range === "custom" ? from : ""} aria-label="From date" className="min-h-[44px] rounded-lg border border-ppp-charcoal-100 px-2 text-[12.5px] text-ppp-charcoal" />
+          <input type="date" name="from" defaultValue={range === "custom" ? from : ""} aria-label="From date" className="min-h-[44px] rounded-lg border border-ppp-charcoal-100 px-2 text-base sm:text-[12.5px] text-ppp-charcoal" />
           <span className="text-ppp-charcoal-400 text-[12px]">–</span>
-          <input type="date" name="to" defaultValue={range === "custom" ? to : ""} aria-label="To date" className="min-h-[44px] rounded-lg border border-ppp-charcoal-100 px-2 text-[12.5px] text-ppp-charcoal" />
+          <input type="date" name="to" defaultValue={range === "custom" ? to : ""} aria-label="To date" className="min-h-[44px] rounded-lg border border-ppp-charcoal-100 px-2 text-base sm:text-[12.5px] text-ppp-charcoal" />
           <button type="submit" className="px-3 min-h-[44px] inline-flex items-center rounded-lg text-[12.5px] font-semibold bg-cc-brand-600 text-white hover:bg-cc-brand-700">Go</button>
         </form>
       </div>

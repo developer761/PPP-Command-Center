@@ -597,7 +597,7 @@ function IntelEditor({ competitor }: { competitor: Competitor }) {
           <textarea name="notes" defaultValue={competitor.notes ?? ""} maxLength={4000} rows={3} placeholder="Anything else the team should know — pricing tendencies, key contacts, past incidents…" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
         </label>
         <div className="sm:col-span-2 flex justify-end">
-          <button type="submit" className="inline-flex items-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px]">
+          <button type="submit" className="inline-flex items-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[40px]">
             Save intel
           </button>
         </div>

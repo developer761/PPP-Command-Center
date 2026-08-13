@@ -219,13 +219,15 @@ export default async function ArchivedDealsPage({
                   return (
                     <tr key={o.id} className="hover:bg-ppp-charcoal-50">
                       <td className="px-3 py-2 align-top">
-                        <input
-                          type="checkbox"
-                          name="id"
-                          value={o.id}
-                          aria-label={`Select ${display}`}
-                          className="h-4 w-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-500"
-                        />
+                        <label className="flex items-center justify-center min-h-[44px] min-w-[44px] -m-2 p-2 cursor-pointer touch-manipulation">
+                          <input
+                            type="checkbox"
+                            name="id"
+                            value={o.id}
+                            aria-label={`Select ${display}`}
+                            className="h-4 w-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-500"
+                          />
+                        </label>
                       </td>
                       <td className="px-3 py-2 align-top">
                         <div className="font-medium text-ppp-charcoal">
@@ -296,13 +298,18 @@ export default async function ArchivedDealsPage({
                   key={o.id}
                   className="flex items-start gap-3 rounded-lg border border-ppp-charcoal-100 bg-surface p-3"
                 >
-                  <input
-                    type="checkbox"
-                    name="id"
-                    value={o.id}
-                    aria-label={`Select ${display}`}
-                    className="mt-1 h-4 w-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-500"
-                  />
+                  {/* The box is 16px by design; the LABEL is the tap target.
+                      Bare, this was a 16px hit area on the surface where you
+                      un-archive a deal — the one action here that matters. */}
+                  <label className="flex items-start justify-center min-h-[44px] min-w-[44px] -m-2 p-2 cursor-pointer touch-manipulation shrink-0">
+                    <input
+                      type="checkbox"
+                      name="id"
+                      value={o.id}
+                      aria-label={`Select ${display}`}
+                      className="mt-1 h-4 w-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-500"
+                    />
+                  </label>
                   <div className="min-w-0 flex-1">
                     <Link
                       href={`/commercial/opportunities/${o.id}`}

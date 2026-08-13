@@ -449,9 +449,9 @@ export function FieldOpsCalendar({
     <div>
       <div className="flex items-center gap-2 mb-3">
         <div className="inline-flex items-center rounded-lg border border-ppp-charcoal-200 overflow-hidden">
-          <button onClick={() => goMonth(prevMonth)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[40px]" aria-label="Previous month">&larr;</button>
-          <button onClick={() => { closeAll(); router.push("/commercial/field-ops/calendar", { scroll: false }); }} className="px-3 py-2 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 border-x border-ppp-charcoal-200 min-h-[40px]">Today</button>
-          <button onClick={() => goMonth(nextMonth)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[40px]" aria-label="Next month">&rarr;</button>
+          <button onClick={() => goMonth(prevMonth)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]" aria-label="Previous month">&larr;</button>
+          <button onClick={() => { closeAll(); router.push("/commercial/field-ops/calendar", { scroll: false }); }} className="px-3 py-2 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 border-x border-ppp-charcoal-200 min-h-[44px] sm:min-h-[40px]">Today</button>
+          <button onClick={() => goMonth(nextMonth)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]" aria-label="Next month">&rarr;</button>
         </div>
         <h2 className="text-[15px] font-bold text-ppp-charcoal">{monthLabel(monthStart)}</h2>
         {pending && <span className="text-[11px] text-ppp-charcoal-400">updating…</span>}
@@ -683,7 +683,7 @@ function DayPanel({
               {offOnly.map((o) => (
                 <li key={o.employee_id} className="flex items-center justify-between gap-2 text-[12.5px]">
                   <span className="text-ppp-charcoal-800 truncate min-w-0"><span className="font-semibold">{o.name}</span> <span className="text-amber-700">· {o.type.replace("_", " ").toLowerCase()}</span></span>
-                  <button onClick={() => onRemoveAbsence(o.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 shrink-0 min-h-[32px] px-1.5 disabled:opacity-50">Clear</button>
+                  <button onClick={() => onRemoveAbsence(o.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 shrink-0 min-h-[44px] sm:min-h-[32px] px-1.5 disabled:opacity-50">Clear</button>
                 </li>
               ))}
             </ul>
@@ -693,8 +693,8 @@ function DayPanel({
         {/* Schedule / Mark-off toggle */}
         <div className="border-t border-ppp-charcoal-50 pt-4">
           <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden mb-3">
-            <button onClick={() => setMode("schedule")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[36px] ${mode === "schedule" ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Schedule</button>
-            <button onClick={() => setMode("off")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[36px] border-l border-ppp-charcoal-200 ${mode === "off" ? "bg-amber-500 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Mark off</button>
+            <button onClick={() => setMode("schedule")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${mode === "schedule" ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Schedule</button>
+            <button onClick={() => setMode("off")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] border-l border-ppp-charcoal-200 ${mode === "off" ? "bg-amber-500 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Mark off</button>
           </div>
 
           {mode === "schedule" ? (

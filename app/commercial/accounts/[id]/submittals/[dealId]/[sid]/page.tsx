@@ -1982,7 +1982,7 @@ function StatusActionsPanel({
           filled) so it doesn't compete with the primary action above. */}
       {allowed.includes("voided") && (
         <details className="mt-5 group">
-          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-surface text-[13px] font-semibold text-rose-800 hover:bg-rose-50 active:bg-rose-100 min-h-[40px] touch-manipulation select-none">
+          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-surface text-[13px] font-semibold text-rose-800 hover:bg-rose-50 active:bg-rose-100 min-h-[44px] sm:min-h-[40px] touch-manipulation select-none">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
               <path d="M9 18l6-6-6-6" />
             </svg>

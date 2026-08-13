@@ -87,7 +87,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
         </div>
         {zeroCount > 0 && (
           <form action={bulkApproveAction}>
-            <button type="submit" className="inline-flex items-center px-3 py-2 rounded-lg bg-ppp-green-600 text-white text-[12.5px] font-semibold hover:bg-ppp-green-700 min-h-[40px]">Approve {zeroCount} matching</button>
+            <button type="submit" className="inline-flex items-center px-3 py-2 rounded-lg bg-ppp-green-600 text-white text-[12.5px] font-semibold hover:bg-ppp-green-700 min-h-[44px] sm:min-h-[40px]">Approve {zeroCount} matching</button>
           </form>
         )}
       </div>

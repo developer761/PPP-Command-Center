@@ -1658,7 +1658,7 @@ export default async function ProposalEditorPage({
             </div>
 
             {/* Capital-improvement banner toggle */}
-            <label className="flex items-center gap-2.5 rounded-lg border border-amber-200 bg-amber-50/50 px-3.5 py-2.5 cursor-pointer">
+            <label className="flex items-center gap-2.5 rounded-lg border border-amber-200 bg-amber-50/50 px-3.5 py-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
               <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? false} className="w-4 h-4 accent-amber-600" />
               <span className="text-[12.5px] text-ppp-charcoal-700">Show yellow &ldquo;Capital Improvement / NY Sales Tax&rdquo; banner on the PDF</span>
             </label>
@@ -1807,7 +1807,7 @@ export default async function ProposalEditorPage({
             </svg>
           }
         >
-          <label className="flex items-center gap-2.5 cursor-pointer">
+          <label className="flex items-center gap-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
             <input type="checkbox" name="pdf_show_line_prices" defaultChecked={proposal.pdf_show_line_prices} className="w-4 h-4 accent-cc-brand-600" />
             <span className="text-[12.5px] text-ppp-charcoal-700">
               Show per-line prices on the customer PDF (Tomco default hides them — customer sees only the TOTAL)

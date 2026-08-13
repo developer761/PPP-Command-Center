@@ -188,7 +188,7 @@ export default function PurchaseForm({
         {/* capture="environment" opens the camera straight away on a phone so a
             field crew member can snap the receipt in one tap (2026-08 field
             walk). HEIC/HEIF accepted so iPhone photos aren't greyed out. */}
-        <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif" capture="environment" className="block w-full text-[13px] text-ppp-charcoal-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-[13px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:min-h-[44px]" />
+        <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif" capture="environment" className="block w-full text-base sm:text-[13px] text-ppp-charcoal-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-[13px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:min-h-[44px]" />
         {purchase?.receipt_document_id && <p className="text-[11px] text-emerald-700 mt-1">A receipt is on file — uploading a new one replaces it.</p>}
       </div>
       <div className="flex items-center gap-2">

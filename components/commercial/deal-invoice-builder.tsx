@@ -146,7 +146,7 @@ export function DealInvoiceBuilder({
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="dni-waiver" className={LABEL_CLS}>Signed lien waiver (optional)</label>
-              <input id="dni-waiver" name="flat_waiver" type="file" accept={WAIVER_ACCEPT} className="block w-full text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-ppp-blue-600 file:text-white hover:file:bg-ppp-blue-700 file:min-h-[40px] cursor-pointer" />
+              <input id="dni-waiver" name="flat_waiver" type="file" accept={WAIVER_ACCEPT} className="block w-full text-base sm:text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-ppp-blue-600 file:text-white hover:file:bg-ppp-blue-700 file:min-h-[40px] cursor-pointer" />
               <p className="text-[10.5px] text-ppp-charcoal-400 mt-1">You can also add it later from the invoice — waivers usually arrive after billing.</p>
             </div>
           </div>
@@ -183,12 +183,12 @@ export function DealInvoiceBuilder({
                   </div>
                   <div className="mt-1.5">
                     <label htmlFor={`ms-waiver-${i}`} className="text-[10px] font-semibold text-ppp-charcoal-500">Signed lien waiver (optional)</label>
-                    <input id={`ms-waiver-${i}`} name={`ms_waiver_${i}`} type="file" accept={WAIVER_ACCEPT} className="block w-full text-[11px] text-ppp-charcoal-500 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-ppp-charcoal-100 file:text-ppp-charcoal-700 hover:file:bg-ppp-charcoal-200 cursor-pointer mt-0.5" />
+                    <input id={`ms-waiver-${i}`} name={`ms_waiver_${i}`} type="file" accept={WAIVER_ACCEPT} className="block w-full text-base sm:text-[11px] text-ppp-charcoal-500 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-ppp-charcoal-100 file:text-ppp-charcoal-700 hover:file:bg-ppp-charcoal-200 cursor-pointer mt-0.5" />
                   </div>
                 </div>
               ))}
             </div>
-            <button type="button" onClick={() => addRow()} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[40px]">
+            <button type="button" onClick={() => addRow()} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px] sm:min-h-[40px]">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
               Add milestone
             </button>

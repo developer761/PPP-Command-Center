@@ -1085,7 +1085,7 @@ function AccountRow({
     <li className="hover:bg-cc-brand-50/30 transition-colors group/row">
       <div className="flex items-stretch gap-0">
         {/* Checkbox — big tap area, sits OUTSIDE the Link. */}
-        <label className="pl-3 sm:pl-4 pr-2 pt-5 cursor-pointer touch-manipulation shrink-0">
+        <label className="pl-3 sm:pl-4 pr-2 pt-5 cursor-pointer touch-manipulation shrink-0 min-h-[44px] flex items-start">
           <input
             type="checkbox"
             name="account_id"

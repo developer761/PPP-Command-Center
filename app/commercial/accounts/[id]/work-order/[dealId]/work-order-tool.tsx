@@ -690,7 +690,7 @@ export async function WorkOrderTool({
               <div>
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <div className="text-[12px] font-bold text-ppp-charcoal">Paint colors &amp; finishes</div>
-                  <Link href={finishesHref} className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px] inline-flex items-center">Edit finishes →</Link>
+                  <Link href={finishesHref} className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[36px] inline-flex items-center">Edit finishes →</Link>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-[12px]">

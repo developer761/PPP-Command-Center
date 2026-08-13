@@ -431,7 +431,7 @@ export default async function NewCommercialAccountPage({
           {/* Karan 2026-07-08: is_key_relationship parity with the Edit
               form. Was create→edit round-trip; now flagging a key
               account at create time works from one place. */}
-          <label className="flex items-start gap-2 text-sm pt-1 cursor-pointer">
+          <label className="flex items-start gap-2 text-sm pt-1 cursor-pointer min-h-[44px] sm:min-h-0">
             <input
               type="checkbox"
               name="is_key_relationship"
