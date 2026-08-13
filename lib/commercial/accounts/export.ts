@@ -21,7 +21,6 @@ import { listAccountOverviews } from "./overview";
 const HEADERS = [
   "Company name",
   "DBA",
-  "Industry",
   "Rating",
   "Compliance status",
   "Prequalification",
@@ -90,7 +89,6 @@ export async function exportAccountsCsv(filters: AccountsListFilters = {}): Prom
       [
         csvEscape(a.company_name),
         csvEscape(a.dba),
-        csvEscape(a.industry),
         csvEscape(a.rating),
         csvEscape(a.vendor_compliance_status),
         csvEscape(a.prequalification_status),
@@ -129,7 +127,6 @@ export function exportAccountsFilename(
   const tokens: string[] = ["ppp-commercial-accounts"];
   if (filters.rating) tokens.push(`rating-${filters.rating}`);
   if (filters.compliance) tokens.push(`compliance-${filters.compliance}`);
-  if (filters.industry) tokens.push(`industry-${filters.industry.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`);
   if (filters.search) tokens.push("search");
   tokens.push(`n${totalCount}`);
   tokens.push(today);
