@@ -886,3 +886,24 @@ Karan: buttons "still did nothing" + "submittals is before they start the job." 
   at pre_construction (`pathNeedsSubmittals = in_progress || pre_construction`, page.tsx:1484 → count at :1568) — the
   commit caught that they were fetched only for in_progress, so the step would have shipped dead. ✅
 64 tests, tsc clean. No miss — buttons genuinely work now (verified render-order, not just compile).
+
+---
+
+## ✅ VERIFY — delivery-tools checklist on the deal (`2f68d83`). CLEAN. One light observation.
+Karan: "we're in delivery and there's no work order/closeout/warranty here." Fixed with a page-level state CHECKLIST
+(not a nav row), visible from any tab (page.tsx:2074, above tab content), ordered by workflow.
+- **Honesty verified (the commit's own stated risk):** every strip state reads REAL fetched data —
+  `listOpportunitySubmittals` (page.tsx:1486) and `listCloseoutPackages` (1491) now load for ANY won/delivering deal,
+  not just specific stages, so the strip can't report "Not sent/Not started" it never checked. Submittals state
+  correctly splits "N awaiting the GC" (active) vs "N closed" (done) — an open submittal is the normal state, not
+  unfinished. Work order / change orders / billing / costs / closeout all read their real arrays. ✅
+- Mobile clean, tsc clean, suite green.
+- **Two NOT-built items documented, not silently left** — (a) crew clock-in → auto-advance to In Progress
+  (deliberately off the auto-advance whitelist that an adversarial pass hardened — a business call), (b) "no project
+  record" is a workaround-instruction not an action (needs a real button, not render-time row creation). Both
+  correctly scoped out with rationale.
+
+**🔵 LIGHT OBSERVATION (not a miss):** Karan named "warranty" explicitly, but the strip folds it into the **closeout**
+row rather than showing it as its own state. The data already exists (`pathWarrantyThrough`, page.tsx:1501). If Karan
+wants at-a-glance warranty status ("active through <date>") as its own checklist row, it's a ~small add. Flagging so
+it's his call, not silently decided.
