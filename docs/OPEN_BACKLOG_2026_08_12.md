@@ -844,3 +844,27 @@ A cash-collection ratio/chart must be same-basis. **Fix:** for the collection ra
 cross-compares against real cash, so the two sides must match. Magnitude scales with how many invoices carry
 `tax_pct > 0` (tax-exempt GCs = no effect), but it's structurally wrong for any taxed invoice — and it's a number
 Alex reads. Handed off.
+
+---
+
+## ✅ VERIFY — Reports F4: Change orders & vendor spend (`77981b2`). CLEAN, no miss. (Reports F1–F4 complete.)
+- **Unbilled CO headline correct** — `approved && !invoiced_invoice_id && amount > 0` (line 232), i.e. approved +
+  uninvoiced + ADDITIVE only. The `invoiced_invoice_id IS NULL` signal is a direct, correct "not yet billed" test.
+- **Adds/deducts never netted** (signed `amount_cents` split into approvedAdd/approvedDeduct), **approval rate excludes
+  pending** (approved ÷ (approved+declined), null when nothing decided) — same honesty as the estimator win rate.
+- **Vendor grouping** conservative (`vendorKey` normalises case/punct/suffix, won't merge "Sherwin" into "Sherwin
+  Williams", "---" → Unattributed, says when a row combined variants). ✅
+- **Vendor spend = Σ `amount_cents`** — NOT a ratio, so no F3-style tax-basis bug. Purchases table (mig 095) has no
+  planned/draft status, so all non-deleted rows are actual spend; job-costs reads the same `deleted_at IS NULL`
+  universe → the two reconcile. ✅
+- Pagination on all three queries, RBAC behind commercial access (company money, consistent with F3), mobile clean
+  (the `change-orders-panel:541` scanner hit is the pre-verified `seg`-const false-positive). 9 tests, tsc clean.
+
+**Reports F1–F4 all shipped + verified. Net across the four: only the F3 collection-rate/chart tax-basis bug is open.**
+
+### ⏳ STILL OPEN from this session (review-session tracking):
+- 🟠 **F3 collection-rate + chart tax-basis** (`48d63a7`) — collected is tax-inclusive, billed is pre-tax; ratio + chart
+  inflated by tax rate. Fix handed off; build session went F3→F4 without picking it up. **Track to closure.**
+- 🟡 **F2 index-card fiscal half-wiring** (`87a6447`) — card hardcodes January while the report respects the setting.
+- 🟡 **Probability CSV export** (older handoff) — still emits the dead column.
+- 🔵 **1.5** — "Proposal" status label vs "Sent" column (cosmetic).
