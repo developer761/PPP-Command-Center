@@ -151,6 +151,7 @@ import {
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
 import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
+import { STAGE_MEANING } from "@/lib/commercial/opportunities/kanban-columns";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
 import { InlineFieldRow } from "@/components/commercial/inline-field";
@@ -1489,9 +1490,12 @@ export default async function OpportunityDetailPage({
         // strip reports closeout's state at every stage, and a strip that says
         // "Not started" because it never looked is worse than no strip.
         listCloseoutPackages(opp.id).catch(() => []),
-        opp.status === "billing" || pathIsClosedOut
-          ? retainageHeldForOpportunity(opp.id).catch(() => 0)
-          : Promise.resolve(0),
+        // Any won deal, not just one in Billing. AIA applications start while
+        // a job is still on site, so a strip that only looked at Billing would
+        // read "Paid in full" on an in-progress job with retainage held — the
+        // third time this exact "didn't look, so reported a clean state"
+        // mistake has come up in one strip.
+        retainageHeldForOpportunity(opp.id).catch(() => 0),
       ])
     : [null, [], [], [], [], 0];
 
@@ -1576,6 +1580,13 @@ export default async function OpportunityDetailPage({
   const pendingCoCount = pathChangeOrders.filter((c) => c.status === "pending").length;
   const liveCloseout = pathCloseouts.filter((c) => !c.voided_at);
   const billedSoFar = pathFin?.billedPreTaxCents ?? 0;
+  // Per-invoice clamp so one overpayment can't mask another invoice's debt —
+  // the same rule as ProjectFinancials.openBalanceCents.
+  const contractToDate = pathFin?.contractCents ?? 0;
+  const openInvoiceCents = pathInvoices.reduce(
+    (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
+    0
+  );
   const costsSoFar = pathFin?.totalCostCents ?? 0;
   const deliveryTools: DeliveryTool[] = pathIsWon
     ? [
@@ -1614,8 +1625,23 @@ export default async function OpportunityDetailPage({
           key: "aia",
           label: "AIA Billing",
           href: tabHref("aia"),
-          state: billedSoFar > 0 ? `${formatCentsCompact(billedSoFar)} billed` : "Nothing billed",
-          status: billedSoFar > 0 ? "active" : "todo",
+          // Karan 2026-08-13: "we bill in chunks — when does the bar fully
+          // update for billing?" Against contract TO DATE, which is the base
+          // plus APPROVED change orders (pathFin.contractCents already is), so
+          // an approved CO reopens a job that had been fully billed rather
+          // than leaving it reading 100%.
+          state:
+            billedSoFar === 0
+              ? "Nothing billed"
+              : contractToDate > 0 && billedSoFar >= contractToDate
+              ? "Fully billed"
+              : `${formatCentsCompact(billedSoFar)} of ${formatCentsCompact(contractToDate)}`,
+          status:
+            billedSoFar === 0
+              ? "todo"
+              : contractToDate > 0 && billedSoFar >= contractToDate
+              ? "done"
+              : "active",
         },
         {
           key: "transactions",
@@ -1623,6 +1649,34 @@ export default async function OpportunityDetailPage({
           href: tabHref("transactions"),
           state: costsSoFar > 0 ? `${formatCentsCompact(costsSoFar)} logged` : "None logged",
           status: costsSoFar > 0 ? "active" : "todo",
+        },
+        {
+          // Karan 2026-08-13: "where is the invoicing and stuff." A delivery
+          // checklist without the money isn't one — invoicing IS delivery, and
+          // its tab is top-level rather than under Project, which is exactly
+          // why it fell out of a strip built from the Project sub-tabs.
+          key: "invoices",
+          label: "Invoices",
+          href: `/commercial/opportunities/${opp.id}?tab=invoices`,
+          // Retainage is the sting: it is withheld INSIDE each application, so
+          // it never shows as an open invoice balance. Without this line a job
+          // with 5% still held reads "Paid in full" — which is exactly the
+          // detail that matters, because that money is the reason closeout
+          // gets chased.
+          state:
+            pathInvoices.length === 0
+              ? "None raised"
+              : openInvoiceCents > 0
+              ? `${formatCentsCompact(openInvoiceCents)} outstanding`
+              : pathRetainageCents > 0
+              ? `${formatCentsCompact(pathRetainageCents)} retainage held`
+              : "Paid in full",
+          status:
+            pathInvoices.length === 0
+              ? "todo"
+              : openInvoiceCents > 0 || pathRetainageCents > 0
+              ? "active"
+              : "done",
         },
         {
           key: "closeout",
@@ -1736,7 +1790,16 @@ export default async function OpportunityDetailPage({
   // above). Deal detail's visible tabs are Overview / Docs / Activity
   // (+ Debrief on closed deals).
   const isOppTerminal = isTerminalOpportunityStatus(opp.status);
-  const isOppWon = isWon(opp);
+  // AUDIT 2026-08-13 (Karan: "I click on these and it brings me nowhere").
+  // This was `isWon(opp)` — TRUE only for the pre_sale_closed/won tuple. So the
+  // moment a job actually started, the Project and Invoices TABS disappeared
+  // and every link to them redirected back to Overview. A deal you had just
+  // won showed its delivery tools; a deal your crew was standing on did not.
+  //
+  // The delivery strip already used the wider predicate, which is why its
+  // tiles pointed at tabs that were no longer there. One definition now: won,
+  // OR anywhere past it.
+  const isOppWon = isWon(opp) || isDeliveryPhase(opp.status);
   // Karan 2026-07-08: deleted-deal drill-in — the only surfaces that
   // matter are Invoices (record payment / void a straggler) and Overview
   // (see what the deal was). Everything else assumes an active workflow.
@@ -2071,7 +2134,9 @@ export default async function OpportunityDetailPage({
       {/* Page-level, above the tab bar, so the delivery tools are visible from
           whichever tab you happen to be on — the complaint was that standing
           on a job in delivery, none of them were on screen. */}
-      {!isDeletedDeal && <DeliveryToolsStrip tools={deliveryTools} />}
+      {!isDeletedDeal && (
+        <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
+      )}
 
       {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
           the previous 9-tab row; each group has its own sub-nav below

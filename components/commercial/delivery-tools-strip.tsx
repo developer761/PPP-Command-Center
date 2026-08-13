@@ -34,7 +34,16 @@ const DOT: Record<DeliveryTool["status"], string> = {
   todo: "bg-ppp-charcoal-300",
 };
 
-export function DeliveryToolsStrip({ tools }: { tools: DeliveryTool[] }) {
+export function DeliveryToolsStrip({
+  tools,
+  stageMeaning,
+}: {
+  tools: DeliveryTool[];
+  /** What the CURRENT stage means — the line that decides when to move on.
+   *  A tooltip on the bar covers a mouse; this covers a phone, which is where
+   *  Karan reads this. */
+  stageMeaning?: string | null;
+}) {
   if (tools.length === 0) return null;
   return (
     <section
@@ -74,6 +83,11 @@ export function DeliveryToolsStrip({ tools }: { tools: DeliveryTool[] }) {
           </Link>
         ))}
       </div>
+      {stageMeaning && (
+        <p className="px-3.5 py-2 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
+          <span className="font-semibold text-ppp-charcoal-600">Where it is now:</span> {stageMeaning}
+        </p>
+      )}
     </section>
   );
 }

@@ -851,7 +851,7 @@ function TopOpenDealsCard({
                     </div>
                   </div>
                 </Link>
-                <NextStepButton step={next} className="mb-2.5 ml-4 sm:mb-0 sm:ml-0" />
+                <NextStepButton step={next} oppId={o.id} className="mb-2.5 ml-4 sm:mb-0 sm:ml-0" />
               </li>
             );
           })}

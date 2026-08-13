@@ -200,6 +200,24 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         tone: pct > 100 ? "warn" : "default",
       });
     }
+    // Karan 2026-08-13: "the overview when we're on delivery should have KPIs
+    // of like how much we have to bill them, how much we have billed so far."
+    // Billed answers half of it; this is the half people actually plan around,
+    // and it is the one number nobody could get without doing the subtraction
+    // in their head. Against contract TO DATE, so an approved CO reopens a job
+    // that had been fully billed instead of leaving it reading "nothing left".
+    if (hasContract) {
+      const left = (i.contractCents ?? 0) - (i.billedPreTaxCents ?? 0);
+      out.push({
+        key: "left_to_bill",
+        label: left < 0 ? "Over-billed" : "Left to bill",
+        value: money(Math.abs(left)),
+        // Over-billing is not netted away or hidden: it is a real state, it
+        // happens on progress billing, and it needs correcting rather than
+        // rounding to zero.
+        tone: left < 0 ? "warn" : left === 0 ? "good" : "default",
+      });
+    }
     if ((i.approvedChangeOrderCents ?? 0) !== 0) {
       out.push({ key: "cos", label: "Approved COs", value: money(i.approvedChangeOrderCents) });
     }

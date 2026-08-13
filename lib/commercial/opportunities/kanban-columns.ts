@@ -538,3 +538,35 @@ export function skippedStages(
     return backing !== undefined && !seen.has(backing);
   });
 }
+
+/**
+ * What each stage MEANS — the line that decides when to move a deal.
+ *
+ * Karan 2026-08-13: *"write what is considered as pre-construction, in
+ * progress etc, so we know when the status bar should update."*
+ *
+ * A stage ladder without definitions is a ladder everyone climbs differently:
+ * one person marks In Progress when the job is scheduled, another when the
+ * crew arrives, and the billing report quietly compares the two. These are the
+ * lines, phrased as the event that triggers the move.
+ *
+ * Rendered as tooltips on the progress bar and as the legend under the
+ * delivery checklist, so the definition sits where the decision is made.
+ */
+export const STAGE_MEANING: Record<string, string> = {
+  qualifying: "A lead worth looking at. Nothing has been asked of us yet.",
+  rfp: "The bid package has arrived — plans, specs, a due date.",
+  estimating: "Someone is pricing it. Move here when an estimator picks it up.",
+  pending_approval: "Priced and waiting on internal sign-off before it goes out.",
+  sent: "The proposal is with the GC. Nothing left to do but chase it.",
+  won: "They said yes. The contract value is what the accepted proposal says.",
+  lost: "They said no, or went elsewhere. Capture the reason — it is the report.",
+  pre_construction:
+    "Won and getting ready: submittals to the GC, the work order written, the crew scheduled. Nobody is on site yet.",
+  in_progress:
+    "The crew is on site and working. Move here the day work actually starts, not the day it was scheduled.",
+  billing:
+    "Field work is substantially complete and what is left is money — final applications, retainage, the last payments.",
+  post_sale_closed:
+    "Closed out: punchlist signed off, warranty issued, final payment and retainage received. Nothing outstanding.",
+};

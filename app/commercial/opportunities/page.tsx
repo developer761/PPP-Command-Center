@@ -2998,7 +2998,7 @@ function OpportunityRow({
           status flip after it. Both live outside the row's own <Link> — an
           anchor inside an anchor is invalid and the inner one stops firing. */}
       <div className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap">
-      <NextStepButton step={next} />
+      <NextStepButton step={next} oppId={opportunity.id} />
       {moveToOptions.length > 0 ? (
         <form
           action={quickFlipStatusAction}

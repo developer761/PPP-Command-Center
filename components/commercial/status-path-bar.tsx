@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { NextStepButton } from "@/components/commercial/next-step-button";
+import type { NextStep } from "@/lib/commercial/opportunities/attention";
 import {
   isWon,
   isLost,
@@ -9,6 +11,7 @@ import {
   POST_CONTRACT_COLUMNS,
   columnKeyForOpp,
   skippedStages,
+  STAGE_MEANING,
 } from "@/lib/commercial/opportunities/kanban-columns";
 
 /**
@@ -115,6 +118,11 @@ function Chevron({
       className={`relative flex-1 min-w-[104px] h-9 flex items-center justify-center gap-1.5 px-3 ${chevronCls(state)}`}
       style={{ clipPath: clip }}
       aria-current={state === "current" ? "step" : undefined}
+      // What this stage MEANS, so the definition sits where the decision to
+      // move a deal is actually made. Karan 2026-08-13: "write what is
+      // considered as pre-construction, in progress etc, so we know when the
+      // status bar should update."
+      title={STAGE_MEANING[stage.key]}
     >
       {state === "passed" && (
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
@@ -142,6 +150,7 @@ function PathRow({
   /** Terminal outcomes rendered side by side at the tail. */
   outcomes,
   cta,
+  oppId,
 }: {
   title: string;
   stages: PathStage[];
@@ -150,7 +159,10 @@ function PathRow({
   skipped?: string[];
   notStarted?: boolean;
   outcomes?: { key: string; label: string; reached: boolean }[];
-  cta?: { label: string; href: string } | null;
+  /** The next-step. Rendered by NextStepButton so a one-destination move
+   *  posts on click instead of opening a form — see that component. */
+  cta?: NextStep | null;
+  oppId?: string;
 }) {
   const idx = stages.findIndex((s) => s.key === currentKey);
   // `null` means "not on this ladder". For the SALES path that means the deal
@@ -249,24 +261,16 @@ function PathRow({
           />
         ))}
         {cta && (
-          <Link
-            href={cta.href}
-            className="ml-1.5 shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-cc-brand-600 text-white text-[11.5px] font-bold hover:bg-cc-brand-700 transition-colors"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-            {cta.label}
-          </Link>
+          <NextStepButton step={cta} oppId={oppId} size="lg" className="ml-1.5 shrink-0" />
         )}
       </div>
+      {/* The desktop copy above sits inline with the chevrons; on a phone it
+          gets its own full-width row. Same component, so a one-destination
+          move posts on click in both. */}
       {cta && (
-        <Link
-          href={cta.href}
-          className="sm:hidden mt-1.5 flex items-center justify-center gap-1.5 h-11 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-bold min-h-[44px]"
-        >
-          {cta.label}
-        </Link>
+        <div className="sm:hidden mt-1.5">
+          <NextStepButton step={cta} oppId={oppId} size="lg" className="w-full justify-center" />
+        </div>
       )}
     </div>
   );
@@ -291,7 +295,7 @@ export function StatusPathBar({
   oppId: string;
   hasWinDate?: boolean;
   statusLog?: readonly { from_status?: string | null; to_status: string }[];
-  manualNext?: { label: string; href: string } | null;
+  manualNext?: NextStep | null;
 }) {
   const won = isWon({ status, sub_status: subStatus });
   const lost = isLost({ status, sub_status: subStatus });
@@ -338,6 +342,7 @@ export function StatusPathBar({
           ...(inDelivery && !decided && !hasWinDate ? ["won"] : []),
         ]}
         cta={decided || inDelivery ? null : manualNext ?? null}
+        oppId={oppId}
       />
       {(won || inDelivery) && (
         <PathRow
@@ -353,6 +358,7 @@ export function StatusPathBar({
           notStarted={!inDelivery}
           currentSub={inDelivery ? subStatus : null}
           cta={inDelivery ? null : manualNext ?? null}
+          oppId={oppId}
         />
       )}
     </div>

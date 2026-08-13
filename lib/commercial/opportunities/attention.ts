@@ -102,6 +102,22 @@ export type NextStep = {
   href: string;
   /** One line of why, for the places that have room. */
   why?: string;
+  /**
+   * A step that already KNOWS its destination — it moves the deal on click
+   * rather than opening a form to re-select the answer the label contains.
+   *
+   * Karan 2026-08-13: "when I click Move it to Estimating it should move the
+   * status, it doesn't right now." Sending someone to a form to confirm a
+   * one-option move is a wasted click, and reads as the button not working.
+   * `href` stays as the no-JS fallback and as where a failure lands.
+   */
+  move?: { to: string; sub?: string };
+  /**
+   * A step that asks a real QUESTION. Won vs lost is the only one — the answer
+   * is the GC's, not something the platform can infer — so it offers both
+   * rather than moving on its own or making someone find a dropdown.
+   */
+  choose?: { label: string; to: string; sub: string; tone: "good" | "bad" }[];
 };
 
 /**
@@ -153,6 +169,7 @@ export function nextStep(
   if (status === "pre_sale_closed" && subStatus === "won") {
     return {
       label: "Start the job",
+      move: { to: "pre_construction", sub: "coordination" },
       // `?to=` is the param the page actually reads. It was `?action=change-status`,
       // which NOTHING handles — the button navigated and the page looked
       // unchanged, so it read as broken because it was. The anchor lands you on
@@ -182,6 +199,7 @@ export function nextStep(
     if (i.hasWorkOrder === true) {
       return {
         label: "Put it in progress",
+        move: { to: "in_progress", sub: "wip_on_site" },
         href: `/commercial/opportunities/${oppId}?tab=info&focus=status&to=in_progress#change-status`,
         why: "Submittals are out and the crew has its scope.",
       };
@@ -271,6 +289,7 @@ export function nextStep(
     const target = COLUMN_TARGET[proposalStage];
     return {
       label: `Move it to ${STAGE_LABEL[proposalStage]}`,
+      ...(target ? { move: { to: target.to, sub: target.sub } } : {}),
       href: target
         ? `/commercial/opportunities/${oppId}?tab=info&focus=status&to=${target.to}&to_sub=${target.sub}#change-status`
         : `/commercial/opportunities/${oppId}?tab=info&focus=status#change-status`,
@@ -282,8 +301,12 @@ export function nextStep(
   if (dealStage === "sent") {
     return {
       label: "Mark won or lost",
-      // No `to=` on purpose: won vs lost is the user's answer to give, and
-      // pre-picking either is how a mis-click books a loss as a win.
+      // Both answers offered rather than one pre-picked: the answer is the
+      // GC's, and pre-selecting either is how a mis-click books a loss as a win.
+      choose: [
+        { label: "Won", to: "pre_sale_closed", sub: "won", tone: "good" },
+        { label: "Lost", to: "pre_sale_closed", sub: "lost", tone: "bad" },
+      ],
       href: `/commercial/opportunities/${oppId}?tab=info&focus=status#change-status`,
       why: "It's with them — record the answer when it comes.",
     };

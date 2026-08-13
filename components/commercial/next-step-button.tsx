@@ -1,57 +1,96 @@
 import Link from "next/link";
 import type { NextStep } from "@/lib/commercial/opportunities/attention";
+import { moveOpportunityStatusAction } from "@/lib/commercial/opportunities/status-actions";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 /**
- * The "what do I do next" button, rendered wherever a deal appears.
+ * The "what do I do next" button.
  *
  * Karan 2026-08-12: *"there is like a Start Project button when an opp is won
- * which is great — we need more of that so people know what to do / where to
- * go easily for their next step."*
+ * which is great — we need more of that so people know what to do."*
+ * Then 2026-08-13: *"when I click Move it to Estimating it should move the
+ * status, it doesn't right now — it just brings me to change status. Same with
+ * mark as won or lost, it should bring a popup."*
  *
- * `nextStep` decides the label and the destination; this only draws it. Two
- * sizes, because the same answer has to fit three very different surfaces:
+ * So a step renders as one of three things, decided by what it KNOWS:
  *
- *  - `lg` — the deal page, where it is the primary call to action.
- *  - `sm` — a pipeline row or a dashboard line, where it sits beside the deal
- *    it belongs to and must not out-shout the deal's own name.
+ *  - `move` — one destination, nothing left to ask. Posts the status change
+ *    on click. A form to re-select the answer already in the label is a wasted
+ *    click, and reads as the button not working.
+ *  - `choose` — a real question (won vs lost). Both answers, side by side,
+ *    each posting directly. No dropdown to find.
+ *  - `href` — the work happens somewhere else (build a proposal, bill it), so
+ *    it navigates.
  *
- * Both are ≥44px on touch. A button whose whole purpose is "tap this next" is
- * the last one that should be hard to hit.
- *
- * Deliberately quiet styling on `sm`: a list of twenty deals with twenty solid
- * orange buttons reads as an error state, not as guidance. Outlined by default,
- * filling in on hover — present when looked for, invisible when scanning.
+ * The choice popover is a `<details>`, so it costs no JS and works before
+ * hydration — the same reason the saved-view picker is one.
  */
+
 export function NextStepButton({
   step,
   size = "sm",
+  oppId,
   className = "",
 }: {
   step: NextStep | null;
   size?: "sm" | "lg";
+  /** Required for a `move` or `choose` step — it is what gets posted. */
+  oppId?: string;
   className?: string;
 }) {
   if (!step) return null;
 
-  if (size === "lg") {
+  const lg = size === "lg";
+  const solid = lg
+    ? "inline-flex items-center gap-1.5 h-11 px-4 rounded-lg bg-cc-brand-600 text-white text-[13px] font-bold hover:bg-cc-brand-700 transition-colors"
+    : "inline-flex items-center gap-1 min-h-[44px] sm:min-h-[26px] px-2.5 rounded-lg border border-cc-brand-300 text-cc-brand-700 text-[11.5px] font-bold whitespace-nowrap hover:bg-cc-brand-600 hover:border-cc-brand-600 hover:text-white transition-colors";
+
+  // ── A real question: offer both answers ────────────────────────────────
+  if (step.choose && oppId) {
     return (
-      <Link
-        href={step.href}
-        title={step.why}
-        className={`inline-flex items-center gap-1.5 h-11 px-4 rounded-lg bg-cc-brand-600 text-white text-[13px] font-bold hover:bg-cc-brand-700 transition-colors ${className}`}
-      >
-        {step.label}
-        <Arrow />
-      </Link>
+      <details className={`relative inline-block ${className}`}>
+        <summary className={`${solid} list-none cursor-pointer`} title={step.why}>
+          {step.label}
+          <Arrow />
+        </summary>
+        <div className="absolute z-30 mt-1.5 right-0 w-44 rounded-xl border border-ppp-charcoal-200 bg-surface shadow-lg overflow-hidden">
+          {step.choose.map((c) => (
+            <form key={c.label} action={moveOpportunityStatusAction}>
+              <input type="hidden" name="opp_id" value={oppId} />
+              <input type="hidden" name="to_status" value={c.to} />
+              <input type="hidden" name="to_sub_status" value={c.sub} />
+              <SubmitButton
+                pendingLabel="Saving…"
+                className={`w-full text-left px-3.5 py-2 min-h-[44px] text-[12.5px] font-semibold hover:bg-ppp-charcoal-50 ${
+                  c.tone === "good" ? "text-emerald-700" : "text-rose-700"
+                }`}
+              >
+                {c.label}
+              </SubmitButton>
+            </form>
+          ))}
+        </div>
+      </details>
     );
   }
 
+  // ── One destination: just do it ────────────────────────────────────────
+  if (step.move && oppId) {
+    return (
+      <form action={moveOpportunityStatusAction} className={`inline-block ${className}`}>
+        <input type="hidden" name="opp_id" value={oppId} />
+        <input type="hidden" name="to_status" value={step.move.to} />
+        {step.move.sub && <input type="hidden" name="to_sub_status" value={step.move.sub} />}
+        <SubmitButton pendingLabel="Moving…" className={solid} title={step.why}>
+          {step.label}
+        </SubmitButton>
+      </form>
+    );
+  }
+
+  // ── The work is elsewhere: go there ────────────────────────────────────
   return (
-    <Link
-      href={step.href}
-      title={step.why}
-      className={`inline-flex items-center gap-1 min-h-[44px] sm:min-h-[26px] px-2.5 rounded-lg border border-cc-brand-300 text-cc-brand-700 text-[11.5px] font-bold whitespace-nowrap hover:bg-cc-brand-600 hover:border-cc-brand-600 hover:text-white transition-colors ${className}`}
-    >
+    <Link href={step.href} title={step.why} className={`${solid} ${className}`}>
       {step.label}
       <Arrow />
     </Link>

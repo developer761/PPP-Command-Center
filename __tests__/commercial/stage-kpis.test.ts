@@ -279,3 +279,52 @@ describe("weighted pipeline reads the stage, not the dead column", () => {
     expect(probabilityFor("something_new", "nonsense")).toBe(10);
   });
 });
+
+/**
+ * Karan 2026-08-13: *"the overview when we're on delivery should have KPIs of
+ * like how much we have to bill them, how much we have billed so far, net
+ * margins."* Billed and margin were there; the amount LEFT was the one nobody
+ * could get without doing the subtraction in their head.
+ */
+describe("left to bill", () => {
+  const wip = (over: Partial<StageKpiInput> = {}): StageKpiInput => ({
+    ...base,
+    status: "in_progress",
+    subStatus: "wip_on_site",
+    hasContract: true,
+    contractCents: 100_000_00,
+    billedPreTaxCents: 40_000_00,
+    ...over,
+  });
+
+  it("shows what is still to invoice", () => {
+    const t = tile(wip(), "left_to_bill")!;
+    expect(t.label).toBe("Left to bill");
+    expect(t.value).toContain("60");
+  });
+
+  it("counts against contract TO DATE, so an approved CO reopens it", () => {
+    // The contract figure already includes net-approved change orders, so a
+    // job that was fully billed goes back to having work left rather than
+    // reading "nothing left to bill" while a CO sits unbilled.
+    const t = tile(wip({ contractCents: 120_000_00, billedPreTaxCents: 100_000_00 }), "left_to_bill")!;
+    expect(t.value).toContain("20");
+  });
+
+  it("says Over-billed rather than netting a negative away", () => {
+    // Progress billing over-runs happen. Rounding it to zero hides a real
+    // state that needs correcting.
+    const t = tile(wip({ billedPreTaxCents: 110_000_00 }), "left_to_bill")!;
+    expect(t.label).toBe("Over-billed");
+    expect(t.tone).toBe("warn");
+    expect(t.value).not.toContain("-");
+  });
+
+  it("reads good once it lands exactly on the contract", () => {
+    expect(tile(wip({ billedPreTaxCents: 100_000_00 }), "left_to_bill")!.tone).toBe("good");
+  });
+
+  it("stays off a job with no contract — nothing to subtract from", () => {
+    expect(keys(wip({ hasContract: false, contractCents: 0 }))).not.toContain("left_to_bill");
+  });
+});
