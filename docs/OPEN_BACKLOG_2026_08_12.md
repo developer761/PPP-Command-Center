@@ -499,3 +499,27 @@ commit set out to zero ("Nine inputs would zoom … Zero remain") — the claim 
 (a) it excludes `<select>` (the live miss above); (b) it only matches arbitrary `text-[Npx]`, not named `text-xs`/
 `text-sm` (no live input victims today, but latent). Extend the check to `<select>` and to the named small classes,
 or the tool trains the next person to trust a green "iOS zoom: 0" that doesn't cover selects.
+
+---
+
+## ✅ RESOLVED — estimator-on-create re-fix (`e15c0e1`) VERIFIED. My HIGH finding is closed.
+The re-fix is correct and now reachable. `stageForNewOpportunity(requested, estimator)` keys on
+`status === "qualifying"` (mirrors the edit trigger), so `("qualifying", estimator) → "estimating"` — which is
+exactly what both create forms feed it (`formData.get("status") ?? "qualifying"` + estimator). Explicit-advanced
+stages (Sent, etc.) are not qualifying → left untouched (forward-only). The mutation calls the exported function,
+and the **test now imports it** (no re-implemented copy) and asserts the corrected trap
+(`("qualifying","u-1") → "estimating"`, `.not.toBe("qualifying")`), plus empty-string/forward-only edges. 5/5 pass.
+Reachable from the UI now. ✅
+
+---
+
+## 📋 STILL-OPEN HANDOFFS (item B is closed as an ACTIVITY, but these FIXES are not yet in — tracking to closure)
+Re-audit produced its findings; not every handed-off fix has landed. Open code items, most→least severe:
+1. 🟡 **Probability CSV export** — `export.ts:43/197` still emits "Probability %" from the dead column
+   (`304582f` swept 5 UI displays but not the export). Fix: derive via `probabilityFor` or drop the column. **OPEN.**
+2. 🟡 **Mobile select-zoom** — `settings/teams/page.tsx:204` role `<select>` has unguarded `text-[12px]` → iOS zoom;
+   scanner is blind to `<select>`. Fix: `sm:text-[12px]` + harden `audit-mobile.cjs` (cover select + named text-xs/sm).
+   (`7d5c902` handoff.) **OPEN.**
+3. 🟢 **Industry CSV export** (soft/decision) — `accounts/export.ts:24/93` still has an "Industry" column; real data,
+   so a scope question for Brendan, not a bug. (`92d7226` handoff.) **OPEN — needs a decision, not a fix.**
+✅ Resolved this pass: estimator-on-create (`e15c0e1`). — Review session tracking, will re-verify each when it lands.
