@@ -1225,3 +1225,25 @@ tsc clean, 613 tests.
 - **Internal report drops the intro** — `mode !== "internal"` gates the sales paragraph (pdf.tsx:20); the bid date
   always prints as its own line on that copy since the reviewer is checking which set was priced. ✓
 tsc clean, 619 tests.
+
+---
+
+## ✅ VERIFY — proposal editor patch-only saves + section reorder (`decdfb8`, Stephanie). CLEAN, no miss. (Data-loss class.)
+Stephanie's requested section order interleaves autosave panels with line-item tables, forcing the single save form
+to split into 3 — but the old action wrote EVERY field on every submit, so 3 partial forms would blank each other.
+Refactored to patch-only FIRST, reorder second. This is the partial-form-blanks-fields data-loss class I've tracked
+all engagement — verified it's done right:
+- **Explicit `__fields` declaration** (`form-fields.ts`): a form declares its groups; `makeCarries` writes ONLY
+  declared fields (`updateProposal` treats undefined as leave-alone). Declaration is explicit NOT inferred from
+  FormData — because an unchecked checkbox is ABSENT from FormData, so inferring presence would make "unticked"
+  indistinguishable from "not on this form" → unticking would never save (one data-loss traded for another). No
+  declaration = whole-form behaviour (backward compat). ✓
+- **Guard applied to every write** — the action wraps each field in `if (carries("x"))` (page.tsx:28-51). ✓
+- **Test-guarded (10/10):** no field claimed by two groups (coverage), the action guards every field it writes (no
+  unguarded add), an unchecked box in a declared group still saves unchecked, and the section order itself. ✓
+decdfb8's own files tsc-clean; 629 tests.
+
+## ⏳ PENDING VERIFY (uncommitted WIP) — `billing_street2` feature in the working tree.
+`commercial-address-fields.tsx` + `accounts/db.ts` + `accounts/mutations.ts` modified + new `migration 138`
+(billing_street2). Mid-edit → a transient tsc error (`formatted_address` on address-fields) is WIP, NOT decdfb8.
+Will verify caller-completeness + the migration when it commits (same discipline as the date-et/revision WIP).
