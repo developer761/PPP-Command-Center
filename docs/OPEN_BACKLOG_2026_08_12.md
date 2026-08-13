@@ -1115,3 +1115,18 @@ ALL values incl. void/cancelled, not just the happy split) is now noted.
 - ✅ **Deal monthly-billing chart** — review session (`a480edf`): monthly collected now net-of-tax
   (`paid × subtotal/total`), matching the pre-tax invoiced. tsc + suite green.
 No tax-basis sites remain. The systematic "with-tax figure compared against a pre-tax reference" class is swept.
+
+---
+
+## ✅ VERIFY — Katie's list part 1: 4 fixes (`3a299cb`). CLEAN, no miss.
+- **Double "Approved" banner** — the transient `?approval=approved` toast removed; the persistent `status===approved`
+  banner (which also states locked-from-editing / Unlock) kept. One state, one banner. ✓
+- **"Next status" showed the current stage** — relabelled `statusLabel="Move this deal to"` (page.tsx:3869) + the
+  current option now reads "… (current)" (status-sub-status-picker:284). Still no pre-pick (mis-click safety). ✓
+- **Product description autofilled two lines** — `product-picker` `normalizeWs` now collapses ALL whitespace (`\s+`),
+  so a catalogue entry with a stray `\n` autofills as one line. NOT a residual: checked the PDF's separate
+  `normalizeWs`/`ItemLine` — its `\n`-split is DELIBERATE multi-line support, and the PDF bulleting is a separately
+  tracked Katie item. Avoided a false flag by reading the render path. ✓
+- **Intro help text** clarified (typing replaces the Tomco default). ✓
+tsc clean, 44 test files pass. Katie's other 5 (Contact edit btn, estimator sign-off from opp team, Alternate freeze
+in Save, 2 PDF items) honestly listed as still being worked.
