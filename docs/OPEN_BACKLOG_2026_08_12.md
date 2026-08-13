@@ -1327,3 +1327,18 @@ c33e74d files tsc-clean (accounts-page tsc error is separate uncommitted WIP), 6
   deal's single `primary_contact_id` (hydrate.ts), so existing opps print exactly as before. ✓
 - Phone/email tel:/mailto:; the clipped-popover audit caught the new picker's Card clipping (self-introduced) and it
   was fixed. tsc clean, 647 tests.
+
+---
+
+## ✅ VERIFY — job name on projects + close-out finish schedule (`0b9c276`, Stephanie). CLEAN, no miss.
+- **Job name on project cards** — `derivedOppName` recomposes "{account}-{client}-{street}" and hid a hand-typed
+  title. New `jobDisplayName`: title_override → hand-typed title → derived → "Untitled job" (date-only titles like
+  "08-13-2026" now read Untitled; a production-row test caught that). **Scoped to project surfaces only**
+  (`projects/page.tsx`, `project-card.tsx`) — NOT the proposal hydrate, so Katie's proposal PROJECT-line rule is
+  untouched. My customer-facing-rule lane: applied, no conflict. ✓
+- **Close-out checklist (migration 142)** — `finish_schedule` added to the kinds + seeded (for a painter it IS the
+  close-out record = the room-finish schedule = the work order); as-builts/O&M no longer SEEDED but stay ADDABLE (a GC
+  spec occasionally needs them); COI kept a known kind so old packages don't render "Other". CHECK widened + idempotent
+  + DB-CHECK-parity test (reads the CHECK from migrations). 🟡 run 142. ✓
+- They also verified the restructure wasn't disturbed (Project sub-tabs explicit, no phantom tools from the compliance
+  categories; removed lines were GC-prefill or overflow fixes). tsc clean, 659 tests.
