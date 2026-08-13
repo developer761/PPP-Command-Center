@@ -805,3 +805,16 @@ Checked each against current code so the baseline is accurate as Karan's session
 - **1.6** (project_id hardening) — **DONE** via migration 135 (trigger fills it + backfill), guard reads both columns.
 - **1.7** (trivial nit) — n/a.
 **Net: 1.1/1.2/1.3/1.6 closed; 1.4 likely-fine; only 1.5 (cosmetic dual-naming) still worth action.**
+
+---
+
+## ✅ RESOLVED — plan item 2 / handoff: ALL 103 pending-state forms done (`b008e27`). Smoke-tested clean.
+Karan's directive (do ALL, not incremental) is satisfied and I smoke-tested the batch as promised:
+- **Complete:** `scripts/audit-pending-forms.cjs` now reports **0** forms with no pending affordance. Not incremental.
+- **Safe:** independent tsc clean + 534 tests green; imports across all 25 touched files are clean (the AST
+  ImportDeclaration-end fix held — no repeat of the multi-line-import mangling that broke the first attempt).
+- **No client button mis-converted:** `SubmitButton` has no `onClick` prop, so the AST transform refused every
+  client-handler button and touched only real `type="submit"` submits (verified: 0 conversions adjacent to onClick).
+- **Multi-action forms preserved:** SubmitButton carries `name`/`value`/`formAction`; spot-checked the deal page +
+  aia-line-row "Remove line" — attributes intact, JSX balanced (tsc would have caught otherwise).
+Method matched Karan's ask (AST-driven, not a blind regex sweep). **Plan item 2 CLOSED.**
