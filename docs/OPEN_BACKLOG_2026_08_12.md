@@ -951,3 +951,29 @@ Both are exactly the cross-surface classes I catch in others; recording them so 
   with age, with-the-GC with age), aged in ET calendar days via `etDateOf` + `daysFromTodayEt` (activity.ts:156-158)
   — a proposal sent last night reads "today," not two days. No bare-date bug. ✅
 tsc clean, suite green. No miss.
+
+---
+
+## 🟠 VERIFY — Invoices-as-delivery-tool + per-deal Analytics (`a48a758`). Nav clean — but a 2ND tax-basis bug (same class as F3).
+Verified clean:
+- **Old `?tab=invoices` links resolve** — resolver maps `raw === "invoices"` → `{primary:"project", sub:"invoices"}`
+  and it's explicitly removed from the direct-primary short-circuit list, so bells/bookmarks/notifications still land
+  right (link-reachability lane applied — this is the class I missed on 2f68d83). `analytics` maps the same way. ✅
+- Strip phase-grouped (Pre-Con · In Progress · Billing · Closeout), invoicing reads collected-of-invoiced + retainage
+  last. tsc clean, suite green.
+
+**🟠 CONFIRMED — the Analytics chain mixes tax bases, exactly like F3 (`48d63a7`).** `getProjectFinancials` exposes
+BOTH figures on purpose (financials.ts:28-31): `invoicedCents` = Σ `total_cents` (WITH tax, "the AR figure") and
+`billedPreTaxCents` = Σ `subtotal_cents` (PRE-tax, commented *"compared to the contract"*). The Analytics chain
+(page.tsx:2295-2297) passes **`invoicedCents` (tax-inclusive)** and **`collectedCents` (tax-inclusive, `paid_cents`)**
+but measures every bar against **`contractToDateCents` = base + netCo (PRE-tax)**. So:
+- "Contract vs invoiced" (deal-analytics.tsx:77 `unbilled = contractToDate − invoicedCents`) is understated by the
+  tax, and a fully-billed taxed job reads **invoiced > contract → "over-invoiced"** when it's exactly on-contract.
+- Same for "contract vs collected."
+**Fix is already on the shelf:** use `billedPreTaxCents` for the invoiced bar (financials LITERALLY labels it "compared
+to the contract"), and a pre-tax collected figure for the collected bar (net tax from `collectedCents`, or add
+`collectedPreTaxCents` to financials). The stage-KPI "Left to bill" (e353b64) already does this right
+(billedPreTaxCents vs contractCents) — the analytics just reached for the wrong field.
+**🧹 This is the 2nd instance of the class → SWEEP:** anywhere a tax-inclusive invoiced/collected is compared against
+the pre-tax contract. (The AIA tile's collected-of-invoiced is fine — both tax-inclusive. `billedSoFar` uses
+billedPreTaxCents — fine.) Handed off.
