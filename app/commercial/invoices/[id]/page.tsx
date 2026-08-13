@@ -1128,7 +1128,6 @@ export async function InvoiceDetailView({
             )}
             <form action={deleteDraftAction} className="inline">
               <input type="hidden" name="invoice_id" value={invoice.id} />
-                          <input type="hidden" name="from" value={fromRaw ?? ""} />
               {/* Karan 2026-07-15: honor `from` so deleting an invoice
                   opened from an account or opp Invoices tab lands the
                   undo toast on THAT tab, not the global invoices list. */}

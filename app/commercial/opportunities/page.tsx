@@ -1731,23 +1731,14 @@ function NewDealSlideOut({
           {/* Phase E-4: cascading status/sub-status + optional follow-up
               fields. Server action already parses these formData keys. */}
           <StatusSubStatusPicker mode="create" />
-          <div className="grid grid-cols-1 gap-3">
-            <div>
-              <label htmlFor="new-deal-source" className={LABEL_CLS}>Source</label>
-              <select
-                id="new-deal-source"
-                name="source"
-                defaultValue=""
-                className={SELECT_CLS}
-                style={SELECT_BG_STYLE}
-              >
-                <option value="">— unspecified —</option>
-                {OPPORTUNITY_SOURCES.map((s) => (
-                  <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+          {/* RE-AUDIT 2026-08-12: a second `name="source"` select sat here,
+              labelled "Source", left behind when this form was rebuilt into
+              Brendan's field order — which put Lead source further down. Two
+              controls with one name in one form means the browser submits both
+              and `formData.get` takes the FIRST, so every lead source picked on
+              this form was silently thrown away and the deal saved with none.
+              They also shared a DOM id, so clicking the lower label scrolled you
+              to the upper field. `source` feeds the win/loss report. */}
 
           {/* Bid low / high removed per the 2026-08 meeting — pricing lives on the proposal. */}
 
