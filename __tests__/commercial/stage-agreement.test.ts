@@ -313,3 +313,44 @@ describe("delivery follows the order the work actually happens in", () => {
     expect(at("billing")?.label).toBe("Close it out");
   });
 });
+
+/**
+ * Karan 2026-08-13: *"when I make a new opp the first button says make a
+ * proposal and I did, then it says Move it to Estimating. This is all wonky."*
+ *
+ * He was right, and the button was the symptom. Creating a proposal fires
+ * auto-advance to Estimating now (proposals/db, `advanceDealToEstimating`), so
+ * the deal is already there by the time the page re-renders and the step is
+ * the next real action.
+ *
+ * The catch-up step still exists for the case it was built for — a human
+ * dragging a deal backwards — and these pin that the two don't collide.
+ */
+describe("the first proposal moves the deal, so no catch-up step appears", () => {
+  const at = (status: string, sub: string, proposal: string | null) =>
+    nextStep({
+      oppId: "o1",
+      accountId: "a1",
+      status,
+      subStatus: sub,
+      proposal: proposal ? { id: "p1", status: proposal } : null,
+      proposalCount: proposal ? 1 : 0,
+      sentProposalCount: 0,
+      approvedNotSentCount: 0,
+    });
+
+  it("a brand-new opp is told to price it", () => {
+    expect(at("qualifying", "rfp", null)?.label).toBe("Build a proposal");
+  });
+
+  it("once the deal has advanced, the step is the real next action", () => {
+    // Where the deal lands after `advanceDealToEstimating`.
+    expect(at("estimating", "estimating", "draft")?.label).toBe("Send it for approval");
+  });
+
+  it("the catch-up step survives for the case it exists for", () => {
+    // Auto-advance is forward-only, so a deal sitting behind its proposal means
+    // a person moved it there — and that is when catching up is the honest step.
+    expect(at("qualifying", "solicitation", "draft")?.label).toBe("Move it to Estimating");
+  });
+});

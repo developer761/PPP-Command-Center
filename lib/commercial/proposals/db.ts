@@ -279,6 +279,43 @@ export async function findReusableDraftProposal(input: {
   return items.length === 0 ? candidate : null;
 }
 
+
+/**
+ * A new proposal means somebody is pricing this job, so the deal belongs at
+ * Estimating.
+ *
+ * Karan 2026-08-13: he created an opp, the button said "Build a proposal", he
+ * built one — and the next button said "Move it to Estimating". Being asked to
+ * do by hand the thing the system just watched you do is the definition of
+ * wonky.
+ *
+ * An older version of this existed and was REMOVED for good reason: it wrote
+ * the status directly, so opening an R2 draft on a deal at Proposal yanked it
+ * BACK to Estimating and the reconciler then fought over it on every page
+ * load. This goes through `autoAdvanceOpportunity`, which is forward-only —
+ * a revision on a deal that is already further along is simply declined, which
+ * is the property the old code lacked.
+ *
+ * Best-effort: creating a proposal must never fail because the stage move did.
+ */
+async function advanceDealToEstimating(oppId: string, actorId: string | null): Promise<void> {
+  try {
+    const { autoAdvanceOpportunity } = await import(
+      "@/lib/commercial/opportunities/auto-advance"
+    );
+    await autoAdvanceOpportunity({
+      oppId,
+      target: "estimating",
+      artifactAt: new Date().toISOString(),
+      source: "auto_advance",
+      reason: "Proposal created",
+      actingUserId: actorId,
+    });
+  } catch (err) {
+    console.warn("[proposals] create auto-advance failed:", err);
+  }
+}
+
 export async function createProposal(
   input: CreateProposalInput
 ): Promise<
@@ -351,6 +388,7 @@ export async function createProposal(
       // normal, and the deal is still at Proposal. Re-pricing a deal is a
       // person dragging it back, which the engine leaves alone.
     }
+    await advanceDealToEstimating(input.opportunity_id, input.created_by_user_id ?? null);
     return { ok: true, proposal };
   }
 
@@ -409,6 +447,7 @@ export async function createProposal(
       acting_user_id: input.created_by_user_id ?? null,
     });
   }
+  await advanceDealToEstimating(input.opportunity_id, input.created_by_user_id ?? null);
   return { ok: true, proposal };
 }
 
