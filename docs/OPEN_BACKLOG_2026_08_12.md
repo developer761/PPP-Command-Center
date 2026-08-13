@@ -346,3 +346,8 @@ Both my open tails are now CLOSED. Nothing of mine left tracking-open on the cur
 received" tile reads a day early for the bare-path rows). No deploy-gate risk.
 
 ## ✅ Plan items 1–10 ALL verified complete (2/6 tails also closed by c4fbd7c). Nothing of mine tracking-open.
+
+---
+
+## ✅ REVIEW-SESSION SIGN-OFF on the A-I plan (`d509022`)
+Reviewed the A-I plan for completeness — accurate. My open items are correctly captured: **A** (run mig 133, my action item), **C** (archive-a-won-deal 1.1, correctly framed as Karan's judgment call), **§1.6** hardening carried. The "12 date sites deliberately not swept" call is SOUND: verified each subtracts a TIMESTAMPTZ (real instant), so the only error is a DST-boundary floor — NOT the systematic bare-DATE day-early bug (which is fully closed). Documented, not silent. Nothing of mine dropped. Ready for **B** (full re-audit) — I will verify its findings + catch misses as they land.
