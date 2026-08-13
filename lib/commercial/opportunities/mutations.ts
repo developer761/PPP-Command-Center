@@ -66,6 +66,41 @@ export type CreateOpportunityInput = {
   created_by_user_id?: string | null;
 };
 
+
+/**
+ * Where a brand-new opportunity starts.
+ *
+ * Brendan's ladder is RFP → Estimating, with Estimating "triggering on
+ * estimator assign". `updateCommercialOpportunity` honours that (mutations.ts,
+ * `gainedEstimator`); create did not, so a deal typed in with an estimator
+ * already picked — exactly what the form invites, since Estimator is one of
+ * its fields — landed in Qualifying and sat there until somebody drafted a
+ * proposal.
+ *
+ * RE-AUDIT 2026-08-12, second pass: the first attempt keyed on `!status`,
+ * reasoning that an explicit stage is a person's decision. It was dead code —
+ * BOTH create forms resolve `formData.get("status") ?? "qualifying"` before
+ * calling this, so a status is always supplied and the branch never ran.
+ *
+ * It now mirrors the edit trigger exactly: fire when the deal would land in
+ * `qualifying`, which covers Qualifying and RFP (they share a status), and
+ * leave anything further along untouched. Someone logging a deal that is
+ * already out to the GC picks Sent, and Sent is not qualifying, so the
+ * inference stays out of it. Forward-only by construction.
+ *
+ * Exported so the rule is tested where it lives rather than re-implemented in
+ * a test — the first version WAS re-implemented, and the copy asserted the
+ * broken behaviour, which is how a green suite hid a dead fix.
+ */
+export function stageForNewOpportunity(
+  requested: OpportunityStatus | null | undefined,
+  estimatorUserId: string | null | undefined
+): OpportunityStatus {
+  const status = (requested ?? "qualifying") as OpportunityStatus;
+  if (status === "qualifying" && estimatorUserId) return "estimating" as OpportunityStatus;
+  return status;
+}
+
 export async function createCommercialOpportunity(
   input: CreateOpportunityInput
 ): Promise<{ ok: true; opportunity: CommercialOpportunity } | { ok: false; error: string }> {
@@ -91,18 +126,7 @@ export async function createCommercialOpportunity(
     [low, high] = [high, low];
   }
 
-  // Brendan's ladder: RFP -> Estimating, and Estimating "triggers on estimator
-  // assign". The update path already honours that; the CREATE path did not, so
-  // a deal typed in with an estimator already picked — which is exactly what
-  // the form invites, since Estimator is one of its fields — landed in
-  // Qualifying and sat there until someone drafted a proposal.
-  //
-  // Only when the caller did not ask for a stage themselves. An explicit
-  // status is a person's decision and outranks the inference.
-  const inferredFromEstimator =
-    !input.status && input.estimator_user_id ? "estimating" : null;
-  const status: OpportunityStatus =
-    input.status ?? ((inferredFromEstimator ?? "qualifying") as OpportunityStatus);
+  const status = stageForNewOpportunity(input.status, input.estimator_user_id);
   // v2 (migration 052): sub_status is NOT NULL. Fall back to the default
   // sub-status for the picked status if the caller didn't supply one.
   // If they DID supply one, validate it against the parent-status whitelist.
