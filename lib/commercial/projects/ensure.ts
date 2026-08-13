@@ -207,7 +207,7 @@ export async function ensureProjectForOpportunity(
       // invisible by a status change. So: if the project HOLDS anything, it
       // stays. The artifacts are the evidence that real work exists, and they
       // outrank the stage field.
-      if (await projectHoldsAnything(existing.id)) {
+      if (await projectHoldsAnything(existing.id, oppId)) {
         return { ok: true, project: existing };
       }
       const { error } = await sb
@@ -318,15 +318,29 @@ export async function ensureProjectForOpportunity(
  * Used to decide whether un-winning a deal may archive its project. Stops at
  * the first hit; on a read failure it answers TRUE, because the safe reading of
  * "I could not check" is "do not hide money".
+ *
+ * AUDIT 2026-08-12 (review session): this asked ONLY by `project_id`, and
+ * nothing was writing that column — it was filled once by migration 131's
+ * backfill and never again. So every row created after a project existed was
+ * invisible here, the guard answered FALSE, and un-winning could archive a
+ * project holding real invoices. Exactly the money-hiding shape the guard was
+ * written to prevent, hiding inside the guard.
+ *
+ * Migration 135 makes the column fill itself. This asks BOTH ways anyway: a
+ * safety check about money should not depend on a single column being
+ * populated, and `opportunity_id` has been reliably written since day one.
  */
-async function projectHoldsAnything(projectId: string): Promise<boolean> {
+async function projectHoldsAnything(
+  projectId: string,
+  opportunityId: string | null
+): Promise<boolean> {
   const sb = commercialDb();
   for (const table of DELIVERY_TABLES) {
-    const { data, error } = await sb
-      .from(table)
-      .select("id")
-      .eq("project_id", projectId)
-      .limit(1);
+    // `.or()` so one round trip per table still covers both columns.
+    const filter = opportunityId
+      ? `project_id.eq.${projectId},opportunity_id.eq.${opportunityId}`
+      : `project_id.eq.${projectId}`;
+    const { data, error } = await sb.from(table).select("id").or(filter).limit(1);
     if (error) return true;
     if ((data ?? []).length > 0) return true;
   }
