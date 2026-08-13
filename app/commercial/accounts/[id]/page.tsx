@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount, formatAccountNumber, type CommercialAccount } from "@/lib/commercial/accounts/db";
-import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS } from "@/lib/commercial/form-classnames";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { listAccountContacts, addContactToAccount, detachContactFromAccount, getPrimaryContact, setPrimaryContact, touchContact, CONTACT_ROLES, roleLabel, type ContactRole, type CommercialContact } from "@/lib/commercial/accounts/contacts";
 import { listAccountTeam, listAssignableStaff, listAllPppProfileEmails, addAssignment, removeAssignment, ASSIGNMENT_ROLES, assignmentRoleLabel, type AssignmentRole } from "@/lib/commercial/accounts/assignments";
 import { listAccountDocumentsWithUploaders, archiveDocument, restoreDocument, documentCategoryLabel, expiryStatus, type DocumentCategory, type CommercialAccountDocument } from "@/lib/commercial/accounts/documents";
@@ -2287,6 +2287,40 @@ async function touchContactAction(formData: FormData) {
   redirect(`/commercial/accounts/${account_id}?tab=contacts`);
 }
 
+/**
+ * Katie 2026-08-13: there was no way to edit a contact once created — a typo in
+ * a GC's name meant detaching and re-adding, which loses the row's history and
+ * its links. Edits the PERSON; role and default-for live on the join row and
+ * have their own controls.
+ */
+async function editContactAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+
+  const account_id = String(formData.get("account_id") ?? "");
+  const contact_id = String(formData.get("contact_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(contact_id)) {
+    redirect("/commercial/accounts");
+  }
+  const { updateAccountContact } = await import("@/lib/commercial/accounts/contacts");
+  const res = await updateAccountContact({
+    contact_id,
+    full_name: String(formData.get("full_name") ?? ""),
+    email: String(formData.get("email") ?? ""),
+    phone: String(formData.get("phone") ?? ""),
+    title: String(formData.get("title") ?? ""),
+    actor_user_id: user.id,
+  });
+  if (!res.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=contacts&error=${encodeURIComponent(res.error)}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  redirect(`/commercial/accounts/${account_id}?tab=contacts`);
+}
+
 async function detachContactAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -2461,6 +2495,47 @@ function ContactRow({
             <span className="text-ppp-charcoal-500">Last touched {touchedDisplay}</span>
           )}
         </div>
+
+        {/* Katie 2026-08-13: "after creating a Contact, we should be able to
+            Edit the Contact." A <details> so it costs no JS and stays closed
+            until wanted — the row is for reading, and an always-open form on
+            every contact would bury the list it belongs to. */}
+        <details className="mt-2 group/edit">
+          <summary className="list-none cursor-pointer inline-flex items-center gap-1 text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[28px]">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+            Edit contact
+          </summary>
+          <form action={editContactAction} className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl">
+            <input type="hidden" name="account_id" value={accountId} />
+            <input type="hidden" name="contact_id" value={contact.id} />
+            <label className="block">
+              <span className={LABEL_CLS}>Name</span>
+              <input name="full_name" defaultValue={contact.full_name} required maxLength={160} className={INPUT_CLS} />
+            </label>
+            <label className="block">
+              <span className={LABEL_CLS}>Title</span>
+              <input name="title" defaultValue={contact.title ?? ""} maxLength={120} className={INPUT_CLS} />
+            </label>
+            <label className="block">
+              <span className={LABEL_CLS}>Email</span>
+              <input name="email" type="email" defaultValue={contact.email ?? ""} maxLength={200} className={INPUT_CLS} />
+            </label>
+            <label className="block">
+              <span className={LABEL_CLS}>Phone</span>
+              <input name="phone" type="tel" defaultValue={contact.phone ?? ""} maxLength={60} className={INPUT_CLS} />
+            </label>
+            <div className="sm:col-span-2">
+              <SubmitButton
+                pendingLabel="Saving…"
+                className="inline-flex items-center px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-bold hover:bg-cc-brand-700 min-h-[44px]"
+              >
+                Save contact
+              </SubmitButton>
+            </div>
+          </form>
+        </details>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {attachments.map((a) => (
             <span

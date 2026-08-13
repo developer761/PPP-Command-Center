@@ -403,3 +403,67 @@ export async function detachContactFromAccount(
   await logDelete("commercial_account_contacts", account_contact_id, before, deletedByUserId);
   return { ok: true };
 }
+
+export type UpdateContactInput = {
+  contact_id: string;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  title?: string | null;
+  actor_user_id?: string | null;
+};
+
+/**
+ * Edit a contact in place.
+ *
+ * Katie 2026-08-13: "after creating a Contact, we should be able to Edit the
+ * Contact. Right now, if I go to the Account page and look at the Contacts,
+ * there is no Edit button."
+ *
+ * There was no writer at all — only add, detach and set-primary — so a typo in
+ * a GC's name or a changed phone number meant detaching the contact and adding
+ * it again, which loses the row's history and its links.
+ *
+ * The CONTACT is edited here, not its account role: `role` and `is_default_for`
+ * live on the join row and are already managed by the existing controls. A name
+ * or a phone number belongs to the person, and changing it on one account
+ * SHOULD change it everywhere, because it is the same person.
+ */
+export async function updateAccountContact(
+  input: UpdateContactInput
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const name = input.full_name?.trim();
+  if (!name) return { ok: false, error: "Name is required." };
+
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_contacts")
+    .select("*")
+    .eq("id", input.contact_id)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "That contact no longer exists." };
+
+  const patch = {
+    full_name: name,
+    // Empty means "clear it", which is a real edit — a contact who has left
+    // should be able to lose their direct line.
+    email: input.email?.trim() || null,
+    phone: input.phone?.trim() || null,
+    title: input.title?.trim() || null,
+  };
+
+  const { error } = await sb
+    .from("commercial_contacts")
+    .update(patch)
+    .eq("id", input.contact_id);
+  if (error) return { ok: false, error: error.message };
+
+  await logUpdate(
+    "commercial_contacts",
+    input.contact_id,
+    before as Record<string, unknown>,
+    patch,
+    input.actor_user_id ?? null
+  ).catch(() => undefined);
+  return { ok: true };
+}
