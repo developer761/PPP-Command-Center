@@ -29,6 +29,7 @@ Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
 | **G** | **Foreman Daily Log** | Writes payroll — recommend starting fresh, not extending |
 | **H** | **Joint smoke test** — notifications, Field Ops clock in/out, work-order notes reaching the crew | A session with you |
 | **I** | **Lead flow** — Brendan wants Qualifying out of opportunities into a lead object that converts in | Largest remaining item; you deferred it to the end |
+| **J** | **Finish the 96 remaining pending-state forms** (from `9b6aa8b`, tracked by `audit-pending-forms.cjs`). Karan's directive 2026-08-13: do NOT leave them to incremental rollout — "never defer." Apply `SubmitButton` to all 96. Method: address the stated sweep-breakage risk by doing them **deliberately + verifying the batch** (no blind scripted find-replace), not by leaving them undone. Review session will smoke-test the batch after. | Karan added 2026-08-13 |
 
 ~~Two smaller things carried~~ **BOTH CLOSED 2026-08-12**, and the first was
 not the hardening item it looked like:
