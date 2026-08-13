@@ -150,6 +150,7 @@ import {
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
+import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
 import { InlineFieldRow } from "@/components/commercial/inline-field";
@@ -1477,21 +1478,17 @@ export default async function OpportunityDetailPage({
   // Open submittals and crew hours are only rendered while a job is on site, so
   // they are only fetched then — two round-trips a bid would never use.
   const pathOnSite = opp.status === "in_progress";
-  // Submittals are a PRE-CONSTRUCTION activity — the GC wants product data and
-  // samples approved before anyone mobilises — so they must load one stage
-  // earlier than the on-site tools, or the "Send the submittals" step can
-  // never fire on the stage it belongs to.
-  const pathNeedsSubmittals = pathOnSite || opp.status === "pre_construction";
   const pathIsClosedOut = opp.status === "post_sale_closed";
   const [pathFin, pathChangeOrders, pathSubmittals, pathLabor, pathCloseouts, pathRetainageCents] = pathIsWon
     ? await Promise.all([
         getProjectFinancials(opp.id).catch(() => null),
         listChangeOrders(opp.id).catch(() => []),
-        pathNeedsSubmittals ? listOpportunitySubmittals(opp.id).catch(() => []) : Promise.resolve([]),
+        listOpportunitySubmittals(opp.id).catch(() => []),
         pathOnSite ? laborByWorkerForProject(opp.id).catch(() => []) : Promise.resolve([]),
-        // Only a closed-out job renders a warranty tile; anything earlier would
-        // pay for a query whose result is thrown away.
-        pathIsClosedOut ? listCloseoutPackages(opp.id).catch(() => []) : Promise.resolve([]),
+        // Loaded for any won deal now, not just a closed-out one: the delivery
+        // strip reports closeout's state at every stage, and a strip that says
+        // "Not started" because it never looked is worse than no strip.
+        listCloseoutPackages(opp.id).catch(() => []),
         opp.status === "billing" || pathIsClosedOut
           ? retainageHeldForOpportunity(opp.id).catch(() => 0)
           : Promise.resolve(0),
@@ -1565,9 +1562,87 @@ export default async function OpportunityDetailPage({
     // pre-construction step needs to know whether any exist. Only loaded once
     // the job is on site, so on an earlier stage this stays undefined — which
     // nextStep reads as "unknown", not "none".
-    submittalCount: pathNeedsSubmittals ? pathSubmittals.length : undefined,
+    submittalCount: pathIsWon ? pathSubmittals.length : undefined,
     hasWorkOrder: !!pathWorkOrder,
   });
+
+  // ── The delivery checklist, in the order the work happens ──────────────
+  // Karan 2026-08-13: "we're in delivery now and there's no work order or
+  // closeout and warranty or anything like that here." They were one click
+  // down inside the Project tab, which on that screen is the same as absent.
+  const tabHref = (sub: string) => `/commercial/opportunities/${opp.id}?tab=project&sub=${sub}`;
+  const openSubmittals = pathSubmittals.filter((sm) => !isTerminalSubmittalStatus(sm.status)).length;
+  const approvedCoCount = pathChangeOrders.filter((c) => c.status === "approved").length;
+  const pendingCoCount = pathChangeOrders.filter((c) => c.status === "pending").length;
+  const liveCloseout = pathCloseouts.filter((c) => !c.voided_at);
+  const billedSoFar = pathFin?.billedPreTaxCents ?? 0;
+  const costsSoFar = pathFin?.totalCostCents ?? 0;
+  const deliveryTools: DeliveryTool[] = pathIsWon
+    ? [
+        {
+          key: "submittals",
+          label: "Submittals",
+          href: tabHref("submittals"),
+          state:
+            pathSubmittals.length === 0
+              ? "Not sent"
+              : openSubmittals > 0
+              ? `${openSubmittals} awaiting the GC`
+              : `${pathSubmittals.length} closed`,
+          status: pathSubmittals.length === 0 ? "todo" : openSubmittals > 0 ? "active" : "done",
+        },
+        {
+          key: "work-order",
+          label: "Work Order",
+          href: tabHref("work-order"),
+          state: pathWorkOrder ? "Written" : "Not written",
+          status: pathWorkOrder ? "done" : "todo",
+        },
+        {
+          key: "change-orders",
+          label: "Change Orders",
+          href: tabHref("change-orders"),
+          state:
+            pathChangeOrders.length === 0
+              ? "None"
+              : pendingCoCount > 0
+              ? `${pendingCoCount} awaiting a decision`
+              : `${approvedCoCount} approved`,
+          status: pathChangeOrders.length === 0 ? "todo" : pendingCoCount > 0 ? "active" : "done",
+        },
+        {
+          key: "aia",
+          label: "AIA Billing",
+          href: tabHref("aia"),
+          state: billedSoFar > 0 ? `${formatCentsCompact(billedSoFar)} billed` : "Nothing billed",
+          status: billedSoFar > 0 ? "active" : "todo",
+        },
+        {
+          key: "transactions",
+          label: "Costs",
+          href: tabHref("transactions"),
+          state: costsSoFar > 0 ? `${formatCentsCompact(costsSoFar)} logged` : "None logged",
+          status: costsSoFar > 0 ? "active" : "todo",
+        },
+        {
+          key: "closeout",
+          label: "Closeout & Warranty",
+          href: tabHref("closeout"),
+          state:
+            liveCloseout.length === 0
+              ? "Not started"
+              : liveCloseout.some((c) => c.status === "complete")
+              ? "Complete"
+              : "In progress",
+          status:
+            liveCloseout.length === 0
+              ? "todo"
+              : liveCloseout.some((c) => c.status === "complete")
+              ? "done"
+              : "active",
+        },
+      ]
+    : [];
 
   // The one margin the whole platform agrees on — billed-based, per D2.
   const pathMargin = pathFin ? dealMargin(pathFin) : null;
@@ -1992,6 +2067,11 @@ export default async function OpportunityDetailPage({
       )}
 
       {!isDeletedDeal && <AttentionBanner items={attentionItems} />}
+
+      {/* Page-level, above the tab bar, so the delivery tools are visible from
+          whichever tab you happen to be on — the complaint was that standing
+          on a job in delivery, none of them were on screen. */}
+      {!isDeletedDeal && <DeliveryToolsStrip tools={deliveryTools} />}
 
       {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
           the previous 9-tab row; each group has its own sub-nav below
