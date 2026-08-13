@@ -1270,3 +1270,22 @@ client_name-ALONE convention — so my "clean" verdict missed a silent change to
 **New lane:** when verifying a change to a PRINTED / customer-facing field (proposal, PDF, GC-received doc),
 cross-check against the DOCUMENTED Katie/Brendan rules (memory + prior conventions), not just the code's internal
 self-consistency. This is the 4th own-miss this session; all four are "internal logic checked, documented rule not."
+
+---
+
+## ✅ VERIFY — compliance docs to the deal + per-job tax exemption (`c33e74d`, Stephanie). CLEAN, no miss. Caught 2 of my classes + checked Brendan.
+- **Tax exemption per-project (money-critical)** — migration 139 adds a NULLABLE `tax_exempt` (null inherits account,
+  true/false override) — correctly NOT a boolean-default (which would tax every exempt customer on the next invoice).
+  `resolveTaxExemption` reads `!= null` so `false` is a real "taxable" answer (a taxable job for an exempt account),
+  single source that all 3 call sites (invoices ×2, change-orders) now call — fixing the duplicated-logic bug that
+  charged an exempt GC tax. 🟡 must RUN (139). ✓
+- **Caught silent-undefined bug + TESTED (PostgREST-missing-column class):** the invoice create path selected only
+  `id, account_id, deleted_at`, so the new override read `undefined` forever. Now selects `+ tax_exempt`; a test
+  asserts the select carries the column AND that no path reads exemption off the account directly. ✓
+- **Mirrored-constants drift fixed + TESTED (one-list-in-two-places class):** the deal upload form had a hardcoded
+  "Mirror of DOCUMENT_CATEGORIES" that had already drifted (`work_order` missing → un-filable). Form imports the real
+  list now; `mirrored-constants.test.ts` guards no-hardcoded-lists / every-category-labelled / size-limits-match. ✓
+- **Brendan/Katie consistency checked (my new lane, applied by them):** the 4 compliance categories move to the DEAL
+  (Stephanie), the ACCOUNT keeps prequal (Brendan's explicit 2026-08-12 call) — the two views agree, single divergence
+  documented. ✓
+c33e74d files tsc-clean (accounts-page tsc error is separate uncommitted WIP), 642 tests.
