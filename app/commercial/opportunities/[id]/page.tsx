@@ -1573,6 +1573,13 @@ export default async function OpportunityDetailPage({
   const latestProposal = [...dealProposals].sort(
     (a, b) => b.revision_number - a.revision_number
   )[0];
+  // A VOIDED submittal is cancelled, not completed. Counting it as one meant a
+  // deal whose only submittal was voided read "1 closed" — and, worse, never
+  // got the "Send the submittals" step, because `submittalCount` was non-zero.
+  // Live submittals only, everywhere.
+  const liveSubmittals = pathSubmittals.filter((sm) => sm.status !== "voided");
+  const openSubmittals = liveSubmittals.filter((sm) => !isTerminalSubmittalStatus(sm.status)).length;
+
   const manualNext = nextStep({
     ...attentionInput,
     proposal: latestProposal ? { id: latestProposal.id, status: latestProposal.status } : null,
@@ -1581,7 +1588,7 @@ export default async function OpportunityDetailPage({
     // pre-construction step needs to know whether any exist. Only loaded once
     // the job is on site, so on an earlier stage this stays undefined — which
     // nextStep reads as "unknown", not "none".
-    submittalCount: pathIsWon ? pathSubmittals.length : undefined,
+    submittalCount: pathIsWon ? liveSubmittals.length : undefined,
     hasWorkOrder: !!pathWorkOrder,
   });
 
@@ -1590,7 +1597,6 @@ export default async function OpportunityDetailPage({
   // closeout and warranty or anything like that here." They were one click
   // down inside the Project tab, which on that screen is the same as absent.
   const tabHref = (sub: string) => `/commercial/opportunities/${opp.id}?tab=project&sub=${sub}`;
-  const openSubmittals = pathSubmittals.filter((sm) => !isTerminalSubmittalStatus(sm.status)).length;
   const approvedCoCount = pathChangeOrders.filter((c) => c.status === "approved").length;
   const pendingCoCount = pathChangeOrders.filter((c) => c.status === "pending").length;
   const liveCloseout = pathCloseouts.filter((c) => !c.voided_at);
@@ -1642,12 +1648,12 @@ export default async function OpportunityDetailPage({
           label: "Submittals",
           href: tabHref("submittals"),
           state:
-            pathSubmittals.length === 0
+            liveSubmittals.length === 0
               ? "Not sent"
               : openSubmittals > 0
               ? `${openSubmittals} awaiting the GC`
-              : `${pathSubmittals.length} closed`,
-          status: pathSubmittals.length === 0 ? "todo" : openSubmittals > 0 ? "active" : "done",
+              : `${liveSubmittals.length} closed`,
+          status: liveSubmittals.length === 0 ? "todo" : openSubmittals > 0 ? "active" : "done",
         },
         {
           key: "work-order",
@@ -1667,8 +1673,20 @@ export default async function OpportunityDetailPage({
               ? "None"
               : pendingCoCount > 0
               ? `${pendingCoCount} awaiting a decision`
-              : `${approvedCoCount} approved`,
-          status: pathChangeOrders.length === 0 ? "todo" : pendingCoCount > 0 ? "active" : "done",
+              : approvedCoCount > 0
+              ? `${approvedCoCount} approved`
+              // Every one declined. "0 approved" beside a green dot read as
+              // "change orders are done" on a job where the GC said no to all
+              // of them, which is the opposite of what happened.
+              : `${pathChangeOrders.length} declined`,
+          status:
+            pathChangeOrders.length === 0
+              ? "todo"
+              : pendingCoCount > 0
+              ? "active"
+              : approvedCoCount > 0
+              ? "done"
+              : "todo",
         },
         {
           key: "transactions",
@@ -2376,7 +2394,12 @@ export default async function OpportunityDetailPage({
             contractBaseCents: pathContractBaseCents,
             approvedCoCents: pathApprovedCoCents,
             contractToDateCents: pathFin.contractCents,
-            invoicedCents: pathFin.invoicedCents,
+            // PRE-TAX, because it is measured against the contract, which is
+            // pre-tax. `invoicedCents` is the with-tax AR figure — comparing
+            // that to the contract makes the bar pass 100% on sales tax alone
+            // and reads as over-billing that never happened.
+            invoicedCents: pathFin.billedPreTaxCents,
+            invoicedWithTaxCents: pathFin.invoicedCents,
             collectedCents: pathFin.collectedCents,
             openBalanceCents: pathFin.openBalanceCents,
             retainageCents: pathRetainageCents,

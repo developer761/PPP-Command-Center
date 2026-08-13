@@ -37,7 +37,12 @@ export type DealAnalytics = {
   contractBaseCents: number;
   approvedCoCents: number;
   contractToDateCents: number;
+  /** PRE-TAX — the basis the contract is in, so the two can be compared. */
   invoicedCents: number;
+  /** WITH tax — what the GC was actually asked for, and what `collected`
+   *  is measured against. Sales tax is collected for the state, not for us,
+   *  so it belongs nowhere near the contract comparison. */
+  invoicedWithTaxCents: number;
   collectedCents: number;
   openBalanceCents: number;
   retainageCents: number;
@@ -55,8 +60,13 @@ export type DealAnalytics = {
 
 export function DealAnalytics({ a }: { a: DealAnalytics }) {
   const unbilled = a.contractToDateCents - a.invoicedCents;
+  // Collected is a with-tax figure, so it is measured against the with-tax
+  // invoiced total. Dividing it by the pre-tax one would report over-collection
+  // on every taxable job.
   const collectedPct =
-    a.invoicedCents > 0 ? Math.round((a.collectedCents / a.invoicedCents) * 100) : 0;
+    a.invoicedWithTaxCents > 0
+      ? Math.round((a.collectedCents / a.invoicedWithTaxCents) * 100)
+      : 0;
 
   const costSegments: DonutSegment[] = (
     [
@@ -104,7 +114,9 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
     },
     {
       label: "Collected",
-      value: a.collectedCents,
+      // Scaled onto the pre-tax axis so the bar sits honestly beside the other
+      // three; the LABEL shows the real money received.
+      value: a.invoicedWithTaxCents > 0 ? Math.round(a.invoicedCents * (a.collectedCents / a.invoicedWithTaxCents)) : 0,
       tone: "emerald",
       valueLabel: formatCentsFull(a.collectedCents),
       sub:
@@ -143,7 +155,7 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
         <StatCard
           label="Collected"
           value={formatCentsFull(a.collectedCents)}
-          sub={`${collectedPct}% of what we've invoiced`}
+          sub={`${collectedPct}% of what we've invoiced (incl. tax)`}
           tone="emerald"
           spark={a.billingByMonth.map((m) => m.collectedCents)}
           sparkLabels={a.billingByMonth.map((m) => m.label)}
