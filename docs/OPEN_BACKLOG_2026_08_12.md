@@ -1289,3 +1289,24 @@ self-consistency. This is the 4th own-miss this session; all four are "internal 
   (Stephanie), the ACCOUNT keeps prequal (Brendan's explicit 2026-08-12 call) — the two views agree, single divergence
   documented. ✓
 c33e74d files tsc-clean (accounts-page tsc error is separate uncommitted WIP), 642 tests.
+
+---
+
+## ✅ VERIFY — job-address root-cause + do-not-bid + tax UI (`e254448`, Stephanie). CLEAN, no miss.
+- **ROOT CAUSE of the project-name issue** — the account-scoped new-deal form seeded `client_name` with the account's
+  COMPANY name (client_name is the GC's CUSTOMER per Katie's JD-Sports rule) and the job address with the account's,
+  so every deal printed the builder. This morning's project-name work treated the SYMPTOM (empty-client fallback);
+  this fixes the CAUSE: `client_name` now `keptValues?.client_name ?? ""` (placeholder "Who the work is for", not the
+  misleading "Tomco Painting"), address no longer inherited. Money-critical: the inherited ZIP taxed the job at the
+  BUILDER's rate; account address now SHOWN not filled. ✓
+- **Do-not-bid (migration 140)** — nullable flag + reason + set_at + set_by (NOT a 4th CHECK-rating letter, so reason/
+  date/person survive); `default false` = "not flagged" (safe). WARNS never blocks (banner + reason on the new-deal
+  form, deal proceeds) per warn-don't-reject. Reason required in UI; set_at stamped only on transition. 🟡 run 140. ✓
+- **Tax exemption UI** — the account tax UI was removed in the 2026-08 meeting, so 139's resolver was unreachable;
+  this adds a three-state select on the JOB (its own action, not the text/date/number inline registry). Opp mutation
+  carries `tax_exempt` with `!== undefined` so false/null stay distinct — three-state preserved. Completes 139. ✓
+- Also: the clipped-popover audit's accepted exception now keys on the ancestor TAG not a line number (edits shifted
+  it → false "new" finding). tsc clean, 642+ tests.
+
+## ⏳ PENDING VERIFY (uncommitted WIP) — opportunity-contacts feature (`migration 141`, `lib/commercial/contacts/`,
+`contact-roles.test.ts`, `contacts.ts`). Verify when committed.
