@@ -96,7 +96,7 @@ import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
 import { nextStep } from "@/lib/commercial/opportunities/attention";
 import { NextStepButton } from "@/components/commercial/next-step-button";
 import { proposalTrailsDeal } from "@/lib/commercial/opportunities/auto-advance-targets";
-import { daysFromTodayEt, etDateOf } from "@/lib/date-et";
+import { daysFromTodayEt, etDateOf, relativeAgoEt, daysAgoEt } from "@/lib/date-et";
 import {
   changeOpportunityStatus,
   listCurrentStatusEnteredAtByOpp,
@@ -2062,7 +2062,7 @@ function CustomerBoardRow({
   // Latest activity relative label — "today", "5h ago", "3d ago", etc.
   // Uses updated_at which every mutation touches, so it's a real signal.
   const daysAgo = latestUpdate
-    ? Math.max(0, Math.floor((Date.now() - new Date(latestUpdate).getTime()) / 86400000))
+    ? (daysAgoEt(latestUpdate) ?? 0)
     : null;
   const activityLabel =
     daysAgo === null
@@ -2289,7 +2289,7 @@ function KanbanCard({
 }) {
   const moveToOptions = moveToOptionsFor(opp);
   const days = statusEnteredAt
-    ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
+    ? daysAgoEt(statusEnteredAt)
     : null;
   const daysTone =
     days === null
@@ -2737,7 +2737,7 @@ function OpportunityRow({
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
   const dueChip = decisionChip(opportunity.proposal_due_at);
   const daysInStatus = statusEnteredAt
-    ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
+    ? daysAgoEt(statusEnteredAt)
     : null;
   const moveToOptions = moveToOptionsFor(opportunity);
   const next = nextStep({
@@ -3035,15 +3035,8 @@ function OpportunityRow({
 }
 
 function relativeAgo(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "just now";
-  const days = Math.floor(ms / MS_PER_DAY);
-  if (days < 1) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days}d ago`;
-  if (days < 30) return `${Math.floor(days / 7)}w ago`;
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
-  return `${Math.floor(days / 365)}y ago`;
+  // One implementation, in lib/date-et — ET calendar days, not a UTC divide.
+  return relativeAgoEt(iso, "just now");
 }
 
 function decisionChip(iso: string | null): { label: string; tone: "ok" | "soon" | "overdue" } | null {

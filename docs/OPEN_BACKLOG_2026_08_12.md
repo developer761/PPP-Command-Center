@@ -30,10 +30,25 @@ Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
 | **H** | **Joint smoke test** — notifications, Field Ops clock in/out, work-order notes reaching the crew | A session with you |
 | **I** | **Lead flow** — Brendan wants Qualifying out of opportunities into a lead object that converts in | Largest remaining item; you deferred it to the end |
 
-Two smaller things carried, neither urgent: delivery-row queries could filter by
-`project_id` now that the column is enforced (hardening, §1.6), and twelve date
-sites that subtract real timestamps where the only error is a DST-boundary floor
-(listed at the bottom, deliberately not swept).
+~~Two smaller things carried~~ **BOTH CLOSED 2026-08-12**, and the first was
+not the hardening item it looked like:
+
+- **`project_id` was not being written at all.** Migration 131 added it to
+  eight tables, back-filled it once and enforced that it cannot DISAGREE with
+  `opportunity_id` — but no insert path sets it, so every delivery row created
+  after its project existed landed NULL. Switching reads to `project_id`, as
+  the item proposed, would have silently dropped most rows on every job. The
+  column looked enforced and was half-empty. Migration 135 adds the mirror to
+  131's trigger (fill `project_id` from `opportunity_id`, as it already fills
+  the reverse) and repairs the rows written since. Done in the trigger, not at
+  eight call sites, so a ninth caller cannot forget.
+- **The date sites are swept.** They were framed as a cosmetic DST wobble; the
+  real finding was that the SAME relative-time ladder existed five times over,
+  each with its own copy of the bug — so one job could read "6d ago" on one
+  screen and "yesterday" on the next. One `daysAgoEt` / `relativeAgoEt` in
+  `lib/date-et` now. The two genuine sub-day durations (the proposal-reuse
+  window) are deliberately left as millisecond math, because they are
+  durations and not calendar counts.
 
 ---
 

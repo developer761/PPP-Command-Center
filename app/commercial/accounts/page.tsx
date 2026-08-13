@@ -1,4 +1,4 @@
-import { formatCentsCompact } from "@/lib/commercial/invoices/format";/**
+/**
  * `/commercial/accounts` — Phase 1 Account Management list page.
  *
  * UI rebuild 2026-07-05 (Karan: "confusing and unorganized, needs to be
@@ -24,6 +24,8 @@ import { formatCentsCompact } from "@/lib/commercial/invoices/format";/**
  *      showing total accounts + recently-active count + open-bid roll-up.
  *   5. **Mobile = 44px tap targets throughout + card layout.**
  */
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { daysAgoEt } from "@/lib/date-et";
 import { listCommercialOpportunities, dealValueCents } from "@/lib/commercial/opportunities/db";
 import { PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
@@ -211,7 +213,7 @@ export default async function CommercialAccountsPage({
     accounts = accounts.filter((a) => {
       const ov = overviewsById.get(a.id);
       if (!ov) return false;
-      const days = Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / MS_PER_DAY);
+      const days = daysAgoEt(ov.last_activity_at) ?? 0;
       return Number.isFinite(days) && days > ACTIVITY_STALE_DAYS;
     });
   }
@@ -272,7 +274,7 @@ export default async function CommercialAccountsPage({
     .map((a) => ({ account: a, ov: overviewsById.get(a.id) }))
     .filter(({ ov }) => {
       if (!ov) return false;
-      const days = Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / MS_PER_DAY);
+      const days = daysAgoEt(ov.last_activity_at) ?? 0;
       return Number.isFinite(days) && days <= RECENT_WINDOW_DAYS;
     })
     .sort((x, y) => {
@@ -713,7 +715,7 @@ export default async function CommercialAccountsPage({
             <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {recentlyActive.map(({ account, ov }) => {
                 const days = ov
-                  ? Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / MS_PER_DAY)
+                  ? daysAgoEt(ov.last_activity_at)
                   : null;
                 const label =
                   days === null ? "—" : days === 0 ? "today" : days === 1 ? "yesterday" : `${days}d ago`;
@@ -1259,10 +1261,10 @@ function AccountRow({
                   title={`Last touched: ${overview?.last_activity_at ?? "unknown"}`}
                 >
                   {(() => {
-                    const isHot = overview?.last_activity_at
-                      ? Date.now() - new Date(overview.last_activity_at).getTime() <
-                        7 * 24 * 60 * 60 * 1000
-                      : false;
+                    // Calendar days, so this badge can't say "hot" beside a
+                    // label reading "7d ago" — same count, same answer.
+                    const hotDays = daysAgoEt(overview?.last_activity_at);
+                    const isHot = hotDays !== null && hotDays < 7;
                     return (
                       <span aria-hidden className="relative inline-flex w-1.5 h-1.5">
                         {isHot && (

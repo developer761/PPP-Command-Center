@@ -54,3 +54,48 @@ export function daysFromTodayEt(dateIso: string): number {
 export function isPastEt(dateIso: string): boolean {
   return daysFromTodayEt(dateIso) < 0;
 }
+
+/**
+ * Whole ET calendar days between a timestamp and today. Never negative.
+ *
+ * The "3d ago" number, and the one every idle/stale threshold compares.
+ *
+ * AUDIT 2026-08-12: this existed FOUR times as a private copy
+ * (`relativeAgo`, `daysSinceIso`, and two inline versions), each flooring a
+ * raw UTC subtraction. A DST week is 23 or 25 hours, so the floor lands a day
+ * early at the boundary — which is small on a label and not small on a
+ * threshold, where "idle 14 days" is a colour change and "overdue N days" goes
+ * into an email somebody reads.
+ *
+ * Counting calendar dates instead of dividing elapsed milliseconds removes the
+ * whole question: two dates either are the same day in New York or they are
+ * not, whatever the clocks did in between.
+ *
+ * Returns null for a missing or unparseable timestamp, so callers can render
+ * nothing rather than "NaN days ago".
+ */
+export function daysAgoEt(timestamp: string | null | undefined): number | null {
+  const d = etDateOf(timestamp);
+  if (!d) return null;
+  return Math.max(0, -daysFromTodayEt(d));
+}
+
+/**
+ * "today" · "yesterday" · "3d ago" · "2w ago" · "4mo ago" · "2y ago".
+ *
+ * Existed three times over — `relativeAgo` on the pipeline, `relativeTouch` on
+ * the account page, `relativeActivity` in the accounts lib — each with the
+ * same ladder and the same UTC-subtraction bug beneath it. Three copies of a
+ * label is three chances for the same job to read "6d ago" on one screen and
+ * "yesterday" on another.
+ */
+export function relativeAgoEt(timestamp: string | null | undefined, fallback = "—"): string {
+  const days = daysAgoEt(timestamp);
+  if (days === null) return fallback;
+  if (days < 1) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}

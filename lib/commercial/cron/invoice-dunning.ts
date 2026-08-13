@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { daysAgoEt } from "@/lib/date-et";
 import {
   sendClientInvoiceDunningEmail,
   insertCommercialInvoiceDunningMarker,
@@ -125,10 +126,12 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
 
     for (const r of rows) {
       try {
-        const daysPastDue = Math.max(
-          PAST_DUE_DAYS,
-          Math.floor((now - new Date(r.due_at).getTime()) / 86_400_000)
-        );
+        // ET calendar days. `due_at` IS a real timestamptz, so this was only
+        // wrong at a DST boundary — but the number goes straight into the
+        // email a client reads ("N days past due"), and a figure someone
+        // quotes back at you is the wrong place to be a day out. Same reason
+        // the debrief cron was fixed.
+        const daysPastDue = Math.max(PAST_DUE_DAYS, daysAgoEt(r.due_at) ?? 0);
         const clientEmail = emailByAccount.get(r.account_id) ?? null;
 
         // CLAIM FIRST (re-audit 2026-07-28): mark the invoice as dunned BEFORE

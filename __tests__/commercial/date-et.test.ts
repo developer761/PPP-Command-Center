@@ -67,3 +67,26 @@ describe("daysFromTodayEt on a bare DATE", () => {
     expect(b - a).toBe(1);
   });
 });
+
+describe("daysAgoEt — the one '3d ago' count", () => {
+  it("is 0 for today and never negative for a future stamp", async () => {
+    const { daysAgoEt, etTodayIso } = await import("@/lib/date-et");
+    expect(daysAgoEt(etTodayIso())).toBe(0);
+    expect(daysAgoEt("2099-01-01")).toBe(0);
+  });
+
+  it("counts calendar days, so a DST week is still 7", async () => {
+    const { daysAgoEt } = await import("@/lib/date-et");
+    // Whatever today is, these differ by exactly 7 — a UTC subtraction across
+    // the March boundary gives 6.958 and floors to 6.
+    const a = daysAgoEt("2026-03-01")!;
+    const b = daysAgoEt("2026-03-08")!;
+    expect(a - b).toBe(7);
+  });
+
+  it("renders nothing rather than NaN for junk", async () => {
+    const { daysAgoEt } = await import("@/lib/date-et");
+    expect(daysAgoEt(null)).toBeNull();
+    expect(daysAgoEt("not a date")).toBeNull();
+  });
+});

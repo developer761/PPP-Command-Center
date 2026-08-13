@@ -1,4 +1,5 @@
 import "server-only";
+import { daysAgoEt } from "@/lib/date-et";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { MS_PER_DAY, ACTIVITY_FRESH_DAYS, ACTIVITY_STALE_DAYS } from "./constants";
@@ -87,10 +88,8 @@ export async function listAccountOverviews(
 /** Days between a past ISO timestamp and now. Returns null when the
  *  input is missing, malformed, or in the future (clock skew guard). */
 export function daysSinceIso(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return null;
-  return Math.floor(ms / MS_PER_DAY);
+  // ET calendar days — see daysAgoEt. A UTC divide loses a day across DST.
+  return daysAgoEt(iso);
 }
 
 /** Format `last_activity_at` into a friendly relative string. */

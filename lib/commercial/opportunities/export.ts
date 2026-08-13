@@ -1,4 +1,5 @@
 import "server-only";
+import { daysAgoEt } from "@/lib/date-et";
 
 import {
   listCommercialOpportunities,
@@ -86,10 +87,8 @@ function centsToDollars(c: number | null | undefined): string {
 }
 
 function daysSinceIso(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "";
-  return String(Math.floor(ms / 86_400_000));
+  const d = daysAgoEt(iso);
+  return d === null ? "" : String(d);
 }
 
 /** Extra filter knobs that don't live on `OpportunitiesListFilters` but

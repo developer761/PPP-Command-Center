@@ -48,6 +48,7 @@ import { listCommercialOpportunities, oppStatusDisplayLabel, formatBidRange, for
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
 import { proposalDisplayId, getProposal, listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
+import { relativeAgoEt } from "@/lib/date-et";
 // Inline delivery tools rendered under the deal's Project sub-tab (2026-08).
 import { revalidatePath } from "next/cache";
 import { listCurrentStatusEnteredAtByOpp, changeOpportunityStatus } from "@/lib/commercial/opportunities/status";
@@ -2522,15 +2523,7 @@ function ContactRow({
 /** Compact relative-time label for "last touched X ago" on contacts.
  *  Keeps the badge to one line on mobile. */
 function relativeTouch(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "just now";
-  const days = Math.floor(ms / 86_400_000);
-  if (days < 1) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days}d ago`;
-  if (days < 30) return `${Math.floor(days / 7)}w ago`;
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
-  return `${Math.floor(days / 365)}y ago`;
+  return relativeAgoEt(iso, "just now");
 }
 
 function ContactInput({
@@ -3040,15 +3033,10 @@ function TeamRow({
         </a>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {person.assignments.map((a) => {
-            const since = (() => {
-              const ms = Date.now() - new Date(a.assigned_at).getTime();
-              const days = Math.floor(ms / 86_400_000);
-              if (days < 1) return "today";
-              if (days === 1) return "yesterday";
-              if (days < 7) return `${days} days ago`;
-              if (days < 30) return `${Math.floor(days / 7)}w ago`;
-              return `${Math.floor(days / 30)}mo ago`;
-            })();
+            // Was a FIFTH copy of the same relative-time ladder, on its own
+            // UTC divide. One implementation now, so a job can't read "6d ago"
+            // here and "yesterday" on the page next door.
+            const since = relativeAgoEt(a.assigned_at, "just now");
             const tipBits = [
               a.is_primary ? "Primary holder of this role" : null,
               `Assigned ${since}`,
