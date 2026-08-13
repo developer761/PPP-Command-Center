@@ -65,8 +65,8 @@ against this specifically.
 
 | # | Item | The tripwire |
 |---|---|---|
-| 4.1 | **A project with no opportunity is invisible to every report.** All reports start from opportunities; `commercial_projects.opportunity_id` is nullable by design. | The day direct T&M jobs without a bid become real. Job costs, geography and every P&L rollup must read projects first, or those costs vanish from company totals. |
-| 4.2 | **`rfp_received_at` is a TIMESTAMPTZ; the other date fields are DATE.** Both write paths treat it identically, so it is symmetric today. | A platform-wide date-type cleanup, not a patch. |
+| 4.1 | **A project with no opportunity is invisible to every report.** All reports start from opportunities; `commercial_projects.opportunity_id` is nullable by design. Still latent — but no longer *silent*: `/api/admin/commercial-health` now carries an `orphan_projects` probe that warns the day the first one appears, with the fix in its hint. | The day direct T&M jobs without a bid become real. Job costs, geography and every P&L rollup must read projects first, or those costs vanish from company totals. |
+| ~~4.2~~ | ~~**`rfp_received_at` is a TIMESTAMPTZ; the other date fields are DATE.** Both write paths treat it identically, so it is symmetric today.~~ **WRONG, AND FIXED (migration 133).** There were THREE write paths, not two, and they were not symmetric: the Opportunities create form and the inline editor both wrote a bare `"2026-08-12"` into a TIMESTAMPTZ — UTC midnight, i.e. 8pm the PREVIOUS evening in Eastern — so the deal stored the day before the one that was picked, and the "Plans received" tile read it back a day early. Only the Account forms' noon anchor was right. The same date typed on two screens produced two different stored days. Column is now DATE, history repaired by truncating in UTC (both conventions put the typed day in the UTC portion), all three paths write the bare day, pinned by tests. | — |
 
 ---
 

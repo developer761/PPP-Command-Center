@@ -1392,9 +1392,10 @@ async function createDealInlineAction(formData: FormData) {
   // create-time when the deal originates from a fresh bid request so
   // time-to-proposal starts counting from day 1.
   const rfpReceivedRaw = String(formData.get("rfp_received_at") ?? "").trim();
-  const rfp_received_at = rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw)
-    ? `${rfpReceivedRaw}T12:00:00.000Z`
-    : null;
+  // Migration 133 made this a DATE. It is a calendar day — no time to anchor,
+  // and no zone to shift it across.
+  const rfp_received_at =
+    rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw) ? rfpReceivedRaw : null;
 
   const description = String(formData.get("description") ?? "").trim() || null;
   const property_street = String(formData.get("property_street") ?? "").trim() || null;
@@ -1620,9 +1621,10 @@ async function editDealFromAccountAction(formData: FormData) {
   // Migration 069 — RFP arrival date. Anchor at noon UTC so the ET
   // display doesn't drift a day either side of the date line.
   const rfpReceivedRaw = String(formData.get("rfp_received_at") ?? "").trim();
-  const rfp_received_at = rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw)
-    ? `${rfpReceivedRaw}T12:00:00.000Z`
-    : null;
+  // Migration 133 made this a DATE. It is a calendar day — no time to anchor,
+  // and no zone to shift it across.
+  const rfp_received_at =
+    rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw) ? rfpReceivedRaw : null;
 
   const description = String(formData.get("description") ?? "").trim() || null;
   const property_street = String(formData.get("property_street") ?? "").trim() || null;

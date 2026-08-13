@@ -353,14 +353,16 @@ async function createDealFromPipelineAction(formData: FormData) {
   }
 
 
-  // Anchor a date-only proposal-due at noon ET (16:00 UTC) so we don't
-  // race the timezone into the previous day for east-coast users.
+  // `proposal_due_at` is a DATE column, so it is stored exactly as typed. The
+  // noon-ET anchor that used to be here was defending against a timezone race
+  // that a DATE cannot have, and it made this the only write path on the
+  // platform that put a time into a date field.
   let proposalDueAt: string | null = null;
   if (proposalDueRaw) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(proposalDueRaw)) {
       redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Proposal due date is malformed.")}#new-deal-sheet`);
     }
-    proposalDueAt = `${proposalDueRaw}T16:00:00Z`;
+    proposalDueAt = proposalDueRaw;
   }
 
   // Duplicate check, matching the account form. The pipeline path had none, so

@@ -401,6 +401,45 @@ export async function GET() {
         message: "Debrief + competitors + account_notes tables ready",
       };
     }),
+
+    /**
+     * BACKLOG §4.1 tripwire — a project with no opportunity is invisible to
+     * every report.
+     *
+     * `commercial_projects.opportunity_id` is nullable by design (a direct
+     * T&M job with no bid is a real thing), but every report starts from
+     * opportunities. The failure mode is not an error: those costs simply
+     * stop being counted, and company totals are quietly light with nothing
+     * on screen to say so.
+     *
+     * It was documented and left unbuilt because it isn't real yet. This
+     * probe is what makes "isn't real yet" a fact rather than an assumption
+     * — the day the first one appears, it says so here instead of nowhere.
+     */
+    probe("orphan_projects", "Projects with no opportunity", "commercial_cc", async () => {
+      const sb = adminClient();
+      const { count, error } = await sb
+        .from("commercial_projects")
+        .select("id", { count: "exact", head: true })
+        .is("opportunity_id", null)
+        .is("deleted_at", null);
+      if (error) {
+        return {
+          status: "warn",
+          message: `Could not count: ${error.message}`.slice(0, 150),
+          fix: "Check migration 131 applied (commercial_projects)",
+        };
+      }
+      const n = count ?? 0;
+      if (n === 0) {
+        return { status: "ok", message: "Every live project is attached to an opportunity" };
+      }
+      return {
+        status: "warn",
+        message: `${n} live project${n === 1 ? "" : "s"} with no opportunity — their costs are missing from every report`,
+        fix: "Reports read opportunities first. Either attach these to an opportunity, or make Job costs / geography / P&L read projects as the root. See OPEN_BACKLOG §4.1",
+      };
+    }),
   ]);
 
   // ──────────────── SUMMARY ────────────────
