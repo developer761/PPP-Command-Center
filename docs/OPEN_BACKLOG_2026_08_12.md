@@ -818,3 +818,29 @@ Karan's directive (do ALL, not incremental) is satisfied and I smoke-tested the 
 - **Multi-action forms preserved:** SubmitButton carries `name`/`value`/`formAction`; spot-checked the deal page +
   aia-line-row "Remove line" — attributes intact, JSX balanced (tsc would have caught otherwise).
 Method matched Karan's ask (AST-driven, not a blind regex sweep). **Plan item 2 CLOSED.**
+
+---
+
+## 🟠 VERIFY — Reports F3: Cash flow & collections (`48d63a7`). Mostly excellent — ONE confirmed tax-basis bug.
+Verified clean: keyed on `paid_at` via `etDateOf` (bare-date-safe), amount-weighted days-to-pay with the RIGHT
+divisor (`lagWeighted / lagAmount` = Σ(days×amt)÷Σ(amt), not count), clamp-to-0 for pre-issue deposits, voids
+excluded (`.neq("status","void")` + skip payments on missing invoices), both queries paginated, RBAC reasoning sound
+(company money → not gated), mobile clean, 10 tests + tsc green. Cross-links to AR aging both ways. ✅
+
+**🟠 CONFIRMED BUG — collection rate + the billed-vs-collected chart mix TWO tax bases.**
+Commercial invoices carry tax (`subtotal_cents` pre-tax · `tax_pct` · `total_cents` = subtotal+tax · `balance_cents`
+= total−paid). So payments (`amount_cents`, summing to `paid_cents`) are on the **tax-INCLUSIVE total** basis. But:
+- `collected` = Σ payment `amount_cents` (tax-inclusive) — cash-flow.ts:177-179.
+- `billed` = Σ `subtotal_cents` (PRE-tax) — cash-flow.ts:224.
+- `collectionRatePct = collected / billed` (line 263) → **systematically inflated by the tax rate**: a fully-
+  collected month reads ~108% at 8% tax, not 100%. The commit attributes >100% to "older invoices landing in the
+  window," but the DOMINANT driver is the tax-basis mismatch — even with zero timing effect it exceeds 100%.
+- The **chart** plots pre-tax billed vs tax-inclusive collected side by side; the collected bar sits ~tax% above
+  billed for the SAME money, so "the gap is the story" is distorted — perfect same-period collection looks like
+  over-collecting.
+A cash-collection ratio/chart must be same-basis. **Fix:** for the collection rate + the chart's billed line, use
+`total_cents` (tax-inclusive, to match the cash actually received) — OR net tax out of `collected`
+(amount × subtotal/total per invoice). The "pre-tax billed" convention is fine for a REVENUE trend, but this report
+cross-compares against real cash, so the two sides must match. Magnitude scales with how many invoices carry
+`tax_pct > 0` (tax-exempt GCs = no effect), but it's structurally wrong for any taxed invoice — and it's a number
+Alex reads. Handed off.
