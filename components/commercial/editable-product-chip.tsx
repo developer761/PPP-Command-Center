@@ -1,31 +1,105 @@
 "use client";
 
 import { useState } from "react";
+import ProductPicker, { type PickableProduct } from "@/components/commercial/product-picker";
 
 /**
- * Editable product chip for a proposal line-item edit row.
+ * The product on a saved proposal line — changeable, not frozen.
  *
- * 2026-07-21 audit fix: an edit row snapshots its product name in a hidden
- * field with no picker, so a mis-picked variation was a dead-end (only
- * recovery was Remove + re-add, losing qty/price/phase). This renders the
- * product chip with a "Clear" control that blanks the hidden product_name
- * input — on Save the row becomes a normal free-text line (the description
- * is kept + editable), which the update path already supports.
+ * Stephanie 2026-08-13: *"Can we not lock inclusion product drop down once it
+ * is added and saved? I need to be able to edit without completely removing."*
+ *
+ * The row used to snapshot its product into a hidden field with no picker, so
+ * the only ways out of a mis-picked product were Remove-and-re-add (losing
+ * qty, price and phase) or Clear (dropping the catalogue link entirely and
+ * retyping the line by hand). Neither is "change the product", which is the
+ * ordinary thing an estimator does when they pick the wrong variation.
+ *
+ * So there are now three moves, in the order they are wanted:
+ *
+ *   Change  — swap to another catalogue product. Re-uses the same picker as
+ *             the add row, so description/unit/price refill exactly as they
+ *             did the first time, and the LINK moves too (see product_id in
+ *             the update action — a row reading product B while still pointing
+ *             at product A would be worse than leaving the field locked).
+ *   Clear   — drop the catalogue link and keep the text as a free-text row.
+ *   (Remove — still on the row itself, for deleting the line outright.)
+ *
+ * Nothing commits until Save row, matching every other field here.
  */
 export function EditableProductChip({
   name,
   inputId,
+  productIdInputId,
+  descriptionInputId,
+  unitInputId,
+  unitPriceInputId,
+  products,
+  accountId,
 }: {
   name: string;
   /** id of the hidden `product_name` input this chip controls. */
   inputId: string;
+  /** id of the hidden `product_id` input — the catalogue link. */
+  productIdInputId: string;
+  descriptionInputId: string;
+  unitInputId: string;
+  unitPriceInputId: string;
+  products: PickableProduct[];
+  accountId: string;
 }) {
-  const [cleared, setCleared] = useState(false);
+  const [mode, setMode] = useState<"chip" | "changing" | "cleared">("chip");
 
-  if (cleared) {
+  function clearInputs() {
+    const pn = document.getElementById(inputId) as HTMLInputElement | null;
+    const pid = document.getElementById(productIdInputId) as HTMLInputElement | null;
+    if (pn) pn.value = "";
+    if (pid) pid.value = "";
+  }
+
+  if (mode === "cleared") {
     return (
-      <div className="text-[11.5px] text-ppp-charcoal-500 italic">
-        Product cleared — this becomes a free-text row. Edit the description below, then Save row.
+      <div className="flex items-center gap-2 flex-wrap text-[11.5px] text-ppp-charcoal-500 italic">
+        <span>Product cleared — this becomes a free-text row. Edit the description below, then Save row.</span>
+        <button
+          type="button"
+          onClick={() => setMode("changing")}
+          className="not-italic inline-flex items-center min-h-[44px] text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 touch-manipulation"
+        >
+          Pick a product instead
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === "changing") {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-400">
+            Change product
+          </span>
+          <button
+            type="button"
+            onClick={() => setMode("chip")}
+            className="inline-flex items-center min-h-[44px] text-[11px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal-700 underline underline-offset-2 touch-manipulation"
+          >
+            Keep {name}
+          </button>
+        </div>
+        <ProductPicker
+          products={products}
+          accountId={accountId}
+          descriptionInputId={descriptionInputId}
+          unitInputId={unitInputId}
+          unitPriceInputId={unitPriceInputId}
+          productIdInputId={productIdInputId}
+          productNameInputId={inputId}
+        />
+        <p className="text-[11px] text-ppp-charcoal-400">
+          Picking one refills the description, unit and price below. Nothing saves until you press
+          Save row.
+        </p>
       </div>
     );
   }
@@ -40,13 +114,20 @@ export function EditableProductChip({
       </span>
       <button
         type="button"
+        onClick={() => setMode("changing")}
+        className="inline-flex items-center min-h-[44px] text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 touch-manipulation"
+        title="Swap this line to a different catalogue product — quantity, phase and any edits stay."
+      >
+        Change
+      </button>
+      <button
+        type="button"
         onClick={() => {
-          const el = document.getElementById(inputId) as HTMLInputElement | null;
-          if (el) el.value = "";
-          setCleared(true);
+          clearInputs();
+          setMode("cleared");
         }}
         className="inline-flex items-center min-h-[44px] text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-600 underline underline-offset-2 touch-manipulation"
-        title="Remove the linked product — the row becomes free-text (description kept). Wrong product? Clear it or Remove the row and re-add."
+        title="Drop the catalogue link and keep this as a free-text row (description kept)."
       >
         Clear
       </button>

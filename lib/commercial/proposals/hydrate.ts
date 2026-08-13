@@ -12,10 +12,10 @@ import { commercialDb } from "@/lib/commercial/db";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import {
   getCommercialOpportunity,
-  derivedOppName,
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { listStandardExclusions } from "@/lib/commercial/exclusions/db";
+import { proposalProjectName } from "@/lib/commercial/proposals/project-name";
 import type {
   ProposalHeaderJson,
   ProposalEstimatorSnapshot,
@@ -45,20 +45,10 @@ export async function hydrateProposalContext(
     .join(", ");
   if (cityLine) gcAddressLines.push(cityLine);
 
-  // Katie 2026-07-20 audit fix (CRITICAL): title_override MUST win here
-  // so a user's explicit "Custom display name" on the deal edit sheet
-  // also drives the proposal PDF's PROJECT field. Prior order silently
-  // dropped the override when client_name was set — a user who typed
-  // "The Big Job at Jones" saw "Jones Property" on the PDF instead.
-  //
-  // Priority:
-  //   1. opp.title_override — user's explicit custom name (wins everywhere)
-  //   2. opp.client_name    — Tomco JD-Sports convention (end-customer label)
-  //   3. derivedOppName     — computed {account} - {client} - {street}
-  const projectName =
-    opp.title_override?.trim() ||
-    opp.client_name?.trim() ||
-    derivedOppName(opp, account?.company_name ?? null);
+  // The PROJECT line. Katie's 2026-07-20 rule that an explicit title_override
+  // must win still holds and is enforced inside the helper; see
+  // proposalProjectName for why the fallback is the job rather than the GC.
+  const projectName = proposalProjectName(opp, account?.company_name ?? null);
   const siteAddressParts = [
     opp.property_street?.trim(),
     [opp.property_city?.trim(), opp.property_state?.trim()]

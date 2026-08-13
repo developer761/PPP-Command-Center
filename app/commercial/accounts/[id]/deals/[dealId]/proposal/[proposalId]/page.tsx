@@ -69,7 +69,7 @@ import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
 import ExclusionPicker from "@/components/commercial/exclusion-picker";
-import ProductPicker from "@/components/commercial/product-picker";
+import ProductPicker, { type PickableProduct } from "@/components/commercial/product-picker";
 import { IconTrophy } from "@/components/commercial/inline-icons";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
@@ -510,6 +510,14 @@ async function updateLineItemAction(formData: FormData) {
   const pnInput = formData.get("product_name");
   const product_name: string | null | undefined =
     pnInput === null ? undefined : String(pnInput).trim().slice(0, 200) || null;
+  // Stephanie 2026-08-13: the product can now be SWAPPED on a saved row, not
+  // just cleared. The link has to move with the name — a row showing product B
+  // while still pointing at product A is worse than a locked field. Absent →
+  // undefined (don't touch); present-but-blank → null (row became free-text).
+  const pidInput = formData.get("product_id");
+  const pidRaw = pidInput === null ? null : String(pidInput).trim();
+  const product_id: string | null | undefined =
+    pidInput === null ? undefined : pidRaw && UUID_RE.test(pidRaw) ? pidRaw : null;
   // Sanitize quantity the same way the add path does — a NaN (blank/"abc")
   // otherwise slips past updateLineItem's `< 0`/`=== 0` checks and writes null,
   // dropping the row from the TOTAL (Karan 2026-07-27 audit).
@@ -519,6 +527,7 @@ async function updateLineItemAction(formData: FormData) {
       id,
       description: String(formData.get("description") ?? ""),
       product_name,
+      product_id,
       quantity: Number.isFinite(rawQty) && rawQty >= 0 ? rawQty : 1,
       unit: String(formData.get("unit") ?? "each"),
       unit_price_cents: dollarsInputToCents(String(formData.get("unit_price") ?? "0")),
@@ -1945,6 +1954,10 @@ export default async function ProposalEditorPage({
               proposalId={proposalId}
               updateAction={updateLineItemAction}
               deleteAction={deleteLineItemAction}
+              products={products.map((p) => ({
+                ...p,
+                is_parent_only: parentIdsWithChildren.has(p.id),
+              }))}
             />
           ) : (
             <ReadOnlyLineItems rows={inclusions} />
@@ -1995,6 +2008,10 @@ export default async function ProposalEditorPage({
               proposalId={proposalId}
               updateAction={updateLineItemAction}
               deleteAction={deleteLineItemAction}
+              products={products.map((p) => ({
+                ...p,
+                is_parent_only: parentIdsWithChildren.has(p.id),
+              }))}
             />
           ) : (
             <ReadOnlyLineItems rows={laborRows} />
@@ -2038,6 +2055,10 @@ export default async function ProposalEditorPage({
               proposalId={proposalId}
               updateAction={updateLineItemAction}
               deleteAction={deleteLineItemAction}
+              products={products.map((p) => ({
+                ...p,
+                is_parent_only: parentIdsWithChildren.has(p.id),
+              }))}
             />
           ) : (
             <ReadOnlyLineItems rows={alternates} />
@@ -2084,6 +2105,7 @@ function LineItemsTable({
   proposalId,
   updateAction,
   deleteAction,
+  products,
 }: {
   rows: CommercialProposalLineItem[];
   accountId: string;
@@ -2091,6 +2113,9 @@ function LineItemsTable({
   proposalId: string;
   updateAction: (formData: FormData) => Promise<void>;
   deleteAction: (formData: FormData) => Promise<void>;
+  /** The same catalogue the add row uses, so "Change" behaves identically
+   *  to picking the product the first time (Stephanie 2026-08-13). */
+  products: PickableProduct[];
 }) {
   // 2026-07-21 rebuild (Karan): rows are cards, not a cramped 12-col grid.
   // Product name shown as a distinct navy chip (snapshotted, preserved on
@@ -2113,18 +2138,31 @@ function LineItemsTable({
                 the EditableProductChip below can blank this to convert the
                 row to free-text (fixes the mis-picked-variation dead-end). */}
             <input type="hidden" id={`pn-${r.id}`} name="product_name" defaultValue={r.product_name ?? ""} />
+            {/* The catalogue link travels with the name, so swapping the
+                product can't leave the row pointing at the old one. */}
+            <input type="hidden" id={`pid-${r.id}`} name="product_id" defaultValue={r.product_id ?? ""} />
             {/* Round-3 audit fix: optimistic-lock stamp so a stale two-tab
                 save is rejected before it overwrites a concurrent edit. */}
             <input type="hidden" name="original_updated_at" value={r.updated_at} />
 
             {/* Product chip + Clear (only when this row came from the catalog). */}
             {r.product_name && (
-              <EditableProductChip name={r.product_name} inputId={`pn-${r.id}`} />
+              <EditableProductChip
+                name={r.product_name}
+                inputId={`pn-${r.id}`}
+                productIdInputId={`pid-${r.id}`}
+                descriptionInputId={`desc-${r.id}`}
+                unitInputId={`unit-${r.id}`}
+                unitPriceInputId={`price-${r.id}`}
+                products={products}
+                accountId={accountId}
+              />
             )}
 
             <label className="block">
               <span className={LABEL_CLS}>Description</span>
               <textarea
+                id={`desc-${r.id}`}
                 name="description"
                 defaultValue={r.description}
                 className={`${TEXTAREA_CLS} min-h-[72px]`}
@@ -2144,11 +2182,11 @@ function LineItemsTable({
               </label>
               <label className="block">
                 <span className={LABEL_CLS}>Unit</span>
-                <input type="text" name="unit" defaultValue={productUnitLabel(r.unit)} className={INPUT_CLS} />
+                <input type="text" id={`unit-${r.id}`} name="unit" defaultValue={productUnitLabel(r.unit)} className={INPUT_CLS} />
               </label>
               <label className="block">
                 <span className={LABEL_CLS}>Unit price</span>
-                <input type="text" inputMode="decimal" name="unit_price" defaultValue={centsToDollarInput(r.unit_price_cents)} className={`${INPUT_CLS} tabular-nums`} />
+                <input type="text" id={`price-${r.id}`} inputMode="decimal" name="unit_price" defaultValue={centsToDollarInput(r.unit_price_cents)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
             </div>
 

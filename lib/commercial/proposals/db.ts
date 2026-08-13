@@ -2044,6 +2044,15 @@ export type UpdateLineItemInput = {
   description?: string;
   /** Migration 071: product display name. Pass empty/null to clear. */
   product_name?: string | null;
+  /**
+   * Catalogue link. Stephanie 2026-08-13: *"Can we not lock inclusion product
+   * drop down once it is added and saved? I need to be able to edit without
+   * completely removing."* Swapping the product has to move the LINK as well
+   * as the name, or the row reads as one product while still pointing at
+   * another — which is worse than not letting her change it at all.
+   * Pass null to convert the row to free-text.
+   */
+  product_id?: string | null;
   quantity?: number;
   unit?: string;
   unit_price_cents?: number;
@@ -2063,6 +2072,9 @@ export async function updateLineItem(
   | { ok: false; error: string }
 > {
   const patch: Record<string, unknown> = {};
+  if (input.product_id !== undefined) {
+    patch.product_id = input.product_id || null;
+  }
   if (input.product_name !== undefined) {
     patch.product_name = input.product_name?.trim() || null;
   }
