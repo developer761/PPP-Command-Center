@@ -71,6 +71,26 @@ export default async function CreateProposalRoute({
 
   if (sp.bump && UUID_RE.test(sp.bump)) {
     const parent = await getProposal(sp.bump);
+    // POLICY (Karan 2026-08-13): a revision only exists once the proposal has
+    // GONE TO THE GC and they have asked for changes. Until then the original
+    // is the working copy and Kim edits it in place.
+    //
+    // Enforced here, not just on the button that offers it: this route mutates
+    // on GET, so a bookmark, a browser-back, or a hand-typed ?bump= would mint
+    // an R2 on an untouched draft and split the work across two rows with
+    // nobody able to say which one is live. A hidden button is a suggestion; a
+    // guard is the rule.
+    const parentWentOut =
+      !!parent?.sent_at ||
+      ["sent", "won", "lost", "superseded", "expired"].includes(parent?.status ?? "");
+    if (parent && parent.opportunity_id === dealId && !parentWentOut) {
+      // Land on the original rather than erroring — it is the thing they
+      // actually want to work on, and saying "no" with no way forward is the
+      // shape we do not ship.
+      redirect(
+        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${parent.id}?kept=1`
+      );
+    }
     if (parent && parent.opportunity_id === dealId) {
       parentProposalId = parent.id;
       intro = parent.intro_text_override;

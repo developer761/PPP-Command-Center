@@ -824,7 +824,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; back?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; deal_kept?: string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
+  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; back?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; deal_kept?: string; kept?: string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -850,6 +850,16 @@ export default async function ProposalEditorPage({
   if (!proposal || proposal.opportunity_id !== dealId) notFound();
   // The deal's own answer. Won/lost, or anywhere past the sale — all of them
   // mean the outcome is recorded and this proposal is history.
+  // Has this proposal actually gone to the GC? Won/lost count — they can only
+  // follow a send. `superseded`/`expired` do too: both are end states of a
+  // proposal that was live.
+  // Bounced here from the revision route because this proposal has not gone to
+  // the GC yet — so it IS the working copy. Explained rather than silently
+  // redirected, which would just look broken.
+  const keptOriginal = (Array.isArray(sp.kept) ? sp.kept[0] : sp.kept) === "1";
+  const hasBeenSent =
+    !!proposal.sent_at ||
+    ["sent", "won", "lost", "superseded", "expired"].includes(proposal.status);
   const dealDecided =
     opp.status === "pre_sale_closed" ||
     ["pre_construction", "in_progress", "billing", "post_sale_closed"].includes(opp.status);
@@ -1005,6 +1015,13 @@ export default async function ProposalEditorPage({
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+      {keptOriginal && (
+        <div role="status" className="rounded-lg border border-cc-brand-200 bg-cc-brand-50 px-4 py-3 text-[13px] text-cc-brand-900">
+          <strong className="font-semibold">Still working the original.</strong> A new revision is for
+          after the GC has seen it and asked for changes — until then this one is the live proposal, so
+          edit it here.
+        </div>
+      )}
       {/* Breadcrumb + status pill */}
       <nav className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
         {fromProposalsIndex ? (
@@ -1157,7 +1174,19 @@ export default async function ProposalEditorPage({
           {/* Karan 2026-07-15: "Bump revision" was dev jargon nobody
               understood. It clones this proposal's data into a fresh
               R{n+1} draft — for when the customer wants a revised
-              quote after seeing R{n}. Now labeled with what it does. */}
+              quote after seeing R{n}. Now labeled with what it does.
+              
+              Karan 2026-08-13: "the revision should only be made after we send
+              it to the GC and they want something changed. Kate can work on
+              the original one until approved by GC."
+              
+              So this is gated on the proposal having actually GONE OUT. While
+              it is a draft, pending approval, or approved-but-unsent, the
+              thing in front of you IS the working copy — editing it is the
+              correct move, and offering a revision invites a second row that
+              splits the work in two and makes "which one is live" a question
+              nobody should have to ask. */}
+          {hasBeenSent && (
           <Link
             href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${proposalId}`}
             className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
@@ -1165,6 +1194,7 @@ export default async function ProposalEditorPage({
           >
             + New revision (R{proposal.revision_number + 1})
           </Link>
+          )}
           {/* R1d HARD GATE: draft → request approval (not direct send). */}
           {proposal.status === "draft" && hasPdfBody && (
             <form action={requestApprovalAction} className="inline-flex">

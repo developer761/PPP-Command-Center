@@ -1597,6 +1597,27 @@ export default async function OpportunityDetailPage({
   const billedSoFar = pathFin?.billedPreTaxCents ?? 0;
   // Per-invoice clamp so one overpayment can't mask another invoice's debt —
   // the same rule as ProjectFinancials.openBalanceCents.
+  // Billing shaped over time — the question a total cannot answer: is money
+  // going out steadily, or in one lump at the end? Keyed on the month each
+  // invoice was ISSUED, with what has been paid against it, oldest first.
+  const pathBillingByMonth = (() => {
+    const m = new Map<string, { invoicedCents: number; collectedCents: number }>();
+    for (const inv of pathInvoices) {
+      const ymd = etDateOf(inv.issued_at);
+      if (!ymd) continue; // a draft that never went out is not billing yet
+      const key = ymd.slice(0, 7);
+      const cur = m.get(key) ?? { invoicedCents: 0, collectedCents: 0 };
+      cur.invoicedCents += Number(inv.subtotal_cents) || 0;
+      cur.collectedCents += Number(inv.paid_cents) || 0;
+      m.set(key, cur);
+    }
+    return [...m.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, v]) => ({
+        label: `${key.slice(5)}/${key.slice(2, 4)}`,
+        ...v,
+      }));
+  })();
   const contractToDate = pathFin?.contractCents ?? 0;
   // Signed sum of APPROVED change orders — deducts stay negative so the
   // analytics note can say "+ 12k" or "− 3k" honestly rather than netting the
@@ -2311,6 +2332,15 @@ export default async function OpportunityDetailPage({
             marginCents: pathMargin?.cents ?? 0,
             marginPct: pathMargin?.pct ?? null,
             unratedHours: pathFin.laborUnratedHours,
+            costsByCategory: {
+              materials: pathFin.costs.materials,
+              labor: pathFin.costs.labor,
+              subcontractor: pathFin.costs.subcontractor,
+              equipment: pathFin.costs.equipment,
+              permit: pathFin.costs.permit,
+              other: pathFin.costs.other,
+            },
+            billingByMonth: pathBillingByMonth,
           }}
         />
       )}

@@ -1,28 +1,36 @@
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
+import {
+  DonutChart,
+  GaugeRing,
+  HBars,
+  MiniBars,
+  StatCard,
+  type DonutSegment,
+  type HBarItem,
+} from "@/components/commercial/charts";
 
 /**
- * The money chain for one job, end to end.
+ * Analytics for one job.
  *
- * Karan 2026-08-13: *"let's have an analytics page for the KPI board with
- * everything feeding into it."*
+ * Karan 2026-08-13: *"the analytics page shouldn't just be lines — add KPI
+ * blocks, line graphs, pie charts etc where it makes sense."*
  *
- * Deliberately NOT another company-wide report — there are four of those
- * already. The question this answers is the one you have standing on a single
- * job: where did the contract go, and how much of it have we actually got.
+ * Fair. The first version was four progress bars and some prose, which is a
+ * summary, not analytics. Each visual here earns its place by answering a
+ * different SHAPE of question:
  *
- * It reads as a chain because that is what it is, and each step can only
- * shrink from the one above it:
+ *  - **KPI blocks** — the four numbers anyone would ask for out loud.
+ *  - **Billing over time** — is money going out steadily, or in one lump at
+ *    the end? A total can't show that; a series can.
+ *  - **A donut of costs** — cost is a composition question ("where did it
+ *    go"), which is the one thing a pie is genuinely good at.
+ *  - **A gauge for margin** — one number against a target reads faster as a
+ *    dial than as text.
+ *  - **The money chain as bars** — kept, because contract → invoiced →
+ *    collected is a sequence where each step can only shrink, and the GAPS
+ *    are the finding.
  *
- *   Contract to date  (base + approved change orders)
- *     → Invoiced      (what we have asked for)
- *       → Collected   (what has arrived)
- *   less Costs        (materials, subs, crew)
- *     = Margin
- *
- * Every gap between two bars is a question worth asking. Contract vs invoiced
- * is work done and unbilled; invoiced vs collected is money owed; and the
- * retainage line names the part that is neither — earned, billed, and withheld
- * until closeout.
+ * Deliberately per-deal. Company-wide questions have four reports already.
  */
 
 export type DealAnalytics = {
@@ -36,129 +44,202 @@ export type DealAnalytics = {
   costsCents: number;
   crewLaborCents: number;
   purchasesCents: number;
+  /** Purchases split by category — the donut. */
+  costsByCategory: { materials: number; labor: number; subcontractor: number; equipment: number; permit: number; other: number };
   marginCents: number;
   marginPct: number | null;
-  /** Approved crew hours with no cost rate — margin is overstated by them. */
   unratedHours: number;
+  /** Invoiced per month, oldest first — the billing shape over time. */
+  billingByMonth: { label: string; invoicedCents: number; collectedCents: number }[];
 };
-
-function Bar({
-  label,
-  value,
-  of,
-  tone,
-  note,
-}: {
-  label: string;
-  value: number;
-  of: number;
-  tone: string;
-  note?: string;
-}) {
-  const pct = of > 0 ? Math.min(100, Math.round((value / of) * 100)) : 0;
-  return (
-    <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[12px] font-semibold text-ppp-charcoal">{label}</span>
-        <span className="text-[12.5px] font-bold text-ppp-charcoal tabular-nums">
-          {formatCentsFull(value)}
-          {of > 0 && <span className="ml-1.5 text-[10.5px] font-medium text-ppp-charcoal-400">{pct}%</span>}
-        </span>
-      </div>
-      <div className="mt-1 h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
-        <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
-      </div>
-      {note && <p className="text-[10.5px] text-ppp-charcoal-500 mt-1">{note}</p>}
-    </div>
-  );
-}
 
 export function DealAnalytics({ a }: { a: DealAnalytics }) {
   const unbilled = a.contractToDateCents - a.invoicedCents;
-  const marginTone =
-    a.marginPct === null ? "text-ppp-charcoal" : a.marginPct < 0 ? "text-rose-700" : a.marginPct < 15 ? "text-amber-700" : "text-emerald-700";
+  const collectedPct =
+    a.invoicedCents > 0 ? Math.round((a.collectedCents / a.invoicedCents) * 100) : 0;
+
+  const costSegments: DonutSegment[] = (
+    [
+      ["Materials", a.costsByCategory.materials, "brand"],
+      ["Subcontractors", a.costsByCategory.subcontractor, "amber"],
+      ["Subcontract labour", a.costsByCategory.labor, "blue"],
+      ["Crew labour", a.crewLaborCents, "emerald"],
+      ["Equipment", a.costsByCategory.equipment, "navy"],
+      ["Permits", a.costsByCategory.permit, "neutral"],
+      ["Other", a.costsByCategory.other, "neutral"],
+    ] as const
+  )
+    .filter(([, v]) => v > 0)
+    .map(([label, value, tone]) => ({
+      label,
+      value,
+      tone,
+      valueLabel: formatCentsCompact(value),
+    }));
+
+  // The money chain. Each step can only shrink from the one above it, so the
+  // gaps between the bars are what there is to notice.
+  const chain: HBarItem[] = [
+    {
+      label: "Contract to date",
+      value: a.contractToDateCents,
+      tone: "navy",
+      valueLabel: formatCentsFull(a.contractToDateCents),
+      sub:
+        a.approvedCoCents !== 0
+          ? `${formatCentsCompact(a.contractBaseCents)} base ${a.approvedCoCents > 0 ? "+" : "−"} ${formatCentsCompact(Math.abs(a.approvedCoCents))} change orders`
+          : "No approved change orders",
+    },
+    {
+      label: "Invoiced",
+      value: a.invoicedCents,
+      tone: "brand",
+      valueLabel: formatCentsFull(a.invoicedCents),
+      sub:
+        unbilled > 0
+          ? `${formatCentsCompact(unbilled)} still to bill`
+          : unbilled < 0
+          ? `Over-billed by ${formatCentsCompact(-unbilled)}`
+          : "Fully billed",
+    },
+    {
+      label: "Collected",
+      value: a.collectedCents,
+      tone: "emerald",
+      valueLabel: formatCentsFull(a.collectedCents),
+      sub:
+        a.openBalanceCents > 0
+          ? `${formatCentsCompact(a.openBalanceCents)} outstanding`
+          : a.retainageCents > 0
+          ? `${formatCentsCompact(a.retainageCents)} retainage held`
+          : "All paid",
+    },
+    {
+      label: "Costs",
+      value: a.costsCents,
+      tone: "amber",
+      valueLabel: formatCentsFull(a.costsCents),
+      sub: `${formatCentsCompact(a.purchasesCents)} purchases · ${formatCentsCompact(a.crewLaborCents)} crew`,
+    },
+  ];
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3.5">
-        <div>
-          <h3 className="text-[13px] font-bold text-ppp-charcoal">Where the contract went</h3>
-          <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
-            Each bar is measured against the contract to date, so the gaps are the story.
-          </p>
-        </div>
-
-        <Bar
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
           label="Contract to date"
-          value={a.contractToDateCents}
-          of={a.contractToDateCents}
-          tone="bg-ppp-navy"
-          note={
-            a.approvedCoCents !== 0
-              ? `${formatCentsFull(a.contractBaseCents)} base ${a.approvedCoCents > 0 ? "+" : "−"} ${formatCentsCompact(Math.abs(a.approvedCoCents))} in approved change orders`
-              : "No approved change orders."
-          }
+          value={formatCentsFull(a.contractToDateCents)}
+          sub={a.approvedCoCents !== 0 ? `incl. ${formatCentsCompact(a.approvedCoCents)} in COs` : "no change orders"}
+          tone="navy"
         />
-        <Bar
+        <StatCard
           label="Invoiced"
-          value={a.invoicedCents}
-          of={a.contractToDateCents}
-          tone="bg-cc-brand-500"
-          note={
-            unbilled > 0
-              ? `${formatCentsFull(unbilled)} still to bill.`
-              : unbilled < 0
-              ? `Over-billed by ${formatCentsFull(-unbilled)} — worth checking.`
-              : "Fully billed."
-          }
+          value={formatCentsFull(a.invoicedCents)}
+          sub={unbilled > 0 ? `${formatCentsCompact(unbilled)} left to bill` : unbilled < 0 ? "over-billed" : "fully billed"}
+          tone="brand"
+          spark={a.billingByMonth.map((m) => m.invoicedCents)}
+          sparkLabels={a.billingByMonth.map((m) => m.label)}
         />
-        <Bar
+        <StatCard
           label="Collected"
-          value={a.collectedCents}
-          of={a.contractToDateCents}
-          tone="bg-emerald-500"
-          note={
-            a.openBalanceCents > 0
-              ? `${formatCentsFull(a.openBalanceCents)} outstanding${a.retainageCents > 0 ? `, plus ${formatCentsCompact(a.retainageCents)} retainage held` : ""}.`
-              : a.retainageCents > 0
-              ? `${formatCentsFull(a.retainageCents)} retainage held back until closeout.`
-              : "Everything invoiced has been paid."
-          }
+          value={formatCentsFull(a.collectedCents)}
+          sub={`${collectedPct}% of what we've invoiced`}
+          tone="emerald"
+          spark={a.billingByMonth.map((m) => m.collectedCents)}
+          sparkLabels={a.billingByMonth.map((m) => m.label)}
         />
-        <Bar
-          label="Costs"
-          value={a.costsCents}
-          of={a.contractToDateCents}
-          tone="bg-amber-500"
-          note={`${formatCentsCompact(a.purchasesCents)} purchases · ${formatCentsCompact(a.crewLaborCents)} crew labour`}
+        <StatCard
+          label="Margin"
+          value={a.marginPct === null ? "—" : `${a.marginPct}%`}
+          sub={formatCentsFull(a.marginCents)}
+          tone={a.marginPct === null ? "neutral" : a.marginPct < 0 ? "rose" : a.marginPct < 15 ? "amber" : "emerald"}
         />
       </div>
 
-      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <div>
-            <h3 className="text-[13px] font-bold text-ppp-charcoal">Margin</h3>
-            <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
-              Billed minus cost — the same basis as every deal page and report, so this job
-              reads the same number everywhere.
+      {a.unratedHours > 0 && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[12px] text-amber-900">
+          <strong className="font-semibold">{a.unratedHours}h</strong> of approved crew time has no cost
+          rate on file. Labour cost is short by whatever those hours were worth, so the margin above is
+          that much <strong className="font-semibold">too high</strong>.
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Composition — the one question a pie answers well. */}
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+          <h3 className="text-[13px] font-bold text-ppp-charcoal">Where the cost went</h3>
+          <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 mb-3">
+            Purchases plus in-house crew time, priced at each worker&rsquo;s rate on the day.
+          </p>
+          {costSegments.length === 0 ? (
+            <p className="text-[12.5px] text-ppp-charcoal-400 italic py-6 text-center">
+              Nothing logged yet. Costs land here from the deal&rsquo;s Transactions tab and from approved
+              crew hours.
             </p>
-          </div>
-          <div className="text-right shrink-0">
-            <div className={`font-condensed text-[26px] font-black tabular-nums leading-none ${marginTone}`}>
-              {a.marginPct === null ? "—" : `${a.marginPct}%`}
-            </div>
-            <div className="text-[11px] text-ppp-charcoal-500 tabular-nums mt-0.5">
-              {formatCentsFull(a.marginCents)}
-            </div>
+          ) : (
+            <DonutChart segments={costSegments} centerLabel="Total" centerValue={formatCentsCompact(a.costsCents)} />
+          )}
+        </div>
+
+        {/* One number against a target reads faster as a dial. */}
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+          <h3 className="text-[13px] font-bold text-ppp-charcoal">Margin</h3>
+          <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 mb-3">
+            Billed minus cost — the same basis as every deal page and report, so this job reads the same
+            number everywhere.
+          </p>
+          <div className="flex items-center justify-center py-2">
+            {/* 40% as the full sweep — a commercial paint job at 40 is
+                excellent, so the dial reads meaningfully across the range
+                people actually see rather than hugging one end. Clamped at 0
+                because a ring cannot show a negative; the value below it does. */}
+            <GaugeRing
+              pct={Math.max(0, Math.min(100, ((a.marginPct ?? 0) / 40) * 100))}
+              value={a.marginPct === null ? "—" : `${a.marginPct}%`}
+              label={formatCentsFull(a.marginCents)}
+              tone={a.marginPct === null ? "neutral" : a.marginPct < 0 ? "rose" : a.marginPct < 15 ? "amber" : "emerald"}
+            />
           </div>
         </div>
-        {a.unratedHours > 0 && (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-[11.5px] text-amber-900">
-            <strong className="font-semibold">{a.unratedHours}h</strong> of approved crew time has no
-            cost rate on file, so labour cost is short by whatever those hours were worth — and this
-            margin is that much too high.
-          </p>
-        )}
+      </div>
+
+      {/* Steady progress billing or one lump at the end? A total can't say. */}
+      {a.billingByMonth.length > 1 && (
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div>
+              <h3 className="text-[13px] font-bold text-ppp-charcoal">Billing over time</h3>
+              <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
+                Invoiced each month against what came in. A widening gap is money going out faster than it
+                comes back.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-[10.5px] text-ppp-charcoal-500">
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-cc-brand-500" />Invoiced</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Collected</span>
+            </div>
+          </div>
+          <MiniBars
+            values={a.billingByMonth.map((m) => m.invoicedCents)}
+            labels={a.billingByMonth.map((m) => m.label)}
+            tone="brand"
+          />
+          <div className="mt-2">
+            <MiniBars
+              values={a.billingByMonth.map((m) => m.collectedCents)}
+              labels={a.billingByMonth.map((m) => m.label)}
+              tone="emerald"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+        <h3 className="text-[13px] font-bold text-ppp-charcoal">The money chain</h3>
+        <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 mb-3">
+          Each step can only shrink from the one above it, so the gaps are the story.
+        </p>
+        <HBars items={chain} max={Math.max(a.contractToDateCents, a.invoicedCents, a.costsCents, 1)} />
       </div>
     </div>
   );

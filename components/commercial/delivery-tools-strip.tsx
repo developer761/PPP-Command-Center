@@ -49,9 +49,6 @@ export function DeliveryToolsStrip({
   stageMeaning?: string | null;
 }) {
   if (tools.length === 0) return null;
-  // Phases in the order the work runs, taken from the tools themselves so a
-  // new tool cannot introduce a phase the strip forgets to render.
-  const phases = [...new Set(tools.map((t) => t.phase))];
   return (
     <section
       aria-label="Delivery"
@@ -65,52 +62,37 @@ export function DeliveryToolsStrip({
           {tools.filter((t) => t.status === "todo").length} not started
         </span>
       </div>
-      {/* One block per phase. Karan 2026-08-13: "the delivery section isn't
-          broken apart into which progress bar it correlates to." A label on
-          every tile was not enough — with all seven in one flat row they still
-          read as one undifferentiated list. Each phase is now its own bordered
-          group with its heading above it, so the eye takes in "Pre-Construction
-          has two things, both unstarted" without reading a word. */}
-      <div className="divide-y divide-ppp-charcoal-100">
-        {phases.map((phase) => {
-          const inPhase = tools.filter((t) => t.phase === phase);
-          const open = inPhase.filter((t) => t.status === "todo").length;
-          return (
-            <div key={phase}>
-              <div className="flex items-baseline justify-between gap-2 px-3.5 pt-2">
-                <span className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
-                  {phase}
-                </span>
-                <span className="text-[10px] text-ppp-charcoal-400">
-                  {open === 0 ? "all started" : `${open} to do`}
-                </span>
-              </div>
-              <div className="flex items-stretch overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                {inPhase.map((t) => (
-                  <Link
-                    key={t.key}
-                    href={t.href}
-                    className="group min-w-[9rem] flex-1 px-3.5 pb-2.5 pt-1 min-h-[44px] hover:bg-cc-brand-50/50 transition-colors"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOT[t.status]}`} />
-                      <span className="text-[11.5px] font-semibold text-ppp-charcoal group-hover:text-cc-brand-800 whitespace-nowrap">
-                        {t.label}
-                      </span>
-                    </span>
-                    <span
-                      className={`block text-[11px] mt-0.5 whitespace-nowrap ${
-                        t.status === "todo" ? "text-ppp-charcoal-400 italic" : "text-ppp-charcoal-600"
-                      }`}
-                    >
-                      {t.state}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+      {/* ONE ROW, with the phase named once per group.
+          Karan tried the stacked-blocks version and preferred this: "I like
+          the other bar better." A row you scan left-to-right reads as a
+          sequence, which is what delivery IS; stacking it into four bordered
+          blocks turned a timeline into a form. The phase label still prints
+          once per group, so the grouping is there without the furniture. */}
+      <div className="flex items-stretch divide-x divide-ppp-charcoal-100 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {tools.map((t, i) => (
+          <Link
+            key={t.key}
+            href={t.href}
+            className="group min-w-[9rem] flex-1 px-3.5 py-2.5 min-h-[44px] hover:bg-cc-brand-50/50 transition-colors"
+          >
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-0.5 whitespace-nowrap">
+              {i === 0 || tools[i - 1].phase !== t.phase ? t.phase : "\u00A0"}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOT[t.status]}`} />
+              <span className="text-[11.5px] font-semibold text-ppp-charcoal group-hover:text-cc-brand-800 whitespace-nowrap">
+                {t.label}
+              </span>
+            </span>
+            <span
+              className={`block text-[11px] mt-0.5 whitespace-nowrap ${
+                t.status === "todo" ? "text-ppp-charcoal-400 italic" : "text-ppp-charcoal-600"
+              }`}
+            >
+              {t.state}
+            </span>
+          </Link>
+        ))}
       </div>
       {stageMeaning && (
         <p className="px-3.5 py-2 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
