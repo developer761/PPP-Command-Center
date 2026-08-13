@@ -15,12 +15,24 @@ import { proposalProjectName } from "@/lib/commercial/proposals/project-name";
 const ACCOUNT = "Tomco Painting";
 
 describe("proposalProjectName", () => {
-  it("does not lead with the builder when a job is on file", () => {
+  it("keeps Katie's end-customer convention: client name alone", () => {
+    // Katie 2026-07-20, the Tomco JD-Sports convention. An earlier version of
+    // Stephanie's fix appended the street here, which quietly changed the
+    // printed name on every deal Katie's rule covers. Her complaint was about
+    // the FALLBACK, not about these.
     const name = proposalProjectName(
       { client_name: "JD Sports", property_street: "123 Main St", title: "08-13-2026 Tomco - JD Sports - 123 Main St" },
       ACCOUNT
     );
-    expect(name).toBe("JD Sports - 123 Main St");
+    expect(name).toBe("JD Sports");
+    expect(name).not.toContain(ACCOUNT);
+  });
+
+  it("names the job by address when there is no customer label", () => {
+    // Stephanie 2026-08-13. This is the case that used to fall through to the
+    // composed "{account} - {client} - {street}" and open with the builder.
+    const name = proposalProjectName({ property_street: "123 Main St" }, ACCOUNT);
+    expect(name).toBe("123 Main St");
     expect(name).not.toContain(ACCOUNT);
   });
 
@@ -33,11 +45,6 @@ describe("proposalProjectName", () => {
         ACCOUNT
       )
     ).toBe("The Big Job at Jones");
-  });
-
-  it("uses whichever half of the job exists", () => {
-    expect(proposalProjectName({ client_name: "JD Sports" }, ACCOUNT)).toBe("JD Sports");
-    expect(proposalProjectName({ property_street: "123 Main St" }, ACCOUNT)).toBe("123 Main St");
   });
 
   it("falls back rather than printing an empty PROJECT line", () => {

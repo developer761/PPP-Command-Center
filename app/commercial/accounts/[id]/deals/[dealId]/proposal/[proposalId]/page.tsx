@@ -359,8 +359,16 @@ async function saveProposalAction(formData: FormData) {
   // typing into buys nothing: the data being revalidated is the data they
   // just typed. The write still lands; only the re-render is skipped.
   //
-  // An explicit save still refreshes everything, so the proposals list and
-  // the account page are correct the moment anyone navigates to them.
+  // CORRECTION (2026-08-13, Karan: "make sure we're not breaking any flow we
+  // had in place"). An earlier version of this comment said "an explicit save
+  // still revalidates everything" — that was wrong. Karan removed the manual
+  // Save button on 2026-07-20, so autosave is the ONLY caller and the
+  // revalidatePath calls below are now unreachable in practice.
+  //
+  // They are kept rather than deleted because they are correct for any future
+  // non-autosave caller, and nothing goes stale meanwhile: the proposal page,
+  // the proposals list and the account page are all `force-dynamic`, so each
+  // re-reads on navigation regardless. Verified, not assumed.
   if (String(formData.get("__autosave") ?? "") === "1") return;
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
@@ -370,10 +378,15 @@ async function saveProposalAction(formData: FormData) {
 }
 
 /** Karan 2026-07-15: dedicated rename action — patches ONLY the
- *  project_name in header_json without touching any other field. The
- *  main saveProposalAction wipes fields missing from formData (fine
- *  when it's the full editor form, catastrophic when someone submits
- *  just the rename input at the top of the page). */
+ *  project_name in header_json without touching any other field.
+ *
+ *  It existed because saveProposalAction used to wipe fields missing from
+ *  formData, which made submitting just the rename input catastrophic. That
+ *  is no longer true (saves are patch-only as of 2026-08-13), so this could
+ *  now be folded in — but it is kept deliberately: it is the narrowest
+ *  possible write, it is already proven, and collapsing two working paths
+ *  into one to save a few lines is how a rename starts touching fields it
+ *  has no business touching. */
 async function renameProposalAction(formData: FormData) {
   "use server";
   const userId = await requireAuthed();
