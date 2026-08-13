@@ -20,9 +20,11 @@ Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
 |---|---|---|
 | **A** | **Run migration 133.** RFP-received dates still save a day early from two of three forms until it lands. | You, 2 minutes |
 | **B** | **Full re-audit / walkthrough** of everything shipped today — the restructure, Katie's notes + screenshots, Brendan's list. Scope at the bottom of this file. | Nothing. This is next. |
-| **C** | **Decide 1.1** — archiving a won deal keeps its project archived. Reports read opportunities, so the money still counts company-wide; only project-scoped views lose it. I think that is right, but it is the money-hiding shape, so it is your call not my inheritance. | One word from you |
+| ~~**C**~~ | ~~Decide 1.1~~ **SETTLED 2026-08-12 (Karan: "use best judgement").** Archiving a won deal keeps its project archived. The distinction that makes it safe: archiving is an explicit "hide this", un-winning is a status correction — which is why un-winning refuses when the project holds anything. Verified the money does not disappear: reports read opportunities, not projects, so an archived job's invoices, costs and margin still count in AR, P&L, job-costs and geography. Only project-scoped views hide it, which is what archiving is for. | — |
 | **D** | **Stephanie's list** | Her findings (0.1) — still not received |
 | **E** | **RFP email → auto-populate an opportunity** | Walking real emails through with you |
+| **E.1** | **`PPP_ADMIN_EMAILS` in Vercel** — production runs on the hardcoded bootstrap admin list until it is set. Fine while it is you and Katie; set it before more logins exist. | You, 2 minutes |
+| **E.2** | **Brendan's sign-off screen** — what he wants to see when approving a proposal | Him describing it |
 | **F** | **Reports** | Katie's list (0.2) |
 | **G** | **Foreman Daily Log** | Writes payroll — recommend starting fresh, not extending |
 | **H** | **Joint smoke test** — notifications, Field Ops clock in/out, work-order notes reaching the crew | A session with you |
