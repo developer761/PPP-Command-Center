@@ -292,3 +292,14 @@ Lanes:
    spot-checked: one number computed two ways · a list existing in two places ·
    `formData.get` collapsing absent into empty · an anchor inside an anchor ·
    a bare DATE parsed as UTC · an embed with two candidate FKs.
+
+---
+
+## ✅✅ VERIFY — `c4fbd7c` CLOSES both my tracked tails. Verified.
+- **job-costs:73 caption:** now billed-based (grep for "contract − cost" = 0) — the same-page contradiction gone.
+- **Path-bar skipped-detection:** now the general rule, wired correctly. The render passes `statusLog={pathStatusLog}`
+  (NOT the unwired-prop trap from last round), and `skippedStages` (kanban-columns:520) computes the skip from the
+  log's `to_status`/`from_status` set: a stage is "skipped" only when its backing STATUS (`STATUS_BEHIND_STAGE[k]`)
+  was provably never entered, and it REFUSES to conclude for sub-status-backed stages the log can't prove
+  (`backing === undefined`). Honest + correct. Tests added.
+Both my open tails are now CLOSED. Nothing of mine left tracking-open on the current batch.
