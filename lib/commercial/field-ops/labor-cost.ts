@@ -30,11 +30,14 @@ import { etTodayIso } from "@/lib/date-et";
 // overview.ts, which counts both as approved hours — otherwise a deal's labor
 // cost would vanish the moment payroll runs its export.
 const SETTLED_STATUSES = ["approved", "exported"] as const;
+/** Exported so the Labour report counts the same entries the deal P&L does —
+ *  one definition of "this hour is a settled cost", not two. */
+export { SETTLED_STATUSES };
 
-type RateRow = { employee_id: string; cost_rate_cents: number; rate_type: string; effective_from: string; effective_to: string | null };
+export type RateRow = { employee_id: string; cost_rate_cents: number; rate_type: string; effective_from: string; effective_to: string | null };
 
 /** All rate rows for a set of employees, newest-effective first. One query. */
-async function loadRates(employeeIds: string[]): Promise<Map<string, RateRow[]>> {
+export async function loadRates(employeeIds: string[]): Promise<Map<string, RateRow[]>> {
   const out = new Map<string, RateRow[]>();
   const ids = [...new Set(employeeIds.filter(Boolean))];
   if (ids.length === 0) return out;
@@ -56,7 +59,7 @@ async function loadRates(employeeIds: string[]): Promise<Map<string, RateRow[]>>
  *  (YYYY-MM-DD), or null when no rate covers that day. Daily-type rates are
  *  normalized to an hourly figure by the caller's hours, so we return the raw
  *  cents + type. */
-function rateOn(rows: RateRow[] | undefined, workDate: string): { cents: number; type: string } | null {
+export function rateOn(rows: RateRow[] | undefined, workDate: string): { cents: number; type: string } | null {
   if (!rows || rows.length === 0) return null;
   // rows are newest-first; pick the first whose window covers workDate.
   for (const r of rows) {

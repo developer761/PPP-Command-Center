@@ -5,6 +5,8 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
 import { getJobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
+import { getLaborReport } from "@/lib/commercial/reports/labor";
+import { etTodayIso } from "@/lib/date-et";
 import { getGeographyReport } from "@/lib/commercial/reports/geography";
 import { getWinLossSummary, currentQuarterRange } from "@/lib/commercial/win-loss/reports";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
@@ -38,12 +40,17 @@ export default async function ReportsOverviewPage() {
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
 
   const quarter = currentQuarterRange();
-  const [pipeline, jobCosts, aging, winLoss, geo] = await Promise.all([
+  // The labour card summarises the CURRENT MONTH, matching the report page's
+  // own default, so the number on the card is the number you land on.
+  const labourToday = etTodayIso();
+  const labourRange = { fromYmd: `${labourToday.slice(0, 7)}-01`, toYmd: labourToday };
+  const [pipeline, jobCosts, aging, winLoss, geo, labor] = await Promise.all([
     getPipelineReport(),
     getJobCostsReport(),
     getArAging(),
     getWinLossSummary(quarter),
     getGeographyReport(),
+    getLaborReport(labourRange),
   ]);
   const topTown = geo.byCity[0] ?? null;
 
@@ -106,6 +113,20 @@ export default async function ReportsOverviewPage() {
       icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
       primary: { label: "Total AR", value: formatCentsCompact(aging.totals.total), tone: "brand" },
       secondary: { label: "Overdue", value: formatCentsCompact(overdue), tone: overdue > 0 ? "amber" : "neutral" },
+    },
+    {
+      href: "/commercial/reports/labor",
+      title: "Labour & payroll",
+      blurb: "Approved crew hours and cost, by person and by job.",
+      icon: <><path d="M9 21V9a3 3 0 0 1 6 0v12" /><path d="M3 21h18 M5 21V11l7-5 7 5v10" /></>,
+      primary: { label: "Hours (this month)", value: `${labor.totalHours.toLocaleString("en-US", { maximumFractionDigits: 0 })}h`, tone: "navy" },
+      secondary: {
+        label: labor.unratedHours > 0 ? "Unpriced hours" : "Labour cost",
+        value: labor.unratedHours > 0
+          ? `${labor.unratedHours.toLocaleString("en-US", { maximumFractionDigits: 0 })}h`
+          : formatCentsCompact(labor.totalCostCents),
+        tone: labor.unratedHours > 0 ? "amber" : "neutral",
+      },
     },
     {
       href: "/commercial/reports/win-loss",

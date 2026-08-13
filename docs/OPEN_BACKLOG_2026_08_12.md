@@ -25,7 +25,7 @@ Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
 | **E** | **RFP email → auto-populate an opportunity** | Walking real emails through with you |
 | **E.1** | **`PPP_ADMIN_EMAILS` in Vercel** — production runs on the hardcoded bootstrap admin list until it is set. Fine while it is you and Katie; set it before more logins exist. | You, 2 minutes |
 | **E.2** | **Brendan's sign-off screen** — what he wants to see when approving a proposal | Him describing it |
-| **F** | **Reports** | Katie's list (0.2) |
+| **F** | **Reports — UNBLOCKED, decisions taken 2026-08-12** | — |
 | **G** | **Foreman Daily Log** | Writes payroll — recommend starting fresh, not extending |
 | **H** | **Joint smoke test** — notifications, Field Ops clock in/out, work-order notes reaching the crew | A session with you |
 | **I** | **Lead flow** — Brendan wants Qualifying out of opportunities into a lead object that converts in | Largest remaining item; you deferred it to the end |
@@ -609,3 +609,32 @@ to its correct field in order (no shift — the classic CSV-removal trap avoided
    🧹 residual: `db.ts` industry dead code (`filters.industry` eq :102, `distinctIndustries` :147, the `industry?`
    filter field :75) is now fully unreachable — inert, compiles clean, but per "never defer" it's the cleanup tail on
    this item. Low priority; flagging so it isn't silently dropped.
+
+---
+
+## F · Reports — the decisions (Karan, 2026-08-12)
+
+Six reports exist: AR aging, geography, job costs, pipeline, revenue, win/loss.
+None of them has a PERSON in it, and nothing reads Field Ops' labour data.
+
+**Fiscal year: January (calendar).** So the hardcoded calendar quarters in
+`currentQuarterRange` are correct today. `fiscal_year_start_month` is still
+seeded in `commercial_settings` and read by NOTHING, which is the same class of
+trap as `project_id` — a knob that looks live and does nothing. Wire it to the
+existing code path so changing it later actually works.
+
+**Person-level reporting: yes, admins only.** Admin and Account Manager see
+per-person numbers; a rep or crew member sees only their own. Named performance
+data is the one thing here that could land badly, so it stays scoped.
+
+**Build order (Karan picked all four):**
+
+1. **Labour & payroll** — hours by job, by person, by week; crew cost against
+   the job's budget. Field Ops holds all of it and no report reads it.
+2. **Estimator / proposal performance** — bids sent, win rate, and average
+   turnaround from RFP received to proposal sent. The "how is Kim doing"
+   report, and the reason `rfp_received_at` had to be correct.
+3. **Cash flow & collections** — money in by month, average days to pay, what
+   is still out. AR aging with a time axis.
+4. **Change orders & vendor spend** — CO volume and approval rate, and spend by
+   supplier across all jobs.
