@@ -42,6 +42,8 @@ type SP = Promise<{
   ap_phone?: string;
   website?: string;
   tax_exempt?: string;
+  do_not_bid?: string;
+  do_not_bid_reason?: string;
   tax_exempt_cert_number?: string;
   is_key?: string;
   site_same?: string;
@@ -84,13 +86,14 @@ async function updateAction(formData: FormData) {
       for (const k of [
         "dba", "rating", "billing_street", "billing_street2", "billing_city", "billing_state",
         "billing_zip", "site_street", "site_street2", "site_city", "site_state", "site_zip", "phone",
-        "ap_phone", "website", "tax_exempt_cert_number", "notes",
+        "ap_phone", "website", "tax_exempt_cert_number", "notes", "do_not_bid_reason",
       ]) {
         const v = get(k);
         if (v) p.set(k, v);
       }
       if (formData.get("tax_exempt") === "on") p.set("tax_exempt", "1");
       if (formData.get("is_key_relationship") === "on") p.set("is_key", "1");
+      if (formData.get("do_not_bid") === "on") p.set("do_not_bid", "1");
       if (formData.get("site_same_as_billing") === "1") p.set("site_same", "1");
       redirect(`/commercial/accounts/${id}/edit?${p.toString()}`);
     }
@@ -124,6 +127,8 @@ async function updateAction(formData: FormData) {
       // cleared to false on every edit.
       notes: get("notes"),
       is_key_relationship: formData.get("is_key_relationship") === "on",
+      do_not_bid: formData.get("do_not_bid") === "on",
+      do_not_bid_reason: get("do_not_bid_reason"),
     },
     user.id
   );
@@ -345,6 +350,44 @@ export default async function EditCommercialAccountPage({
               <span className="block text-[12px] text-ppp-charcoal-500 mt-0.5">
                 Strategic partnership: biggest GCs, recurring multi-year customers, decision-makers with personal trust. Surfaces a ★ badge across every list + card so high-value accounts pop on scan.
               </span>
+            </span>
+          </label>
+
+          {/* Stephanie 2026-08-13: "add something that says 'do not bid'."
+              Deliberately not a fourth rating letter — A/B/C grades how good a
+              customer is; this is a decision, with a reason behind it. It
+              WARNS on new work and never blocks it (Karan's standing rule):
+              someone will eventually have a good reason to bid one of these,
+              and a hard stop just means the deal is created under a different
+              account and the history is lost. */}
+          <label className="flex items-start gap-3 text-sm min-h-[44px] cursor-pointer mt-4">
+            <input
+              type="checkbox"
+              name="do_not_bid"
+              defaultChecked={duplicateCandidates.length > 0 ? sp.do_not_bid === "1" : Boolean(account.do_not_bid)}
+              className="h-5 w-5 mt-0.5 rounded border-ppp-charcoal-300 focus:ring-rose-600/30"
+            />
+            <span>
+              <strong className="text-rose-800">Do not bid</strong>
+              <span className="block text-[12px] text-ppp-charcoal-500 mt-0.5">
+                Flags this customer across the platform and warns before anyone starts new work for
+                them. It never blocks the work — say why below so the call can be revisited.
+              </span>
+            </span>
+          </label>
+          <label className="block mt-2">
+            <span className={LABEL_CLS}>Reason</span>
+            <input
+              type="text"
+              name="do_not_bid_reason"
+              maxLength={300}
+              defaultValue={sp.do_not_bid_reason ?? account.do_not_bid_reason ?? ""}
+              placeholder="e.g. 90+ days late on the last three jobs"
+              className={INPUT_CLS}
+            />
+            <span className="block text-[11.5px] text-ppp-charcoal-500 mt-1">
+              An unexplained &ldquo;do not bid&rdquo; becomes folklore nobody can overturn once the
+              person who set it has left.
             </span>
           </label>
         </Section>

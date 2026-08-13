@@ -235,6 +235,11 @@ export type UpdateOpportunityInput = Partial<Omit<CreateOpportunityInput, "accou
   updated_by_user_id?: string | null;
   loss_reason?: OpportunityLossReason | null;
   loss_notes?: string | null;
+  /** Per-job tax exemption (migration 139). Three-state on purpose:
+   *  null = inherit the account, true/false = override for this job. Resolve
+   *  reads via lib/commercial/tax/exemption.ts, never by hand. */
+  tax_exempt?: boolean | null;
+  tax_exempt_cert_number?: string | null;
 };
 
 export async function updateCommercialOpportunity(
@@ -318,6 +323,14 @@ export async function updateCommercialOpportunity(
   if (input.property_city !== undefined) patch.property_city = input.property_city?.trim() || null;
   if (input.property_state !== undefined) patch.property_state = input.property_state?.trim().slice(0, 2).toUpperCase() || null;
   if (input.property_zip !== undefined) patch.property_zip = input.property_zip?.trim() || null;
+  // `!== undefined` and not a truthiness check: `false` is a real answer here
+  // ("taxable, even though the customer is exempt"), and `null` is a third
+  // ("inherit"). Collapsing them would make an exempt customer's taxable job
+  // impossible to record.
+  if (input.tax_exempt !== undefined) patch.tax_exempt = input.tax_exempt;
+  if (input.tax_exempt_cert_number !== undefined) {
+    patch.tax_exempt_cert_number = input.tax_exempt_cert_number?.trim() || null;
+  }
   // Migration 046 (Phase B) — CEO structural fields.
   if (input.client_name !== undefined) patch.client_name = input.client_name?.trim() || null;
   if (input.estimator_user_id !== undefined) patch.estimator_user_id = input.estimator_user_id || null;

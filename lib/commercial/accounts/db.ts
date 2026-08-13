@@ -20,6 +20,10 @@ export type CommercialAccount = {
   dba: string | null;
   industry: string | null;
   rating: CommercialAccountRating | null;
+  /** Flagged do-not-bid (migration 140). Warns on new work; never blocks it. */
+  do_not_bid: boolean;
+  do_not_bid_reason: string | null;
+  do_not_bid_set_at: string | null;
   billing_street: string | null;
   /** Floor / unit / suite — typed by hand, never geocoded (migration 138). */
   billing_street2: string | null;

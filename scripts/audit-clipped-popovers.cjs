@@ -156,8 +156,16 @@ for (const f of files) {
  * to SearchableSelect affecting every surface that uses it. Worth doing on its
  * own, not as a footnote to a proposal-editor pass.
  */
+// Keyed on the ANCESTOR'S TAG, not a line number. The first version of this
+// list used a line number and stopped matching the moment an unrelated edit
+// above it shifted the file — which surfaces as a "new" finding for code
+// nobody touched.
 const ACCEPTED = [
-  { file: "app/commercial/accounts/[id]/page.tsx", ancestor: 6149, why: "slide-out drawer: panel scrolls with its field, so nothing is unreachable" },
+  {
+    file: "app/commercial/accounts/[id]/page.tsx",
+    ancestorTag: "FocusTrapAside",
+    why: "slide-out drawer: the panel scrolls with its field, so nothing is unreachable",
+  },
 ];
 
 const findings = [];
@@ -175,16 +183,16 @@ for (const f of files) {
 
     const isPopover =
       POPOVER_COMPONENTS.has(t.name) || isPanel(t.text);
-    const ancestorLine = clipping.length > 0 ? clipping[clipping.length - 1].line : 0;
+    const ancestor = clipping.length > 0 ? clipping[clipping.length - 1] : null;
     const accepted = ACCEPTED.some(
-      (a) => relative(ROOT, f) === a.file && a.ancestor === ancestorLine
+      (a) => relative(ROOT, f) === a.file && ancestor?.name === a.ancestorTag
     );
     if (isPopover && clipping.length > 0 && !accepted) {
       findings.push({
         file: relative(ROOT, f),
         line: t.line,
         culprit: `<${t.name}>`,
-        clippedBy: clipping[clipping.length - 1].line,
+        clippedBy: ancestor.line,
       });
     }
 
@@ -192,7 +200,7 @@ for (const f of files) {
     // reported as its own ancestor.
     const clipsOwnMarkup = CLIPS.test(t.text) && !NOT_A_CARD.test(t.text);
     if ((clipsOwnMarkup || CLIPPING_COMPONENTS.has(t.name)) && !t.selfClosing) {
-      clipping.push({ indent: t.indent, line: t.line });
+      clipping.push({ indent: t.indent, line: t.line, name: t.name });
     }
   }
 }

@@ -3232,6 +3232,9 @@ async function NewDealForm({
     company_name: string | null;
     billing_street: string | null;
     billing_street2: string | null;
+    do_not_bid?: boolean;
+    do_not_bid_reason?: string | null;
+    do_not_bid_set_at?: string | null;
     billing_city: string | null;
     billing_state: string | null;
     billing_zip: string | null;
@@ -3273,6 +3276,32 @@ async function NewDealForm({
     : null;
   return (
     <form action={createDealInlineAction} className="space-y-3">
+      {/* Stephanie 2026-08-13 asked for a "do not bid" marker. This is where it
+          earns its keep: at the moment someone starts new work for that
+          customer, not buried on a tab.
+
+          It warns and lets them carry on. Blocking would push the deal onto a
+          different account and lose the history — and the reason is shown, so
+          the call can actually be judged rather than just obeyed. */}
+      {account.do_not_bid && (
+        <div
+          role="alert"
+          className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-900"
+        >
+          <strong className="font-semibold">This customer is flagged do not bid.</strong>{" "}
+          {account.do_not_bid_reason?.trim()
+            ? account.do_not_bid_reason.trim()
+            : "No reason was recorded."}
+          {account.do_not_bid_set_at && (
+            <span className="block text-[12px] text-rose-800/80 mt-0.5">
+              Flagged {fmtEtDate(account.do_not_bid_set_at)}.
+            </span>
+          )}
+          <span className="block text-[12px] text-rose-800/80 mt-1">
+            You can still create the job — this is a heads-up, not a block.
+          </span>
+        </div>
+      )}
       <input type="hidden" name="account_id" value={accountId} />
       {duplicateWarning && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-900 space-y-1.5">
@@ -3327,12 +3356,21 @@ async function NewDealForm({
           than interrupting the sequence he asked for. */}
       <label className="block">
         <span className={labelCls}>Client name</span>
+        {/* NO default. Stephanie 2026-08-13: "Proposals autofills the GC/
+            Builders name, not the opportunity/project name."
+            This was the source. `client_name` is the GC's CUSTOMER — Katie's
+            JD-Sports convention — and it was being seeded with the ACCOUNT's
+            company name, i.e. the GC itself. The proposal's PROJECT line reads
+            client_name, so every deal created here printed the builder's name
+            as the project. The pipeline's new-deal form never did this; this
+            one was the outlier, down to a placeholder that offered Tomco (our
+            own company) as the example of a GC's customer. */}
         <input
           type="text"
           name="client_name"
           maxLength={200}
-          defaultValue={account.company_name ?? ""}
-          placeholder="e.g. Tomco Painting"
+          defaultValue={keptValues?.client_name ?? ""}
+          placeholder="Who the work is for (the GC's customer)"
           className={inputCls}
         />
       </label>
@@ -3348,15 +3386,39 @@ async function NewDealForm({
           type="text"
           name="property_street"
           maxLength={200}
-          defaultValue={keptValues?.property_street ?? account.site_street ?? ""}
+          defaultValue={keptValues?.property_street ?? ""}
           placeholder="Street"
           className={inputCls}
         />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-          <input type="text" name="property_city" maxLength={80} defaultValue={keptValues?.property_city ?? account.site_city ?? ""} placeholder="City" className={inputCls} />
-          <input type="text" name="property_state" maxLength={2} defaultValue={keptValues?.property_state ?? account.site_state ?? ""} placeholder="State" className={inputCls} />
-          <input type="text" name="property_zip" maxLength={10} defaultValue={keptValues?.property_zip ?? account.site_zip ?? ""} placeholder="ZIP" className={inputCls} />
+          <input type="text" name="property_city" maxLength={80} defaultValue={keptValues?.property_city ?? ""} placeholder="City" className={inputCls} />
+          <input type="text" name="property_state" maxLength={2} defaultValue={keptValues?.property_state ?? ""} placeholder="State" className={inputCls} />
+          <input type="text" name="property_zip" maxLength={10} defaultValue={keptValues?.property_zip ?? ""} placeholder="ZIP" className={inputCls} />
         </div>
+        {/* Stephanie 2026-08-13: "Autofills GC/Builders address, rarely the
+            same as the opportunity address." The label already said every job
+            is somewhere different while the fields quietly disagreed.
+
+            The ZIP mattered most: it picks the sales-tax jurisdiction
+            (resolveTaxForZip), so a leftover builder ZIP taxes the job at the
+            builder's rate — wrong money, not just a wrong label.
+
+            Shown rather than filled, so the shortcut survives for the rare job
+            at the GC's own address without putting it in the record by
+            default. */}
+        {(account.site_street || account.billing_street) && (
+          <p className="mt-1.5 text-[11px] text-ppp-charcoal-500">
+            Account address:{" "}
+            {[
+              account.site_street || account.billing_street,
+              account.site_city || account.billing_city,
+              account.site_state || account.billing_state,
+              account.site_zip || account.billing_zip,
+            ]
+              .filter(Boolean)
+              .join(", ")}
+          </p>
+        )}
       </div>
 
       {/* New on this form. The writer already accepted it — only the edit sheet

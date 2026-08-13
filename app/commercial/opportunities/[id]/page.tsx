@@ -25,6 +25,7 @@ import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/a
 import {
   softDeleteCommercialOpportunity,
   createCommercialOpportunity,
+  updateCommercialOpportunity,
 } from "@/lib/commercial/opportunities/mutations";
 import {
   archiveOpportunity,
@@ -461,6 +462,50 @@ async function setDealTeamAction(formData: FormData) {
   const raw = String(formData.get("team_id") ?? "").trim();
   const team_id = raw && UUID_RE.test(raw) ? raw : null;
   const result = await setOwnerTeam("opportunity", opp_id, team_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
+  }
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
+/**
+ * Per-job tax exemption.
+ *
+ * Stephanie 2026-08-13: "tax exemption follows opportunity not account." In NY
+ * an exemption certificate is issued per PROJECT, so the same GC is exempt on a
+ * municipal job and taxable on the private one next door.
+ *
+ * Its own action rather than an inline pencil, because the value is
+ * THREE-state and the inline registry only knows text/date/number. "Inherit"
+ * is not the same as "taxable", and squashing it into a checkbox would make an
+ * exempt customer's taxable job impossible to record.
+ *
+ * This is also the only place the setting can be edited at all: the account's
+ * tax UI was removed in the 2026-08 meeting ("not tracked at the account
+ * level"), so without this screen the resolver would read a value nobody could
+ * change.
+ */
+async function setOppTaxExemptAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+
+  const choice = String(formData.get("tax_exempt") ?? "inherit");
+  const tax_exempt = choice === "exempt" ? true : choice === "taxable" ? false : null;
+  const result = await updateCommercialOpportunity({
+    id: opp_id,
+    tax_exempt,
+    // Clearing the override drops a certificate number that no longer applies
+    // to anything, rather than leaving it attached to an inherited setting.
+    tax_exempt_cert_number:
+      tax_exempt === true ? String(formData.get("tax_exempt_cert_number") ?? "").trim() || null : null,
+    updated_by_user_id: user.id,
+  });
   if (!result.ok) {
     redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
   }
@@ -3632,6 +3677,54 @@ async function InfoTab({
         }
       >
         <OppPropertyAddress opp={opp} account={account} />
+
+        {/* Sales tax sits with the address deliberately: the ZIP picks the
+            jurisdiction, and the exemption is the other half of the same
+            question. Stephanie 2026-08-13 — a NY certificate is issued per
+            PROJECT, so the same GC is exempt on a municipal job and taxable on
+            the private one next door. */}
+        <form action={setOppTaxExemptAction} className="mt-3 pt-3 border-t border-ppp-charcoal-100 space-y-2">
+          <input type="hidden" name="opp_id" value={opp.id} />
+          <label className="block">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+              Sales tax
+            </span>
+            <select
+              name="tax_exempt"
+              defaultValue={opp.tax_exempt === true ? "exempt" : opp.tax_exempt === false ? "taxable" : "inherit"}
+              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[13px] min-h-[44px]"
+            >
+              <option value="inherit">
+                Follow the customer{account?.tax_exempt ? " (exempt)" : " (taxable)"}
+              </option>
+              <option value="exempt">Exempt — this job only</option>
+              <option value="taxable">Taxable — this job only</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+              Certificate no.
+            </span>
+            <input
+              type="text"
+              name="tax_exempt_cert_number"
+              maxLength={60}
+              defaultValue={opp.tax_exempt_cert_number ?? ""}
+              placeholder="Only when this job is exempt"
+              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[13px] min-h-[44px]"
+            />
+          </label>
+          <SubmitButton
+            pendingLabel="Saving…"
+            className="inline-flex items-center px-3 min-h-[40px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-navy-900"
+          >
+            Save tax setting
+          </SubmitButton>
+          <p className="text-[11px] text-ppp-charcoal-500">
+            Applies to invoices and change orders for this job. Leave on
+            &ldquo;follow the customer&rdquo; unless this job has its own certificate.
+          </p>
+        </form>
       </Card>
       <Card
         title="Account"

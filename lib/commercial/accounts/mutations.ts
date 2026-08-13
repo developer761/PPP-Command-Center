@@ -15,6 +15,8 @@ export type CreateAccountInput = {
   dba?: string | null;
   industry?: string | null;
   rating?: "A" | "B" | "C" | null;
+  do_not_bid?: boolean;
+  do_not_bid_reason?: string | null;
   billing_street?: string | null;
   billing_street2?: string | null;
   billing_city?: string | null;
@@ -55,6 +57,8 @@ export async function createCommercialAccount(
       dba: input.dba?.trim() || null,
       industry: input.industry?.trim() || null,
       rating: input.rating ?? null,
+      do_not_bid: input.do_not_bid ?? false,
+      do_not_bid_reason: input.do_not_bid_reason?.trim() || null,
       billing_street: input.billing_street?.trim() || null,
       billing_street2: input.billing_street2?.trim() || null,
       billing_city: input.billing_city?.trim() || null,
@@ -102,9 +106,23 @@ export async function updateCommercialAccount(
   const { data: before } = await sb.from("commercial_accounts").select("*").eq("id", id).maybeSingle();
   if (!before) return { ok: false, error: "Account not found." };
 
+  // Stamp WHEN a do-not-bid was set, and by whom. The reason alone ages badly:
+  // "90+ days late on the last three jobs" means something different if it was
+  // written last month or four years ago, and without a date nobody can judge
+  // whether the call is still current. Only stamped on the transition, so an
+  // unrelated edit doesn't keep refreshing the date and make an old decision
+  // look new.
+  const stamped: Record<string, unknown> = { ...patch };
+  const wasFlagged = Boolean((before as { do_not_bid?: boolean }).do_not_bid);
+  if (patch.do_not_bid !== undefined && patch.do_not_bid !== wasFlagged) {
+    stamped.do_not_bid_set_at = patch.do_not_bid ? new Date().toISOString() : null;
+    stamped.do_not_bid_set_by_user_id = patch.do_not_bid ? (updatedByUserId ?? null) : null;
+    if (!patch.do_not_bid) stamped.do_not_bid_reason = null;
+  }
+
   const { data, error } = await sb
     .from("commercial_accounts")
-    .update({ ...patch, updated_by_user_id: updatedByUserId ?? null })
+    .update({ ...stamped, updated_by_user_id: updatedByUserId ?? null })
     .eq("id", id)
     .select("*")
     .single();
