@@ -1041,3 +1041,15 @@ one-offs.** Re-flagged; handed off.
   rendered via other controls). `follow_up_at` is NOT exempted → the passing test proves it renders. Verified it fails
   if the row is removed. ✅
 tsc clean, suite green. Good to see the render-parity class I flagged now guarded by a test rather than vigilance.
+
+---
+
+## ✅ VERIFY — delivery tool takes the page + deal-name exit (`b621128` + `a0435f9`). CLEAN, no miss.
+Karan: "too many blocks and buttons, it's overwhelming" → opening a tool should be its own page with a back arrow.
+- **Tool-as-page** — `toolView = primary === "project" && !!rawSub`. When a tool is open the tab rows + strip step
+  aside for a focused view; on `?tab=project` with NO sub the strip IS the tool list (renders when `!toolView`).
+  Traced navigation (link-reachability lane): the two exits from a tool both land real — **back arrow** →
+  `?tab=project` (tool list, where the full tab bar + strip return, so every other tab is reachable), **deal name** →
+  `/opportunities/${id}` (job overview, a0435f9). Nothing stranded. Invoices (a project sub) gets the focused view
+  consistently; Analytics (a primary tab) stays top-level. ✅
+- tsc clean, tests green. Good IA cleanup; my link-reachability lane confirms the graph is whole.
