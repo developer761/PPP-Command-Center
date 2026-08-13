@@ -3229,7 +3229,6 @@ async function InfoTab({
         {account ? (
           <>
             <Field label="Company" value={account.company_name} />
-            <Field label="Industry" value={account.industry ?? "—"} />
             <Field label="Rating" value={account.rating ?? "—"} />
             <div className="pt-2">
               <Link

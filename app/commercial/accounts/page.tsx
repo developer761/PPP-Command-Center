@@ -282,7 +282,7 @@ export default async function CommercialAccountsPage({
     })
     .slice(0, 3);
 
-  // KPI strip. accountsRaw is FILTERED (search/rating/compliance/industry), so
+  // KPI strip. accountsRaw is FILTERED (search/rating/compliance), so
   // when a filter is active these numbers describe the matching set, not the
   // whole book — the labels below flip to say so (Karan 2026-07-27 audit; the
   // old copy claimed "book" while showing the filtered slice).
@@ -498,7 +498,7 @@ export default async function CommercialAccountsPage({
             <CommercialAccountsSearchAutocomplete defaultValue={search ?? ""} />
           </div>
 
-          {/* Filter popover — every filter (rating, compliance, industry,
+          {/* Filter popover — every filter (rating, compliance,
               tag, 3 chips) lives here. Native <details> for zero-JS state. */}
           <details className="relative inline-block group">
             <summary
@@ -727,7 +727,7 @@ export default async function CommercialAccountsPage({
                         {account.company_name}
                       </div>
                       <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 truncate">
-                        {account.industry ?? "—"} · Active {label}
+                        Active {label}
                       </div>
                     </Link>
                   </li>
@@ -1153,10 +1153,8 @@ function AccountRow({
                 ) : null}
               </div>
 
-              {(account.industry || cityState || account.phone) && (
+              {(cityState || account.phone) && (
                 <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
-                  {account.industry && <span>{account.industry}</span>}
-                  {account.industry && cityState && <span aria-hidden>·</span>}
                   {cityState && <span>{cityState}</span>}
                   {account.phone && (
                     <>

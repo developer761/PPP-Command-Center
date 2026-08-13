@@ -1529,11 +1529,6 @@ export default async function CommercialOpportunitiesPage({
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg> Key
                             </span>
                           )}
-                          {g.account.industry && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 shrink-0">
-                              {g.account.industry}
-                            </span>
-                          )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-surface border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
@@ -2135,11 +2130,6 @@ function CustomerBoardRow({
                   title="Key relationship — flagged by admin"
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg> Key
-                </span>
-              )}
-              {account.industry && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200">
-                  {account.industry}
                 </span>
               )}
             </div>
@@ -3418,11 +3408,6 @@ function CustomerQuickSheet({
                 {account.company_name}
               </h2>
               <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                {account.industry && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200">
-                    {account.industry}
-                  </span>
-                )}
                 {account.rating && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200 capitalize">
                     {account.rating.replace(/_/g, " ")}

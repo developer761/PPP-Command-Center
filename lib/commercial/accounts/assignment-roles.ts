@@ -34,6 +34,10 @@ export type AssignmentRole = (typeof ASSIGNMENT_ROLES)[number];
 /** Retired 2026-08-12. Kept only so existing assignments still read. */
 const RETIRED_ROLE_LABELS: Record<string, string> = {
   account_manager: "Account Manager",
+  // Opportunity-side roles, retired 2026-08-12 in the re-audit: the deal Team
+  // tab carried its own vocabulary, still offering three roles Brendan had
+  // already removed from the account team. Kept so existing rows still read.
+  lead_estimator: "Lead Estimator",
   primary_pm: "Project Manager",
   superintendent: "Superintendent",
   foreman: "Foreman",

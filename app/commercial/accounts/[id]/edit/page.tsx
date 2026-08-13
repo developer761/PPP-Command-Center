@@ -26,7 +26,6 @@ type SP = Promise<{
   duplicate?: string;
   company_name?: string;
   dba?: string;
-  industry?: string;
   rating?: string;
   billing_street?: string;
   billing_city?: string;
@@ -80,7 +79,7 @@ async function updateAction(formData: FormData) {
       const p = new URLSearchParams({ duplicate: ids });
       p.set("company_name", company);
       for (const k of [
-        "dba", "industry", "rating", "billing_street", "billing_city", "billing_state",
+        "dba", "rating", "billing_street", "billing_city", "billing_state",
         "billing_zip", "site_street", "site_city", "site_state", "site_zip", "phone",
         "ap_phone", "website", "tax_exempt_cert_number", "notes",
       ]) {
@@ -99,7 +98,6 @@ async function updateAction(formData: FormData) {
     {
       company_name: company,
       dba: get("dba"),
-      industry: get("industry"),
       rating: (get("rating") as "A" | "B" | "C" | null) ?? null,
       // Direction flipped with the sections: billing mirrors the COMPANY
       // address now, not the other way round. The billing inputs are hidden

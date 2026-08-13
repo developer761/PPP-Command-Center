@@ -1,4 +1,5 @@
 import "server-only";
+import { ASSIGNMENT_ROLES, assignmentRoleLabel, type AssignmentRole } from "@/lib/commercial/accounts/assignment-roles";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
@@ -17,23 +18,22 @@ import { derivedOppName } from "@/lib/commercial/opportunities/db";
  * Strict separation: no salesforce imports.
  */
 
-export const OPPORTUNITY_ASSIGNMENT_ROLES = [
-  "sales_rep",
-  "lead_estimator",
-  "primary_pm",
-  "superintendent",
-  "other",
-] as const;
-export type OpportunityAssignmentRole = (typeof OPPORTUNITY_ASSIGNMENT_ROLES)[number];
+/*
+ * RE-AUDIT 2026-08-12. Brendan cut the ACCOUNT team roles to four — "Sales Rep,
+ * Field Rep, Office Rep, Estimator" — and the deal Team tab kept its own list,
+ * still offering Lead Estimator, Project Manager and Superintendent. Two role
+ * vocabularies on two screens describing the same people, with the deal side
+ * still handing out roles he had removed.
+ *
+ * There is now one list. The retired names still LABEL correctly, so an
+ * existing "Superintendent" assignment keeps reading as one; it just can't be
+ * handed out again.
+ */
+export const OPPORTUNITY_ASSIGNMENT_ROLES = ASSIGNMENT_ROLES;
+export type OpportunityAssignmentRole = AssignmentRole;
 
-export function opportunityAssignmentRoleLabel(role: OpportunityAssignmentRole): string {
-  return {
-    sales_rep: "Sales Rep",
-    lead_estimator: "Lead Estimator",
-    primary_pm: "Project Manager",
-    superintendent: "Superintendent",
-    other: "Other",
-  }[role];
+export function opportunityAssignmentRoleLabel(role: OpportunityAssignmentRole | string): string {
+  return assignmentRoleLabel(role);
 }
 
 export type OpportunityAssignmentPerson = {
@@ -570,13 +570,21 @@ export async function listPrimaryLeadByOpp(
   };
   // Seniority order — same role per opp shouldn't conflict (only one
   // is_primary per role) so we just pick the highest-ranked.
-  const seniority: Record<OpportunityAssignmentRole, number> = {
-    primary_pm: 0,
-    lead_estimator: 1,
+  // Keyed by string, not by the role union: rows assigned before the roles
+  // were unified still carry the retired names, and they keep their original
+  // standing so this doesn't silently change who shows as ★ on an existing
+  // deal. `estimator` inherits `lead_estimator`'s rank — it replaced it.
+  const seniority: Record<string, number> = {
+    primary_pm: 0,       // retired
+    lead_estimator: 1,   // retired
+    estimator: 1,
     sales_rep: 2,
-    superintendent: 3,
+    field_rep: 3,
+    office_rep: 4,
+    superintendent: 5,   // retired
     other: 9,
   };
+  const rank = (r: string) => seniority[r] ?? 9;
   const out = new Map<string, { user_email: string; user_full_name: string | null; role: OpportunityAssignmentRole }>();
   for (const raw of (data ?? []) as unknown as Row[]) {
     const u = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
@@ -587,7 +595,7 @@ export async function listPrimaryLeadByOpp(
     // shows them so admin sees the reassign-needed state.
     if (u.is_active === false) continue;
     const prev = out.get(raw.opportunity_id);
-    if (!prev || seniority[raw.role] < seniority[prev.role]) {
+    if (!prev || rank(raw.role) < rank(prev.role)) {
       out.set(raw.opportunity_id, {
         user_email: u.email,
         user_full_name: u.sf_user_name,
