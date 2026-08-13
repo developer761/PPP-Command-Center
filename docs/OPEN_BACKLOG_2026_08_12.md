@@ -373,3 +373,24 @@ correct the rationale, it's not "money still counts"); or (b) if won/delivering 
 `listProjects` needs to include archived rows (or the round-3 `projectHoldsAnything` guard should also block the
 archived_at MIRROR on the reconcile branch — the §1.1-adjacent gap I flagged earlier). Not my call to make; my job
 is that the call is made on true facts.
+
+---
+
+## ✅ VERIFY — probability re-audit (`304582f`): core fix CORRECT. But the sweep missed a 6th site.
+The find is real and the root fix is right: `weightedPipelineCents` (db.ts:446) now weights by
+`probabilityFor(status, sub_status)` — the STAGE — not the dead `probability_pct` column (`NOT NULL DEFAULT 10`,
+uneditable since the field left the forms). Verified: typecheck clean, 24/24 stage-kpis tests pass, the 5 named UI
+displays are gone, and the surviving "Win prob." on `reports/pipeline/page.tsx:105` is HONEST (a derived stage
+rollup `weightedCents / bidCents`, both from the corrected weighted value — not the column). Probability map is
+sensible (solicitation 10 → sent 65 → won 100 → lost 0).
+
+**🟡 MISS — 6th surviving instance the sweep didn't catch: the CSV export.**
+`lib/commercial/opportunities/export.ts` still emits the dead column:
+- line 43: header `"Probability %"`
+- line 197: `csvEscape(o.probability_pct ?? "")`
+Every exported row now shows the stale/default-10 value under an authoritative "Probability %" column. This is the
+build session's OWN stated pattern ("removing a field from the form it was reported on is not removing the field"),
+and a CSV is arguably worse than a UI tile — it lands in a spreadsheet and gets treated as ground truth.
+**Fix (pick one, consistent with the weighted-pipeline decision):** derive it —
+`csvEscape(probabilityFor(o.status, o.sub_status))` (matches everything else, honest for old + new rows), OR drop
+the column + header from the export. Deriving is the coherent choice. Handed to build session.
