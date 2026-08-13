@@ -6,7 +6,32 @@ sessions, plus everything either of us parked over the last few days.
 Nothing here is "probably fine". If an item is a judgement call rather than a
 defect, it says so and gives the reasoning, so you can overrule it.
 
-**Currently live:** migrations 126–132 applied · 433 tests · deploy green.
+**Currently live:** migrations 126–132 applied · 465 tests · deploy green.
+**Pending you:** migration 133.
+
+---
+
+# THE PLAN — as of 2026-08-12, end of day
+
+Plan items 1-10 are **complete and cross-verified** by both sessions. Sections
+1, 3.1 and 4.2 below are closed and kept only as record. What is actually left:
+
+| # | Next | Depends on |
+|---|---|---|
+| **A** | **Run migration 133.** RFP-received dates still save a day early from two of three forms until it lands. | You, 2 minutes |
+| **B** | **Full re-audit / walkthrough** of everything shipped today — the restructure, Katie's notes + screenshots, Brendan's list. Scope at the bottom of this file. | Nothing. This is next. |
+| **C** | **Decide 1.1** — archiving a won deal keeps its project archived. Reports read opportunities, so the money still counts company-wide; only project-scoped views lose it. I think that is right, but it is the money-hiding shape, so it is your call not my inheritance. | One word from you |
+| **D** | **Stephanie's list** | Her findings (0.1) — still not received |
+| **E** | **RFP email → auto-populate an opportunity** | Walking real emails through with you |
+| **F** | **Reports** | Katie's list (0.2) |
+| **G** | **Foreman Daily Log** | Writes payroll — recommend starting fresh, not extending |
+| **H** | **Joint smoke test** — notifications, Field Ops clock in/out, work-order notes reaching the crew | A session with you |
+| **I** | **Lead flow** — Brendan wants Qualifying out of opportunities into a lead object that converts in | Largest remaining item; you deferred it to the end |
+
+Two smaller things carried, neither urgent: delivery-row queries could filter by
+`project_id` now that the column is enforced (hardening, §1.6), and twelve date
+sites that subtract real timestamps where the only error is a DST-boundary floor
+(listed at the bottom, deliberately not swept).
 
 ---
 
