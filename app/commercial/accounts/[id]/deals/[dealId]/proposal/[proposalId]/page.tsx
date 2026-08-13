@@ -308,17 +308,26 @@ async function saveProposalAction(formData: FormData) {
     // that wipes the user's in-flight typing.
     throw new Error(result.error);
   }
+  // NO redirect on success. A redirect would trigger a full navigation on
+  // every save, blowing away input focus + cursor position mid-typing.
+  //
+  // And on a BACKGROUND save, no revalidation either. Stephanie 2026-08-13:
+  // *"it automatically saves every 3 seconds making it hard to enter data
+  // without it being overwritten or erased."* Uncontrolled inputs do keep
+  // their in-flight text across a revalidate — but anything React re-keys
+  // from server data (the inclusion and alternate rows) remounts, which is
+  // exactly the "erased" she is describing. Re-rendering the page someone is
+  // typing into buys nothing: the data being revalidated is the data they
+  // just typed. The write still lands; only the re-render is skipped.
+  //
+  // An explicit save still refreshes everything, so the proposals list and
+  // the account page are correct the moment anyone navigates to them.
+  if (String(formData.get("__autosave") ?? "") === "1") return;
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
   revalidatePath(`/commercial/accounts/${accountId}`);
   revalidatePath("/commercial/proposals");
-  // NO redirect on success. Autosave fires this action every ~800ms;
-  // a redirect would trigger a full navigation on every save, blowing
-  // away input focus + cursor position mid-typing. revalidatePath is
-  // enough — React reconciles the server-rendered snapshot without a
-  // page load, and uncontrolled inputs (defaultValue) keep the user's
-  // in-flight text.
 }
 
 /** Karan 2026-07-15: dedicated rename action — patches ONLY the

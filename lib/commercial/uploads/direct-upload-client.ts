@@ -63,6 +63,24 @@ export function directUploadDocument(opts: {
     }
     if (canceled) return { ok: false, error: "Canceled.", canceled: true };
 
+    // A signed upload URL authorises the PATH, not the CALLER — the insert
+    // still runs as whoever holds the bearer token, against the RLS policy on
+    // storage.objects. Sending the publishable key made every upload run as
+    // `anon`, which no policy covers, so Storage refused the row and reported
+    // it as a bare HTTP 400 (Stephanie, 2026-08-13: "Storage rejected the file
+    // HTTP400" on an 86 KB set of plans — the size was a red herring).
+    //
+    // So we send the signed-in user's own access token. Migration 137 grants
+    // `authenticated` the matching insert. Server-side uploads never hit this
+    // because the service role bypasses RLS — which is exactly why it survived
+    // until someone uploaded from a browser.
+    const { createClient } = await import("@/lib/supabase/client");
+    const { data: { session } } = await createClient().auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      return { ok: false, error: "Your session has expired. Reload the page and sign in again, then re-attach the file." };
+    }
+
     // 2) PUT straight to Storage against the signed URL (XHR for progress)
     const supaBase = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const url = new URL(`${supaBase}/storage/v1/object/upload/sign/${sign.bucket}/${sign.storage_key}`);
@@ -74,14 +92,31 @@ export function directUploadDocument(opts: {
         xhr = x;
         x.open("POST", url.toString());
         x.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
-        x.setRequestHeader("authorization", `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!}`);
+        x.setRequestHeader("authorization", `Bearer ${accessToken}`);
         x.setRequestHeader("x-upsert", "false");
         x.upload.onprogress = (e) => {
           if (e.lengthComputable) opts.onProgress?.(e.loaded / e.total);
         };
         x.onload = () => {
-          if (x.status >= 200 && x.status < 300) resolve();
-          else reject(new Error(`Storage rejected the file (HTTP ${x.status}).`));
+          if (x.status >= 200 && x.status < 300) return resolve();
+          // Storage returns its real reason in the body and a flat 400 in the
+          // status, so reporting only the status throws away the one useful
+          // fact. Surface what it said.
+          let detail = "";
+          try {
+            const body = JSON.parse(x.responseText) as { message?: string; error?: string };
+            detail = body.message ?? body.error ?? "";
+          } catch {
+            /* non-JSON body — the status is all we have */
+          }
+          if (/row-level security|Unauthorized|AccessDenied/i.test(detail)) {
+            detail = "this account isn't allowed to upload. Sign out and back in; if it persists, tell Karan the storage policy needs checking";
+          } else if (/exceeded the maximum allowed size|Payload too large/i.test(detail)) {
+            detail = "the file is larger than the 100 MB limit";
+          } else if (/mime type|not supported/i.test(detail)) {
+            detail = "that file type isn't accepted here";
+          }
+          reject(new Error(detail ? `Upload failed — ${detail}.` : `Storage rejected the file (HTTP ${x.status}).`));
         };
         x.onerror = () => reject(new Error("Network error during upload."));
         x.onabort = () => reject(new Error("__aborted__"));

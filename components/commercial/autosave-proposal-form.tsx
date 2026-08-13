@@ -31,7 +31,10 @@ type Status = "idle" | "saving" | "saved" | "error";
 export function AutosaveProposalForm({
   children,
   action,
-  debounceMs = 800,
+  // Stephanie 2026-08-13. 800ms fires on the pause between two words, not on
+  // the pause between two thoughts, so a save landed mid-sentence constantly.
+  // 2.5s still saves faster than anyone can lose work to a closed laptop.
+  debounceMs = 2500,
   disabled = false,
 }: {
   children: React.ReactNode;
@@ -66,12 +69,19 @@ export function AutosaveProposalForm({
     }
     inFlightRef.current = true;
     setStatus("saving");
+    // Marks this as a BACKGROUND save so the action skips revalidatePath.
+    // Stephanie 2026-08-13: *"it automatically saves every 3 seconds making it
+    // hard to enter data without it being overwritten or erased."* Every pause
+    // in typing was re-rendering this page and two others out from under her.
+    // An explicit save (Send for approval) still revalidates everything.
+    const fd = new FormData(formRef.current);
+    fd.set("__autosave", "1");
     // Call the server action DIRECTLY with the form's data — NOT requestSubmit().
     // React 19 auto-RESETS a `<form action>` once the action resolves, which was
     // wiping half-typed uncontrolled inputs (phone + any field) on every 800ms
     // autosave — the "it glitches and won't let me enter the number" bug (Karan
     // meeting 2026-08). A direct call still saves + revalidates, without the reset.
-    void wrappedAction(new FormData(formRef.current));
+    void wrappedAction(fd);
   }
 
   // Debounced listener on any input/change bubbling out of the form.
