@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SubmitButton } from "@/components/commercial/submit-button";
 import type { InlineField as FieldDef } from "@/lib/commercial/opportunities/inline-fields";
 
 /**
@@ -82,12 +83,12 @@ export function InlineFieldRow({
             <p className="text-[11px] text-ppp-charcoal-500">{field.hint}</p>
           )}
           <div className="flex items-center gap-1.5">
-            <button
-              type="submit"
+            <SubmitButton
+              pendingLabel="Saving…"
               className="inline-flex items-center px-3 py-1.5 rounded-lg bg-cc-brand-600 text-white text-[12px] font-bold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[32px]"
             >
               Save
-            </button>
+            </SubmitButton>
             <Link
               href={cancelHref}
               className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-600 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[32px]"
@@ -98,14 +99,14 @@ export function InlineFieldRow({
                 to empty a field is to select-all-delete-save, which people
                 reasonably assume won't work. */}
             {value !== "" && (
-              <button
-                type="submit"
+              <SubmitButton
                 name="value"
                 value=""
+                pendingLabel="Clearing…"
                 className="inline-flex items-center px-2 py-1.5 rounded-lg text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] sm:min-h-[32px]"
               >
                 Clear
-              </button>
+              </SubmitButton>
             )}
           </div>
         </form>

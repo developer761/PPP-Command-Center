@@ -150,6 +150,7 @@ import {
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
+import { SubmitButton } from "@/components/commercial/submit-button";
 import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
 import { InlineFieldRow } from "@/components/commercial/inline-field";
 import { INLINE_FIELDS, inlineField, parseInlineValue } from "@/lib/commercial/opportunities/inline-fields";
@@ -3468,20 +3469,22 @@ function ChangeStatusCard({
                 knows to drop the placeholder auto-note + leave the
                 amber "Debrief needed" banner visible. Only relevant
                 for terminal transitions; harmless otherwise. */}
-            <button
-              type="submit"
+            {/* This is where "Mark won or lost" and "Start the job" land, so
+                a dead-looking Save here is the same complaint one click later. */}
+            <SubmitButton
               name="debrief_skip"
               value="1"
+              pendingLabel="Saving…"
               className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12.5px] font-medium hover:bg-ppp-charcoal-50 transition-colors min-h-[44px] sm:min-h-[36px] touch-manipulation"
             >
               Debrief later
-            </button>
-            <button
-              type="submit"
+            </SubmitButton>
+            <SubmitButton
+              pendingLabel="Saving…"
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors min-h-[44px] sm:min-h-[36px] touch-manipulation"
             >
               Save
-            </button>
+            </SubmitButton>
           </div>
         </form>
       )}

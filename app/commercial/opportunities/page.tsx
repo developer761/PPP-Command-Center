@@ -95,6 +95,7 @@ import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
 import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
 import { nextStep } from "@/lib/commercial/opportunities/attention";
 import { NextStepButton } from "@/components/commercial/next-step-button";
+import { SubmitButton } from "@/components/commercial/submit-button";
 import { proposalTrailsDeal } from "@/lib/commercial/opportunities/auto-advance-targets";
 import { daysFromTodayEt, etDateOf, relativeAgoEt, daysAgoEt } from "@/lib/date-et";
 import {
@@ -2495,12 +2496,11 @@ function KanbanCard({
               </option>
             ))}
           </select>
-          <button
-            type="submit"
+          <SubmitButton pendingLabel="…"
             className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             Go
-          </button>
+          </SubmitButton>
         </form>
       )}
     </li>
@@ -3012,12 +3012,11 @@ function OpportunityRow({
               </option>
             ))}
           </select>
-          <button
-            type="submit"
+          <SubmitButton pendingLabel="…"
             className="px-3 py-1.5 rounded-md bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             Go
-          </button>
+          </SubmitButton>
         </form>
       ) : (
         <p className="text-[11px] text-ppp-charcoal-500">
@@ -3633,12 +3632,11 @@ function CustomerQuickSheet({
                               </option>
                             ))}
                           </select>
-                          <button
-                            type="submit"
+                          <SubmitButton pendingLabel="…"
                             className="px-2.5 py-1.5 text-[11px] font-semibold rounded-md bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                           >
                             Go
-                          </button>
+                          </SubmitButton>
                         </form>
                       )}
                     </li>
