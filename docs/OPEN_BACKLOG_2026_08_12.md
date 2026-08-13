@@ -1106,3 +1106,12 @@ out"; `=== true/false` so an unloaded signal never offers completion. Sound.
 (`submittalCount` non-zero). That strip is the one I verified "clean" in `2f68d83` — I checked the open-vs-closed
 split but NOT the voided case. Third own-miss this session; the lane it belongs to (verify status enums handle
 ALL values incl. void/cancelled, not just the happy split) is now noted.
+
+---
+
+## ✅ TAX-BASIS SWEEP CLOSED — all 3 sites fixed (2 by review session, 1 by build session).
+- ✅ **F3 cash-flow** rate/chart — review session (`billed → total_cents`, shipped in `4aeb5a0`).
+- ✅ **Deal money chain** — build session (`6d972cf`, invoiced → pre-tax, collected scaled/labeled).
+- ✅ **Deal monthly-billing chart** — review session (`a480edf`): monthly collected now net-of-tax
+  (`paid × subtotal/total`), matching the pre-tax invoiced. tsc + suite green.
+No tax-basis sites remain. The systematic "with-tax figure compared against a pre-tax reference" class is swept.
