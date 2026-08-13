@@ -418,3 +418,40 @@ Industry is fine to keep, leave it. Karan's/Brendan's call — flagging, not ass
 **🧹 CLEANUP (minor):** with the filter control and `distinctIndustries` caller gone, `db.ts:102`
 (`filters.industry` eq) + `db.ts:147` `distinctIndustries` + the `industry?` field on `AccountsListFilters` are now
 dead code. Safe to leave, but worth a sweep-line.
+
+---
+
+## 🔴 HIGH — estimator-on-create trigger (`71adb16`) is UNREACHABLE from the UI it targets. Wrong condition + a test that masks it.
+The commit's own rationale: *"Estimator is a field ON the create form … a deal typed in with an estimator already
+picked landed in Qualifying."* True bug. But the fix does **not** fire from either create form.
+
+**Why it can't fire.** The create inference (mutations.ts:103) keys on **`!input.status`** —
+`const inferredFromEstimator = !input.status && input.estimator_user_id ? "estimating" : null`.
+But **both** human create paths pre-default status to `"qualifying"` BEFORE calling the lib:
+- inline New-Deal form — `accounts/[id]/page.tsx:1370` `String(formData.get("status") ?? "qualifying")` → passed at :1514
+- main New-Deal sheet — `opportunities/page.tsx:316` same default → passed at :389
+
+So `input.status` is ALWAYS the truthy string `"qualifying"` → `!input.status` is ALWAYS false → the inference is
+dead. All 4 callers checked: the two forms above always send a concrete status; `opportunities/[id]:648` (duplicate)
+inherits the source status; `bid-submit/route.ts:129` omits status but sets **no estimator** → inference still can't
+yield estimating. **No caller in the codebase passes `status: undefined` + an estimator.** The stated bug is STILL
+LIVE from both forms.
+
+**The condition is wrong — the EDIT path it's mirroring proves it.** The edit trigger (mutations.ts:346) fires on
+**`gainedEstimator && opp.status === "qualifying"`** — it keys on the deal being *at Qualifying*, NOT on status being
+unset. The create fix should mirror that:
+```
+const explicitAdvanced = input.status && input.status !== "qualifying"; // Sent/etc. — a real decision, wins
+const status: OpportunityStatus = explicitAdvanced
+  ? (input.status as OpportunityStatus)
+  : (input.estimator_user_id ? "estimating" : "qualifying");
+```
+That makes create consistent with edit: an estimator on a would-be-Qualifying deal lands in Estimating; an explicit
+advanced stage still wins.
+
+**The test masks it.** `estimator-trigger.test.ts` never calls `createCommercialOpportunity` — it re-implements the
+inference as a local `infer()` (lines 19-20) and line 35 asserts `infer({status:"qualifying", estimator}) → "qualifying"`
+— i.e. it codifies the broken UI behavior as expected, and stays green. Textbook "tests pass ≠ works when clicked."
+The real test must call the mutation (or the action) with the SAME shape the forms send (`status:"qualifying"` +
+estimator) and assert `"estimating"`. Handed to build session — do NOT close until a create from the actual form
+lands in Estimating.
