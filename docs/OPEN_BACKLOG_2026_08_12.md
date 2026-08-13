@@ -868,3 +868,21 @@ Alex reads. Handed off.
 - 🟡 **F2 index-card fiscal half-wiring** (`87a6447`) — card hardcodes January while the report respects the setting.
 - 🟡 **Probability CSV export** (older handoff) — still emits the dead column.
 - 🔵 **1.5** — "Proposal" status label vs "Sent" column (cosmetic).
+
+---
+
+## ✅ VERIFY — buttons (3rd attempt) + submittals-first delivery order (`fd59ab9`). CORRECT & robust. Lost-flip now bulletproof.
+Karan: buttons "still did nothing" + "submittals is before they start the job." Both fixed properly:
+- **Buttons — root cause finally nailed:** a `#hash` alone does NOT scroll after a SOFT (client) navigation, so the
+  card rendered but off-screen — looked dead twice. Fix removes scroll dependence entirely: `focus=status` param →
+  the Overview tab renders the ChangeStatusCard FIRST, ringed (`ring-2 ring-cc-brand-400`, [id]/page.tsx:3075), with
+  the hash kept as a hard-load fallback. Page reads `sp.focus === "status"` (line 2076). Traced end-to-end, and the
+  destination test flagged `focus` as unread until it was wired. **My tracked Lost-flip finding is now bulletproof** —
+  the redirect (page.tsx:280) carries `focus=status` too, so it no longer depends on the hash I'd recommended. ✅
+- **Delivery order** — now submittals → work order → in progress, each pre-picking its stage. Two correctness guards
+  verified: (1) the signal is "no submittals EXIST" (`submittalCount === 0`, attention.ts:175) — an OPEN submittal is
+  normal (sitting with the GC), so it won't loop; (2) `=== 0`, never `?? 0` — an unloaded `undefined` (pipeline list)
+  falls through to "Write the work order" instead of telling every won job to send submittals. And submittals now LOAD
+  at pre_construction (`pathNeedsSubmittals = in_progress || pre_construction`, page.tsx:1484 → count at :1568) — the
+  commit caught that they were fetched only for in_progress, so the step would have shipped dead. ✅
+64 tests, tsc clean. No miss — buttons genuinely work now (verified render-order, not just compile).
