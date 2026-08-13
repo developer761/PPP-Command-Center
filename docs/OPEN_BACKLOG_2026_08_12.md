@@ -455,3 +455,21 @@ inference as a local `infer()` (lines 19-20) and line 35 asserts `infer({status:
 The real test must call the mutation (or the action) with the SAME shape the forms send (`status:"qualifying"` +
 estimator) and assert `"estimating"`. Handed to build session — do NOT close until a create from the actual form
 lands in Estimating.
+
+---
+
+## ✅ VERIFY — Katie's notes: COI-off-closeout + doc signer (`6a5587f`). CLEAN, no miss.
+- **Migration 134** — `ADD COLUMN IF NOT EXISTS signature_name/title` (nullable, idempotent). 🟡 must be RUN in prod.
+- **COI off closeout** — dropped from the seed list, KEPT in `CLOSEOUT_ITEM_KINDS` so pre-existing packages still
+  label the row (not "Other"), and `ADDABLE_CLOSEOUT_ITEM_KINDS` (coi-excluded) is wired into the actual add-picker
+  at `closeout-tool.tsx:517` — verified it's the list the UI maps, not just a defined const. ✅
+- **Signer block** — full data path confirmed: `db.ts` SELECT + type carry the columns, default record seeds
+  "Brendan Dwyer / VP" (matches Katie's captured Form of Warranty even before Settings is touched), update uses the
+  undefined-safe patch pattern, Settings → Operating company has both editable Fields, and BOTH PDFs guard
+  `signature_name ? name[, title] : "Authorized signature"` — clean null fallback, title appended only when present
+  (no dangling comma). ✅
+- **Platform sweep** — "Authorized signature" exists only in the warranty + work-order PDFs (both now signer-aware).
+  The other 3 PDFs: submittal + invoice-statement have no signature block; the proposal's "Estimator:" sign-off is a
+  DIFFERENT, correct signer (per-proposal estimator, not the company) — so no inconsistency introduced. Transmittals /
+  lien-waivers-we-sign-back are called out as forward-looking and don't render a company sig block today. ✅
+- Typecheck clean. Nothing handed back.
