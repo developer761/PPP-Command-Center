@@ -1180,3 +1180,18 @@ Item 4 / R10.4 (writes payroll → security + correctness critical). Verified ev
   debounce 800ms→2.5s. Guarded by `autosave-revalidate-seam.test.ts` — the background flag is a bare string shared
   client↔server, so renaming either side silently restores the bug; test fails when the seam breaks. ✓
 tsc clean, 608 tests / 46 files pass.
+
+---
+
+## ✅ VERIFY — clipped dropdowns platform-wide (`96819ea`, Stephanie). CLEAN, no miss. Textbook sweep.
+Stephanie: "Exclusion dropdown cuts off, can't scroll to see options." Root cause: the CARD (`EditorSection`) had
+`overflow-hidden`, so options past the card border were UNREACHABLE (not just hidden).
+- **Fix + visual preserved:** `overflow-hidden` removed; rounding re-homed explicitly — header band → `rounded-t-xl`,
+  left-accent bars → absolute `rounded-l-xl` span. Body is `bg-surface` = card bg, so no square-corner bleed. ✓
+- **Swept the whole platform (the rule):** a new audit (`audit-clipped-popovers.cjs`) found 3 MORE of the same class
+  — dashboard won/lost popover, Accounts bulk-assign, Invoices delete-all — all fixed. The audit's 3-attempt
+  evolution is documented honestly (2 false-cleans: indentation-based nesting broke on multi-line JSX; it missed
+  clipping one level of component indirection away — the very bug it was for). Verified by reintroducing the bug. ✓
+- **Accepted hits documented with reason (no silent caps):** a drawer dropdown that scrolls with its field stays
+  reachable; the complete fix is a portal in `SearchableSelect`, tracked as its own change. ✓
+tsc clean, 608 tests / 46 files pass.
