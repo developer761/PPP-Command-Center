@@ -1210,3 +1210,18 @@ tsc clean, 608 tests / 46 files pass.
   `proposalProjectName`: title_override wins (Katie's rule) → else client + street (the job) → fallback. Moved out of
   server-only `hydrate` so it's testable — it decides what every GC sees. 5/5 test. ✓
 tsc clean, 613 tests.
+
+---
+
+## ✅ VERIFY — bid-date in intro + internal-report no-intro + REVISION RULE (`0b43ca9`, Stephanie). CLEAN. Plan item 2 verified.
+- **Revision rule (Karan's plan item 2)** — VERIFIED correct + now tested. `mayCreateRevision(parent) = proposalWentOut`
+  = `sent_at` present OR status in {sent,won,lost,superseded,expired}. Key: `if (p.sent_at) return true` — a proposal
+  emailed then dragged back to draft still counts as seen. Enforced on the /proposal/new route (which mutates on GET),
+  so a bookmark/browser-back/hand-typed `?bump=` can't mint an R2 on an untouched draft. 6/6 tests. Karan can skip the
+  manual check. ✓
+- **Bid set date in the intro** — folded into the DEFAULT intro's opening sentence (`tomcoDefaultIntro(label)`),
+  spelled out. A CUSTOM intro is preserved verbatim and the date prints as its OWN line instead (pdf.tsx:15) — never
+  silently rewords an estimator's paragraph. Shared helper → editor preview matches the PDF. ✓
+- **Internal report drops the intro** — `mode !== "internal"` gates the sales paragraph (pdf.tsx:20); the bid date
+  always prints as its own line on that copy since the reviewer is checking which set was priced. ✓
+tsc clean, 619 tests.
