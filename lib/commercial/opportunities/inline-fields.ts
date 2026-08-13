@@ -46,6 +46,14 @@ export const INLINE_FIELDS: InlineField[] = [
   // have quietly reintroduced the field the forms just dropped.
   { name: "rfp_received_at", label: "RFP received", type: "date" },
   { name: "proposal_due_at", label: "Proposal due", type: "date" },
+  // AUDIT 2026-08-13 (Karan: "I click Fix and nothing happens"). The
+  // "No follow-up scheduled" warning offered a Fix that pointed at the Overview
+  // tab — where there was no way to set one. The only control that wrote
+  // `follow_up_at` lived inside the status-change form, so the only way to
+  // book a chase was to move the deal's stage, which is not what the warning
+  // was asking for. Editable in place now, so Fix can open this row directly.
+  { name: "follow_up_at", label: "Follow-up", type: "date",
+    hint: "When to chase the GC. The Follow-up warning links straight here." },
   // proposed_start_at / proposed_end_at are absent too — Brendan 2026-08-12:
   // "too early to determine at the opportunity level". Dates for the WORK live
   // on the project once there is one.

@@ -363,7 +363,10 @@ export function attentionFor(i: AttentionInput): Attention[] {
       key: "no_follow_up",
       title: "No follow-up scheduled",
       consequence: "A proposal is out with nothing booked to chase it.",
-      href: `/commercial/opportunities/${i.oppId}?tab=overview&sub=info`,
+      // Opens the follow-up date row itself. It used to point at the Overview
+      // tab, which is where you already were — so "Fix" navigated nowhere and
+      // did nothing.
+      href: `/commercial/opportunities/${i.oppId}?tab=info&ef=follow_up_at#ef-follow_up_at`,
       tone: "info",
     });
   }

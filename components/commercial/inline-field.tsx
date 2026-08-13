@@ -45,7 +45,9 @@ export function InlineFieldRow({
 
   if (editing && canEdit) {
     return (
-      <div className="py-1.5 border-b border-ppp-charcoal-50 last:border-0">
+      // scroll-mt clears the sticky header when a warning deep-links to this
+      // row with #ef-<field>.
+      <div className="scroll-mt-28 py-1.5 border-b border-ppp-charcoal-50 last:border-0">
         <form action={action} className="flex flex-col gap-1.5">
           <input type="hidden" name="opp_id" value={oppId} />
           <input type="hidden" name="field" value={field.name} />

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { nextStep } from "@/lib/commercial/opportunities/attention";
+import { nextStep, attentionFor } from "@/lib/commercial/opportunities/attention";
 
 /**
  * Karan, 2026-08-13: *"Mark won or lost here doesn't work... Start the job
@@ -91,5 +91,58 @@ describe("every next-step button goes somewhere the page handles", () => {
     const step = stepFor(CASES.find((c) => c.status === "pre_sale_closed")!)!;
     expect(step.label).toBe("Start the job");
     expect(new URL(step.href, "https://x.test").searchParams.get("to")).toBe("pre_construction");
+  });
+});
+
+/**
+ * Karan, 2026-08-13: *"I click Fix and nothing happens — No follow-up
+ * scheduled."*
+ *
+ * That warning's Fix pointed at `?tab=overview&sub=info`, which is where the
+ * banner already was, AND there was no control on that tab — or any tab — that
+ * set `follow_up_at`. The only writer lived inside the status-change form, so
+ * the only way to book a chase was to move the deal's stage, which is not what
+ * the warning asked for.
+ *
+ * The lesson generalises past that one link: a Fix has to land somewhere a
+ * person can actually DO the thing.
+ */
+describe("every warning's Fix lands somewhere usable", () => {
+  const warnings = (over: Record<string, unknown> = {}) =>
+    attentionFor({
+      oppId: "o1",
+      status: "proposal",
+      subStatus: "sent",
+      proposalCount: 1,
+      sentProposalCount: 1,
+      approvedNotSentCount: 0,
+      followUpAt: null,
+      ...over,
+    } as never);
+
+  it("only passes params the page reads", () => {
+    const READS = ["tab", "sub", "to", "to_sub", "back", "ef"];
+    for (const w of warnings()) {
+      const url = new URL(w.href, "https://x.test");
+      for (const key of url.searchParams.keys()) {
+        expect(READS, `"${w.title}" passes ?${key}=, which the page never reads`).toContain(key);
+      }
+    }
+  });
+
+  it("the follow-up Fix opens the follow-up field itself", () => {
+    const w = warnings().find((x) => x.key === "no_follow_up")!;
+    expect(w.href).toContain("ef=follow_up_at");
+    // …and the field has to be editable by that path, or the row never opens.
+    expect(PAGE).toContain("follow_up_at");
+  });
+
+  it("follow_up_at is on the inline-editable list — the fix depends on it", async () => {
+    // Both the page action and the writer gate on this list. Dropping the
+    // field from it would make the Fix silently do nothing again.
+    const { INLINE_FIELDS } = await import("@/lib/commercial/opportunities/inline-fields");
+    const f = INLINE_FIELDS.find((x) => x.name === "follow_up_at");
+    expect(f, "follow_up_at must stay inline-editable or the Fix link dies").toBeTruthy();
+    expect(f!.type).toBe("date");
   });
 });
