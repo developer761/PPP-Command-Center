@@ -466,6 +466,10 @@ export function oppStatusDisplayLabel(
   status: string | null | undefined,
   sub_status: string | null | undefined
 ): string {
+  // "Closed Won" / "Closed Lost" name the COLUMN — the bucket a deal falls
+  // into. The deal itself says "Won" / "Lost": on a decided deal the outcome
+  // is the useful word, and it is deliberate (pinned in kanban-columns.test).
+  // Everything else takes its name straight from its column.
   if (status === "pre_sale_closed") {
     if (sub_status === "won") return "Won";
     if (sub_status === "lost") return "Lost";
