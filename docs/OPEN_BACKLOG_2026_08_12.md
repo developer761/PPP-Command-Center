@@ -353,3 +353,23 @@ received" tile reads a day early for the bare-path rows). No deploy-gate risk.
 
 ## ✅ REVIEW-SESSION SIGN-OFF on the A-I plan (`d509022`)
 Reviewed the A-I plan for completeness — accurate. My open items are correctly captured: **A** (run mig 133, my action item), **C** (archive-a-won-deal 1.1, correctly framed as Karan's judgment call), **§1.6** hardening carried. The "12 date sites deliberately not swept" call is SOUND: verified each subtracts a TIMESTAMPTZ (real instant), so the only error is a DST-boundary floor — NOT the systematic bare-DATE day-early bug (which is fully closed). Documented, not silent. Nothing of mine dropped. Ready for **B** (full re-audit) — I will verify its findings + catch misses as they land.
+
+---
+
+## 🔴 CORRECTION — the 1.1 archiving decision (`354069c`) rests on a FALSE premise. Re-decide with real facts.
+The decision keeps a won deal's project archived, justified by: *"reports read opportunities, so an archived job
+still counts in AR, P&L, job-costs and geography."* **Verified against code — that's wrong for 3 of the 4:**
+- **job-costs** reads `listProjects` (job-costs.ts:119); **geography** reads `listProjects` (geography.ts:81);
+  **dashboard P&L / production tiles** read `summarizeProduction(listProjects())` (page.tsx:40).
+- `listProjects` queries `commercial_opportunities` with **`.is("archived_at", null)`** (db.ts:14). Archiving a
+  won deal sets `archived_at`, so **listProjects EXCLUDES it** → its contract + costs **vanish from job-costs,
+  geography, AND the dashboard P&L**. That IS the money-hiding shape.
+- Only **AR is safe**: invoice queries filter `deleted_at` only (not the opp's `archived_at`), and archiving
+  doesn't cascade to invoices — so an archived deal's invoices still count in AR.
+
+**So the premise "still counts company-wide" holds only for AR.** Karan should re-decide knowing archiving a won
+deal removes it from the cost/P&L/geography reports. Options: (a) accept it (archiving = hide everywhere — then
+correct the rationale, it's not "money still counts"); or (b) if won/delivering deals should stay in cost reports,
+`listProjects` needs to include archived rows (or the round-3 `projectHoldsAnything` guard should also block the
+archived_at MIRROR on the reconcile branch — the §1.1-adjacent gap I flagged earlier). Not my call to make; my job
+is that the call is made on true facts.
