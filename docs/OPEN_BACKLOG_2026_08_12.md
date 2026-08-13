@@ -907,3 +907,31 @@ Karan: "we're in delivery and there's no work order/closeout/warranty here." Fix
 row rather than showing it as its own state. The data already exists (`pathWarrantyThrough`, page.tsx:1501). If Karan
 wants at-a-glance warranty status ("active through <date>") as its own checklist row, it's a ~small add. Flagging so
 it's his call, not silently decided.
+
+---
+
+## ✅ VERIFY — tabs vanishing + team-roles DB + billing completeness (`e353b64`). All fixes correct. 🔴 TWO of my OWN misses surfaced here.
+Fixes verified:
+- **Tabs vanishing** — `isOppWon` (page.tsx:1802) now uses the SAME `isWon || isDeliveryPhase` predicate as the strip
+  (1478), so Project/Invoices tabs stay + the strip's links resolve across all delivery phases. ✅
+- **Migration 136** — widens BOTH role CHECK constraints (account + opportunity) to Brendan's four + all retired
+  roles, idempotent (`DROP IF EXISTS`), coupling comment + post-flight checks. A new test
+  (`assignment-roles-vs-db.test.ts`) reads the CHECK out of the migrations and asserts every app-writable role is in
+  it. 🟡 must be RUN — team roles stay broken until it lands. ✅
+- **Billing completeness** — `contractCents = base + netApprovedChangeOrderCents` (financials.ts:78), so "Left to
+  bill" is contract-TO-DATE and an approved CO reopens a 100% job; over-billing is NAMED not netted; retainage now
+  loads for any won deal (was only Billing) so "Paid in full" can't show over held retainage. Both sides pre-tax → no
+  F3-style basis bug. 571 tests, tsc clean. ✅
+
+## 🔴 REVIEW-SESSION SELF-CORRECTION — I passed two commits that carried LIVE bugs. Owning them + tightening my lanes.
+1. **Role CHECK constraint (shipped in `92d7226`, which I VERIFIED "correct").** I checked the app-side role list +
+   seniority + `tsc clean` and closed it. I did NOT check the Postgres CHECK constraint, which still listed the old 7
+   roles — so field_rep/office_rep/estimator were rejected on submit with a raw error: **team members could not be
+   added, in production, from the day those roles shipped.** `tsc` gave false confidence — it cannot see a DB
+   constraint. **New lane:** any app enum/list mirrored in a DB CHECK/enum → verify the constraint on every change.
+2. **Strip → hidden tabs (shipped in `2f68d83`, which I VERIFIED "clean").** I checked the strip renders + honest
+   states + mobile, but NOT that its tiles' links landed on VISIBLE tabs. The tabs used a narrower "won" predicate, so
+   in delivery phase the strip linked to hidden tabs → "brings me nowhere." I hold the build session's buttons to
+   "does the link resolve" — I failed to apply it to the strip I'd just passed. **New lane:** verifying any nav/strip
+   → confirm its link targets are reachable in the SAME states, not just that the source renders.
+Both are exactly the cross-surface classes I catch in others; recording them so the standard is symmetric.
