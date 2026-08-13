@@ -2298,7 +2298,15 @@ export default async function OpportunityDetailPage({
           (Overview/Documents/Activity/Project). Debrief, Invoices and
           Proposals are leaves with no sub-nav. Pills are red-tinted when
           active so the two-level hierarchy is visually obvious. */}
-      {isGroup(primary) && (
+      {/* Karan 2026-08-13: back from a tool "brought this up again" — because
+          the tool-list view still carried the sub-tab pills AND the delivery
+          strip, which are the same seven tools listed twice.
+
+          On `project` the strip IS the list, and it is the better one: it
+          carries each tool's STATE, which pills cannot. So the pills stand
+          down here and stay for docs/activity/overview, where there is no
+          strip and they are the only navigation. */}
+      {isGroup(primary) && primary !== "project" && (
         <div className="flex flex-wrap items-center gap-1.5">
           {SUB_TABS_BY_PRIMARY[primary].map((s) => {
             const active = s.key === sub;
