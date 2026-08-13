@@ -776,8 +776,10 @@ function TopOpenDealsCard({
   currentProposalByOpp: Map<string, { id: string; status: string }>;
 }) {
   return (
-    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-      <header className="flex items-center justify-between px-4 py-3 border-b border-ppp-charcoal-100">
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
+      {/* No overflow clipping on this card: the next-step won/lost popover
+          opens out of flow and a clipping card cuts it off. */}
+      <header className="flex items-center justify-between px-4 py-3 border-b border-ppp-charcoal-100 rounded-t-xl">
         <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
           Top 5 open opportunities

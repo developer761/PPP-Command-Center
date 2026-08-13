@@ -1891,11 +1891,13 @@ function FullDetailByOpp({
           <section
             key={oppId}
             id={`opp-${oppId}`}
-            className={`scroll-mt-20 bg-surface border rounded-xl overflow-hidden shadow-sm ${
+            className={`scroll-mt-20 bg-surface border rounded-xl shadow-sm ${
               overduePresent ? "border-rose-200" : "border-ppp-charcoal-100"
             }`}
           >
-            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-br from-surface to-ppp-blue-50/30">
+            {/* No overflow clipping on this card: the delete-all confirmation
+                popover opens out of flow and a clipping card cuts it off. */}
+            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 rounded-t-xl bg-gradient-to-br from-surface to-ppp-blue-50/30">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2 flex-wrap">

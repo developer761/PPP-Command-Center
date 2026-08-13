@@ -140,12 +140,19 @@ function EditorSection({
   className?: string;
   id?: string;
 }) {
+  // NO `overflow-hidden` on the card. Stephanie 2026-08-13: *"Exclusion drop
+  // down cuts off and I am unable to scroll lower to see all of my options."*
+  // The picker's own list scrolls fine — the CARD was clipping it at the
+  // border, so options below the fold were unreachable rather than merely
+  // hidden. The clip only ever existed to keep the header band inside the
+  // rounded corners, which the header now does itself with `rounded-t-xl`.
+  // This governs every picker in the editor, not just exclusions.
   return (
     <section
       id={id}
-      className={`bg-surface border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm scroll-mt-24 ${className}`}
+      className={`bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm scroll-mt-24 ${className}`}
     >
-      <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/40">
+      <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/40 rounded-t-xl">
         <div className="flex items-start gap-2.5 min-w-0">
           {icon && (
             <span

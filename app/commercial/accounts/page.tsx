@@ -777,12 +777,14 @@ export default async function CommercialAccountsPage({
           )}
         </div>
       ) : (
-        <form className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <form className="bg-surface border border-ppp-charcoal-100 rounded-xl">
+          {/* No overflow clipping on this card: the bulk-assign dropdown below
+              opens out of flow and a clipping card cuts it off. */}
           {/* List header + progressive-disclosure Bulk Actions. Was
               always-visible bar (busy); now behind a <details> so the
               default view is quiet. Server actions + form fields are
               byte-identical to the prior implementation. */}
-          <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100 rounded-t-xl flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h2 className="text-sm font-bold text-ppp-charcoal">
                 {accounts.length} account{accounts.length === 1 ? "" : "s"}

@@ -521,8 +521,8 @@ function DebriefFormCard({
     ? "Two quick fields — who won and why. Feeds the quarterly Win/Loss report."
     : "Two quick fields — who took it and why you passed. Feeds the quarterly Win/Loss report.";
   return (
-    <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
-      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600" />
+    <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm">
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600 rounded-l-xl" />
       <div className="flex items-start gap-3 mb-4">
         <div className="shrink-0 w-9 h-9 rounded-lg bg-cc-brand-50 border border-cc-brand-100 flex items-center justify-center" aria-hidden>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cc-brand-700">
@@ -574,7 +574,7 @@ function DebriefReadOnlyView({
   debriefCount: number;
 }) {
   return (
-    <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
+    <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm">
       <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500" />
       <div className="flex items-start gap-3 mb-4">
         <div className="shrink-0 w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center" aria-hidden>
