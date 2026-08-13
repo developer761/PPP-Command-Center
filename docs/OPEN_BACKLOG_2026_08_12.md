@@ -259,3 +259,36 @@ the survivors all operate on TIMESTAMPTZ columns (invoice `due_at`, doc `expires
 = real instants), NOT bare DATE. So no systematic day-early bugs remain. Item 3 CLOSED.
 
 ## 🔔 STILL OPEN (unchanged — tracking to a fix): job-costs:73 caption · path-bar skipped heuristic. Both grep-confirmed still present.
+
+---
+
+## NEXT: full re-audit of everything shipped today
+
+Karan's ask, verbatim: *"add a re-audit / full walkthrough and edge-case
+finding etc of everything we shipped today, heavy focus on the restructuring,
+notes that Katie sent, pictures and screenshots she sent, Brendan's feedback
+etc."*
+
+Plan items 1-10 are complete. This is the next block, and it is deliberately
+scoped as a WALKTHROUGH rather than another structural read — today's lesson,
+stated by Karan directly, is that a structural audit passes while the flow is
+broken ("recheck again because you should be catching mistakes like this").
+
+Lanes:
+
+1. **The restructure, walked as a user.** Create an opportunity from both entry
+   points, move it RFP → Estimating → Pending Approval → Sent → Won, start the
+   project, write the work order, bill it, close it out. Every screen, every
+   transition, checking the status label, the progress bar, the stage KPIs and
+   the next-step button agree at every step.
+2. **Brendan's list, item by item**, against what actually renders now — not
+   against what the commits claim.
+3. **Katie's notes + her screenshots**, same treatment.
+4. **Edge cases:** the empty deal, the deal with no account, the jumped-stage
+   deal, the re-opened deal, the archived project holding money, the deal whose
+   proposal was superseded mid-flow.
+5. **Mobile pass** on every surface touched today.
+6. **The recurring failure classes**, grepped platform-wide rather than
+   spot-checked: one number computed two ways · a list existing in two places ·
+   `formData.get` collapsing absent into empty · an anchor inside an anchor ·
+   a bare DATE parsed as UTC · an embed with two candidate FKs.
