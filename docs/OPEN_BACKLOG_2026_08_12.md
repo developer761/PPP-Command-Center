@@ -1247,3 +1247,26 @@ decdfb8's own files tsc-clean; 629 tests.
 `commercial-address-fields.tsx` + `accounts/db.ts` + `accounts/mutations.ts` modified + new `migration 138`
 (billing_street2). Mid-edit → a transient tsc error (`formatted_address` on address-fields) is WIP, NOT decdfb8.
 Will verify caller-completeness + the migration when it commits (same discipline as the date-et/revision WIP).
+
+---
+
+## ✅ VERIFY — self-correction of two proposal claims (`403717e`). Correction CORRECT. 🔴 One was MY verification miss.
+- **Project name restored to Katie's rule** — `0eae521` appended street to client_name ("client + address"), silently
+  changing the PROJECT line on every deal Katie's 2026-07-20 rule covers (title_override → client_name ALONE, the
+  Tomco JD-Sports convention → computed). Stephanie's complaint was only the EMPTY-client_name fallback. Corrected
+  order: title_override → client_name ALONE (Katie intact) → street (Stephanie's case) → computed. Both rules hold,
+  tests pin which is whose (test asserts "JD Sports" alone, not "JD Sports - 123 Main St"). ✓
+- **False comment fixed** — "an explicit save still revalidates" — there is NO explicit save (Karan removed the manual
+  Save button 2026-07-20); autosave is the only caller, revalidatePath calls unreachable. Not a bug (pages are
+  force-dynamic); comment corrected, calls kept for a future non-autosave caller. Rename-action comment refreshed. ✓
+- Build session also verified: customer snapshot + archived sent PDF render in customer mode (internal-report
+  intro-drop doesn't touch what the GC/Brendan see), and the reorder left all action buttons OUTSIDE editor forms
+  (no nested forms). Sound.
+
+## 🔴 REVIEW-SESSION SELF-CORRECTION #4 — I passed a Katie-contradiction in `0eae521`.
+I verified `0eae521`'s project-name helper as "client + address, title_override wins — clean." I checked title_override
+(one of Katie's rules) but accepted "client + street" as "the job" WITHOUT cross-checking Katie's documented
+client_name-ALONE convention — so my "clean" verdict missed a silent change to a customer-facing PDF line.
+**New lane:** when verifying a change to a PRINTED / customer-facing field (proposal, PDF, GC-received doc),
+cross-check against the DOCUMENTED Katie/Brendan rules (memory + prior conventions), not just the code's internal
+self-consistency. This is the 4th own-miss this session; all four are "internal logic checked, documented rule not."
