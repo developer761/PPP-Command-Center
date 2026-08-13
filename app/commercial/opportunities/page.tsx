@@ -272,7 +272,12 @@ async function quickFlipStatusAction(formData: FormData) {
   // Only Lost routes through the debrief page for reason capture. Won stays
   // as a direct transition + placeholder auto-note below.
   if (isLostFlip) {
-    redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=pre_sale_closed&to_sub=lost`);
+    // `to`/`to_sub` are what the page reads; `action` was dead weight from the
+    // same invented param the next-step buttons carried. The anchor matters
+    // more here than anywhere: this redirect exists to capture a LOSS REASON,
+    // and landing at the top of a long page meant the form it came for was
+    // off-screen.
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&to=pre_sale_closed&to_sub=lost#change-status`);
   }
   const result = await changeOpportunityStatus({
     opp_id,

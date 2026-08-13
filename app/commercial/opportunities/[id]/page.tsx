@@ -182,6 +182,11 @@ type SP = Promise<{
    *  Read by the change-status card; ignoring it opened the Lost flow on Won. */
   to_sub?: string;
   status_ok?: string;
+  /** Carries the reason a debrief failed to save. Was emitted and never read —
+   *  a failed save that said nothing. */
+  debrief_warn?: string;
+  deal_created?: string;
+  unarchived?: string;
   confirm_delete?: string;
   edited?: string;
   cloned?: string;
@@ -588,7 +593,10 @@ async function archiveOpportunityAction(formData: FormData) {
     revalidatePath(`/commercial/accounts/${account_id}`);
     redirect(`/commercial/accounts/${account_id}?tab=deals&archived=1`);
   }
-  redirect(`/commercial/accounts?archived=1`);
+  // Fallback when the deal carried no account. The accounts LIST has no banner
+  // slot, so `?archived=1` there confirmed nothing — you just landed on a list.
+  // The archive itself is the confirmation: the deal is visibly in it.
+  redirect(`/commercial/settings/archived`);
 }
 
 async function unarchiveOpportunityAction(formData: FormData) {
@@ -1949,6 +1957,29 @@ export default async function OpportunityDetailPage({
         <StageKpiStrip kpis={stageKpiList} identity={stageIdentity} />
       )}
 
+      {/* AUDIT 2026-08-13: three redirects landed here carrying params the page
+          never read, so the actions that sent you here finished in silence.
+          `debrief_warn` was the bad one — it carries an ERROR MESSAGE, so a
+          debrief that failed to save said nothing at all and the note was
+          simply gone. Page-level rather than inside a tab, because these
+          arrive on whichever tab the action chose. */}
+      {pickFirst(sp.debrief_warn) && (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+          <strong className="font-semibold">The status moved, but the debrief didn&rsquo;t save.</strong>{" "}
+          {pickFirst(sp.debrief_warn)}
+        </div>
+      )}
+      {pickFirst(sp.deal_created) === "1" && (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
+          Opportunity created. Everything for this job lives here.
+        </div>
+      )}
+      {pickFirst(sp.unarchived) === "1" && (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
+          Restored from the archive.
+        </div>
+      )}
+
       {!isDeletedDeal && <AttentionBanner items={attentionItems} />}
 
       {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
@@ -3045,7 +3076,7 @@ async function InfoTab({
           as its own dedicated button in the page header). The Debrief
           tab carries everything terminal-specific. */}
       {/* …unless the user was explicitly sent here to change it. The quick-
-          flips redirect terminal targets to `?action=change-status` for the
+          flips redirect terminal targets to `?to=…#change-status` for the
           loss-reason capture; suppressing the card on an ALREADY-terminal deal
           meant "→ Closed Lost" on a Closed Won card landed on Overview with no
           form, no error and no explanation, and the deal stayed Won. */}
