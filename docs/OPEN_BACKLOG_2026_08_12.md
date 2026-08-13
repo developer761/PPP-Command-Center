@@ -1164,3 +1164,19 @@ Item 4 / R10.4 (writes payroll → security + correctness critical). Verified ev
   every `ABSENCE_TYPES` value is in the CHECK) — the exact app-list-vs-DB-CHECK parity lane from my team-roles miss,
   now a durable test. ✓
 - Mobile-clean (no crew/log scanner hits — the phone-at-5pm surface). tsc clean, 8/8 daily-log tests.
+
+---
+
+## ✅ VERIFY — browser-upload RLS + autosave-eats-typing (`8e2ce3d`, Stephanie's smoke test). CLEAN, no miss.
+- **Every browser upload was failing HTTP400** since the direct-to-Storage transport shipped — the commercial buckets
+  have NO RLS policies, and server paths bypass RLS under the service role, so only the browser path ever met the
+  check; the client sent the publishable key so the insert ran as `anon`. Fix: client now sends the session
+  `access_token` (guarded if absent), and **migration 137** grants `authenticated` INSERT on `commercial-documents`
+  only. Policy well-scoped — INSERT-only, authenticated-only (never anon), ONE bucket, idempotent (`drop policy if
+  exists`); the server-minted signed URL is the primary gate, RLS the second. Reasonable for an internal trusted-user
+  tool. 🟡 must be RUN — uploads stay broken in prod until it lands. Upload errors now report Storage's real reason. ✓
+- **Autosave "erased my typing"** — every pause revalidated the page (+2 off-screen), remounting React-keyed
+  inclusion/alternate rows. Fix: background save skips `revalidatePath` (writes only), explicit save still refreshes;
+  debounce 800ms→2.5s. Guarded by `autosave-revalidate-seam.test.ts` — the background flag is a bare string shared
+  client↔server, so renaming either side silently restores the bug; test fails when the seam breaks. ✓
+tsc clean, 608 tests / 46 files pass.
