@@ -301,6 +301,23 @@ h1, h2, h3, h4, .font-condensed {
 }
 
 /* ─── Animations ─── */
+/*
+ * The end keyframes say `transform: none`, NOT `translateY(0)`. That looks like
+ * a nit and is not.
+ *
+ * These animations run with `animation-fill-mode: both`, so the final keyframe
+ * persists forever. `translateY(0)` is still a transform, and an element with
+ * any transform becomes the containing block for `position: fixed`
+ * descendants. Page shells are wrapped in `.animate-fade-up` — so every modal
+ * inside one was being positioned against the PAGE instead of the viewport.
+ * Scrolled down and opened a dialog? It rendered up at the top of the document,
+ * off-screen, exactly as Kate reported in round-3 #04 ("the pop-up mounts but
+ * the viewport keeps the previous scroll offset").
+ *
+ * `transform: none` leaves no transform behind, so fixed overlays anchor to the
+ * viewport again. This is the whole class fixed in one place, on both
+ * platforms — don't "tidy" it back to translateY(0)/translateX(0).
+ */
 @keyframes ppp-fade-up {
   0% {
     opacity: 0;
@@ -308,7 +325,7 @@ h1, h2, h3, h4, .font-condensed {
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 @keyframes ppp-fade-in {
@@ -317,7 +334,7 @@ h1, h2, h3, h4, .font-condensed {
 }
 @keyframes ppp-slide-in-right {
   0% { transform: translateX(16px); opacity: 0.4; }
-  100% { transform: translateX(0); opacity: 1; }
+  100% { transform: none; opacity: 1; }
 }
 .animate-fade-up {
   animation: ppp-fade-up 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;

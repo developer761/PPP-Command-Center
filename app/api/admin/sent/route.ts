@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveUserNames } from "@/lib/wo-progress/attribution";
 import { resolveViewer } from "@/lib/auth/viewer-server";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
@@ -35,26 +36,10 @@ function adminClient() {
   );
 }
 
-/** Kate #07 — resolve staff sender ids → first name (matches the progress-bar
- *  attribution style). Best-effort; a miss just leaves the name null. */
-async function resolveSenderNames(
-  sb: ReturnType<typeof adminClient>,
-  userIds: string[],
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (userIds.length === 0) return out;
-  try {
-    const { data } = await sb.from("profiles").select("user_id, sf_user_name, email").in("user_id", userIds);
-    for (const p of (data ?? []) as { user_id: string; sf_user_name: string | null; email: string | null }[]) {
-      const full = (p.sf_user_name ?? "").trim() || (p.email ?? "").split("@")[0] || "";
-      const first = full.split(/\s+/)[0] || full;
-      if (first) out.set(p.user_id, first);
-    }
-  } catch (err) {
-    console.warn("[sent] sender-name resolve failed:", err);
-  }
-  return out;
-}
+/** Kate #07 — resolve staff sender ids → first name. Shares the progress-bar's
+ *  resolver (lib/wo-progress/attribution.ts) so the Mail Hub and the work-order
+ *  activity history never disagree about what somebody is called. */
+const resolveSenderNames = resolveUserNames;
 
 /** Kate #07 — each WO's Salesforce FollowupDate__c (YYYY-MM-DD), for the
  *  follow-up-date activity filter. Best-effort + isolated so a slow/failed SF

@@ -36,9 +36,9 @@ Anchor files:
 
 ## Work-order page — `/dashboard/materials/[woId]` · 0/7
 - ✅ **01 · Layout** — Remove the duplicate Internal Entry button (renders twice: beside Send Color Form, and again under Send Reminder).
-- ⬜ **02 · Bug** ↻R2#04 — Progress bar + activity read "Customer Submitted" for AM entries; must read "Amy Submitted". Root cause above.
-- ⬜ **03 · Bug** ↻R2#05 — Activity history not granular; no customer-vs-AM attribution on opens. Needs: form sent · opened by AM · opened by customer · colors submitted (by whom) · email drafted · order sent to supplier.
-- ⬜ **04 · Bug** ↻R2#06 — Pop-ups mount without moving the viewport to their anchor. Affects Send Color Form, Preview Materials Order, vendor selection.
+- ✅ **02 · Bug** ↻R2#04 — Progress bar + activity read "Customer Submitted" for AM entries; must read "Amy Submitted". Root cause above.
+- ✅ **03 · Bug** ↻R2#05 — Activity history not granular; no customer-vs-AM attribution on opens. Needs: form sent · opened by AM · opened by customer · colors submitted (by whom) · email drafted · order sent to supplier.
+- ✅ **04 · Bug** ↻R2#06 — Pop-ups mount without moving the viewport to their anchor. Affects Send Color Form, Preview Materials Order, vendor selection.
 - ✅ **05 · Layout** — Sq Ft alert still claims a Salesforce save. Drop "we save it to Salesforce automatically and". Also verify sqft persists in CC (should already, via `wo_li_sqft_overrides` / migration 073).
 - ✅ **06 · Layout** — "1 color need a manual quantity" → "needs". Verb not pluralized.
 - ⬜ **07 · Process** — Sender-set color deadline. Date field on the send form, always present; default = WO Start Date when one exists, else empty; never render a past date. (68% of WOs in Coordination/Scheduling have no start date — the current Close-Date fallback is always expired.)

@@ -167,19 +167,23 @@ export default function WorkOrderProgressBar({
 }) {
   const states = computeStates(progress);
 
-  // Kate #04: when an AM entered colors via Internal Entry, the Opened/Submitted
-  // stages read "[AM] Opened" / "[AM] Submitted" instead of "Customer …".
-  const amName = progress.submittedByName?.trim() || null;
+  // Kate round-2 #04 / round-3 #02: when an AM entered colours via Internal
+  // Entry, the Opened/Submitted stages carry THEIR name — "Amy Submitted", not
+  // "Customer Submitted". Each stage is named independently now, because an AM
+  // can open a form without having submitted it yet; keying both labels off
+  // submittedByName left the bar saying "Customer Opened" mid-entry.
+  const openedBy = progress.openedByName?.trim() || null;
+  const submittedBy = progress.submittedByName?.trim() || null;
+  const nameForStage = (key: StageDef["key"]): string | null =>
+    key === "formOpenedAt" ? openedBy : key === "formSubmittedAt" ? submittedBy : null;
   const labelFor = (stage: StageDef): string => {
-    if (!amName) return stage.label;
-    if (stage.key === "formOpenedAt") return `${amName} Opened`;
-    if (stage.key === "formSubmittedAt") return `${amName} Submitted`;
-    return stage.label;
+    const who = nameForStage(stage.key);
+    if (!who) return stage.label;
+    return stage.key === "formOpenedAt" ? `${who} Opened` : `${who} Submitted`;
   };
   const shortLabelFor = (stage: StageDef): string => {
-    if (!amName) return stage.shortLabel;
-    if (stage.key === "formOpenedAt" || stage.key === "formSubmittedAt") return `${amName} ${stage.shortLabel}`;
-    return stage.shortLabel;
+    const who = nameForStage(stage.key);
+    return who ? `${who} ${stage.shortLabel}` : stage.shortLabel;
   };
 
   if (variant === "compact") {

@@ -38,17 +38,51 @@ export default function WoMailStream({
   const [items, setItems] = useState<Item[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
-  // Kate #05: granular lifecycle events from the progress timeline, merged into
-  // the email feed so the history reads form-sent → opened → submitted →
-  // drafted → sent-to-supplier. AM attribution ("Amy") flows from submittedByName.
+  // Kate round-2 #05 / round-3 #03: granular lifecycle events merged into the
+  // email feed, with EVERY action attributed to a customer or a named account
+  // manager. Kate's words: "The whole point is removing ambiguity about who did
+  // what." Previously an open showed with no actor at all, and the attribution
+  // was derived from submittedByName — so a form an AM had opened but not yet
+  // submitted was reported as the customer opening it.
   const events = useMemo<Item[]>(() => {
     if (!progress) return [];
-    const by = progress.submittedByName?.trim() || null;
+    const internal = progress.entryMode === "internal";
+    const sentBy = progress.sentByName?.trim() || null;
+    const openedBy = progress.openedByName?.trim() || null;
+    const submittedBy = progress.submittedByName?.trim() || null;
+    // An internal entry is staff acting for the customer; a normal token's
+    // opens and submits are the customer's, whoever sent the link.
+    const actor = (name: string | null) =>
+      name ? `by ${name} (account manager)` : internal ? "by an account manager" : "by the customer";
+
     const out: Item[] = [];
+    // Only for an INTERNAL entry: no email is sent, so nothing in the mail feed
+    // marks the start. A real send already appears below as an outbound row —
+    // adding it here too would list it twice.
+    if (progress.formSentAt && internal)
+      out.push({
+        at: progress.formSentAt,
+        dir: "event",
+        title: "Internal entry started",
+        who: sentBy ? `by ${sentBy} (account manager)` : "by an account manager",
+      });
     if (progress.formOpenedAt)
-      out.push({ at: progress.formOpenedAt, dir: "event", title: "Color form opened", who: by ? `by ${by} (internal)` : "by the customer" });
+      out.push({
+        at: progress.formOpenedAt,
+        dir: "event",
+        title: "Color form opened",
+        who: actor(openedBy),
+      });
     if (progress.formSubmittedAt)
-      out.push({ at: progress.formSubmittedAt, dir: "event", title: "Colors submitted", who: by ? `by ${by} (internal entry)` : "by the customer" });
+      out.push({
+        at: progress.formSubmittedAt,
+        dir: "event",
+        title: "Colors submitted",
+        who: actor(submittedBy),
+      });
+    // Drafted has no email behind it, so it needs its own row. Sent /
+    // acknowledged / delivered all surface on the supplier-order email row
+    // below (as its badge) — repeating them here would double the history.
     if (progress.supplierDraftedAt)
       out.push({ at: progress.supplierDraftedAt, dir: "event", title: "Materials order drafted", who: "in the Command Center" });
     return out;
@@ -90,9 +124,10 @@ export default function WoMailStream({
             title:
               (m.subject as string) ||
               (kind === "supplier_order" ? "Materials order sent" : "Color form sent"),
-            who: `to ${(m.recipientName as string) || (m.recipientEmail as string) || "—"}${
-              m.supplierName ? ` · ${m.supplierName}` : ""
-            }`,
+            // Kate round-3 #03: say who sent it, not just who it went to.
+            who: `${(m.senderName as string) ? `sent by ${m.senderName} · ` : ""}to ${
+              (m.recipientName as string) || (m.recipientEmail as string) || "—"
+            }${m.supplierName ? ` · ${m.supplierName}` : ""}`,
             badge: badges[0] ?? null,
           });
         }

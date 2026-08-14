@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import type { WoProgress } from "@/lib/wo-progress/types";
 import { getJobCompletedAt } from "@/lib/wo-progress/completion";
+import { buildAttribution } from "@/lib/wo-progress/attribution";
 
 /**
  * One-shot loader for the materials page's two auxiliary datasets:
@@ -32,6 +33,9 @@ type TokenRow = {
   submitted_at: string | null;
   expires_at: string;
   created_at: string;
+  kind?: string | null;
+  /** Kate round-3 #02/#03 — the staffer behind an internal entry. */
+  created_by_user_id?: string | null;
 };
 
 type OrderRow = {
@@ -138,7 +142,11 @@ export async function getMaterialsPageAuxData(
   const [tokensResult, ordersResult] = await Promise.allSettled([
     sb
       .from("customer_form_tokens")
-      .select("token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind")
+      // Kate round-3 #02/#03: created_by_user_id comes back too, so the bar and
+      // the activity history can say WHO opened and submitted. Round 2 added the
+      // attribution logic but only to the other loader, which is why the page
+      // Kate tests kept reading "Customer Submitted".
+      .select("token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind, created_by_user_id")
       .in("work_order_id", workOrderIds)
       // Push the preview-skip filter down to the DB instead of doing it
       // in the JS loop. Speed pass 2026-06-29 — fewer rows over the wire
@@ -173,7 +181,7 @@ export async function getMaterialsPageAuxData(
       return 1;
     };
     const bestByWo = new Map<string, TokenRow>();
-    for (const row of (tokensResult.value.data ?? []) as (TokenRow & { kind?: string | null })[]) {
+    for (const row of (tokensResult.value.data ?? []) as TokenRow[]) {
       // Skip preview tokens — admin test links, not real customer activity.
       if (row.kind === "preview") continue;
       const cur = bestByWo.get(row.work_order_id);
@@ -184,6 +192,10 @@ export async function getMaterialsPageAuxData(
       }
     }
 
+    // Kate round-3 #02/#03 — attribution from the SAME winning rows the
+    // timestamps come from, via the shared helper both loaders use.
+    const attribution = await buildAttribution(sb, bestByWo.values());
+
     for (const row of bestByWo.values()) {
       // Progress stages from this same row
       const progress = progressByWO.get(row.work_order_id);
@@ -192,6 +204,8 @@ export async function getMaterialsPageAuxData(
         progress.formSentAt = row.sent_at;
         progress.formOpenedAt = row.opened_at;
         progress.formSubmittedAt = row.submitted_at;
+        const who = attribution.get(row.work_order_id);
+        if (who) Object.assign(progress, who);
       }
 
       // Form status — same shape getFormStatusByWO produced

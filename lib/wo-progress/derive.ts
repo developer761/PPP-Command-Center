@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import type { WoProgress } from "@/lib/wo-progress/types";
+import { buildAttribution } from "@/lib/wo-progress/attribution";
 import { getJobCompletedAt } from "@/lib/wo-progress/completion";
 
 /**
@@ -139,10 +140,11 @@ export async function getProgressByWO(
         bestByWo.set(row.work_order_id, row);
       }
     }
-    // Kate #04: when the winning submitted token is an INTERNAL entry, the
-    // submission was an AM acting for the customer — collect the staffer's user
-    // id so we can label the bar "[AM] Submitted" instead of "Customer Submitted".
-    const internalSubmitterByWo = new Map<string, string>();
+    // Kate round-2 #04 / round-3 #02+#03: who sent, who opened, who submitted.
+    // Resolved by the shared helper so this loader and lib/materials-page-data.ts
+    // can't diverge again — last time they did, the fix shipped here and the page
+    // Kate tests kept reading "Customer Submitted".
+    const attribution = await buildAttribution(sb, bestByWo.values());
     for (const row of bestByWo.values()) {
       const existing = out.get(row.work_order_id);
       if (!existing) continue;
@@ -150,28 +152,8 @@ export async function getProgressByWO(
       existing.formSentAt = row.sent_at;
       existing.formOpenedAt = row.opened_at;
       existing.formSubmittedAt = row.submitted_at;
-      if (row.kind === "internal" && row.submitted_at && row.created_by_user_id) {
-        internalSubmitterByWo.set(row.work_order_id, row.created_by_user_id);
-      }
-    }
-    // Resolve the AM display names in one query.
-    if (internalSubmitterByWo.size > 0) {
-      const userIds = [...new Set(internalSubmitterByWo.values())];
-      const { data: profs } = await sb
-        .from("profiles")
-        .select("user_id, sf_user_name, email")
-        .in("user_id", userIds);
-      const nameById = new Map<string, string>();
-      for (const p of (profs ?? []) as { user_id: string; sf_user_name: string | null; email: string | null }[]) {
-        const full = (p.sf_user_name ?? "").trim() || (p.email ?? "").split("@")[0] || "";
-        // First name only ("Amy Mariano" → "Amy") to match Katie's example.
-        const first = full.split(/\s+/)[0] || full;
-        if (first) nameById.set(p.user_id, first);
-      }
-      for (const [woId, userId] of internalSubmitterByWo) {
-        const existing = out.get(woId);
-        if (existing) existing.submittedByName = nameById.get(userId) ?? "Internal entry";
-      }
+      const who = attribution.get(row.work_order_id);
+      if (who) Object.assign(existing, who);
     }
   } catch (err) {
     console.warn("[wo-progress] tokens query failed:", err);

@@ -29,6 +29,19 @@ export type WoProgress = {
    *  staffer's display name so the bar reads "Amy Submitted" instead of
    *  "Customer Submitted". Null for a real customer submission. */
   submittedByName?: string | null;
+  /** Kate round-3 #03: who did each thing, so the activity history stops being
+   *  ambiguous about customer vs account manager.
+   *
+   *  `entryMode` is the discriminator — an INTERNAL token means the person who
+   *  opened and submitted the form was PPP staff acting for the customer, so
+   *  every event on that token is attributed to them. A normal token means the
+   *  open and the submit were the customer's. */
+  entryMode?: "internal" | "customer" | null;
+  /** Staffer who sent (or created) the form link. Always PPP-side. */
+  sentByName?: string | null;
+  /** Who opened the form. Null on a customer token — the customer isn't a
+   *  named user — which the UI renders as "by the customer". */
+  openedByName?: string | null;
   /** Per-supplier breakdown for stages 3-6 (when multi-supplier WO). */
   perSupplier?: Array<{
     supplierAccountId: string;
