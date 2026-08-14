@@ -11,6 +11,7 @@ import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/
 import {
   computeG702,
   pickContractBaseCents,
+  isAiaChangeOrderLine,
   DEFAULT_RETAINAGE_PCT,
   type AiaG702,
   type AiaApplicationStatus,
@@ -231,7 +232,7 @@ export async function createAiaApplication(
         if (contractWasDefaulted) {
           const lines = await listAiaLineItems(appRow.id);
           const baseSovTotal = lines
-            .filter((l) => !l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? ""))
+            .filter((l) => !isAiaChangeOrderLine(l))
             .reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
           if (baseSovTotal > 0 && baseSovTotal !== appRow.original_contract_cents) {
             await sb
@@ -448,9 +449,7 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
   const approvedById = new Set(approved.map((c) => c.id));
   const approvedByNo = new Set(approved.map((c) => String(c.co_number)));
 
-  const coRows = lines.filter(
-    (l) => l.change_order_id || /^CO-0*\d+$/i.test(l.item_no ?? "")
-  );
+  const coRows = lines.filter((l) => isAiaChangeOrderLine(l));
   const presentIds = new Set<string>();
   const presentNos = new Set<string>();
   for (const l of coRows) {
@@ -796,7 +795,7 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
   // netCO added the COs AGAIN on line 2, so line 3 double-counted them on the
   // customer-facing G702 (audit M2).
   const sovTotalCents = lines
-    .filter((l) => !l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? ""))
+    .filter((l) => !isAiaChangeOrderLine(l))
     .reduce((sum, l) => sum + Math.round(l.scheduled_value_cents), 0);
 
   // A certificate that has been issued is a document the GC is holding a printed

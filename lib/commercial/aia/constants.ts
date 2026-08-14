@@ -155,6 +155,24 @@ export function formatApplicationNumber(n: number): string {
 }
 
 /**
+ * Is this G703 line a CHANGE ORDER line (G702 line 2), rather than base contract
+ * work (line 1)?
+ *
+ * Tagged either by `change_order_id` (migration 128) or, for rows seeded before
+ * that FK column existed (no backfill), by the `CO-###` item_no the seed used.
+ * ONE definition so "base schedule-of-values total" means the same thing on the
+ * seed snap, the live certificate, the App-2 carry-forward, and the portfolio
+ * rollup — feeding a CO-inclusive SOV to the contract-base ladder is exactly
+ * what double-counted every change order on line 3 (audit M2).
+ */
+export function isAiaChangeOrderLine(line: {
+  change_order_id?: string | null;
+  item_no?: string | null;
+}): boolean {
+  return !!line.change_order_id || /^CO-0*\d+$/i.test(line.item_no ?? "");
+}
+
+/**
  * The ONE contract-base ladder, shared by the Projects card, the Account 360
  * production KPIs, the AIA G702 (via resolveG702), and the Change Orders page —
  * so all four always agree on "contract to date" for a deal. Once an AIA app

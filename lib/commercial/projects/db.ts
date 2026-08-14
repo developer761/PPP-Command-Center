@@ -9,7 +9,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
-import { pickContractBaseCents, contractProposalCents, type ContractProposalRow } from "@/lib/commercial/aia/constants";
+import { pickContractBaseCents, isAiaChangeOrderLine, contractProposalCents, type ContractProposalRow } from "@/lib/commercial/aia/constants";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { costBreakdownByOpp, emptyCostBreakdown, type CostBreakdown } from "@/lib/commercial/purchases/db";
 import { fieldOpsLaborByOpp } from "@/lib/commercial/field-ops/labor-cost";
@@ -336,7 +336,7 @@ export async function listProjects(opts: {
       // 2, not line 1: counting it here too would fall back to a CO-inclusive
       // SOV and double-count every change order in contractToDate / margin on a
       // deal with no sent proposal (audit M2), exactly as it did on the G702.
-      if (!l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? "")) {
+      if (!isAiaChangeOrderLine(l)) {
         sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.round(l.scheduled_value_cents));
       }
       const pct = pctByApp.get(l.application_id) ?? 0;
