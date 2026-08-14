@@ -72,7 +72,7 @@ import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { getEffectiveContractBaseCents, retainageHeldForOpportunity } from "@/lib/commercial/aia/db";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
-import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { BILLABLE_INVOICE_STATUSES, deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import {
@@ -1794,14 +1794,16 @@ export default async function OpportunityDetailPage({
   const pathContractBaseCents = contractToDate - pathApprovedCoCents;
   const invoicedCents = pathFin?.invoicedCents ?? 0;
   const collectedCents = pathFin?.collectedCents ?? 0;
-  // ISSUED invoices only. A draft has a generated balance and a void invoice
-  // keeps its old one, so summing every non-deleted row reported money as
-  // "still out" that no GC has ever been asked for — while the KPI strip on
-  // the same page, which is issued-only, said $0. Two numbers, one screen.
-  const OPEN_INVOICE_STATUSES = new Set(["sent", "partial", "overdue"]);
+  // "Still out" = billed-and-unpaid, the SAME rule as the dashboard AR tile and
+  // the account rollup: BILLABLE (sent/viewed/partial/overdue) with a positive
+  // balance. A local allow-list here had left out "viewed" — an invoice the GC
+  // has OPENED but not paid, which is exactly money still out — so this figure
+  // undercounted the instant a customer viewed an invoice, while the KPI strip
+  // on the same page (issued-only) still counted it. Draft/void stay excluded
+  // (not yet billed / cancelled). One definition, platform-wide (round-3 #4).
   const openInvoiceCents = pathInvoices.reduce(
     (n, inv) =>
-      OPEN_INVOICE_STATUSES.has(String(inv.status))
+      BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(inv))
         ? n + Math.max(0, Number(inv.balance_cents) || 0)
         : n,
     0
