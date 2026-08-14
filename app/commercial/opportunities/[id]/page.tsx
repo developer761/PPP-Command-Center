@@ -728,7 +728,12 @@ async function archiveOpportunityAction(formData: FormData) {
   revalidatePath("/commercial/opportunities");
   if (account_id) {
     revalidatePath(`/commercial/accounts/${account_id}`);
-    redirect(`/commercial/accounts/${account_id}?tab=deals&archived=1`);
+    // ?tab=opportunities, not ?tab=deals. `archived=1` is only read by the
+    // opportunities LIST (includeArchived) — on ?tab=deals it resolves to the
+    // Home tab, which neither reveals the archived deal nor confirms anything,
+    // so archiving looked like it had done nothing. Same class as the sibling
+    // eject fixes; this one was missed by their "swept the rest" pass.
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&archived=1`);
   }
   // Fallback when the deal carried no account. The accounts LIST has no banner
   // slot, so `?archived=1` there confirmed nothing — you just landed on a list.
@@ -2298,6 +2303,16 @@ export default async function OpportunityDetailPage({
                 hasWinDate={!!opp.decided_at}
                 statusLog={pathStatusLog}
                 manualNext={manualNext}
+                // Karan 2026-08-13: "I MARKED THE PROPOSAL AND APPROVED (AS
+                // BRENDAN) BUT THE PENDING APPROVAL STATUS BAR DIDN'T CHANGE."
+                // StatusPathBar has carried a `proposalApproved` prop — which
+                // relabels the stage to "Approved — ready to send" — since it
+                // was added, and this, its ONLY call site, never passed it. The
+                // prop defaults to false, so the feature was dead on arrival
+                // and the bar sat on "Pending Approval" forever after Brendan
+                // signed off. Nothing failed: a defaulted prop nobody passes is
+                // invisible to the compiler and to every test.
+                proposalApproved={dealProposals.some((p) => p.status === "approved")}
               />
             </div>
           </div>

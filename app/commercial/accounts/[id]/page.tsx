@@ -1644,7 +1644,17 @@ async function editDealFromAccountAction(formData: FormData) {
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=deals`);
-  const back = `/commercial/accounts/${account_id}?tab=opportunities&edit=${opp_id}`;
+  // Carry `deal_back` onto the ERROR path too.
+  //
+  // The sheet emits its hidden `deal_back` input from `sp.deal_back` (see the
+  // dealBack prop), so a redirect that drops the param re-renders the form
+  // WITHOUT it. Open Edit from the deal page, clear the Title, save: the error
+  // redirect lost the flag, and the corrected re-save then ejected to the
+  // account's opportunities list — with Cancel no longer returning to the deal
+  // either. That is the exact eject three separate commits were written to
+  // fix; it survived because all three only ever exercised the happy path.
+  const dealBackQ = String(formData.get("deal_back") ?? "") === "1" ? "&deal_back=1" : "";
+  const back = `/commercial/accounts/${account_id}?tab=opportunities&edit=${opp_id}${dealBackQ}`;
 
   const title = String(formData.get("title") ?? "").trim();
   if (!title) redirect(`${back}&error=${encodeURIComponent("Title is required.")}#deal-edit-sheet`);

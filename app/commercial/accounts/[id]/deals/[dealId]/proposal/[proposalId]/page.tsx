@@ -2428,6 +2428,7 @@ function AddLineItemForm({
   submitAction,
   isAlternate,
   isLabor = false,
+  backHref,
 }: {
   accountId: string;
   dealId: string;
@@ -2448,6 +2449,11 @@ function AddLineItemForm({
   submitAction: (formData: FormData) => Promise<void>;
   isAlternate: boolean;
   isLabor?: boolean;
+  /** The origin (?back=) so a validation error redirect carries it back — the
+   *  row edit/delete forms already do this; without it, adding a line item that
+   *  fails validation dropped ?back= and ejected the user from the Proposals
+   *  queue. Matches proposalBack() on the server. */
+  backHref: string;
 }) {
   const prefix = isLabor ? "labor" : isAlternate ? "alt" : "inc";
   const addLabel = isLabor ? "labor row" : isAlternate ? "alternate" : "inclusion";

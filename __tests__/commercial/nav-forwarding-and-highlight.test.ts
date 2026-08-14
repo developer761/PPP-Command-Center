@@ -54,6 +54,59 @@ describe("deal drill-in forwarding (?tab=projects&project=<uuid>)", () => {
   });
 });
 
+describe("StatusPathBar proposalApproved", () => {
+  /**
+   * Karan 2026-08-13: "I MARKED THE PROPOSAL AND APPROVED (AS BRENDAN) BUT THE
+   * PENDING APPROVAL STATUS BAR DIDN'T CHANGE."
+   *
+   * StatusPathBar takes `proposalApproved` and relabels the stage to
+   * "Approved — ready to send". It defaults to false, and its ONE call site
+   * never passed it — so the feature was dead from the day it shipped. A
+   * defaulted prop that nobody passes is invisible to the compiler, to every
+   * test, and to code review; only using the product finds it.
+   */
+  const BAR = "components/commercial/status-path-bar.tsx";
+  const DEAL_PAGE = "app/commercial/opportunities/[id]/page.tsx";
+
+  it("is actually passed by the deal page", () => {
+    const src = read(DEAL_PAGE);
+    const at = src.indexOf("<StatusPathBar");
+    expect(at, "no StatusPathBar on the deal page").toBeGreaterThan(-1);
+    const jsx = src.slice(at, src.indexOf("/>", at));
+    expect(jsx, "prop declared but never passed — the relabel can never fire").toContain(
+      "proposalApproved="
+    );
+  });
+
+  it("and the prop still drives the relabel it was added for", () => {
+    const src = read(BAR);
+    expect(src).toContain("proposalApproved");
+    expect(src).toContain("Approved — ready to send");
+  });
+});
+
+describe("deal edit sheet keeps deal_back on the error path", () => {
+  /**
+   * The sheet re-emits its hidden `deal_back` input from the URL param, so an
+   * error redirect that drops the param re-renders the form without it and the
+   * corrected re-save ejects to the account list. Three separate commits fixed
+   * this eject on the happy path; none carried the flag onto the error path.
+   */
+  it("the error-redirect base carries deal_back", () => {
+    const src = read(ACCOUNT_PAGE);
+    const at = src.indexOf("async function editDealFromAccountAction");
+    expect(at).toBeGreaterThan(-1);
+    const body = src.slice(at, src.indexOf("\nasync function ", at + 1));
+    const backAt = body.indexOf("const back = ");
+    expect(backAt, "no `back` base to check").toBeGreaterThan(-1);
+    const backLine = body.slice(backAt, body.indexOf("\n", backAt));
+    expect(
+      backLine,
+      "error redirects drop deal_back, so a validation error un-sticks the deal return"
+    ).toContain("dealBackQ");
+  });
+});
+
 describe("sidebar active-row override", () => {
   /**
    * `isActive` short-circuits to `href === activeOverride`. The override
