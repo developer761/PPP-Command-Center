@@ -149,7 +149,7 @@ export function ProjectHome({
     billing: toolByKey("invoices") ?? toolByKey("aia"),
     closeout: toolByKey("closeout"),
     money: { hasContract: m.hasContract, contractCents: m.contractCents, billedCents: m.billedCents, collectedCents: m.collectedCents },
-  });
+  }, money);
 
   const billedPct = m.hasContract && m.contractCents > 0 ? Math.round((m.billedCents / m.contractCents) * 100) : 0;
   const collectedPct = m.hasContract && m.contractCents > 0 ? Math.round((m.collectedCents / m.contractCents) * 100) : 0;

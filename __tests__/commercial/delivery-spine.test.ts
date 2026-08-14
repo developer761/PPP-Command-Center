@@ -70,6 +70,23 @@ describe("deriveDeliverySpine", () => {
     expect(stage(s, "billing").current).toBe(true);
   });
 
+  it("billing meta describes the STAGE, not a single invoice's 'paid in full'", () => {
+    const fmt = (c: number) => `$${Math.round(c / 100)}`;
+    const s = deriveDeliverySpine(
+      {
+        ...base,
+        status: "in_progress",
+        billing: { status: "done", label: "$50 paid in full" }, // the invoice's OWN state
+        money: { hasContract: true, contractCents: 560_000_00, billedCents: 50_00, collectedCents: 50_00 },
+      },
+      fmt,
+    );
+    const billing = stage(s, "billing");
+    expect(billing.state).toBe("partial");
+    expect(billing.meta).toBe("$50 of $560000 billed");
+    expect(billing.meta).not.toContain("paid in full");
+  });
+
   it("always the six stages in order", () => {
     const s = deriveDeliverySpine({ ...base, status: "in_progress" });
     expect(s.map((x) => x.key)).toEqual(["won", "precon", "submittals", "production", "billing", "closeout"]);

@@ -218,7 +218,7 @@ export function deriveDeliverySpine(input: {
   closeout: SpineToolState;
   /** Preferred billing signal — finer than the tool's own state. */
   money?: { hasContract: boolean; contractCents: number; billedCents: number; collectedCents: number } | null;
-}): SpineStage[] {
+}, fmt?: (cents: number) => string): SpineStage[] {
   // Sequential rank of the pipeline status. 0 = won but not yet started.
   const rank: Record<string, number> = { pre_construction: 1, in_progress: 2, billing: 3, post_sale_closed: 4 };
   const r = rank[input.status] ?? 0;
@@ -245,12 +245,23 @@ export function deriveDeliverySpine(input: {
 
   const currentKey = r >= 4 ? "closeout" : r === 3 ? "billing" : r === 2 ? "production" : "precon";
 
+  // STAGE-level billing meta, not an invoice's. The invoices tool's own label is
+  // things like "$50 paid in full" — true of that ONE invoice, but under the
+  // Billing STAGE it reads as if the whole job is paid when only $50 of a large
+  // contract is billed (Karan 2026-08-15). When we have the money + a formatter,
+  // describe the stage: how much of the contract is billed.
+  let billingMeta = input.billing?.label ?? null;
+  if (mo && mo.hasContract && mo.contractCents > 0 && fmt) {
+    billingMeta =
+      billing === "done" ? "billed & collected" : billing === "partial" ? `${fmt(mo.billedCents)} of ${fmt(mo.contractCents)} billed` : "nothing billed yet";
+  }
+
   const stages: SpineStage[] = [
     { key: "won", label: "Won", state: "done", current: false, meta: input.wonLabel },
     { key: "precon", label: "Pre-con", state: precon, current: false, meta: null },
     { key: "submittals", label: "Submittals", state: toolSpineState(input.submittals), current: false, meta: input.submittals?.label ?? null },
     { key: "production", label: "Production", state: production, current: false, meta: input.onSite ? "on site" : null },
-    { key: "billing", label: "Billing", state: billing, current: false, meta: input.billing?.label ?? null },
+    { key: "billing", label: "Billing", state: billing, current: false, meta: billingMeta },
     { key: "closeout", label: "Close-out", state: toolSpineState(input.closeout), current: false, meta: input.closeout?.label ?? null },
   ];
   for (const s of stages) s.current = s.key === currentKey;

@@ -33,11 +33,15 @@ export function DeliveryToolsStrip({
   status,
   tools,
   stageMeaning,
+  money,
 }: {
   status: string;
   tools: DeliveryTool[];
   /** What the CURRENT stage means — the line that decides when to move on. */
   stageMeaning?: string | null;
+  /** Billing signal so the strip's Billing dot matches the Project spine (a
+   *  single paid invoice must not read as the whole job billed). */
+  money?: { hasContract: boolean; contractCents: number; billedCents: number; collectedCents: number } | null;
 }) {
   if (tools.length === 0) return null;
   const byKey = (k: string) => {
@@ -51,6 +55,7 @@ export function DeliveryToolsStrip({
     submittals: byKey("submittals"),
     billing: byKey("invoices") ?? byKey("aia"),
     closeout: byKey("closeout"),
+    money: money ?? null,
   });
   const current = spine.find((s) => s.current);
   const doneN = spine.filter((s) => s.state === "done").length;

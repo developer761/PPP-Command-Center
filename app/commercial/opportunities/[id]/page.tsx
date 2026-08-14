@@ -2573,7 +2573,7 @@ export default async function OpportunityDetailPage({
           to avoid listing the same seven tools twice. Both step aside once a
           tool is open. */}
       {!isDeletedDeal && !toolView && primary !== "project" && (
-        <DeliveryToolsStrip status={opp.status} tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
+        <DeliveryToolsStrip status={opp.status} tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} money={pathIsWon ? { hasContract: projectMoney.hasContract, contractCents: projectMoney.contractCents, billedCents: projectMoney.billedCents, collectedCents: projectMoney.collectedCents } : null} />
       )}
       {/* The Project HOME (delivery tool cards) renders in the Project tab BODY
           below the tab bar, not here above it — see further down. */}
