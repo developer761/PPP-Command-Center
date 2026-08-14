@@ -76,6 +76,14 @@ export async function POST(request: Request) {
     materialType?: string;
     colorNotes?: string;
     materialTypeOverrides?: Record<string, string>;
+    /** Kate round-3 #18: the committed order payload. When present the draft is
+     *  rendered FROM it, so the email always matches what the builder screen
+     *  showed. */
+    quantityOverrides?: Record<string, { buckets: number; cans: number; unit?: "gal" | "qt" }>;
+    customColorItems?: Array<{ id: string; label: string; qty: number; unit: string }>;
+    /** Kate round-3 #29: who the supplier should call. */
+    contactName?: string;
+    contactPhone?: string;
   };
   try {
     body = await request.json();
@@ -246,6 +254,12 @@ export async function POST(request: Request) {
     materialType: body.materialType, // Kate #16: estimator's main paint line
     colorNotes: body.colorNotes, // Kate #25: editable Color Notes
     materialTypeOverrides: body.materialTypeOverrides,
+    // Kate round-3 #18/#22/#23/#26: committed quantities + worker-typed colour
+    // lines render straight into the email instead of being patched in after.
+    quantityOverrides: body.quantityOverrides,
+    customColorItems: body.customColorItems,
+    contactName: body.contactName ?? null,
+    contactPhone: body.contactPhone ?? null,
   });
 
   return NextResponse.json({ ok: true, draft });

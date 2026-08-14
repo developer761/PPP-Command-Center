@@ -1614,10 +1614,22 @@ export default async function OpportunityDetailPage({
     listOpportunityStatusLog(opp.id).catch(() => []),
   ]);
 
+  // A deal keeps its project when un-won IF the project holds anything (the
+  // un-win archive guard in ensure.ts). So a deal dragged back to a pre-sale
+  // status can still own a LIVE project carrying invoices, work orders, AIA
+  // applications and closeout. The delivery tools have to follow the project,
+  // not the status LABEL — otherwise the Project tab renders blank and all of
+  // that is stranded, exactly the stranded-data shape the archive guard exists
+  // to prevent. (Karan 2026-08-14, from the smoke test: "the blank tab is a
+  // bug, not just a gap".) Archived projects stay excluded on purpose —
+  // archiving IS the deliberate "hide this".
+  const hasLiveProject = !!pathProject && !pathProject.archived_at;
+
   // Financials + change orders only once the job is actually won — a bid has no
   // contract, no billing and no costs, so those reads would be three round-trips
-  // to learn nothing.
-  const pathIsWon = isWon(opp) || isDeliveryPhase(opp.status);
+  // to learn nothing. A live project counts as won here: it means the delivery
+  // data exists and must be fetched to render honest tool states.
+  const pathIsWon = isWon(opp) || isDeliveryPhase(opp.status) || hasLiveProject;
   // Open submittals and crew hours are only rendered while a job is on site, so
   // they are only fetched then — two round-trips a bid would never use.
   const pathOnSite = opp.status === "in_progress";

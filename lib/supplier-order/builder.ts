@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatBucketsCans, summarizeOrder, type RoomTakeoff, type RoomSurface, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, applyQuantityOverrides, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { filterMaterialTypesForWorkOrder } from "@/lib/customer-form/material-types";
 import type {
@@ -136,6 +136,31 @@ export type BuildSupplierOrderInput = {
    *  the order goes out empty/short. Auto-detected groups still filter by
    *  manufacturer (to split brands across their mapped suppliers). */
   includeAllColors?: boolean;
+  /** Kate round-3 #18/#22/#23/#26: the worker's COMMITTED per-line quantities,
+   *  keyed by `${colorId}::${finish ?? ""}`. The email is rendered FROM these —
+   *  previously the modal typed a quantity, then rewrote the rendered body with
+   *  a regex, so any later re-draft (extras, fulfilment, product line) silently
+   *  reverted the number to the estimate and shipped "(PPP to confirm quantity)".
+   *  Passing them through the builder makes the email and the screen the same
+   *  computation. */
+  quantityOverrides?: Record<string, QuantityOverride>;
+  /** Kate round-3 #28: worker-typed COLOR lines (stain, venetian plaster,
+   *  colour matches — anything that isn't in the paint catalogue). Rendered as
+   *  real order lines alongside the picked colours, not buried in notes. */
+  customColorItems?: CustomColorItem[];
+  /** Kate round-3 #29: who the supplier should call about this order. */
+  contactName?: string | null;
+  contactPhone?: string | null;
+};
+
+/** A worker-typed colour line — one free-text field carrying colour + finish,
+ *  plus a quantity and unit like any other line (Kate round-3 #28). */
+export type CustomColorItem = {
+  id: string;
+  /** Free text, e.g. "Color Match: Behr 56, eggshell". */
+  label: string;
+  qty: number;
+  unit: string;
 };
 
 export type CustomerSubmittedPayload = {
@@ -595,12 +620,31 @@ function formatAddressBlock(address: DeliveryAddress): string {
  *  `${colorId}::${finish ?? ""}` — same shape as the modal's +/- override map.
  *  When set, the line shows the override as a tag prefix; the job-level header
  *  is dropped if NOT every color shares the same value (mixed-product job). */
+/** " — Living Room, Bathroom · Walls" for one order line (Kate round-3 #25).
+ *  Rooms are capped so a colour used in a dozen rooms doesn't blow the line
+ *  width; the count keeps it honest rather than silently truncating. */
+function formatPlacementSuffix(rooms: string[], surfaces: string[]): string {
+  const cleanRooms = rooms.map((r) => r.trim()).filter(Boolean);
+  const cleanSurfaces = surfaces.map((s) => s.trim()).filter(Boolean);
+  if (cleanRooms.length === 0 && cleanSurfaces.length === 0) return "";
+  const MAX_ROOMS = 4;
+  const roomText =
+    cleanRooms.length > MAX_ROOMS
+      ? `${cleanRooms.slice(0, MAX_ROOMS).join(", ")} +${cleanRooms.length - MAX_ROOMS} more`
+      : cleanRooms.join(", ");
+  const parts = [roomText, cleanSurfaces.join(", ")].filter(Boolean);
+  return ` — ${parts.join(" · ")}`;
+}
+
 function formatOrderSummaryBlock(
   estimates: GallonEstimate[],
   materialType: string | null,
-  materialTypeOverrides?: Map<string, string>
+  materialTypeOverrides?: Map<string, string>,
+  customColorItems: CustomColorItem[] = [],
 ): string {
-  if (estimates.length === 0) return "(no colors picked yet — customer has not submitted the color form)";
+  if (estimates.length === 0 && customColorItems.length === 0) {
+    return "(no colors picked yet — customer has not submitted the color form)";
+  }
   // Resolve the effective material type per color (override → fall through to
   // job-level). Then decide whether ALL colors share one product (single
   // header) or whether the job is mixed (per-line prefix, no header).
@@ -630,6 +674,12 @@ function formatOrderSummaryBlock(
     // Prefix the per-line material type when the job is mixed; suppress when
     // every line already shares the header value (no value in repeating it).
     const matPrefix = !sharedMaterial && mt ? `[${mt}] ` : "";
+    // Kate round-3 #25: say WHERE each colour goes. Round 2 (#18) stripped the
+    // bare "(Surfaces)" suffix as redundant, but that left the buyer unable to
+    // tell two lines apart — and a colour used in two rooms collapsed into one
+    // line reading just "Walls" with no hint it covered both. Room(s) first,
+    // then surface(s), which is how PPP reads a job.
+    const placement = formatPlacementSuffix(e.rooms, e.surfaces);
     // Manual-entry colors (no sqft on any contributing room) and zero-bucket
     // estimates both render as a placeholder so the supplier reads a clean
     // "___" instead of a numeric "0 gal" / "manual entry required" string.
@@ -638,16 +688,25 @@ function formatOrderSummaryBlock(
     // honest because manualOnly is checked explicitly here.
     const isManualPlaceholder = e.manualOnly || (e.buckets === 0 && e.cans === 0);
     if (!isManualPlaceholder) {
-      lines.push(`  ${matPrefix}${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}`);
+      lines.push(`  ${matPrefix}${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}${placement}`);
     } else {
-      lines.push(`  ${matPrefix}___ — ${e.colorName}${code}${finish} (PPP to confirm quantity)`);
+      lines.push(`  ${matPrefix}___ — ${e.colorName}${code}${finish}${placement} (PPP to confirm quantity)`);
     }
+  }
+  // Kate round-3 #28: worker-typed colour lines (stain, plaster, colour
+  // matches) are real order lines, not a note the vendor has to interpret.
+  for (const c of customColorItems) {
+    const label = c.label.trim();
+    if (!label) continue;
+    const qty = Math.max(1, Math.floor(c.qty || 1));
+    const unit = (c.unit || "gal").trim();
+    lines.push(`  ${qty} ${unit} — ${label}`);
   }
   // Job total line — a quick cross-check for purchasing ("grab this many total").
   const t = summarizeOrder(estimates);
-  if (t.buckets > 0 || t.cans > 0) {
+  if (t.buckets > 0 || t.cans > 0 || t.quarts > 0) {
     lines.push(`  ─────`);
-    lines.push(`  TOTAL: ${formatBucketsCans(t.buckets, t.cans)}${t.reviewColors > 0 ? ` (+ ${t.reviewColors} to confirm)` : ""}`);
+    lines.push(`  TOTAL: ${formatOrderTotal(t)}${t.reviewColors > 0 ? ` (+ ${t.reviewColors} to confirm)` : ""}`);
   }
   // Only warn when NO material type is set anywhere — a sharedMaterial OR
   // any per-color overrides means the vendor has what they need.
@@ -828,7 +887,17 @@ export async function buildSupplierOrderDraft(
   // shape (extras-only order).
   const { lineItems, rooms, skippedSurfaces } = resolveLineItems(input);
   // Tunable coverage config (Settings → Coverage); falls back to code defaults.
-  const gallonEstimates = estimateOrderGallons(rooms, await loadCoverageConfig());
+  const rawEstimates = estimateOrderGallons(rooms, await loadCoverageConfig());
+  // Kate round-3 #22/#23/#26: fold the worker's COMMITTED quantities in here,
+  // once, before anything is rendered — so the order list, the total and the
+  // vendor email are all the same numbers. The old flow typed a quantity into
+  // the modal and then patched the rendered email text with a regex, which any
+  // subsequent re-draft threw away.
+  const quantityOverridesMap = input.quantityOverrides
+    ? new Map<string, QuantityOverride>(Object.entries(input.quantityOverrides))
+    : undefined;
+  const gallonEstimates = applyQuantityOverrides(rawEstimates, quantityOverridesMap);
+  const customColorItems = (input.customColorItems ?? []).filter((c) => c.label.trim());
   // Paint product line — prefer the customer's selection (they may have
   // refined the admin pre-set value), fall back to whatever was on the WO at
   // build time. Null when neither has it; the summary block flags it as a
@@ -852,7 +921,7 @@ export async function buildSupplierOrderDraft(
   const materialTypeOverridesMap = input.materialTypeOverrides
     ? new Map(Object.entries(input.materialTypeOverrides))
     : undefined;
-  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates, materialType, materialTypeOverridesMap);
+  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates, materialType, materialTypeOverridesMap, customColorItems);
   const placementBlock = formatPlacementBlock(lineItems);
   const deliveryAddress = resolveDeliveryAddress(input);
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);
@@ -899,6 +968,11 @@ export async function buildSupplierOrderDraft(
     extras_block: formatExtrasBlock(input.extras),
     special_instructions: input.specialInstructions?.trim() ?? "",
     ppp_brand: "Precision Painting Plus",
+    // Kate round-3 #29: the supplier had no way to reach anyone. If a colour is
+    // unavailable or a quantity looks wrong they need a number to call, and it
+    // should be whoever is placing the order.
+    contact_name: (input.contactName ?? "").trim(),
+    contact_phone: (input.contactPhone ?? "").trim(),
   };
 
   const subject = render(template.subject, vars);
@@ -943,12 +1017,16 @@ export async function buildSupplierOrderDraft(
     // blocks; keep this consistent.
     const woliRoomLabel = new Map<string, string>();
     for (const li of input.woliRows) {
-      if (li.id && li.areaLabel) woliRoomLabel.set(li.id, li.areaLabel);
+      const label = (li.areaLabel ?? "").trim();
+      if (li.id && label) woliRoomLabel.set(li.id, label);
     }
     for (const item of payload.lineItems) {
       const note = (item.notes ?? "").trim();
       if (!note) continue;
-      perLineNotes.push({ roomLabel: woliRoomLabel.get(item.id) ?? "Room", note });
+      // Kate round-3 #31: never invent a room called "Room". When Salesforce
+      // genuinely has no area label, the note stands on its own rather than
+      // being filed under a placeholder that reads like a real room name.
+      perLineNotes.push({ roomLabel: woliRoomLabel.get(item.id) ?? "", note });
     }
   }
   // Kate round-2 #25: the "CUSTOMER NOTES" + "CUSTOMER IS NOT PAINTING" blocks
@@ -959,7 +1037,7 @@ export async function buildSupplierOrderDraft(
   const colorNotesDefaultParts: string[] = [];
   if (customerGlobalNotes) colorNotesDefaultParts.push(customerGlobalNotes);
   for (const { roomLabel, note } of perLineNotes) {
-    colorNotesDefaultParts.push(`- ${roomLabel}: ${note}`);
+    colorNotesDefaultParts.push(roomLabel ? `- ${roomLabel}: ${note}` : `- ${note}`);
   }
   if (skippedSurfaces.length > 0) {
     colorNotesDefaultParts.push("Not painting:");
@@ -981,6 +1059,16 @@ export async function buildSupplierOrderDraft(
     sections.push("");
     sections.push("FULFILMENT INSTRUCTIONS"); // Kate #25 rename
     sections.push(vars.special_instructions);
+  }
+  // Kate round-3 #29: a reachable human on every order.
+  if (vars.contact_phone) {
+    sections.push("");
+    sections.push("QUESTIONS ABOUT THIS ORDER");
+    sections.push(
+      vars.contact_name
+        ? `${vars.contact_name} · ${vars.contact_phone}`
+        : vars.contact_phone
+    );
   }
   sections.push("");
   sections.push(outro.trim());

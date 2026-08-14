@@ -103,8 +103,12 @@ export type GallonEstimate = {
   totalSqft: number;
   /** 5-gallon buckets to order. */
   buckets: number;
-  /** Leftover 1-gallon cans to order. */
+  /** Leftover 1-gallon cans to order — or, when `unit` is "qt", the whole
+   *  quart count (quarts don't come in buckets). */
   cans: number;
+  /** Container unit for this line (Kate round-3 #27). Absent = gallons; the
+   *  estimator only ever produces gallons, quarts come from a worker choice. */
+  unit?: PaintUnit;
   /** Total gallon-equivalent (buckets×5 + cans) — for sorting / sanity. */
   gallons: number;
   /** A contributing room had no floor area → this is an UNDER-count. */
@@ -352,39 +356,114 @@ export function estimateOrderGallons(
   return out;
 }
 
-/** Job-level roll-up of an order — total buckets/cans + how many colors are
+/* ─── Per-line unit selection (Kate round-3 #27) ─────────────────────────────
+ * Around a fifth of the containers PPP actually buys are quarts, so a line's
+ * quantity carries its own unit. Gallons keep the bucket/can packaging; quarts
+ * are always loose containers (there is no 5-quart bucket), so a quart line
+ * stores its whole count in `cans` and leaves `buckets` at 0.
+ */
+
+export type PaintUnit = "gal" | "qt";
+
+/** A worker-set quantity for one color line — overrides the estimate. */
+export type QuantityOverride = {
+  buckets: number;
+  cans: number;
+  /** Defaults to "gal" when absent (every pre-#27 override). */
+  unit?: PaintUnit;
+};
+
+/** Canonical key for a color line — shared by the builder, the order-builder
+ *  UI and the persisted build payload so all three agree on identity. */
+export function quantityKey(colorId: string, finish: string | null | undefined): string {
+  return `${colorId}::${finish ?? ""}`;
+}
+
+/** Total container count for an override, in its own unit. */
+export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
+  return o.unit === "qt" ? o.cans : o.buckets * 5 + o.cans;
+}
+
+/** Re-package a raw container count into the shape its unit expects. Quarts
+ *  stay loose; gallons roll up into 5-gal buckets. */
+export function packageForUnit(total: number, unit: PaintUnit): { buckets: number; cans: number; unit: PaintUnit } {
+  const t = Math.max(0, Math.floor(total));
+  if (unit === "qt") return { buckets: 0, cans: t, unit };
+  return { buckets: Math.floor(t / 5), cans: t % 5, unit };
+}
+
+/** Apply the worker's typed quantities to the system estimates. An explicit
+ *  override RESOLVES the line — it is no longer `manualOnly`, so every reader
+ *  (list row, total, vendor email) sees the same number.
+ *
+ *  This is the single place that folds overrides in. Kate round-3 #26 came
+ *  from the modal folding them for the TOTAL but not for the per-line rows,
+ *  so a line read "manual entry required" while the total climbed. */
+export function applyQuantityOverrides(
+  estimates: GallonEstimate[],
+  overrides: ReadonlyMap<string, QuantityOverride> | undefined
+): GallonEstimate[] {
+  if (!overrides || overrides.size === 0) return estimates;
+  return estimates.map((e) => {
+    const o = overrides.get(quantityKey(e.colorId, e.finish));
+    if (!o) return e;
+    return {
+      ...e,
+      buckets: o.buckets,
+      cans: o.cans,
+      unit: o.unit ?? "gal",
+      gallons: o.unit === "qt" ? 0 : o.buckets * 5 + o.cans,
+      // An explicitly-typed quantity is an answer, not a gap.
+      manualOnly: false,
+      unsized: false,
+    };
+  });
+}
+
+/** Job-level roll-up of an order — totals per unit + how many colors are
  *  sized vs. need a manual quantity. Drives the at-a-glance "order total". */
 export function summarizeOrder(estimates: GallonEstimate[]): {
-  buckets: number; cans: number; sizedColors: number; reviewColors: number;
+  buckets: number; cans: number; quarts: number; sizedColors: number; reviewColors: number;
 } {
-  let buckets = 0, cans = 0, sizedColors = 0, reviewColors = 0;
+  let buckets = 0, cans = 0, quarts = 0, sizedColors = 0, reviewColors = 0;
   for (const e of estimates) {
     if (e.buckets > 0 || e.cans > 0) {
-      buckets += e.buckets;
-      cans += e.cans;
+      if (e.unit === "qt") {
+        quarts += e.cans;
+      } else {
+        buckets += e.buckets;
+        cans += e.cans;
+      }
       sizedColors += 1;
     } else {
       reviewColors += 1;
     }
   }
-  return { buckets, cans, sizedColors, reviewColors };
+  return { buckets, cans, quarts, sizedColors, reviewColors };
 }
 
-/** "2 buckets (×5 gal) + 3 gal" / "5 gal" / "—" from a buckets+cans pair. */
-export function formatBucketsCans(buckets: number, cans: number): string {
+/** "2 buckets (×5 gal) + 3 gal" / "5 gal" / "4 qt" / "—". */
+export function formatBucketsCans(buckets: number, cans: number, unit: PaintUnit = "gal"): string {
+  if (unit === "qt") return cans > 0 ? `${cans} qt` : "—";
   const parts: string[] = [];
   if (buckets > 0) parts.push(`${buckets} bucket${buckets === 1 ? "" : "s"} (×5 gal)`);
   if (cans > 0) parts.push(`${cans} gal`);
   return parts.length ? parts.join(" + ") : "—";
 }
 
-/** Human-readable order, e.g. "1 bucket + 2 gal", "3 gal", "manual entry required". */
+/** Job-level total across both units, e.g. "1 bucket (×5 gal) + 2 gal · 3 qt". */
+export function formatOrderTotal(t: { buckets: number; cans: number; quarts: number }): string {
+  const parts: string[] = [];
+  const gal = formatBucketsCans(t.buckets, t.cans, "gal");
+  if (gal !== "—") parts.push(gal);
+  if (t.quarts > 0) parts.push(`${t.quarts} qt`);
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+/** Human-readable order, e.g. "1 bucket + 2 gal", "3 qt", "manual entry required". */
 export function formatOrderQuantity(e: GallonEstimate): string {
   if (e.manualOnly) return "manual entry required";
   if (e.unsized) return "needs review";
   if (e.buckets === 0 && e.cans === 0) return e.needsMeasurement ? "needs measurement" : "—";
-  const parts: string[] = [];
-  if (e.buckets > 0) parts.push(`${e.buckets} bucket${e.buckets === 1 ? "" : "s"} (×5 gal)`);
-  if (e.cans > 0) parts.push(`${e.cans} gal`);
-  return parts.join(" + ");
+  return formatBucketsCans(e.buckets, e.cans, e.unit ?? "gal");
 }

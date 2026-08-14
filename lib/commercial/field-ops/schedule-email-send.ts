@@ -749,7 +749,11 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
           });
           if (!sent || sent.ok === false) {
             console.warn(`[field-ops] schedule email not sent to ${e.email}`);
-            await releaseClaim(e.id, today, "weekly");
+            // weekStart, not today. The weekly send CLAIMS on weekStart (next
+          // Monday); releasing on today (Sunday) deletes a row that was never
+          // inserted, so the claim survives and that week's email stays
+          // suppressed — the exact failure this branch was added to prevent.
+          await releaseClaim(e.id, weekStart, "weekly");
           } else {
             weekly++;
           }

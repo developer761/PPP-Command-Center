@@ -77,6 +77,7 @@ import {
   type RoomTakeoff,
   type RoomSurface,
 } from "@/lib/supplier-order/estimate-gallons";
+import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
 const SupplierOrderModal = dynamic(() => import("@/components/supplier-order-modal"));
@@ -429,21 +430,12 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // job, tolerating 15- vs 18-char Salesforce Ids (#8 — SF's classic 15-char
   // Id is a prefix of the 18-char Id the snapshot carries).
   const focusMode = !!focusWoId;
-  const resolvedFocusId = useMemo(() => {
-    if (!focusWoId) return null;
-    const target = focusWoId.trim();
-    // Prefix matching is ONLY for the 15↔18-char SF Id case — otherwise a
-    // garbage/truncated target like "0" or "0WO" would prefix-match nearly
-    // every WO (they all start 0WO) and render an arbitrary unrelated WO.
-    // Require a real SF Id length for prefix matching; else exact match only.
-    const canPrefix = target.length === 15 || target.length === 18;
-    const hit = openJobs.find((j) => {
-      if (j.wo.id === target) return true;
-      if (!canPrefix) return false;
-      return j.wo.id.startsWith(target) || target.startsWith(j.wo.id);
-    });
-    return hit?.wo.id ?? null;
-  }, [focusWoId, openJobs]);
+  // Shared with the order pages via lib/materials/resolve-wo.ts so the 15↔18
+  // char Id handling can't drift between the two routes.
+  const resolvedFocusId = useMemo(
+    () => resolveWorkOrderId(focusWoId, openJobs),
+    [focusWoId, openJobs]
+  );
 
 
   // In focus mode, keep the shown WO in lock-step with the route param (so

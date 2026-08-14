@@ -75,7 +75,12 @@ export function SubmitButton({
       type="submit"
       // Disabling while pending is the point: it is both the visible signal and
       // the guard against a second submit.
-      disabled={disabled || pending}
+      // NOT disabled on the local path. Setting disabled inside the click
+      // handler cancels the submit that click was meant to start — my own
+      // 2026-08-14 "pending feedback" fix broke every cross-form button
+      // outright. The label still changes, which is the feedback; the
+      // double-submit guard is the server action's own idempotency.
+      disabled={disabled || (form ? false : pending)}
       aria-busy={pending || undefined}
       onClick={form ? () => setClicked(true) : undefined}
       formAction={formAction}
