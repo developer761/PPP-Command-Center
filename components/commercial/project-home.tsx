@@ -61,17 +61,20 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
   );
 }
 
-const SPINE_TONE: Record<SpineStage["state"], { bar: string; dot: string; lbl: string; meta: string }> = {
-  done: { bar: "bg-emerald-500", dot: "bg-emerald-500 border-emerald-500", lbl: "text-ppp-charcoal", meta: "text-emerald-700" },
-  current: { bar: "bg-gradient-to-r from-emerald-500 to-cc-brand-500", dot: "bg-cc-brand-500 border-cc-brand-500 ring-4 ring-cc-brand-500/20", lbl: "text-cc-brand-700", meta: "text-cc-brand-700" },
-  todo: { bar: "bg-ppp-charcoal-100", dot: "bg-surface border-ppp-charcoal-200", lbl: "text-ppp-charcoal-400", meta: "text-ppp-charcoal-400" },
+const SPINE_TONE: Record<SpineStage["state"], { marker: string; bar: string; lbl: string; meta: string; check: boolean }> = {
+  // DONE = green ✓ · PARTIAL = amber ✓ (activity, not finished) · TODO = grey ○.
+  done: { marker: "bg-emerald-500 border-emerald-500 text-white", bar: "bg-emerald-500", lbl: "text-ppp-charcoal font-bold", meta: "text-emerald-700", check: true },
+  partial: { marker: "bg-amber-400 border-amber-400 text-white", bar: "bg-amber-400", lbl: "text-ppp-charcoal font-bold", meta: "text-amber-700", check: true },
+  todo: { marker: "bg-surface border-ppp-charcoal-200 text-transparent", bar: "bg-ppp-charcoal-100", lbl: "text-ppp-charcoal-400 font-semibold", meta: "text-ppp-charcoal-400", check: false },
 };
 
 /**
  * The delivery SPINE — where the job is in its lifecycle, at a glance. Replaces
- * the old tool-card grid, which just duplicated the deal's tab bar. A horizontal
- * run of six stages (Won → Close-out); scrolls on a narrow phone rather than
- * wrapping, so the sequence always reads left-to-right.
+ * the old tool-card grid, which just duplicated the deal's tab bar. Each stage's
+ * marker reflects its OWN state (green ✓ done · amber ✓ partial · grey ○ not
+ * started), so doing billing or submittals out of order updates only that stage;
+ * a blue ring marks the stage the deal officially sits at now. Scrolls on a
+ * narrow phone rather than wrapping.
  */
 function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMeaning?: string | null }) {
   const doneN = stages.filter((st) => st.state === "done").length;
@@ -79,7 +82,7 @@ function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMe
     <section aria-label="Project delivery" className="rounded-xl border border-ppp-charcoal-100 bg-surface overflow-hidden">
       <header className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-ppp-charcoal-100">
         <h2 className="text-[11px] font-bold uppercase tracking-widest text-ppp-charcoal-600">Delivery</h2>
-        <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">{doneN} of {stages.length} stages complete</span>
+        <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">{doneN} of {stages.length} stages done</span>
       </header>
       <div className="px-4 pt-5 pb-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <ol className="flex min-w-[380px]">
@@ -88,13 +91,17 @@ function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMe
             const first = i === 0;
             const last = i === stages.length - 1;
             return (
-              <li key={st.key} className="relative flex-1 min-w-[62px] text-center pt-7 px-0.5">
-                <span aria-hidden className={`absolute top-[9px] h-[3px] ${t.bar} ${first ? "left-1/2 right-0" : last ? "left-0 right-1/2" : "left-0 right-0"}`} />
+              <li key={st.key} className="relative flex-1 min-w-[62px] text-center pt-8 px-0.5">
+                <span aria-hidden className={`absolute top-[10px] h-[3px] ${t.bar} ${first ? "left-1/2 right-0" : last ? "left-0 right-1/2" : "left-0 right-0"}`} />
                 <span
                   aria-hidden
-                  className={`absolute left-1/2 -translate-x-1/2 rounded-full border-[3px] z-10 ${t.dot} ${st.state === "current" ? "top-[1px] h-[17px] w-[17px]" : "top-[2px] h-[15px] w-[15px]"}`}
-                />
-                <div className={`text-[11px] font-bold leading-tight ${t.lbl}`}>{st.label}</div>
+                  className={`absolute left-1/2 -translate-x-1/2 top-0 h-[21px] w-[21px] rounded-full border-2 z-10 inline-flex items-center justify-center ${t.marker} ${st.current ? "ring-4 ring-cc-brand-500/30" : ""}`}
+                >
+                  {t.check && (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
+                  )}
+                </span>
+                <div className={`text-[11px] leading-tight ${st.current ? "text-cc-brand-700 font-bold" : t.lbl}`}>{st.label}</div>
                 {st.meta && <div className={`text-[9.5px] mt-0.5 truncate ${t.meta}`}>{st.meta}</div>}
               </li>
             );
@@ -141,6 +148,7 @@ export function ProjectHome({
     submittals: toolByKey("submittals"),
     billing: toolByKey("invoices") ?? toolByKey("aia"),
     closeout: toolByKey("closeout"),
+    money: { hasContract: m.hasContract, contractCents: m.contractCents, billedCents: m.billedCents, collectedCents: m.collectedCents },
   });
 
   const billedPct = m.hasContract && m.contractCents > 0 ? Math.round((m.billedCents / m.contractCents) * 100) : 0;

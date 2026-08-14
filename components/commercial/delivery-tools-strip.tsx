@@ -23,9 +23,9 @@ export type DeliveryTool = {
   phase: string;
 };
 
-const DOT: Record<"done" | "current" | "todo", string> = {
+const DOT: Record<"done" | "partial" | "todo", string> = {
   done: "bg-emerald-500",
-  current: "bg-cc-brand-500 ring-2 ring-cc-brand-500/25",
+  partial: "bg-amber-400",
   todo: "bg-ppp-charcoal-200",
 };
 
@@ -52,7 +52,7 @@ export function DeliveryToolsStrip({
     billing: byKey("invoices") ?? byKey("aia"),
     closeout: byKey("closeout"),
   });
-  const current = spine.find((s) => s.state === "current");
+  const current = spine.find((s) => s.current);
   const doneN = spine.filter((s) => s.state === "done").length;
 
   return (
@@ -62,7 +62,7 @@ export function DeliveryToolsStrip({
         <div className="flex items-center flex-1 min-w-0" aria-hidden>
           {spine.map((s, i) => (
             <div key={s.key} className="flex items-center flex-1 min-w-0 last:flex-none">
-              <span className={`h-2 w-2 rounded-full shrink-0 ${DOT[s.state]}`} title={`${s.label}${s.meta ? ` — ${s.meta}` : ""}`} />
+              <span className={`h-2 w-2 rounded-full shrink-0 ${DOT[s.state]} ${s.current ? "ring-2 ring-cc-brand-500/30" : ""}`} title={`${s.label}${s.meta ? ` — ${s.meta}` : ""}`} />
               {i < spine.length - 1 && (
                 <span className={`h-[2px] flex-1 mx-0.5 ${s.state === "done" ? "bg-emerald-400" : "bg-ppp-charcoal-100"}`} />
               )}

@@ -3,6 +3,7 @@ import {
   DonutChart,
   GaugeRing,
   MiniBars,
+  StatCard,
   type DonutSegment,
 } from "@/components/commercial/charts";
 
@@ -105,7 +106,6 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
   const collectedScaled = a.invoicedWithTaxCents > 0 ? Math.round(a.invoicedCents * (a.collectedCents / a.invoicedWithTaxCents)) : 0;
   const collectedW = pct(collectedScaled);
   const toBill = Math.max(0, unbilled);
-  const notCollected = a.openBalanceCents + a.retainageCents;
 
   return (
     <div className="space-y-4">
@@ -146,52 +146,57 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
             </div>
           </div>
 
-          {hasContract ? (
-            <div className="mt-5 space-y-1.5">
-              {/* Contract — the full width everything else is measured against. */}
-              <div className="flex h-8 rounded-lg overflow-hidden">
-                <div className="flex items-center px-3 text-[11px] font-bold text-white bg-ppp-navy-700 whitespace-nowrap tabular-nums w-full">
-                  Contract {formatCentsCompact(a.contractToDateCents)}
-                </div>
+          {hasContract && (
+            <div className="mt-5">
+              {/* One robust progress bar — billed, then collected on top, both as
+                  a share of the contract. Reads cleanly at any scale (a tiny
+                  first invoice included), unlike labelled segments that overflow. */}
+              <div className="relative h-2.5 rounded-full bg-ppp-charcoal-100 overflow-hidden" aria-hidden>
+                <div className="absolute inset-y-0 left-0 bg-cc-brand-300 rounded-full" style={{ width: `${Math.max(1, invoicedW)}%` }} />
+                <div className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full" style={{ width: `${collectedW}%` }} />
               </div>
-              {/* Invoiced + the still-to-bill gap. */}
-              <div className="flex h-8 rounded-lg overflow-hidden bg-ppp-charcoal-50 border border-ppp-charcoal-100">
-                <div className="flex items-center px-3 text-[11px] font-bold text-white bg-cc-brand-500 whitespace-nowrap tabular-nums overflow-hidden" style={{ flex: `0 0 ${Math.max(invoicedW, toBill > 0 ? 0 : 100)}%` }}>
-                  Invoiced {formatCentsCompact(a.invoicedCents)}
-                </div>
-                {toBill > 0 && (
-                  <div className="flex items-center px-3 text-[11px] font-semibold text-ppp-charcoal-500 whitespace-nowrap tabular-nums" style={{ flex: "1" }}>
-                    {formatCentsCompact(toBill)} to bill
-                  </div>
-                )}
-              </div>
-              {/* Collected + the outstanding/retainage gap. */}
-              <div className="flex h-8 rounded-lg overflow-hidden bg-ppp-charcoal-50 border border-ppp-charcoal-100">
-                <div className="flex items-center px-3 text-[11px] font-bold text-white bg-emerald-500 whitespace-nowrap tabular-nums overflow-hidden" style={{ flex: `0 0 ${Math.max(collectedW, notCollected > 0 ? 0 : 100)}%` }}>
-                  Collected {formatCentsCompact(a.collectedCents)}
-                </div>
-                {notCollected > 0 && (
-                  <div className="flex items-center px-3 text-[11px] font-semibold text-ppp-charcoal-500 whitespace-nowrap tabular-nums" style={{ flex: "1" }}>
-                    {a.openBalanceCents > 0 && `${formatCentsCompact(a.openBalanceCents)} outstanding`}
-                    {a.openBalanceCents > 0 && a.retainageCents > 0 && " · "}
-                    {a.retainageCents > 0 && `${formatCentsCompact(a.retainageCents)} retainage`}
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-[10.5px] text-ppp-charcoal-500">
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-ppp-navy-700" />Contract</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-cc-brand-500" />Invoiced</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Collected</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-ppp-charcoal-200" />Not yet</span>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[10.5px] text-ppp-charcoal-500">
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-cc-brand-300" />Invoiced {formatCentsCompact(a.invoicedCents)}</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Collected {formatCentsCompact(a.collectedCents)}</span>
+                {toBill > 0 && <span className="text-ppp-charcoal-400 tabular-nums">{formatCentsCompact(toBill)} left to bill</span>}
               </div>
             </div>
-          ) : (
-            <p className="mt-4 text-[12.5px] text-ppp-charcoal-400 italic">
-              No contract set yet — win the deal and set its contract to see the money flow.
-            </p>
           )}
         </div>
       </section>
+
+      {/* The four numbers anyone asks for, scannable — with a billing sparkline
+          on invoiced + collected so the trend rides alongside the total. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="Contract to date"
+          value={formatCentsFull(a.contractToDateCents)}
+          sub={a.approvedCoCents !== 0 ? `incl. ${formatCentsCompact(a.approvedCoCents)} in COs` : "no change orders"}
+          tone="navy"
+        />
+        <StatCard
+          label="Invoiced"
+          value={formatCentsFull(a.invoicedCents)}
+          sub={toBill > 0 ? `${formatCentsCompact(toBill)} left to bill` : unbilled < 0 ? "over-billed" : "fully billed"}
+          tone="brand"
+          spark={a.billingByMonth.map((mth) => mth.invoicedCents)}
+          sparkLabels={a.billingByMonth.map((mth) => mth.label)}
+        />
+        <StatCard
+          label="Collected"
+          value={formatCentsFull(a.collectedCents)}
+          sub={`${collectedPct}% of invoiced`}
+          tone="emerald"
+          spark={a.billingByMonth.map((mth) => mth.collectedCents)}
+          sparkLabels={a.billingByMonth.map((mth) => mth.label)}
+        />
+        <StatCard
+          label="Margin"
+          value={a.marginPct === null ? "—" : `${a.marginPct}%`}
+          sub={a.marginPct === null ? "no contract" : formatCentsFull(a.marginCents)}
+          tone={a.marginPct === null ? "neutral" : a.marginPct < 0 ? "rose" : a.marginPct < 15 ? "amber" : "emerald"}
+        />
+      </div>
 
       {a.unratedHours > 0 && (
         <p className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[12px] text-amber-900">
