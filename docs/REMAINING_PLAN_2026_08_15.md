@@ -1,85 +1,103 @@
-# Remaining plan — Commercial CC (updated 2026-08-15, post-audit)
+# Remaining plan — Commercial CC (updated 2026-08-15, post-audit-remediation)
 
-Supersedes `REMAINING_PLAN_2026_08_14.md`. Merges last night's plan with the
-other session's 4-lens adversarial audit (**52 findings**, ~8 personally
-verified — expect ~1/3 of the rest not to survive a hard look, so **confirm each
-file:line before acting**). Review-session spot-checks confirmed the top 3
-(crew-POST exclusions, bulk-delete CO brick, archive revenue/debt asymmetry).
+Supersedes the earlier 08-15 draft and `REMAINING_PLAN_2026_08_14.md`.
+The 4-lens adversarial audit (**52 findings**) is **fully remediated** — all
+three severity tiers shipped this session. What's left is **last night's build
+order** (C.9 → C.5 punch-lists → Phase D re-audit → endgame).
 
-**Order:** Emergencies → High → Medium → last-night punch-lists (C.9→C.5) → D re-audit → endgame.
-
----
-
-## 🔴 1. EMERGENCIES — money corruption, data loss, security fail-open (before anything)
-
-### Money can be permanently corrupted
-- [ ] **F1** — re-quoting a WON deal swaps the signed contract for a draft (contract/margin/AIA follow). *(last night)*
-- [ ] **F2** — AIA G702/G703 stop footing on post-seed change orders; issued certificates silently restate. *(last night)*
-- [ ] **M1 — Bulk-delete bricks CO re-billing** ✅*verified* — `invoices/page.tsx:199,280` bulk paths stamp `deleted_at` but never call `releaseTickedChangeOrders` (only `softDeleteInvoice` does); migration `093:49` unique index can't see the parent's `deleted_at`, so the slot is held forever → re-tick = raw 23505, the CO's money can never be re-billed. Fix both bulk paths + correct the index/comment.
-- [ ] **M2 — AIA "Original Contract Sum" double-counts COs** (customer-facing G702) — `aia/db.ts:224,392`: `seedAiaScheduleOfValues` appends a G703 row per approved CO AND writes the CO-inclusive total to line 1; on a deal with no sent proposal it double-counts with no user action.
-
-### Wrong numbers on the CEO dashboard
-- [ ] **D8 — Archiving a deal removes revenue but keeps debt** ✅*verified asymmetry* — `projects/db.ts:119` filters `archived_at`; the invoice rollups don't. Archive a part-paid finished deal → Gross/Net/Margin drop by the billed amount while "Owed" + AR Aging keep it.
-
-### Silent total data loss
-- [ ] **U1 — 4.5 MB upload cliff on the REMAINING surfaces** — I migrated **opportunity attachments** to direct-to-Storage last night (`dceea480`); the audit lists ~5 still multipart: submittal, proposal-markup, lien-waiver (no client size check), invoice attachments, change-order attachments, + 2 server actions. **Worst: New Account → fill the whole form → attach COI/W-9/MSA → 413 at the edge → entire typed form gone.** Same signed-upload treatment; block form loss.
-
-### Payroll / security fail-open
-- [ ] **FO1 — Absent-day hours sweep through payroll** — `approvals.ts:195` + `daily-log.ts:182`: marking PTO/Sick doesn't cancel the assignment, so scheduled stays 8h; crew Confirm → variance 0 → "approve all zero-variance" pays it, nothing shows the absence.
-- [ ] **FO2 — Unvalidated backdating (chains with FO1)** — `crew/log/page.tsx:46,70`: `job_id`/`work_date` unbounded; post an old no-show date with scheduled hours → variance 0 → bulk-paid; UI only renders today/yesterday so no approver looks.
-- [ ] **FO4 — Crew POST writes to the shared exclusions library** ✅*verified* — `exclusions/search/route.ts:53`: GET calls `denyCrewApi`, POST doesn't. **1-line fix.**
-- [ ] **FO3 — Crew-log actions skip `assertCommercialAccess`** — `crew/log/page.tsx:34,59`: deactivating a user in Settings→Access while their employee row stays active lets them keep writing to payroll while every other surface 403s them.
-
-### Things vanish / read as their opposite
-- [ ] **D1 — Jobs under contract vanish from the By-customer board** ✅*verified* — `opportunities/page.tsx:2016,2199`; `constants.ts:54` comment says three status sets partition all seven "no gap" but the board uses two → everything in delivery falls through. A GC whose only deal is in production shows "0 open bids", no deals listed.
+**Verified this session:** `tsc` clean · 813 tests green · `npm run build` exit 0.
+~24 commits on `origin/main`.
 
 ---
 
-## 🟠 2. HIGH — wrong bases, silent filter drops, contradicting reports
+## ✅ 0. DONE — the 52-finding audit (all three tiers)
 
-**Money**
-- [ ] **M3** job costs truncate at 1000 purchase rows (`purchases/db.ts:138`, bare `.select().in()` no paginate/order) → Dashboard/Transactions/Job-Costs understate cost, overstate margin; the deal's own P&L (under cap) disagrees.
-- [ ] **M4** "Gross margin" tile contract-based, rows below billed-based (`post-job/costs/page.tsx:30 vs :45`) — 46% over rows of 9%/12%.
-- [ ] **M5** two more unpaginated aggregates (`rollup.ts:79` Account-360, `db.ts:336` "Paid this month") disagree past the cap with paginated siblings on the same screen.
+### 🔴 Emergencies (9) — money corruption / data loss / security
+F1 won-deal re-quote no longer wipes the signed contract · F2 AIA G702/G703 foot
+after a post-seed CO (+ issued certs frozen) · M1 bulk-delete releases ticked COs
+· M2 Original-Contract-Sum stops double-counting COs · D8 archive drops debt not
+just revenue · U1 4.5 MB upload cliff closed (submittals direct-to-storage, crew
+photo shrink, form-loss guards) · FO1/FO2 no pay for marked-off/back-dated days ·
+FO3/FO4 deactivated crew can't file hours, crew can't seed exclusions · D1 under-
+contract jobs stay on the by-customer board.
 
-**Dashboard / Reports / Pipeline**
-- [ ] **D9** win-rate tile vs the report it links count different deals (`win-loss/reports.ts:163` vs `wasWonInPeriod` excludes null `closed_out_at`).
-- [ ] **D21** "Active GCs" counts do-not-bid accounts (`page.tsx:437` = `accounts.length`).
-- [ ] **D17** completed job renders with the red ✗ "lost" icon (`:2243` keys on `sub_status==='won'`).
-- [ ] **D3** Accounts "Bid range" KPI reads $0 permanently, fallback is dead code ✅*(other session verified)*.
-- [ ] **D4** every pipeline toolbar control drops `mine/new/lane/estimator` — change sort on a saved view → whole pipeline; CSV export unfiltered; "Filters (N)" undercounts.
-- [ ] **D10** Accounts CSV export ignores 4 of 7 filters. **D18** Accounts KPI labels claim whole book while showing a tag slice. **D11** "Wins this month" structurally 0 on 5 saved views (pre-filter set).
-- [ ] **D2** Cash Flow counts un-sent-to-Draft invoices as Billed (`issued_at` never cleared) — self-contradicts `isReceivable`.
-- [ ] **D5** free-text estimators credited to nobody (`estimator.ts:186` inverts precedence). **D20** three donut slices identical grey (keyed on retired statuses). **D12** two Reports tabs eject (Revenue redirect, Estimator bounces non-admins).
+### 🟠 High (~25)
+M3/M5 row-cap under-counts paginated · M4 margin-tile basis · D2/D3/D5/D9/D17/D21
+report contradictions · D4/D10/D11/D18 filter+CSV drops · D12/D20 report-tab/donut
+· N6/N7/N15/N16/N19 notifications · E1 crew-email `.ok` · DOC2/DOC4 · FO5/FO6/FO7 ·
+MOB cluster (date-×, saved-pill, chip-×, slide-out scroll-lock).
+- ⚠️ **One not landed:** "last-row won/lost popover clipped by overflow-hidden" —
+  couldn't reproduce across kanban / status-picker / proposal-drag. Needs Karan to
+  point at the surface, or it's a non-surviving finding.
 
-**Notifications**
-- [ ] **N6** every threshold invoice alert fires a day late (noon-ET due vs 12:00 UTC cron vs `Date.now()` cutoffs; "0 days before" can never fire, form allows min=0).
-- [ ] **N7** "Unread · N" pill ignores the type filter; "Mark all read" then clears all. **N15** doc-expiry dedup ignores recipient (reassign AM → 29 days silent). **N16** `commercial_bid_submitted` has no label entry. **N19** "Awaiting debrief" links to a report with no list.
-
-**Docs / Email / Mobile**
-- [ ] **E1** three crew-email paths never check `.ok` — calendar/off/welcome say "emailed" on address-on-file alone. *(same class as the two cron paths already fixed.)*
-- [ ] **DOC2** Closeout "Save now" is dead AND loses work (AutosaveForm no action, preventDefault; nav within 2.5s kills the debounce, no beforeunload) ✅*verified*.
-- [ ] **DOC4** every `.txt` upload fails 100% (allowlisted at `db.ts:79`, no text branch in magic-byte check) ✅*verified*.
-- [ ] **MOB** date "Clear ×" overlaps the trigger (~40 usages, wipes+autosaves); last-row won/lost popover sliced by `overflow-hidden`; 24px exclusion/copy ×'s mis-tap (dials customer / removes neighbour); "Saved" pill never unmounts intercepts taps; 5 slide-outs don't lock scroll.
-- [ ] **FO5** night shifts can't be scheduled + get no reminders (`schedule.ts:72` `hoursBetween` rejects end≤start though `clock.ts:355` supports cross-midnight). **FO6** editing WO dates doesn't reach `commercial_jobs.target_start/end` (`jobs.ts:451` copies only at creation). **FO7** "I wasn't working" doesn't `resyncClockReminder` or `logUpdate`.
-
----
-
-## 🟡 3. MEDIUM — row caps, correctness edges, cosmetic
-
-- [ ] **Unpaginated crons/reads**: `purchases/db.ts:133` (Job-Costs/Geography, no order → costs shift between loads); `overdue-tasks` + `expiring-documents` crons (past 1000 never remind; `evaluateRule` destructures `{data}` w/o error → "found 0" reports success); `reconcileDealStatesFromProposals` (pulls a deal Won on one refresh not the next past 1000 proposals).
-- [ ] **D6** date-field TZ (milestone flips "past due" at noon, `[id]/page.tsx:731`). **N14** ⌘K omits `title_override`, same hint for win/loss.
-- [ ] **DOC7** closeout transmittal PDF renders for soft-deleted deals (sibling warranty has the guard). **DOC11** contact-email add lowercases, update doesn't → dup rows. **DOC14** Enter in accounts search drops rating/compliance/tag/sort. **DOC17** fresh install "no approvers" is false (admin fallback). **DOC15/12/13/18** orphaned bytes on failed upload · two error paths discard cause · undo toast hides on 5s even when restore failed.
-- [ ] **Config note**: fiscal-year reports assume January; `fiscal_year_start_month` is a setting — change it and cash-flow/CO reports diverge from the estimator report.
+### 🟡 Medium (substantive)
+evaluateRule surfaces query errors (no false success) · DOC7 transmittal soft-delete
+guard · DOC11 contact-email dedup · DOC14 accounts-search filter preservation ·
+N14 ⌘K rename/won-lost.
+- **Left (lowest-value edges, not silently dropped):** >1000-row pagination on the
+  overdue-tasks / expiring-docs / reconcile crons (unreachable near-term) · D6
+  milestone past-due-at-noon TZ (cosmetic) · DOC17 fresh-install approver copy ·
+  DOC15/12/13/18 (orphaned upload bytes, error-cause discard, undo-toast-on-fail) ·
+  fiscal-year-January config note.
 
 ---
 
-## 4. Last-night punch-lists (still open) — C.9 → C.10 → C.7 → C.6 → C.8 → C.5
-Auto-advance follow-ups (A2/A1/A3 + foldAutoAdvanceTargets) · deal drill-in nav (keep items inside the deal) · flow+logic F3–F12 · completeness C1–C9 · re-audit R24–R45 (R1 flip dealMargin to billed first) · consistency H1–H6/M1–M7. Full detail in `REMAINING_PLAN_2026_08_14.md` §1.
+## 🔜 1. Last night's punch-lists — build order C.9 → C.10 → C.7 → C.6 → C.8 → C.5
 
-## 5. Phase D — full re-audit · 6. Endgame — Reports (Katie) → RFP-email parser → joint smoke test → done.
+> ⚠️ **Cross-check first.** This session's High/Medium work overlaps several
+> last-night items — verify each isn't already fixed before re-doing it. Known
+> overlaps to confirm: **C.7 F6** (AIA original-contract) ≈ M2/pickContractBase
+> (likely done) · **C.7 F10** (due-date TZ) ≈ N6 (invoice) done / D6 (milestone)
+> left · **C.6 C2** (void hard-deletes CO billing) — the single-void path already
+> calls releaseTickedChangeOrders; confirm · **C.8 R1** (dealMargin billed-based)
+> ≈ M4 (post-job tile done) — confirm dealMargin() itself.
+
+- [ ] **C.9 — Auto-advance follow-ups** (`AUTOADVANCE_AUDIT_2026_08.md`):
+  A2 first (`markProposalOutcome` is a 2nd deal-state writer with no forward-only
+  guard), then A1/A3 (`decided_at` restamp + manual-jump stamp), then wire-or-drop
+  `foldAutoAdvanceTargets`.
+- [ ] **C.10 — Deal drill-in navigation:** keep an item opened from a deal tab
+  INSIDE the deal (submittals/proposals/invoices break out to standalone pages).
+  Sweep as a class — change-orders, AIA, costs, work-order, closeout, debrief too.
+- [ ] **C.7 — Flow + logic remainder** (`FLOW_LOGIC_PUNCHLIST_2026_08.md`): F1/F2
+  ✅ done; remaining F3 (`decided_at`), F4 (no-bid reclassified), F5 (void→draft
+  keeps a payment), **F6** (AIA original-contract — confirm vs M2), F7–F9
+  (drag-to-Proposal revert, Start-Project maze, lost-flip leaves the account),
+  **F10** (due-date TZ — confirm vs N6/D6).
+- [ ] **C.6 — Completeness (20 gaps)** (`COMPLETENESS_PUNCHLIST_2026_08.md`):
+  money/dispatch first — **C2** (void hard-deletes CO billing — confirm) · C3
+  (tax-exempt skipped on CO path) · C4 (delete-confirm understates cascade) · C5
+  (deactivated employee still scheduled) — then ~9 mutations that swallow their
+  failure Result (C7–C10), then C1 (proposal PDF hardcoded footer → thread
+  `getOperatingCompany`).
+- [ ] **C.8 — Re-audit remainder R1–R23** (`REAUDIT_SHIPPED_2026_08.md`): **R1
+  first** — confirm/flip `dealMargin()` to billed-based (auto-fixes R2/R12/R17/
+  R21/R22), then R3 (Closed-column flood-guard), R4 (crew welcome <10min
+  suppression), R5/R6 crew scope, R7–R16 half-solves.
+- [ ] **C.5 — Consistency (27 items)** (`CONSISTENCY_PUNCHLIST_2026_08.md`):
+  surgical batch (H3, M1, M4–M6, L2–L9) now; five (H1/H2/H4/H6/M7) gated on
+  Karan's D1–D5 answers.
+
+## 🔬 2. Phase D — full re-audit
+- [ ] Fresh persona + adversarial agents over everything A–C. Non-negotiable: this
+  round's audits caught a live security leak and bugs in code written minutes
+  earlier.
+
+## 🏁 3. Endgame — road to done
+- [ ] Reports suite — **blocked on Katie** (which reports).
+- [ ] RFP email → auto-populate the opportunity — **walk the parsing rules with
+  Karan**, not spec'd blind.
+- [ ] **STOP → joint smoke test with Karan → DONE.**
+- *(Parked: Foreman Daily Log — "don't need it for now".)*
 
 ---
 
-### Refuted / confirmed-good (don't touch)
-Claim/release key mismatch + `status='published'` dead filter already fixed platform-wide · OT buckets per Mon–Sun week correctly · no hardcoded TZ offsets, DST handled · crew scoping tight (no rates/PINs/co-worker access, no `allowCrew:true`) · BILLABLE includes `viewed` · balance clamp consistent · AIA retainage ties to the penny · no `$NaN` paths · kanban mapper total over 8 statuses · signed uploads safe (service-role insert, forged parent ids blocked) · no nested forms · no horizontal overflow · archived-email HTML sanitised w/ HMAC BCC.
+## Pending on people (not buildable)
+Reports → **Katie** · Letter-of-Transmittal specifics → **Stephanie/Brendan** ·
+first+last-name sign-off → **Brendan** · Katie #3 / #8 / F2 → **Katie** · Proposal
+page order → **Stephanie**.
+
+## One pending confirmation (Karan, 30 s)
+- [ ] **Migration 137 (storage RLS):** upload a file on Documents or a Work Order
+  from the browser. Server side is wired; the authenticated PUT can't be exercised
+  via the service-role path.
