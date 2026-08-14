@@ -369,7 +369,17 @@ async function saveProposalAction(formData: FormData) {
   // non-autosave caller, and nothing goes stale meanwhile: the proposal page,
   // the proposals list and the account page are all `force-dynamic`, so each
   // re-reads on navigation regardless. Verified, not assumed.
-  if (String(formData.get("__autosave") ?? "") === "1") return;
+  // Background saves normally skip revalidation — see above. The exception is
+  // a change that alters something rendered OUTSIDE the form being typed into:
+  // a Final price override repins proposal.total_cents, and the TOTAL chip in
+  // the sticky header and the Inclusions subtotal both read it. Skipping the
+  // refresh there left Kim looking at the old contract number while the new
+  // one was already saved — worse than a re-render, because she has no reason
+  // to doubt the figure on screen.
+  const overrideChanged =
+    carries("final_price_override") &&
+    (existing.final_price_override_cents ?? null) !== (finalPriceOverride ?? null);
+  if (String(formData.get("__autosave") ?? "") === "1" && !overrideChanged) return;
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
@@ -1849,6 +1859,7 @@ export default async function ProposalEditorPage({
                 ...p,
                 is_parent_only: parentIdsWithChildren.has(p.id),
               }))}
+              backHref={backParam}
             />
           ) : (
             <ReadOnlyLineItems rows={inclusions} />
@@ -1895,6 +1906,7 @@ export default async function ProposalEditorPage({
                 ...p,
                 is_parent_only: parentIdsWithChildren.has(p.id),
               }))}
+              backHref={backParam}
             />
           ) : (
             <ReadOnlyLineItems rows={alternates} />
@@ -1968,6 +1980,7 @@ export default async function ProposalEditorPage({
                 ...p,
                 is_parent_only: parentIdsWithChildren.has(p.id),
               }))}
+              backHref={backParam}
             />
           ) : (
             <ReadOnlyLineItems rows={laborRows} />
@@ -2176,6 +2189,7 @@ function LineItemsTable({
   updateAction,
   deleteAction,
   products,
+  backHref,
 }: {
   rows: CommercialProposalLineItem[];
   accountId: string;
@@ -2186,6 +2200,8 @@ function LineItemsTable({
   /** The same catalogue the add row uses, so "Change" behaves identically
    *  to picking the product the first time (Stephanie 2026-08-13). */
   products: PickableProduct[];
+  /** Where the user came from, so row actions keep the breadcrumb. */
+  backHref: string;
 }) {
   // 2026-07-21 rebuild (Karan): rows are cards, not a cramped 12-col grid.
   // Product name shown as a distinct navy chip (snapshotted, preserved on
@@ -2214,11 +2230,21 @@ function LineItemsTable({
             {/* Round-3 audit fix: optimistic-lock stamp so a stale two-tab
                 save is rejected before it overwrites a concurrent edit. */}
             <input type="hidden" name="original_updated_at" value={r.updated_at} />
+            {/* Carries the origin so Save row / Remove keep the breadcrumb the
+                rest of the page preserves. Without it proposalBack() always
+                returned "" and editing a line item silently dropped "Back to
+                Proposals" (2026-08-13 audit). */}
+            <input type="hidden" name="back" value={backHref} />
 
             {/* Product chip + Clear (only when this row came from the catalog). */}
-            {r.product_name && (
+            {/* Rendered even with NO product: the chip holds the only
+                ProductPicker an existing row has, so gating it on
+                product_name made "Clear" a one-way door — a free-text line
+                could never be linked back to the catalogue without deleting
+                and rebuilding it. (2026-08-13 audit.) */}
+            {(
               <EditableProductChip
-                name={r.product_name}
+                name={r.product_name ?? ""}
                 inputId={`pn-${r.id}`}
                 productIdInputId={`pid-${r.id}`}
                 descriptionInputId={`desc-${r.id}`}

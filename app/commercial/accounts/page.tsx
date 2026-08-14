@@ -1138,6 +1138,14 @@ function AccountRow({
                 {account.dba && (
                   <span className="text-[11px] text-ppp-charcoal-500">d/b/a {account.dba}</span>
                 )}
+                {account.do_not_bid && (
+                  <span
+                    className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200"
+                    title={account.do_not_bid_reason?.trim() || "Flagged do not bid"}
+                  >
+                    Do not bid
+                  </span>
+                )}
                 {account.rating && <RatingPill rating={account.rating} labels={ratingLabels} />}
                 {/* Only show the compliance pill for non-default states.
                     "not_started" was the default on every fresh account;

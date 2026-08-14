@@ -48,7 +48,12 @@ export function EditableProductChip({
   products: PickableProduct[];
   accountId: string;
 }) {
-  const [mode, setMode] = useState<"chip" | "changing" | "cleared">("chip");
+  // A row with no product starts on the "cleared" state, which offers "Pick a
+  // product instead" — that is the affordance that makes clearing reversible.
+  // Rendering a blank chip would be worse than rendering nothing.
+  const [mode, setMode] = useState<"chip" | "changing" | "cleared">(
+    name.trim() ? "chip" : "cleared"
+  );
 
   function clearInputs() {
     const pn = document.getElementById(inputId) as HTMLInputElement | null;
@@ -60,13 +65,17 @@ export function EditableProductChip({
   if (mode === "cleared") {
     return (
       <div className="flex items-center gap-2 flex-wrap text-[11.5px] text-ppp-charcoal-500 italic">
-        <span>Product cleared — this becomes a free-text row. Edit the description below, then Save row.</span>
+        <span>
+          {name.trim()
+            ? "Product cleared — this becomes a free-text row. Edit the description below, then Save row."
+            : "Free-text row — no catalogue product linked."}
+        </span>
         <button
           type="button"
           onClick={() => setMode("changing")}
           className="not-italic inline-flex items-center min-h-[44px] text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 touch-manipulation"
         >
-          Pick a product instead
+          {name.trim() ? "Pick a product instead" : "Link a product"}
         </button>
       </div>
     );

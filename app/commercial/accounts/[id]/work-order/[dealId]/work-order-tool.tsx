@@ -65,7 +65,11 @@ function base(id: string, dealId: string, origin?: string, woId?: string | null)
   // scope); send sheet B and A would render the green "Sent to Field Ops"
   // banner directly above its own Draft pill.
   const woQs = woId ? `&wo=${woId}` : "";
-  return `/commercial/opportunities/${dealId}?tab=work-order${woQs}`;
+  // `?tab=project&sub=work-order`, the shape the deal page reads. The flat
+  // `?tab=work-order` resolved to the Project tab with no sub, so every save
+  // and every Send ejected the user out of the tool onto the tool list — and
+  // the ?saved / ?error toast rendered on a screen they were no longer on.
+  return `/commercial/opportunities/${dealId}?tab=project&sub=work-order${woQs}`;
 }
 function revalidateWO(id: string, dealId: string) {
   revalidatePath(`/commercial/opportunities/${dealId}`);

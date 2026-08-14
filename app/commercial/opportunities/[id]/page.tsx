@@ -607,7 +607,9 @@ async function saveInlineFieldAction(formData: FormData) {
   // the worst of the three outcomes.
   if (!field) redirect(back("error=" + encodeURIComponent("That field can't be edited here.")));
 
-  const parsed = parseInlineValue(field, String(formData.get("value") ?? ""));
+  // An explicit Clear wins over whatever is sitting in the input.
+  const wantsClear = String(formData.get("clear") ?? "") === "1";
+  const parsed = parseInlineValue(field, wantsClear ? "" : String(formData.get("value") ?? ""));
   if ("error" in parsed) {
     // Reopen the SAME field so the message lands next to the input that caused
     // it, rather than as a banner above a closed row.
@@ -2048,7 +2050,13 @@ export default async function OpportunityDetailPage({
       ? "overview"
       : resolvedPrimary === "project" && !isOppWon
       ? "overview"
-      : resolvedPrimary === "project" && isDeletedDeal
+      // A soft-deleted deal renders exactly two tabs, Overview and Invoices,
+      // so that a last payment can be recorded or a straggler invoice voided.
+      // `?tab=invoices` resolves to primary=project, and bouncing ALL project
+      // traffic to Overview therefore made the one tab the deleted-deal view
+      // exists for unreachable. Invoices is allowed through; every other
+      // delivery tool still is not.
+      : resolvedPrimary === "project" && isDeletedDeal && resolvedSub !== "invoices"
       ? "overview"
       : resolvedPrimary;
   const rawSub = pickFirst(sp.sub) as SubTab | undefined;
@@ -3867,7 +3875,10 @@ async function InfoTab({
                       {c.title ? ` · ${c.title}` : ""}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Wraps instead of shrink-0: at 360px a contact with both a
+                      phone and a normal-length email pushed the card wider than
+                      the screen (2026-08-13 mobile lens). */}
+                  <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                     {/* Tappable on a phone, which is where a site number gets
                         used — nobody transcribes a number off a screen. */}
                     {c.phone && (
@@ -3881,7 +3892,7 @@ async function InfoTab({
                     {c.email && (
                       <a
                         href={`mailto:${c.email}`}
-                        className="inline-flex items-center min-h-[44px] px-2 text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 max-w-[13rem] truncate"
+                        className="inline-flex items-center min-h-[44px] px-2 text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 max-w-full truncate"
                       >
                         {c.email}
                       </a>

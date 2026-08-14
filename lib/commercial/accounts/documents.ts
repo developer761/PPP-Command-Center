@@ -28,6 +28,7 @@ import { MS_PER_DAY, EXPIRY_WARNING_DAYS } from "./constants";
 // import path.
 import {
   DOCUMENT_CATEGORIES,
+  RETIRED_DOCUMENT_CATEGORIES,
   documentCategoryLabel,
   type DocumentCategory,
 } from "./document-categories";
@@ -213,7 +214,17 @@ export async function listAccountDocuments(accountId: string): Promise<
   }
 
   const rows = (data ?? []) as CommercialAccountDocument[];
-  const out = DOCUMENT_CATEGORIES.map((category) => {
+  // Brendan retired four categories on 2026-08-12. They are no longer OFFERED
+  // on upload, but documents already filed under them still exist — and
+  // grouping only over the live list made them unreachable: no card, no
+  // history, no way to retrieve a COI uploaded the week before. The retired
+  // list is kept precisely so those rows keep their label, so include any that
+  // actually hold a document. An empty retired category stays hidden.
+  const retiredInUse = (RETIRED_DOCUMENT_CATEGORIES as readonly string[]).filter((c) =>
+    rows.some((r) => r.category === c)
+  );
+  const categories = [...DOCUMENT_CATEGORIES, ...retiredInUse] as DocumentCategory[];
+  const out = categories.map((category) => {
     const inCat = rows.filter((r) => r.category === category);
     const active = inCat.find((r) => !r.archived) ?? null;
     const history = inCat.filter((r) => r.archived);

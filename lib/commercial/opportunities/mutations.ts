@@ -367,6 +367,30 @@ export async function updateCommercialOpportunity(
   const opp = after as CommercialOpportunity;
   await logUpdate("commercial_opportunities", opp.id, before, opp, input.updated_by_user_id);
 
+  // Two surfaces now choose the proposal's "Attention" contact: this field on
+  // the deal edit sheet, and the per-job contacts card (migration 141), whose
+  // is_primary link WINS in hydrateProposalContext. So changing it here was
+  // silently overridden on any job that had a flagged contact — the picker
+  // still said one name while the PDF printed another.
+  //
+  // Setting it here is an explicit act, so it takes effect: the job's flag is
+  // cleared and the chosen person becomes the Attention contact on both.
+  // Last explicit action wins, and the two surfaces agree.
+  if (input.primary_contact_id !== undefined) {
+    await sb
+      .from("commercial_opportunity_contacts")
+      .update({ is_primary: false })
+      .eq("opportunity_id", opp.id)
+      .eq("is_primary", true);
+    if (input.primary_contact_id) {
+      await sb
+        .from("commercial_opportunity_contacts")
+        .update({ is_primary: true })
+        .eq("opportunity_id", opp.id)
+        .eq("contact_id", input.primary_contact_id);
+    }
+  }
+
   // ── Brendan's trigger: assigning an estimator IS moving to Estimating ─────
   //
   // "Then it should be estimating. This should trigger when we assign the

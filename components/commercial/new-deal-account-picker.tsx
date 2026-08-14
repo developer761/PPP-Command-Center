@@ -16,7 +16,14 @@ import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
  * hidden `account_id` field so the server action doesn't need to
  * change. Keyboard support: ↑↓ to move, Enter to select, Esc to close.
  */
-type Account = { id: string; company_name: string };
+type Account = {
+  id: string;
+  company_name: string;
+  /** Flagged do-not-bid. Surfaced ON THE OPTION because this picker chooses the
+   *  customer client-side, so the server cannot warn at render time — and the
+   *  moment of choosing is the moment the warning is worth anything. */
+  do_not_bid?: boolean;
+};
 
 export default function NewDealAccountPicker({ accounts }: { accounts: Account[] }) {
   const [name, setName] = useState("");
@@ -112,6 +119,11 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
               className={`px-3 py-2 text-sm cursor-pointer ${i === activeIdx ? "bg-cc-brand-50 text-ppp-charcoal" : "text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"}`}
             >
               {a.company_name}
+              {a.do_not_bid && (
+                <span className="ml-1.5 text-[10px] font-bold uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5">
+                  Do not bid
+                </span>
+              )}
             </li>
           ))}
         </ul>

@@ -535,6 +535,12 @@ export default async function NewCommercialAccountPage({
           />
         </Section>
 
+        {/* Hidden entirely when there is nothing to upload. Brendan's
+            2026-08-12 retirement emptied ON_CREATE_DOC_CATEGORIES, leaving a
+            heading and a paragraph promising "upload any compliance docs you
+            have in hand" above nothing at all — a section that reads as
+            broken rather than as deliberately empty. */}
+        {ON_CREATE_DOC_CATEGORIES.length > 0 && (
         <Section title="Documents">
           <p className="text-[12px] text-ppp-charcoal-500 -mt-1 leading-relaxed">
             Upload any compliance docs you have in hand. All optional —
@@ -558,6 +564,7 @@ export default async function NewCommercialAccountPage({
             ))}
           </div>
         </Section>
+        )}
 
         <Section title="Notes">
           <textarea

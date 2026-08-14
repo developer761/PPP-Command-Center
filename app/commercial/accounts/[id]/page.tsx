@@ -1,4 +1,5 @@
 import { flashMessage } from "@/lib/commercial/flash";
+import { resolveTaxExemption } from "@/lib/commercial/tax/exemption";
 import { getRatingLabels } from "@/lib/commercial/accounts/rating-labels";
 import { notFound, redirect } from "next/navigation";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
@@ -565,6 +566,11 @@ export default async function CommercialAccountDetailPage({
               )}
               {!account.is_key_relationship && (overview?.won_opps_count ?? 0) > 0 && (
                 <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Repeat customer</Pill>
+              )}
+              {account.do_not_bid && (
+                <Pill tone="rose">
+                  Do not bid
+                </Pill>
               )}
               {account.rating && (
                 <Pill tone={ratingTone(account.rating)}>
@@ -1145,7 +1151,20 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
   // global invoices page). Editable on the form + the invoice. A TAX-EXEMPT GC
   // always defaults to 0% — never the ZIP rate (audit 1B: a taxed default on an
   // exempt customer is a silent mis-bill).
-  const taxExempt = (await getCommercialAccount(accountId))?.tax_exempt === true;
+  // Resolve through the shared rule so the JOB's override wins — otherwise
+  // this form pre-fills the ZIP rate on a job flagged "Exempt - this job only",
+  // and the note claims the tax was pre-filled for a jurisdiction while the
+  // saved invoice will strip it back to 0%. Two different numbers for the same
+  // invoice, seconds apart.
+  const [taxAccount, taxOpp] = await Promise.all([
+    getCommercialAccount(accountId),
+    getCommercialOpportunity(oppId),
+  ]);
+  const taxResolution = resolveTaxExemption({
+    opportunityTaxExempt: taxOpp?.tax_exempt ?? null,
+    accountTaxExempt: taxAccount?.tax_exempt ?? null,
+  });
+  const taxExempt = taxResolution.exempt;
   const taxHit = resolveTaxForZip(propertyZip, await listTaxJurisdictions({ activeOnly: true }));
   const defaultTax = taxExempt ? "0" : taxHit ? thouToPct(taxHit.jurisdiction.combined_rate_thou).toFixed(3).replace(/\.?0+$/, "") : "";
   const wonProposals = proposals.filter((pr) => pr.status === "won" || pr.status === "sent");
@@ -1171,7 +1190,7 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
       oppId={oppId}
       returnTo={returnTo}
       defaultTax={defaultTax}
-      taxNote={taxExempt ? "This customer is flagged tax-exempt, so tax defaulted to 0%. Type a rate here if this job is taxable." : taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
+      taxNote={taxExempt ? (taxResolution.source === "opportunity" ? "This JOB is flagged tax-exempt, so tax defaulted to 0%." : "This customer is flagged tax-exempt, so tax defaulted to 0%. Type a rate here if this job is taxable.") : taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
       proposals={wonProposals.map((pr) => {
         const billed = billedByProposal.get(pr.id) ?? 0;
         const remaining = Math.max(0, pr.total_cents - billed);
@@ -1533,9 +1552,16 @@ async function createDealInlineAction(formData: FormData) {
   const teamRaw = String(formData.get("team_id") ?? "").trim();
   const team_id = teamRaw && UUID_RE.test(teamRaw) ? teamRaw : null;
 
+  // The form renders a "Project nickname" input posting title_override, and
+  // this action never read it — so the nickname was accepted and thrown away.
+  // It matters more than a label: title_override is what wins on the proposal
+  // PDF's PROJECT line and on the project card.
+  const nicknameRaw = String(formData.get("title_override") ?? "").trim();
+
   const result = await createCommercialOpportunity({
     account_id,
     title,
+    title_override: nicknameRaw ? nicknameRaw.slice(0, 200) : null,
     status,
     sub_status,
     follow_up_at,

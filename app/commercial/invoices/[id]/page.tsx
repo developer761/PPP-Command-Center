@@ -11,6 +11,7 @@
  *   6. Status history timeline
  */
 import Link from "next/link";
+import { resolveTaxExemption } from "@/lib/commercial/tax/exemption";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
@@ -784,6 +785,12 @@ export async function InvoiceDetailView({
   // was soft-deleted before the cascade guard shipped, this invoice can
   // exist without a live parent. Surface a clear "Orphan" affordance
   // so the user knows their options are Void or Delete.
+  // Which record grants the exemption decides both whether the line prints and
+  // which certificate number it cites.
+  const invoiceTaxExemption = resolveTaxExemption({
+    opportunityTaxExempt: opp?.tax_exempt ?? null,
+    accountTaxExempt: account?.tax_exempt ?? null,
+  });
   const isOrphan = !opp || !account;
 
   // Karan 2026-07-08: prominent Back button. Reads `?from=<url>` off
@@ -1327,11 +1334,23 @@ export async function InvoiceDetailView({
             {/* A zero-tax invoice with nothing explaining WHY is the one a GC's
                 accounts-payable team queries. The certificate number is already
                 collected on the account and was surfaced nowhere. */}
-            {invoice.tax_pct === 0 && account?.tax_exempt && (
+            {invoice.tax_pct === 0 && invoiceTaxExemption.exempt && (
               <div className="flex justify-between gap-4 text-ppp-charcoal-500">
                 <span>
                   Tax-exempt
-                  {account.tax_exempt_cert_number ? ` — Cert #${account.tax_exempt_cert_number}` : ""}
+                  {/* Cite the certificate that actually applies. A job flagged
+                      "Exempt - this job only" carries its own number, and the
+                      account's number would be the wrong one to quote to a GC's
+                      AP team; conversely a job flagged TAXABLE under an exempt
+                      account must not print an exemption line at all. Both
+                      directions were wrong before (2026-08-13 audit). */}
+                  {invoiceTaxExemption.source === "opportunity"
+                    ? opp?.tax_exempt_cert_number
+                      ? ` — Cert #${opp.tax_exempt_cert_number}`
+                      : " — this job"
+                    : account?.tax_exempt_cert_number
+                    ? ` — Cert #${account.tax_exempt_cert_number}`
+                    : ""}
                 </span>
                 <span className="tabular-nums">{formatCentsFull(0)}</span>
               </div>

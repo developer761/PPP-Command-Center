@@ -102,8 +102,13 @@ export function InlineFieldRow({
                 reasonably assume won't work. */}
             {value !== "" && (
               <SubmitButton
-                name="value"
-                value=""
+                // NOT name="value": the text input above already posts that
+                // name, FormData keeps both entries in tree order, and
+                // formData.get returns the FIRST — so "Clear" saved whatever
+                // was in the box instead of emptying it. A separate flag the
+                // action checks first is unambiguous.
+                name="clear"
+                value="1"
                 pendingLabel="Clearing…"
                 className="inline-flex items-center px-2 py-1.5 rounded-lg text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] sm:min-h-[32px]"
               >

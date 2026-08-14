@@ -1704,7 +1704,7 @@ function NewDealSlideOut({
               needed because <datalist> filters on `value` not `label`,
               so we can't get name-based autocomplete server-only. */}
           <NewDealAccountPicker
-            accounts={accounts.map((a) => ({ id: a.id, company_name: a.company_name }))}
+            accounts={accounts.map((a) => ({ id: a.id, company_name: a.company_name, do_not_bid: a.do_not_bid }))}
           />
 
           {/* Duplicate match. Without a "Create anyway" path the check would be
