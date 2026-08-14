@@ -162,7 +162,7 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   // ever sit in pre_sale_closed, so they need no equivalent.
   const { data } = await sb
     .from("commercial_opportunities")
-    .select("id, status, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at, accepted_contract_cents")
+    .select("id, status, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at, closed_out_at, accepted_contract_cents")
     .in("status", [
       "pre_sale_closed",
       "pre_construction",
@@ -183,6 +183,7 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
     loss_reason: string | null;
     bid_value_low_cents: number | null;
     bid_value_high_cents: number | null;
+    closed_out_at: string | null;
     accepted_contract_cents: number | null;
   };
   const rows = ((data as Row[] | null) ?? []);
@@ -201,6 +202,12 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   const proposalTotalByOpp = await listCurrentProposalTotalByOpp(rows.map((r) => r.id));
 
   for (const r of rows) {
+    // Match wasWonInPeriod (the dashboard "wins" tile that links here): a
+    // post_sale_closed row with a null closed_out_at is a legacy close-out whose
+    // decided_at records the CLOSE-OUT, not the win, so the tile excludes it.
+    // The report must exclude it too, or tapping "5 wins · 62%" lands on a list
+    // that counts a different set (audit D9).
+    if (r.status === "post_sale_closed" && !r.closed_out_at) continue;
     // Value a WON deal at the signed contract when there is one. The bid
     // midpoint is an estimate made before the job was priced — and since bid
     // low/high were pulled from the opportunity forms, most deals have none at

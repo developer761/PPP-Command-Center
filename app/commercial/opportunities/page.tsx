@@ -2315,11 +2315,15 @@ function CustomerBoardRow({
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-ppp-charcoal-50/70 text-ppp-charcoal-600 text-[11px] font-medium hover:bg-ppp-charcoal-100 max-w-[220px] truncate"
                   title={`${derivedOppName(o, account.company_name)} — ${opportunityStatusLabel(o.status)}`}
                 >
-                  <span aria-hidden className={`shrink-0 ${o.sub_status === "won" ? "text-emerald-700" : "text-rose-500"}`}>
-                    {o.sub_status === "won" ? (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                    ) : (
+                  {/* Only a LOST deal gets the red ✗. Keying the check on
+                      sub_status==="won" flagged every COMPLETED job (post_sale_closed,
+                      whose sub_status is a completion state, not "won") as lost —
+                      a finished job read as a loss (audit D17). */}
+                  <span aria-hidden className={`shrink-0 ${isLost(o) ? "text-rose-500" : "text-emerald-700"}`}>
+                    {isLost(o) ? (
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18 M6 6l12 12" /></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
                     )}
                   </span>
                   <span className="truncate">{derivedOppName(o, account.company_name)}</span>

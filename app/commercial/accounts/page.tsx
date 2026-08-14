@@ -300,7 +300,15 @@ export default async function CommercialAccountsPage({
   const openBidsAcrossBook = matchOverviews.reduce((acc, o) => acc + (o?.open_opps_count ?? 0), 0);
   const totalActiveBidLowCents = matchOverviews.reduce((acc, o) => acc + (o?.total_active_bid_low_cents ?? 0), 0);
   const totalActiveBidHighCents = matchOverviews.reduce((acc, o) => acc + (o?.total_active_bid_high_cents ?? 0), 0);
-  const bookBidRange = formatBidCents(totalActiveBidLowCents, totalActiveBidHighCents);
+  // Both zero means "no bid-range data" — the create forms dropped bid low/high
+  // (pricing lives on the proposal now), so these roll up to 0 for every recent
+  // deal. formatBidCents(0, 0) returns "$0" (0 isn't null), NOT "—", so the KPI
+  // showed a permanent "Bid range · $0" and the Open-value fallback below was
+  // dead code (audit D3). Force "—" so the fallback to Open value engages.
+  const bookBidRange =
+    totalActiveBidLowCents === 0 && totalActiveBidHighCents === 0
+      ? "—"
+      : formatBidCents(totalActiveBidLowCents, totalActiveBidHighCents);
   const bookOpenValueCents = accounts.reduce((acc, a) => acc + openValueForAccount(a.id), 0);
 
   // URL builders (unchanged behavior — link helpers for chip toggles + sort).

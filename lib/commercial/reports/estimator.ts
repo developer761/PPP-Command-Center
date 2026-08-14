@@ -183,10 +183,17 @@ export async function getEstimatorReport(range: {
     const opp = oppById.get(oppId);
     if (!opp) continue; // deleted deal — its bid isn't anyone's score
 
-    const key = opp.estimator_user_id ?? UNASSIGNED;
+    // Credit a free-text estimator (no linked user, just a typed name) to THAT
+    // name, not to a shared "Unassigned" bucket. Keying on estimator_user_id
+    // alone collapsed every typed-estimator deal — Bob's and Alice's alike —
+    // into one Unassigned row, so a real estimator who isn't a platform user was
+    // credited to nobody (audit D5). A linked user still wins; only when there's
+    // no user id do we fall back to a per-name key.
+    const freeText = opp.estimator_name?.trim();
+    const key = opp.estimator_user_id ?? (freeText ? `name:${freeText.toLowerCase()}` : UNASSIGNED);
     const name =
       (opp.estimator_user_id && nameById.get(opp.estimator_user_id)) ||
-      opp.estimator_name?.trim() ||
+      freeText ||
       (opp.estimator_user_id ? "Unknown user" : "Unassigned");
 
     const row = acc.get(key) ?? {
