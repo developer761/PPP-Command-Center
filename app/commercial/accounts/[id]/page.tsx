@@ -1759,7 +1759,12 @@ async function editDealFromAccountAction(formData: FormData) {
   // Came from the deal page? Go back to the deal. Otherwise the account's
   // Deals tab, as before.
   if (String(formData.get("deal_back") ?? "") === "1") {
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&saved=1`);
+    // The opportunity page's "Changes saved." banner keys on ?edited=1 (the
+    // same flag its standalone /edit page sets), NOT ?saved=1 — which it never
+    // reads. Sending saved=1 landed the user back on the deal with no
+    // confirmation at all: a silent save (round-3 handoff #5). Match the flag
+    // the destination actually renders.
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&edited=1`);
   }
   redirect(`/commercial/accounts/${account_id}?tab=deals&saved=1`);
 }
