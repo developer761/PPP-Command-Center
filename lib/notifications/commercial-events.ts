@@ -990,17 +990,25 @@ export async function insertCommercialInvoiceDunningMarker(input: {
 export async function hasRecentNotification(
   kind: CommercialNotificationKind,
   sourceId: string,
-  withinHours: number
+  withinHours: number,
+  // Optional: scope the dedup to a specific RECIPIENT. Without it the dedup is
+  // per (kind, source) only, so reassigning a document's account manager left
+  // the NEW AM with no alert for up to the dedup window (29 days) because the
+  // old AM's recent notification still matched (audit N15). Passing the intended
+  // recipient means each person is deduped independently.
+  recipientUserId?: string
 ): Promise<boolean> {
   const sb = adminClient();
   const cutoff = new Date(Date.now() - withinHours * 60 * 60 * 1000).toISOString();
-  const { data, error } = await sb
+  let query = sb
     .from("notifications")
     .select("id")
     .eq("kind", kind)
     .eq("work_order_id", sourceId)
     .gte("created_at", cutoff)
     .limit(1);
+  if (recipientUserId) query = query.eq("recipient_user_id", recipientUserId);
+  const { data, error } = await query;
   if (error) {
     console.warn(
       `[commercial-events] dedup query failed (kind=${kind}, source=${sourceId}): ${error.message}`

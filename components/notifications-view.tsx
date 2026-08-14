@@ -86,7 +86,10 @@ export default function NotificationsView({
     setLocalRows((prev) => prev.map((r) => ({ ...r, read_at: r.read_at ?? new Date().toISOString() })));
     setLocalUnread(0);
     try {
-      await fetch(`/api/notifications/mark-all-read?platform=${platform}`, { method: "PATCH" });
+      // Carry the active TYPE filter so "Mark all read" clears only what's being
+      // viewed, not every unread alert (audit N7).
+      const url = `/api/notifications/mark-all-read?platform=${platform}${kind ? `&kind=${encodeURIComponent(kind)}` : ""}`;
+      await fetch(url, { method: "PATCH" });
       router.refresh();
     } finally {
       setMarkingAll(false);

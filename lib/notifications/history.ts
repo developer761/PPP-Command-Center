@@ -73,13 +73,18 @@ export async function loadNotificationHistory(input: {
   if (input.filter === "unread") totalQ = totalQ.is("read_at", null);
   if (input.kind) totalQ = totalQ.eq("kind", input.kind);
 
-  // Unread count (platform-scoped, ignoring the read/unread filter).
+  // Unread count — platform-scoped, ignoring the read/unread toggle (the pill
+  // should show unread whether you're on All or Unread), but HONORING the active
+  // type filter. It used to ignore `kind`, so the "Unread · N" pill showed the
+  // whole bell's unread even while filtered to one type — and then "Mark all
+  // read" (now kind-scoped) left a non-zero pill that didn't match (audit N7).
   let unreadQ = sb
     .from("notifications")
     .select("id", { count: "exact", head: true })
     .eq("recipient_user_id", input.userId)
     .is("read_at", null);
   unreadQ = isCommercial ? unreadQ.like("kind", "commercial_%") : unreadQ.not("kind", "like", "commercial_%");
+  if (input.kind) unreadQ = unreadQ.eq("kind", input.kind);
 
   // This-week count (last 7 days, platform-scoped, ignoring filters) — for the
   // at-a-glance KPI strip.

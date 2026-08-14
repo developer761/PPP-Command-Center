@@ -143,7 +143,10 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
         const recent = await hasRecentNotification(
           "commercial_document_expiring",
           r.id,
-          (WARN_WINDOW_DAYS - 1) * 24
+          (WARN_WINDOW_DAYS - 1) * 24,
+          // Per-recipient so reassigning the AM sends the NEW one an alert
+          // instead of inheriting the old AM's 29-day silence (audit N15).
+          recipient.user_id
         );
         if (recent) {
           out.skipped += 1;

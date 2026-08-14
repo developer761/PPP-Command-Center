@@ -29,7 +29,13 @@ export async function PATCH(request: Request) {
 
   // Platform scoping: only clear the bell the user is looking at (commercial
   // kinds are `commercial_%`; residential kinds are not). Absent → all.
-  const platform = new URL(request.url).searchParams.get("platform");
+  const url = new URL(request.url);
+  const platform = url.searchParams.get("platform");
+  // Kind scoping: when the user is viewing a single TYPE filter, "Mark all read"
+  // must clear only THAT type — not the whole bell. Marking everything read
+  // while filtered to "Invoice created" silently wiped every other unread alert
+  // the user hadn't seen (audit N7). Absent → all types (the unfiltered view).
+  const kind = url.searchParams.get("kind");
   let query = adminClient()
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
@@ -37,6 +43,7 @@ export async function PATCH(request: Request) {
     .is("read_at", null);
   if (platform === "commercial") query = query.like("kind", "commercial_%");
   else if (platform === "command_center") query = query.not("kind", "like", "commercial_%");
+  if (kind) query = query.eq("kind", kind);
 
   const { error } = await query;
 

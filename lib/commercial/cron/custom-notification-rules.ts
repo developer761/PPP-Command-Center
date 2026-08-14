@@ -280,7 +280,17 @@ async function evaluateRule(
       // Coming due within N days: due date between today (ET) and now+N days,
       // still open (unpaid, not void/draft/deleted). Excludes already-overdue
       // (that's the invoice_overdue trigger).
-      const dueByIso = new Date(nowMs + rule.threshold_days * 86_400_000).toISOString();
+      // Compare on the ET CALENDAR DAY, not the cron's wall-clock instant.
+      // due_at is stored at noon ET; the old bound (now + N days, a ~12:00 UTC
+      // timestamp) fell BEFORE that noon-ET due time, so an invoice due exactly N
+      // days out was excluded until the next run — every alert a day late — and
+      // threshold 0 ("due today", which the rule form allows) could never fire at
+      // all (audit N6). Exclusive upper bound at midnight of (today + N + 1)
+      // includes the whole target day.
+      const [ty, tm, td] = todayEt.split("-").map(Number);
+      const dueByExclusive = new Date(Date.UTC(ty, tm - 1, td + rule.threshold_days + 1))
+        .toISOString()
+        .slice(0, 10);
       const { data } = await sb
         .from("commercial_invoices")
         .select("id, account_id, invoice_number, due_at, balance_cents, status")
@@ -288,7 +298,7 @@ async function evaluateRule(
         .gt("balance_cents", 0)
         .not("due_at", "is", null)
         .gte("due_at", todayEt)
-        .lte("due_at", dueByIso)
+        .lt("due_at", dueByExclusive)
         .is("deleted_at", null)
         .order("due_at", { ascending: true })
         .limit(500);
