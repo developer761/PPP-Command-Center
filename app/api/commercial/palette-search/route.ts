@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { formatAccountNumber } from "@/lib/commercial/accounts/db";
 import { formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 
 /**
  * GET /api/commercial/palette-search?q=bob
@@ -104,10 +105,12 @@ export async function GET(request: Request) {
       .limit(MAX_PER_KIND),
     sb
       .from("commercial_opportunities")
-      .select("id, title, client_name, property_street, project_number, account_id, status")
+      .select("id, title, title_override, client_name, property_street, project_number, account_id, status, sub_status")
       .is("deleted_at", null)
       .or(
-        `title.ilike.${pattern},client_name.ilike.${pattern},property_street.ilike.${pattern},project_number.ilike.${idPattern}`
+        // title_override was omitted, so a renamed deal couldn't be found in ⌘K
+        // by the name shown everywhere else (audit N14).
+        `title.ilike.${pattern},title_override.ilike.${pattern},client_name.ilike.${pattern},property_street.ilike.${pattern},project_number.ilike.${idPattern}`
       )
       .order("updated_at", { ascending: false })
       .limit(MAX_PER_KIND),
@@ -159,16 +162,26 @@ export async function GET(request: Request) {
   for (const o of (oppsRes.data ?? []) as {
     id: string;
     title: string;
+    title_override: string | null;
     client_name: string | null;
     property_street: string | null;
     project_number: string | null;
     account_id: string;
     status: string;
+    sub_status: string | null;
   }[]) {
+    // Same name the rest of the platform shows — a manual rename (title_override)
+    // wins, then client/street, then the raw title.
     const derived =
-      [o.client_name, o.property_street].filter(Boolean).join(" — ") || o.title || "(untitled)";
+      o.title_override?.trim() ||
+      [o.client_name, o.property_street].filter(Boolean).join(" — ") ||
+      o.title ||
+      "(untitled)";
     const oppNo = formatOpportunityNumber(o.project_number);
-    const hint = oppNo ? `${oppNo} · ${o.status}` : o.status;
+    // Distinguish Won vs Lost — both are `pre_sale_closed`, so a bare status
+    // showed the same hint for a win and a loss (audit N14).
+    const statusLabel = oppStatusDisplayLabel(o.status, o.sub_status);
+    const hint = oppNo ? `${oppNo} · ${statusLabel}` : statusLabel;
     results.push({
       kind: "opportunity",
       id: o.id,
