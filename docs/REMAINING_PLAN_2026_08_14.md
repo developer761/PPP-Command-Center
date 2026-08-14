@@ -1,14 +1,16 @@
 # Remaining plan — Commercial CC (2026-08-14, end of night)
 
-## ⏰ 0. FIRST THING WHEN YOU WAKE UP — check the Vercel deploy
-The `43a15eef` deploy (Project-tab cards moved into the tab body + KPI strip to
-one row) had **not** gone live by the time Karan went to bed. Code is verified
-clean: CI Vitest = green, full `npm run build` = green (exit 0). So this is a
-Vercel-side lag from the rapid dual-session pushes, NOT a build failure.
-- [ ] Open Vercel → **Deployments**. Confirm `43a15eef` is **Ready** on Production.
-- [ ] If it's **canceled/failed**, hit **Redeploy** on `43a15eef` (⋯ menu) — it will build.
-- [ ] Once Ready, hard-refresh `hub.precisionpaintingplus.net` (**⌘⇧R**) and verify:
-  the delivery tool cards sit **below** the Project tab bar, and the KPI strip is **one row**.
+## ⏰ 0. FIRST THING WHEN YOU WAKE UP — check Vercel + the Command Center
+Confirmed live before bed: the KPI strip is **one row** and the Project-tab
+delivery cards now sit **below** the tab bar. The LAST push, `8697c81a`, then
+**redesigned the Project home** (cards fill the row, tool icons, no blank space)
+to fix the "scrappy / so much blank space" look — that one still needs a look.
+Code is verified clean (CI green, `npm run build` green).
+- [ ] Vercel → **Deployments**: confirm `8697c81a` ("Project home: fill the row…")
+  is **Ready** on Production. If canceled/failed, hit **Redeploy** (⋯ menu).
+- [ ] Hard-refresh `hub.precisionpaintingplus.net` (**⌘⇧R**), open a WON deal →
+  **Project** tab, and check the delivery cards: filled rows, icons, tight — no
+  empty columns. Tell me if it still needs work.
 - [ ] While there, do the **Migration 137** upload check (§5 below).
 
 ---
