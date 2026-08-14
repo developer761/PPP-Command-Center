@@ -822,6 +822,15 @@ export default async function CommercialOpportunitiesPage({
   if (overdueFilter) baseParams.set("overdue", "1");
   if (coldRfpFilter) baseParams.set("coldrfp", "1");
   if (followupFilter) baseParams.set("followup", "1");
+  // mine / estimator / new / lane live in baseParams for the SAME reason — they
+  // were parsed and applied to the list but never carried through the toolbar,
+  // so changing sort or view on a "My deals" / "New this week" / lane / a
+  // specific-estimator view silently reverted to the WHOLE pipeline, and the
+  // CSV export produced the unfiltered set (audit D4).
+  if (mineFilter) baseParams.set("mine", "1");
+  if (estimatorFilter) baseParams.set("estimator", estimatorFilter);
+  if (newFilter) baseParams.set("new", "7d");
+  if (laneFilter) baseParams.set("lane", laneFilter);
 
   // 2026-07-21 audit #5: EVERY href builder below must preserve `stale`,
   // `hot`, AND `archived` — an earlier pass only wired the four toggle
@@ -888,6 +897,12 @@ export default async function CommercialOpportunitiesPage({
     if (overdueFilter) p.set("overdue", "1");
     if (coldRfpFilter) p.set("coldrfp", "1");
     if (followupFilter) p.set("followup", "1");
+    // mine / estimator / new / lane — this builder makes fresh params, so it
+    // must re-add them or a sort change drops the filter (audit D4).
+    if (mineFilter) p.set("mine", "1");
+    if (estimatorFilter) p.set("estimator", estimatorFilter);
+    if (newFilter) p.set("new", "7d");
+    if (laneFilter) p.set("lane", laneFilter);
     // 2026-07-21 audit #5: preserve kanban too — was list-only, so a
     // kanban user changing sort got kicked back to list view.
     if (viewMode === "list") p.set("view", "list");
@@ -909,6 +924,12 @@ export default async function CommercialOpportunitiesPage({
     if (overdueFilter) p.set("overdue", "1");
     if (coldRfpFilter) p.set("coldrfp", "1");
     if (followupFilter) p.set("followup", "1");
+    // Fresh params — re-add mine/estimator/new/lane so clearing ONE chip keeps
+    // the rest (audit D4). `drop` never targets these four.
+    if (mineFilter) p.set("mine", "1");
+    if (estimatorFilter) p.set("estimator", estimatorFilter);
+    if (newFilter) p.set("new", "7d");
+    if (laneFilter) p.set("lane", laneFilter);
     if (viewMode === "list") p.set("view", "list");
     else if (viewMode === "customer") p.set("view", "customer");
     else if (viewMode === "sheet") p.set("view", "sheet");
@@ -927,12 +948,16 @@ export default async function CommercialOpportunitiesPage({
 
   const anyFilterActive =
     !!search || !!validColumn || staleFilter || hotFilter || sourceSet.size > 0 ||
-    overdueFilter || coldRfpFilter || followupFilter;
+    overdueFilter || coldRfpFilter || followupFilter ||
+    mineFilter || !!estimatorFilter || !!newFilter || !!laneFilter;
   const sortChanged = sortKey !== "recent";
   const activeFilterCount =
     (search ? 1 : 0) + (validColumn ? 1 : 0) +
     (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size +
-    (overdueFilter ? 1 : 0) + (coldRfpFilter ? 1 : 0) + (followupFilter ? 1 : 0);
+    (overdueFilter ? 1 : 0) + (coldRfpFilter ? 1 : 0) + (followupFilter ? 1 : 0) +
+    // mine/estimator/new/lane count toward "Filters (N)" too — they were applied
+    // but uncounted, so the badge under-reported the active filters (audit D4).
+    (mineFilter ? 1 : 0) + (estimatorFilter ? 1 : 0) + (newFilter ? 1 : 0) + (laneFilter ? 1 : 0);
   // Clear a single attention deep-link filter. baseParams carries the
   // OTHER two attention filters (they live there), but NOT stale/hot/
   // archived — those must be re-added manually like every sibling builder,

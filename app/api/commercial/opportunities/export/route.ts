@@ -23,10 +23,12 @@ import {
 } from "@/lib/commercial/opportunities/constants";
 import {
   KANBAN_COLUMNS,
+  PRE_CONTRACT_COLUMNS,
   columnKeyForOpp,
   columnDbStatusHint,
   kanbanColumnLabel,
 } from "@/lib/commercial/opportunities/kanban-columns";
+import { isUnderContract } from "@/lib/commercial/opportunities/attention";
 import { MS_PER_DAY } from "@/lib/commercial/accounts/constants";
 
 /**
@@ -75,6 +77,13 @@ export async function GET(request: Request) {
   const overdue = url.searchParams.get("overdue") === "1";
   const coldRfp = url.searchParams.get("coldrfp") === "1";
   const followup = url.searchParams.get("followup") === "1";
+  // mine / estimator / new / lane — the page applies these post-fetch; the
+  // export ignored them, so a filtered view exported the wider set (audit D4).
+  const mine = url.searchParams.get("mine") === "1";
+  const estimatorId = url.searchParams.get("estimator") || undefined;
+  const newDays = url.searchParams.get("new") === "7d" ? 7 : undefined;
+  const laneRaw = url.searchParams.get("lane");
+  const lane = laneRaw === "under_contract" || laneRaw === "pre_contract" ? laneRaw : undefined;
 
   // `status` carries a KANBAN COLUMN key, matching what the pipeline page
   // puts in the URL. Validating it against OPPORTUNITY_STATUSES alone
@@ -164,6 +173,23 @@ export async function GET(request: Request) {
   }
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => !!o.source && sourceSet.has(o.source));
+  }
+  // mine / estimator / new / lane — mirror the page's post-fetch filters 1:1 so
+  // the CSV matches the visible set (audit D4).
+  if (mine) opps = opps.filter((o) => o.estimator_user_id === auth.user.id);
+  if (estimatorId) opps = opps.filter((o) => o.estimator_user_id === estimatorId);
+  if (newDays) {
+    const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const cutoff = new Date(Date.UTC(+todayEt.slice(0, 4), +todayEt.slice(5, 7) - 1, +todayEt.slice(8, 10)) - newDays * MS_PER_DAY)
+      .toISOString()
+      .slice(0, 10);
+    opps = opps.filter((o) => (o.created_at ?? "").slice(0, 10) >= cutoff);
+  }
+  if (lane === "under_contract") {
+    opps = opps.filter((o) => isUnderContract(o.status, o.sub_status));
+  } else if (lane === "pre_contract") {
+    const laneKeys = new Set(PRE_CONTRACT_COLUMNS.map((c) => c.key));
+    opps = opps.filter((o) => laneKeys.has(columnKeyForOpp(o.status, o.sub_status)));
   }
 
   const filters: OpportunitiesExportFilters = {
