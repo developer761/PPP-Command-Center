@@ -24,6 +24,7 @@ import CommercialAddressFields from "@/components/commercial-address-fields";
 import CommercialSiteAddressToggle from "@/components/commercial-site-address-toggle";
 import { NewAccountContacts } from "@/components/commercial/new-account-contacts";
 import CommercialNewAccountTeamPicker from "@/components/commercial-new-account-team-picker";
+import ComplianceDocInput from "@/components/commercial/compliance-doc-input";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 const VALID_ROLES = new Set<AssignmentRole>(ASSIGNMENT_ROLES);
@@ -544,7 +545,9 @@ export default async function NewCommercialAccountPage({
         <Section title="Documents">
           <p className="text-[12px] text-ppp-charcoal-500 -mt-1 leading-relaxed">
             Upload any compliance docs you have in hand. All optional —
-            you can add more from the Documents tab later. Max 50 MB per file (PDF, image, Word, or Excel).
+            you can add more from the Documents tab later. Up to 4 MB here; for a
+            larger file, create the account first and upload it from its Documents
+            tab (up to 50 MB). PDF, image, Word, or Excel.
           </p>
           <div className="space-y-3">
             {ON_CREATE_DOC_CATEGORIES.map((c) => (
@@ -552,14 +555,7 @@ export default async function NewCommercialAccountPage({
                 <label htmlFor={`doc_${c}`} className="block text-[12.5px] font-semibold text-ppp-charcoal mb-1.5">
                   {documentCategoryLabel(c)}
                 </label>
-                <input
-                  id={`doc_${c}`}
-                  name={`doc_${c}`}
-                  type="file"
-          aria-label="Attach compliance document"
-                  accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.doc,.docx,.xls,.xlsx"
-                  className="block w-full text-[12px] text-ppp-charcoal-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:cursor-pointer min-h-[44px] touch-manipulation"
-                />
+                <ComplianceDocInput id={`doc_${c}`} name={`doc_${c}`} />
               </div>
             ))}
           </div>

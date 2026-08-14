@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
 
 /**
  * Per-change-order documents (signed CO PDFs / backup). Uploads/removes via
@@ -86,6 +87,8 @@ export function ChangeOrderAttachments({
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (!f) return;
+            const tooBig = multipartOversizeError(f, "to this change order");
+            if (tooBig) { setError(tooBig); e.target.value = ""; return; }
             const fd = new FormData();
             fd.append("file", f);
             void send(fd);

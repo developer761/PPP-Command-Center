@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import { DOCUMENT_CATEGORIES, documentCategoryLabel } from "@/lib/commercial/accounts/document-categories";
+import { shrinkImageUnder } from "@/lib/commercial/uploads/downscale-image";
+import { SAFE_MULTIPART_BYTES } from "@/lib/commercial/uploads/size-limit";
 import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { DateField } from "@/components/commercial/date-field";
@@ -76,7 +78,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
   // ref lifetime survives re-renders.
   const abortRef = useRef<AbortController | null>(null);
 
-  const handleFile = (file: File | null) => {
+  const handleFile = async (file: File | null) => {
     setError(null);
     setSuccess(null);
     // Block obvious bad picks early so the user gets feedback BEFORE
@@ -86,13 +88,30 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
       setPickedFile(null);
       return;
     }
-    if (file && file.size > CLIENT_MAX_UPLOAD_BYTES) {
+    let f = file;
+    // A COI / W-9 snapped on site is routinely over Vercel's ~4.5 MB multipart
+    // cap and would 413 at the edge with a confusing error (audit U1). Shrink an
+    // oversized PHOTO under the cap on the client so the on-site capture works;
+    // PDFs and other files pass through unchanged (the real fix for a large PDF
+    // here is the direct-to-Storage path used by opportunity documents).
+    if (f && f.type.startsWith("image/") && f.size > SAFE_MULTIPART_BYTES) {
+      const shrunk = await shrinkImageUnder(f, SAFE_MULTIPART_BYTES);
+      if (shrunk !== f) {
+        f = shrunk;
+        if (fileInputRef.current) {
+          const dt = new DataTransfer();
+          dt.items.add(f);
+          fileInputRef.current.files = dt.files;
+        }
+      }
+    }
+    if (f && f.size > CLIENT_MAX_UPLOAD_BYTES) {
       const maxMb = Math.round(CLIENT_MAX_UPLOAD_BYTES / 1024 / 1024);
-      setError(`That file is ${Math.round(file.size / 1024 / 1024)} MB — max is ${maxMb} MB. Try compressing or splitting.`);
+      setError(`That file is ${Math.round(f.size / 1024 / 1024)} MB — max is ${maxMb} MB. Try compressing or splitting.`);
       setPickedFile(null);
       return;
     }
-    setPickedFile(file);
+    setPickedFile(f);
   };
 
   // Sanitized preview + HEIC heads-up update reactively when the file changes.

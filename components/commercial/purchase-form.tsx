@@ -14,8 +14,10 @@
  * still posts to the server; only the field layout is reactive here.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DateField } from "@/components/commercial/date-field";
+import { shrinkImageUnder } from "@/lib/commercial/uploads/downscale-image";
+import { SAFE_MULTIPART_BYTES, multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
 import Link from "next/link";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
@@ -85,13 +87,66 @@ export default function PurchaseForm({
   const [hours, setHours] = useState(initHours);
   const isLabor = category === "labor";
 
+  // Receipt-photo handling. A phone snap is routinely over Vercel's ~4.5 MB
+  // multipart cap, which would 413 the whole cost entry (typed amount, vendor,
+  // hours and all) at the edge — the worst kind of loss for a field crew member
+  // (audit U1). Shrink an oversized image under the cap on the client; if it
+  // can't be shrunk (a big PDF, or HEIC we can't decode), reject the pick with a
+  // clear note and clear the input so the cost still saves without it.
+  const receiptRef = useRef<HTMLInputElement>(null);
+  const shrinkingRef = useRef(false);
+  const [receiptNote, setReceiptNote] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+
+  const onReceiptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const f = input.files?.[0];
+    if (!f) { setReceiptNote(null); return; }
+    if (f.size <= SAFE_MULTIPART_BYTES) { setReceiptNote(null); return; }
+
+    setReceiptNote({ tone: "ok", text: "Optimizing photo…" });
+    shrinkingRef.current = true;
+    let shrunk = f;
+    try {
+      shrunk = await shrinkImageUnder(f, SAFE_MULTIPART_BYTES);
+    } finally {
+      shrinkingRef.current = false;
+    }
+
+    if (shrunk.size > SAFE_MULTIPART_BYTES) {
+      // Couldn't get it under the cap (non-image, or undecodable HEIC).
+      setReceiptNote({ tone: "err", text: multipartOversizeError(f, "here") ?? "That file is too large." });
+      input.value = "";
+      return;
+    }
+    if (shrunk !== f) {
+      const dt = new DataTransfer();
+      dt.items.add(shrunk);
+      input.files = dt.files;
+      setReceiptNote({ tone: "ok", text: `Photo optimized to ${(shrunk.size / 1024 / 1024).toFixed(1)} MB so it uploads reliably.` });
+    } else {
+      setReceiptNote(null);
+    }
+  };
+
   // Live $/hr hint (labor only) — purely informational, never posted.
   const amtNum = parseDollars(amount);
   const hrsNum = Number(hours);
   const rate = isLabor && amtNum && Number.isFinite(hrsNum) && hrsNum > 0 ? amtNum / hrsNum : null;
 
   return (
-    <form action={action} className="px-3.5 pb-3.5 pt-1 space-y-3" encType="multipart/form-data">
+    <form
+      action={action}
+      onSubmit={(e) => {
+        // A tap that lands mid-optimization would post the original oversized
+        // photo and 413 — hold the submit until the shrink finishes.
+        if (shrinkingRef.current) {
+          e.preventDefault();
+          setReceiptNote({ tone: "ok", text: "One moment — still optimizing the photo. Tap Save again." });
+        }
+      }}
+      className="px-3.5 pb-3.5 pt-1 space-y-3"
+      encType="multipart/form-data"
+    >
       <input type="hidden" name="opp_id" value={oppId} />
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="back" value={back} />
@@ -188,7 +243,12 @@ export default function PurchaseForm({
         {/* capture="environment" opens the camera straight away on a phone so a
             field crew member can snap the receipt in one tap (2026-08 field
             walk). HEIC/HEIF accepted so iPhone photos aren't greyed out. */}
-        <input id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif" capture="environment" className="block w-full text-base sm:text-[13px] text-ppp-charcoal-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-[13px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:min-h-[44px]" />
+        <input ref={receiptRef} onChange={onReceiptChange} id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif" capture="environment" className="block w-full text-base sm:text-[13px] text-ppp-charcoal-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-[13px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:min-h-[44px]" />
+        {receiptNote && (
+          <p className={`text-[11px] mt-1 ${receiptNote.tone === "err" ? "text-rose-700" : "text-ppp-charcoal-500"}`} role={receiptNote.tone === "err" ? "alert" : "status"}>
+            {receiptNote.text}
+          </p>
+        )}
         {purchase?.receipt_document_id && <p className="text-[11px] text-emerald-700 mt-1">A receipt is on file — uploading a new one replaces it.</p>}
       </div>
       <div className="flex items-center gap-2">

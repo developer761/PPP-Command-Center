@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
 
 /**
  * Lien-waiver slot for one invoice/milestone. Uploads (or removes) the stored
@@ -100,6 +101,8 @@ export function LienWaiverUpload({
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (!f) return;
+                const tooBig = multipartOversizeError(f, "as a lien waiver");
+                if (tooBig) { setError(tooBig); e.target.value = ""; return; }
                 const fd = new FormData();
                 fd.append("file", f);
                 void send(fd);

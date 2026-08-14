@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
 
 /**
  * Invoice attachments panel — arbitrary files attached to ONE invoice (a signed
@@ -90,6 +91,10 @@ export function InvoiceAttachments({
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (!f) return;
+              // Guard the multipart cap so a >4.5 MB pick doesn't 413 at the edge
+              // and read as a mystery failure (audit U1).
+              const tooBig = multipartOversizeError(f, "to this invoice");
+              if (tooBig) { setError(tooBig); e.target.value = ""; return; }
               const fd = new FormData();
               fd.append("file", f);
               void send(fd);

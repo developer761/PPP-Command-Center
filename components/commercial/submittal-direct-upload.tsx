@@ -14,6 +14,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { directUploadOppAttachment } from "@/lib/commercial/uploads/direct-attachment-client";
 
 type Props = {
   opportunityId: string;
@@ -91,18 +92,15 @@ export default function SubmittalDirectUpload({
     for (let i = 0; i < valid.length; i++) {
       const file = valid[i];
       try {
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("submittal_id", submittalId);
-        const res = await fetch(`/api/commercial/opportunities/${opportunityId}/attachments`, {
-          method: "POST",
-          body: fd,
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          const detail = (body as { detail?: string; error?: string }).detail ?? (body as { error?: string }).error ?? `HTTP ${res.status}`;
-          failed.push(`${file.name} — ${detail}`);
-        }
+        // Direct-to-Storage (sign → PUT → finalize): the bytes bypass Vercel's
+        // ~4.5 MB serverless cap, so a large plan set no longer 413s at the edge
+        // before the route runs (audit U1). submittal_id auto-links on finalize.
+        const res = await directUploadOppAttachment({
+          opportunityId,
+          file,
+          submittalId,
+        }).promise;
+        if (!res.ok && !res.canceled) failed.push(`${file.name} — ${res.error}`);
       } catch (err) {
         failed.push(`${file.name} — ${err instanceof Error ? err.message : String(err)}`);
       }
