@@ -442,15 +442,9 @@ export async function sendWelcomeEmail(employee: CommercialEmployee): Promise<vo
     const body = `${intro}\n\n${link}\n\n${upcoming.length > 0 ? buildBody(firstName, upcoming, link, oc.name, es, welcomeScopes) : `- ${oc.name}`}`;
     const { sendEmail } = await import("@/lib/email/resend");
     // sendEmail RESOLVES with {ok:false} on failure — it does not throw — so the
-
-    // catch below never ran and releaseClaim was never called. A transient
-
-    // Resend outage therefore marked the crew's schedule email as sent and
-
-    // suppressed it permanently: nobody was told where to be, and nothing
-
-    // anywhere said so.
-
+    // catch below never fires on a Resend outage. Without inspecting .ok here,
+    // this returned as if the welcome went out when it didn't (audit E1). Log
+    // the failure so a silent Resend outage is at least visible in the logs.
     const sent = await sendEmail({
       channel: "commercial",
       to: employee.email,
@@ -459,6 +453,9 @@ export async function sendWelcomeEmail(employee: CommercialEmployee): Promise<vo
       ...(fromLine(oc.name) ? { from: fromLine(oc.name) } : {}),
       tags: [{ name: "kind", value: "crew_welcome" }],
     });
+    if (!sent || sent.ok === false) {
+      console.warn(`[field-ops] welcome email did NOT send to ${employee.email}`);
+    }
   } catch (err) {
     console.warn("[field-ops] welcome email failed:", err);
   }
@@ -509,7 +506,7 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
     }
     lines.push("", es ? "Marca entrada/salida aqui:" : "Clock in/out here:", link, "", `- ${oc.name}`);
     const { sendEmail } = await import("@/lib/email/resend");
-    await sendEmail({
+    const sent = await sendEmail({
       channel: "commercial",
       to: emp.email,
       subject: es ? `Nuevo turno - ${dayLabel(workDate, true)}` : `You're scheduled - ${dayLabel(workDate, false)}`,
@@ -517,6 +514,12 @@ export async function sendShiftAssignmentEmail(employeeId: string, workDate: str
       ...(fromLine(oc.name) ? { from: fromLine(oc.name) } : {}),
       tags: [{ name: "kind", value: "crew_shift" }],
     });
+    // sendEmail resolves {ok:false} on failure rather than throwing, so log a
+    // failed schedule email instead of silently proceeding as if it went out
+    // (audit E1) — the reminders below are still worth scheduling regardless.
+    if (!sent || sent.ok === false) {
+      console.warn(`[field-ops] shift email did NOT send to ${emp.email} for ${workDate}`);
+    }
 
     // Schedule the 1-day / 1-hour / 10-min reminders for the day's earliest start.
     // Reset first: if this is an EDIT (start time moved), cancel the previously
@@ -569,7 +572,7 @@ export async function sendAbsenceNotice(
       ? `Hola ${emp.first_name},\n\nEstas marcado como ausente el ${day}${partial ? ` por ${hours} horas` : ""} (${reason}). ${partial ? "No necesitas trabajar esas horas." : "No necesitas venir ese dia."}\n\nSi crees que es un error, contacta a la oficina.\n\n- ${oc.name}`
       : `Hi ${emp.first_name},\n\nYou're marked off for ${day}${partial ? ` for ${hours} hours` : ""} (${reason}). ${partial ? "You don't need to work those hours." : "You don't need to come in that day."}\n\nIf you think this is a mistake, contact the office.\n\n- ${oc.name}`;
     const { sendEmail } = await import("@/lib/email/resend");
-    await sendEmail({
+    const sent = await sendEmail({
       channel: "commercial",
       to: emp.email,
       subject,
@@ -577,6 +580,11 @@ export async function sendAbsenceNotice(
       ...(fromLine(oc.name) ? { from: fromLine(oc.name) } : {}),
       tags: [{ name: "kind", value: "crew_marked_off" }],
     });
+    // Log a failed marked-off notice rather than treating an address on file as
+    // proof it was delivered (audit E1).
+    if (!sent || sent.ok === false) {
+      console.warn(`[field-ops] marked-off notice did NOT send to ${emp.email} for ${workDate}`);
+    }
   } catch (err) {
     console.warn("[field-ops] absence notice failed:", err);
   }

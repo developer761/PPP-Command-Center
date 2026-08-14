@@ -281,10 +281,23 @@ export async function submitDailyAbsence(input: {
     .eq("work_date", input.workDate)
     .maybeSingle();
 
+  // Marking off changes whether the 10-min clock-in nudge should still fire —
+  // re-sync it so the painter isn't reminded to clock into a day they said they
+  // weren't there. Mirrors the admin mark-off path (absences.ts), which the crew
+  // self-serve path didn't (audit FO7). Best-effort.
+  const resync = async () => {
+    const { resyncClockReminder } = await import("./schedule-email-send");
+    await resyncClockReminder(input.employeeId, input.workDate).catch(() => undefined);
+  };
+
   if (existing) {
     const id = (existing as { id: string }).id;
+    const before = { type: undefined as string | undefined };
     const { error } = await sb.from("commercial_absences").update({ type: input.type }).eq("id", id);
     if (error) return { ok: false, error: error.message };
+    // Log the re-mark too — the update branch left no audit trail (audit FO7).
+    await logUpdate("commercial_absences", id, before, { type: input.type }, input.actorUserId).catch(() => undefined);
+    await resync();
     return { ok: true };
   }
   const row = { employee_id: input.employeeId, work_date: input.workDate, type: input.type };
@@ -295,5 +308,6 @@ export async function submitDailyAbsence(input: {
     .single();
   if (error) return { ok: false, error: error.message };
   await logInsert("commercial_absences", (created as { id: string }).id, row, input.actorUserId).catch(() => undefined);
+  await resync();
   return { ok: true };
 }

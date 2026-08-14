@@ -164,6 +164,19 @@ export function verifyFileMagicBytes(
   if (startsWith([0xcf, 0xfa, 0xed, 0xfe]) || startsWith([0xfe, 0xed, 0xfa, 0xce])) {
     return { ok: false, detected: "macOS executable (Mach-O)" };
   }
+  // Plain text has NO magic number. Reaching here means the head matched none
+  // of the binary signatures above (including the executable rejects), so a
+  // text/plain declaration is accepted as long as the head carries no NUL byte —
+  // present in effectively every binary, absent in real text — which still
+  // blocks a headerless binary renamed .txt. Without this branch, `text/plain`
+  // (allowlisted for the documents flow) fell through to the fail-closed default
+  // and every .txt upload was rejected 100% (audit DOC4).
+  if (declaredMime === "text/plain") {
+    const head = b.subarray(0, Math.min(b.length, 1024));
+    return head.some((byte) => byte === 0)
+      ? { ok: false, detected: "binary data (not plain text)" }
+      : { ok: true };
+  }
   // Unknown signature — fail closed. If a legitimate format isn't
   // covered, add it to the allowlist explicitly above.
   return { ok: false, detected: `unknown (first 4 bytes: ${Array.from(b.slice(0, 4)).map((x) => x.toString(16).padStart(2, "0")).join(" ")})` };

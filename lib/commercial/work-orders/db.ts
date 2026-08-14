@@ -221,6 +221,27 @@ export async function updateWorkOrder(
   if (error || !data) return { ok: false, error: error?.message ?? "update_failed" };
   const after = data as WorkOrder;
   await logUpdate("commercial_work_orders", id, before, after, actorUserId);
+
+  // Keep the Field-Ops job's target window in step with the WO. jobs.ts copies
+  // scheduled_start/end into commercial_jobs.target_start/end only at job
+  // CREATION, so editing the WO dates afterward left the scheduler showing the
+  // stale window (audit FO6). Propagate on change; best-effort — the WO update
+  // already succeeded and a job that doesn't exist yet is created with the fresh
+  // dates when the WO is sent.
+  const startChanged = patch.scheduled_start_date !== undefined && after.scheduled_start_date !== before.scheduled_start_date;
+  const endChanged = patch.scheduled_end_date !== undefined && after.scheduled_end_date !== before.scheduled_end_date;
+  if (startChanged || endChanged) {
+    const { error: jobErr } = await sb
+      .from("commercial_jobs")
+      .update({
+        target_start: after.scheduled_start_date,
+        target_end: after.scheduled_end_date,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("work_order_id", id)
+      .is("deleted_at", null);
+    if (jobErr) console.warn(`[work-orders] job target-date sync failed for WO ${id}: ${jobErr.message}`);
+  }
   return { ok: true, value: after };
 }
 

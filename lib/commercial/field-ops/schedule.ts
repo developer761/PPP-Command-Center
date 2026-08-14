@@ -68,14 +68,20 @@ export function fmtTime12(t: string | null | undefined): string | null {
   return `${h}:${mm} ${ap}`;
 }
 
-/** Whole/quarter hours between two "HH:MM" times, or null if unusable. */
+/** Whole/quarter hours between two "HH:MM" times, or null if unusable.
+ *  A night shift crosses midnight (e.g. 22:00 → 06:00): when the end is EARLIER
+ *  than the start, the end is the next day, so add 24h — matching clock.ts,
+ *  which measures elapsed span and already supports cross-midnight punches.
+ *  Without this a night shift returned null and couldn't be scheduled at all
+ *  (audit FO5). Equal times are still rejected (a 0-hour / ambiguous-24h shift). */
 export function hoursBetween(start: string | null | undefined, end: string | null | undefined): number | null {
   const ms = /^(\d{1,2}):(\d{2})/.exec(start ?? "");
   const me = /^(\d{1,2}):(\d{2})/.exec(end ?? "");
   if (!ms || !me) return null;
   const s = Number(ms[1]) * 60 + Number(ms[2]);
-  const e = Number(me[1]) * 60 + Number(me[2]);
-  if (e <= s) return null;
+  let e = Number(me[1]) * 60 + Number(me[2]);
+  if (e === s) return null;
+  if (e < s) e += 24 * 60; // crosses midnight — end is the next day
   return Math.round(((e - s) / 60) * 4) / 4;
 }
 
