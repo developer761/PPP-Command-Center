@@ -1,4 +1,5 @@
 import "server-only";
+import { paintLineFromValue } from "@/lib/customer-form/material-types";
 
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { decideWriteback } from "@/lib/customer-form/writeback-mode";
@@ -60,10 +61,12 @@ export type FormRenderData = {
   accountName: string | null;
   ownerName: string | null;
   closeDate: string | null;
-  /** Pre-populated paint product line from WorkOrder.MaterialType__c.
-   *  Picklist values: Ultra Spec Interior, Regal Select Interior, Aura
-   *  Interior, Ultra Spec Exterior, Regal Select Exterior, Aura Exterior,
-   *  SW Emerald, SW Duration, SW Super Paint, Other. Null when admin hasn't
+  /** Pre-populated paint product LINE, collapsed from
+   *  WorkOrder.MaterialType__c via paintLineFromValue (Kate round-3 #09):
+   *  Ultra Spec, Regal Select, Ben, Aura, Mooreglo, Mooregard, Moore Life,
+   *  SW Emerald, SW Duration, SW Super Paint, Other. Legacy line+finish
+   *  values stored in Salesforce ("Regal Select Eggshell") collapse to their
+   *  line here so the picker still shows a selection. Null when admin hasn't
    *  set it yet (about 50% of PPP WOs as of 2026-06-03 per Katie). */
   materialType: string | null;
   /** Best-available scheduled job start: WorkOrder.StartDate (sparse) →
@@ -340,7 +343,12 @@ async function loadFormRenderDataInner(
       scheduledStart,
       // Falls through as null if the org doesn't have MaterialType__c (rich
       // SELECT fallback hit) — the form's picker still renders, just empty.
-      materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
+      // Kate round-3 #09: the picker offers LINES only now. Collapse whatever
+      // Salesforce holds — including legacy "Regal Select Eggshell" values —
+      // to its line, so an existing work order shows its paint line selected
+      // instead of an empty dropdown with a scary "no longer available" note.
+      materialType:
+        typeof w.MaterialType__c === "string" ? paintLineFromValue(w.MaterialType__c) || null : null,
       workOrderDescription: typeof w.Description === "string" ? (w.Description as string) : null,
       workOrderSubject: typeof w.Subject === "string" ? (w.Subject as string) : null,
       lineItems,

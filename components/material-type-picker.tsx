@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MATERIAL_TYPES, type MaterialType } from "@/lib/customer-form/material-types";
+import { PAINT_LINES, type MaterialType } from "@/lib/customer-form/material-types";
 
 /**
  * Material Type picker — paint product-line dropdown for both the customer
@@ -37,7 +37,7 @@ type Props = {
   /** Called on every selection change. Pass "" to clear. */
   onChange: (next: string) => void;
   /** Optional set of legal values for this context (e.g. WO-filtered list).
-   *  When omitted, the full MATERIAL_TYPES set is shown. */
+   *  When omitted, the full PAINT_LINES set is shown. */
   availableValues?: ReadonlySet<string>;
   /** Trigger button label when nothing's picked. */
   placeholder?: string;
@@ -93,11 +93,12 @@ export default function MaterialTypePicker({
   // Visible options after the WO-context filter + the search query.
   const visibleGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    // Group MATERIAL_TYPES preserving source order; honor availableValues
+    // Group PAINT_LINES preserving source order; honor availableValues
     // (the WO-filtered allowlist) + the search query at the same time so
     // an empty group doesn't render an empty header.
+    // Kate round-3 #09: LINES only — the finish is asked per surface.
     const groups = new Map<string, MaterialType[]>();
-    for (const m of MATERIAL_TYPES) {
+    for (const m of PAINT_LINES) {
       if (availableValues && !availableValues.has(m.value)) continue;
       if (q) {
         const matchesValue = m.value.toLowerCase().includes(q);
@@ -120,7 +121,7 @@ export default function MaterialTypePicker({
     // a closed accordion.
     if (expanded.size > 0) return expanded;
     if (value) {
-      const m = MATERIAL_TYPES.find((x) => x.value === value);
+      const m = PAINT_LINES.find((x) => x.value === value);
       if (m) return new Set<string>([m.group]);
     }
     return visibleGroups.length > 0 ? new Set<string>([visibleGroups[0].label]) : new Set<string>();
@@ -142,7 +143,7 @@ export default function MaterialTypePicker({
       } else if (prev.size > 0) {
         base = prev;
       } else if (value) {
-        const m = MATERIAL_TYPES.find((x) => x.value === value);
+        const m = PAINT_LINES.find((x) => x.value === value);
         base = m ? new Set([m.group]) : new Set();
       } else {
         base = visibleGroups.length > 0 ? new Set([visibleGroups[0].label]) : new Set();

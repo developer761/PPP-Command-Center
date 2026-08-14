@@ -15,7 +15,7 @@ import {
   type GallonEstimate,
   type PaintUnit,
 } from "@/lib/supplier-order/estimate-gallons";
-import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, PAINT_LINE_VALUES } from "@/lib/customer-form/material-types";
 import { emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 
 /**
@@ -240,10 +240,13 @@ export default function OrderBuilderView({
 
   /* ── Paint-line options ────────────────────────────────────────────────── */
   const lineMaterialValues = useMemo<ReadonlySet<string>>(() => {
+    // Falls back to the LINE vocabulary, not the full allowlist — the allowlist
+    // also carries legacy line+finish values for back-compat, and those must
+    // never be offered as a fresh choice (Kate round-3 #09).
     const base = (draft?.allowedMaterialTypeValues ?? []).length
       ? draft!.allowedMaterialTypeValues!
-      : [...VALID_MATERIAL_TYPE_VALUES];
-    // Primers are Extras, never a topcoat line (Kate round-2 #22).
+      : [...PAINT_LINE_VALUES];
+    // Primers are Extras, never a topcoat line (Kate round-2 #22 / round-3 #08).
     return new Set(base.filter((v) => !PRIMER_MATERIAL_VALUES.has(v)));
   }, [draft]);
 

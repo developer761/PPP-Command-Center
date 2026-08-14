@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
 import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, applyQuantityOverrides, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
-import { filterMaterialTypesForWorkOrder } from "@/lib/customer-form/material-types";
+import { filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
 import type {
   SnapshotAccount,
   SnapshotPaintColor,
@@ -906,14 +906,21 @@ export async function buildSupplierOrderDraft(
   // `input.workOrder.materialType ||`, so the admin's pre-set value was
   // silently ignored and the vendor warning fired on every order even when
   // admin had set the paint line.)
+  // Kate round-2 #16 / round-3 #24: the paint line, in priority order —
+  //   1. what the estimator picked on the order builder
+  //   2. what the AM or customer chose on the entry form (this is #24: the
+  //      AM's Internal Entry pick has to REACH the order form, and it does so
+  //      through the submitted payload)
+  //   3. whatever was pre-set on the work order in Salesforce
+  // Collapsed to a LINE (#09) so a legacy "Regal Select Eggshell" on an old WO
+  // still lands on a value the pickers can show.
   const materialType =
-    // Kate round-2 #16: the estimator can set the MAIN paint line on the Order
-    // Materials page — it's the top-priority job-level value, so every color
-    // defaults to it and the vendor email never warns "not specified" (#23).
-    (input.materialType ?? "").trim() ||
-    (input.customerSubmittedPayload?.materialType ?? "").trim() ||
-    input.workOrder.materialType ||
-    null;
+    paintLineFromValue(
+      (input.materialType ?? "").trim() ||
+      (input.customerSubmittedPayload?.materialType ?? "").trim() ||
+      input.workOrder.materialType ||
+      ""
+    ) || null;
   // Per-color Material Type overrides (Katie 2026-06-05). Convert the
   // serialization-friendly Record<> into a Map for O(1) lookups inside the
   // formatter. Empty record / undefined → no overrides → formatter falls

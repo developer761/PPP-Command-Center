@@ -44,8 +44,8 @@ Anchor files:
 - ⬜ **07 · Process** — Sender-set color deadline. Date field on the send form, always present; default = WO Start Date when one exists, else empty; never render a past date. (68% of WOs in Coordination/Scheduling have no start date — the current Close-Date fallback is always expired.)
 
 ## Internal Entry page (`/f/[token]`) · 0/2
-- ⬜ **08 · Layout** ↻R2#20 — Primer still in the product-line picklist here; move to Extras as done on Order Materials.
-- ⬜ **09 · Layout** — Product line picker must list the LINE only (Ultra Spec, Regal Select, Ben, Aura), not line+finish. Finish is already captured per surface. Applies to AM form AND order form.
+- ✅ **08 · Layout** ↻R2#20 — Primer still in the product-line picklist here; move to Extras as done on Order Materials.
+- ✅ **09 · Layout** — Product line picker must list the LINE only (Ultra Spec, Regal Select, Ben, Aura), not line+finish. Finish is already captured per surface. Applies to AM form AND order form.
 
 ## Both entry pages · 0/1
 - ⬜ **10 · Process** — Non-standard surfaces (Walls/Ceiling/Cabinets/Door) write overflow to SF Color Notes correctly, but are then cleared from the CC surface fields. Push to SF **and** keep the CC copy exactly as entered.
@@ -68,7 +68,7 @@ Anchor files:
 - ✅ **21 · Bug** ↻R2#06+#18 — Vendor pop-up doesn't anchor; scroll trap persists into Order Materials. Adopt the Preview Materials Order scroll setup.
 - ✅ **22 · Bug** — Manual quantities reset when extras/fulfillment/product line change; product line then missing from the email; extras added after quantities don't reach the email. Root cause above.
 - ✅ **23 · Bug** — Per-color product-line override either omitted from the email, or listed but quantities fall back to "(PPP to confirm quantities)".
-- ⬜ **24 · Bug** ↻R2#15 — AM's Internal Entry product line doesn't reach the order form (picklist arrives empty). Shape may change with #09.
+- ✅ **24 · Bug** ↻R2#15 — AM's Internal Entry product line doesn't reach the order form (picklist arrives empty). Shape may change with #09.
 - ✅ **25 · Layout** — "Order — what to buy": show room(s) + surface per color line. Same colour used in two rooms currently collapses to one line reading just "Walls". Pairs with #15.
 - ✅ **26 · Bug** — With no sq ft, + climbs the TOTAL while the line still reads "manual entry required". Root cause above.
 - ✅ **27 · Layout** ↻R2#21 — Per-line unit selection: gallon **and quart** (~1/5 of containers bought are quarts/pints). Not built in round 2.
