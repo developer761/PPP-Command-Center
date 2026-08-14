@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { denyCrewApi } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
-import { listCommercialAccounts, type AccountsListFilters } from "@/lib/commercial/accounts/db";
+import { type AccountsListFilters } from "@/lib/commercial/accounts/db";
 import { exportAccountsCsv, exportAccountsFilename } from "@/lib/commercial/accounts/export";
 
 /**
@@ -51,13 +51,19 @@ export async function GET(request: Request) {
         : undefined,
     industry: industry || undefined,
   };
+  // The four POST-FETCH chip filters the list page also applies — these were
+  // dropped by the export, so a filtered view exported the wider book (audit
+  // D10). exportAccountsCsv applies them off the overview/tag data it already
+  // loads, and returns the true row count for the filename.
+  const quick = {
+    stale: url.searchParams.get("stale") === "1",
+    expiring: url.searchParams.get("expiring") === "1",
+    issue: url.searchParams.get("issue") === "1",
+    tag: url.searchParams.get("tag") || undefined,
+  };
 
-  // Pre-count for the filename. listCommercialAccounts is the same call
-  // exportAccountsCsv runs internally — we accept the second roundtrip
-  // because it lets the filename carry the row count.
-  const accounts = await listCommercialAccounts(filters);
-  const csv = await exportAccountsCsv(filters);
-  const filename = exportAccountsFilename(filters, accounts.length);
+  const { csv, count } = await exportAccountsCsv(filters, quick);
+  const filename = exportAccountsFilename(filters, count);
 
   return new NextResponse(csv, {
     status: 200,

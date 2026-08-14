@@ -803,8 +803,18 @@ export default async function CommercialOpportunitiesPage({
     month: "2-digit",
   }).formatToParts(new Date());
   const monthStartDate = `${monthStartParts.find((p) => p.type === "year")?.value}-${monthStartParts.find((p) => p.type === "month")?.value}-01`;
-  // Same rule as the dashboard (wasWonInPeriod) — these two disagreed.
-  const wonThisMonth = oppsRaw.filter((o) => wasWonInPeriod(o, monthStartDate)).length;
+  // Wins this month is a WHOLE-BOOK figure — it must not move with the current
+  // view. oppsRaw is narrowed by the status/column + search filter, so a saved
+  // view that filters to (say) Proposals or Qualifying contains no won deals and
+  // the KPI read a structural 0 (audit D11). Count over the unfiltered book,
+  // matching the dashboard's wasWonInPeriod exactly. Reuse oppsUnfiltered when it
+  // already IS the book (no status/search filter, archived not forced in); else
+  // fetch the book once more just for this count.
+  const winsBase =
+    !validColumn && !search && !includeArchived
+      ? oppsUnfiltered
+      : await listCommercialOpportunities({});
+  const wonThisMonth = winsBase.filter((o) => wasWonInPeriod(o, monthStartDate)).length;
 
   // URL builders — behavior unchanged from prior file.
   const baseParams = new URLSearchParams();

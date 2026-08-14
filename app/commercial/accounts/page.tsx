@@ -290,7 +290,11 @@ export default async function CommercialAccountsPage({
   // when a filter is active these numbers describe the matching set, not the
   // whole book — the labels below flip to say so (Karan 2026-07-27 audit; the
   // old copy claimed "book" while showing the filtered slice).
-  const filterActive = !!(search || rating || compliance || filterStale || filterExpiring || filterIssue);
+  // tagFilter included — a tag-only view still shows a SLICE, so the KPIs must
+  // read "Matching accounts / across matches", not "Total accounts / across the
+  // book". Omitting it here (while anyFilterActive below counted it) is why a
+  // tag filter alone still claimed the whole book (audit D18).
+  const filterActive = !!(search || rating || compliance || tagFilter || filterStale || filterExpiring || filterIssue);
   const universeCount = accountsRaw.length; // search/rating-filtered size — for the "of N" header
   const matchingCount = accounts.length; // the DISPLAYED set (after the quick-filter chips)
   const recentlyActiveCount = recentlyActive.length;

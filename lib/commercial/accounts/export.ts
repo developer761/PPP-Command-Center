@@ -3,6 +3,17 @@ import "server-only";
 import { listCommercialAccounts, type AccountsListFilters, type CommercialAccount } from "./db";
 import { listTagsForAccounts } from "./tags";
 import { listAccountOverviews } from "./overview";
+import { ACTIVITY_STALE_DAYS } from "./constants";
+import { daysAgoEt } from "@/lib/date-et";
+
+/** The list page's post-fetch quick-filter chips (stale / expiring / issue /
+ *  tag). Not DB-level filters — they read the per-account overview + tags. */
+export type AccountQuickFilters = {
+  stale?: boolean;
+  expiring?: boolean;
+  issue?: boolean;
+  tag?: string;
+};
 
 /**
  * CSV export of the Accounts list.
@@ -69,13 +80,42 @@ function isoDate(s: string | null | undefined): string {
   return s.includes("T") ? new Date(s).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) : s.slice(0, 10);
 }
 
-export async function exportAccountsCsv(filters: AccountsListFilters = {}): Promise<string> {
-  const accounts = await listCommercialAccounts(filters);
-  const ids = accounts.map((a) => a.id);
+export async function exportAccountsCsv(
+  filters: AccountsListFilters = {},
+  quick: AccountQuickFilters = {}
+): Promise<{ csv: string; count: number }> {
+  const allAccounts = await listCommercialAccounts(filters);
+  const ids = allAccounts.map((a) => a.id);
   const [tagsByAccount, overviewsById] = await Promise.all([
     listTagsForAccounts(ids),
     listAccountOverviews(ids),
   ]);
+
+  // Apply the SAME post-fetch quick-filter chips the list page does (they read
+  // overview + tags, not the DB query), so the CSV matches the VISIBLE set. The
+  // export honored only rating/compliance/search — 3 of the 7 filters — so a
+  // "Stale" or "Compliance issue" or tag view exported the wider book (audit
+  // D10). Predicates mirror app/commercial/accounts/page.tsx exactly.
+  const tagLower = quick.tag?.trim().toLowerCase();
+  const accounts = allAccounts.filter((a) => {
+    const ov = overviewsById.get(a.id) ?? null;
+    if (quick.stale) {
+      const days = daysAgoEt(ov?.last_activity_at) ?? 0;
+      if (!(Number.isFinite(days) && days > ACTIVITY_STALE_DAYS)) return false;
+    }
+    if (quick.expiring) {
+      if (!ov || ov.expired_document_count + ov.expiring_soon_document_count <= 0) return false;
+    }
+    if (quick.issue) {
+      const hasIssue = a.vendor_compliance_status === "red" || (ov ? ov.expired_document_count > 0 : false);
+      if (!hasIssue) return false;
+    }
+    if (tagLower) {
+      const tags = tagsByAccount.get(a.id) ?? [];
+      if (!tags.some((t) => t.tag.toLowerCase() === tagLower)) return false;
+    }
+    return true;
+  });
 
   const rows: string[] = [];
   // UTF-8 BOM so Excel opens it as UTF-8 (without it, Cyrillic / em-dash
@@ -113,7 +153,7 @@ export async function exportAccountsCsv(filters: AccountsListFilters = {}): Prom
       ].join(",")
     );
   }
-  return rows.join("\r\n");
+  return { csv: rows.join("\r\n"), count: accounts.length };
 }
 
 /** Filename like "ppp-commercial-accounts-2026-06-18.csv" — drop tokens
