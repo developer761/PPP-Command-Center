@@ -1,14 +1,21 @@
-import { deriveDeliverySpine } from "@/lib/commercial/projects/project-attention";
+import Link from "next/link";
 
 /**
- * The compact delivery glance — one line above the tab bar on the non-project
- * tabs, so on any surface you can see where the job is in delivery.
+ * The delivery tools, surfaced on the deal itself once the job is won.
  *
- * Karan 2026-08-13→15: this started as a row of tool LINKS, but the tools are
- * already the deal's tab bar, so a link row was a second copy of the navigation
- * that "serves no purpose." It's now a compact PROGRESS SPINE — the same six
- * stages the Project tab shows, shrunk to a strip of dots with the current
- * stage named — which answers something the tabs can't: how far along is this.
+ * Karan 2026-08-13: *"we're in delivery now and there's no work order or
+ * closeout and warranty or anything like that here."* They existed — one click
+ * down, inside the Project tab — which on the screen he was looking at is the
+ * same as not existing.
+ *
+ * Deliberately a CHECKLIST, not a nav row. A row of six links tells you where
+ * things are; this tells you what state each one is in, which is the question
+ * somebody actually has standing on a job: has the work order been written,
+ * are submittals back, has anything been billed, is closeout started.
+ *
+ * Order follows the work, not the alphabet: submittals and the work order come
+ * before anyone mobilises, change orders and billing run alongside, closeout
+ * ends it.
  */
 
 export type DeliveryTool = {
@@ -19,64 +26,73 @@ export type DeliveryTool = {
   state: string;
   /** done = there and finished · active = in flight · todo = nothing yet. */
   status: "done" | "active" | "todo";
-  /** Which delivery phase this belongs to. */
+  /** Which delivery phase this belongs to. Karan 2026-08-13: "none of these
+   *  say what phase they are correlated with." Without it the strip is six
+   *  tools in a row and nothing tells you which ones are this week's. */
   phase: string;
 };
 
-const DOT: Record<"done" | "partial" | "todo", string> = {
+const DOT: Record<DeliveryTool["status"], string> = {
   done: "bg-emerald-500",
-  partial: "bg-amber-400",
-  todo: "bg-ppp-charcoal-200",
+  active: "bg-cc-brand-500",
+  todo: "bg-ppp-charcoal-300",
 };
 
 export function DeliveryToolsStrip({
-  status,
   tools,
   stageMeaning,
-  money,
 }: {
-  status: string;
   tools: DeliveryTool[];
-  /** What the CURRENT stage means — the line that decides when to move on. */
+  /** What the CURRENT stage means — the line that decides when to move on.
+   *  A tooltip on the bar covers a mouse; this covers a phone, which is where
+   *  Karan reads this. */
   stageMeaning?: string | null;
-  /** Billing signal so the strip's Billing dot matches the Project spine (a
-   *  single paid invoice must not read as the whole job billed). */
-  money?: { hasContract: boolean; contractCents: number; billedCents: number; collectedCents: number } | null;
 }) {
   if (tools.length === 0) return null;
-  const byKey = (k: string) => {
-    const t = tools.find((x) => x.key === k);
-    return t ? { status: t.status, label: t.state } : null;
-  };
-  const spine = deriveDeliverySpine({
-    status,
-    wonLabel: null,
-    onSite: false,
-    submittals: byKey("submittals"),
-    billing: byKey("invoices") ?? byKey("aia"),
-    closeout: byKey("closeout"),
-    money: money ?? null,
-  });
-  const current = spine.find((s) => s.current);
-  const doneN = spine.filter((s) => s.state === "done").length;
-
   return (
-    <section aria-label="Delivery progress" className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-3 px-3.5 py-2.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 shrink-0">Delivery</span>
-        <div className="flex items-center flex-1 min-w-0" aria-hidden>
-          {spine.map((s, i) => (
-            <div key={s.key} className="flex items-center flex-1 min-w-0 last:flex-none">
-              <span className={`h-2 w-2 rounded-full shrink-0 ${s.current ? "bg-emerald-500 ring-2 ring-cc-brand-500/30" : DOT[s.state]}`} title={`${s.label}${s.meta ? ` — ${s.meta}` : ""}`} />
-              {i < spine.length - 1 && (
-                <span className={`h-[2px] flex-1 mx-0.5 ${s.state === "done" || s.current ? "bg-emerald-400" : "bg-ppp-charcoal-100"}`} />
-              )}
-            </div>
-          ))}
-        </div>
-        <span className="text-[11px] font-semibold text-ppp-charcoal-600 shrink-0 tabular-nums">
-          {current ? current.label : `${doneN}/${spine.length}`}
+    <section
+      aria-label="Delivery"
+      className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden"
+    >
+      <div className="px-3.5 py-2 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
+        <h2 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+          Delivery
+        </h2>
+        <span className="text-[10.5px] text-ppp-charcoal-400">
+          {tools.filter((t) => t.status === "todo").length} not started
         </span>
+      </div>
+      {/* ONE ROW, with the phase named once per group.
+          Karan tried the stacked-blocks version and preferred this: "I like
+          the other bar better." A row you scan left-to-right reads as a
+          sequence, which is what delivery IS; stacking it into four bordered
+          blocks turned a timeline into a form. The phase label still prints
+          once per group, so the grouping is there without the furniture. */}
+      <div className="flex items-stretch divide-x divide-ppp-charcoal-100 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {tools.map((t, i) => (
+          <Link
+            key={t.key}
+            href={t.href}
+            className="group min-w-[9rem] flex-1 px-3.5 py-2.5 min-h-[44px] hover:bg-cc-brand-50/50 transition-colors"
+          >
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-0.5 whitespace-nowrap">
+              {i === 0 || tools[i - 1].phase !== t.phase ? t.phase : "\u00A0"}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOT[t.status]}`} />
+              <span className="text-[11.5px] font-semibold text-ppp-charcoal group-hover:text-cc-brand-800 whitespace-nowrap">
+                {t.label}
+              </span>
+            </span>
+            <span
+              className={`block text-[11px] mt-0.5 whitespace-nowrap ${
+                t.status === "todo" ? "text-ppp-charcoal-400 italic" : "text-ppp-charcoal-600"
+              }`}
+            >
+              {t.state}
+            </span>
+          </Link>
+        ))}
       </div>
       {stageMeaning && (
         <p className="px-3.5 py-2 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">

@@ -2573,7 +2573,7 @@ export default async function OpportunityDetailPage({
           to avoid listing the same seven tools twice. Both step aside once a
           tool is open. */}
       {!isDeletedDeal && !toolView && primary !== "project" && (
-        <DeliveryToolsStrip status={opp.status} tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} money={pathIsWon ? { hasContract: projectMoney.hasContract, contractCents: projectMoney.contractCents, billedCents: projectMoney.billedCents, collectedCents: projectMoney.collectedCents } : null} />
+        <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
       )}
       {/* The Project HOME (delivery tool cards) renders in the Project tab BODY
           below the tab bar, not here above it — see further down. */}
@@ -2660,16 +2660,12 @@ export default async function OpportunityDetailPage({
           (Overview/Documents/Activity/Project). Debrief, Invoices and
           Proposals are leaves with no sub-nav. Pills are red-tinted when
           active so the two-level hierarchy is visually obvious. */}
-      {/* The delivery tools (Submittals / Work Order / … / Closeout) are sub-tabs
-          of `project`, and these pills are how you OPEN them. They render on the
-          Project HOME — the spine above carries the STATUS ("where is the job"),
-          these carry the NAVIGATION ("open this tool"), so the two are
-          complementary, not the duplicate the old tool-card grid was.
-
-          Hidden once a tool is open (toolView): that focused view has its own
-          back-arrow header, and stacking the pills above it is the extra layer of
-          chrome Karan asked to strip on a tool page (2026-08-13). */}
-      {isGroup(primary) && (primary !== "project" || !toolView) && (
+      {/* Sub-tab pills for Overview/Documents/Activity. NOT on `project`: the
+          delivery TOOL STRIP (page-level, above the tabs, on every non-project
+          tab) is how you open a delivery tool, and the Project tab itself is the
+          command center (spine + needs-attention + money + schedule). Karan
+          2026-08-15: "I don't want [the pills] there." */}
+      {isGroup(primary) && primary !== "project" && (
         <div className="flex flex-wrap items-center gap-1.5">
           {SUB_TABS_BY_PRIMARY[primary].map((s) => {
             const active = s.key === sub;
