@@ -300,3 +300,44 @@ export async function markWoliSnapshotTime(token: string): Promise<void> {
     .update({ woli_snapshot_at: new Date().toISOString() })
     .eq("token", token);
 }
+
+/**
+ * The most recent SUBMITTED colour payload for a work order, from any token.
+ *
+ * Kate round-3 #10: "Push the information into Salesforce, but keep it stored
+ * in the Command Center exactly as it was entered."
+ *
+ * The problem this solves: when a line has more surfaces than Salesforce has
+ * colour fields (say Walls, Ceiling, Cabinets AND Door), the overflow is
+ * written to Color Notes and the shared Other slot is deliberately left blank —
+ * we can't tell which orphan it would refer to. The form then re-read
+ * Salesforce and showed Cabinets and Door as empty, so the colours looked lost
+ * even though they'd been entered and pushed.
+ *
+ * They were never lost: submitted_payload holds exactly what was entered. This
+ * returns it so a NEW token (a re-send, or an AM opening Internal Entry after
+ * the customer submitted) seeds from the Command Center's own copy rather than
+ * from Salesforce's lossy projection.
+ *
+ * Deliberately per WORK ORDER, not per token — a re-sent form is a new token
+ * row, and that is precisely the case where the colours went missing.
+ */
+export async function getLatestSubmittedPayload(
+  workOrderId: string
+): Promise<unknown | null> {
+  if (!workOrderId) return null;
+  const sb = adminClient();
+  const { data, error } = await sb
+    .from("customer_form_tokens")
+    .select("submitted_payload")
+    .eq("work_order_id", workOrderId)
+    .not("submitted_at", "is", null)
+    .order("submitted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("[customer-form] getLatestSubmittedPayload failed:", error.message);
+    return null;
+  }
+  return data?.submitted_payload ?? null;
+}

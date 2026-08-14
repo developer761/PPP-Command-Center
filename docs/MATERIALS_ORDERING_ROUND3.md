@@ -48,7 +48,7 @@ Anchor files:
 - ✅ **09 · Layout** — Product line picker must list the LINE only (Ultra Spec, Regal Select, Ben, Aura), not line+finish. Finish is already captured per surface. Applies to AM form AND order form.
 
 ## Both entry pages · 0/1
-- ⬜ **10 · Process** — Non-standard surfaces (Walls/Ceiling/Cabinets/Door) write overflow to SF Color Notes correctly, but are then cleared from the CC surface fields. Push to SF **and** keep the CC copy exactly as entered.
+- ✅ **10 · Process** — Non-standard surfaces (Walls/Ceiling/Cabinets/Door) write overflow to SF Color Notes correctly, but are then cleared from the CC surface fields. Push to SF **and** keep the CC copy exactly as entered.
 
 ## Mail Hub · 0/3
 - ⬜ **11 · Layout** ↻R2#07 — Regroup filters: Sender · Status · [3 date picklists as one visually-separated set]. Add supplier statuses to Status options.
@@ -75,7 +75,7 @@ Anchor files:
 - ✅ **28 · Process** ↻R2#24 — Split "Add custom item" into custom **sundry** item (exists) and custom **color** item (new; between "Order — what to buy" and Color Notes; one typeable field, help text "Color and finish — e.g. Color Match: Behr 56, eggshell"; qty + unit like any line). Unblocks the rest of R2#24: Customer Notes + "customer is not painting" move out of the email body into Color Notes.
 - 🔨 **29 · Process** — Supplier order email carries no contact. Store a phone per user (new — captured at account setup), default the order's phone field to it, editable per order without changing the stored default.
 - ⬜ **30 · Process** — Failed SF writes are silent. (a) show the saver an error at the moment it fails; (b) email that user their submitted content so it isn't lost; (c) notify Kate + Katie (email or Slack).
-- ⬜ **31 · Bug** — Color Notes compilation labels every entry "Room" instead of the real room name, and runs surfaces together on one line. Want real room name + line break per surface. Same for free-text notes.
+- ✅ **31 · Bug** — Color Notes compilation labels every entry "Room" instead of the real room name, and runs surfaces together on one line. Want real room name + line break per surface. Same for free-text notes.
 - ✅ **32 · Bug** — "Required by" accepts a past date. Root cause above.
 
 ## Edge cases · 0/1

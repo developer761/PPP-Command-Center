@@ -423,13 +423,16 @@ export async function POST(
         fields.FinishOther__c = null;
       }
       for (const o of orphanPicks) {
-        // Human-readable for the crew: "Surface: ColorName (code) Finish".
-        // Prefer the normalized SF finish; fall back to the raw label so an
-        // unmapped choice (High-Gloss) still tells the crew what was picked.
-        const finishText = o.sfFinish ?? o.rawFinish ?? "";
+        // Human-readable for the crew: "Surface: ColorName (code) — Finish".
+        // Kate round-3 #31 wants the finish set off by a dash and each surface
+        // on its own line, because these ran together into one unreadable
+        // paragraph. Prefer the customer's own finish label over the SF-
+        // normalised one ("Semi-Gloss" reads better than "Semigloss"), and fall
+        // back to whichever exists so an unmapped choice still says something.
+        const finishText = o.rawFinish ?? o.sfFinish ?? "";
         const codeText = o.colorCode ? ` (${o.colorCode})` : "";
         orphanNoteParts.push(
-          `${o.surface}: ${o.colorName ?? "(color picked)"}${codeText}${finishText ? ` ${finishText}` : ""}`.trim()
+          `${o.surface}: ${o.colorName ?? "(color picked)"}${codeText}${finishText ? ` — ${finishText}` : ""}`.trim()
         );
       }
     } else if (isReedit) {
@@ -442,8 +445,16 @@ export async function POST(
     // entirely in their dedicated color/finish fields, so they no longer
     // duplicate into notes (Kate 2026-07-09 — finishes belong in FinishX__c).
     const noteLines: string[] = [];
+    // Kate round-3 #31: lead with the REAL room name and break the surfaces
+    // onto separate lines. Two complaints in one: every entry was labelled with
+    // a generic "Room", and the surfaces ran together on a single line, so a
+    // work order covering a dining room and a kitchen produced two identical
+    // unreadable blocks. When Salesforce genuinely has no area label we omit
+    // the header rather than inventing one.
+    const roomLabel = (freshLi.areaLabel ?? "").trim();
     if (orphanNoteParts.length > 0) {
-      noteLines.push(orphanNoteParts.join(", "));
+      if (roomLabel) noteLines.push(`${roomLabel}:`);
+      noteLines.push(...orphanNoteParts);
     }
     // Kate #09: record each "Don't paint this surface" pick as an explicit note.
     for (const surf of skippedSurfaces) {
@@ -464,6 +475,9 @@ export async function POST(
       .trim();
     if (submittedNotes) {
       if (noteLines.length > 0) noteLines.push("");
+      // Kate round-3 #31: free-text gets the same treatment — real room name,
+      // then the note on its own line, instead of one long run-on.
+      if (roomLabel) noteLines.push(`${roomLabel}:`);
       noteLines.push(`Customer notes: ${submittedNotes}`);
     }
     if (noteLines.length > 0) {

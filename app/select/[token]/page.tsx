@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { headers } from "next/headers";
-import { validateToken, markOpened, markWoliSnapshotTime } from "@/lib/customer-form/tokens";
+import { validateToken, markOpened, markWoliSnapshotTime, getLatestSubmittedPayload } from "@/lib/customer-form/tokens";
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
 import { loadTemplates, render, buildVars } from "@/lib/customer-form/templates";
 import CustomerFormView from "@/components/customer-form-view";
@@ -44,24 +44,38 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
   // form. For an edit, seed it from the prior submission so the customer sees
   // and tweaks what they already picked.
   const isEditing = status.kind === "editable";
-  const priorSubmission =
+  type SubmittedPayload = {
+    lineItems?: Array<{
+      id: string;
+      surfaces?: Array<{
+        surface: string;
+        colorId: string | null;
+        colorName: string | null;
+        colorCode: string | null;
+        finish: string | null;
+        skipped?: boolean;
+      }>;
+      notes?: string;
+    }>;
+    globalNotes?: string;
+  };
+  // Kate round-3 #10: seed from this token's own submission when it has one,
+  // and otherwise from the Command Center's most recent submission for this
+  // WORK ORDER.
+  //
+  // Without the fallback, a re-sent form (a brand-new token) had no prior
+  // submission and fell back to reading Salesforce — which is lossy for lines
+  // carrying more surfaces than SF has colour fields. Cabinets and Door had
+  // gone to Color Notes and the shared Other slot was left blank, so the form
+  // showed them empty and the colours looked deleted. They were always in
+  // submitted_payload; we just weren't reading it.
+  const ownPayload =
     isEditing && status.token.submitted_payload
-      ? (status.token.submitted_payload as unknown as {
-          lineItems?: Array<{
-            id: string;
-            surfaces?: Array<{
-              surface: string;
-              colorId: string | null;
-              colorName: string | null;
-              colorCode: string | null;
-              finish: string | null;
-              skipped?: boolean;
-            }>;
-            notes?: string;
-          }>;
-          globalNotes?: string;
-        })
+      ? (status.token.submitted_payload as unknown as SubmittedPayload)
       : null;
+  const priorSubmission =
+    ownPayload ??
+    ((await getLatestSubmittedPayload(status.token.work_order_id)) as SubmittedPayload | null);
 
   const formData = await loadFormRenderData(status.token.work_order_id);
   if (!formData) {

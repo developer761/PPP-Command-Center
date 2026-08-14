@@ -44,3 +44,37 @@ describe("extractCustomerFreeText — pre-fill only shows the customer's own tex
     expect(extractCustomerFreeText(raw)).toBe("also see Customer notes: on the garage");
   });
 });
+
+/**
+ * Kate round-3 #31 — Color Notes carry a real room name and one surface per
+ * line. That gave the machine-generated preamble a header line, so extraction
+ * has to drop the header too when what follows is ours.
+ */
+describe("extractCustomerFreeText — round-3 #31 room headers", () => {
+  it("drops a room header + orphan colour lines when there is no customer note", () => {
+    const raw = [
+      "Dining Room:",
+      "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
+      "Door: 2108-40 Stardust (2108-40) — Semi-Gloss",
+    ].join("\n");
+    expect(extractCustomerFreeText(raw)).toBe("");
+  });
+
+  it("keeps the customer's note and drops the header block around it", () => {
+    const raw = [
+      "Dining Room:",
+      "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
+      "",
+      "Dining Room:",
+      "Customer notes: Dave approved the accent wall",
+    ].join("\n");
+    expect(extractCustomerFreeText(raw)).toBe("Dave approved the accent wall");
+  });
+
+  it("does NOT eat a crew note that happens to start with its own heading", () => {
+    const raw = "Kitchen:\nWatch the new cabinets, they are still curing";
+    expect(extractCustomerFreeText(raw)).toBe(
+      "Kitchen:\nWatch the new cabinets, they are still curing"
+    );
+  });
+});
