@@ -67,9 +67,9 @@ export function DeliveryToolsStrip({
         <div className="flex items-center flex-1 min-w-0" aria-hidden>
           {spine.map((s, i) => (
             <div key={s.key} className="flex items-center flex-1 min-w-0 last:flex-none">
-              <span className={`h-2 w-2 rounded-full shrink-0 ${DOT[s.state]} ${s.current ? "ring-2 ring-cc-brand-500/30" : ""}`} title={`${s.label}${s.meta ? ` — ${s.meta}` : ""}`} />
+              <span className={`h-2 w-2 rounded-full shrink-0 ${s.current ? "bg-emerald-500 ring-2 ring-cc-brand-500/30" : DOT[s.state]}`} title={`${s.label}${s.meta ? ` — ${s.meta}` : ""}`} />
               {i < spine.length - 1 && (
-                <span className={`h-[2px] flex-1 mx-0.5 ${s.state === "done" ? "bg-emerald-400" : "bg-ppp-charcoal-100"}`} />
+                <span className={`h-[2px] flex-1 mx-0.5 ${s.state === "done" || s.current ? "bg-emerald-400" : "bg-ppp-charcoal-100"}`} />
               )}
             </div>
           ))}

@@ -90,19 +90,33 @@ function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMe
             const t = SPINE_TONE[st.state];
             const first = i === 0;
             const last = i === stages.length - 1;
+            // The stage we're ON now is GREEN — we're in it (Karan 2026-08-15).
+            // Amber is only for OUT-OF-ORDER activity on a stage that isn't the
+            // current one (e.g. billing started while we're still in pre-con).
+            const green = st.current || st.state === "done";
+            const amber = !st.current && st.state === "partial";
+            const marker = green
+              ? "bg-emerald-500 border-emerald-500 text-white"
+              : amber
+              ? "bg-amber-400 border-amber-400 text-white"
+              : t.marker;
+            const bar = green ? "bg-emerald-500" : amber ? "bg-amber-400" : t.bar;
+            // A check means "done"; the current stage is in progress, so it shows
+            // a filled green dot + ring, no tick.
+            const check = st.state === "done" || amber;
             return (
               <li key={st.key} className="relative flex-1 min-w-[62px] text-center pt-8 px-0.5">
-                <span aria-hidden className={`absolute top-[10px] h-[3px] ${t.bar} ${first ? "left-1/2 right-0" : last ? "left-0 right-1/2" : "left-0 right-0"}`} />
+                <span aria-hidden className={`absolute top-[10px] h-[3px] ${bar} ${first ? "left-1/2 right-0" : last ? "left-0 right-1/2" : "left-0 right-0"}`} />
                 <span
                   aria-hidden
-                  className={`absolute left-1/2 -translate-x-1/2 top-0 h-[21px] w-[21px] rounded-full border-2 z-10 inline-flex items-center justify-center ${t.marker} ${st.current ? "ring-4 ring-cc-brand-500/30" : ""}`}
+                  className={`absolute left-1/2 -translate-x-1/2 top-0 h-[21px] w-[21px] rounded-full border-2 z-10 inline-flex items-center justify-center ${marker} ${st.current ? "ring-4 ring-cc-brand-500/30" : ""}`}
                 >
-                  {t.check && (
+                  {check && (
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
                   )}
                 </span>
-                <div className={`text-[11px] leading-tight ${st.current ? "text-cc-brand-700 font-bold" : t.lbl}`}>{st.label}</div>
-                {st.meta && <div className={`text-[9.5px] mt-0.5 truncate ${t.meta}`}>{st.meta}</div>}
+                <div className={`text-[11px] leading-tight ${st.current ? "text-emerald-700 font-bold" : green ? "text-ppp-charcoal font-bold" : amber ? "text-ppp-charcoal font-bold" : t.lbl}`}>{st.label}</div>
+                {st.meta && <div className={`text-[9.5px] mt-0.5 truncate ${st.current ? "text-emerald-700" : t.meta}`}>{st.meta}</div>}
               </li>
             );
           })}
