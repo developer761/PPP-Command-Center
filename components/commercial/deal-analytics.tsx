@@ -135,8 +135,55 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
     },
   ];
 
+  // Money not yet in hand — the one figure the four bars don't state outright:
+  // what's left to bill + what's billed-but-unpaid + retainage still held.
+  const stillToCome = Math.max(0, unbilled) + a.openBalanceCents + a.retainageCents;
+  const marginValueTone =
+    a.marginPct === null
+      ? "text-ppp-charcoal"
+      : a.marginPct < 0
+      ? "text-rose-700"
+      : a.marginPct < 15
+      ? "text-amber-700"
+      : "text-emerald-700";
+
   return (
     <div className="space-y-4">
+      {/* THE BOTTOM LINE, first and biggest — the one answer this tab exists to
+          give. Reads even on a job with no costs logged yet (says so, rather
+          than flattering a 100% margin), so a thin job isn't a blank screen. */}
+      <div className="rounded-xl border border-ppp-charcoal-100 bg-gradient-to-br from-ppp-charcoal-50/70 to-surface p-5">
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">Bottom line</div>
+            <div className={`font-condensed text-[34px] font-black leading-none tabular-nums ${marginValueTone}`}>
+              {a.marginPct === null ? "—" : formatCentsFull(a.marginCents)}
+            </div>
+            <div className="text-[12px] text-ppp-charcoal-600 mt-1">
+              {a.marginPct === null ? (
+                "Set a contract to see the margin."
+              ) : (
+                <>
+                  <strong className="font-semibold">{a.marginPct}% margin</strong> · billed minus cost
+                  {a.costsCents === 0 && <span className="text-amber-700"> · no costs logged yet</span>}
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-6">
+            <div>
+              <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Collected</div>
+              <div className="font-condensed text-[21px] font-black tabular-nums text-emerald-700 leading-tight">{formatCentsFull(a.collectedCents)}</div>
+              <div className="text-[10.5px] text-ppp-charcoal-500 tabular-nums">{collectedPct}% of invoiced</div>
+            </div>
+            <div>
+              <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Still to come</div>
+              <div className="font-condensed text-[21px] font-black tabular-nums text-ppp-charcoal leading-tight">{formatCentsFull(stillToCome)}</div>
+              <div className="text-[10.5px] text-ppp-charcoal-500">to bill + owed + retainage</div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label="Contract to date"
