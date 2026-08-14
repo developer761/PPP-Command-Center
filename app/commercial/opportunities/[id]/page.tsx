@@ -2044,8 +2044,11 @@ export default async function OpportunityDetailPage({
   //
   // The delivery strip already used the wider predicate, which is why its
   // tiles pointed at tabs that were no longer there. One definition now: won,
-  // OR anywhere past it.
-  const isOppWon = isWon(opp) || isDeliveryPhase(opp.status);
+  // OR anywhere past it, OR owning a live project (a deal un-won back to a
+  // pre-sale status keeps its project — see `hasLiveProject` above). The tab
+  // and the tool computation MUST share this predicate, or the tools compute
+  // while the tab that shows them stays hidden — the same blank-tab bug.
+  const isOppWon = isWon(opp) || isDeliveryPhase(opp.status) || hasLiveProject;
   // Karan 2026-07-08: deleted-deal drill-in — the only surfaces that
   // matter are Invoices (record payment / void a straggler) and Overview
   // (see what the deal was). Everything else assumes an active workflow.
