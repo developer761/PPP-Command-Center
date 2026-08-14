@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 /**
@@ -62,6 +62,20 @@ export function SubmitButton({
   // For that case, track it locally: the click is the signal, and the server
   // action's revalidation unmounts or re-renders this button when it lands.
   const [clicked, setClicked] = useState(false);
+  // A cross-form button has NO useFormStatus signal to fall off (that hook reads
+  // the form we're nested in, which for a `form={id}` button is the wrong one),
+  // so its working state rides on this local `clicked` flag. The trap: a failed
+  // action redirects back and re-renders this exact button IN PLACE — the row it
+  // belongs to is still there — so `clicked` would sit `true` forever, leaving
+  // the button reading "…" with aria-busy set long after the action failed and
+  // its error banner rendered (round-3 handoff #6). Clear it once the round-trip
+  // has had time to land; on success the revalidation unmounts us first and this
+  // timer is cleaned up, so the only case it fires in is the stuck one.
+  useEffect(() => {
+    if (!clicked) return;
+    const t = setTimeout(() => setClicked(false), 8000);
+    return () => clearTimeout(t);
+  }, [clicked]);
   const pending = form ? clicked : status.pending;
   const label =
     pending && pendingLabel !== undefined
