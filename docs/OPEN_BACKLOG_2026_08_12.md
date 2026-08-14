@@ -1441,3 +1441,26 @@ clear: a multi-round adversarial audit WITH a regression lens out-finds a single
 ## 📋 Round-2 REMAINING triaged (next pass) — I'll verify each: submittal &sid, deal Edit ejecting to account page,
 schedule emails marked sent on Resend failure, a cron gate reading a retired field, and the MONEY-CHAIN reporting
 disagreements (I'll scrutinise that one — it's the tax-basis-adjacent area).
+
+---
+
+## ✅ VERIFY — round-2 continued: 5 fixes (`33057497`). CLEAN, no miss. Money-chain finding I flagged = confirmed fixed.
+- **#5 Win/Loss "Won $" (the money-chain finding I flagged for scrutiny)** — valued a win at the bid MIDPOINT and never
+  read the signed contract; since bid low/high aren't collected any more, most wins fell to a proposal total. Now
+  `accepted_contract_cents` wins where present (falls back to midpoint/proposal). Both pre-tax → no basis issue.
+  Correct. ✓
+- **#2 dead cron** — the hot-deals-cooling reminder filtered `bid_value_high_cents >= $50k`, a column NOTHING writes
+  since bid low/high were pulled (2026-08-11), so it matched zero rows and reported success silently. Filter removed;
+  the remaining filters define "hot". **This IS my filter-on-a-dead-value lane** (from the Daily Log miss), applied. ✓
+- **#4 signer download routes** — closeout-warranty + work-order interactive PDF routes built the company object
+  WITHOUT signature_name/title, so the on-screen copy printed "Authorized signature" while sent/auto-filed copies
+  printed "Brendan Dwyer, VP". Both now pass the signer. **Sibling-path gap from migration 134 (which I verified the
+  PDFs of, not these download routes).** ✓
+- **#1 submittal dead click** — inline link used `&sid=<id>` which nothing reads (a drafted submittal couldn't be sent
+  from the deal); now opens the real detail page with Back to the deal. ✓
+- **#3 silent email** — `sendEmail` RESOLVES `{ok:false}` (doesn't throw), so the catch never ran and `releaseClaim`
+  never fired → a Resend outage marked crew schedule emails sent + suppressed permanently. Now checks
+  `!sent || sent.ok === false` → releaseClaim, for both day-of and weekly. ✓
+tsc clean, 669 tests.
+
+## 📋 Round-2 remaining (1 left): **deal Edit ejecting to the account page** — triaged, not in this commit. Verify when fixed.
