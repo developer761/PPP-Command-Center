@@ -216,20 +216,29 @@ export async function createAiaApplication(
       // the create (the operator can add lines manually).
       try {
         await seedAiaScheduleOfValues(appRow);
-        // AIA invariant: G702 line 1 (contract sum) == Σ G703 scheduled values.
-        // When the contract was auto-defaulted (from the bid midpoint) AND a
-        // schedule got seeded, snap the contract to the schedule total so the
-        // certificate reconciles (otherwise % complete could exceed 100% + the
-        // balance-to-finish go negative). An explicitly-provided contract wins.
+        // AIA invariant: G702 line 1 (Original Contract Sum) == Σ G703 BASE
+        // scheduled values. When the contract was auto-defaulted (from the bid
+        // midpoint) AND a schedule got seeded, snap the contract to the schedule
+        // total so the certificate reconciles (otherwise % complete could exceed
+        // 100% + the balance-to-finish go negative). An explicitly-provided
+        // contract wins.
+        //
+        // EXCLUDE change-order rows: line 1 is the ORIGINAL contract, COs are
+        // line 2 (Net change by Change Orders). Snapping to the full SOV (which
+        // now carries one row per approved CO) put the COs on both lines, so
+        // line 3 (Contract Sum to Date) double-counted every change order on a
+        // deal without a sent proposal, with no user action (audit M2).
         if (contractWasDefaulted) {
           const lines = await listAiaLineItems(appRow.id);
-          const sovTotal = lines.reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
-          if (sovTotal > 0 && sovTotal !== appRow.original_contract_cents) {
+          const baseSovTotal = lines
+            .filter((l) => !l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? ""))
+            .reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
+          if (baseSovTotal > 0 && baseSovTotal !== appRow.original_contract_cents) {
             await sb
               .from("commercial_aia_applications")
-              .update({ original_contract_cents: sovTotal })
+              .update({ original_contract_cents: baseSovTotal })
               .eq("id", appRow.id);
-            appRow.original_contract_cents = sovTotal;
+            appRow.original_contract_cents = baseSovTotal;
           }
         }
       } catch (e) {
@@ -695,7 +704,15 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
   // original / SOV total — so the certificate's "Original Contract Sum" can't
   // diverge from every other surface for the same deal (2026-08 money audit #2:
   // cards showed $500k while the G702 sent to the GC showed a stale $450k).
-  const sovTotalCents = lines.reduce((sum, l) => sum + Math.round(l.scheduled_value_cents), 0);
+  //
+  // BASE SOV only — line 1 is the ORIGINAL contract; the CO rows are line 2 and
+  // are added back as `netCO` below. Feeding a CO-inclusive SOV to the ladder
+  // made a deal with no sent proposal fall back to (base + COs) for line 1 while
+  // netCO added the COs AGAIN on line 2, so line 3 double-counted them on the
+  // customer-facing G702 (audit M2).
+  const sovTotalCents = lines
+    .filter((l) => !l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? ""))
+    .reduce((sum, l) => sum + Math.round(l.scheduled_value_cents), 0);
 
   // A certificate that has been issued is a document the GC is holding a printed
   // copy of. Once frozen, lines 1 and 2 come from the application itself and

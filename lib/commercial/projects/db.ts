@@ -312,11 +312,13 @@ export async function listProjects(opts: {
       from_previous_cents: number;
       this_period_cents: number;
       materials_stored_cents: number;
+      change_order_id: string | null;
+      item_no: string | null;
     }>(
       () =>
         sb
           .from("commercial_aia_line_items")
-          .select("application_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents")
+          .select("application_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents, change_order_id, item_no")
           .in("application_id", latestAppIds)
           .order("id", { ascending: true })
     );
@@ -329,8 +331,14 @@ export async function listProjects(opts: {
       // three surfaces, two answers.
       const done = lineCompletedStoredCents(l);
       completedByApp.set(l.application_id, (completedByApp.get(l.application_id) ?? 0) + done);
-      // Credit lines count — see the note in computeG702's SOV total.
-      sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.round(l.scheduled_value_cents));
+      // BASE SOV only — this feeds the contract-base ladder (line 1), and
+      // contractToDate adds netApproved COs on TOP (line 359). A CO row is line
+      // 2, not line 1: counting it here too would fall back to a CO-inclusive
+      // SOV and double-count every change order in contractToDate / margin on a
+      // deal with no sent proposal (audit M2), exactly as it did on the G702.
+      if (!l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? "")) {
+        sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.round(l.scheduled_value_cents));
+      }
       const pct = pctByApp.get(l.application_id) ?? 0;
       retainageByApp.set(l.application_id, (retainageByApp.get(l.application_id) ?? 0) + Math.round((done * pct) / 100));
     }
