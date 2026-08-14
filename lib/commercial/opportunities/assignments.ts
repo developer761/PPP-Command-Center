@@ -413,31 +413,36 @@ async function notifyAssignment(
   // overrides is worse than not offering it.
   const { getUserEmailPref } = await import("@/lib/commercial/email-prefs/db");
   const pref = await getUserEmailPref(user_id);
-  if (pref && pref.enabled === false) {
-    console.info(`[commercial/opportunities/assignments] email paused for ${user_id} — in-app only`);
-    return;
+  // The Pause control only silences EMAIL. Returning here also swallowed the
+  // in-app bell (below) — the log even said "in-app only" while skipping it —
+  // so pausing email left the assignee with no signal at all that they'd been
+  // added to a deal. Skip the send; the bell still fires.
+  const emailPaused = !!(pref && pref.enabled === false);
+  if (emailPaused) {
+    console.info(`[commercial/opportunities/assignments] email paused for ${user_id} — in-app bell only`);
+  } else {
+    const result = await sendEmail({
+      to: assigneeEmail,
+      subject: `${subjectVerb} (${roleLabel})`,
+      text,
+      html,
+      // Commercial channel — separate sender domain + Resend key from
+      // customer-facing email so deliverability reputations stay isolated.
+      channel: "commercial",
+      tags: [
+        { name: "kind", value: "commercial_opportunity_assignment" },
+        { name: "assignment_id", value: assignment_id },
+        { name: "action", value: action },
+      ],
+    });
+    if (!result.ok) {
+      console.warn(`[commercial/opportunities/assignments] notify send failed:`, result.error);
+    }
   }
 
-  const result = await sendEmail({
-    to: assigneeEmail,
-    subject: `${subjectVerb} (${roleLabel})`,
-    text,
-    html,
-    // Commercial channel — separate sender domain + Resend key from
-    // customer-facing email so deliverability reputations stay isolated.
-    channel: "commercial",
-    tags: [
-      { name: "kind", value: "commercial_opportunity_assignment" },
-      { name: "assignment_id", value: assignment_id },
-      { name: "action", value: action },
-    ],
-  });
-  if (!result.ok) {
-    console.warn(`[commercial/opportunities/assignments] notify send failed:`, result.error);
-  }
-
-  // In-app bell row — fire-and-forget. Survives email outages so the
-  // assignee still sees a red dot the next time they open the platform.
+  // In-app bell row — fire-and-forget, ALWAYS (even when email is paused).
+  // Survives email outages so the assignee still sees a red dot the next time
+  // they open the platform.
   void insertCommercialTeamAssignedNotification({
     surface: "opportunity",
     parentId: opportunity_id,

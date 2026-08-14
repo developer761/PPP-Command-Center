@@ -449,21 +449,33 @@ async function notifyAssignment(
   <p style="margin:24px 0;"><a href="${accountUrl}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">View the account →</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
-  const result = await sendEmail({
-    to: assigneeEmail,
-    subject: `You've been assigned to ${accountName} (${roleLabel})`,
-    text,
-    html,
-    // Route through the commercial sender + API key (separate
-    // deliverability reputation from customer-facing emails).
-    channel: "commercial",
-    tags: [
-      { name: "kind", value: "commercial_account_assignment" },
-      { name: "assignment_id", value: assignment_id },
-    ],
-  });
-  if (!result.ok) {
-    console.warn(`[commercial/assignments] notify send failed:`, result.error);
+  // Honour the email opt-in. Settings -> Notifications has a Pause control
+  // ("Email paused"); the opp-side notify already respects it, but this
+  // account-side send ignored it entirely, so a user who deliberately turned
+  // email off still got mailed every time they were added to an account. Skip
+  // only the email — the in-app bell below still fires, matching the opp side.
+  const { getUserEmailPref } = await import("@/lib/commercial/email-prefs/db");
+  const pref = await getUserEmailPref(user_id);
+  const emailPaused = !!(pref && pref.enabled === false);
+  if (emailPaused) {
+    console.info(`[commercial/assignments] email paused for ${user_id} — in-app bell only`);
+  } else {
+    const result = await sendEmail({
+      to: assigneeEmail,
+      subject: `You've been assigned to ${accountName} (${roleLabel})`,
+      text,
+      html,
+      // Route through the commercial sender + API key (separate
+      // deliverability reputation from customer-facing emails).
+      channel: "commercial",
+      tags: [
+        { name: "kind", value: "commercial_account_assignment" },
+        { name: "assignment_id", value: assignment_id },
+      ],
+    });
+    if (!result.ok) {
+      console.warn(`[commercial/assignments] notify send failed:`, result.error);
+    }
   }
 
   // In-app bell row — fires regardless of email outcome so the assignee
