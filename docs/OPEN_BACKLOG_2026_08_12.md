@@ -1492,3 +1492,23 @@ shape pending the migration batch (136/137/139-143).**
 - **Clock station** — a crew member with no PIN was told to set it on a supervisor-only page they can't open; copy now
   says who sets it. ✓
 tsc clean, 669 tests.
+
+---
+
+## ✅ VERIFY — round-2 last 5 findings cleared (`05c13e04`). CLEAN. Money-chain disagreements I flagged = RESOLVED.
+- **#1 AIA "completed & stored"** — `listProjects` re-implemented it with a per-column zero-floor, silently dropping a
+  billed DEDUCTIVE line, so the projects index + dashboard reported a different % complete / retainage than the deal
+  page + certificate. Now `lineCompletedStoredCents(l)` (shared rule, clamps per column in the line's direction). Same
+  job, one answer. This IS the money-chain reporting-disagreement finding I flagged — resolved. ✓
+- **#2 proposal billing panel** — `billedCents` includes general COs billed on the proposal's invoices, but the
+  contract side credited only TAGGED COs → reported over-billing on a correctly-billed job. A CO billed on those
+  invoices now lands on BOTH sides. ✓
+- **#3 internal report** — a final-price override makes line prices not sum to TOTAL (deliberate but silent); now
+  states the override + itemized sum + manual total for the approver. ✓
+- **#4 approver gate** — Settings→Access copy claimed "admin must also be flagged approver" but the server never
+  enforces it (deliberately — a fresh install with no approvers would permanently lock every proposal). Fixed the COPY
+  not the code (enforcing would restore the lockout) — verified intent, didn't break the flow. ✓
+- **#5 SubmitButton cross-form** — `useFormStatus` reports on the NESTED form; when `form=` targets a different form it
+  read the wrong one (no feedback on the row click, spurious pending on the bulk action). Now `pending = form ?
+  clicked : status.pending`. (A `form=`-elsewhere edge in the 103-forms SubmitButton sweep I'd verified.) ✓
+tsc clean, 669 tests. **BOTH adversarial audits (56-agent + 49-agent) now fully cleared and verified.**
