@@ -53,3 +53,38 @@ function stripOrphanColorPreamble(text: string): string {
   }
   return kept.join("\n");
 }
+
+/**
+ * The inverse of {@link extractCustomerFreeText}: the MACHINE-written colour
+ * records in a WorkOrderLineItem's ColorNotes__c, without the customer's own
+ * words and without the "don't paint" lines.
+ *
+ * Kate round-3 #16: "Color Notes ... hold the color and finish for orphaned
+ * surfaces and for line items with non-Benjamin-Moore / non-Sherwin-Williams
+ * colors. Anyone previewing the order is missing part of it."
+ *
+ * That matters more than a display gap. When a line carries two or more
+ * surfaces with no dedicated Salesforce colour field (Cabinets AND Door), the
+ * colours go to Color Notes and the shared Other slot is deliberately left
+ * blank — so those colours are absent from the order's line items and would
+ * never reach the vendor. Pulling them back out here puts them in the order's
+ * Color Notes, which does go in the email.
+ *
+ * The customer's free text and the "don't paint" lines are excluded because the
+ * builder already sources those separately; including them would duplicate.
+ */
+export function extractMachineColorLines(raw: string | null | undefined): string[] {
+  const s = String(raw ?? "");
+  if (!s.trim()) return [];
+  // Everything before the "Customer notes:" wrapper is machine-written.
+  const idx = s.indexOf("Customer notes:");
+  const machine = idx === -1 ? s : s.slice(0, idx);
+  return machine
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    // Drop the "don't paint" lines — sourced from skippedSurfaces instead.
+    .filter((l) => !/^Customer selected "Don't paint this surface" on /i.test(l))
+    // Drop the bare room header — the caller re-labels by room itself.
+    .filter((l) => !/^[^:]{1,60}:$/.test(l));
+}

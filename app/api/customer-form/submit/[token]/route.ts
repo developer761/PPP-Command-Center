@@ -748,7 +748,11 @@ export async function POST(
     for (const li of fresh.lineItems) {
       if (li.id) roomLabelById.set(li.id, (li.areaLabel ?? "").trim() || "Unnamed area");
     }
-    void alertSalesforceWriteFailure({
+    // AWAITED, unlike the routine notifications below. A floating promise can
+    // be torn down when the serverless response returns, and this is the one
+    // message whose entire job is making sure the entry isn't lost. The cost is
+    // a little latency on a path that only runs when Salesforce already failed.
+    await alertSalesforceWriteFailure({
       workOrderId: status.token.work_order_id,
       workOrderNumber: fresh.workOrderNumber,
       customerName: status.token.customer_name,

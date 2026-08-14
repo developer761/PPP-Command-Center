@@ -198,3 +198,34 @@ describe("addCustomItemsToTotal (#28)", () => {
     expect(t.reviewColors).toBe(2);
   });
 });
+
+describe("applyQuantityOverrides — defence at the vendor boundary", () => {
+  it("clamps an absurd quantity rather than emailing it to a supplier", () => {
+    const [out] = applyQuantityOverrides(
+      [estimate()],
+      new Map([[quantityKey("c1", "Eggshell"), { buckets: 100000, cans: 9999, unit: "gal" as const }]])
+    );
+    expect(out.buckets).toBe(99);
+    expect(out.cans).toBe(99);
+  });
+
+  it("ignores a negative or non-numeric quantity", () => {
+    const [out] = applyQuantityOverrides(
+      [estimate()],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      new Map([[quantityKey("c1", "Eggshell"), { buckets: -5, cans: "x" as any, unit: "gal" as const }]])
+    );
+    expect(out.buckets).toBe(0);
+    expect(out.cans).toBe(0);
+  });
+
+  it("never leaves buckets on a quart line — there is no 5-quart bucket", () => {
+    const [out] = applyQuantityOverrides(
+      [estimate()],
+      new Map([[quantityKey("c1", "Eggshell"), { buckets: 3, cans: 2, unit: "qt" as const }]])
+    );
+    expect(out.buckets).toBe(0);
+    expect(out.cans).toBe(2);
+    expect(formatOrderQuantity(out)).toBe("2 qt");
+  });
+});

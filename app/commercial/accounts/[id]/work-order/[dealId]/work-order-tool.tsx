@@ -40,6 +40,7 @@ import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { workOrderRecordId } from "@/lib/commercial/record-ids";
 import { AutosaveForm } from "@/components/commercial/autosave-form";
 import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
+import { LiveScopeCount } from "@/components/commercial/live-scope-count";
 import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -596,12 +597,14 @@ export async function WorkOrderTool({
               {pickable.lines.length > 0 && (
                 <div>
                   <span className={LABEL_CLS}>
-                    Scope on this sheet{" "}
-                    <span className="text-ppp-charcoal-400 font-normal">
-                      · {(wo.scope_line_item_ids ?? []).length === 0
-                        ? "all of it — tick lines to split the job across crews"
-                        : `${wo.scope_line_item_ids.length} of ${pickable.lines.length} lines`}
-                    </span>
+                    Scope on this sheet ·{" "}
+                    {/* Counted from the checkboxes, not the DB — background
+                        saves no longer revalidate, so a server-rendered count
+                        would sit frozen at "all of it" while boxes are ticked. */}
+                    <LiveScopeCount
+                      total={pickable.lines.length}
+                      initialSelected={(wo.scope_line_item_ids ?? []).length}
+                    />
                   </span>
                   <div className="mt-1 max-h-64 overflow-y-auto rounded-lg border border-ppp-charcoal-200 divide-y divide-ppp-charcoal-100">
                     {pickable.lines.map((l) => {

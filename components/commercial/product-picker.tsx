@@ -178,6 +178,37 @@ export default function ProductPicker({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [open]);
 
+  // Clear ourselves when the enclosing form resets.
+  //
+  // React 19 resets a `<form action={fn}>` once the action resolves, and the
+  // add-a-line-item forms deliberately return instead of redirecting, so this
+  // fires after every Add. The reset clears the UNCONTROLLED hidden
+  // product_id / product_name inputs and the unit-price field — but `picked`,
+  // `query` and `priceNote` are React state and survived it. The box therefore
+  // went on displaying the product and its catalogue price while the inputs
+  // that actually get submitted were empty.
+  //
+  // Add two doors and the second saves with no product link, no product name
+  // and $0.00, with the picker on screen still reading "$450.00". A wrong
+  // number that looks right is the worst kind on a page that becomes a
+  // customer's contract price.
+  //
+  // (React really does call HTMLFormElement.reset(), so a `reset` listener is
+  // the correct hook — verified in react-dom, not assumed.)
+  useEffect(() => {
+    const form = rootRef.current?.closest("form");
+    if (!form) return;
+    const onReset = () => {
+      setPicked(null);
+      setQuery("");
+      setPriceNote(null);
+      setOpen(false);
+      setExpandedParentId(null);
+    };
+    form.addEventListener("reset", onReset);
+    return () => form.removeEventListener("reset", onReset);
+  }, []);
+
   // Scroll the highlighted row into view.
   useEffect(() => {
     if (!open || !listRef.current) return;

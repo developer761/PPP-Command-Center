@@ -5,6 +5,7 @@ import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
 import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
+import { extractMachineColorLines } from "@/lib/customer-form/notes";
 import type {
   SnapshotAccount,
   SnapshotPaintColor,
@@ -1044,6 +1045,16 @@ export async function buildSupplierOrderDraft(
   // (`input.colorNotes`), that wins.
   const colorNotesDefaultParts: string[] = [];
   if (customerGlobalNotes) colorNotesDefaultParts.push(customerGlobalNotes);
+  // Kate round-3 #16: the colours Salesforce keeps in ColorNotes__c — orphaned
+  // surfaces (a line with Cabinets AND Door has nowhere else to put them) and
+  // non-BM/SW colours. Without this they are absent from the order lines AND
+  // from the email, so the vendor never learns about them at all.
+  for (const li of input.woliRows) {
+    const machineLines = extractMachineColorLines(li.colorNotes);
+    if (machineLines.length === 0) continue;
+    const label = (li.areaLabel ?? "").trim();
+    colorNotesDefaultParts.push(label ? `- ${label}: ${machineLines.join(" · ")}` : `- ${machineLines.join(" · ")}`);
+  }
   for (const { roomLabel, note } of perLineNotes) {
     colorNotesDefaultParts.push(roomLabel ? `- ${roomLabel}: ${note}` : `- ${note}`);
   }

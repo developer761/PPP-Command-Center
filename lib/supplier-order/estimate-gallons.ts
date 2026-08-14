@@ -407,12 +407,19 @@ export function applyQuantityOverrides(
   return estimates.map((e) => {
     const o = overrides.get(quantityKey(e.colorId, e.finish));
     if (!o) return e;
+    // Clamp here as well as at the persistence boundary. The draft endpoint
+    // validates paint lines but takes quantities as given, so this is the last
+    // point before a number reaches a vendor's inbox — a typo or a garbled
+    // payload should not be able to order 10,000 gallons of paint.
+    const buckets = Math.max(0, Math.min(99, Math.floor(Number(o.buckets) || 0)));
+    const cans = Math.max(0, Math.min(99, Math.floor(Number(o.cans) || 0)));
+    const unit: PaintUnit = o.unit === "qt" ? "qt" : "gal";
     return {
       ...e,
-      buckets: o.buckets,
-      cans: o.cans,
-      unit: o.unit ?? "gal",
-      gallons: o.unit === "qt" ? 0 : o.buckets * 5 + o.cans,
+      buckets: unit === "qt" ? 0 : buckets,
+      cans,
+      unit,
+      gallons: unit === "qt" ? 0 : buckets * 5 + cans,
       // An explicitly-typed quantity is an answer, not a gap.
       manualOnly: false,
       unsized: false,

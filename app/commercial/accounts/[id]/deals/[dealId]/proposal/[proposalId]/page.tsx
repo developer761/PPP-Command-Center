@@ -967,7 +967,20 @@ export default async function ProposalEditorPage({
   const [lineItems, products, allExclusions, accountDeals] = await Promise.all([
     listLineItemsForProposal(proposalId),
     listProducts({ includeInactive: false }),
-    listExclusions({ activeOnly: true }),
+    // activeOnly: FALSE deliberately. Deactivating a library exclusion is not
+    // deleting it, and proposals already carrying one must keep printing it —
+    // the PDF renderer resolves exclusion_ids against the full library, so it
+    // does. Loading only active rows here meant a deactivated-but-selected
+    // exclusion rendered no chip, ExclusionPicker seeded its hidden
+    // exclusion_ids WITHOUT it, and the next autosave (one keystroke anywhere
+    // in the same form) silently deleted it from the proposal and the
+    // customer's PDF. Katie retiring a line from the library must not rewrite
+    // live proposals underneath Alex.
+    //
+    // This only widens what can appear as ALREADY SELECTED: the picker's
+    // search comes from /api/commercial/exclusions/search, which still filters
+    // activeOnly, so a retired line can never be newly added.
+    listExclusions({ activeOnly: false }),
     // Karan 2026-07-20: fill-PROJECT-from-deal picker needs every deal
     // under this account so Alex can hot-swap the PROJECT block from
     // any sibling deal's structured data. Filter to non-deleted only.
@@ -2197,7 +2210,15 @@ export default async function ProposalEditorPage({
         Changes save automatically. Line items save independently below.
       </p>
 
-      {/* Danger zone */}
+      {/* Danger zone — drafts only. softDeleteProposal rejects anything else,
+          so on a sent/won/lost proposal this button was a guaranteed trip to
+          "?error=Only draft proposals can be deleted": every other control on
+          the page correctly renders read-only, and then the one destructive
+          control at the bottom stayed live and did nothing but fail. Same
+          edit-into-a-guaranteed-error dead-end the line-item tables were fixed
+          for. (db.ts's comment claiming the editor only shows this on drafts
+          is now true rather than aspirational.) */}
+      {proposal.status === "draft" && (
       <form action={deleteProposalAction} className="flex justify-center pt-2">
         {hiddenIds}
         <ConfirmSubmitButton
@@ -2210,6 +2231,7 @@ export default async function ProposalEditorPage({
           Delete this proposal draft
         </ConfirmSubmitButton>
       </form>
+      )}
     </div>
   );
 }
