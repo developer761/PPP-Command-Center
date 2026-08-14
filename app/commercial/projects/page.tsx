@@ -53,6 +53,16 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
     });
   const billedOfContractPct = activeSummary.contractValueCents > 0 ? Math.min(100, Math.round((activeSummary.billedContractCents / activeSummary.contractValueCents) * 100)) : 0;
 
+  // Command-center lead (Karan 2026-08-14): the ACTIVE jobs with something
+  // waiting on someone — a change order the GC hasn't answered, submittals still
+  // out, or a job billed past its contract. Floats them above the full list so
+  // the portfolio opens on "what needs me" instead of an A–Z roll-call.
+  const needsAttention = projects.filter(
+    (p) =>
+      p.opp.status !== "post_sale_closed" &&
+      (p.pendingCoCount > 0 || p.submittalAwaiting > 0 || p.overBilled || p.draftedCents > 0)
+  );
+
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -119,6 +129,44 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
                 amounts={{ done: formatCentsFull(activeSummary.billedContractCents), total: formatCentsFull(activeSummary.contractValueCents) }}
               />
             </div>
+          )}
+        </section>
+      )}
+
+      {/* Needs attention — the jobs with something waiting on someone, first. */}
+      {needsAttention.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/40 overflow-hidden">
+          <header className="px-4 py-2.5 border-b border-amber-100 flex items-baseline justify-between gap-2">
+            <h2 className="text-[11px] font-bold uppercase tracking-widest text-amber-800">Needs attention</h2>
+            <span className="text-[11px] font-bold tabular-nums text-amber-800">{needsAttention.length}</span>
+          </header>
+          <ul className="divide-y divide-amber-100/70">
+            {needsAttention.slice(0, 6).map((p) => {
+              const bits = [
+                p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : null,
+                p.submittalAwaiting > 0 ? `${p.submittalAwaiting} submittal${p.submittalAwaiting === 1 ? "" : "s"} out` : null,
+                p.overBilled ? "over-billed" : null,
+                p.draftedCents > 0 ? `${formatCentsCompact(p.draftedCents)} in draft` : null,
+              ].filter(Boolean);
+              return (
+                <li key={p.opp.id}>
+                  <Link
+                    href={`/commercial/opportunities/${p.opp.id}?tab=project`}
+                    className="group flex items-center justify-between gap-3 px-4 py-2.5 min-h-[44px] hover:bg-amber-50 transition-colors"
+                  >
+                    <span className="text-[13px] font-semibold text-ppp-charcoal group-hover:text-cc-brand-800 truncate">
+                      {jobDisplayName(p.opp, p.accountName)}
+                    </span>
+                    <span className="text-[11.5px] text-amber-800 shrink-0 tabular-nums">{bits.join(" · ")}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          {needsAttention.length > 6 && (
+            <p className="px-4 py-2 border-t border-amber-100 text-[11px] text-amber-700">
+              +{needsAttention.length - 6} more below.
+            </p>
           )}
         </section>
       )}
