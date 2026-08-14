@@ -1354,3 +1354,35 @@ c33e74d files tsc-clean (accounts-page tsc error is separate uncommitted WIP), 6
   never partial. `updateRatingLabel` rejects codes not in RATING_CODES (form can't add a code). ✓
 - **Mirrored-constants (3rd) + DB-CHECK lane:** codes in pure `rating-codes.ts`; test asserts RATING_CODES == the
   rating CHECK, every code has a fallback, form can't add a code. 🟡 run 143. tsc clean, 665 tests. ✓
+
+---
+
+## ✅ VERIFY — 56-agent persona re-audit fixes 7 defects (`f938193`). Fixes CORRECT. 🔴 SEVERAL were in code I passed today.
+The build session ran an adversarial 56-agent persona sweep (Kim/Katie/Stephanie/Alex + restructure/buttons/
+Katie-Brendan/data-integrity lenses, each finding attacked by a skeptic). It caught 7 confirmed defects — verified all
+fixes: #1 proposal-name-erased (declared `project_name` had NO rendered input → header_json replaced whole → name
+dropped; new test asserts every declared field has a rendered input), #2/#3 address patches (site_street2 in the wrong
+patch; the billing section rendered site_* inputs), #4 inline-save tab loss, #5 project-card buttons 404'd
+(`&dt=` → `?tab=project&sub=`), #6 legacy `?tab=<tool>` links, #7 invoice EDIT select missing `opportunity_id` (tax
+override silently unapplied — now `select("account_id, opportunity_id")` + a test over every opp-reading select), #8
+"Leave site?" fired forever (debounce ref never nulled). tsc clean, 669 tests.
+
+## 🔴 REVIEW-SESSION SELF-ASSESSMENT — the persona audit out-found my per-commit pass on code I'd cleared TODAY.
+Defects in commits I verified clean today:
+- **#1** in `decdfb8` (patch-only refactor) — my render-parity check verified "field claimed by exactly one form" but
+  NOT "declared field has a *rendered input*." project_name was declared with no input → data loss. My check was too
+  weak. **Strengthen:** render-parity = declared ⇔ rendered, not just declared ⇔ grouped.
+- **#7** in `c33e74d` — I verified the invoice CREATE-path tax-select fix + its test, but did NOT sweep the EDIT path
+  for the same PostgREST-missing-column class. **Strengthen:** when a fix lands on one path (create), sweep siblings
+  (edit/duplicate) for the same class — the "sweep the whole platform" rule, applied to my own verification.
+- **#5** project-card delivery buttons 404'd — a link-reachability miss on a card I touched; I didn't check the button
+  hrefs resolve. **Strengthen:** on any card/list with action buttons, verify the hrefs actually resolve.
+- **#3** address toggle (billing rendered site_*) — a residual half of the 1.2 class I'd reconciled as "fixed."
+Framing, not excuse: a single-pass per-commit review catches first-order issues fast (in-loop, immediately); a scaled
+adversarial multi-lens sweep catches the deeper cross-cutting ones. Both nets matter; today the deep net caught what my
+fast net missed. Lanes strengthened above.
+
+## 📋 REMAINING triaged findings (build session, next pass) — I will verify each when fixed:
+do-not-bid warning missing from the 2nd creation path · retired doc categories hidden on account Documents tab ·
+inline-field Clear saves instead of clears · project nickname discarded · invoice tax-exempt substantiation keyed on
+account · stale TOTAL after final-price override · contacts card overflow at 360px.
