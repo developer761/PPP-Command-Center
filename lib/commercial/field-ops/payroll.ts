@@ -132,6 +132,40 @@ function marginalRegOt(weeks: Map<string, { pay: number; base: number }>): { reg
   return { reg: Math.round(reg * 100) / 100, ot: Math.round(ot * 100) / 100, total: Math.round(total * 100) / 100 };
 }
 
+export type PayrollCsvRow = { name: string; ref: string | null; reg: number; ot: number; total: number };
+
+/**
+ * Aggregate already-exported time rows into per-employee CSV rows, splitting OT
+ * at 40h PER WEEK (bucketed by the Monday of each work week). Pure and
+ * DB-free so the OT rule can be tested directly — the re-download path summed
+ * the whole range and capped at 40, which invented overtime across week
+ * boundaries (round-3 handoff #3). Every row here is already `exported`, so
+ * there is no baseline split: each hour is the "pay" side of its week.
+ */
+export function weeklyExportedRows(
+  rows: { employee_id: string; work_date: string; actual_hours: number }[],
+  empMeta: Map<string, { name: string; external_ref: string | null }>
+): PayrollCsvRow[] {
+  const byEmp = new Map<string, Map<string, { pay: number; base: number }>>();
+  for (const r of rows) {
+    const wk = mondayOf(r.work_date);
+    if (!byEmp.has(r.employee_id)) byEmp.set(r.employee_id, new Map());
+    const wm = byEmp.get(r.employee_id)!;
+    const cur = wm.get(wk) ?? { pay: 0, base: 0 };
+    cur.pay += Number(r.actual_hours) || 0;
+    wm.set(wk, cur);
+  }
+  const out: PayrollCsvRow[] = [];
+  for (const [empId, weeks] of byEmp) {
+    const { reg, ot, total } = marginalRegOt(weeks);
+    if (total <= 0) continue;
+    const meta = empMeta.get(empId);
+    out.push({ name: meta?.name ?? "Unknown", ref: meta?.external_ref ?? null, reg, ot, total });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
 /**
  * ATOMIC export: lock the approved W-2 hours (approved → exported) FIRST via a
  * single UPDATE ... RETURNING, then build the CSV from EXACTLY the rows that
@@ -183,24 +217,21 @@ export async function redownloadPayroll(fromIso: string, toIso: string): Promise
   );
   if (rows.length === 0) return emptyCsv;
 
-  const totals = new Map<string, number>();
-  for (const r of rows) {
-    totals.set(r.employee_id, (totals.get(r.employee_id) ?? 0) + (Number(r.actual_hours) || 0));
-  }
+  // Split OT at 40h PER WEEK, exactly as the original export did. The old code
+  // summed the whole range per employee and capped at 40 — which only matched
+  // when the period was a single Mon–Sun week. A multi-week re-download folded
+  // two sub-40h weeks into one >40h range and invented overtime the original
+  // CSV never paid (35h + 35h → 40 reg + 30 OT instead of 70 reg), so the
+  // re-issued file didn't reconcile against the run it exists to reproduce
+  // (round-3 handoff #3).
+  const outRows = weeklyExportedRows(rows, empMeta);
   const lines = [header.map(csvCell).join(",")];
-  for (const [empId, total] of [...totals.entries()].sort((a, b) =>
-    (empMeta.get(a[0])?.name ?? "").localeCompare(empMeta.get(b[0])?.name ?? "")
-  )) {
-    const meta = empMeta.get(empId);
-    const regular = Math.min(40, total);
-    const overtime = Math.max(0, total - 40);
-    lines.push(
-      [meta?.name ?? "Unknown", meta?.external_ref ?? "", regular, overtime, total, periodStart, periodEnd]
-        .map(csvCell)
-        .join(",")
-    );
+  for (const r of outRows) {
+    lines.push([r.name, r.ref ?? "", r.reg, r.ot, r.total, periodStart, periodEnd].map(csvCell).join(","));
   }
-  return lines.join("\n");
+  // Match the original export's CRLF line ending so a recovered file is
+  // byte-identical to the interrupted one, not just numerically equal.
+  return lines.join("\r\n");
 }
 
 export async function exportPayroll(fromIso: string, toIso: string, userId: string): Promise<string> {
