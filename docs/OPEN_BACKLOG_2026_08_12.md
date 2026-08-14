@@ -1407,3 +1407,37 @@ new-invoice tax default via the resolver, Attention-contact last-explicit-wins o
 revalidation exception, product relink, ?back origin preserved) — same fix patterns applied consistently, adversarially
 verified + tested. Also verified NOT changed: 2 duplicate-form-name warnings are ternary branches (one renders) —
 false positives confirmed. tsc clean, 669 tests. **All 7 triaged findings + 7 more closed.**
+
+---
+
+## ✅ VERIFY — Round-2 audit data-loss fixes (`80c9b90f`). Fixes CORRECT. 🔴 TWO were in code I called clean.
+49-agent audit with a REGRESSION lens re-deriving every round-1 fix — found 6 round-1 fixes didn't hold. Verified the
+data-loss + payroll-safety fixes:
+- **#1 Attention-contact** — fires only when the value CHANGED (was firing whenever present; the deal edit sheet always
+  posts it seeded from primary_contact_id, so a job whose Attention was set via the Contacts card silently cleared it
+  on ANY unrelated save → next proposal printed no ATTENTION line — the reverse of the fix). Root cause also fixed: the
+  Contacts card now mirrors onto the deal's primary_contact_id on set/add/remove, so the two records can't disagree. ✓
+- **#2 Daily Log** — filtered `status='published'` but NOTHING writes 'published' (defaults to 'planned'), so the whole
+  feature showed zero jobs. Now `neq('cancelled')`; a new test asserts a status filter is only meaningful if something
+  writes that status. ✓
+- **#6 Payroll re-download** — one-shot export left hours locked with no file if the download was interrupted. New
+  read-only re-download rebuilds the CSV from already-`exported` rows, no period/status touched → can't double-pay. ✓
+- Also fixed: street2 in the same-address comparison (#3, address-toggle residual), the ORDINARY invoice table's tax
+  still keyed on the account (#4, only the milestone block was fixed round-1), ?back on success + proposalHref putting
+  the query after the #fragment (#5).
+
+## 🔴 REVIEW-SESSION SELF-ASSESSMENT — the regression lens caught 2 defects in commits I passed:
+- **Daily Log (`bf51ff3`)** — I verified the security/lock/cap and noted "published assignments only ✓" WITHOUT
+  checking that anything writes 'published'. It wrote nothing → the feature was dead on arrival. **New lane:** when a
+  query filters on a status/enum value, verify SOMETHING actually writes that value (a filter matching no rows is a
+  disabled feature, not a guard).
+- **Attention sync (`ab0df292`)** — I verified "last explicit wins" but not that the sync fired on *present* rather
+  than *changed*, making every unrelated save clear the flag. **Strengthen:** for any mirror/sync-on-save, confirm the
+  trigger is CHANGED, not merely present (the FormData present≠changed distinction, applied to sync side-effects).
+None of this reached production (migrations unrun), so no real payroll/proposal was affected — but the pattern is
+clear: a multi-round adversarial audit WITH a regression lens out-finds a single-pass review, especially on
+"fix introduces a new bug" cases. Lanes strengthened.
+
+## 📋 Round-2 REMAINING triaged (next pass) — I'll verify each: submittal &sid, deal Edit ejecting to account page,
+schedule emails marked sent on Resend failure, a cron gate reading a retired field, and the MONEY-CHAIN reporting
+disagreements (I'll scrutinise that one — it's the tax-basis-adjacent area).
