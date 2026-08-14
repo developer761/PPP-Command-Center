@@ -30,6 +30,31 @@ export type MaterialsViewProps = {
   sqftOverrides: Record<string, number>;
 };
 
+/** Command Center follow-up dates (migration 146). Deploy-safe: returns {} if
+ *  the table doesn't exist yet.
+ *
+ *  Kate round-3 #13 — these are authoritative for the Command Center. The
+ *  Salesforce value (WorkOrder.FollowupDate__c) remains the fallback, so a date
+ *  set directly in Salesforce still shows. */
+async function loadFollowupDates(): Promise<Record<string, string>> {
+  try {
+    const sb = createSupabaseAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+    const { data, error } = await sb.from("wo_followup_dates").select("work_order_id, followup_date");
+    if (error || !data) return {};
+    const out: Record<string, string> = {};
+    for (const r of data as Array<{ work_order_id: string; followup_date: string }>) {
+      if (r.followup_date) out[r.work_order_id] = String(r.followup_date).slice(0, 10);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /** Load all manually-entered sqft overrides (migration 073). Deploy-safe:
  *  returns {} if the table doesn't exist yet or the query fails. */
 async function loadSqftOverrides(): Promise<Record<string, number>> {
@@ -86,14 +111,24 @@ export async function loadMaterialsViewProps(
     woMeta.set(j.wo.id, { status: j.wo.status, closeDate: j.wo.closeDate });
   }
 
-  const [aux, coverageConfig, sqftOverrides] = await Promise.all([
+  const [aux, coverageConfig, sqftOverrides, followupDates] = await Promise.all([
     getMaterialsPageAuxData(woIds, woMeta).catch((err) => {
       console.error("[materials] aux data load failed:", err);
       return { formStatusByWO: new Map(), progressByWO: new Map() };
     }),
     coverageConfigPromise,
     loadSqftOverrides(),
+    loadFollowupDates(),
   ]);
+
+  // Kate round-3 #13: the Command Center's own follow-up date wins over the
+  // Salesforce one. Applied here, at the source, so every downstream consumer
+  // (the WO page field, the list, the Mail Hub link) agrees without any of them
+  // needing to know there are two places a follow-up date can live.
+  for (const job of openJobs) {
+    const local = followupDates[job.wo.id];
+    if (local) job.wo.followupDate = local;
+  }
 
   const formStatuses = Array.from(aux.formStatusByWO.values());
   const woProgress = Array.from(aux.progressByWO.values());

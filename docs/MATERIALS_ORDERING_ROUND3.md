@@ -51,9 +51,9 @@ Anchor files:
 - ✅ **10 · Process** — Non-standard surfaces (Walls/Ceiling/Cabinets/Door) write overflow to SF Color Notes correctly, but are then cleared from the CC surface fields. Push to SF **and** keep the CC copy exactly as entered.
 
 ## Mail Hub · 0/3
-- ⬜ **11 · Layout** ↻R2#07 — Regroup filters: Sender · Status · [3 date picklists as one visually-separated set]. Add supplier statuses to Status options.
-- ⬜ **12 · Layout** — Remove the redundant "Newest first" header label now that sorting is in the filters.
-- ⬜ **13 · Bug** — Follow-up date filter returns zero results on any date.
+- ✅ **11 · Layout** ↻R2#07 — Regroup filters: Sender · Status · [3 date picklists as one visually-separated set]. Add supplier statuses to Status options.
+- ✅ **12 · Layout** — Remove the redundant "Newest first" header label now that sorting is in the filters.
+- ✅ **13 · Bug** — Follow-up date filter returns zero results on any date.
 
 ## Preview Materials Order · 0/4
 - ✅ **14 · Layout** — "Line items on this WO" (Source data → Salesforce): show room + surface per line.

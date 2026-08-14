@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import MaterialTypePicker from "@/components/material-type-picker";
 import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pick-list";
 import {
@@ -116,31 +116,27 @@ export default function OrderBuilderView({
   /* ── Persist ─────────────────────────────────────────────────────────────
    * Autosave is debounced and fire-and-forget; the commit on "Continue" is
    * awaited, because that one has to land before fulfilment reads it.
+   *
+   * The payload and supplier are passed IN rather than read from refs — refs
+   * written during render are a cascading-render trap, and there's no need for
+   * them here: every caller already has the current values in scope.
    */
-  const payloadRef = useRef(payload);
-  payloadRef.current = payload;
-  const supplierRef = useRef(supplier);
-  supplierRef.current = supplier;
-
   const save = useCallback(
-    async (commit: boolean) => {
-      const s = supplierRef.current;
-      if (!s) return { ok: true };
+    async (
+      supplierAccountId: string,
+      body: OrderBuildPayload,
+      commit: boolean
+    ): Promise<{ ok: true } | { ok: false; error: string }> => {
       const res = await fetch("/api/admin/supplier-order/build", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderId,
-          supplierAccountId: s.accountId,
-          payload: payloadRef.current,
-          commit,
-        }),
+        body: JSON.stringify({ workOrderId, supplierAccountId, payload: body, commit }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) {
-        return { ok: false as const, error: data.message ?? data.error ?? `HTTP ${res.status}` };
+        return { ok: false, error: data.message ?? data.error ?? `HTTP ${res.status}` };
       }
-      return { ok: true as const };
+      return { ok: true };
     },
     [workOrderId]
   );
@@ -149,10 +145,11 @@ export default function OrderBuilderView({
   // work order + supplier).
   useEffect(() => {
     if (!supplier) return;
+    const accountId = supplier.accountId;
+    const snapshot = payload;
     const t = setTimeout(() => {
-      void save(false).then((r) => {
-        if (!r.ok) setSaveError(r.error ?? null);
-        else setSaveError(null);
+      void save(accountId, snapshot, false).then((r) => {
+        setSaveError(r.ok ? null : r.error);
       });
     }, 600);
     return () => clearTimeout(t);
@@ -183,7 +180,10 @@ export default function OrderBuilderView({
    * both the rows and the total. Nothing local re-folds them (#26).
    */
   useEffect(() => {
-    if (!supplier) { setDraft(null); return; }
+    // No synchronous setDraft(null) here — clearing state in an effect body
+    // cascades a render. `estimates` below reads through `supplier` instead, so
+    // a stale draft can't leak into the UI after the vendor is changed.
+    if (!supplier) return;
     let cancelled = false;
     const t = setTimeout(async () => {
       setLoadingDraft(true);
@@ -236,7 +236,9 @@ export default function OrderBuilderView({
     payload.colorNotes,
   ]);
 
-  const estimates = draft?.gallonEstimates ?? [];
+  // Gated on `supplier` so a draft built for a previous vendor can't be shown
+  // against a newly-picked one while the refetch is in flight.
+  const estimates = supplier ? draft?.gallonEstimates ?? [] : [];
 
   /* ── Paint-line options ────────────────────────────────────────────────── */
   const lineMaterialValues = useMemo<ReadonlySet<string>>(() => {
@@ -330,9 +332,9 @@ export default function OrderBuilderView({
     if (!supplier || advancing) return;
     setAdvancing(true);
     setSaveError(null);
-    const r = await save(true);
+    const r = await save(supplier.accountId, payload, true);
     if (!r.ok) {
-      setSaveError(r.error ?? "Couldn't save the order.");
+      setSaveError(r.error);
       setAdvancing(false);
       return;
     }

@@ -145,7 +145,15 @@ export default function InboxView() {
   // and a DATE DIMENSION (sent / opened / submitted / expired / last-activity /
   // follow-up) crossed with a PRESET (today / yesterday / last-7 / this-month /
   // custom range). One model that covers every example query Katie listed.
-  type SentStatus = "all" | "opened" | "submitted" | "not_opened" | "expired" | "delivered" | "bounced";
+  // Kate round-3 #11: the Status list only described colour forms, so a
+  // supplier order could never be filtered by where it had got to. Grouped by
+  // what the status is ABOUT, and "delivered" split into its two very different
+  // meanings — the email arrived vs the paint arrived.
+  type SentStatus =
+    | "all"
+    | "opened" | "not_opened" | "submitted" | "expired"
+    | "email_delivered" | "bounced"
+    | "acknowledged" | "awaiting_ack" | "materials_delivered";
   type DateDim = "sent" | "opened" | "submitted" | "expired" | "last_activity" | "followup";
   type DatePreset = "any" | "today" | "yesterday" | "last7" | "month" | "custom";
   const [sentStatus, setSentStatus] = useState<SentStatus>("all");
@@ -240,8 +248,13 @@ export default function InboxView() {
           case "submitted": return !!m.submitted;
           case "not_opened": return !m.opened;
           case "expired": return !!m.expired;
-          case "delivered": return !!m.delivered;
+          case "email_delivered": return m.deliveryStatus === "delivered";
           case "bounced": return m.deliveryStatus === "bounced" || m.deliveryStatus === "soft_bounce";
+          case "acknowledged": return !!m.acknowledged;
+          // "Awaiting acknowledgement" is a supplier-order question — a colour
+          // form is never waiting on a supplier, so it must not match here.
+          case "awaiting_ack": return m.kind === "supplier_order" && !m.acknowledged;
+          case "materials_delivered": return !!m.delivered;
           default: return true;
         }
       });
@@ -490,9 +503,9 @@ export default function InboxView() {
               <span className="text-ppp-blue-700">{sentSummary.formInvites}</span> color forms ·{" "}
               <span className="text-ppp-charcoal">{sentSummary.supplierOrders}</span> supplier orders
             </div>
-            <div className="text-[10px] text-ppp-charcoal-500 uppercase tracking-wider font-semibold">
-              Newest first
-            </div>
+            {/* Kate round-3 #12: the "Newest first" label was removed — sort is
+                a filter control now, so a static header label was both
+                redundant and wrong whenever the sort was flipped to oldest. */}
           </div>
 
           {/* Sent-mode kind tabs + search */}
@@ -521,43 +534,48 @@ export default function InboxView() {
             const active = !!(sentSender || sentStatus !== "all" || datePreset !== "any" || sentSort !== "newest");
             const clearAll = () => { setSentSender(""); setSentStatus("all"); setDateDim("sent"); setDatePreset("any"); setDateFrom(""); setDateTo(""); setSentSort("newest"); };
             return (
-              <div className="mt-2 rounded-lg border border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 p-2.5 space-y-2">
+              // Kate round-3 #11: "The filters work well — it's the ordering
+              // that makes them hard to read." Sender, then Status, then the
+              // three date-and-order picklists as ONE tinted group, so the eye
+              // reads three sets instead of six loose dropdowns.
+              <div className="mt-2 rounded-lg border border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 p-2.5">
                 <div className="flex items-center gap-2 flex-wrap text-[12px]">
                   {senderOptions.length > 0 && (
-                    <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
-                      Sender
+                    <label className="inline-flex items-center gap-1.5 rounded-lg bg-ppp-blue-50/70 border border-ppp-blue-100 pl-2.5 pr-1.5 py-1 text-ppp-charcoal-600">
+                      <span className="font-medium">Sender</span>
                       <select value={sentSender} onChange={(e) => setSentSender(e.target.value)} className={SEL} aria-label="Filter by sender">
                         <option value="">Anyone</option>
                         {senderOptions.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </label>
                   )}
-                  <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
-                    Status
+
+                  <label className="inline-flex items-center gap-1.5 rounded-lg bg-ppp-green-50/70 border border-ppp-green-100 pl-2.5 pr-1.5 py-1 text-ppp-charcoal-600">
+                    <span className="font-medium">Status</span>
                     <select value={sentStatus} onChange={(e) => setSentStatus(e.target.value as SentStatus)} className={SEL} aria-label="Filter by status">
                       <option value="all">Any status</option>
-                      <option value="opened">Opened</option>
-                      <option value="submitted">Submitted</option>
-                      <option value="not_opened">Not opened</option>
-                      <option value="expired">Expired</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="bounced">Bounced</option>
+                      <optgroup label="Color form">
+                        <option value="opened">Opened</option>
+                        <option value="not_opened">Not opened</option>
+                        <option value="submitted">Submitted</option>
+                        <option value="expired">Expired</option>
+                      </optgroup>
+                      {/* Kate round-3 #11 — supplier statuses were missing entirely. */}
+                      <optgroup label="Supplier order">
+                        <option value="acknowledged">Acknowledged</option>
+                        <option value="awaiting_ack">Awaiting acknowledgement</option>
+                        <option value="materials_delivered">Materials delivered</option>
+                      </optgroup>
+                      <optgroup label="Email">
+                        <option value="email_delivered">Email delivered</option>
+                        <option value="bounced">Bounced</option>
+                      </optgroup>
                     </select>
                   </label>
-                  <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
-                    Sort
-                    <select value={sentSort} onChange={(e) => setSentSort(e.target.value as "newest" | "oldest")} className={SEL} aria-label="Sort order">
-                      <option value="newest">Newest first</option>
-                      <option value="oldest">Oldest first</option>
-                    </select>
-                  </label>
-                  {active && (
-                    <button type="button" onClick={clearAll} className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px]">Clear all</button>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 flex-wrap text-[12px]">
-                  <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
-                    Date
+
+                  {/* The three date-and-order picklists, as one set. */}
+                  <div className="inline-flex items-center gap-1.5 flex-wrap rounded-lg bg-ppp-orange-50/60 border border-ppp-orange-100 pl-2.5 pr-1.5 py-1 text-ppp-charcoal-600">
+                    <span className="font-medium">Date</span>
                     <select value={dateDim} onChange={(e) => setDateDim(e.target.value as DateDim)} className={SEL} aria-label="Date dimension">
                       <option value="sent">Sent</option>
                       <option value="opened">Opened</option>
@@ -574,13 +592,21 @@ export default function InboxView() {
                       <option value="month">This month</option>
                       <option value="custom">Custom range…</option>
                     </select>
-                  </label>
-                  {datePreset === "custom" && (
-                    <label className="inline-flex items-center gap-1.5 text-ppp-charcoal-500">
-                      <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="From date" className={SEL} />
-                      <span className="text-ppp-charcoal-400">→</span>
-                      <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="To date" className={SEL} />
-                    </label>
+                    <select value={sentSort} onChange={(e) => setSentSort(e.target.value as "newest" | "oldest")} className={SEL} aria-label="Sort order">
+                      <option value="newest">Newest first</option>
+                      <option value="oldest">Oldest first</option>
+                    </select>
+                    {datePreset === "custom" && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="From date" className={SEL} />
+                        <span className="text-ppp-charcoal-400">→</span>
+                        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="To date" className={SEL} />
+                      </span>
+                    )}
+                  </div>
+
+                  {active && (
+                    <button type="button" onClick={clearAll} className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px]">Clear all</button>
                   )}
                 </div>
               </div>

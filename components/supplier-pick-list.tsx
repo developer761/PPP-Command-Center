@@ -40,9 +40,11 @@ export default function SupplierPickList({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    // setState lives inside the async body, not the effect body — a synchronous
+    // set here cascades an extra render on every mount.
     (async () => {
+      setLoading(true);
+      setError(null);
       try {
         const res = await fetch("/api/suppliers/active");
         const data = await res.json();

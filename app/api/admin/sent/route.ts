@@ -44,9 +44,37 @@ const resolveSenderNames = resolveUserNames;
 /** Kate #07 — each WO's Salesforce FollowupDate__c (YYYY-MM-DD), for the
  *  follow-up-date activity filter. Best-effort + isolated so a slow/failed SF
  *  call never blocks the sent feed. Tries both org casings. */
-async function resolveFollowupDates(woIds: string[]): Promise<Map<string, string>> {
+async function resolveFollowupDates(
+  woIds: string[],
+  sb: ReturnType<typeof adminClient>
+): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (woIds.length === 0) return out;
+
+  // Kate round-3 #13: the Command Center's own copy is authoritative here.
+  // Reading only Salesforce meant that whenever FollowupDate__c didn't resolve
+  // (the data dictionary lists two casings and we probe blindly), every row
+  // came back null and the follow-up filter matched nothing on any date — which
+  // reads as a broken filter rather than a missing field.
+  try {
+    const { data, error } = await sb
+      .from("wo_followup_dates")
+      .select("work_order_id, followup_date")
+      .in("work_order_id", woIds);
+    if (error) throw error;
+    for (const r of (data ?? []) as Array<{ work_order_id: string; followup_date: string }>) {
+      if (r.followup_date) out.set(r.work_order_id, String(r.followup_date).slice(0, 10));
+    }
+  } catch (err) {
+    // Migration 146 pending — fall through to Salesforce.
+    console.warn("[sent] local follow-up dates unavailable:", err);
+  }
+
+  // Salesforce fills the gaps: dates set directly in SF, or before the local
+  // table existed. Never overwrites a local value.
+  const missing = woIds.filter((id) => !out.has(id));
+  if (missing.length === 0) return out;
+  woIds = missing;
   try {
     const { getSalesforceClient } = await import("@/lib/salesforce/client");
     const conn = await getSalesforceClient();
@@ -320,7 +348,7 @@ export async function GET(request: Request) {
     const woIds = [...new Set(capped.map((m) => m.workOrderId).filter((x): x is string => !!x))];
     const [nameById, followupByWo] = await Promise.all([
       resolveSenderNames(sb, senderIds),
-      resolveFollowupDates(woIds),
+      resolveFollowupDates(woIds, sb),
     ]);
     for (const m of capped) {
       if (m.senderId) m.senderName = nameById.get(m.senderId) ?? null;

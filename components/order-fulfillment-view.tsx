@@ -80,7 +80,6 @@ export default function OrderFulfillmentView({
 
   const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
   const adminTouchedFulfillment = useRef(false);
-  const [isNycDelivery, setIsNycDelivery] = useState(false);
   const [pickupLocation, setPickupLocation] = useState("");
   const [deliveryAddr, setDeliveryAddr] = useState({ street: "", city: "", state: "", postalCode: "" });
   const [useCustomAddress, setUseCustomAddress] = useState(false);
@@ -158,16 +157,22 @@ export default function OrderFulfillmentView({
     instructions, requiredBy, contactPhone, viewerName, build,
   ]);
 
+  // Whether this delivery address is in the five boroughs. Derived, not stored
+  // — holding it in state meant writing state from an effect on every draft,
+  // which cascades a render for a value that is a pure function of the draft.
+  const isNycDelivery = useMemo(
+    () => (draft ? isNycAddress(draft.deliveryAddress) : false),
+    [draft]
+  );
+
   // Pickup default: supplier-level setting, or an NYC delivery address. The
   // worker's own choice always wins once they've touched the toggle.
   useEffect(() => {
     if (!draft) return;
-    const nyc = isNycAddress(draft.deliveryAddress);
-    setIsNycDelivery(nyc);
-    if ((draft.pickupDefault || nyc) && !adminTouchedFulfillment.current && fulfillment !== "pickup") {
+    if ((draft.pickupDefault || isNycDelivery) && !adminTouchedFulfillment.current && fulfillment !== "pickup") {
       setFulfillment("pickup");
     }
-  }, [draft, fulfillment]);
+  }, [draft, isNycDelivery, fulfillment]);
 
   // Kate round-3 #32: never offer a required-by date in the past. The computed
   // default can be historic on an old work order, so clamp what we show.
