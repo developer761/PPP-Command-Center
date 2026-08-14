@@ -53,23 +53,25 @@ const STEPS: TourStep[] = [
     title: "Opportunities — your pipeline",
     body: "Every bid in flight, by stage: Qualifying → Estimating → Proposal out. This is where a new job starts.",
   },
+  // These three used to spotlight sidebar rows for Proposals, Projects and
+  // Invoices. The restructure moved all three INSIDE the deal — there are no
+  // such rows any more — so the tour dimmed the screen and pointed at nothing
+  // while teaching a navigation model that no longer exists. Worse than no
+  // tour: a first-time user was being told to look for places that are gone.
+  //
+  // Rewritten to teach what is actually true: the deal is the object, and the
+  // work hangs off it.
   {
-    route: "/commercial/proposals",
-    target: '[data-tour="/commercial/proposals"]',
-    title: "Proposals",
-    body: "Build and send the bid. It runs through an approval sign-off before it can reach the GC, so nothing goes out unchecked.",
+    route: "/commercial/opportunities",
+    target: '[data-tour="/commercial/opportunities"]',
+    title: "The deal is the record",
+    body: "Open any deal and everything for that job is on it — the proposal, the work order, submittals, change orders, AIA billing and invoices. You rarely need to go looking elsewhere.",
   },
   {
-    route: "/commercial/projects",
-    target: '[data-tour="/commercial/projects"]',
-    title: "Projects — running the job",
-    body: "Once you win, the job lives here: Work Orders for the crew, submittals, change orders, AIA billing, and costs — all off what you priced.",
-  },
-  {
-    route: "/commercial/invoices",
-    target: '[data-tour="/commercial/invoices"]',
-    title: "Invoices",
-    body: "The actual money requests to the GC, with payments and past-due reminders tracked automatically.",
+    route: "/commercial/opportunities",
+    target: '[data-tour="/commercial/opportunities"]',
+    title: "Bid, then build",
+    body: "Price it on the deal's Proposals tab; it goes through an approval sign-off before it can reach the GC. Once you win, the same deal grows a Project tab with the delivery tools and the billing.",
   },
   {
     route: "/commercial/reports",

@@ -80,7 +80,13 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
       <div className="max-w-lg mx-auto">
         <p className="text-[13px] text-ppp-charcoal-500 mb-3 text-center">Tap your name to clock in or out.</p>
         {employees.filter((e) => e.has_pin).length === 0 ? (
-          <div className="text-center text-[13px] text-ppp-charcoal-500 bg-surface border border-ppp-charcoal-100 rounded-xl py-8">No crew have a PIN yet. Set one on the Crew page.</div>
+          <div className="text-center text-[13px] text-ppp-charcoal-500 bg-surface border border-ppp-charcoal-100 rounded-xl py-8">
+            No crew have a clock-in PIN yet.
+            <span className="block mt-1 text-[12.5px]">
+              A supervisor sets these under Field Ops &rsaquo; Crew. Ask yours to add
+              you, then come back here.
+            </span>
+          </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {employees.filter((e) => e.has_pin).map((e) => (

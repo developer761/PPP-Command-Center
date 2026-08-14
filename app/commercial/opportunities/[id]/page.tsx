@@ -683,9 +683,18 @@ async function softDeleteOpportunityAction(formData: FormData) {
     // is "manage a customer" — dumping them to a global list after a
     // delete breaks context. The account still owns everything else
     // about this customer; that's where they should stay.
-    redirect(`/commercial/accounts/${account_id}?tab=deals&deleted=${encodeURIComponent(title)}`);
+    // Carry the undo handles. Deleting from the deal page was the ONE delete
+    // path with no Undo — the identical action run from the account page sends
+    // undo_id/undo_kind/undo_label and the layout's UndoToast picks them up.
+    // A soft delete you cannot reverse from the screen that performed it is
+    // the shape people lose work to.
+    redirect(
+      `/commercial/accounts/${account_id}?tab=deals&deleted=${encodeURIComponent(title)}&undo_id=${opp_id}&undo_kind=deal&undo_label=${encodeURIComponent(title)}`
+    );
   }
-  redirect(`/commercial/accounts?deleted=${encodeURIComponent(title)}`);
+  redirect(
+    `/commercial/accounts?deleted=${encodeURIComponent(title)}&undo_id=${opp_id}&undo_kind=deal&undo_label=${encodeURIComponent(title)}`
+  );
 }
 
 // Migration 067 (Phase G Q3) — archive / unarchive server actions.

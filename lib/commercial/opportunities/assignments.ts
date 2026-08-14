@@ -406,6 +406,18 @@ async function notifyAssignment(
       : action === "restored"
         ? `Re-added to ${oppTitle}`
         : `You've been assigned to ${oppTitle}`;
+  // Honour the email opt-in. Settings -> Notifications has a Pause control
+  // that reads "Email paused", and this send ignored it entirely — so someone
+  // who deliberately turned email off still got mailed every time they were
+  // added to a deal or an account. A preference the platform offers and then
+  // overrides is worse than not offering it.
+  const { getUserEmailPref } = await import("@/lib/commercial/email-prefs/db");
+  const pref = await getUserEmailPref(user_id);
+  if (pref && pref.enabled === false) {
+    console.info(`[commercial/opportunities/assignments] email paused for ${user_id} — in-app only`);
+    return;
+  }
+
   const result = await sendEmail({
     to: assigneeEmail,
     subject: `${subjectVerb} (${roleLabel})`,
