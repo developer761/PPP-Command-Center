@@ -44,14 +44,22 @@ const DOT: Record<DeliveryTool["status"], string> = {
 export function DeliveryToolsStrip({
   tools,
   stageMeaning,
+  fromTab,
 }: {
   tools: DeliveryTool[];
   /** What the CURRENT stage means — the line that decides when to move on.
    *  A tooltip on the bar covers a mouse; this covers a phone, which is where
    *  Karan reads this. */
   stageMeaning?: string | null;
+  /** The tab this strip is being shown on (overview/docs/activity). Stamped
+   *  onto every tool link as `?from=` so the tool's back arrow returns HERE,
+   *  not to the Project tool list. Karan 2026-08-14: opening a tool from
+   *  Overview should come back to Overview. */
+  fromTab?: string | null;
 }) {
   if (tools.length === 0) return null;
+  const withFrom = (href: string) =>
+    fromTab ? `${href}${href.includes("?") ? "&" : "?"}from=${fromTab}` : href;
   return (
     <section
       aria-label="Delivery"
@@ -75,7 +83,7 @@ export function DeliveryToolsStrip({
         {tools.map((t, i) => (
           <Link
             key={t.key}
-            href={t.href}
+            href={withFrom(t.href)}
             className="group min-w-[9rem] flex-1 px-3.5 py-2.5 min-h-[44px] hover:bg-cc-brand-50/50 transition-colors"
           >
             <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-0.5 whitespace-nowrap">

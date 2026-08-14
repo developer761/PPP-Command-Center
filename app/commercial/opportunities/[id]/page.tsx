@@ -185,6 +185,10 @@ type PP = Promise<{ id: string }>;
 type SP = Promise<{
   tab?: string;
   sub?: string;
+  /** Which tab the user opened this delivery tool FROM (overview/docs/activity).
+   *  The tool's back arrow returns there instead of the project tool list, so a
+   *  jump out of the Overview delivery strip lands back on Overview, not Project. */
+  from?: string;
   error?: string;
   action?: string;
   to?: string;
@@ -2228,6 +2232,17 @@ export default async function OpportunityDetailPage({
     : resolvedSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === resolvedSub)
     ? resolvedSub
     : DEFAULT_SUB_BY_PRIMARY[primary];
+  // Where a tool's back arrow returns. The delivery strip on
+  // overview/docs/activity stamps `?from=<tab>` on every tool link, so leaving
+  // the tool lands back on the surface you opened it from rather than always
+  // dumping you on the Project tool list. Validated against the group tabs that
+  // actually carry the strip; anything else (or absent, e.g. a link from the
+  // Project home cards) falls back to the tool list.
+  const rawFrom = pickFirst(sp.from);
+  const backTab =
+    rawFrom === "overview" || rawFrom === "docs" || rawFrom === "activity"
+      ? rawFrom
+      : "project";
   // Legacy compat: many downstream server actions still redirect with
   // `?tab=team&error=...` etc. The `tab` variable below stays a flat
   // SubTab | "debrief" so all the existing tab === "team" checks below
@@ -2581,7 +2596,7 @@ export default async function OpportunityDetailPage({
           to avoid listing the same seven tools twice. Both step aside once a
           tool is open. */}
       {!isDeletedDeal && !toolView && primary !== "project" && (
-        <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
+        <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} fromTab={primary} />
       )}
       {/* The Project HOME (delivery tool cards) renders in the Project tab BODY
           below the tab bar, not here above it — see further down. */}
@@ -2599,8 +2614,8 @@ export default async function OpportunityDetailPage({
       {toolView ? (
         <div className="flex items-center gap-2.5 border-b border-ppp-charcoal-100 pb-3">
           <Link
-            href={`/commercial/opportunities/${opp.id}?tab=project`}
-            aria-label="Back to the project tools"
+            href={`/commercial/opportunities/${opp.id}?tab=${backTab}`}
+            aria-label={backTab === "project" ? "Back to the project tools" : "Back"}
             className="inline-flex items-center justify-center h-11 w-11 -ml-2 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 shrink-0"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
