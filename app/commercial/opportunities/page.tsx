@@ -62,6 +62,7 @@ import {
   HOT_DEAL_DECISION_DAYS,
   HOT_DEAL_ACTIVE_STATUSES,
   TERMINAL_STATUSES,
+  IN_DELIVERY_STATUSES,
   isTerminalOpportunityStatus,
   isWon,
   wasWonInPeriod,
@@ -2053,6 +2054,7 @@ function CustomerBoard({
   type Row = {
     account: CommercialAccount;
     open: CommercialOpportunity[];
+    inDelivery: CommercialOpportunity[];
     closed: CommercialOpportunity[];
     weightedCents: number;
     latestUpdate: string;
@@ -2062,14 +2064,19 @@ function CustomerBoard({
     .map(([accountId, oppsForAccount]) => {
       const account = accountById.get(accountId);
       if (!account) return null; // filtered by account soft-delete, skip
-      // PRE_SALE_OPEN_STATUSES, not "not terminal" — the latter sweeps in
-      // pre_construction / in_progress / billing, i.e. deals already under
-      // contract. A GC with one $400k job in progress at 100% was showing
-      // $400k on its customer card and $0 in the weighted-pipeline KPI
-      // directly above it, because the KPI (correctly) counts pre-sale only.
-      // Same double-count the shared constant exists to prevent.
+      // Three buckets, because the status model has THREE lanes, not two:
+      // pre-sale OPEN (qualifying/estimating/proposal), IN-DELIVERY (under
+      // contract: pre_construction/in_progress/billing), and TERMINAL (closed).
+      // The board used to split open-vs-closed only, so a deal under contract
+      // matched NEITHER and vanished — a GC whose only deal was in production
+      // showed "0 open bids" with no deals listed at all (audit D1). weighted$
+      // still counts PRE-SALE ONLY (open), matching the KPI above so a $400k
+      // job in progress can't reappear as $400k of "pipeline".
       const open = oppsForAccount.filter((o) =>
         PRE_SALE_OPEN_STATUSES.includes(o.status)
+      );
+      const inDelivery = oppsForAccount.filter((o) =>
+        IN_DELIVERY_STATUSES.includes(o.status)
       );
       const closed = oppsForAccount.filter((o) =>
         TERMINAL_STATUSES.has(o.status)
@@ -2083,7 +2090,7 @@ function CustomerBoard({
         .filter(Boolean)
         .sort()
         .reverse()[0] ?? "";
-      return { account, open, closed, weightedCents, latestUpdate };
+      return { account, open, inDelivery, closed, weightedCents, latestUpdate };
     })
     .filter((r): r is Row => r !== null)
     .sort((a, b) => {
@@ -2120,13 +2127,14 @@ function CustomerBoardRow({
   row: {
     account: CommercialAccount;
     open: CommercialOpportunity[];
+    inDelivery: CommercialOpportunity[];
     closed: CommercialOpportunity[];
     weightedCents: number;
     latestUpdate: string;
   };
   sheetHref: (accountId: string, focus?: string) => string;
 }) {
-  const { account, open, closed, weightedCents, latestUpdate } = row;
+  const { account, open, inDelivery, closed, weightedCents, latestUpdate } = row;
   // Latest activity relative label — "today", "5h ago", "3d ago", etc.
   // Uses updated_at which every mutation touches, so it's a real signal.
   const daysAgo = latestUpdate
@@ -2200,6 +2208,12 @@ function CustomerBoardRow({
                   open bid{open.length === 1 ? "" : "s"}
                 </span>
               </span>
+              {inDelivery.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border bg-cyan-50 text-cyan-800 border-cyan-200 tabular-nums">
+                  {inDelivery.length}
+                  <span className="font-medium text-cyan-700">under contract</span>
+                </span>
+              )}
               {weightedCents > 0 && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-emerald-50 text-emerald-800 border-emerald-200 tabular-nums">
                   {formatCentsCompact(weightedCents)}
@@ -2251,9 +2265,14 @@ function CustomerBoardRow({
           Post-Sale cyan chip for delivery-phase deals) + the deal
           title + bid range + confidence. Closed deals stay compact as
           small pills below so the eye still leads with open work. */}
-      {(open.length > 0 || closed.length > 0) && (
+      {(open.length > 0 || inDelivery.length > 0 || closed.length > 0) && (
         <div className="relative z-10 mt-3 space-y-1.5">
-          {open.map((o) => {
+          {/* Active work leads: open bids first, then deals under contract.
+              Both render as cards with a StageChip (StageChip shows the
+              post-sale stage for delivery deals), so an account whose only work
+              is in production still lists that work instead of showing nothing
+              (audit D1). */}
+          {[...open, ...inDelivery].map((o) => {
             const bidRange = o.bid_value_high_cents
               ? `${formatCentsCompact(o.bid_value_low_cents ?? 0)}–${formatCentsCompact(o.bid_value_high_cents)}`
               : o.bid_value_low_cents
