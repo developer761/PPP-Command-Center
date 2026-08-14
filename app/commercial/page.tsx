@@ -110,17 +110,32 @@ export default async function CommercialDashboardPage() {
       ? Math.round((production.completedToDateCents / production.contractValueCents) * 100)
       : null;
 
+  // An ARCHIVED (or deleted-parent) deal's invoices must drop out of the money
+  // headlines exactly as they drop out of Gross/Net/Margin — those come from
+  // listProjects, which filters archived_at, while the invoice list does not.
+  // Without this, archiving a part-paid deal cut Gross by the billed amount but
+  // left the same dollars in "Owed to us", the AR-aging tile, AND the revenue
+  // trend, so margin recomputed against a smaller gross while the debt lingered
+  // and the trend line sat ABOVE the gross it's meant to be a subset of (audit
+  // D8). `opps` is every LIVE (non-archived, non-deleted) opportunity, fully
+  // paginated; an invoice with no opportunity_id is account-level and unaffected
+  // by deal archiving, so it stays.
+  const liveOppIds = new Set(opps.map((o) => o.id));
+  const liveInvoices = invoices.filter(
+    (i) => i.opportunity_id == null || liveOppIds.has(i.opportunity_id)
+  );
+
   // ─── AR ───
   // Real accounts-receivable = billed-and-unpaid only. Karan 2026-07-27:
   // exclude unsent DRAFTS (not owed until sent) + paid/void, so the headline
   // matches its sent/overdue drill-down. deriveInvoiceStatus resolves the
   // computed "overdue" state; BILLABLE = sent/viewed/partial/overdue.
-  const arOutstandingCents = invoices
+  const arOutstandingCents = liveInvoices
     .filter((i) => BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)))
     // Clamp per invoice so a credit/overpaid invoice can't net down the AR —
     // one "Outstanding" definition platform-wide (matches the account rollup).
     .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
-  const overdueInvoices = invoices.filter((i) => deriveInvoiceStatus(i) === "overdue");
+  const overdueInvoices = liveInvoices.filter((i) => deriveInvoiceStatus(i) === "overdue");
   const arOverdueCount = overdueInvoices.length;
   // The DOLLARS overdue (per-invoice clamped) — the number a CEO actually fears,
   // shown on the tile instead of a bare count (2026-08 CEO/AR UX walk).
