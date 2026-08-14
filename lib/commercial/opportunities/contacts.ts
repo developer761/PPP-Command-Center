@@ -129,6 +129,13 @@ export async function addOpportunityContact(input: {
     }
     return { ok: false, error: error.message };
   }
+  if (input.isPrimary) {
+    // Same mirror as setPrimaryOpportunityContact — see there for why.
+    await sb
+      .from("commercial_opportunities")
+      .update({ primary_contact_id: input.contactId })
+      .eq("id", input.opportunityId);
+  }
   await logInsert(
     "commercial_opportunity_contacts",
     (data as { id: string }).id,
@@ -148,8 +155,17 @@ export async function removeOpportunityContact(
     .select("*")
     .eq("id", linkId)
     .maybeSingle();
+  const prev = before as { opportunity_id?: string; contact_id?: string; is_primary?: boolean } | null;
   const { error } = await sb.from("commercial_opportunity_contacts").delete().eq("id", linkId);
   if (error) return { ok: false, error: error.message };
+  // Removing the Attention contact must clear the deal column too, or the
+  // proposal keeps addressing someone no longer on the job.
+  if (prev?.is_primary && prev.opportunity_id) {
+    await sb
+      .from("commercial_opportunities")
+      .update({ primary_contact_id: null })
+      .eq("id", prev.opportunity_id);
+  }
   if (before) {
     await logDelete(
       "commercial_opportunity_contacts",
@@ -177,12 +193,28 @@ export async function setPrimaryOpportunityContact(
   const cleared = await clearPrimary(opportunityId);
   if (!cleared.ok) return cleared;
   const sb = commercialDb();
-  const { error } = await sb
+  const { data: link, error } = await sb
     .from("commercial_opportunity_contacts")
     .update({ is_primary: true })
     .eq("id", linkId)
-    .eq("opportunity_id", opportunityId);
+    .eq("opportunity_id", opportunityId)
+    .select("contact_id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+
+  // Mirror onto the deal column. Two records held "Attention" — this link and
+  // commercial_opportunities.primary_contact_id — and only this one was being
+  // written, so the deal edit sheet's picker (which reads the column) showed a
+  // different person from the badge, and saving that stale render destroyed the
+  // choice. Writing both keeps every surface telling the same story instead of
+  // relying on each reader to prefer the right one.
+  const contactId = (link as { contact_id?: string } | null)?.contact_id ?? null;
+  if (contactId) {
+    await sb
+      .from("commercial_opportunities")
+      .update({ primary_contact_id: contactId })
+      .eq("id", opportunityId);
+  }
   await logUpdate(
     "commercial_opportunity_contacts",
     linkId,

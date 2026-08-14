@@ -306,7 +306,14 @@ export default async function EditCommercialAccountPage({
             defaultChecked={
               duplicateCandidates.length > 0
                 ? sp.site_same === "1"
-                : (account.billing_street ?? "") === (account.site_street ?? "") &&
+                : // street2 belongs in this comparison. Without it an account
+                  // whose billing address is the same street but "Suite 900"
+                  // pre-ticked as "same", collapsed the billing inputs, and the
+                  // next unrelated save mirrored the company address over it —
+                  // dropping the suite from the proposal letterhead, the
+                  // submittal transmittal and the AR statement.
+                  (account.billing_street ?? "") === (account.site_street ?? "") &&
+                  (account.billing_street2 ?? "") === (account.site_street2 ?? "") &&
                   (account.billing_city ?? "") === (account.site_city ?? "") &&
                   (account.billing_state ?? "") === (account.site_state ?? "") &&
                   (account.billing_zip ?? "") === (account.site_zip ?? "")

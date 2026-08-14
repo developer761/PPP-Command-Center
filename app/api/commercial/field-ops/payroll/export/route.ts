@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
-import { exportPayroll } from "@/lib/commercial/field-ops/payroll";
+import { exportPayroll, redownloadPayroll } from "@/lib/commercial/field-ops/payroll";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +36,13 @@ export async function GET(request: Request) {
   // ATOMIC: locks approved→exported FIRST, then builds the CSV from exactly the
   // rows that locked — no row can be paid-but-unlocked or locked-but-unpaid, and a
   // repeat export yields an empty CSV = "already paid" (audit rounds 6 + 12 + 13).
-  const csv = await exportPayroll(from, to, data.user.id);
+  // `?mode=redownload` re-issues an already-exported period without changing a
+  // single status. The one-shot lock stays exactly as it was; this only stops
+  // an interrupted download from losing the file for good.
+  const redownload = searchParams.get("mode") === "redownload";
+  const csv = redownload
+    ? await redownloadPayroll(from, to)
+    : await exportPayroll(from, to, data.user.id);
   return new NextResponse(csv, {
     status: 200,
     headers: {

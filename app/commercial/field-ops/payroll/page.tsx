@@ -56,6 +56,18 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
         >
           Export CSV
         </Link>
+        {/* The export is one-shot by design: it locks approved hours so nothing
+            can be paid twice. That leaves no way back if the download is
+            interrupted, so this re-issues the same file for hours already
+            exported — read-only, no status changes, no new pay period. */}
+        <Link
+          href={`/api/commercial/field-ops/payroll/export?from=${from}&to=${to}&mode=redownload`}
+          prefetch={false}
+          className="inline-flex items-center px-3 rounded-lg border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px]"
+          title="Re-issue the CSV for hours already exported in this range. Changes nothing."
+        >
+          Re-download
+        </Link>
       </form>
 
       {unapprovedCount > 0 && (

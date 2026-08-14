@@ -376,18 +376,33 @@ export async function updateCommercialOpportunity(
   // Setting it here is an explicit act, so it takes effect: the job's flag is
   // cleared and the chosen person becomes the Attention contact on both.
   // Last explicit action wins, and the two surfaces agree.
-  if (input.primary_contact_id !== undefined) {
+  // ONLY when the value actually CHANGED.
+  //
+  // The first version of this ran whenever the field was merely present, and
+  // the deal edit sheet always posts it — its picker is seeded from
+  // `deal.primary_contact_id` alone, so on a job whose Attention was set via
+  // the Contacts card the picker sat blank, resolved to null, and every
+  // unrelated save (fixing an RFP date) silently cleared the site super's
+  // Attention flag. The next proposal then printed no ATTENTION line at all.
+  // That is the reverse of the bug the sync was added to fix, and it was worse
+  // — it needed no deliberate action to trigger.
+  //
+  // Comparing against `before` makes an untouched picker a no-op, which is the
+  // same guard this action already uses for the proposed start/end dates.
+  const priorContactId = (before as { primary_contact_id?: string | null }).primary_contact_id ?? null;
+  const nextContactId = input.primary_contact_id ?? null;
+  if (input.primary_contact_id !== undefined && nextContactId !== priorContactId) {
     await sb
       .from("commercial_opportunity_contacts")
       .update({ is_primary: false })
       .eq("opportunity_id", opp.id)
       .eq("is_primary", true);
-    if (input.primary_contact_id) {
+    if (nextContactId) {
       await sb
         .from("commercial_opportunity_contacts")
         .update({ is_primary: true })
         .eq("opportunity_id", opp.id)
-        .eq("contact_id", input.primary_contact_id);
+        .eq("contact_id", nextContactId);
     }
   }
 

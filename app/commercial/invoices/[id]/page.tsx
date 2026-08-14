@@ -1433,11 +1433,22 @@ export async function InvoiceDetailView({
                     milestone totals block and not to this one — the ordinary
                     invoice, which is most of them. A zero-tax invoice with
                     nothing explaining why is the one a GC's AP team queries. */}
-                {invoice.tax_pct === 0 && account?.tax_exempt && (
+                {/* Same resolution as the milestone block above — the ordinary
+                    invoice table was missed on the first pass, so a job-level
+                    exemption printed no explanation here at all while a job
+                    deliberately marked taxable under an exempt account would
+                    have claimed one. */}
+                {invoice.tax_pct === 0 && invoiceTaxExemption.exempt && (
                   <tr>
                     <td colSpan={4} className="py-1 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
                       Tax-exempt
-                      {account.tax_exempt_cert_number ? ` — Cert #${account.tax_exempt_cert_number}` : ""}
+                      {invoiceTaxExemption.source === "opportunity"
+                        ? opp?.tax_exempt_cert_number
+                          ? ` — Cert #${opp.tax_exempt_cert_number}`
+                          : " — this job"
+                        : account?.tax_exempt_cert_number
+                        ? ` — Cert #${account.tax_exempt_cert_number}`
+                        : ""}
                     </td>
                     <td className="py-1 pr-3 text-right text-ppp-charcoal-700 tabular-nums">{formatCentsFull(0)}</td>
                     <td />

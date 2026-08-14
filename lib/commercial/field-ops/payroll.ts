@@ -142,6 +142,67 @@ function marginalRegOt(weeks: Map<string, { pay: number; base: number }>): { reg
  * on-screen preview (no locking). One snapped Mon–Sun week is well under the
  * 1000-row RETURNING window; export weekly.
  */
+/**
+ * Re-issue the CSV for a period already exported, WITHOUT touching a single
+ * row's status.
+ *
+ * The export is deliberately one-shot and atomic (audit rounds 6, 12, 13):
+ * approved rows flip to exported before the CSV is built, so nothing is ever
+ * paid-but-unlocked or locked-but-unpaid, and a repeat export returns an empty
+ * file meaning "already paid". That is right, and this does not change it.
+ *
+ * What it fixes is the other half: if the download is interrupted — a dropped
+ * connection, a closed tab, a misclick — the hours are locked and the file is
+ * gone for good, with payroll still to run. This rebuilds the same figures
+ * from the rows already marked exported. Read-only: no period is created, no
+ * status changes, so it cannot cause a double payment.
+ */
+export async function redownloadPayroll(fromIso: string, toIso: string): Promise<string> {
+  const periodStart = mondayOf(fromIso);
+  const periodEnd = addDaysIso(mondayOf(toIso), 6);
+  const sb = commercialDb();
+
+  const { data: emps } = await sb.from("commercial_employees").select("id, display_name, worker_type, external_ref");
+  const empMeta = new Map(
+    (emps ?? []).map((r) => [(r as { id: string }).id, { name: (r as { display_name: string }).display_name, external_ref: (r as { external_ref: string | null }).external_ref }])
+  );
+  const w2Ids = ((emps ?? []) as { id: string; worker_type: string }[]).filter((e) => e.worker_type === "w2").map((e) => e.id);
+  const header = ["Employee", "External Ref", "Regular Hours", "Overtime Hours", "Total Hours", "Period Start", "Period End"];
+  const emptyCsv = header.map(csvCell).join(",");
+  if (w2Ids.length === 0) return emptyCsv;
+
+  const rows = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number }>(() =>
+    sb
+      .from("commercial_time_entries")
+      .select("employee_id, work_date, actual_hours")
+      .eq("status", "exported")
+      .gte("work_date", periodStart)
+      .lte("work_date", periodEnd)
+      .in("employee_id", w2Ids)
+      .order("id")
+  );
+  if (rows.length === 0) return emptyCsv;
+
+  const totals = new Map<string, number>();
+  for (const r of rows) {
+    totals.set(r.employee_id, (totals.get(r.employee_id) ?? 0) + (Number(r.actual_hours) || 0));
+  }
+  const lines = [header.map(csvCell).join(",")];
+  for (const [empId, total] of [...totals.entries()].sort((a, b) =>
+    (empMeta.get(a[0])?.name ?? "").localeCompare(empMeta.get(b[0])?.name ?? "")
+  )) {
+    const meta = empMeta.get(empId);
+    const regular = Math.min(40, total);
+    const overtime = Math.max(0, total - 40);
+    lines.push(
+      [meta?.name ?? "Unknown", meta?.external_ref ?? "", regular, overtime, total, periodStart, periodEnd]
+        .map(csvCell)
+        .join(",")
+    );
+  }
+  return lines.join("\n");
+}
+
 export async function exportPayroll(fromIso: string, toIso: string, userId: string): Promise<string> {
   const periodStart = mondayOf(fromIso);
   const periodEnd = addDaysIso(mondayOf(toIso), 6);

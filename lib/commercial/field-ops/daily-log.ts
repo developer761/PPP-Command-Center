@@ -75,15 +75,25 @@ export async function getDailyLog(
 ): Promise<DailyLog> {
   const sb = commercialDb();
 
-  // Only PUBLISHED assignments. A planned-but-unpublished shift is a
-  // scheduler's draft — showing it would ask a painter to confirm hours for
-  // work nobody has told them about yet.
+  // Everything except a CANCELLED shift.
+  //
+  // This filtered on status = 'published', reasoning that a planned shift is a
+  // scheduler's draft. But nothing in the platform ever sets 'published' — the
+  // column defaults to 'planned' (migration 112) and no publish step exists —
+  // so the filter matched zero rows and the Daily Log was permanently empty
+  // for every painter, every day. A guard against a hypothetical mistake that
+  // instead disabled the whole feature.
+  //
+  // If a publish step is added later, tighten this back and the intent still
+  // holds; until then, scheduled means scheduled. Cancelled is still excluded,
+  // which is the case that actually matters: nobody should be asked to confirm
+  // hours for a shift that was called off.
   const { data: assignRows } = await sb
     .from("commercial_assignments")
     .select("id, job_id, scheduled_hours")
     .eq("employee_id", employeeId)
     .eq("work_date", workDate)
-    .eq("status", "published");
+    .neq("status", "cancelled");
   const assignments = (assignRows ?? []) as { id: string; job_id: string; scheduled_hours: number }[];
 
   const [{ data: entryRows }, { data: absenceRows }] = await Promise.all([

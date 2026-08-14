@@ -600,8 +600,10 @@ async function updateLineItemAction(formData: FormData) {
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
+  // Keep the origin on SUCCESS too — round 1 wired only the error paths, so
+  // the ordinary case still dropped "Back to Proposals".
   redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}#line-items`
+    proposalHref(accountId, dealId, proposalId, "#line-items", proposalBack(formData))
   );
 }
 
@@ -631,8 +633,10 @@ async function deleteLineItemAction(formData: FormData) {
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
+  // Keep the origin on SUCCESS too — round 1 wired only the error paths, so
+  // the ordinary case still dropped "Back to Proposals".
   redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}#line-items`
+    proposalHref(accountId, dealId, proposalId, "#line-items", proposalBack(formData))
   );
 }
 
@@ -673,9 +677,18 @@ const DEAL_DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&p
 const OPP_PAGE_RE = /^\/commercial\/opportunities\/[0-9a-f-]{36}(\?|#|$)/i;
 
 function proposalHref(accountId: string, dealId: string, proposalId: string, suffix = "", back = "") {
-  const url = `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}${suffix}`;
-  if (!back) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}back=${encodeURIComponent(back)}`;
+  const base = `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`;
+  // Split the suffix into query and fragment. Appending `?back=` after a
+  // `#line-items` suffix would bury the query INSIDE the fragment, so the
+  // breadcrumb param would be silently dropped and the anchor broken with it.
+  const hashAt = suffix.indexOf("#");
+  const query = hashAt === -1 ? suffix : suffix.slice(0, hashAt);
+  const hash = hashAt === -1 ? "" : suffix.slice(hashAt);
+  let url = `${base}${query}`;
+  if (back) {
+    url += `${url.includes("?") ? "&" : "?"}back=${encodeURIComponent(back)}`;
+  }
+  return `${url}${hash}`;
 }
 
 /**

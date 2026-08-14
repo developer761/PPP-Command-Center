@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { execSync } from "node:child_process";
 import { ABSENCE_TYPES } from "@/lib/commercial/field-ops/daily-log";
 
 /**
@@ -81,6 +84,29 @@ describe("absence reasons", () => {
     const allowed = [...m![1].matchAll(/'([A-Z_]+)'/g)].map((x) => x[1]);
     for (const t of ABSENCE_TYPES) {
       expect(allowed, `"${t.value}" is offered but Postgres would reject it`).toContain(t.value);
+    }
+  });
+});
+
+describe("the Daily Log filters on a status the platform actually writes", () => {
+  it("does not filter on a status nothing ever sets", () => {
+    // The bug this exists for: the log filtered on status = 'published' while
+    // the column defaults to 'planned' and no publish step exists anywhere, so
+    // it matched zero rows and the feature was dead on arrival for every
+    // painter. A status filter is only meaningful if something writes that
+    // status — check the app, not just the schema.
+    const root = join(__dirname, "..", "..");
+    const src = readFileSync(join(root, "lib/commercial/field-ops/daily-log.ts"), "utf8");
+    const eqStatus = [...src.matchAll(/\.eq\("status",\s*"([a-z_]+)"\)/g)].map((m) => m[1]);
+    for (const status of eqStatus) {
+      const writtenSomewhere = execSync(
+        `grep -rl "status.*['\\"]${status}['\\"]" ${JSON.stringify(join(root, "lib"))} ${JSON.stringify(join(root, "app"))} 2>/dev/null | grep -v daily-log || true`,
+        { encoding: "utf8" }
+      ).trim();
+      expect(
+        writtenSomewhere,
+        `daily-log filters assignments on status="${status}" but nothing else in lib/ or app/ writes it`
+      ).not.toBe("");
     }
   });
 });
