@@ -91,6 +91,7 @@ import {
 import { activeViewKey, filterChips } from "@/lib/commercial/opportunities/saved-views";
 import { isUnderContract } from "@/lib/commercial/opportunities/attention";
 import { SavedViewPicker } from "@/components/commercial/saved-view-picker";
+import { OpportunitySheet, type OppSheetRow } from "@/components/commercial/opportunity-sheet";
 import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
 import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
 import { nextStep } from "@/lib/commercial/opportunities/attention";
@@ -544,7 +545,10 @@ export default async function CommercialOpportunitiesPage({
   // and sent (auto-advance, 2026-08-11) — so the board offered a second way to
   // set a value the engine already owns, and the engine wins on the next render.
   // A stale ?view=kanban link lands on the list rather than 404ing.
-  const viewMode: "list" | "customer" = viewRaw === "customer" ? "customer" : "list";
+  // Karan 2026-08-14: "sheet" = a dense Salesforce-style table (just the titles
+  // + columns). By-customer and list stay; sheet is the third, scan-everything view.
+  const viewMode: "list" | "customer" | "sheet" =
+    viewRaw === "customer" ? "customer" : viewRaw === "sheet" ? "sheet" : "list";
 
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently updated" },
@@ -809,6 +813,7 @@ export default async function CommercialOpportunitiesPage({
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
   if (viewMode === "list") baseParams.set("view", "list");
   else if (viewMode === "customer") baseParams.set("view", "customer");
+  else if (viewMode === "sheet") baseParams.set("view", "sheet");
   // Attention deep-link filters live in baseParams so every builder that
   // clones it preserves them automatically (unlike stale/hot/archived,
   // which have toggle builders and are re-added manually). setSortHref +
@@ -822,7 +827,7 @@ export default async function CommercialOpportunitiesPage({
   // builders, so sort/clear/drill/source/customer/export silently dropped
   // `archived` (export even produced the wrong dataset). All builders now
   // re-add all three sticky filters.
-  const viewToggleHref = (target: "list" | "customer") => {
+  const viewToggleHref = (target: "list" | "customer" | "sheet") => {
     const p = new URLSearchParams(baseParams);
     p.delete("view");
     p.set("view", target);
@@ -886,6 +891,7 @@ export default async function CommercialOpportunitiesPage({
     // kanban user changing sort got kicked back to list view.
     if (viewMode === "list") p.set("view", "list");
     else if (viewMode === "customer") p.set("view", "customer");
+    else if (viewMode === "sheet") p.set("view", "sheet");
     if (newSort !== "recent") p.set("sort", newSort);
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
@@ -904,6 +910,7 @@ export default async function CommercialOpportunitiesPage({
     if (followupFilter) p.set("followup", "1");
     if (viewMode === "list") p.set("view", "list");
     else if (viewMode === "customer") p.set("view", "customer");
+    else if (viewMode === "sheet") p.set("view", "sheet");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -1209,6 +1216,23 @@ export default async function CommercialOpportunitiesPage({
               </svg>
               List
             </Link>
+            <Link
+              href={viewToggleHref("sheet")}
+              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1.5 touch-manipulation border-l border-ppp-charcoal-200 ${
+                viewMode === "sheet"
+                  ? "bg-cc-brand-50 text-cc-brand-700"
+                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+              }`}
+              title="Sheet — a dense spreadsheet of every opportunity: title, account, status, source, value, owner"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3" y="3" width="18" height="18" rx="1" />
+                <line x1="3" y1="9" x2="21" y2="9" />
+                <line x1="3" y1="15" x2="21" y2="15" />
+                <line x1="9" y1="3" x2="9" y2="21" />
+              </svg>
+              Sheet
+            </Link>
           </div>
 
           {/* Filter popover — hot / stale / source multi-select all live
@@ -1433,6 +1457,37 @@ export default async function CommercialOpportunitiesPage({
             </Link>
           )}
         </div>
+      ) : viewMode === "sheet" ? (
+        <OpportunitySheet
+          rows={opps.map((o): OppSheetRow => {
+            const acct = accountById.get(o.account_id) ?? null;
+            const accountName = acct?.company_name ?? "—";
+            const lead = primaryLeadMap.get(o.id) ?? null;
+            const enteredAt = statusEnteredAtMap.get(o.id) ?? null;
+            const ageDays = enteredAt ? daysAgoEt(enteredAt) : null;
+            const valueCents = dealValueCents(o, proposalTotalByOpp.get(o.id) ?? null);
+            const tone: OppSheetRow["statusTone"] =
+              o.status === "pre_sale_closed"
+                ? o.sub_status === "won"
+                  ? "won"
+                  : "lost"
+                : (POST_SALE_STATUSES as readonly string[]).includes(o.status)
+                ? "delivery"
+                : "pre";
+            return {
+              id: o.id,
+              href: `/commercial/opportunities/${o.id}`,
+              title: derivedOppName(o, accountName) || o.title || "(untitled)",
+              account: accountName,
+              status: oppStatusDisplayLabel(o.status, o.sub_status),
+              statusTone: tone,
+              source: o.source ? opportunitySourceLabel(o.source) : "—",
+              value: valueCents > 0 ? formatCentsCompact(valueCents) : "—",
+              owner: lead?.user_full_name ?? lead?.user_email ?? "—",
+              age: ageDays !== null ? `${ageDays}d` : "—",
+            };
+          })}
+        />
       ) : viewMode === "customer" ? (
         <CustomerBoard
           opps={opps}
