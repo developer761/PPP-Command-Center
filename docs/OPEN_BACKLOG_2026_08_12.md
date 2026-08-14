@@ -1464,3 +1464,16 @@ disagreements (I'll scrutinise that one — it's the tax-basis-adjacent area).
 tsc clean, 669 tests.
 
 ## 📋 Round-2 remaining (1 left): **deal Edit ejecting to the account page** — triaged, not in this commit. Verify when fixed.
+
+---
+
+## ✅ VERIFY — deal Edit returns to the deal (`d48f9aaa`). CLEAN, no miss. LAST round-2 finding — BOTH AUDIT ROUNDS FULLY CLEARED.
+The deal header Edit ejected you onto the account's Deals tab. Now the Edit link carries `deal_back=1` (survives the
+save via a hidden input), and the save action `if (deal_back==="1") redirect(?tab=info)` — returns to the deal's Info
+tab (a real tab; link-reachability ✓). Opening the same sheet from the account page (no deal_back) is unchanged — the
+other path not regressed. Page-flow / place-preservation lane satisfied. tsc clean, 669 tests.
+
+**STATUS: the two adversarial persona audits (56-agent + 49-agent w/ regression lens, ~52 distinct defects across both)
+are now fully worked through and verified. My four+ own-misses this session are all guarded by tests the build session
+wrote (DB-CHECK parity, render-parity, autosave seam, link resolution, filter-matches-real-data). Platform is in strong
+shape pending the migration batch (136/137/139-143).**
