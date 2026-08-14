@@ -8,7 +8,6 @@ import {
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import {
   HOT_DEAL_ACTIVE_STATUSES,
-  HOT_DEAL_BID_CENTS,
   HOT_DEAL_DECISION_DAYS,
 } from "@/lib/commercial/opportunities/constants";
 
@@ -23,7 +22,7 @@ import {
  *
  * Targets:
  *   - status in HOT_DEAL_ACTIVE_STATUSES
- *   - bid_value_high_cents >= HOT_DEAL_BID_CENTS  (≥ $50k)
+ *   - (bid size no longer gated — the column is unwritten since 2026-08-11)
  *   - proposal_due_at within HOT_DEAL_DECISION_DAYS (≤ 14 days out)
  *   - updated_at older than COOLING_DAYS (default 7 days)
  *   - parent account still alive
@@ -76,7 +75,17 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
          account:commercial_accounts!inner(id, company_name, deleted_at)`
       )
       .in("status", HOT_DEAL_ACTIVE_STATUSES as readonly string[])
-      .gte("bid_value_high_cents", HOT_DEAL_BID_CENTS)
+      // NOT gated on bid_value_high_cents. Bid low/high were pulled from every
+      // opportunity form on 2026-08-11 — pricing lives on the proposal now — so
+      // no deal created since then has a value in that column and this filter
+      // silently matched nothing. The reminder has been dead for every new deal
+      // ever since, which is exactly the sort of thing that fails quietly: a
+      // cron that runs, finds zero rows, and reports success.
+      //
+      // The remaining filters still define "hot": an active status, a proposal
+      // due inside the decision window, and no activity since the cooling
+      // cutoff. Size is no longer knowable here without joining proposals, and
+      // a reminder that fires slightly too often beats one that never fires.
       .not("proposal_due_at", "is", null)
       .lte("proposal_due_at", decisionWindowEndDateStr)
       .lt("updated_at", coolingCutoff.toISOString())

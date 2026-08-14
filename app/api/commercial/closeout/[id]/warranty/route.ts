@@ -43,11 +43,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const dealName = oppRow ? derivedOppName(oppRow as never, accountName) : "Project";
 
   let pdf: Buffer;
+  // The signer travels with the company. Both renderers print
+  // "Brendan Dwyer, VP" when given signature_name/title and fall back to a
+  // bare "Authorized signature" without them — and these interactive
+  // download routes dropped both, so the PDF a person reviews on screen
+  // differed from the one the auto-file paths store and send.
   try {
     const { renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
     const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
     const oc = await getOperatingCompany();
-    pdf = await renderWarrantyLetterPdf({ pkg, dealName, accountName, company: { name: oc.name, phone: oc.phone, website: oc.website }, logo: await getBrandLogoBuffer(), signature: await getBrandSignatureBuffer() });
+    pdf = await renderWarrantyLetterPdf({ pkg, dealName, accountName, company: { name: oc.name, phone: oc.phone, website: oc.website, signature_name: oc.signature_name, signature_title: oc.signature_title }, logo: await getBrandLogoBuffer(), signature: await getBrandSignatureBuffer() });
   } catch (err) {
     console.error("[closeout-warranty-pdf] render failed:", err);
     return NextResponse.json({ error: "pdf_render_failed" }, { status: 500 });

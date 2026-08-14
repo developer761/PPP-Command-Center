@@ -103,7 +103,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         workNotes: wo.work_notes,
         dateIso: wo.sent_at ?? wo.created_at,
       },
-      company: { name: oc.name, phone: oc.phone, website: oc.website },
+      company: { name: oc.name, phone: oc.phone, website: oc.website, signature_name: oc.signature_name, signature_title: oc.signature_title },
       logo,
       signature,
     });

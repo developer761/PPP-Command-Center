@@ -233,9 +233,24 @@ function SubmittalRow({ submittal, oppId, accountId, back, origin = "" }: { subm
   // Inside the deal, opening a submittal STAYS inside the deal — `&sid=` swaps
   // the tool's list for that submittal's detail without leaving the page. From
   // the standalone log there is no drill-in to stay in, so it navigates.
+  // Both origins open the submittal's DETAIL page.
+  //
+  // The inline variant used to link to `?tab=project&sub=submittals&sid=<id>`,
+  // intending the tool to swap the log for that submittal's detail — but
+  // nothing anywhere reads `sid`, so the identical log simply re-rendered.
+  // Clicking a submittal inside a deal was a dead click, and the cover letter,
+  // item list, attachments and Send button were unreachable: a drafted
+  // submittal could never be sent from inside the deal.
+  //
+  // The detail page already exists and works, so both paths go there. Back
+  // returns to the deal's Submittals tool rather than the standalone log, so
+  // the deal stays the place you came from.
+  const inlineBack = `?back=${encodeURIComponent(
+    `/commercial/opportunities/${oppId}?tab=project&sub=submittals`
+  )}`;
   const itemHref =
     origin === "inline"
-      ? `/commercial/opportunities/${oppId}?tab=project&sub=submittals&sid=${submittal.id}`
+      ? `/commercial/accounts/${accountId}/submittals/${oppId}/${submittal.id}${inlineBack}`
       : `/commercial/accounts/${accountId}/submittals/${oppId}/${submittal.id}${backHref}`;
   const tone = submittalStatusTone(submittal.status);
   const tonePillCls =

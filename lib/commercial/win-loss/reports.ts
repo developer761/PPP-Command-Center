@@ -162,7 +162,7 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   // ever sit in pre_sale_closed, so they need no equivalent.
   const { data } = await sb
     .from("commercial_opportunities")
-    .select("id, status, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at")
+    .select("id, status, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at, accepted_contract_cents")
     .in("status", [
       "pre_sale_closed",
       "pre_construction",
@@ -183,6 +183,7 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
     loss_reason: string | null;
     bid_value_low_cents: number | null;
     bid_value_high_cents: number | null;
+    accepted_contract_cents: number | null;
   };
   const rows = ((data as Row[] | null) ?? []);
 
@@ -200,7 +201,13 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   const proposalTotalByOpp = await listCurrentProposalTotalByOpp(rows.map((r) => r.id));
 
   for (const r of rows) {
+    // Value a WON deal at the signed contract when there is one. The bid
+    // midpoint is an estimate made before the job was priced — and since bid
+    // low/high were pulled from the opportunity forms, most deals have none at
+    // all, so "Won $" fell back to a proposal total and never reflected what
+    // Tomco actually agreed to. A signed number beats a guess.
     const mid =
+      (Number(r.accepted_contract_cents) || 0) ||
       midpointCents(r.bid_value_low_cents, r.bid_value_high_cents) ||
       (proposalTotalByOpp.get(r.id) ?? 0);
     // Won = decided won at any stage. `isPostSaleProject` in SQL terms: a

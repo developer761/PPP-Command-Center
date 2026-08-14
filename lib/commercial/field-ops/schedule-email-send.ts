@@ -441,7 +441,17 @@ export async function sendWelcomeEmail(employee: CommercialEmployee): Promise<vo
     const welcomeScopes = await scopesFor(upcoming);
     const body = `${intro}\n\n${link}\n\n${upcoming.length > 0 ? buildBody(firstName, upcoming, link, oc.name, es, welcomeScopes) : `- ${oc.name}`}`;
     const { sendEmail } = await import("@/lib/email/resend");
-    await sendEmail({
+    // sendEmail RESOLVES with {ok:false} on failure — it does not throw — so the
+
+    // catch below never ran and releaseClaim was never called. A transient
+
+    // Resend outage therefore marked the crew's schedule email as sent and
+
+    // suppressed it permanently: nobody was told where to be, and nothing
+
+    // anywhere said so.
+
+    const sent = await sendEmail({
       channel: "commercial",
       to: employee.email,
       subject: es ? "Tu horario - Tomco Painting" : "Your schedule - Tomco Painting",
@@ -672,7 +682,7 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
         `- ${oc.name}`,
       ];
       try {
-        await sendEmail({
+        const sent = await sendEmail({
           channel: "commercial",
           to: e.email,
           subject: es ? "Tu trabajo de hoy" : "Your schedule today",
@@ -680,7 +690,12 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
           ...(fromHdr ? { from: fromHdr } : {}),
           tags: [{ name: "kind", value: "crew_day_of" }],
         });
-        dayOf++;
+        if (!sent || sent.ok === false) {
+          console.warn(`[field-ops] schedule email not sent to ${e.email}`);
+          await releaseClaim(e.id, today, "day_of");
+        } else {
+          dayOf++;
+        }
       } catch (err) {
         console.warn(`[field-ops] day-of email failed for ${e.email}:`, err);
         // Release the claim so a retry (or the next run) can re-fire — a transient
@@ -714,7 +729,17 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
       const week = await getShiftsForRange(e.id, weekStart, 7); // full Mon–Sun (incl. Sunday PW shifts)
       if (week.length > 0 && (await claimSend(e.id, weekStart, "weekly"))) {
         try {
-          await sendEmail({
+          // sendEmail RESOLVES with {ok:false} on failure — it does not throw — so the
+
+          // catch below never ran and releaseClaim was never called. A transient
+
+          // Resend outage therefore marked the crew's schedule email as sent and
+
+          // suppressed it permanently: nobody was told where to be, and nothing
+
+          // anywhere said so.
+
+          const sent = await sendEmail({
             channel: "commercial",
             to: e.email,
             subject: es ? "Tu horario de esta semana" : "Your schedule this week",
@@ -722,7 +747,12 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
             ...(fromHdr ? { from: fromHdr } : {}),
             tags: [{ name: "kind", value: "crew_weekly" }],
           });
-          weekly++;
+          if (!sent || sent.ok === false) {
+            console.warn(`[field-ops] schedule email not sent to ${e.email}`);
+            await releaseClaim(e.id, today, "weekly");
+          } else {
+            weekly++;
+          }
         } catch (err) {
           console.warn(`[field-ops] weekly email failed for ${e.email}:`, err);
           await releaseClaim(e.id, weekStart, "weekly");
@@ -739,7 +769,7 @@ export async function runDailyScheduleEmails(): Promise<{ dayOf: number; reminde
     if (digest) {
       for (const r of recipients) {
         try {
-          await sendEmail({
+          const sent = await sendEmail({
             channel: "commercial",
             to: r.email,
             subject: isSunday ? "Crew schedule - today + week ahead" : "Crew schedule - today",
