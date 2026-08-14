@@ -1167,7 +1167,19 @@ export async function createDealInvoiceAction(formData: FormData) {
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial/accounts"); // list AR/tiles (audit 1B #2)
   revalidatePath("/commercial"); // dashboard AR tiles (audit 1B #2)
-  redirect(`${back}&created=1`);
+  // `invoices_created=1`, not `created=1`.
+  //
+  // `back` is the DEAL page (?tab=invoices), and that page reads
+  // `invoices_created` / `invoice_errors` — it has no `created` key at all, so
+  // this said nothing: the invoice saved, the page reloaded, and there was no
+  // confirmation of any kind. Its `&error=` sibling IS rendered, so only
+  // SUCCESS was silent, which is the worst way round — a failure announces
+  // itself and a success looks like a no-op.
+  //
+  // This also gives `invoices_created` its only producer; the counts it renders
+  // ("N created / M skipped") had no writer anywhere in the app, so the
+  // partial-failure summary could never appear either.
+  redirect(`${back}&invoices_created=1`);
 }
 
 /** "New invoice for this opportunity" — flat OR milestone-broken, via the client
