@@ -8,6 +8,7 @@ import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
 import { insertCustomerFormSubmittedNotification } from "@/lib/notifications/insert";
 import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { alertSalesforceWriteFailure } from "@/lib/customer-form/sf-failure-alert";
 import {
   STANDARD_SURFACE_FIELDS,
   ORPHAN_SURFACES,
@@ -729,6 +730,42 @@ export async function POST(
   // "customer submitted, please review" email + bell back to themselves is just
   // noise. Suppress sender notify/bell for internal-entry tokens.
   const notifySender = status.token.kind !== "internal";
+
+  // Kate round-3 #30 — a rejected Salesforce write must never look like a
+  // success. This fires for EVERY token kind, including internal entry: the
+  // routine sender-notification is suppressed for internal tokens (an AM
+  // doesn't need an email saying they submitted their own form), which meant
+  // the one person who could fix it was told nothing when SF rejected it.
+  //
+  // The email carries what was entered so the work is recoverable, and copies
+  // the ops recipients in PPP_SF_FAILURE_ALERT_EMAILS (Kate + Katie).
+  if (writesFailedInfo) {
+    const roomLabelById = new Map<string, string>();
+    for (const li of fresh.lineItems) {
+      if (li.id) roomLabelById.set(li.id, (li.areaLabel ?? "").trim() || "Unnamed area");
+    }
+    void alertSalesforceWriteFailure({
+      workOrderId: status.token.work_order_id,
+      workOrderNumber: fresh.workOrderNumber,
+      customerName: status.token.customer_name,
+      saverUserId: status.token.created_by_user_id ?? null,
+      kind: "colors",
+      entered: sanitizedLineItems.map((li) => ({
+        room: roomLabelById.get(li.id) ?? "Unnamed area",
+        surfaces: (Array.isArray(li.surfaces) ? li.surfaces : []).map((sf) => ({
+          surface: String((sf as { surface?: unknown }).surface ?? ""),
+          color: ((sf as { colorName?: unknown }).colorName as string | null) ?? null,
+          finish: ((sf as { finish?: unknown }).finish as string | null) ?? null,
+        })),
+        notes: li.notes ?? null,
+      })),
+      globalNotes: sanitizeNotesField(body.globalNotes),
+      attemptedCount: writesFailedInfo.attemptedCount,
+      failedCount: writesFailedInfo.failedCount,
+      errorCode: writesFailedInfo.sampleErrorCode,
+      errorMessage: writesFailedInfo.sampleErrorMessage,
+    });
+  }
   if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission && notifySender) {
     // EMAIL — Katie 2026-07-08: previously gated on writebackHappened
     // (skipped the email when SF was bypassed). Now also fires on
@@ -779,6 +816,12 @@ export async function POST(
     ok: true,
     reedited: isReedit,
     orderAlreadyPlaced,
+    // Kate round-3 #30: the person saving is told AT THE MOMENT it fails.
+    // Previously the response carried only counts and the form read them as a
+    // clean success, so a total Salesforce rejection looked identical to a
+    // perfect save.
+    salesforceWriteFailed: !!writesFailedInfo,
+    salesforceErrorMessage: writesFailedInfo?.sampleErrorMessage ?? null,
     writes: attempts.length,
     writesAttempted,
     writesSucceeded,

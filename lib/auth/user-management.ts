@@ -153,6 +153,9 @@ export async function createPasswordUser(input: {
   email: string;
   password: string;
   full_name: string | null;
+  /** Kate round-3 #29 — contact number, captured at setup. Becomes the default
+   *  "who to call" on supplier orders this person places. */
+  phone?: string | null;
   role: UserRole;
   actor: ActorMeta;
   /** Which platforms this account can reach. Defaults to Command Center only
@@ -168,6 +171,7 @@ export async function createPasswordUser(input: {
   if (pwErr) return { ok: false, error: pwErr };
   const role = normalizeRole(input.role);
   const full_name = input.full_name?.trim() || null;
+  const phone = input.phone?.trim() || null;
 
   const sb = adminClient();
 
@@ -243,20 +247,32 @@ export async function createPasswordUser(input: {
     commandCenter = commandCenter || priorProfile.has_command_center_access === true;
     commercial = commercial || priorProfile.has_new_platform_access === true;
   }
-  const { error: profErr } = await sb.from("profiles").upsert(
-    {
-      user_id: authUserId,
-      email,
-      full_name,
-      role,
-      is_admin: role === "admin",
-      auth_provider: "password",
-      is_active: true,
-      has_command_center_access: commandCenter,
-      has_new_platform_access: commercial,
-    },
-    { onConflict: "user_id" }
-  );
+  const profileRow = {
+    user_id: authUserId,
+    email,
+    full_name,
+    phone,
+    role,
+    is_admin: role === "admin",
+    auth_provider: "password",
+    is_active: true,
+    has_command_center_access: commandCenter,
+    has_new_platform_access: commercial,
+  };
+  let { error: profErr } = await sb.from("profiles").upsert(profileRow, { onConflict: "user_id" });
+  // `phone` arrives in migration 145. Until that's applied, PostgREST rejects
+  // the whole upsert for the unknown column — which would take account creation
+  // down with it. Retry without the field rather than block provisioning.
+  if (
+    profErr &&
+    (/column "?phone"? (does not exist|of relation .* does not exist)/i.test(profErr.message)
+      || /could not find the 'phone' column/i.test(profErr.message)
+      || (profErr as { code?: string }).code === "42703")
+  ) {
+    console.warn("[user-management] profiles.phone missing (run migration 145) — creating account without it");
+    const { phone: _dropPhone, ...legacyRow } = profileRow;
+    ({ error: profErr } = await sb.from("profiles").upsert(legacyRow, { onConflict: "user_id" }));
+  }
   if (profErr) {
     return { ok: false, error: profErr.message };
   }

@@ -80,6 +80,7 @@ export async function POST(request: Request) {
     email: String(body.email ?? ""),
     password: String(body.password ?? ""),
     full_name: body.full_name ? String(body.full_name) : null,
+    phone: body.phone ? String(body.phone) : null,
     role: normalizeRole(String(body.role ?? "rep")),
     actor: gate.actor,
     platforms,

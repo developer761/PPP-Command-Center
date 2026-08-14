@@ -417,6 +417,12 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   const submitInFlight = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  // Kate round-3 #30: Salesforce rejected the write. Surfaced to STAFF (an AM
+  // doing Internal Entry) because they're the one who can act on it. A
+  // homeowner is deliberately not shown this — their picks are saved in the
+  // Command Center and PPP has been emailed; a Salesforce error code would
+  // alarm them about something they can't do anything about.
+  const [sfWriteFailed, setSfWriteFailed] = useState(false);
   // Extra note shown on the thank-you screen — e.g. when a re-edit lands after
   // the materials order already went out.
   const [postSubmitNote, setPostSubmitNote] = useState<string | null>(null);
@@ -532,6 +538,16 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           <p className="mt-4 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 max-w-md mx-auto">
             {postSubmitNote}
           </p>
+        )}
+        {sfWriteFailed && isStaffEntry && (
+          <div role="alert" className="mt-4 text-left text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-200 rounded-lg px-4 py-3 max-w-md mx-auto">
+            <strong className="block">Saved here, but Salesforce rejected it.</strong>
+            <span className="block mt-1">
+              The colors are recorded in the Command Center and nothing is lost — we&rsquo;ve
+              emailed you a copy of exactly what was entered, and flagged it to the team.
+              Salesforce will need to be updated before the crew works from it.
+            </span>
+          </div>
         )}
       </div>
     );
@@ -719,6 +735,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         setPostSubmitNote(
           "Preview submit — nothing was saved to Salesforce or marked as the real customer's submission. Close the tab when you're done testing."
         );
+      }
+      if ((data as { salesforceWriteFailed?: boolean }).salesforceWriteFailed) {
+        setSfWriteFailed(true);
       }
       setSubmitted(true);
     } catch (err) {

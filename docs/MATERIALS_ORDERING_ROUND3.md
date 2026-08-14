@@ -73,8 +73,8 @@ Anchor files:
 - ✅ **26 · Bug** — With no sq ft, + climbs the TOTAL while the line still reads "manual entry required". Root cause above.
 - ✅ **27 · Layout** ↻R2#21 — Per-line unit selection: gallon **and quart** (~1/5 of containers bought are quarts/pints). Not built in round 2.
 - ✅ **28 · Process** ↻R2#24 — Split "Add custom item" into custom **sundry** item (exists) and custom **color** item (new; between "Order — what to buy" and Color Notes; one typeable field, help text "Color and finish — e.g. Color Match: Behr 56, eggshell"; qty + unit like any line). Unblocks the rest of R2#24: Customer Notes + "customer is not painting" move out of the email body into Color Notes.
-- 🔨 **29 · Process** — Supplier order email carries no contact. Store a phone per user (new — captured at account setup), default the order's phone field to it, editable per order without changing the stored default.
-- ⬜ **30 · Process** — Failed SF writes are silent. (a) show the saver an error at the moment it fails; (b) email that user their submitted content so it isn't lost; (c) notify Kate + Katie (email or Slack).
+- ✅ **29 · Process** — Supplier order email carries no contact. Store a phone per user (new — captured at account setup), default the order's phone field to it, editable per order without changing the stored default.
+- ✅ **30 · Process** — Failed SF writes are silent. (a) show the saver an error at the moment it fails; (b) email that user their submitted content so it isn't lost; (c) notify Kate + Katie (email or Slack).
 - ✅ **31 · Bug** — Color Notes compilation labels every entry "Room" instead of the real room name, and runs surfaces together on one line. Want real room name + line break per surface. Same for free-text notes.
 - ✅ **32 · Bug** — "Required by" accepts a past date. Root cause above.
 

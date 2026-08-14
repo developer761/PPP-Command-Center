@@ -162,6 +162,10 @@ function AddUserForm({
     }
   };
 
+  // Kate round-3 #29: captured at account setup so supplier orders have a
+  // number the vendor can call. Editable per order without changing this.
+  const [phone, setPhone] = useState("");
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (pending) return;
@@ -170,7 +174,7 @@ function AddUserForm({
       const res = await fetch("/api/admin/access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, full_name: fullName, password, role }),
+        body: JSON.stringify({ email, full_name: fullName, phone, password, role }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -182,6 +186,7 @@ function AddUserForm({
       );
       setEmail("");
       setFullName("");
+      setPhone("");
       setPassword("");
       setRole("account_manager");
       setShowPw(false);
@@ -229,6 +234,21 @@ function AddUserForm({
           />
         </Field>
       </div>
+
+      {/* Kate round-3 #29 — the supplier order email had no way to reach
+          anyone. This becomes the default "who to call" on orders this person
+          places; they can change it per order without changing it here. */}
+      <Field label="Phone" hint="Optional — shown on supplier orders they place, so the vendor can call about a colour or a quantity">
+        <input
+          type="tel"
+          inputMode="tel"
+          autoComplete="off"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="(631) 555-0134"
+          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
+        />
+      </Field>
 
       <Field label="Password" required hint="At least 8 characters. You can generate one and copy it.">
         <div className="flex flex-wrap items-stretch gap-2">
