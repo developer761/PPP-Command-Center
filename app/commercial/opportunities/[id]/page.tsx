@@ -667,10 +667,12 @@ async function softDeleteOpportunityAction(formData: FormData) {
   const account_id = (pre as { account_id?: string } | null)?.account_id ?? null;
   const result = await softDeleteCommercialOpportunity(opp_id, user.id);
   if (!result.ok) {
-    // Route error back to the account page (deal drill-in URL) — never
-    // the standalone deal page anymore.
+    // Route error back to the account page. ?tab=opportunities, NOT ?tab=deals:
+    // the latter resolves to the account Home tab, which renders no sp.error
+    // banner, so a failed delete landed the user on Home with no message at all
+    // (round-3 handoff #7 class). The opportunities list shows the error.
     if (account_id) {
-      redirect(`/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent(result.error)}`);
+      redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
     }
     redirect(`/commercial/accounts?error=${encodeURIComponent(result.error)}`);
   }
@@ -715,8 +717,10 @@ async function archiveOpportunityAction(formData: FormData) {
   const account_id = (pre as { account_id?: string } | null)?.account_id ?? null;
   const result = await archiveOpportunity(opp_id, user.id);
   if (!result.ok) {
+    // ?tab=opportunities so the error banner actually renders — ?tab=deals is
+    // the Home tab and shows no sp.error (round-3 handoff #7 class).
     if (account_id) {
-      redirect(`/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent(result.error)}`);
+      redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
     }
     redirect(`/commercial/accounts?error=${encodeURIComponent(result.error)}`);
   }

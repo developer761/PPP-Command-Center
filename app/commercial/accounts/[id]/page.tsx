@@ -1356,7 +1356,7 @@ async function quickFlipFromAccountAction(formData: FormData) {
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=deals`);
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
-    redirect(`/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent("Invalid status.")}`);
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Invalid status.")}`);
   }
   // Audit fix (IDOR): verify the opp belongs to THIS account. A forged
   // opp_id belonging to a different account would otherwise let a user
@@ -1364,7 +1364,7 @@ async function quickFlipFromAccountAction(formData: FormData) {
   const ownershipCheck = await getCommercialOpportunity(opp_id);
   if (!ownershipCheck || ownershipCheck.account_id !== account_id) {
     redirect(
-      `/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent("That opportunity doesn't belong to this customer.")}`
+      `/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("That opportunity doesn't belong to this customer.")}`
     );
   }
   // Lost / No-bid need loss_reason capture — bounce to detail page.
@@ -1386,7 +1386,9 @@ async function quickFlipFromAccountAction(formData: FormData) {
     acting_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent(result.error)}`);
+    // ?tab=opportunities so the error shows — ?tab=deals is the Home tab, which
+    // renders no sp.error, so a failed status flip vanished (round-3 #7 class).
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
   }
   if (isWonFlip) {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
@@ -1766,7 +1768,11 @@ async function editDealFromAccountAction(formData: FormData) {
     // the destination actually renders.
     redirect(`/commercial/opportunities/${opp_id}?tab=info&edited=1`);
   }
-  redirect(`/commercial/accounts/${account_id}?tab=deals&saved=1`);
+  // Back to the ?tab=opportunities LIST the sheet overlaid — the ONLY surface
+  // that renders the saved flash (savedFlash={sp.saved === "1"}). ?tab=deals
+  // resolves to the Home tab, which drops both the flash and the user's place
+  // in the list — the same eject the close path had (round-3 handoff #7).
+  redirect(`/commercial/accounts/${account_id}?tab=opportunities&saved=1`);
 }
 
 /**
@@ -1808,7 +1814,7 @@ async function deleteDealFromAccountAction(formData: FormData) {
     .eq("account_id", account_id)
     .maybeSingle();
   if (!pre) {
-    redirect(`/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent("Opportunity not found on this account.")}`);
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Opportunity not found on this account.")}`);
   }
   const preRow = pre as { title?: string; client_name?: string | null; property_street?: string | null };
   const { data: preAcct } = await sb
@@ -6269,7 +6275,16 @@ async function DealEditSheet({
       ? [{ value: deal.primary_contact_id as string, label: "Removed from this GC (still assigned)", hint: "Pick another below" }]
       : []),
   ];
-  const closeHref = `/commercial/accounts/${accountId}?tab=deals`;
+  // Close / Cancel / backdrop / Escape / header-✕ all share this one target.
+  // It must return to WHERE THE SHEET WAS OPENED FROM, not the account Home
+  // dashboard. The sheet only renders on the ?tab=opportunities list; ?tab=deals
+  // resolves to the "home" tab (AccountHome — a different surface that has
+  // neither this list nor the saved flash), so closing there ejected the user
+  // off the list they were editing (round-3 handoff #7). Opened from the deal
+  // page (dealBack)? Go back to the deal, not into the account at all.
+  const closeHref = dealBack
+    ? `/commercial/opportunities/${deal.id}`
+    : `/commercial/accounts/${accountId}?tab=opportunities`;
   const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]";
   // Karan 2026-07-10 (arrows-coming-down flag): all selects get an
   // identical chevron. `appearance-none` strips the OS default (which
