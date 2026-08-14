@@ -180,7 +180,7 @@ async function evaluateRule(
     case "invoice_overdue": {
       // Exclude soft-deleted + drafts (a draft was never sent, so it isn't
       // "overdue"); oldest-due first so the daily cap converges deterministically.
-      const { data } = await sb
+      const { data, error } = await sb
         .from("commercial_invoices")
         .select("id, account_id, invoice_number, due_at, balance_cents, status")
         .not("status", "in", "(void,paid,draft)")
@@ -190,7 +190,7 @@ async function evaluateRule(
         .is("deleted_at", null)
         .order("due_at", { ascending: true })
         .limit(500);
-      warnIfCapped(data, "invoice_overdue");
+      warnIfCapped(data, error, "invoice_overdue");
       return ((data ?? []) as Array<{ id: string; account_id: string; invoice_number: string; due_at: string; balance_cents: number }>)
         .filter((i) => !deletedAccountIds.has(i.account_id))
         .map((i) => ({
@@ -201,7 +201,7 @@ async function evaluateRule(
       }));
     }
     case "proposal_idle": {
-      const { data } = await sb
+      const { data, error } = await sb
         .from("commercial_proposals")
         .select("id, revision_number, sent_at, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(id, account_id, title, title_override, client_name, property_street, deleted_at, archived_at)")
         .eq("status", "sent")
@@ -210,7 +210,7 @@ async function evaluateRule(
         .is("deleted_at", null)
         .order("sent_at", { ascending: true })
         .limit(500);
-      warnIfCapped(data, "proposal_idle");
+      warnIfCapped(data, error, "proposal_idle");
       type Row = {
         id: string; revision_number: number; sent_at: string;
         opportunity: { id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; deleted_at: string | null; archived_at: string | null } | Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; deleted_at: string | null; archived_at: string | null }> | null;
@@ -232,7 +232,7 @@ async function evaluateRule(
         .filter((m): m is Match => m !== null);
     }
     case "followup_due": {
-      const { data } = await sb
+      const { data, error } = await sb
         .from("commercial_opportunities")
         .select("id, account_id, title, title_override, client_name, property_street, follow_up_at")
         .not("follow_up_at", "is", null)
@@ -242,7 +242,7 @@ async function evaluateRule(
         .in("status", OPEN_OPP_STATUSES as readonly string[])
         .order("follow_up_at", { ascending: true })
         .limit(500);
-      warnIfCapped(data, "followup_due");
+      warnIfCapped(data, error, "followup_due");
       return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; follow_up_at: string }>)
         .filter((o) => !deletedAccountIds.has(o.account_id))
         .map((o) => ({
@@ -254,7 +254,7 @@ async function evaluateRule(
       }));
     }
     case "opp_no_activity": {
-      const { data } = await sb
+      const { data, error } = await sb
         .from("commercial_opportunities")
         .select("id, account_id, title, title_override, client_name, property_street, updated_at")
         .in("status", OPEN_OPP_STATUSES as readonly string[])
@@ -263,7 +263,7 @@ async function evaluateRule(
         .is("archived_at", null)
         .order("updated_at", { ascending: true })
         .limit(500);
-      warnIfCapped(data, "opp_no_activity");
+      warnIfCapped(data, error, "opp_no_activity");
       return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; updated_at: string }>)
         .filter((o) => !deletedAccountIds.has(o.account_id))
         .map((o) => ({
@@ -291,7 +291,7 @@ async function evaluateRule(
       const dueByExclusive = new Date(Date.UTC(ty, tm - 1, td + rule.threshold_days + 1))
         .toISOString()
         .slice(0, 10);
-      const { data } = await sb
+      const { data, error } = await sb
         .from("commercial_invoices")
         .select("id, account_id, invoice_number, due_at, balance_cents, status")
         .not("status", "in", "(void,paid,draft)")
@@ -302,7 +302,7 @@ async function evaluateRule(
         .is("deleted_at", null)
         .order("due_at", { ascending: true })
         .limit(500);
-      warnIfCapped(data, "invoice_due_soon");
+      warnIfCapped(data, error, "invoice_due_soon");
       return ((data ?? []) as Array<{ id: string; account_id: string; invoice_number: string; due_at: string; balance_cents: number }>)
         .filter((i) => !deletedAccountIds.has(i.account_id))
         .map((i) => ({
@@ -314,7 +314,7 @@ async function evaluateRule(
     }
     case "invoice_paid": {
       // Recently marked paid in full. paid_at is stamped on full payment.
-      const { data } = await sb
+      const { data, error } = await sb
         .from("commercial_invoices")
         .select("id, account_id, invoice_number, total_cents, paid_at, status")
         .eq("status", "paid")
@@ -323,7 +323,7 @@ async function evaluateRule(
         .is("deleted_at", null)
         .order("paid_at", { ascending: true })
         .limit(500);
-      warnIfCapped(data, "invoice_paid");
+      warnIfCapped(data, error, "invoice_paid");
       return ((data ?? []) as Array<{ id: string; account_id: string; invoice_number: string; total_cents: number | null; paid_at: string }>)
         .filter((i) => !deletedAccountIds.has(i.account_id))
         .map((i) => ({
@@ -334,7 +334,7 @@ async function evaluateRule(
       }));
     }
     case "deal_won": {
-      const { data } = await sb
+      const { data, error } = await sb
         .from("commercial_opportunities")
         .select("id, account_id, title, title_override, client_name, property_street, decided_at")
         .eq("status", "pre_sale_closed")
@@ -345,7 +345,7 @@ async function evaluateRule(
         .is("archived_at", null)
         .order("decided_at", { ascending: true })
         .limit(500);
-      warnIfCapped(data, "deal_won");
+      warnIfCapped(data, error, "deal_won");
       return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>)
         .filter((o) => !deletedAccountIds.has(o.account_id))
         .map((o) => ({
@@ -356,7 +356,7 @@ async function evaluateRule(
       }));
     }
     case "deal_lost": {
-      const { data } = await sb
+      const { data, error } = await sb
         .from("commercial_opportunities")
         .select("id, account_id, title, title_override, client_name, property_street, decided_at")
         .eq("status", "pre_sale_closed")
@@ -367,7 +367,7 @@ async function evaluateRule(
         .is("archived_at", null)
         .order("decided_at", { ascending: true })
         .limit(500);
-      warnIfCapped(data, "deal_lost");
+      warnIfCapped(data, error, "deal_lost");
       return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>)
         .filter((o) => !deletedAccountIds.has(o.account_id))
         .map((o) => ({
@@ -383,7 +383,15 @@ async function evaluateRule(
 }
 
 const QUERY_LIMIT = 500;
-function warnIfCapped(data: unknown[] | null, trigger: string): void {
+function warnIfCapped(data: unknown[] | null, error: { message: string } | null, trigger: string): void {
+  // A failed query returns data=null. Without surfacing it, evaluateRule treated
+  // the empty result as "0 matches" and the caller touchEvaluated() the rule as a
+  // successful, quiet run — silently skipping real overdue/idle items on a
+  // transient DB error (audit medium). Throw so the caller's per-rule catch
+  // records the failure and the rule retries next run instead of marking done.
+  if (error) {
+    throw new Error(`[cron/custom-rules] ${trigger} query failed: ${error.message}`);
+  }
   if (data && data.length >= QUERY_LIMIT) {
     console.warn(
       `[cron/custom-rules] ${trigger} query hit the ${QUERY_LIMIT}-row limit — some matches may be deferred. Consider narrowing or paginating.`
