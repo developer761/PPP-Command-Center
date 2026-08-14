@@ -232,7 +232,7 @@ export function DateField({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={ariaLabel}
-        className={`w-full flex items-center gap-2 rounded-lg border pl-3 ${value && !disabled ? "pr-9" : "pr-3"} py-2 min-h-[44px] text-left text-[13.5px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 ${
+        className={`w-full flex items-center gap-2 rounded-lg border pl-3 ${value && !disabled ? "pr-12" : "pr-3"} py-2 min-h-[44px] text-left text-[13.5px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 ${
           disabled
             ? "border-ppp-charcoal-100 bg-ppp-charcoal-50 text-ppp-charcoal-400 cursor-not-allowed"
             : open
@@ -249,14 +249,17 @@ export function DateField({
         </span>
       </button>
       {/* Clear is a REAL sibling button (not nested inside the trigger button —
-          invalid + keyboard-unreachable). Absolutely positioned over the field's
-          right edge; keyboard-focusable with a visible ring (R7-a11y #15). */}
+          invalid + keyboard-unreachable). A FULL-height 44px target flush to the
+          right edge with a divider, so it's an unambiguous zone rather than a
+          28px sliver floating over the trigger — a mis-tap aimed at the field
+          used to land on the × and wipe (and autosave) the date (audit MOB).
+          The trigger's pr-12 reserves this column. */}
       {value && !disabled && (
         <button
           type="button"
           aria-label="Clear date"
           onClick={() => commit("")}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-7 w-7 rounded text-ppp-charcoal-400 hover:text-rose-600 hover:bg-ppp-charcoal-50 text-[15px] leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 touch-manipulation"
+          className="absolute right-0 top-0 bottom-0 inline-flex items-center justify-center w-11 rounded-r-lg border-l border-ppp-charcoal-100 text-ppp-charcoal-400 hover:text-rose-600 hover:bg-ppp-charcoal-50 text-[16px] leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 focus-visible:ring-inset touch-manipulation"
         >
           ×
         </button>

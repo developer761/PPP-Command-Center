@@ -84,6 +84,19 @@ export function AutosaveForm({
     return () => {
       form.removeEventListener("input", handler);
       form.removeEventListener("change", handler);
+      // Flush a PENDING debounced save on unmount. beforeunload only fires on a
+      // full page unload; a client-side navigation (a Next <Link> to another
+      // deal/tab) tears this form down without it, so text typed within the
+      // debounce window right before navigating was silently dropped (audit
+      // DOC2). Can't await during teardown, but this dispatches the save before
+      // the page unmounts.
+      if (timerRef.current && !disabled) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+        const fd = new FormData(form);
+        fd.set(AUTOSAVE_FLAG, "1");
+        void action(fd);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled]);
@@ -165,7 +178,7 @@ function StatusPill({ status, lastSavedAt }: { status: Status; lastSavedAt: Date
   })();
   if (!display) return null;
   return (
-    <div aria-live="polite" className={`sticky top-16 sm:static z-10 ml-auto mb-2 w-fit max-w-[calc(100%-1rem)] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border shadow-sm ${color}`}>
+    <div aria-live="polite" className={`pointer-events-none sticky top-16 sm:static z-10 ml-auto mb-2 w-fit max-w-[calc(100%-1rem)] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border shadow-sm ${color}`}>
       {status === "saving" && (
         <svg width="10" height="10" viewBox="0 0 24 24" className="animate-spin" aria-hidden>
           <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="42" strokeLinecap="round" />

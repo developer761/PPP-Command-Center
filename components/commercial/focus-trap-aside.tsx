@@ -17,6 +17,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -38,6 +39,11 @@ export function FocusTrapAside({
 }) {
   const ref = useRef<HTMLElement>(null);
   const router = useRouter();
+  // Freeze the page behind the sheet. These URL-driven slide-outs (customer
+  // quick-sheet, new opportunity, deal/invoice edit) are always mounted open, so
+  // lock unconditionally — without it the list scrolled under the fixed panel, a
+  // sheet "stuck to the top of a moving page" on mobile (audit MOB).
+  useScrollLock(true);
 
   useEffect(() => {
     const panel = ref.current;

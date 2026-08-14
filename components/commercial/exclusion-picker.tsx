@@ -246,7 +246,9 @@ export function ExclusionPicker({
                     onClick={() => removeRow(s.id)}
                     aria-label={`Remove ${s.text} from this proposal`}
                     title="Remove from this proposal"
-                    className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-ppp-charcoal-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                    // 32px target + touch-manipulation (was a 24px sliver that
+                    // mis-tapped onto the neighbouring chip on mobile — audit MOB).
+                    className="inline-flex items-center justify-center w-8 h-8 -my-1 rounded hover:bg-ppp-charcoal-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 touch-manipulation"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
                       <path d="M18 6L6 18 M6 6l12 12" />
@@ -387,7 +389,7 @@ export function ExclusionPicker({
                     onClick={() => removeCustomLine(i)}
                     aria-label={`Remove one-off exclusion "${line}"`}
                     title="Remove this one-off exclusion"
-                    className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                    className="inline-flex items-center justify-center w-8 h-8 -my-1 rounded hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40 touch-manipulation"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
                       <path d="M18 6L6 18 M6 6l12 12" />
