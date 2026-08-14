@@ -148,7 +148,7 @@ export async function changeInvoiceStatus(
  * `WHERE deleted_at IS NULL` slot), and null the COs' invoiced_invoice_id — but
  * ONLY for COs still pointing at THIS invoice (never stomps another claim).
  */
-async function releaseTickedChangeOrders(invoiceId: string): Promise<number> {
+export async function releaseTickedChangeOrders(invoiceId: string): Promise<number> {
   const sb = commercialDb();
   const [{ data: lines }, { data: ms }] = await Promise.all([
     sb.from("commercial_invoice_line_items").select("change_order_id").eq("invoice_id", invoiceId).not("change_order_id", "is", null),

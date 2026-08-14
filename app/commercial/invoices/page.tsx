@@ -202,6 +202,17 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
       .from("commercial_invoices")
       .update({ deleted_at: now })
       .in("id", rows.map((r) => r.id));
+    // Free any change orders billed on these invoices so they can be re-billed.
+    // The single-invoice softDeleteInvoice path does this; the bulk path stamped
+    // deleted_at directly and skipped it, so the CO's line/milestone tag + the
+    // mig-093 partial-unique slot survived — re-ticking the CO then failed
+    // forever with a raw 23505 and no UI escape (audit M1). Per-invoice because
+    // the release strips exactly that invoice's CO lines + nulls only COs still
+    // pointing at it (never stomps another invoice's claim).
+    const { releaseTickedChangeOrders } = await import("@/lib/commercial/invoices/status");
+    for (const r of rows) {
+      await releaseTickedChangeOrders(r.id);
+    }
     // 2026-07-29 re-audit fix: bulk void/delete previously left NO audit
     // trail — paid invoices could be auto-voided + wiped with no record of
     // who or what the balances were. Batch-log a status-change row per
@@ -282,6 +293,13 @@ async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
       .from("commercial_invoices")
       .update({ deleted_at: now })
       .in("id", rows.map((r) => r.id));
+    // Free change orders billed on these invoices so they can be re-billed —
+    // same M1 fix as the per-opp variant above (bulk path skipped the CO
+    // release the single-invoice path does, bricking re-billing forever).
+    const { releaseTickedChangeOrders } = await import("@/lib/commercial/invoices/status");
+    for (const r of rows) {
+      await releaseTickedChangeOrders(r.id);
+    }
     // 2026-07-29 re-audit fix: batch-log the bulk void/delete so the money
     // trail survives orphan cleanup (see per-opp variant above).
     await sb.from("commercial_invoice_status_log").insert(
