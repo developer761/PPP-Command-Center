@@ -35,12 +35,12 @@ Anchor files:
 ---
 
 ## Work-order page — `/dashboard/materials/[woId]` · 0/7
-- ⬜ **01 · Layout** — Remove the duplicate Internal Entry button (renders twice: beside Send Color Form, and again under Send Reminder).
+- ✅ **01 · Layout** — Remove the duplicate Internal Entry button (renders twice: beside Send Color Form, and again under Send Reminder).
 - ⬜ **02 · Bug** ↻R2#04 — Progress bar + activity read "Customer Submitted" for AM entries; must read "Amy Submitted". Root cause above.
 - ⬜ **03 · Bug** ↻R2#05 — Activity history not granular; no customer-vs-AM attribution on opens. Needs: form sent · opened by AM · opened by customer · colors submitted (by whom) · email drafted · order sent to supplier.
 - ⬜ **04 · Bug** ↻R2#06 — Pop-ups mount without moving the viewport to their anchor. Affects Send Color Form, Preview Materials Order, vendor selection.
-- ⬜ **05 · Layout** — Sq Ft alert still claims a Salesforce save. Drop "we save it to Salesforce automatically and". Also verify sqft persists in CC (should already, via `wo_li_sqft_overrides` / migration 073).
-- ⬜ **06 · Layout** — "1 color need a manual quantity" → "needs". Verb not pluralized.
+- ✅ **05 · Layout** — Sq Ft alert still claims a Salesforce save. Drop "we save it to Salesforce automatically and". Also verify sqft persists in CC (should already, via `wo_li_sqft_overrides` / migration 073).
+- ✅ **06 · Layout** — "1 color need a manual quantity" → "needs". Verb not pluralized.
 - ⬜ **07 · Process** — Sender-set color deadline. Date field on the send form, always present; default = WO Start Date when one exists, else empty; never render a past date. (68% of WOs in Coordination/Scheduling have no start date — the current Close-Date fallback is always expired.)
 
 ## Internal Entry page (`/f/[token]`) · 0/2
@@ -56,27 +56,27 @@ Anchor files:
 - ⬜ **13 · Bug** — Follow-up date filter returns zero results on any date.
 
 ## Preview Materials Order · 0/4
-- ⬜ **14 · Layout** — "Line items on this WO" (Source data → Salesforce): show room + surface per line.
-- ⬜ **15 · Bug** — Order draft preview: each color labelled generic "Area", colliding with the Source-data "Area". Replace with room + surface.
-- ⬜ **16 · Layout** — Add a Color Notes section (holds color/finish for orphaned surfaces + non-BM/SW colors).
-- ⬜ **17 · Layout** — Wording check only, after #18 moves the paint-line picker here: "⚠ Paint line not set — customer or admin needs to pick".
+- ✅ **14 · Layout** — "Line items on this WO" (Source data → Salesforce): show room + surface per line.
+- ✅ **15 · Bug** — Order draft preview: each color labelled generic "Area", colliding with the Source-data "Area". Replace with room + surface.
+- ✅ **16 · Layout** — Add a Color Notes section (holds color/finish for orphaned surfaces + non-BM/SW colors).
+- ✅ **17 · Layout** — Wording check only, after #18 moves the paint-line picker here: "⚠ Paint line not set — customer or admin needs to pick".
 
 ## Order Materials page · 0/15
-- ⬜ **18 · Process · KEYSTONE** — Split into order-building (→ Preview Materials Order: paint line, "Order — what to buy", color notes, extras; vendor selection becomes an inline pick list) and fulfillment-only (required by, supplier, fulfilment instructions, email body). **Persist order state on transition**; fulfillment reads saved state and cannot mutate the order payload. Fix the overlay scroll context (or make it its own page).
-- ⬜ **19 · Layout** — "Type in the gallons with the +/- buttons below." → "Update the gallons using the +/- buttons below."
-- ⬜ **20 · Bug** — Tab switch drops all entered data and ejects to the WO page. Intermittent — behaves like a periodic re-sync re-mounting while the tab is inactive.
-- ⬜ **21 · Bug** ↻R2#06+#18 — Vendor pop-up doesn't anchor; scroll trap persists into Order Materials. Adopt the Preview Materials Order scroll setup.
-- ⬜ **22 · Bug** — Manual quantities reset when extras/fulfillment/product line change; product line then missing from the email; extras added after quantities don't reach the email. Root cause above.
-- ⬜ **23 · Bug** — Per-color product-line override either omitted from the email, or listed but quantities fall back to "(PPP to confirm quantities)".
+- ✅ **18 · Process · KEYSTONE** — Split into order-building (→ Preview Materials Order: paint line, "Order — what to buy", color notes, extras; vendor selection becomes an inline pick list) and fulfillment-only (required by, supplier, fulfilment instructions, email body). **Persist order state on transition**; fulfillment reads saved state and cannot mutate the order payload. Fix the overlay scroll context (or make it its own page).
+- ✅ **19 · Layout** — "Type in the gallons with the +/- buttons below." → "Update the gallons using the +/- buttons below."
+- ✅ **20 · Bug** — Tab switch drops all entered data and ejects to the WO page. Intermittent — behaves like a periodic re-sync re-mounting while the tab is inactive.
+- ✅ **21 · Bug** ↻R2#06+#18 — Vendor pop-up doesn't anchor; scroll trap persists into Order Materials. Adopt the Preview Materials Order scroll setup.
+- ✅ **22 · Bug** — Manual quantities reset when extras/fulfillment/product line change; product line then missing from the email; extras added after quantities don't reach the email. Root cause above.
+- ✅ **23 · Bug** — Per-color product-line override either omitted from the email, or listed but quantities fall back to "(PPP to confirm quantities)".
 - ⬜ **24 · Bug** ↻R2#15 — AM's Internal Entry product line doesn't reach the order form (picklist arrives empty). Shape may change with #09.
-- ⬜ **25 · Layout** — "Order — what to buy": show room(s) + surface per color line. Same colour used in two rooms currently collapses to one line reading just "Walls". Pairs with #15.
-- ⬜ **26 · Bug** — With no sq ft, + climbs the TOTAL while the line still reads "manual entry required". Root cause above.
-- ⬜ **27 · Layout** ↻R2#21 — Per-line unit selection: gallon **and quart** (~1/5 of containers bought are quarts/pints). Not built in round 2.
-- ⬜ **28 · Process** ↻R2#24 — Split "Add custom item" into custom **sundry** item (exists) and custom **color** item (new; between "Order — what to buy" and Color Notes; one typeable field, help text "Color and finish — e.g. Color Match: Behr 56, eggshell"; qty + unit like any line). Unblocks the rest of R2#24: Customer Notes + "customer is not painting" move out of the email body into Color Notes.
-- ⬜ **29 · Process** — Supplier order email carries no contact. Store a phone per user (new — captured at account setup), default the order's phone field to it, editable per order without changing the stored default.
+- ✅ **25 · Layout** — "Order — what to buy": show room(s) + surface per color line. Same colour used in two rooms currently collapses to one line reading just "Walls". Pairs with #15.
+- ✅ **26 · Bug** — With no sq ft, + climbs the TOTAL while the line still reads "manual entry required". Root cause above.
+- ✅ **27 · Layout** ↻R2#21 — Per-line unit selection: gallon **and quart** (~1/5 of containers bought are quarts/pints). Not built in round 2.
+- ✅ **28 · Process** ↻R2#24 — Split "Add custom item" into custom **sundry** item (exists) and custom **color** item (new; between "Order — what to buy" and Color Notes; one typeable field, help text "Color and finish — e.g. Color Match: Behr 56, eggshell"; qty + unit like any line). Unblocks the rest of R2#24: Customer Notes + "customer is not painting" move out of the email body into Color Notes.
+- 🔨 **29 · Process** — Supplier order email carries no contact. Store a phone per user (new — captured at account setup), default the order's phone field to it, editable per order without changing the stored default.
 - ⬜ **30 · Process** — Failed SF writes are silent. (a) show the saver an error at the moment it fails; (b) email that user their submitted content so it isn't lost; (c) notify Kate + Katie (email or Slack).
 - ⬜ **31 · Bug** — Color Notes compilation labels every entry "Room" instead of the real room name, and runs surfaces together on one line. Want real room name + line break per surface. Same for free-text notes.
-- ⬜ **32 · Bug** — "Required by" accepts a past date. Root cause above.
+- ✅ **32 · Bug** — "Required by" accepts a past date. Root cause above.
 
 ## Edge cases · 0/1
 - ⬜ **33 · Bug** ↻R2#25 — No surfaces in SF but the form still renders one. Alert "No surfaces are selected, update Salesforce to collect colors." + **block** sending the color form. (Round 2 marked this done as #26 — re-verify what actually shipped.)

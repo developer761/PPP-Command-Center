@@ -38,9 +38,12 @@
  *     instance when worker switches WOs — DO NOT remove the key.
  *   - The Send Reminder button only renders for status==='sent' | 'opened'.
  *     formStatus type guard guarantees `token` is present in both states.
- *   - Modals are dynamic-imported (SupplierPickerModal, SupplierOrderModal,
- *     DraftOrderModal, WoPastOrders) so first-paint stays small. Don't
- *     convert them back to static imports without measuring bundle impact.
+ *   - Ordering is NOT a modal any more (Kate round-3 #18). It lives on
+ *     /dashboard/materials/[woId]/order (build) and .../order/[supplierId]
+ *     (fulfilment). Keeping it off this page is what stops the focus-refresh
+ *     below from destroying an in-progress order.
+ *   - WoPastOrders is dynamic-imported so first-paint stays small. Don't
+ *     convert it back to a static import without measuring bundle impact.
  */
 
 import Link from "next/link";
@@ -54,7 +57,6 @@ import InfoDot from "@/components/info-dot";
 // (~1100 lines combined) from the materials-page initial bundle. First-click
 // pays a one-time ~50ms chunk fetch; subsequent opens are instant. Page first
 // paint loads ~30-40KB less JS.
-const SupplierPickerModal = dynamic(() => import("@/components/supplier-picker-modal"));
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { fmtMoneyK, fmtScheduleDate } from "@/lib/format";
 import {
@@ -80,14 +82,12 @@ import {
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
-const SupplierOrderModal = dynamic(() => import("@/components/supplier-order-modal"));
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
 // worker has actively clicked a WO. The initial materials-list paint never
 // needs it — defer its JS so the page hydrates faster. First-WO-click pays
 // a one-time chunk fetch (~10ms); afterward it's instant. (~5KB shaved off
 // the initial JS bundle.)
 const WoPastOrders = dynamic(() => import("@/components/wo-past-orders"));
-const DraftOrderModal = dynamic(() => import("@/components/draft-order-modal"));
 // Right-rail mail stream — only renders on the focus-mode WO page, so defer it
 // off the list-page bundle (same rationale as WoPastOrders).
 const WoMailStream = dynamic(() => import("@/components/wo-mail-stream"));
@@ -187,16 +187,6 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     return { accountByName: byName, accountsById: byId };
   }, [snapshot]);
 
-  // Modal open state — only one supplier order modal at a time.
-  const [orderModal, setOrderModal] = useState<{
-    workOrderId: string;
-    workOrderNumber: string | null;
-    supplierAccountId: string;
-    supplierName: string;
-    customerName: string | null;
-    /** Worker chose this supplier via the manual picker (not auto-detected). */
-    manual?: boolean;
-  } | null>(null);
 
   // Counter bumped when the modal closes after a successful send — children
   // (past-orders strip) re-fetch when this changes so the new row shows up
@@ -520,21 +510,6 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // sort change, etc.) — without a stable identity, memo can't compare
   // props and the entire JobDetail subtree (paint estimate, progress
   // bar, supplier rows) re-runs on every keystroke at ~100+ WOs.
-  const handleOpenOrderModal = useCallback(
-    (supplierAccountId: string, supplierName: string, manual?: boolean) => {
-      if (!activeJob) return;
-      setOrderModal({
-        workOrderId: activeJob.wo.id,
-        workOrderNumber: activeJob.wo.workOrderNumber,
-        supplierAccountId,
-        supplierName,
-        customerName: activeJob.wo.accountName ?? null,
-        manual: manual ?? false,
-      });
-    },
-    [activeJob]
-  );
-
   // Aggregate stats across all open jobs for the top strip
   const stats = useMemo(() => {
     let totalSqFt = 0;
@@ -1218,7 +1193,6 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       formStatus={formStatusByWO.get(activeJob.wo.id)}
                       accountsById={accountsById}
                       accountByName={accountByName}
-                      onOpenOrderModal={handleOpenOrderModal}
                       effectiveSqft={effectiveSqft}
                       onUpdateSqft={handleUpdateSqft}
                       canOrderMaterials={canOrderMaterials}
@@ -1271,26 +1245,6 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         </section>
       )}
 
-      {/* Top-level Supplier Order Modal — only one open at a time. Closing
-          triggers a past-orders refresh so a freshly-sent order shows in
-          the strip without requiring a manual reload. */}
-      {orderModal && (
-        <SupplierOrderModal
-          workOrderId={orderModal.workOrderId}
-          workOrderNumber={orderModal.workOrderNumber}
-          supplierAccountId={orderModal.supplierAccountId}
-          supplierName={orderModal.supplierName}
-          customerName={orderModal.customerName}
-          manualSupplier={orderModal.manual ?? false}
-          onClose={() => {
-            // Close + refresh the past-orders strip so a freshly-sent order
-            // shows without a manual reload. Idempotent, so a double-fire
-            // (Esc + backdrop) is harmless.
-            setOrderModal(null);
-            setPastOrdersRefreshKey((k) => k + 1);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -1302,7 +1256,6 @@ function JobDetailImpl({
   formStatus,
   accountsById,
   accountByName,
-  onOpenOrderModal,
   effectiveSqft,
   onUpdateSqft,
   canOrderMaterials,
@@ -1323,7 +1276,6 @@ function JobDetailImpl({
   /** Opens the Supplier Order Modal with a supplier pre-selected. `manual` is
    *  true when chosen via the store picker (vs auto-detected), so the builder
    *  includes all the WO's colors on that store's order. */
-  onOpenOrderModal: (supplierAccountId: string, supplierName: string, manual?: boolean) => void;
   /** Returns the override-aware sqft for a WOLI (user-typed value beats SF
    *  raw). Computed at parent level so it's shared with the WO-list chip. */
   effectiveSqft: (woliId: string, rawSqft: number) => number;
@@ -1341,8 +1293,6 @@ function JobDetailImpl({
    *  color form was just sent) so the parent bumps the stream's refresh key. */
   onActivityChange?: () => void;
 }) {
-  const [showDraft, setShowDraft] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
 
   // Pre-fill data for the Send Color Form modal — pull the customer Account
   // from parent-built indexes. Empty when not in snapshot (vendor WO or
@@ -1584,9 +1534,14 @@ function JobDetailImpl({
               <span aria-hidden>⚠</span>
               <span className="leading-snug">
                 <strong className="text-ppp-orange-800">
+                  {/* Kate round-3 #06: the noun was pluralised but the verb
+                      wasn't, so a single colour read "1 color need a manual
+                      quantity." Both agree now. */}
                   {noEstimate
                     ? "No square footage on Salesforce — fill in gallons manually."
-                    : `${paintEstimate.reviewColors} color${paintEstimate.reviewColors === 1 ? "" : "s"} need a manual quantity.`}
+                    : paintEstimate.reviewColors === 1
+                      ? "1 color needs a manual quantity."
+                      : `${paintEstimate.reviewColors} colors need a manual quantity.`}
                 </strong>
               </span>
             </div>
@@ -1660,8 +1615,15 @@ function JobDetailImpl({
                     defaultEmail={customerAccount?.email ?? null}
                     onSent={onActivityChange}
                   />
+                  {/* Kate round-3 #01: Internal Entry was rendering TWICE — once
+                      beside Send Color Form (inside SendColorFormButton) and
+                      again as its own block down here. The standalone copy is
+                      gone; its explanation moved up so the remaining button
+                      still says what it does. */}
                   <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                    Email the homeowner a link to pick colors for each room.
+                    Email the homeowner a link to pick colors for each room, or use
+                    Internal Entry to enter the colors yourself — saved to Salesforce,
+                    no email sent.
                   </p>
                   {(formStatus?.status === "sent" || formStatus?.status === "opened") && (
                     <div className="mt-1">
@@ -1671,15 +1633,6 @@ function JobDetailImpl({
                       </p>
                     </div>
                   )}
-                  {/* Kate #03: Internal Entry now sits in the Colors button bar
-                      (was buried in the Send-form modal). Enter colors on the
-                      customer's behalf — writes to Salesforce, no email sent. */}
-                  <div className="mt-1">
-                    <PreviewColorFormButton workOrderId={job.wo.id} />
-                    <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5 mt-1">
-                      Enter colors yourself on the customer&apos;s behalf — saved to Salesforce, no email sent.
-                    </p>
-                  </div>
                 </>
                   );
                 })()
@@ -1699,32 +1652,44 @@ function JobDetailImpl({
               {/* Enable only when the viewer can order AND the WO has line items
                   — ordering with 0 rooms produces a blank paint order (matches
                   the mobile sticky bar + pb-24 gate). */}
+              {/* Kate round-3 #18: ordering is its own two-step flow on its own
+                  routes now — build the order, then fulfil it. Rendering it as
+                  an overlay on this page is what made the buttons unreachable
+                  (#21) and what let this page's focus-refresh wipe an in-progress
+                  order (#20). Both buttons land on the builder; Preview jumps to
+                  the reference panels on that same page. */}
               {(() => {
               const canPlaceOrder = canOrderMaterials && job.lineItems.length > 0;
+              const orderHref = `/dashboard/materials/${encodeURIComponent(job.wo.id)}/order`;
               return (<>
-              <button
-                type="button"
-                onClick={() => canPlaceOrder && setShowPicker(true)}
-                disabled={!canPlaceOrder}
-                title={
-                  !canOrderMaterials
-                    ? "Only admins can place material orders."
-                    : job.lineItems.length === 0
-                    ? "Add rooms/colors in Salesforce before ordering."
-                    : undefined
-                }
-                aria-disabled={!canPlaceOrder}
-                className={`inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors touch-manipulation ${
-                  canPlaceOrder
-                    ? "bg-ppp-green-600 text-white hover:bg-ppp-green-700 active:bg-ppp-green-700 shadow-sm shadow-ppp-green/30"
-                    : "bg-ppp-charcoal-100 text-ppp-charcoal-400 cursor-not-allowed"
-                }`}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
-                </svg>
-                Order Materials
-              </button>
+              {canPlaceOrder ? (
+                <Link
+                  href={orderHref}
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors touch-manipulation bg-ppp-green-600 text-white hover:bg-ppp-green-700 active:bg-ppp-green-700 shadow-sm shadow-ppp-green/30"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
+                  </svg>
+                  Order Materials
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled
+                  title={
+                    !canOrderMaterials
+                      ? "Only admins can place material orders."
+                      : "Add rooms/colors in Salesforce before ordering."
+                  }
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold bg-ppp-charcoal-100 text-ppp-charcoal-400 cursor-not-allowed"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
+                  </svg>
+                  Order Materials
+                </button>
+              )}
               <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
                 {!canOrderMaterials
                   ? (isAccountManager
@@ -1732,33 +1697,25 @@ function JobDetailImpl({
                       : "Only admins can place material orders.")
                   : job.lineItems.length === 0
                   ? "No rooms on this WO yet — add rooms/colors in Salesforce before ordering."
-                  : "Pick a store (Aboffs, Willis, etc.) and email the order."}
+                  : "Step 1: pick a store and set what to buy. Step 2: fulfilment and the email. Nothing sends until you say so."}
               </p>
+              {canPlaceOrder && (
+                <>
+                  <Link
+                    href={`${orderHref}#preview`}
+                    className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
+                    </svg>
+                    Preview Materials Order
+                  </Link>
+                  <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                    Every room, colour and surface on this job — on the order screen, above the buy list.
+                  </p>
+                </>
+              )}
               </>);
-              })()}
-              {(() => {
-                const hasSubmission = formStatus?.status === "submitted";
-                return (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setShowDraft(true)}
-                      disabled={!hasSubmission}
-                      title={hasSubmission ? undefined : "Available after the customer submits the color form"}
-                      className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
-                      </svg>
-                      Preview Materials Order
-                    </button>
-                    <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                      {hasSubmission
-                        ? "Read-only view of every room and color the customer picked."
-                        : "Available once the customer submits the color form."}
-                    </p>
-                  </>
-                );
               })()}
             </div>
           </div>
@@ -1770,19 +1727,6 @@ function JobDetailImpl({
           )}
         </div>
       </div>
-
-      {showPicker && (
-        <SupplierPickerModal
-          onClose={() => setShowPicker(false)}
-          // manual=true: this supplier was hand-picked (not auto-detected from
-          // the colors' manufacturer), so the builder must attribute the WO's
-          // unattributed colors to it instead of sending an empty order.
-          onPick={(s) => onOpenOrderModal(s.accountId, s.name, true)}
-          excludeIds={supplierRows
-            .map((r) => r.manufacturerId)
-            .filter((id) => id && id !== "unknown") as string[]}
-        />
-      )}
 
       {/* Notes from Salesforce (WO Subject) now live in the Reference tab of
           the action toolbar above (Kate #2) — removed the standalone block to
@@ -1808,7 +1752,12 @@ function JobDetailImpl({
         return (
           <div
             className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2.5 text-[12px] text-ppp-orange-700 flex items-start gap-2"
-            title="Tap a room below to type its square footage. We save it to Salesforce automatically and the gallon estimator updates right away. If you skip it, the order will use 0 gallons and you'll fill in the quantity yourself before sending."
+            /* Kate round-3 #05: this claimed we write the square footage back to
+               Salesforce. We don't — round-2 #17 moved it to a Command Center
+               table (wo_li_sqft_overrides, migration 073) because Sq_Footage__c
+               is a formula field and the write always 502'd. Copy now matches
+               what the code does: it's saved here, and it stays here. */
+            title="Tap a room below to type its square footage. It's saved in the Command Center and the gallon estimator updates right away. If you skip it, the order will use 0 gallons and you'll fill in the quantity yourself before sending."
           >
             <span aria-hidden>⚠</span>
             <span>
@@ -1817,7 +1766,7 @@ function JobDetailImpl({
                   ? "No square footage on any room yet."
                   : `Square footage missing on ${missingCount} of ${job.lineItems.length} rooms.`}
               </strong>{" "}
-              Tap a room below to add sq ft — we save it to Salesforce automatically and the gallon estimator updates instantly. Skip = order ships with manual quantity.
+              Tap a room below to add sq ft — it&apos;s saved here and the gallon estimator updates instantly. Skip = order ships with manual quantity.
             </span>
           </div>
         );
@@ -1869,21 +1818,6 @@ function JobDetailImpl({
         </ul>
       </div>
 
-      {/* Color preview modal — read-only review, then order from a store */}
-      {showDraft && (
-        <DraftOrderModal
-          job={job}
-          snapshot={snapshot}
-          canOrderMaterials={canOrderMaterials}
-          onClose={() => setShowDraft(false)}
-          onOrderMaterials={() => {
-            if (!canOrderMaterials) return;
-            setShowDraft(false);
-            setShowPicker(true);
-          }}
-        />
-      )}
-
       {/* Mobile-only sticky bottom action bar — Karan 2026-06-13. Primary
           quick-access "Order materials" button pinned to the bottom of the
           viewport so workers don't have to scroll past the full action
@@ -1896,17 +1830,16 @@ function JobDetailImpl({
           className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-ppp-charcoal-100 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
         >
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
+          <Link
+            href={`/dashboard/materials/${encodeURIComponent(job.wo.id)}/order`}
             className="w-full h-12 rounded-lg bg-ppp-green-600 text-white font-semibold text-sm hover:bg-ppp-green-700 active:bg-ppp-green-700 transition-colors touch-manipulation flex items-center justify-center gap-2 shadow-md shadow-ppp-green/30"
-            aria-label="Open supplier order picker"
+            aria-label="Start a material order for this work order"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z M3 6h18 M16 10a4 4 0 0 1-8 0" />
             </svg>
             Order Materials
-          </button>
+          </Link>
         </div>
       )}
     </div>
@@ -1916,8 +1849,7 @@ function JobDetailImpl({
 // Memoized export — JobDetail re-renders only when its props change. Parent
 // state changes (search query, sort mode, scroll) no longer trigger a fresh
 // JobDetail render at 100+ WOs. `accountsById` + `accountByName` are stable
-// across snapshot identity (parent useMemo) and `onOpenOrderModal` is stable
-// across activeJob identity (parent useCallback), so memo can compare props
+// across snapshot identity (parent useMemo), so memo can compare props
 // shallowly without surprises.
 const JobDetail = memo(JobDetailImpl);
 
@@ -1985,12 +1917,14 @@ function LineItemRow({
           {/* Editable per-room sqft — Karan 2026-06-13. The PPP team rarely
               fills Sq_Footage__c in Salesforce (~77% of rooms empty per the
               fill-rate probe). This input lets the worker / admin type the
-              number once: it writes to SF immediately (single source of
-              truth), the gallon estimator recomputes live, and the supplier
-              order will carry the right quantity instead of "___ (PPP to
-              confirm)". Empty / cleared input falls back to the SF raw
-              value. Wall-area-only rows (no floor sqft but have wall area)
-              still get the input so the worker can supplement. */}
+              number once: it persists in the Command Center
+              (wo_li_sqft_overrides, migration 073), the gallon estimator
+              recomputes live, and the supplier order carries a real quantity
+              instead of "___ (PPP to confirm)". It does NOT write back to
+              Salesforce — Sq_Footage__c is a formula field and the write
+              always failed (round-2 #17). Empty / cleared input falls back to
+              the SF raw value. Wall-area-only rows (no floor sqft but have
+              wall area) still get the input so the worker can supplement. */}
           {/* Re-audit 2026-07-28 (F2): reps are read-only on this surface
               (Customer tab says so, and the server route now enforces
               canEnterColors). Only render the writable input for admin/AM;
@@ -2041,15 +1975,17 @@ function LineItemRow({
  * Per-room sqft editor — inline number input. Saves on blur. Optimistic
  * UI: the value is whatever the user just typed; the parent override map
  * carries it to the gallon estimator + the WO list chip; the background
- * fetch writes to Salesforce. On SF write failure we roll back the
- * override (handled in the parent) and show an error here.
+ * fetch persists it in the Command Center (wo_li_sqft_overrides). It does
+ * NOT go to Salesforce — Sq_Footage__c is a formula field (round-2 #17).
+ * On write failure we roll back the override (handled in the parent) and
+ * show an error here.
  *
  * Edge cases handled:
- *   - Empty input → treated as "clear my override" — does NOT write 0 to
- *     SF. SF stays untouched and the value reverts to whatever's in the
- *     snapshot (typically 0 → manual qty mode).
- *   - Same value as currently saved → no API call (avoids spamming SF
- *     with redundant writes when the user tabs through inputs).
+ *   - Empty input → treated as "clear my override" — deletes the stored
+ *     row rather than saving a 0, so the value reverts to whatever's in
+ *     the snapshot (typically 0 → manual qty mode).
+ *   - Same value as currently saved → no API call (avoids redundant
+ *     writes when the user tabs through inputs).
  *   - Non-numeric / negative → reject + revert visually.
  *   - In-flight save → input is disabled + shows a small spinner; second
  *     keystroke doesn't kick a parallel save.
