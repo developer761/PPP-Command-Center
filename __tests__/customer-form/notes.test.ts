@@ -61,14 +61,20 @@ describe("extractCustomerFreeText — round-3 #31 room headers", () => {
   });
 
   it("keeps the customer's note and drops the header block around it", () => {
+    // The shape the submit route actually writes: ONE header, then the orphan
+    // colours, then the customer's own words.
     const raw = [
       "Dining Room:",
       "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
       "",
-      "Dining Room:",
       "Customer notes: Dave approved the accent wall",
     ].join("\n");
     expect(extractCustomerFreeText(raw)).toBe("Dave approved the accent wall");
+  });
+
+  it("drops a header that sits directly above the customer note (no orphans)", () => {
+    const raw = ["Kitchen:", "Customer notes: Low-VOC please"].join("\n");
+    expect(extractCustomerFreeText(raw)).toBe("Low-VOC please");
   });
 
   it("does NOT eat a crew note that happens to start with its own heading", () => {

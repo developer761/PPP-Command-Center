@@ -128,14 +128,14 @@ export async function POST(request: Request) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDeadline)) {
       return NextResponse.json({
         error: "invalid_color_deadline",
-        message: "The colour deadline needs to be a date (YYYY-MM-DD).",
+        message: "The color deadline needs to be a date (YYYY-MM-DD).",
       }, { status: 400 });
     }
     const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
     if (rawDeadline < todayEt) {
       return NextResponse.json({
         error: "color_deadline_in_past",
-        message: "That colour deadline has already passed — pick today or later.",
+        message: "That color deadline has already passed — pick today or later.",
       }, { status: 400 });
     }
     colorDeadline = rawDeadline;

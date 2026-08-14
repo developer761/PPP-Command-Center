@@ -104,7 +104,7 @@ export default async function OrderFulfillmentPage({
       <div className="max-w-lg mx-auto py-16 text-center">
         <h1 className="text-lg font-bold text-ppp-navy">Ordering is admin-only</h1>
         <p className="mt-2 text-sm text-ppp-charcoal-500">
-          Account Managers and reps can enter colours, but an admin places the material order.
+          Account Managers and reps can enter colors, but an admin places the material order.
         </p>
         <Link
           href={`/dashboard/materials/${encodeURIComponent(data.workOrderId)}`}

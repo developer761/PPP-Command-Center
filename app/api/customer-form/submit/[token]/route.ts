@@ -445,16 +445,19 @@ export async function POST(
     // customer's free-text room notes. Standard + single-orphan surfaces live
     // entirely in their dedicated color/finish fields, so they no longer
     // duplicate into notes (Kate 2026-07-09 — finishes belong in FinishX__c).
-    const noteLines: string[] = [];
     // Kate round-3 #31: lead with the REAL room name and break the surfaces
     // onto separate lines. Two complaints in one: every entry was labelled with
     // a generic "Room", and the surfaces ran together on a single line, so a
     // work order covering a dining room and a kitchen produced two identical
     // unreadable blocks. When Salesforce genuinely has no area label we omit
     // the header rather than inventing one.
+    //
+    // The header is written ONCE, after the body is assembled — emitting it per
+    // section repeated "Dining Room:" for a room that had both orphan colours
+    // and a customer note.
     const roomLabel = (freshLi.areaLabel ?? "").trim();
+    const noteLines: string[] = [];
     if (orphanNoteParts.length > 0) {
-      if (roomLabel) noteLines.push(`${roomLabel}:`);
       noteLines.push(...orphanNoteParts);
     }
     // Kate #09: record each "Don't paint this surface" pick as an explicit note.
@@ -476,10 +479,11 @@ export async function POST(
       .trim();
     if (submittedNotes) {
       if (noteLines.length > 0) noteLines.push("");
-      // Kate round-3 #31: free-text gets the same treatment — real room name,
-      // then the note on its own line, instead of one long run-on.
-      if (roomLabel) noteLines.push(`${roomLabel}:`);
       noteLines.push(`Customer notes: ${submittedNotes}`);
+    }
+    // One room header for the whole note, not one per section.
+    if (noteLines.length > 0 && roomLabel) {
+      noteLines.unshift(`${roomLabel}:`);
     }
     if (noteLines.length > 0) {
       // ColorNotes__c is a Long Text Area in PPP's org (32k cap), but a Long

@@ -25,16 +25,16 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { AUTOSAVE_FLAG, AUTOSAVE_DEBOUNCE_MS } from "@/lib/commercial/autosave-flag";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
 export function AutosaveProposalForm({
   children,
   action,
-  // Stephanie 2026-08-13. 800ms fires on the pause between two words, not on
-  // the pause between two thoughts, so a save landed mid-sentence constantly.
-  // 2.5s still saves faster than anyone can lose work to a closed laptop.
-  debounceMs = 2500,
+  // Stephanie 2026-08-13 — see AUTOSAVE_DEBOUNCE_MS for why 800ms was wrong.
+  // Shared with AutosaveForm so the two wrappers can't drift apart again.
+  debounceMs = AUTOSAVE_DEBOUNCE_MS,
   disabled = false,
 }: {
   children: React.ReactNode;
@@ -84,7 +84,7 @@ export function AutosaveProposalForm({
     // in typing was re-rendering this page and two others out from under her.
     // An explicit save (Send for approval) still revalidates everything.
     const fd = new FormData(formRef.current);
-    fd.set("__autosave", "1");
+    fd.set(AUTOSAVE_FLAG, "1");
     // Call the server action DIRECTLY with the form's data — NOT requestSubmit().
     // React 19 auto-RESETS a `<form action>` once the action resolves, which was
     // wiping half-typed uncontrolled inputs (phone + any field) on every 800ms

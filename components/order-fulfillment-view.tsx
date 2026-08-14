@@ -102,7 +102,27 @@ export default function OrderFulfillmentView({
    * Rebuilt when a FULFILMENT input changes. The order half of the request is
    * the committed payload, passed through verbatim every time — so a rebuild
    * can no longer lose the worker's quantities.
+   *
+   * The order half is serialised ONCE and the effect reads that string, never
+   * the `build` object. `build` arrives from the server component and its
+   * identity is stable in practice — but an object dependency that ever stopped
+   * being stable would refetch on every render: an unbounded loop of
+   * Salesforce-backed draft builds. A string dependency cannot do that, and it
+   * keeps the dependency list honest rather than suppressed.
    */
+  const orderPayloadJson = useMemo(
+    () =>
+      JSON.stringify({
+        extras: build.extras,
+        materialType: build.mainMaterialType || undefined,
+        materialTypeOverrides:
+          Object.keys(build.materialTypeOverrides).length > 0 ? build.materialTypeOverrides : undefined,
+        quantityOverrides: Object.keys(build.quantities).length > 0 ? build.quantities : undefined,
+        customColorItems: build.customColorItems,
+        colorNotes: build.colorNotes ?? undefined,
+      }),
+    [build]
+  );
   useEffect(() => {
     let cancelled = false;
     const t = setTimeout(async () => {
@@ -125,13 +145,7 @@ export default function OrderFulfillmentView({
             contactName: viewerName ?? undefined,
             contactPhone: contactPhone.trim() || undefined,
             // ── committed order state, read-only from here ──
-            extras: build.extras,
-            materialType: build.mainMaterialType || undefined,
-            materialTypeOverrides:
-              Object.keys(build.materialTypeOverrides).length > 0 ? build.materialTypeOverrides : undefined,
-            quantityOverrides: Object.keys(build.quantities).length > 0 ? build.quantities : undefined,
-            customColorItems: build.customColorItems,
-            colorNotes: build.colorNotes ?? undefined,
+            ...(JSON.parse(orderPayloadJson) as Record<string, unknown>),
           }),
         });
         const data = await res.json();
@@ -154,7 +168,7 @@ export default function OrderFulfillmentView({
     return () => { cancelled = true; clearTimeout(t); };
   }, [
     workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr,
-    instructions, requiredBy, contactPhone, viewerName, build,
+    instructions, requiredBy, contactPhone, viewerName, orderPayloadJson,
   ]);
 
   // Whether this delivery address is in the five boroughs. Derived, not stored

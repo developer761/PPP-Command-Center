@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, applyQuantityOverrides, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
 import type {
@@ -703,7 +703,8 @@ function formatOrderSummaryBlock(
     lines.push(`  ${qty} ${unit} — ${label}`);
   }
   // Job total line — a quick cross-check for purchasing ("grab this many total").
-  const t = summarizeOrder(estimates);
+  // Custom colour lines count toward the total — they're real order lines.
+  const t = addCustomItemsToTotal(summarizeOrder(estimates), customColorItems);
   if (t.buckets > 0 || t.cans > 0 || t.quarts > 0) {
     lines.push(`  ─────`);
     lines.push(`  TOTAL: ${formatOrderTotal(t)}${t.reviewColors > 0 ? ` (+ ${t.reviewColors} to confirm)` : ""}`);

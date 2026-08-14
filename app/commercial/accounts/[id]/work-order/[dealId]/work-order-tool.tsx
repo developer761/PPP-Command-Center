@@ -39,6 +39,7 @@ import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { workOrderRecordId } from "@/lib/commercial/record-ids";
 import { AutosaveForm } from "@/components/commercial/autosave-form";
+import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -134,6 +135,13 @@ async function autosaveWorkOrderAction(formData: FormData) {
     userId
   );
   if (!res.ok) throw new Error(res.error);
+  // A debounced background save must NOT revalidate: the refreshed RSC payload
+  // comes back with the action response and re-renders the form being typed
+  // into. The write above still happened — only the re-render is skipped. Every
+  // human-initiated path here (create, status change, delete) still revalidates,
+  // and dynamic routes carry staleTime 0, so navigating to the deal or account
+  // page re-fetches anyway and never shows the stale crew name.
+  if (isBackgroundSave(formData)) return;
   revalidateWO(id, dealId);
 }
 

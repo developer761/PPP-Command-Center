@@ -1264,7 +1264,7 @@ function LineItemSection({
       {!collapsed && (
         <div className="p-5 sm:p-7 space-y-5">
           {/* Kate round-3 #33: nothing was scoped for this room in Salesforce,
-              so there is nothing to pick a colour for. Say so plainly instead
+              so there is nothing to pick a color for. Say so plainly instead
               of inventing a "Walls" row. */}
           {hasNoSurfaces && (
             <div role="note" className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/70 px-4 py-3 text-[13px] text-ppp-orange-700 leading-snug">

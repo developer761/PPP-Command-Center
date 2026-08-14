@@ -442,6 +442,40 @@ export function summarizeOrder(estimates: GallonEstimate[]): {
   return { buckets, cans, quarts, sizedColors, reviewColors };
 }
 
+/**
+ * Fold worker-typed colour lines (Kate round-3 #28) into an order total.
+ *
+ * They render as real order lines, so they have to count toward TOTAL —
+ * otherwise the vendor cross-checks the total against the lines and it doesn't
+ * add up, which is worse than showing no total at all. Only gallons and quarts
+ * are summable; anything else (a typed unit we don't model) is deliberately
+ * left out of the arithmetic rather than silently miscounted as gallons.
+ */
+export function addCustomItemsToTotal(
+  total: { buckets: number; cans: number; quarts: number; sizedColors: number; reviewColors: number },
+  items: ReadonlyArray<{ qty: number; unit: string }>
+): { buckets: number; cans: number; quarts: number; sizedColors: number; reviewColors: number } {
+  let gallons = 0;
+  let quarts = total.quarts;
+  for (const it of items) {
+    const qty = Math.max(0, Math.floor(Number(it.qty) || 0));
+    if (qty <= 0) continue;
+    const unit = (it.unit || "gal").trim().toLowerCase();
+    if (unit === "qt") quarts += qty;
+    else if (unit === "gal") gallons += qty;
+  }
+  // Re-package the gallon side so added cans roll up into buckets the same way
+  // an estimate would ("6 gal" reads as "1 bucket + 1 gal", not "6 gal").
+  const totalGallonUnits = total.buckets * 5 + total.cans + gallons;
+  return {
+    buckets: Math.floor(totalGallonUnits / 5),
+    cans: totalGallonUnits % 5,
+    quarts,
+    sizedColors: total.sizedColors,
+    reviewColors: total.reviewColors,
+  };
+}
+
 /** "2 buckets (×5 gal) + 3 gal" / "5 gal" / "4 qt" / "—". */
 export function formatBucketsCans(buckets: number, cans: number, unit: PaintUnit = "gal"): string {
   if (unit === "qt") return cans > 0 ? `${cans} qt` : "—";

@@ -3,22 +3,28 @@
 /**
  * Generic client-side autosave form wrapper (2026-08) — the same pattern the
  * proposal editor uses, generalized for the production tools. Wrap a form's
- * fields; every input/change → debounced (default 800ms) save via the passed
- * server action, with a quiet "Saving… / Saved" pill top-right. A manual Save
- * button is no longer needed (but any nested submit still works).
+ * fields; every input/change → debounced save (AUTOSAVE_DEBOUNCE_MS) via the
+ * passed server action, with a quiet "Saving… / Saved" pill top-right. A manual
+ * Save button is no longer needed (but any nested submit still works).
+ *
+ * The paired server action MUST call `isBackgroundSave(formData)` and return
+ * before revalidating — see lib/commercial/autosave-flag.ts. Skipping that is
+ * what left Stephanie's "it saves every 3 seconds and erases what I type"
+ * complaint live on the Work Order and Closeout tools for a month.
  *
  * Pass `disabled` for read-only/frozen records so autosave stops firing and the
  * fields render read-only. `formClassName` styles the inner <form>.
  */
 
 import { useEffect, useRef, useState } from "react";
+import { AUTOSAVE_FLAG, AUTOSAVE_DEBOUNCE_MS } from "@/lib/commercial/autosave-flag";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
 export function AutosaveForm({
   children,
   action,
-  debounceMs = 800,
+  debounceMs = AUTOSAVE_DEBOUNCE_MS,
   disabled = false,
   formClassName = "space-y-3",
 }: {
@@ -58,7 +64,15 @@ export function AutosaveForm({
     // tick — the "it glitches and won't let me enter the number" bug Karan hit
     // on the proposal editor (meeting 2026-08). Same fix, same reason: a direct
     // call still saves + revalidates, without the reset.
-    void wrappedAction(new FormData(formRef.current));
+    const fd = new FormData(formRef.current);
+    // Marks this as a BACKGROUND save so the action skips revalidatePath.
+    // Without it, every debounce tick shipped a fresh RSC payload back and
+    // re-rendered the page mid-sentence — Stephanie's "it automatically saves
+    // every 3 seconds making it hard to enter data without it being overwritten
+    // or erased." The proposal editor got this flag; this wrapper, generalized
+    // from it for the Work Order and Closeout tools, did not.
+    fd.set(AUTOSAVE_FLAG, "1");
+    void wrappedAction(fd);
   }
 
   useEffect(() => {

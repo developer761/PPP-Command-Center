@@ -49,6 +49,7 @@ import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { DateField } from "@/components/commercial/date-field";
 import { AutosaveForm } from "@/components/commercial/autosave-form";
+import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { CloseoutItemControls } from "@/components/commercial/closeout-item-controls";
@@ -136,6 +137,9 @@ async function autosaveCoverAction(formData: FormData) {
     userId
   );
   if (!res.ok) throw new Error(res.error);
+  // Background save → skip the revalidate, not the write. See the same guard in
+  // work-order-tool.tsx: revalidating here re-rendered the cover sheet mid-type.
+  if (isBackgroundSave(formData)) return;
   revalidateCloseout(id, dealId);
 }
 

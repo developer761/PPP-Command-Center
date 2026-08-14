@@ -20,6 +20,7 @@
 
 import { flashMessage } from "@/lib/commercial/flash";
 import { makeCarries, FIELDS_INPUT_NAME, fieldsFor } from "@/lib/commercial/proposals/form-fields";
+import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
@@ -379,7 +380,7 @@ async function saveProposalAction(formData: FormData) {
   const overrideChanged =
     carries("final_price_override") &&
     (existing.final_price_override_cents ?? null) !== (finalPriceOverride ?? null);
-  if (String(formData.get("__autosave") ?? "") === "1" && !overrideChanged) return;
+  if (isBackgroundSave(formData) && !overrideChanged) return;
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
@@ -600,11 +601,14 @@ async function updateLineItemAction(formData: FormData) {
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
-  // Keep the origin on SUCCESS too — round 1 wired only the error paths, so
-  // the ordinary case still dropped "Back to Proposals".
-  redirect(
-    proposalHref(accountId, dealId, proposalId, "#line-items", proposalBack(formData))
-  );
+  // NO success redirect — revalidate-only, exactly like addLineItemAction. The
+  // old redirect targeted proposalHref(..., "#line-items", back): the SAME path
+  // + query the user is already on, differing only by a #hash that never reaches
+  // the server. That is a no-op navigation — it left the recomputed total
+  // unpainted until a manual refresh and tripped the autosave "Leave site?"
+  // guard mid-edit, the exact bug addLineItemAction was fixed for. The redirect
+  // carried ?back=, but revalidate-only preserves it for free: the URL is
+  // untouched, so sp.back still resolves the "Back to Proposals" link.
 }
 
 async function deleteLineItemAction(formData: FormData) {
@@ -633,11 +637,14 @@ async function deleteLineItemAction(formData: FormData) {
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
-  // Keep the origin on SUCCESS too — round 1 wired only the error paths, so
-  // the ordinary case still dropped "Back to Proposals".
-  redirect(
-    proposalHref(accountId, dealId, proposalId, "#line-items", proposalBack(formData))
-  );
+  // NO success redirect — revalidate-only, exactly like addLineItemAction. The
+  // old redirect targeted proposalHref(..., "#line-items", back): the SAME path
+  // + query the user is already on, differing only by a #hash that never reaches
+  // the server. That is a no-op navigation — it left the recomputed total
+  // unpainted until a manual refresh and tripped the autosave "Leave site?"
+  // guard mid-edit, the exact bug addLineItemAction was fixed for. The redirect
+  // carried ?back=, but revalidate-only preserves it for free: the URL is
+  // untouched, so sp.back still resolves the "Back to Proposals" link.
 }
 
 async function sendProposalAction(formData: FormData) {

@@ -1729,7 +1729,7 @@ function JobDetailImpl({
                     Preview Materials Order
                   </Link>
                   <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                    Every room, colour and surface on this job — on the order screen, above the buy list.
+                    Every room, color and surface on this job — on the order screen, above the buy list.
                   </p>
                 </>
               )}

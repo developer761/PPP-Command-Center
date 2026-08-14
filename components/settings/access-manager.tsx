@@ -238,7 +238,7 @@ function AddUserForm({
       {/* Kate round-3 #29 — the supplier order email had no way to reach
           anyone. This becomes the default "who to call" on orders this person
           places; they can change it per order without changing it here. */}
-      <Field label="Phone" hint="Optional — shown on supplier orders they place, so the vendor can call about a colour or a quantity">
+      <Field label="Phone" hint="Optional — shown on supplier orders they place, so the vendor can call about a color or a quantity">
         <input
           type="tel"
           inputMode="tel"

@@ -9,6 +9,7 @@ import {
   formatOrderQuantity,
   formatOrderTotal,
   summarizeOrder,
+  addCustomItemsToTotal,
   quantityKey,
   overrideTotal,
   packageForUnit,
@@ -105,7 +106,11 @@ export default function OrderBuilderView({
     initialSupplierId ? { accountId: initialSupplierId, name: "" } : null
   );
   const [payload, setPayload] = useState<OrderBuildPayload>(initialPayload ?? emptyBuildPayload());
-  const [draft, setDraft] = useState<Draft | null>(null);
+  // The draft is stamped with the supplier it was built FOR. Without that, the
+  // moment you switch vendors you keep seeing the previous vendor's colours and
+  // quantities until the refetch lands — briefly on a fast connection, visibly
+  // on a slow one, and it looks like the vendor change didn't take.
+  const [draft, setDraft] = useState<{ forSupplierId: string; data: Draft } | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<ExtraCatalogItem[]>([]);
@@ -213,7 +218,7 @@ export default function OrderBuilderView({
           setDraftError(data.message ?? data.error ?? `HTTP ${res.status}`);
           setDraft(null);
         } else {
-          setDraft(data.draft as Draft);
+          setDraft({ forSupplierId: supplier.accountId, data: data.draft as Draft });
         }
       } catch (err) {
         if (!cancelled) {
@@ -236,21 +241,21 @@ export default function OrderBuilderView({
     payload.colorNotes,
   ]);
 
-  // Gated on `supplier` so a draft built for a previous vendor can't be shown
-  // against a newly-picked one while the refetch is in flight.
-  const estimates = supplier ? draft?.gallonEstimates ?? [] : [];
+  // Only ever the draft built for the CURRENTLY selected vendor.
+  const currentDraft = supplier && draft?.forSupplierId === supplier.accountId ? draft.data : null;
+  const estimates = currentDraft?.gallonEstimates ?? [];
 
   /* ── Paint-line options ────────────────────────────────────────────────── */
   const lineMaterialValues = useMemo<ReadonlySet<string>>(() => {
     // Falls back to the LINE vocabulary, not the full allowlist — the allowlist
     // also carries legacy line+finish values for back-compat, and those must
     // never be offered as a fresh choice (Kate round-3 #09).
-    const base = (draft?.allowedMaterialTypeValues ?? []).length
-      ? draft!.allowedMaterialTypeValues!
+    const base = (currentDraft?.allowedMaterialTypeValues ?? []).length
+      ? currentDraft!.allowedMaterialTypeValues!
       : [...PAINT_LINE_VALUES];
     // Primers are Extras, never a topcoat line (Kate round-2 #22 / round-3 #08).
     return new Set(base.filter((v) => !PRIMER_MATERIAL_VALUES.has(v)));
-  }, [draft]);
+  }, [currentDraft]);
 
   /* ── Mutators ──────────────────────────────────────────────────────────── */
   const patch = (p: Partial<OrderBuildPayload>) => setPayload((cur) => ({ ...cur, ...p }));
@@ -349,7 +354,8 @@ export default function OrderBuilderView({
     return q ? catalog.filter((c) => c.name.toLowerCase().includes(q)) : catalog;
   }, [catalog, extrasSearch]);
 
-  const totals = summarizeOrder(estimates);
+  // Matches the vendor email exactly — custom colour lines included (#28).
+  const totals = addCustomItemsToTotal(summarizeOrder(estimates), payload.customColorItems);
   // A line still needs a human number when the estimator couldn't size it AND
   // the worker hasn't typed one. Because the server already folded the typed
   // quantities in, this is simply "what's left" — no second calculation to
@@ -423,7 +429,7 @@ export default function OrderBuilderView({
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-ppp-charcoal">Paint product line</h2>
                 <p className="text-[11px] text-ppp-charcoal-500">
-                  Applies to every colour — override per colour below if the job mixes lines.
+                  Applies to every color — override per color below if the job mixes lines.
                 </p>
               </div>
               <div className="w-full sm:w-auto sm:ml-auto max-w-[260px]">
@@ -453,7 +459,7 @@ export default function OrderBuilderView({
               <span aria-hidden>⚠</span>
               <span>
                 <strong>Manual quantity required</strong> —{" "}
-                {needQty.length === 1 ? "1 colour has" : `${needQty.length} colours have`} no
+                {needQty.length === 1 ? "1 color has" : `${needQty.length} colors have`} no
                 measurements in Salesforce. Update the gallons using the +/- buttons below.
               </span>
             </div>
@@ -473,7 +479,7 @@ export default function OrderBuilderView({
               )}
             </div>
 
-            {loadingDraft && !draft && (
+            {loadingDraft && !currentDraft && (
               <div className="px-4 py-6 text-sm text-ppp-charcoal-500 italic">Working out what to buy…</div>
             )}
             {draftError && (
@@ -481,9 +487,9 @@ export default function OrderBuilderView({
                 Couldn&apos;t build the order: {draftError}
               </div>
             )}
-            {draft && estimates.length === 0 && (
+            {currentDraft && estimates.length === 0 && (
               <div className="px-4 py-5 text-xs text-ppp-charcoal-500">
-                No colours on this work order yet. You can still order extras and custom colour items below.
+                No colors on this work order yet. You can still order extras and custom color items below.
               </div>
             )}
 
@@ -610,11 +616,11 @@ export default function OrderBuilderView({
             </label>
             <p className="text-[11px] text-ppp-charcoal-500 mb-2">
               Colours and finishes for surfaces that don&apos;t map to a standard field, non-BM/SW
-              colours, and anything the customer said. Goes on the order email.
+              colors, and anything the customer said. Goes on the order email.
             </p>
             <textarea
               id="order-color-notes"
-              value={payload.colorNotes ?? draft?.colorNotesDefault ?? ""}
+              value={payload.colorNotes ?? currentDraft?.colorNotesDefault ?? ""}
               onChange={(ev) => patch({ colorNotes: ev.target.value })}
               rows={4}
               placeholder="e.g. Deck: Gray Minwax · Not painting: Living Room · Trim"
@@ -800,12 +806,12 @@ export default function OrderBuilderView({
                 <div className="text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
                   Order draft preview
                 </div>
-                <h3 className="text-sm font-semibold text-ppp-charcoal">Supplier → colour → where it goes</h3>
+                <h3 className="text-sm font-semibold text-ppp-charcoal">Supplier → color → where it goes</h3>
               </div>
               <div className="p-4 space-y-3">
                 {previewGroups.length === 0 ? (
                   <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg p-3 text-xs text-ppp-orange-700">
-                    <strong>No colours picked yet.</strong> Send the colour form, or enter the colours
+                    <strong>No colors picked yet.</strong> Send the color form, or enter the colors
                     internally, to populate this view.
                   </div>
                 ) : (
@@ -814,7 +820,7 @@ export default function OrderBuilderView({
                       <div className="px-3 py-2 bg-ppp-blue-50 border-b border-ppp-blue-100 flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.supplierName}</span>
                         <span className="shrink-0 text-[10px] text-ppp-charcoal-500">
-                          {g.colors.length} colour{g.colors.length === 1 ? "" : "s"}
+                          {g.colors.length} color{g.colors.length === 1 ? "" : "s"}
                         </span>
                       </div>
                       <ul className="divide-y divide-ppp-charcoal-100 text-xs">
@@ -861,7 +867,7 @@ export default function OrderBuilderView({
                 <span className="text-ppp-orange-700">Couldn&apos;t save: {saveError}</span>
               ) : needQty.length > 0 ? (
                 <span className="text-ppp-orange-700">
-                  {needQty.length === 1 ? "1 colour still needs" : `${needQty.length} colours still need`} a quantity — you can set them on the next step too.
+                  {needQty.length === 1 ? "1 color still needs" : `${needQty.length} colors still need`} a quantity — you can set them on the next step too.
                 </span>
               ) : (
                 <>Order saved. Fulfilment is next: required-by date, delivery or pickup, and the email.</>
@@ -924,9 +930,9 @@ function CustomColorItems({
 
   return (
     <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
-      <h2 className="text-sm font-semibold text-ppp-charcoal">Add a custom colour item</h2>
+      <h2 className="text-sm font-semibold text-ppp-charcoal">Add a custom color item</h2>
       <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 mb-2">
-        Anything that isn&apos;t in the catalogue — stain, venetian plaster, a colour match. It goes on
+        Anything that isn&apos;t in the catalog — stain, venetian plaster, a color match. It goes on
         the order as a real line.
       </p>
 
@@ -1014,7 +1020,7 @@ function CustomSundryItem({ onAdd }: { onAdd: (name: string, qty: number, unit: 
   return (
     <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
       <div className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-2">
-        Add a custom sundry item (not in catalogue)
+        Add a custom sundry item (not in catalog)
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
         <input
