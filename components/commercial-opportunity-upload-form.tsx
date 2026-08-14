@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { LABEL_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 
 /**
@@ -43,6 +44,12 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
     setPickedFile(file);
   };
 
+  // Direct-to-Storage upload (Karan 2026-08-14): the old path POSTed the whole
+  // file through the Vercel serverless route, which caps request bodies at
+  // ~4.5 MB — so a 17 MB PDF (any real bid set) 413'd at the edge and read
+  // "Upload failed", despite the "max 50 MB" promise. Now the browser PUTs the
+  // file STRAIGHT to Supabase Storage against a one-time signed URL, so only a
+  // little JSON touches our server: sign → PUT → finalize.
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (busy || !formRef.current) return;
@@ -50,23 +57,51 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
     setSuccess(null);
     const formEl = formRef.current;
     const data = new FormData(formEl);
-    if (!(data.get("file") instanceof File) || (data.get("file") as File).size === 0) {
+    const file = data.get("file");
+    if (!(file instanceof File) || file.size === 0) {
       setError("Pick a file first.");
       return;
     }
+    const notes = (data.get("notes") as string) || "";
     setBusy(true);
     try {
-      const res = await fetch(`/api/commercial/opportunities/${oppId}/attachments`, {
+      // 1) Mint a signed upload URL (JSON only — no bytes).
+      const signRes = await fetch(`/api/commercial/opportunities/${oppId}/attachments/sign`, {
         method: "POST",
-        body: data,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file_name: file.name, mime_type: file.type, size_bytes: file.size }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.ok) {
-        setError(json.detail ?? json.error ?? "Upload failed.");
+      const signJson = await signRes.json().catch(() => ({}));
+      if (!signRes.ok || !signJson.ok) {
+        setError(signJson.detail ?? signJson.error ?? "Upload failed.");
         return;
       }
-      const versionTag = json.attachment?.version > 1 ? ` (v${json.attachment.version})` : "";
-      setSuccess(`Uploaded "${json.attachment.file_name}"${versionTag}.`);
+      // 2) PUT the file straight to Storage — bypasses Vercel's body cap.
+      const { error: upErr } = await createClient()
+        .storage.from(signJson.bucket)
+        .uploadToSignedUrl(signJson.storage_key, signJson.token, file, { contentType: file.type });
+      if (upErr) {
+        setError(`Upload failed: ${upErr.message}`);
+        return;
+      }
+      // 3) Confirm + record the metadata (auto-versions on re-upload).
+      const finRes = await fetch(`/api/commercial/opportunities/${oppId}/attachments/finalize`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          storage_key: signJson.storage_key,
+          file_name: file.name,
+          mime_type: file.type,
+          notes,
+        }),
+      });
+      const finJson = await finRes.json().catch(() => ({}));
+      if (!finRes.ok || !finJson.ok) {
+        setError(finJson.detail ?? finJson.error ?? "Upload failed.");
+        return;
+      }
+      const versionTag = finJson.attachment?.version > 1 ? ` (v${finJson.attachment.version})` : "";
+      setSuccess(`Uploaded "${finJson.attachment.file_name}"${versionTag}.`);
       formEl.reset();
       setPickedFile(null);
       router.refresh();

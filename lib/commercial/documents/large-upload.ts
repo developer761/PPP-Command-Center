@@ -64,7 +64,7 @@ async function assertParentLive(
  * chunk, so even a 100 MB object costs one small read. Range is requested but
  * the stream-cancel is the real guard (we don't depend on the server honoring it).
  */
-async function sniffRemoteHead(
+export async function sniffRemoteHead(
   signedUrl: string
 ): Promise<{ ok: true; head: Uint8Array; totalSize: number | null } | { ok: false; error: string }> {
   let res: Response;
