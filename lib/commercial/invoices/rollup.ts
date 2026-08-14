@@ -14,6 +14,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { deriveInvoiceStatus, type InvoiceStatus } from "./constants";
 
 export type AccountInvoiceRollup = {
@@ -76,16 +77,17 @@ type InvoiceRow = {
 
 export async function getInvoiceRollupForAccount(account_id: string): Promise<AccountInvoiceRollup> {
   const sb = commercialDb();
-  const { data, error } = await sb
-    .from("commercial_invoices")
-    .select("status, total_cents, paid_cents, balance_cents, due_at")
-    .eq("account_id", account_id)
-    .is("deleted_at", null);
-  if (error) {
-    console.warn("[commercial/invoices/rollup] fetch failed:", error.message);
-    return ZERO;
-  }
-  const rows = (data ?? []) as InvoiceRow[];
+  // Paginated — a long-running GC can accumulate well over 1000 invoices, and
+  // the bare query silently capped at 1000, understating every Account-360 money
+  // tile (invoiced / paid / balance) vs the paginated siblings (audit M5).
+  const rows = await paginateAll<InvoiceRow>(() =>
+    sb
+      .from("commercial_invoices")
+      .select("status, total_cents, paid_cents, balance_cents, due_at")
+      .eq("account_id", account_id)
+      .is("deleted_at", null)
+      .order("id")
+  );
   if (rows.length === 0) return ZERO;
 
   const nonVoid = rows.filter((r) => r.status !== "void");

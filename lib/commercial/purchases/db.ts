@@ -10,6 +10,7 @@ import "server-only";
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { uploadDocument, softDeleteDocument } from "@/lib/commercial/documents/db";
 import { PURCHASE_CATEGORIES, isPurchaseCategory, type PurchaseCategory } from "./constants";
@@ -119,13 +120,18 @@ function foldBreakdown(rows: { category: string; amount_cents: number }[]): Cost
 /** Per-category cost sums for ONE project. */
 export async function costBreakdownForProject(oppId: string): Promise<CostBreakdown> {
   const sb = commercialDb();
-  const { data, error } = await sb
-    .from("commercial_project_purchases")
-    .select("category, amount_cents")
-    .eq("opportunity_id", oppId)
-    .is("deleted_at", null);
-  if (error) return emptyCostBreakdown();
-  return foldBreakdown((data ?? []) as { category: string; amount_cents: number }[]);
+  // Paginated: a busy commercial job can log well over 1000 purchase + labor
+  // rows, and the bare query silently capped at 1000 → understated cost,
+  // overstated margin (audit M3). Ordered by id so paging is stable.
+  const data = await paginateAll<{ category: string; amount_cents: number }>(() =>
+    sb
+      .from("commercial_project_purchases")
+      .select("category, amount_cents")
+      .eq("opportunity_id", oppId)
+      .is("deleted_at", null)
+      .order("id")
+  );
+  return foldBreakdown(data);
 }
 
 /** Per-category cost sums for MANY projects at once (deal/projects list). Keyed
@@ -135,14 +141,19 @@ export async function costBreakdownByOpp(oppIds: string[]): Promise<Map<string, 
   const ids = [...new Set(oppIds.filter(Boolean))];
   if (ids.length === 0) return out;
   const sb = commercialDb();
-  const { data, error } = await sb
-    .from("commercial_project_purchases")
-    .select("opportunity_id, category, amount_cents")
-    .in("opportunity_id", ids)
-    .is("deleted_at", null);
-  if (error) return out;
+  // Paginated — this spans EVERY project on the dashboard / projects list, so
+  // the 1000-row cap bit soonest here: costs past row 1000 vanished, inflating
+  // margin platform-wide (audit M3).
+  const data = await paginateAll<{ opportunity_id: string; category: string; amount_cents: number }>(() =>
+    sb
+      .from("commercial_project_purchases")
+      .select("opportunity_id, category, amount_cents")
+      .in("opportunity_id", ids)
+      .is("deleted_at", null)
+      .order("id")
+  );
   const byOpp = new Map<string, { category: string; amount_cents: number }[]>();
-  for (const r of (data ?? []) as { opportunity_id: string; category: string; amount_cents: number }[]) {
+  for (const r of data) {
     const arr = byOpp.get(r.opportunity_id) ?? [];
     arr.push(r);
     byOpp.set(r.opportunity_id, arr);
@@ -159,25 +170,31 @@ export async function costBreakdownForOpps(oppIds: string[]): Promise<CostBreakd
   const ids = [...new Set(oppIds.filter(Boolean))];
   if (ids.length === 0) return emptyCostBreakdown();
   const sb = commercialDb();
-  const { data, error } = await sb
-    .from("commercial_project_purchases")
-    .select("category, amount_cents")
-    .in("opportunity_id", ids)
-    .is("deleted_at", null);
-  if (error) return emptyCostBreakdown();
-  return foldBreakdown((data ?? []) as { category: string; amount_cents: number }[]);
+  const data = await paginateAll<{ category: string; amount_cents: number }>(() =>
+    sb
+      .from("commercial_project_purchases")
+      .select("category, amount_cents")
+      .in("opportunity_id", ids)
+      .is("deleted_at", null)
+      .order("id")
+  );
+  return foldBreakdown(data);
 }
 
 /** Per-category cost sums for a whole account (portfolio cost tile). */
 export async function costBreakdownForAccount(accountId: string): Promise<CostBreakdown> {
   const sb = commercialDb();
-  const { data, error } = await sb
-    .from("commercial_project_purchases")
-    .select("category, amount_cents")
-    .eq("account_id", accountId)
-    .is("deleted_at", null);
-  if (error) return emptyCostBreakdown();
-  return foldBreakdown((data ?? []) as { category: string; amount_cents: number }[]);
+  // Account-wide — a large GC's purchases can exceed 1000 rows; paginate so the
+  // account cost tile / net / margin don't understate (audit M3).
+  const data = await paginateAll<{ category: string; amount_cents: number }>(() =>
+    sb
+      .from("commercial_project_purchases")
+      .select("category, amount_cents")
+      .eq("account_id", accountId)
+      .is("deleted_at", null)
+      .order("id")
+  );
+  return foldBreakdown(data);
 }
 
 /** Distinct recent vendor names on an account — powers the searchable vendor

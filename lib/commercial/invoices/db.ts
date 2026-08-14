@@ -334,23 +334,23 @@ export async function sumCommercialPaymentsSince(
   accountId?: string
 ): Promise<number> {
   const sb = commercialDb();
-  let q = sb
-    .from("commercial_invoice_payments")
-    .select("amount_cents, commercial_invoices!inner(deleted_at, status, account_id)")
-    .gte("paid_at", fromIso)
-    .lt("paid_at", toIso)
-    .is("commercial_invoices.deleted_at", null)
-    .neq("commercial_invoices.status", "void");
-  if (accountId) q = q.eq("commercial_invoices.account_id", accountId);
-  const { data, error } = await q;
-  if (error) {
-    console.warn("[commercial/invoices] payments-since sum failed:", error.message);
-    return 0;
-  }
-  return ((data ?? []) as Array<{ amount_cents: number | null }>).reduce(
-    (acc, r) => acc + (r.amount_cents ?? 0),
-    0
-  );
+  // Paginated — a busy month (or a whole-platform, no-accountId call) can exceed
+  // the 1000-row cap, and the bare query silently dropped payments past it →
+  // understated "Paid this month" that disagreed with the paginated invoice
+  // rollups on the same screen (audit M5).
+  const rows = await paginateAll<{ amount_cents: number | null }>(() => {
+    let q = sb
+      .from("commercial_invoice_payments")
+      .select("amount_cents, commercial_invoices!inner(deleted_at, status, account_id)")
+      .gte("paid_at", fromIso)
+      .lt("paid_at", toIso)
+      .is("commercial_invoices.deleted_at", null)
+      .neq("commercial_invoices.status", "void")
+      .order("id");
+    if (accountId) q = q.eq("commercial_invoices.account_id", accountId);
+    return q;
+  });
+  return rows.reduce((acc, r) => acc + (r.amount_cents ?? 0), 0);
 }
 
 export async function listInvoicePayments(invoiceId: string): Promise<CommercialInvoicePayment[]> {

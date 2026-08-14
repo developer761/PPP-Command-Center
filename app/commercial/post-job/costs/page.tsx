@@ -23,12 +23,13 @@ export default async function CostsIndexPage() {
   const projects = await listProjects({ includeClosed: true });
   const summary = summarizeProduction(projects);
   const withCosts = projects.filter((p) => p.costsCents > 0).length;
-  // Portfolio gross margin % from the summed contract + costs (same base as the
-  // per-project cards). Null when no contract value exists yet.
-  const portfolioMarginPct =
-    summary.contractValueCents > 0
-      ? Math.round((summary.grossMarginCents / summary.contractValueCents) * 100)
-      : null;
+  // Portfolio gross margin on the BILLED basis — the SAME basis as the
+  // per-project rows below (marginFrom(billedContract, costs)) and the deal page
+  // they link to. The tile used to divide margin by the full CONTRACT while the
+  // rows divided by what's BILLED, so the headline read ~46% over a list of
+  // 9–12% jobs: one screen, two answers (audit M4).
+  const portfolioBilledCents = projects.reduce((s, p) => s + p.billedContractCents, 0);
+  const portfolioMargin = marginFrom(portfolioBilledCents, summary.costsCents);
 
   return (
     <PostJobToolIndex
@@ -53,7 +54,7 @@ export default async function CostsIndexPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile label="Total job costs" value={formatCentsCompact(summary.costsCents)} tone={summary.costsCents > 0 ? "rose" : "neutral"} />
           <Tile label="Contract (all projects)" value={formatCentsCompact(summary.contractValueCents)} tone="neutral" />
-          <Tile label="Gross margin" value={`${summary.grossMarginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(summary.grossMarginCents))}${portfolioMarginPct == null ? "" : ` · ${portfolioMarginPct}%`}`} tone={summary.grossMarginCents < 0 ? "rose" : "emerald"} />
+          <Tile label="Gross margin" value={`${portfolioMargin.cents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(portfolioMargin.cents))}${portfolioMargin.pct == null ? "" : ` · ${portfolioMargin.pct}%`}`} tone={portfolioMargin.cents < 0 ? "rose" : "emerald"} />
           <Tile label="Projects with costs" value={String(withCosts)} tone="neutral" />
         </div>
       }
