@@ -229,6 +229,12 @@ export async function getCashFlowReport(range: {
   // 6d972cf: a with-tax figure is measured against the with-tax total.)
   let billed = 0;
   for (const inv of invoices) {
+    // A DRAFT isn't billed — and reverting a sent invoice to Draft does NOT
+    // clear its issued_at, so keying billed off issued_at alone counted that
+    // stale date as revenue while openCents/isReceivable (below) correctly
+    // excluded the draft. The two halves of the same report then disagreed
+    // (audit D2). Skip drafts here too, so "billed" == the receivable basis.
+    if (inv.status === "draft") continue;
     const issued = etDateOf(inv.issued_at);
     if (!issued || issued < range.fromYmd || issued > range.toYmd) continue;
     const amt = Number(inv.total_cents) || 0;

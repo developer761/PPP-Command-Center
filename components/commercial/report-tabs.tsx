@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const REPORTS: { href: string; label: string; exact?: boolean }[] = [
+const REPORTS: { href: string; label: string; exact?: boolean; adminOnly?: boolean }[] = [
   // Overview is the index — exact-match only, else it'd read active on every
   // sub-report (they all start with /commercial/reports).
   { href: "/commercial/reports", label: "Overview", exact: true },
@@ -18,21 +18,27 @@ const REPORTS: { href: string; label: string; exact?: boolean }[] = [
   { href: "/commercial/reports/geography", label: "Geography" },
   { href: "/commercial/reports/ar-aging", label: "AR Aging" },
   { href: "/commercial/reports/win-loss", label: "Win / Loss" },
-  // These four exist as routes and are linked from the Reports index, but were
+  // These exist as routes and are linked from the Reports index, but were
   // missing here — so opening one rendered a tab bar with no tab marked
-  // current, and no way back to the six that were listed.
+  // current, and no way back to the ones that were listed.
   { href: "/commercial/reports/cash-flow", label: "Cash flow" },
   { href: "/commercial/reports/change-orders", label: "Change orders" },
   { href: "/commercial/reports/labor", label: "Labor" },
-  { href: "/commercial/reports/revenue", label: "Revenue" },
-  { href: "/commercial/reports/estimator", label: "Estimator" },
+  // Estimator self-gates to admin / account_manager and redirects everyone else,
+  // so it must only appear as a tab for those roles — otherwise a sales rep taps
+  // it and is bounced out of Reports entirely (audit D12).
+  { href: "/commercial/reports/estimator", label: "Estimator", adminOnly: true },
+  // NOTE: no "Revenue" tab. That route is a redirect stub kept only so old
+  // bookmarks land on the Dashboard (Revenue & P&L moved there) — linking it as
+  // a tab ejected the user out of Reports on tap (audit D12).
 ];
 
-export function ReportTabs() {
+export function ReportTabs({ canSeeEstimator = false }: { canSeeEstimator?: boolean }) {
   const pathname = usePathname();
+  const reports = REPORTS.filter((r) => !r.adminOnly || canSeeEstimator);
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {REPORTS.map((r) => {
+      {reports.map((r) => {
         const active = r.exact ? pathname === r.href : pathname.startsWith(r.href);
         return (
           <Link

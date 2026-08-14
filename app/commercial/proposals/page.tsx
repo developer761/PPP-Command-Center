@@ -304,9 +304,12 @@ export default async function ProposalsIndexPage({
     byStatus.set(r.status, list);
   }
 
-  // Status-mix donut over all current proposals.
+  // Status-mix donut over all current proposals. Each status gets a DISTINCT
+  // tone — the map used to send draft AND expired to grey, and approved AND won
+  // both to emerald, so those slices were indistinguishable in the ring (audit
+  // D20). Seven statuses, seven tones.
   const PROPOSAL_STATUS_TONE: Record<string, ChartTone> = {
-    draft: "neutral", pending_approval: "navy", approved: "emerald", sent: "brand", won: "emerald", lost: "rose", expired: "neutral",
+    draft: "neutral", pending_approval: "amber", approved: "blue", sent: "brand", won: "emerald", lost: "rose", expired: "navy",
   };
   const proposalMix = PROPOSAL_STATUSES.filter((s) => s !== "superseded")
     .map((s) => ({ label: proposalStatusLabel(s), value: byStatus.get(s)?.length ?? 0, tone: PROPOSAL_STATUS_TONE[s] ?? "neutral", valueLabel: String(byStatus.get(s)?.length ?? 0) }))
