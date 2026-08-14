@@ -201,7 +201,29 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, crewO
   // pattern as the tool-detail override above.
   const proposalDetail =
     /^\/commercial\/accounts\/[^/]+\/deals\/[^/]+\/proposal(?:\/|$)/.test(pathname);
-  const activeOverride = toolOverride ?? (proposalDetail ? "/commercial/proposals" : null);
+  const wantedOverride = toolOverride ?? (proposalDetail ? "/commercial/proposals" : null);
+
+  // Only honour an override that points at a row the sidebar actually RENDERS.
+  //
+  // Both override targets — /commercial/proposals and the six
+  // /commercial/post-job/* indexes — were removed from navSections in the
+  // restructure. `isActive` short-circuits to `href === activeOverride`, so
+  // once the target stopped existing the comparison failed for every row and
+  // NOTHING highlighted: open any proposal editor or post-sale tool and the
+  // whole sidebar went dark, with no indication of where you were. An override
+  // aimed at a row that isn't there should fall back to ordinary prefix
+  // matching (lighting "Accounts", which is at least true) rather than
+  // silently disabling highlighting altogether. Self-healing too: if Proposals
+  // returns to the nav, the override starts working again on its own.
+  const renderedHrefs = new Set<string>();
+  for (const s of sections) {
+    for (const entry of s.items) {
+      if (isGroup(entry)) for (const i of entry.items) renderedHrefs.add(i.href);
+      else renderedHrefs.add(entry.href);
+    }
+  }
+  const activeOverride =
+    wantedOverride && renderedHrefs.has(wantedOverride) ? wantedOverride : null;
 
   const isActive = (href: string): boolean => {
     if (activeOverride) return href === activeOverride;

@@ -359,7 +359,19 @@ export default async function CommercialAccountDetailPage({
   // strip + primary nav) is suppressed below to avoid stacked/duplicate nav +
   // numbers. Keyed on a VALID uuid so ?project=garbage doesn't strip the chrome
   // off the projects-list fallback.
-  const inDealDrillIn = tab === "projects" && typeof sp.project === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.project);
+  //
+  // Keyed on the RAW `?tab=` param, not the resolved one. `resolveTabParam`
+  // aliases `projects` → `deals` (see its body), so `tab` can never BE
+  // "projects" — this condition was permanently false and the entire
+  // forwarding block below was dead code. Every bookmark, bell notification
+  // and emailed link of the shape `?tab=projects&project=<uuid>` silently
+  // landed on the account's deal LIST instead of the deal it named, which is
+  // exactly what the block was written to prevent. The two lines are ~70 apart
+  // and each is individually correct; only together are they wrong.
+  const inDealDrillIn =
+    rawTab === "projects" &&
+    typeof sp.project === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.project);
 
   // ── The drill-in moved out (restructure step 3, Karan 2026-08-12) ─────────
   //

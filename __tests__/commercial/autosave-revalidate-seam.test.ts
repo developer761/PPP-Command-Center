@@ -159,6 +159,40 @@ function bodyOf(file: string, action: string): string {
   return src.slice(start, nextFn === -1 ? src.length : nextFn);
 }
 
+describe("no autosave component swallows the redirect signal", () => {
+  /**
+   * A server action reports failure by redirecting to ?error=, which throws
+   * NEXT_REDIRECT. A bare catch eats it, so the navigation never happens, the
+   * pill lies, and the page sits in a state it cannot leave — Karan: "it boots
+   * us out and won't let us go back into it."
+   *
+   * This was found and fixed on autosave-proposal-form, then again on
+   * autosave-form, and a THIRD copy (autosave-proposal-name) still had it,
+   * because each was written from the previous one's template. Discovered by
+   * filename so a fourth copy fails the moment it is added.
+   */
+  const components = readdirSync(join(ROOT, "components/commercial"))
+    .filter((f) => /autosave.*\.tsx$/.test(f))
+    .map((f) => `components/commercial/${f}`);
+
+  it("found the autosave components", () => {
+    expect(components.length).toBeGreaterThanOrEqual(3);
+  });
+
+  for (const f of components) {
+    it(`${f.split("/").pop()} re-throws NEXT_REDIRECT`, () => {
+      const src = read(f);
+      // Anchor on the CHECK, not the first mention — every one of these files
+      // explains itself in a comment first, so indexOf("NEXT_REDIRECT") lands
+      // in prose and the re-throw is well past a fixed window.
+      const at = src.indexOf('.startsWith("NEXT_REDIRECT")');
+      expect(at, `${f}: no NEXT_REDIRECT check — a catch here eats the redirect`).toBeGreaterThan(-1);
+      // Recognising it is not enough: it has to actually re-throw.
+      expect(src.slice(at, at + 200), `${f}: recognises NEXT_REDIRECT but doesn't re-throw`).toContain("throw err");
+    });
+  }
+});
+
 describe("every autosave action skips revalidation on a background save", () => {
   it("found the autosaving surfaces at all", () => {
     // If the discovery regex stops matching (a wrapper is renamed, the action

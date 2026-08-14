@@ -89,7 +89,29 @@ export function AutosaveProposalName({
     // uncontrolled (defaultValue), so a reset mid-type threw away
     // everything typed since the last save. The FormData carries the
     // sibling hidden ids plus this field, exactly as a submit would.
-    void Promise.resolve(action(new FormData(form))).catch(() => {
+    void Promise.resolve(action(new FormData(form))).catch((err: unknown) => {
+      // Re-throw the redirect control signal instead of swallowing it.
+      //
+      // This was a bare `catch (){}`, and the comment below — "the server's
+      // ?error= banner carries the detail" — described something that could
+      // never happen: renameProposalAction reports failure by redirecting to
+      // ?error=, which throws NEXT_REDIRECT, which this catch ate. Rename a
+      // proposal that another tab has already approved and the save fails
+      // silently, the pill drops back to "Editing…" with no message, and
+      // `savedValueRef.current = ""` below corrupts the dedupe state so every
+      // later keystroke re-fires the same doomed save.
+      //
+      // Both sibling autosave components were fixed for exactly this; this
+      // third copy was written from the same template and missed. Karan
+      // 2026-08-13: "it boots us out and won't let us go back into it. This
+      // cannot happen whatsoever."
+      if (
+        err &&
+        typeof (err as { digest?: unknown }).digest === "string" &&
+        (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+      ) {
+        throw err;
+      }
       // Surface a failed save by reverting the optimistic "saved" state;
       // the server's ?error= banner carries the detail.
       setStatus("dirty");
