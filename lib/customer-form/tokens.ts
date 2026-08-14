@@ -41,6 +41,10 @@ export type CustomerFormToken = {
   woli_snapshot_at: string | null;
   customer_ip: string | null;
   customer_user_agent: string | null;
+  /** Kate round-3 #07 — the colour deadline the sender promised the customer
+   *  (YYYY-MM-DD). Null when nobody set one; the form then shows no date
+   *  rather than a derived one that's already passed. Migration 147. */
+  color_deadline?: string | null;
   /** Token classification. NULL = standard invite (legacy + default).
    *  "preview" = admin-generated preview link; skips Mail Hub Sent, skips
    *  SF writeback on submit, can be used multiple times. */
@@ -79,6 +83,10 @@ export async function createToken(input: {
    *  admin generating a preview link to test the form without sending an
    *  email or creating real submission state. Migration 015 added the column. */
   kind?: string | null;
+  /** Kate round-3 #07: the date the sender is telling the customer their
+   *  colours are needed by (YYYY-MM-DD). Optional — blank is a valid answer
+   *  when nobody has committed to a date yet. */
+  colorDeadline?: string | null;
 }): Promise<{ token: string } | { error: string }> {
   const token = generateToken();
   const expiresInDays = input.expiresInDays ?? 30;
@@ -99,6 +107,7 @@ export async function createToken(input: {
     created_by_user_id: input.created_by_user_id ?? null,
     expires_at,
     kind: input.kind ?? null,
+    color_deadline: input.colorDeadline || null,
   };
   let { error } = await sb.from("customer_form_tokens").insert(richRow);
   // Only fall back when SF/Supabase says the SCHEMA is missing the column —
@@ -106,12 +115,15 @@ export async function createToken(input: {
   // to mention "kind" (e.g., type-coercion messages). Audit 2026-06-04.
   if (
     error &&
-    (/column "?kind"? (does not exist|of relation .* does not exist)/i.test(error.message)
-      || /could not find the 'kind' column/i.test(error.message)
+    (/column "?(kind|color_deadline)"? (does not exist|of relation .* does not exist)/i.test(error.message)
+      || /could not find the '(kind|color_deadline)' column/i.test(error.message)
       || (error as { code?: string }).code === "42703")
   ) {
-    console.warn("[customer-form] createToken: kind column missing (run migration 015) — falling back");
-    const { kind: _drop, ...legacyRow } = richRow;
+    // Migration 015 (kind) and/or 147 (color_deadline) not applied yet. Drop
+    // both optional columns and insert the shape that has always existed —
+    // admin can still send invites while the migrations are pending.
+    console.warn("[customer-form] createToken: optional column missing (run migrations 015 / 147) — falling back");
+    const { kind: _dropKind, color_deadline: _dropDeadline, ...legacyRow } = richRow;
     ({ error } = await sb.from("customer_form_tokens").insert(legacyRow));
   }
   if (error) {

@@ -83,6 +83,9 @@ export async function POST(request: Request) {
     customerName?: string;
     subjectOverride?: string;
     introOverride?: string;
+    /** Kate round-3 #07 — the colour deadline the sender is promising
+     *  (YYYY-MM-DD). Optional; blank is valid. */
+    colorDeadline?: string;
   };
   try {
     body = await request.json();
@@ -116,6 +119,28 @@ export async function POST(request: Request) {
 
   const customerName = body.customerName?.trim() || wo.accountName || null;
 
+  // Kate round-3 #07: the sender's colour deadline. Validated here so a
+  // malformed or past value can never reach the customer — the whole point of
+  // the field is that the old derived date was routinely already expired.
+  const rawDeadline = body.colorDeadline?.trim() || "";
+  let colorDeadline: string | null = null;
+  if (rawDeadline) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDeadline)) {
+      return NextResponse.json({
+        error: "invalid_color_deadline",
+        message: "The colour deadline needs to be a date (YYYY-MM-DD).",
+      }, { status: 400 });
+    }
+    const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    if (rawDeadline < todayEt) {
+      return NextResponse.json({
+        error: "color_deadline_in_past",
+        message: "That colour deadline has already passed — pick today or later.",
+      }, { status: 400 });
+    }
+    colorDeadline = rawDeadline;
+  }
+
   // 4. Create token — expires 24h before the scheduled job start (Katie
   // 2026-05-29). The anchor is StartDate → DesiredStart__c → CloseDate. If
   // that cutoff is already past or <48h out (form sent late), floor it so we
@@ -127,6 +152,7 @@ export async function POST(request: Request) {
     customer_name: customerName,
     created_by_user_id: data.user.id,
     expiresAt: computeFormExpiry(wo.scheduledStart),
+    colorDeadline: colorDeadline,
   });
   if ("error" in tokenResult) {
     return NextResponse.json({ error: "token_create_failed", message: tokenResult.error }, { status: 500 });

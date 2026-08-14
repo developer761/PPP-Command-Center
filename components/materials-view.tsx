@@ -1592,11 +1592,11 @@ function JobDetailImpl({
                   // surface selected in Salesforce, the customer form would show
                   // a phantom "Walls" surface. Block sending + tell the user to
                   // fix Salesforce first.
+                  const roomsWithoutSurfaces = job.lineItems.filter(
+                    (li) => (li.raw.surfaces ?? "").split(";").map((s) => s.trim()).filter(Boolean).length === 0
+                  );
                   const noSurfacesSelected =
-                    job.lineItems.length > 0 &&
-                    job.lineItems.every(
-                      (li) => (li.raw.surfaces ?? "").split(";").map((s) => s.trim()).filter(Boolean).length === 0
-                    );
+                    job.lineItems.length > 0 && roomsWithoutSurfaces.length === job.lineItems.length;
                   if (noSurfacesSelected) {
                     return (
                       <div role="alert" className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2.5 text-[12px] text-ppp-orange-700 leading-snug">
@@ -1604,8 +1604,25 @@ function JobDetailImpl({
                       </div>
                     );
                   }
+                  // Kate round-3 #33: the all-empty case blocks. A PARTIAL gap
+                  // shouldn't — there are real surfaces to collect — but the
+                  // customer would land on rooms with nothing to pick, so say
+                  // which ones rather than letting it be a surprise.
+                  const partialWarning = roomsWithoutSurfaces.length > 0 && (
+                    <div role="note" className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/60 px-3 py-2 text-[11px] text-ppp-orange-700 leading-snug mb-1">
+                      <strong>
+                        {roomsWithoutSurfaces.length === 1
+                          ? "1 room has no surfaces set in Salesforce"
+                          : `${roomsWithoutSurfaces.length} rooms have no surfaces set in Salesforce`}
+                      </strong>{" "}
+                      — {roomsWithoutSurfaces.slice(0, 3).map((li) => li.raw.areaLabel?.trim() || "unnamed room").join(", ")}
+                      {roomsWithoutSurfaces.length > 3 ? ` +${roomsWithoutSurfaces.length - 3} more` : ""}. The customer
+                      will see nothing to pick there. You can still send the form.
+                    </div>
+                  );
                   return (
                 <>
+                  {partialWarning}
                   {/* key forces a fresh instance when the worker switches WOs so
                       per-WO local state (looked-up email, sent-result) can't leak. */}
                   <SendColorFormButton
@@ -1613,6 +1630,7 @@ function JobDetailImpl({
                     workOrderId={job.wo.id}
                     accountName={job.wo.accountName ?? null}
                     defaultEmail={customerAccount?.email ?? null}
+                    startDate={job.wo.startDate ?? null}
                     onSent={onActivityChange}
                   />
                   {/* Kate round-3 #01: Internal Entry was rendering TWICE — once
@@ -2615,10 +2633,15 @@ function SendColorFormButton({
   workOrderId,
   accountName,
   defaultEmail,
+  startDate,
   onSent,
 }: {
   workOrderId: string;
   accountName: string | null;
+  /** Kate round-3 #07 — the work order's REAL StartDate, used to default the
+   *  colour deadline. Deliberately not the Desired-Start / Close-Date fallback
+   *  chain: that chain is what produced deadlines already in the past. */
+  startDate?: string | null;
   /** Customer email from Account.PersonEmail (pre-fills the input).
    *  Null when SF returned no email — admin must type, and we'll write
    *  the typed value back to SF in a future enhancement. */
@@ -2629,6 +2652,15 @@ function SendColorFormButton({
   const [open, setOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState(defaultEmail ?? "");
   const [customerName, setCustomerName] = useState(accountName ?? "");
+  // Kate round-3 #07: the sender sets the colour deadline. Defaults to the WO
+  // start date when there is one AND it hasn't passed; otherwise blank — 68% of
+  // work orders at this stage have no start date, and guessing produced the
+  // expired deadlines customers were being shown.
+  const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const [colorDeadline, setColorDeadline] = useState(() => {
+    const d = (startDate ?? "").slice(0, 10);
+    return d && d >= todayEt ? d : "";
+  });
   const [sending, setSending] = useState(false);
   // When the snapshot didn't carry the email (customer not in the top-5k, or a
   // name mismatch), look it up DIRECTLY from Salesforce by the WO on open so
@@ -2711,6 +2743,7 @@ function SendColorFormButton({
           workOrderId,
           customerEmail: customerEmail.trim(),
           customerName: customerName.trim() || undefined,
+          colorDeadline: colorDeadline || undefined,
         }),
       });
       const data = await res.json();
@@ -2826,6 +2859,29 @@ function SendColorFormButton({
                     placeholder={accountName ?? "Customer or company name"}
                     className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                   />
+                </div>
+                {/* Kate round-3 #07: the sender decides the colour deadline.
+                    It used to be derived — Start Date → Desired Start → the
+                    Opportunity's Close Date — and that last fallback is a
+                    quoting projection, so it was routinely already in the past
+                    and customers were told their window had closed. */}
+                <div>
+                  <label htmlFor="cf-color-deadline" className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                    Colors needed by (optional)
+                  </label>
+                  <input
+                    id="cf-color-deadline"
+                    type="date"
+                    value={colorDeadline}
+                    min={todayEt}
+                    onChange={(e) => setColorDeadline(e.target.value)}
+                    className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                  />
+                  <p className="text-[11px] text-ppp-charcoal-500 mt-1 leading-snug">
+                    {startDate
+                      ? "Defaulted from the job's start date. Change it if you've told the customer something else."
+                      : "No start date on this job yet — leave it blank and the customer won't be given a date."}
+                  </p>
                 </div>
                 <div className="text-[11px] text-ppp-charcoal-500 italic">
                   Link expires 24 hours before the job&apos;s scheduled start (up to 30 days out). Customer can&apos;t see it&apos;s from PPP staff.

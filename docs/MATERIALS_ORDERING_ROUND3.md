@@ -41,7 +41,7 @@ Anchor files:
 - ✅ **04 · Bug** ↻R2#06 — Pop-ups mount without moving the viewport to their anchor. Affects Send Color Form, Preview Materials Order, vendor selection.
 - ✅ **05 · Layout** — Sq Ft alert still claims a Salesforce save. Drop "we save it to Salesforce automatically and". Also verify sqft persists in CC (should already, via `wo_li_sqft_overrides` / migration 073).
 - ✅ **06 · Layout** — "1 color need a manual quantity" → "needs". Verb not pluralized.
-- ⬜ **07 · Process** — Sender-set color deadline. Date field on the send form, always present; default = WO Start Date when one exists, else empty; never render a past date. (68% of WOs in Coordination/Scheduling have no start date — the current Close-Date fallback is always expired.)
+- ✅ **07 · Process** — Sender-set color deadline. Date field on the send form, always present; default = WO Start Date when one exists, else empty; never render a past date. (68% of WOs in Coordination/Scheduling have no start date — the current Close-Date fallback is always expired.)
 
 ## Internal Entry page (`/f/[token]`) · 0/2
 - ✅ **08 · Layout** ↻R2#20 — Primer still in the product-line picklist here; move to Extras as done on Order Materials.
@@ -79,7 +79,7 @@ Anchor files:
 - ✅ **32 · Bug** — "Required by" accepts a past date. Root cause above.
 
 ## Edge cases · 0/1
-- ⬜ **33 · Bug** ↻R2#25 — No surfaces in SF but the form still renders one. Alert "No surfaces are selected, update Salesforce to collect colors." + **block** sending the color form. (Round 2 marked this done as #26 — re-verify what actually shipped.)
+- ✅ **33 · Bug** ↻R2#25 — No surfaces in SF but the form still renders one. Alert "No surfaces are selected, update Salesforce to collect colors." + **block** sending the color form. (Round 2 marked this done as #26 — re-verify what actually shipped.)
 
 ---
 

@@ -123,6 +123,7 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
         priorSubmission={priorSubmission}
         isPreview={isPreview}
         isInternal={isInternal}
+        colorDeadline={status.token.color_deadline ?? null}
       />
     </CustomerFormShell>
   );

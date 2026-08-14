@@ -106,6 +106,10 @@ type Props = {
   isEditing?: boolean;
   /** Prior picks to seed the form with when re-editing. */
   priorSubmission?: PriorSubmission;
+  /** Kate round-3 #07 — the colour deadline the sender set on this token
+   *  (YYYY-MM-DD). Wins over the derived start-date chain; null means the
+   *  customer is shown no date at all rather than an expired one. */
+  colorDeadline?: string | null;
   /** True when the token is a kind="preview" admin link. Form looks
    *  identical but renders a yellow banner + submit returns a no-op
    *  thank-you so admin can click through the whole flow without touching
@@ -234,7 +238,36 @@ type EditDeadline =
  *  string was embedded into "you can keep updating until …" producing
  *  nonsensical "until your start date has already arrived" copy).
  *  Katie 2026-06-04: customers shouldn't have to compute "24h before start." */
-function formatEditDeadline(scheduledStart: string | null): EditDeadline {
+function formatEditDeadline(
+  scheduledStart: string | null,
+  /** Kate round-3 #07 — the date the SENDER promised, when they set one. It
+   *  wins outright: it's a person's commitment to the customer, not a value
+   *  derived from a quoting projection. */
+  senderDeadline?: string | null
+): EditDeadline {
+  const promised = (senderDeadline ?? "").trim();
+  if (promised) {
+    // Date-only value → anchor to end of day ET so "needed by the 14th" doesn't
+    // expire at midnight on the 13th for anyone west of New York.
+    const at = new Date(/^\d{4}-\d{2}-\d{2}$/.test(promised) ? `${promised}T23:59:00-05:00` : promised);
+    if (!Number.isNaN(at.getTime())) {
+      // Never render a date that's already gone (Kate: "Never render a date in
+      // the past") — say nothing rather than something wrong.
+      if (at.getTime() <= Date.now()) return { kind: "unknown" };
+      let label: string;
+      try {
+        label = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        }).format(at);
+      } catch {
+        label = at.toDateString();
+      }
+      return { kind: "deadline", label };
+    }
+  }
   if (!scheduledStart) return { kind: "unknown" };
   const start = new Date(scheduledStart);
   if (Number.isNaN(start.getTime())) return { kind: "unknown" };
@@ -269,11 +302,11 @@ function formatEditDeadline(scheduledStart: string | null): EditDeadline {
   return { kind: "deadline", label };
 }
 
-export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, isPreview = false, isInternal = false }: Props) {
+export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, isPreview = false, isInternal = false, colorDeadline = null }: Props) {
   // Staff-facing entry (preview OR internal): shows the product-line picker and
   // hides customer-only chrome. Only "internal" actually saves.
   const isStaffEntry = isPreview || isInternal;
-  const editDeadline = formatEditDeadline(formData.scheduledStart);
+  const editDeadline = formatEditDeadline(formData.scheduledStart, colorDeadline);
   // Per-WO filtered Material Type values — exterior-only WOs hide interior
   // products, vice versa. Set form (not grouped) — the MaterialTypePicker
   // component handles its own grouping/collapsing/search internally. Memoized
@@ -1120,7 +1153,14 @@ function LineItemSection({
   const title = dedupeTitle([rawProduct, rawArea].filter(Boolean).join(" · "), rawFamily || `Section ${index}`);
   // Show the scope family as a caption only when it isn't already in the title.
   const showFamilyCaption = !!rawFamily && !title.toLowerCase().includes(rawFamily.toLowerCase());
-  const surfaces = lineItem.surfaces.length > 0 ? lineItem.surfaces : ["Walls"];
+  // Kate round-3 #33: when Salesforce has no surfaces on this line, we render
+  // NO surfaces. This used to fall back to ["Walls"], which invented a surface
+  // nobody had scoped and asked the customer to pick a colour for it — a colour
+  // that then had nowhere valid to be written. Round 2 blocked SENDING a form
+  // in this state but left the form itself fabricating the surface, so anyone
+  // holding an already-sent link (or using Internal Entry) still saw it.
+  const surfaces = lineItem.surfaces;
+  const hasNoSurfaces = surfaces.length === 0;
 
   // Katie 2026-06-12: collapse a room after the customer has filled it in.
   // Long-list WOs (8+ rooms) became overwhelming to scroll. Now the customer
@@ -1189,7 +1229,10 @@ function LineItemSection({
               {showFamilyCaption ? "· " : ""}{lineItem.numCoats} coats
             </span>
           )}
-          <span>{showFamilyCaption || lineItem.numCoats ? "· " : ""}Surfaces: {surfaces.join(", ")}</span>
+          <span>
+            {showFamilyCaption || lineItem.numCoats ? "· " : ""}
+            {hasNoSurfaces ? "No surfaces selected" : `Surfaces: ${surfaces.join(", ")}`}
+          </span>
         </div>
         {collapsed && (
           <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-ppp-charcoal-700 bg-white border border-ppp-charcoal-100 rounded px-2 py-1">
@@ -1201,6 +1244,16 @@ function LineItemSection({
       </button>
       {!collapsed && (
         <div className="p-5 sm:p-7 space-y-5">
+          {/* Kate round-3 #33: nothing was scoped for this room in Salesforce,
+              so there is nothing to pick a colour for. Say so plainly instead
+              of inventing a "Walls" row. */}
+          {hasNoSurfaces && (
+            <div role="note" className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/70 px-4 py-3 text-[13px] text-ppp-orange-700 leading-snug">
+              No surfaces are set up for this room yet, so there&rsquo;s nothing to pick here.
+              Our team is sorting it out — you can leave a note below if you already know
+              what you&rsquo;d like.
+            </div>
+          )}
           {surfaces.map((surface) => (
             <SurfaceRow
               key={surface}

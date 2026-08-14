@@ -326,11 +326,20 @@ async function loadFormRenderDataInner(
     const ownerName = (opp?.Owner as { Name?: string } | undefined)?.Name ?? null;
     const closeDate = (opp?.CloseDate as string | undefined) ?? null;
     const workTypeName = (w.WorkType as { Name?: string } | null | undefined)?.Name ?? null;
-    // Scheduled start anchor: real StartDate → DesiredStart__c → CloseDate.
+    // Scheduled start anchor: real StartDate → DesiredStart__c.
+    //
+    // Kate round-3 #07: the Opportunity CloseDate used to be the last fallback,
+    // and it is the wrong kind of date — a projection PPP sets when the deal is
+    // quoted, so by the time a colour form goes out it's routinely in the past.
+    // It drove both the link expiry and the "you can update until …" copy, which
+    // is why customers were regularly told their window had already closed.
+    // With it gone, a work order with no real start date simply has no anchor:
+    // the link falls back to the 30-day default, and the deadline the customer
+    // sees is the one the SENDER set on the send form.
     const scheduledStart =
       (typeof w.StartDate === "string" ? (w.StartDate as string) : null) ??
       (typeof w.DesiredStart__c === "string" ? (w.DesiredStart__c as string) : null) ??
-      closeDate;
+      null;
 
     return {
       workOrderId: w.Id as string,
