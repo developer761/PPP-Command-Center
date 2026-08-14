@@ -32,9 +32,12 @@ export type DeliveryTool = {
   phase: string;
 };
 
+// One color language across every delivery indicator (Karan 2026-08-15): green =
+// done, AMBER = in progress/in flight, grey = not started. (active was blue here,
+// out of step with the status bars + the Project spine.)
 const DOT: Record<DeliveryTool["status"], string> = {
   done: "bg-emerald-500",
-  active: "bg-cc-brand-500",
+  active: "bg-amber-400",
   todo: "bg-ppp-charcoal-300",
 };
 

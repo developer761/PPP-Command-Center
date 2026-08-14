@@ -61,13 +61,6 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
   );
 }
 
-const SPINE_TONE: Record<SpineStage["state"], { marker: string; bar: string; lbl: string; meta: string; check: boolean }> = {
-  // DONE = green ✓ · PARTIAL = amber ✓ (activity, not finished) · TODO = grey ○.
-  done: { marker: "bg-emerald-500 border-emerald-500 text-white", bar: "bg-emerald-500", lbl: "text-ppp-charcoal font-bold", meta: "text-emerald-700", check: true },
-  partial: { marker: "bg-amber-400 border-amber-400 text-white", bar: "bg-amber-400", lbl: "text-ppp-charcoal font-bold", meta: "text-amber-700", check: true },
-  todo: { marker: "bg-surface border-ppp-charcoal-200 text-transparent", bar: "bg-ppp-charcoal-100", lbl: "text-ppp-charcoal-400 font-semibold", meta: "text-ppp-charcoal-400", check: false },
-};
-
 /**
  * The delivery SPINE — where the job is in its lifecycle, at a glance. Replaces
  * the old tool-card grid, which just duplicated the deal's tab bar. Each stage's
@@ -87,23 +80,29 @@ function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMe
       <div className="px-4 pt-5 pb-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <ol className="flex min-w-[380px]">
           {stages.map((st, i) => {
-            const t = SPINE_TONE[st.state];
             const first = i === 0;
             const last = i === stages.length - 1;
-            // The stage we're ON now is GREEN — we're in it (Karan 2026-08-15).
-            // Amber is only for OUT-OF-ORDER activity on a stage that isn't the
-            // current one (e.g. billing started while we're still in pre-con).
-            const green = st.current || st.state === "done";
-            const amber = !st.current && st.state === "partial";
+            // ONE rule, matching the chevron status bar (Karan 2026-08-15): GREEN
+            // = done · AMBER = in progress (the current stage until its work is
+            // done, OR out-of-order activity on a non-current stage like billing
+            // started early) · GREY = not started. A blue ring marks "you are
+            // here". So the current Pre-con reads amber because submittals aren't
+            // sent yet — same as the chevron above it.
+            const isDone = st.state === "done";
+            const partialOutOfOrder = !st.current && st.state === "partial";
+            const green = isDone;
+            const amber = (st.current && !isDone) || partialOutOfOrder;
             const marker = green
               ? "bg-emerald-500 border-emerald-500 text-white"
               : amber
               ? "bg-amber-400 border-amber-400 text-white"
-              : t.marker;
-            const bar = green ? "bg-emerald-500" : amber ? "bg-amber-400" : t.bar;
-            // A check means "done"; the current stage is in progress, so it shows
-            // a filled green dot + ring, no tick.
-            const check = st.state === "done" || amber;
+              : "bg-surface border-ppp-charcoal-200 text-transparent";
+            const bar = green ? "bg-emerald-500" : amber ? "bg-amber-400" : "bg-ppp-charcoal-100";
+            // A tick = done (or a discrete out-of-order thing). The current
+            // in-progress stage is a filled amber dot + ring, no tick.
+            const check = isDone || partialOutOfOrder;
+            const labelTone = st.current ? "text-amber-700 font-bold" : green || amber ? "text-ppp-charcoal font-bold" : "text-ppp-charcoal-400 font-semibold";
+            const metaTone = st.current ? "text-amber-700" : green ? "text-emerald-700" : amber ? "text-amber-700" : "text-ppp-charcoal-400";
             return (
               <li key={st.key} className="relative flex-1 min-w-[62px] text-center pt-8 px-0.5">
                 <span aria-hidden className={`absolute top-[10px] h-[3px] ${bar} ${first ? "left-1/2 right-0" : last ? "left-0 right-1/2" : "left-0 right-0"}`} />
@@ -115,8 +114,8 @@ function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMe
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
                   )}
                 </span>
-                <div className={`text-[11px] leading-tight ${st.current ? "text-emerald-700 font-bold" : green ? "text-ppp-charcoal font-bold" : amber ? "text-ppp-charcoal font-bold" : t.lbl}`}>{st.label}</div>
-                {st.meta && <div className={`text-[9.5px] mt-0.5 truncate ${st.current ? "text-emerald-700" : t.meta}`}>{st.meta}</div>}
+                <div className={`text-[11px] leading-tight ${labelTone}`}>{st.label}</div>
+                {st.meta && <div className={`text-[9.5px] mt-0.5 truncate ${metaTone}`}>{st.meta}</div>}
               </li>
             );
           })}
