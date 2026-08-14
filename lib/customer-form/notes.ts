@@ -31,9 +31,28 @@ export function extractCustomerFreeText(raw: string | null | undefined): string 
   return stripOrphanColorPreamble(s).trim();
 }
 
-/** Machine-generated orphan line: "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss". */
-const ORPHAN_LINE_RE =
-  /^\s*(?:cabinets?|accent wall|doors?|windows?|closets?|shelves|shelf|other)\s*:\s*\S.*$/i;
+/**
+ * A MACHINE-generated orphan line, e.g.
+ *   "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss"
+ *   "Door: Super White (OC-152)"
+ *
+ * The surface prefix alone is NOT enough to identify one. A rep typing
+ * "Cabinets: needs sanding before paint" into Color Notes matches that shape
+ * exactly, and stripping it would blank the note from the form — which then
+ * rewrites ColorNotes__c without it and destroys the rep's words.
+ *
+ * So the line must also carry a machine fingerprint: the " — <finish>" suffix
+ * the submit route writes, or a parenthesised colour code. Anything else is
+ * treated as human text and kept. Erring toward keeping is deliberate: a
+ * duplicated machine line in a textarea is cosmetic, an erased crew note is
+ * data loss.
+ */
+const ORPHAN_SURFACE_PREFIX = /^\s*(?:cabinets?|accent wall|doors?|windows?|closets?|shelves|shelf|other)\s*:\s*\S/i;
+/** " — Semi-Gloss" / " (HC-15)" — written by us, not typed by a person. */
+const MACHINE_FINGERPRINT = /\s—\s\S|\([A-Za-z0-9][A-Za-z0-9.\-\/ ]{0,14}\)\s*$/;
+const ORPHAN_LINE_RE = {
+  test: (line: string) => ORPHAN_SURFACE_PREFIX.test(line) && MACHINE_FINGERPRINT.test(line),
+};
 /** A bare room header the submit route writes above those lines: "Dining Room:". */
 const ROOM_HEADER_RE = /^\s*[^:\n]{1,60}:\s*$/;
 
@@ -83,8 +102,9 @@ export function extractMachineColorLines(raw: string | null | undefined): string
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean)
-    // Drop the "don't paint" lines — sourced from skippedSurfaces instead.
-    .filter((l) => !/^Customer selected "Don't paint this surface" on /i.test(l))
-    // Drop the bare room header — the caller re-labels by room itself.
-    .filter((l) => !/^[^:]{1,60}:$/.test(l));
+    // Keep ONLY lines carrying a machine fingerprint. Exact complement of what
+    // extractCustomerFreeText strips, so a rep's typed "Cabinets: needs
+    // sanding" is treated as human text in both directions — kept on the form,
+    // and not pushed into the vendor's order as if it were a colour.
+    .filter((l) => ORPHAN_LINE_RE.test(l));
 }

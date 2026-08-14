@@ -56,6 +56,7 @@ export default function OrderFulfillmentView({
   supplierName,
   build,
   committed,
+  persistenceAvailable,
   viewerName,
   viewerPhone,
 }: {
@@ -68,6 +69,11 @@ export default function OrderFulfillmentView({
   /** False when the worker never advanced through the builder — we let them
    *  send anyway (never hard-reject) but say what's missing. */
   committed: boolean;
+  /** False when saved order state is unavailable (migration 144 pending or the
+   *  table unreachable). The order payload then arrives EMPTY, so the email
+   *  would go out from bare estimates — that has to be said out loud, not
+   *  discovered by the supplier. */
+  persistenceAvailable: boolean;
   viewerName: string | null;
   viewerPhone: string | null;
 }) {
@@ -297,7 +303,15 @@ export default function OrderFulfillmentView({
         </p>
       </div>
 
-      {!committed && (
+      {!persistenceAvailable && (
+        <div role="alert" className="bg-ppp-orange-50 border border-ppp-orange-200 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
+          <strong className="block">This order couldn&apos;t be loaded from saved state.</strong>
+          Quantities, paint lines and extras you set on the build step are NOT included below —
+          the email would go out from system estimates only. Check the email body carefully before
+          sending, or ask Karan to apply migration 144.
+        </div>
+      )}
+      {persistenceAvailable && !committed && (
         <div className="bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-4 py-3 text-xs text-ppp-blue-700">
           You came straight to fulfilment, so this order uses whatever was last saved on the build
           step. <Link href={builderHref} className="underline font-semibold">Check what you&apos;re buying</Link> if

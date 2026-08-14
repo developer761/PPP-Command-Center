@@ -36,10 +36,25 @@ import { getSalesforceClient } from "@/lib/salesforce/client";
  *     LATER of the start date itself or 48h from now, so a late send never
  *     produces an already-dead link.
  */
-function computeFormExpiry(scheduledStart: string | null): string {
+function computeFormExpiry(scheduledStart: string | null, colorDeadline?: string | null): string {
   const DAY = 86_400_000;
   const now = Date.now();
-  if (!scheduledStart) return new Date(now + 30 * DAY).toISOString();
+  // Kate round-3 #07: the link must outlive the promise. The form tells the
+  // customer they can update until the deadline the sender set — and that
+  // deadline defaults to the job's START date, while the expiry below is 24h
+  // BEFORE start. Left alone, the customer would be told "you have until the
+  // 20th" by a link that stopped working on the 19th. Whenever a deadline is
+  // set, the link lives to the end of that day in Eastern time.
+  const promisedUntil = (() => {
+    const d = (colorDeadline ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 0;
+    const t = new Date(`${d}T23:59:59-05:00`).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  })();
+  const atLeastPromised = (iso: string) =>
+    promisedUntil > new Date(iso).getTime() ? new Date(promisedUntil).toISOString() : iso;
+
+  if (!scheduledStart) return atLeastPromised(new Date(now + 30 * DAY).toISOString());
   // A date-only value (e.g. Opportunity.CloseDate "2026-06-15", used as the
   // last-resort start anchor) parses as MIDNIGHT UTC — which is the prior
   // evening on the US East Coast, so "start − 24h" would kill the link ~28h
@@ -51,11 +66,11 @@ function computeFormExpiry(scheduledStart: string | null): string {
     ? `${scheduledStart}T12:00:00-05:00`
     : scheduledStart;
   const start = new Date(anchored).getTime();
-  if (isNaN(start)) return new Date(now + 30 * DAY).toISOString();
+  if (isNaN(start)) return atLeastPromised(new Date(now + 30 * DAY).toISOString());
   const cutoff = start - DAY; // 24h before start
   const floor = now + 2 * DAY; // never less than 48h of usable time
-  if (cutoff < floor) return new Date(Math.max(start, floor)).toISOString();
-  return new Date(cutoff).toISOString();
+  if (cutoff < floor) return atLeastPromised(new Date(Math.max(start, floor)).toISOString());
+  return atLeastPromised(new Date(cutoff).toISOString());
 }
 
 export async function POST(request: Request) {
@@ -151,7 +166,7 @@ export async function POST(request: Request) {
     customer_email: customerEmail,
     customer_name: customerName,
     created_by_user_id: data.user.id,
-    expiresAt: computeFormExpiry(wo.scheduledStart),
+    expiresAt: computeFormExpiry(wo.scheduledStart, colorDeadline),
     colorDeadline: colorDeadline,
   });
   if ("error" in tokenResult) {

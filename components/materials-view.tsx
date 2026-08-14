@@ -2564,6 +2564,9 @@ function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; init
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(initial ?? null); // last-saved value
   const [error, setError] = useState<string | null>(null);
+  // Saved in the Command Center but REFUSED by Salesforce — an outcome that is
+  // neither success nor failure, and must not render as either.
+  const [warning, setWarning] = useState<string | null>(null);
   const dirty = value !== (saved ?? "");
 
   async function save() {
@@ -2577,9 +2580,14 @@ function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; init
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) {
-        setError(data.detail || data.error || "Couldn't save to Salesforce.");
+        setError(data.detail || data.error || "Couldn't save the follow-up date.");
       } else {
+        // The date IS saved in the Command Center at this point. But the route
+        // now returns 200 with salesforceSynced:false when Salesforce rejected
+        // the push — branching only on `ok` would report a clean save for a
+        // half-completed one, which is a worse lie than the 502 it replaced.
         setSaved(value || null);
+        setWarning(data.salesforceSynced === false ? (data.warning ?? "Saved here, but Salesforce didn't accept it.") : null);
       }
     } catch {
       setError("Network error — try again.");
@@ -2597,7 +2605,7 @@ function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; init
         <input
           type="date"
           value={value}
-          onChange={(e) => { setValue(e.target.value); setError(null); }}
+          onChange={(e) => { setValue(e.target.value); setError(null); setWarning(null); }}
           aria-label="Work order follow-up date"
           className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[40px]"
         />
@@ -2612,17 +2620,24 @@ function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; init
         {value && (
           <button
             type="button"
-            onClick={() => { setValue(""); setError(null); }}
+            onClick={() => { setValue(""); setError(null); setWarning(null); }}
             className="text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal-700 px-1 min-h-[40px]"
           >
             Clear
           </button>
         )}
         {!dirty && saved && !error && (
-          <span className="text-[11px] text-ppp-green-700" role="status">✓ Saved to Salesforce</span>
+          <span className="text-[11px] text-ppp-green-700" role="status">
+            {warning ? "✓ Saved" : "✓ Saved to Salesforce"}
+          </span>
         )}
       </div>
       {error && <p className="text-[11px] text-ppp-orange-700 mt-1.5" role="alert">{error}</p>}
+      {!error && warning && (
+        <p className="text-[11px] text-ppp-orange-700 mt-1.5" role="status">
+          ⚠ {warning}
+        </p>
+      )}
     </div>
   );
 }

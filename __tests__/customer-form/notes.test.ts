@@ -131,3 +131,45 @@ describe("extractMachineColorLines — round-3 #16", () => {
     expect(extractCustomerFreeText(raw)).toBe("hello");
   });
 });
+
+/**
+ * Regression: a rep's own note must survive.
+ *
+ * The first version of the machine-line matcher keyed off the surface prefix
+ * alone ("Cabinets:"), which a human note matches just as well. Stripping it
+ * emptied the form's notes box, and the next submit rewrote ColorNotes__c
+ * without it — silently destroying what the rep had typed.
+ */
+describe("crew-written notes are never mistaken for machine output", () => {
+  const crewNotes = [
+    "Cabinets: needs sanding before paint",
+    "Door: customer will supply hardware",
+    "Other: leave as is",
+    "Window: sash is painted shut, budget extra time",
+  ];
+
+  it.each(crewNotes)("keeps %j on the form", (note) => {
+    expect(extractCustomerFreeText(note)).toBe(note);
+  });
+
+  it.each(crewNotes)("does not push %j into the order as a color", (note) => {
+    expect(extractMachineColorLines(note)).toEqual([]);
+  });
+
+  it("still strips genuine machine lines", () => {
+    const machine = "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss";
+    expect(extractCustomerFreeText(machine)).toBe("");
+    expect(extractMachineColorLines(machine)).toEqual([machine]);
+  });
+
+  it("keeps a crew note sitting alongside machine lines", () => {
+    const raw = [
+      "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
+      "Door: customer will supply hardware",
+    ].join("\n");
+    expect(extractCustomerFreeText(raw)).toBe("Door: customer will supply hardware");
+    expect(extractMachineColorLines(raw)).toEqual([
+      "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
+    ]);
+  });
+});

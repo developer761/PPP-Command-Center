@@ -131,6 +131,7 @@ export default async function OrderFulfillmentPage({
       supplierName={supplierName}
       build={build.payload}
       committed={build.committed}
+      persistenceAvailable={build.available}
       viewerName={contact.name}
       viewerPhone={contact.phone}
     />

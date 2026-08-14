@@ -109,22 +109,37 @@ export async function createToken(input: {
     kind: input.kind ?? null,
     color_deadline: input.colorDeadline || null,
   };
-  let { error } = await sb.from("customer_form_tokens").insert(richRow);
-  // Only fall back when SF/Supabase says the SCHEMA is missing the column —
-  // a too-broad regex would silently swallow unrelated errors that happen
-  // to mention "kind" (e.g., type-coercion messages). Audit 2026-06-04.
-  if (
-    error &&
-    (/column "?(kind|color_deadline)"? (does not exist|of relation .* does not exist)/i.test(error.message)
-      || /could not find the '(kind|color_deadline)' column/i.test(error.message)
-      || (error as { code?: string }).code === "42703")
-  ) {
-    // Migration 015 (kind) and/or 147 (color_deadline) not applied yet. Drop
-    // both optional columns and insert the shape that has always existed —
-    // admin can still send invites while the migrations are pending.
-    console.warn("[customer-form] createToken: optional column missing (run migrations 015 / 147) — falling back");
-    const { kind: _dropKind, color_deadline: _dropDeadline, ...legacyRow } = richRow;
-    ({ error } = await sb.from("customer_form_tokens").insert(legacyRow));
+  // Insert with every optional column, then drop ONLY the column the database
+  // says it doesn't have, one at a time.
+  //
+  // This used to drop `kind` and `color_deadline` together whenever EITHER was
+  // missing, which is a nasty failure: with migration 147 pending, a PREVIEW
+  // token would insert with kind=null — i.e. as a real customer token. The
+  // preview form would then write real colours to Salesforce and count as a
+  // genuine submission. Never widen a fallback beyond the column that failed.
+  const OPTIONAL_COLUMNS = ["color_deadline", "kind"] as const;
+  const missingColumn = (msg: string, code?: string): string | null => {
+    for (const col of OPTIONAL_COLUMNS) {
+      if (
+        new RegExp(`column "?${col}"? (does not exist|of relation .* does not exist)`, "i").test(msg) ||
+        new RegExp(`could not find the '${col}' column`, "i").test(msg)
+      ) {
+        return col;
+      }
+    }
+    // A bare 42703 doesn't name the column. Drop the newest optional column
+    // first and let the loop retry — `kind` is only dropped if 42703 persists.
+    return code === "42703" ? OPTIONAL_COLUMNS[0] : null;
+  };
+
+  const row: Record<string, unknown> = { ...richRow };
+  let { error } = await sb.from("customer_form_tokens").insert(row);
+  for (let attempt = 0; error && attempt < OPTIONAL_COLUMNS.length; attempt++) {
+    const col = missingColumn(error.message, (error as { code?: string }).code);
+    if (!col || !(col in row)) break;
+    console.warn(`[customer-form] createToken: '${col}' column missing (run migrations 015 / 147) — retrying without it`);
+    delete row[col];
+    ({ error } = await sb.from("customer_form_tokens").insert(row));
   }
   if (error) {
     console.error("[customer-form] createToken failed:", error.message);

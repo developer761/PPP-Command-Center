@@ -682,6 +682,17 @@ export async function POST(
         writeSkippedReason = `Salesforce write failed unexpectedly: ${
           err instanceof Error ? err.message : String(err)
         }. Submission is saved in Command Center.`;
+        // Kate round-3 #30: a THROWN batch is a total failure — nothing was
+        // written at all — and it is precisely what this catch exists for
+        // (expired OAuth, connection refused). Populating writesFailedInfo here
+        // is what makes the alert fire and the form stop showing a clean
+        // thank-you. Without it, the loudest failure was the quietest one.
+        writesFailedInfo = {
+          attemptedCount: attempts.length,
+          failedCount: attempts.length,
+          sampleErrorCode: "WRITE_THREW",
+          sampleErrorMessage: err instanceof Error ? err.message : String(err),
+        };
       }
     }
   }

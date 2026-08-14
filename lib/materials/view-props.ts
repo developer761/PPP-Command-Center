@@ -122,13 +122,25 @@ export async function loadMaterialsViewProps(
   ]);
 
   // Kate round-3 #13: the Command Center's own follow-up date wins over the
-  // Salesforce one. Applied here, at the source, so every downstream consumer
-  // (the WO page field, the list, the Mail Hub link) agrees without any of them
-  // needing to know there are two places a follow-up date can live.
-  for (const job of openJobs) {
-    const local = followupDates[job.wo.id];
-    if (local) job.wo.followupDate = local;
-  }
+  // Salesforce one, so every downstream consumer (the WO page field, the list,
+  // the Mail Hub link) agrees without needing to know there are two places a
+  // follow-up date can live.
+  //
+  // COPY, never mutate. deriveOpenMaterialsWorkOrders memoises its result in a
+  // WeakMap keyed by the snapshot, and that snapshot is a shared cached object
+  // serving every request until it rolls. Writing `job.wo.followupDate = …`
+  // wrote into that shared cache: the value then survived for other users, and
+  // — because we only ever assign a value that EXISTS — clearing a follow-up
+  // date left the old one stuck in the cache instead of falling back to
+  // Salesforce. A null local value now explicitly clears.
+  const jobsWithLocalFollowup =
+    Object.keys(followupDates).length === 0
+      ? openJobs
+      : openJobs.map((job) =>
+          Object.prototype.hasOwnProperty.call(followupDates, job.wo.id)
+            ? { ...job, wo: { ...job.wo, followupDate: followupDates[job.wo.id] } }
+            : job
+        );
 
   const formStatuses = Array.from(aux.formStatusByWO.values());
   const woProgress = Array.from(aux.progressByWO.values());
@@ -152,7 +164,7 @@ export async function loadMaterialsViewProps(
       }
     : bundle;
 
-  const openJobsSerialized = serializeOpenJobs(openJobs);
+  const openJobsSerialized = serializeOpenJobs(jobsWithLocalFollowup);
 
   console.log(
     `[materials] view props in ${Date.now() - tStart}ms (openWOs=${openJobs.length})`

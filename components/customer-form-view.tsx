@@ -247,23 +247,32 @@ function formatEditDeadline(
 ): EditDeadline {
   const promised = (senderDeadline ?? "").trim();
   if (promised) {
-    // Date-only value → anchor to end of day ET so "needed by the 14th" doesn't
-    // expire at midnight on the 13th for anyone west of New York.
-    const at = new Date(/^\d{4}-\d{2}-\d{2}$/.test(promised) ? `${promised}T23:59:00-05:00` : promised);
-    if (!Number.isNaN(at.getTime())) {
-      // Never render a date that's already gone (Kate: "Never render a date in
-      // the past") — say nothing rather than something wrong.
-      if (at.getTime() <= Date.now()) return { kind: "unknown" };
+    const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(promised);
+    if (ymd) {
+      // A calendar date is NOT an instant. The previous version anchored it to
+      // "T23:59:00-05:00" — a hardcoded EST offset — and then formatted in
+      // America/New_York. Through EDT (March–November) that lands at 00:59 the
+      // NEXT day, so a deadline of Aug 20 was shown to the customer as
+      // August 21. Format the numbers directly; no instant, no timezone, no
+      // chance of sliding a day.
+      const [, y, m, d] = ymd;
+      const year = Number(y), month = Number(m), day = Number(d);
+      // "In the past" is judged on the calendar day in PPP's timezone, so a
+      // customer in California doesn't lose a day (Kate: never render a past date).
+      const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+      if (promised < todayEt) return { kind: "unknown" };
       let label: string;
       try {
+        // Noon UTC is safely mid-day in every timezone, so the weekday and day
+        // number come out of the formatter unchanged.
         label = new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
+          timeZone: "UTC",
           weekday: "long",
           month: "long",
           day: "numeric",
-        }).format(at);
+        }).format(new Date(Date.UTC(year, month - 1, day, 12)));
       } catch {
-        label = at.toDateString();
+        label = promised;
       }
       return { kind: "deadline", label };
     }
