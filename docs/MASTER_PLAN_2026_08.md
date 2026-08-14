@@ -252,3 +252,12 @@ have already shipped what you're about to build.
 
 **Every commit:** `npx tsc --noEmit` + `npx vitest run` + `npm run build`, all
 green, before committing.
+
+---
+
+## ⏳ Pending confirmation — migration 137 (storage RLS / browser uploads)
+**137 (storage RLS) still needs a real browser upload from Karan to confirm** —
+it can't be checked via the service-role path (it's an authenticated-browser
+policy, invisible to the REST/service-role probes that verified 136/139–143).
+Confirm by an actual upload succeeding on Documents or Work Orders. Until then
+it's the one migration from the smoke-test + audit set not verified live.
