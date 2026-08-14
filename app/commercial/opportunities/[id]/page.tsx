@@ -155,6 +155,7 @@ import {
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
 import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
+import { ProjectHome } from "@/components/commercial/project-home";
 import { DealAnalytics } from "@/components/commercial/deal-analytics";
 import { STAGE_MEANING } from "@/lib/commercial/opportunities/kanban-columns";
 import { SubmitButton } from "@/components/commercial/submit-button";
@@ -2417,10 +2418,20 @@ export default async function OpportunityDetailPage({
           IS the navigation, so the strip becomes a third layer of chrome above
           the thing you just asked for. It earns its space on the surfaces that
           don't already list these tools. */}
-      {/* On `?tab=project` with no tool chosen, this strip IS the tool list —
-          which is why it renders there and steps aside once a tool is open. */}
-      {!isDeletedDeal && !toolView && (
+      {/* On the OTHER non-tool tabs (overview/docs/activity) the compact strip
+          is a one-line glance above the tab bar, so the delivery tools are on
+          screen wherever you are. On `?tab=project` itself the ProjectHome
+          below is the richer landing (cards), so the strip stands aside there
+          to avoid listing the same seven tools twice. Both step aside once a
+          tool is open. */}
+      {!isDeletedDeal && !toolView && primary !== "project" && (
         <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
+      )}
+      {/* Karan 2026-08-14 — the Project HOME: each delivery tool as a card with
+          its live status + a quick link, grouped by phase. Replaces the cramped
+          strip-as-list on the Project tab. */}
+      {!isDeletedDeal && !toolView && primary === "project" && (
+        <ProjectHome tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
       )}
 
       {/* ── Focused tool view ──────────────────────────────────────────────
