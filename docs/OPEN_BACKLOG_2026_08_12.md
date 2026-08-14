@@ -1521,3 +1521,19 @@ tsc clean, 669 tests. **BOTH adversarial audits (56-agent + 49-agent) now fully 
 the new values). **137 (storage RLS / browser uploads)** is an authenticated-browser policy not testable via the
 service-role REST path — confirm by an actual upload (Documents / Work Orders succeeding = healthy). Everything the
 smoke test + both audits produced is now verified in code AND live in the DB.
+
+---
+
+## ✅ VERIFY — orphaned invoices index + status-bar relabel (`f69c0e4f`, Karan smoke test). CLEAN. + a product decision for Karan.
+- **Orphaned standalone invoices index** — create-invoice→Back landed on `/commercial/invoices`, a page the restructure
+  dropped from the sidebar (no way in, no way onward). The create flow still honoured a return_to pointing at it. Now
+  deal-scoped invoice creation ALWAYS returns to the deal (`back = dealTab`). ✓
+- **Status-bar honest label** — after Brendan approves, the deal correctly stays at Estimating/proposal_pending_approval
+  (approving ≠ sending), but the step was LABELLED "Pending Approval" — the opposite of what happened. Now
+  `proposalApproved` relabels that step to "Approved — ready to send". ✓
+tsc clean, 669 tests.
+
+## 🟠 PRODUCT DECISION FOR KARAN — orphaned routes are a CLASS, not one page.
+The build session flagged (rather than guessed): `/commercial/projects` and `/commercial/post-job/work-orders` are ALSO
+LIVE routes absent from the sidebar since the restructure — reachable but with no nav entry. Whether each should be
+(a) restored to the sidebar or (b) removed as a route is a PRODUCT call, not a bug fix. Karan to decide per route.
