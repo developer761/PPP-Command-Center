@@ -27,6 +27,10 @@ type Props = {
    *  server actions read this from a hidden input so their post-action
    *  redirect can carry the filter forward. */
   currentCategory: string | null;
+  /** The opportunity the user is on — carried on every action's form so its
+   *  post-action redirect returns to THIS deal's Files tab, never to the global
+   *  pipeline list (which read as "booted off the platform"). */
+  oppId: string;
   /** Server actions bound to formData. */
   toggleFavoriteAction: (formData: FormData) => void;
   transitionStatusAction: (formData: FormData) => void;
@@ -39,6 +43,7 @@ export function CommercialFileRowActions({
   favorited,
   allowedNext,
   currentCategory,
+  oppId,
   toggleFavoriteAction,
   transitionStatusAction,
   deleteAction,
@@ -53,6 +58,7 @@ export function CommercialFileRowActions({
           works without JS (progressive enhancement). */}
       <form action={toggleFavoriteAction}>
         <input type="hidden" name="document_id" value={documentId} />
+        <input type="hidden" name="opp_id" value={oppId} />
         <input type="hidden" name="favorited" value={favorited ? "1" : "0"} />
         {currentCategory && <input type="hidden" name="current_category" value={currentCategory} />}
         <button
@@ -73,6 +79,7 @@ export function CommercialFileRowActions({
       {allowedNext.map((next) => (
         <form key={next} action={transitionStatusAction}>
           <input type="hidden" name="document_id" value={documentId} />
+          <input type="hidden" name="opp_id" value={oppId} />
           <input type="hidden" name="to_status" value={next} />
           {currentCategory && <input type="hidden" name="current_category" value={currentCategory} />}
           <button
@@ -121,6 +128,7 @@ export function CommercialFileRowActions({
           className="inline-flex items-center gap-1"
         >
           <input type="hidden" name="document_id" value={documentId} />
+          <input type="hidden" name="opp_id" value={oppId} />
           {currentCategory && <input type="hidden" name="current_category" value={currentCategory} />}
           <button
             type="submit"

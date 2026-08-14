@@ -1119,21 +1119,39 @@ function buildFilesTabRedirect(
   return `/commercial/opportunities/${oppId}?tab=files${catQs}${errQs}`;
 }
 
+// Every Files-tab action returns HERE — the opp the user is on, carried on the
+// form as `opp_id` (captured at render, so it doesn't depend on the action's
+// own re-lookup of the doc). A document action must never throw the user out to
+// the global pipeline list: "it booted me out the whole platform" (Karan
+// 2026-08-14). Falls back to the list only if the form somehow carried no opp.
+function safeFilesTab(formData: FormData, errorMsg?: string | null): string {
+  const oppId = String(formData.get("opp_id") ?? "");
+  return UUID_RE.test(oppId) ? buildFilesTabRedirect(oppId, formData, errorMsg) : "/commercial/opportunities";
+}
+
 async function toggleDocumentFavoriteAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
   const document_id = String(formData.get("document_id") ?? "");
   const currently = String(formData.get("favorited") ?? "0") === "1";
-  if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
-  const { favoriteDocument, unfavoriteDocument, getDocument: getDoc } = await import(
-    "@/lib/commercial/documents/db"
-  );
-  const doc = await getDoc(document_id);
-  if (!doc) redirect("/commercial/opportunities");
-  const result = currently
-    ? await unfavoriteDocument(document_id, userId)
-    : await favoriteDocument(document_id, userId);
-  redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
+  if (!UUID_RE.test(document_id)) redirect(safeFilesTab(formData));
+  let errorMsg: string | null = null;
+  try {
+    const { favoriteDocument, unfavoriteDocument, getDocument: getDoc } = await import(
+      "@/lib/commercial/documents/db"
+    );
+    const doc = await getDoc(document_id);
+    if (!doc) errorMsg = "That file was already removed.";
+    else {
+      const result = currently
+        ? await unfavoriteDocument(document_id, userId)
+        : await favoriteDocument(document_id, userId);
+      if (!result.ok) errorMsg = result.error;
+    }
+  } catch (err) {
+    errorMsg = err instanceof Error ? err.message : "Couldn't update that file.";
+  }
+  redirect(safeFilesTab(formData, errorMsg));
 }
 
 async function transitionDocumentStatusAction(formData: FormData) {
@@ -1141,32 +1159,48 @@ async function transitionDocumentStatusAction(formData: FormData) {
   const userId = await requireCommercialUser();
   const document_id = String(formData.get("document_id") ?? "");
   const to_status = String(formData.get("to_status") ?? "");
-  if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
-  const { transitionDocumentStatus, getDocument: getDoc } = await import(
-    "@/lib/commercial/documents/db"
-  );
-  const doc = await getDoc(document_id);
-  if (!doc) redirect("/commercial/opportunities");
-  const result = await transitionDocumentStatus(
-    document_id,
-    to_status as import("@/lib/commercial/documents/status").DocumentStatus,
-    userId
-  );
-  redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
+  if (!UUID_RE.test(document_id)) redirect(safeFilesTab(formData));
+  let errorMsg: string | null = null;
+  try {
+    const { transitionDocumentStatus, getDocument: getDoc } = await import(
+      "@/lib/commercial/documents/db"
+    );
+    const doc = await getDoc(document_id);
+    if (!doc) errorMsg = "That file was already removed.";
+    else {
+      const result = await transitionDocumentStatus(
+        document_id,
+        to_status as import("@/lib/commercial/documents/status").DocumentStatus,
+        userId
+      );
+      if (!result.ok) errorMsg = result.error;
+    }
+  } catch (err) {
+    errorMsg = err instanceof Error ? err.message : "Couldn't update that file.";
+  }
+  redirect(safeFilesTab(formData, errorMsg));
 }
 
 async function softDeleteDocumentAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
   const document_id = String(formData.get("document_id") ?? "");
-  if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
-  const { softDeleteDocument, getDocument: getDoc } = await import(
-    "@/lib/commercial/documents/db"
-  );
-  const doc = await getDoc(document_id);
-  if (!doc) redirect("/commercial/opportunities");
-  const result = await softDeleteDocument(document_id, userId);
-  redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
+  if (!UUID_RE.test(document_id)) redirect(safeFilesTab(formData));
+  let errorMsg: string | null = null;
+  try {
+    const { softDeleteDocument, getDocument: getDoc } = await import("@/lib/commercial/documents/db");
+    const doc = await getDoc(document_id);
+    if (!doc) errorMsg = "That file was already removed.";
+    else {
+      const result = await softDeleteDocument(document_id, userId);
+      if (!result.ok) errorMsg = result.error;
+    }
+  } catch (err) {
+    // Never let a delete failure bubble to the error boundary and blank the
+    // whole shell — surface it as a message on the Files tab instead.
+    errorMsg = err instanceof Error ? err.message : "Couldn't delete that file.";
+  }
+  redirect(safeFilesTab(formData, errorMsg));
 }
 
 /**
@@ -6047,6 +6081,10 @@ function FileRow({
           favorited={!!doc.favorited_at}
           allowedNext={allowedNext}
           currentCategory={currentCategory}
+          // The doc's parent IS this opp (the Files list is scoped to it),
+          // captured at render so the redirect no longer depends on the
+          // action re-looking-up the doc — which is where the eject came from.
+          oppId={doc.parent_id}
           toggleFavoriteAction={toggleDocumentFavoriteAction}
           transitionStatusAction={transitionDocumentStatusAction}
           deleteAction={softDeleteDocumentAction}
