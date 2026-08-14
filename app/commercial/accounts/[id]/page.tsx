@@ -1046,7 +1046,18 @@ export async function createDealInvoiceAction(formData: FormData) {
   // Whitelisted to those two shapes so it can never be an open redirect.
   const dealTab = `/commercial/opportunities/${opp_id}?tab=invoices`;
   const rt = String(formData.get("return_to") ?? "");
-  const back = rt.startsWith("/commercial/invoices") ? rt : dealTab;
+  // Return to the DEAL, always.
+  //
+  // This used to honour a return_to pointing at /commercial/invoices — the
+  // standalone index. The restructure moved invoices under the deal and that
+  // page was dropped from the sidebar, so it is now unreachable by navigation:
+  // creating an invoice and pressing Back was the ONLY way to land on it, and
+  // once there you are stranded. Karan hit it in smoke testing 2026-08-14.
+  //
+  // Whether that index should exist at all is a separate call; until it has a
+  // way in, nothing should send anyone to it.
+  const back = dealTab;
+  void rt;
   const mode = String(formData.get("mode") ?? "flat") === "milestones" ? "milestones" : "flat";
 
   const taxRaw = String(formData.get("tax_pct") ?? "").trim();

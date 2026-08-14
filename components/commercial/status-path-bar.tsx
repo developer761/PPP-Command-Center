@@ -277,6 +277,7 @@ function PathRow({
 }
 
 export function StatusPathBar({
+  proposalApproved = false,
   status,
   subStatus,
   oppId,
@@ -290,6 +291,13 @@ export function StatusPathBar({
   /** The next step a person can take when no artifact implies it. */
   manualNext,
 }: {
+  /** The deal's current proposal has been approved but not yet sent.
+   *
+   *  The deal legitimately stays at Estimating / proposal_pending_approval —
+   *  approving is not sending — but that step is LABELLED "Pending Approval",
+   *  so after Brendan approved, the bar went on saying the opposite of what
+   *  had just happened. The stage is right; the word was wrong. */
+  proposalApproved?: boolean;
   status: string;
   subStatus: string | null;
   oppId: string;
@@ -314,7 +322,15 @@ export function StatusPathBar({
     <div className="space-y-3">
       <PathRow
         title="Sale"
-        stages={SALES_STAGES}
+        stages={
+          // Same stage, honest word. Once the proposal is approved the deal is
+          // waiting to be SENT, not waiting to be approved.
+          proposalApproved
+            ? SALES_STAGES.map((st) =>
+                st.key === "pending_approval" ? { ...st, label: "Approved — ready to send" } : st
+              )
+            : SALES_STAGES
+        }
         currentKey={salesCurrent}
         // The stage IS the sub-status now, so repeating it beside the title
         // would print the same word twice.
