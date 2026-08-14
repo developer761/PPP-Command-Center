@@ -15,6 +15,7 @@ import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/c
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
+import { safeBack, withBack } from "@/lib/commercial/submittals/back-url";
 import {
   INPUT_CLS,
   SELECT_CLS,
@@ -80,35 +81,8 @@ export const dynamic = "force-dynamic";
 type PP = Promise<{ id: string; dealId: string; sid: string }>;
 type SP = Promise<{ error?: string; saved?: string; picker?: string; preselect?: string; back?: string }>;
 
-/** Open-redirect-guarded origin for the Back button. Only honor a relative
- *  /commercial/ path (the global submittals index passes one when you drill in
- *  from there); anything else falls back to the account project tab. */
-function safeBack(raw: string | undefined | null): string | null {
-  return raw && raw.startsWith("/commercial/") ? raw : null;
-}
-/** Re-attach the origin to an action redirect so the Back button survives the
- *  round-trip (adds ? or & as needed). No-op when there's no back context. */
-function withBack(url: string, back: string | null): string {
-  if (!back) return url;
-  // When the submittal was opened INSIDE the deal drill-in, that URL is the
-  // destination, not a breadcrumb to carry along: the detail renders there, so
-  // redirecting to the standalone page after a save would throw the user out of
-  // the deal they never left — the exact jump this whole change removes.
-  // The flags the action wanted to set (?saved=1, ?error=…) come with it.
-  if (DRILL_IN_RE.test(back) || OPP_PAGE_RE.test(back)) {
-    const q = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
-    return q ? `${back}${back.includes("?") ? "&" : "?"}${q}` : back;
-  }
-  return `${url}${url.includes("?") ? "&" : "?"}back=${encodeURIComponent(back)}`;
-}
-/** A deal drill-in URL — `/commercial/accounts/<uuid>?tab=projects&project=<uuid>…` */
-const DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&project=[0-9a-f-]{36}/i;
-/** The deal's own page — where its tools live as of restructure step 3
- *  (2026-08-12). Added alongside the drill-in shape, not instead of it: the
- *  old URLs still arrive from bookmarks and sent email. A `?back=` this
- *  guard rejects is silently dropped, so omitting the new shape would kill
- *  every back link from the deal page with nothing to show for it. */
-const OPP_PAGE_RE = /^\/commercial\/opportunities\/[0-9a-f-]{36}(\?|#|$)/i;
+// safeBack + withBack moved to lib/commercial/submittals/back-url.ts (round-3
+// handoff #1) so the action-redirect rule can be tested. See that file for why.
 /** The guarded origin an action received via its hidden `back` input. */
 function formBack(fd: FormData): string | null {
   return safeBack(String(fd.get("back") ?? "") || undefined);
