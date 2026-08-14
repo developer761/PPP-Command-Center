@@ -47,7 +47,12 @@ export type PathStage = {
 // either — stateFor only ever returned passed/current/future — so a deal that
 // jumped stages showed every stage behind it as completed, ticks and all,
 // claiming work that never happened. It is wired now.
-type StageState = "passed" | "current" | "future" | "skipped";
+// Same checkpoint grammar as the delivery spine on the Project tab, so the two
+// status bars read as one system (Karan 2026-08-15): GREEN ✓ = passed/done,
+// AMBER = the stage in progress right now, GREY = future, plus the two edge
+// cases the spine doesn't have — SKIPPED (jumped, never entered) and the WON /
+// LOST outcome tails.
+type StageState = "passed" | "current" | "future" | "skipped" | "won" | "lost";
 
 /**
  * Sales ladder — Brendan's stages, with Qualifying kept at the front.
@@ -79,15 +84,21 @@ const DELIVERY_STAGES: PathStage[] = POST_CONTRACT_COLUMNS.map((c) => ({
 
 function chevronCls(state: StageState): string {
   switch (state) {
-    case "current":
-      return "bg-ppp-navy text-white";
     case "passed":
-      return "bg-cc-brand-600 text-white";
+      return "bg-emerald-500 text-white"; // done — green ✓, matching the spine
+    case "won":
+      return "bg-emerald-600 text-white"; // the win, done
+    case "current":
+      // In progress right now. Amber carries a text label here, so it takes dark
+      // text (white on amber is unreadable) — a standard in-progress treatment.
+      return "bg-amber-400 text-amber-950";
+    case "lost":
+      return "bg-rose-500 text-white";
     // A deal dragged forward never passed through these. Showing them as
     // complete would claim work that didn't happen; showing them as future is
     // wrong too, because the deal is already past them.
     case "skipped":
-      return "bg-cc-brand-100 text-cc-brand-700";
+      return "bg-amber-100 text-amber-700";
     default:
       return "bg-ppp-charcoal-100 text-ppp-charcoal-500";
   }
@@ -124,9 +135,14 @@ function Chevron({
       // status bar should update."
       title={STAGE_MEANING[stage.key]}
     >
-      {state === "passed" && (
+      {(state === "passed" || state === "won") && (
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
           <path d="M20 6 9 17l-5-5" />
+        </svg>
+      )}
+      {state === "lost" && (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
+          <path d="M18 6 6 18M6 6l12 12" />
         </svg>
       )}
       <span className="text-[11.5px] font-bold leading-none truncate">{stage.label}</span>
@@ -221,16 +237,17 @@ function PathRow({
             const st = stateFor(i);
             return (
               <li key={s.key} className="flex items-center gap-2 text-[12px] px-3 py-1.5">
-                <span className={`h-2 w-2 rounded-full shrink-0 ${st === "current" ? "bg-ppp-navy" : st === "passed" ? "bg-cc-brand-600" : "bg-ppp-charcoal-200"}`} />
+                <span className={`h-2 w-2 rounded-full shrink-0 ${st === "current" ? "bg-amber-400" : st === "passed" ? "bg-emerald-500" : st === "skipped" ? "bg-amber-200" : "bg-ppp-charcoal-200"}`} />
                 <span className={st === "current" ? "font-bold text-ppp-charcoal" : st === "passed" ? "text-ppp-charcoal-600" : "text-ppp-charcoal-400"}>
                   {s.label}
+                  {st === "skipped" && <span className="ml-1.5 text-[9.5px] font-bold uppercase tracking-wide text-amber-600">skipped</span>}
                 </span>
               </li>
             );
           })}
           {shown.map((o) => (
             <li key={o.key} className="flex items-center gap-2 text-[12px] px-3 py-1.5">
-              <span className="h-2 w-2 rounded-full shrink-0 bg-ppp-navy" />
+              <span className={`h-2 w-2 rounded-full shrink-0 ${o.key === "won" ? "bg-emerald-500" : "bg-rose-500"}`} />
               <span className="font-bold text-ppp-charcoal">{o.label}</span>
             </li>
           ))}
@@ -255,7 +272,7 @@ function PathRow({
           <Chevron
             key={o.key}
             stage={{ key: o.key, label: o.label }}
-            state="current"
+            state={o.key === "won" ? "won" : "lost"}
             first={false}
             last
           />
