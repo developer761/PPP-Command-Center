@@ -5,9 +5,10 @@ import CommercialAddressFields from "@/components/commercial-address-fields";
 
 /**
  * Wraps the BILLING address section with a "Same as company address"
- * checkbox. When checked, the address fields collapse and a hidden flag
- * (`site_same_as_billing=1`) is submitted so the server can copy
- * billing_* into site_* without the user re-typing 4 fields.
+ * checkbox. When checked, the billing inputs collapse and a hidden flag
+ * (`site_same_as_billing=1`) is submitted so the server copies the company
+ * (site_*) address into billing_* without the user re-typing four fields.
+ * When unchecked, the user types a separate BILLING address.
  *
  * Karan 2026-06-24 (UX audit fix): most accounts have billing = site;
  * forcing two identical addresses was a major friction point on the
@@ -47,7 +48,23 @@ export default function CommercialSiteAddressToggle({
         <span className="text-ppp-charcoal-700">Same as company address</span>
       </label>
       {!same && (
-        <CommercialAddressFields prefix="site" defaults={defaults} />
+        // prefix="billing", NOT "site".
+        //
+        // Both callers mount this inside their "Billing address" section and
+        // pass the account's BILLING values into it, but it rendered inputs
+        // named site_*. Two consequences, both silent:
+        //   1. the edit action reads get("billing_street") and found nothing,
+        //      so a separate billing address was never saved
+        //   2. site_* was then submitted TWICE on the same form — once by the
+        //      Company address section above — and the later value won, so
+        //      entering a billing address overwrote the company address
+        // The "same as company address" path is unaffected: it submits
+        // site_same_as_billing=1 and the action copies site_* into billing_*.
+        //
+        // Found by the 2026-08-13 persona audit. The 2026-08-12 note on the
+        // edit page called this exact class "second time an edit page was
+        // missed after a create-form change" — this was the half still left.
+        <CommercialAddressFields prefix="billing" defaults={defaults} />
       )}
     </div>
   );

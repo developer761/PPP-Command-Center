@@ -1243,7 +1243,6 @@ async function updateAccountSectionAction(formData: FormData) {
       patch = {
         billing_street: get("billing_street"),
         billing_street2: get("billing_street2"),
-        site_street2: get("site_street2"),
         billing_city: get("billing_city"),
         billing_state: get("billing_state"),
         billing_zip: get("billing_zip"),
@@ -1252,6 +1251,13 @@ async function updateAccountSectionAction(formData: FormData) {
     case "site":
       patch = {
         site_street: get("site_street"),
+        // Belongs to THIS section. It was added to the billing patch by
+        // mistake on 2026-08-13, which broke it both ways: the billing card
+        // has no site_street2 input, so saving billing wrote null over the
+        // company suite line; and the site card never wrote the field at all,
+        // so typing a suite there was silently discarded. Found by the persona
+        // audit the same day.
+        site_street2: get("site_street2"),
         site_city: get("site_city"),
         site_state: get("site_state"),
         site_zip: get("site_zip"),
@@ -1285,7 +1291,10 @@ async function updateAccountSectionAction(formData: FormData) {
   }
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/accounts");
-  redirect(`/commercial/accounts/${account_id}?saved=1#card-${section}`);
+  // Return the user to the tab they were on, not the default one.
+  const returnTab = String(formData.get("return_tab") ?? "").trim();
+  const tabQs = returnTab ? `&tab=${encodeURIComponent(returnTab)}` : "";
+  redirect(`/commercial/accounts/${account_id}?saved=1${tabQs}#card-${section}`);
 }
 
 async function quickFlipFromAccountAction(formData: FormData) {

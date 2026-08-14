@@ -60,6 +60,15 @@ export function AutosaveProposalForm({
   }
 
   function fireSave() {
+    // The debounce timer has now fired — clear the ref so `beforeunload`
+    // doesn't keep seeing a stale truthy id and prompt "Leave site?" forever
+    // (the timer is one-shot; setTimeout never nulls this for us).
+    //
+    // Its sibling autosave-form.tsx has carried this line, with this comment,
+    // the whole time. Two components, one rule, written once and not the
+    // other — the same drift the NEXT_REDIRECT note below calls out. Karan
+    // 2026-08-13: "it asked me to leave the site."
+    timerRef.current = null;
     if (disabled) return;
     if (!formRef.current) return;
     if (inFlightRef.current) {

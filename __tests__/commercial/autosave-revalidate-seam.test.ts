@@ -70,3 +70,28 @@ describe("autosave → revalidate seam", () => {
     expect(Number(m![1])).toBeGreaterThanOrEqual(2000);
   });
 });
+
+describe("both autosave components clear their debounce ref", () => {
+  it("neither leaves a stale timer id for beforeunload to trip over", () => {
+    // A one-shot setTimeout handle is always truthy and setTimeout never nulls
+    // it. The beforeunload guard reads `timerRef.current`, so forgetting this
+    // line means "Leave site? Changes you made may not be saved" fires on
+    // every navigation forever after the first keystroke — long after the pill
+    // says Saved. autosave-form.tsx always had the line; its sibling did not.
+    for (const f of [
+      "components/commercial/autosave-proposal-form.tsx",
+      "components/commercial/autosave-form.tsx",
+    ]) {
+      const src = readFileSync(join(ROOT, f), "utf8");
+      const at = src.indexOf("function fireSave()");
+      expect(at, `${f}: no fireSave`).toBeGreaterThan(-1);
+      const body = src.slice(at, at + 900);
+      expect(body, `${f}: fireSave never nulls timerRef`).toContain("timerRef.current = null");
+      // And it must happen before any early return, or a disabled form leaves
+      // the stale id behind.
+      const nullAt = body.indexOf("timerRef.current = null");
+      const firstReturn = body.indexOf("return");
+      expect(nullAt, `${f}: timerRef cleared after an early return`).toBeLessThan(firstReturn);
+    }
+  });
+});

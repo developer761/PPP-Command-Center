@@ -171,3 +171,97 @@ describe("the editor renders Stephanie's section order", () => {
     expect([...declared].sort()).toEqual(Object.keys(PROPOSAL_FIELD_GROUPS).sort());
   });
 });
+
+describe("a declared field must actually be rendered by the form that declares it", () => {
+  const src = readFileSync(SAVE_ACTION_FILE, "utf8");
+
+  /** The body of each <AutosaveProposalForm>…</AutosaveProposalForm>. */
+  function formBodies(): { groups: string[]; body: string }[] {
+    const out: { groups: string[]; body: string }[] = [];
+    for (const m of src.matchAll(/<AutosaveProposalForm\b/g)) {
+      const start = m.index!;
+      const end = src.indexOf("</AutosaveProposalForm>", start);
+      const body = src.slice(start, end);
+      const decl = body.match(/fieldsFor\(([^)]*)\)/);
+      if (!decl) continue;
+      out.push({
+        groups: decl[1].split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean),
+        body,
+      });
+    }
+    return out;
+  }
+
+  it("every field a form declares has an input inside that same form", () => {
+    // THE bug this file failed to catch. The header form declared
+    // `project_name` while the only project_name input lived in a different
+    // <form> (the sticky title, owned by the narrow rename action). So
+    // formData.get returned null, the action wrote undefined, and because
+    // header_json is replaced whole the proposal's name was erased on every
+    // header keystroke — silently, since background saves skip revalidation.
+    //
+    // The earlier tests here only checked that a guarded field belonged to
+    // SOME group and that groups were declared once. Neither can see a
+    // declaration with no matching input: exactly the "list in two places"
+    // class, where the second place is JSX.
+    // Two fields are rendered by a CHILD component, which builds their names
+    // from a template literal, so they cannot be seen by scanning the page.
+    // Rather than ignore them, follow the indirection: the child must be
+    // mounted inside the form AND must really render that input.
+    const VIA_CHILD: Record<string, { component: string; file: string }> = {
+      exclusion_ids: { component: "ExclusionPicker", file: "components/commercial/exclusion-picker.tsx" },
+      custom_exclusions: { component: "ExclusionPicker", file: "components/commercial/exclusion-picker.tsx" },
+    };
+
+    const missing: string[] = [];
+    for (const { groups, body } of formBodies()) {
+      for (const g of groups) {
+        for (const field of PROPOSAL_FIELD_GROUPS[g as keyof typeof PROPOSAL_FIELD_GROUPS] ?? []) {
+          const direct =
+            new RegExp(`name=["']${field}["']`).test(body) ||
+            // DateField/pickers pass the name through a prop of the same shape.
+            new RegExp(`name=\\{?["']${field}["']`).test(body);
+          if (direct) continue;
+
+          const via = VIA_CHILD[field];
+          if (via) {
+            const mounted = new RegExp(`<${via.component}\\b`).test(body);
+            const childSrc = readFileSync(join(__dirname, "..", "..", via.file), "utf8");
+            // Matches both name="x" and name={`${prefix}x`}.
+            const childRenders = new RegExp(`name=\\{?\`?[^"'\`]*["'\`]?\\}?`).test(childSrc)
+              ? new RegExp(`${field}\`?\\}`).test(childSrc) || new RegExp(`name="${field}"`).test(childSrc)
+              : false;
+            if (mounted && childRenders) continue;
+            missing.push(`${g}.${field} (expected via <${via.component}>: mounted=${mounted}, childRenders=${childRenders})`);
+            continue;
+          }
+          missing.push(`${g}.${field}`);
+        }
+      }
+    }
+    expect(
+      missing,
+      `declared but never rendered (writes undefined over the stored value): ${missing.join(", ")}`
+    ).toEqual([]);
+  });
+
+  it("no input posts a field its own form has not declared", () => {
+    // The mirror image: an input whose field is not in the form's declaration
+    // is simply never saved, and nothing reports it.
+    const known = new Set(Object.values(PROPOSAL_FIELD_GROUPS).flat() as string[]);
+    const undeclared: string[] = [];
+    for (const { groups, body } of formBodies()) {
+      const declared: Set<string> = new Set(
+        groups.flatMap((g) => [
+          ...((PROPOSAL_FIELD_GROUPS[g as keyof typeof PROPOSAL_FIELD_GROUPS] ?? []) as readonly string[]),
+        ])
+      );
+      for (const m of body.matchAll(/name="([a-z_]+)"/g)) {
+        const n = m[1];
+        if (n.startsWith("__") || !known.has(n)) continue;
+        if (!declared.has(n)) undeclared.push(n);
+      }
+    }
+    expect(undeclared, `rendered but not declared (never saves): ${undeclared.join(", ")}`).toEqual([]);
+  });
+});

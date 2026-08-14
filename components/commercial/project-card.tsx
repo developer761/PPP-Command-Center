@@ -80,7 +80,13 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
   // standalone tool routes, which drops the account/deal chrome and the tab you
   // came from — the same complaint as opening an item, one level up. The tools
   // already render inline on the drill-in, so point at that.
-  const toolHref = (tool: string) => `${overviewHref}&dt=${tool}`;
+  // `?tab=project&sub=<tool>` — the shape the deal page actually reads
+  // (tabHref there builds the same). This was `${overviewHref}&dt=${tool}`,
+  // which is broken twice over: there is no `?` in overviewHref so the whole
+  // thing collapsed into one path segment, and nothing anywhere reads `dt`.
+  // Every delivery-tool button on every project card 404'd. Found by three
+  // independent lenses in the 2026-08-13 persona audit.
+  const toolHref = (tool: string) => `${overviewHref}?tab=project&sub=${tool}`;
   const coHref = toolHref("change-orders");
   const aiaHref = toolHref("aia");
   const submittalsHref = toolHref("submittals");

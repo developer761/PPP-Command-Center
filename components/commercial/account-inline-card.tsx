@@ -73,6 +73,14 @@ export default function AccountInlineCardForm({
       if (current === initialSerialized.current) return;
       initialSerialized.current = current;
       const data = new FormData(form);
+      // Carry the tab the user is actually on. The action redirects on
+      // success, and without this it lands on the account's default tab —
+      // so editing a field while on Documents or Deals silently threw the
+      // user back to Overview mid-task. Read here rather than threaded
+      // through every Card call site, since this component already knows the
+      // page it is on. (2026-08-13 persona audit.)
+      const tab = new URLSearchParams(window.location.search).get("tab");
+      if (tab) data.set("return_tab", tab);
       startTransition(async () => {
         await action(data);
       });

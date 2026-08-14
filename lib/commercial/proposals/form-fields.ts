@@ -31,7 +31,19 @@ export const PROPOSAL_FIELD_GROUPS = {
     "attention",
     "phone",
     "email",
-    "project_name",
+    // NOT `project_name`. It is owned by the sticky AutosaveProposalName form
+    // and its own narrow rename action — there is deliberately no
+    // project_name input inside the header block ("a second project_name input
+    // here reverted it on any body-field autosave", R4 #3).
+    //
+    // Declaring it here anyway meant the header form claimed a field it does
+    // not carry: `formData.get("project_name")` came back null, the action
+    // wrote `undefined`, and because header_json is replaced whole, the name
+    // was dropped from the column on every header keystroke. Silently, too —
+    // background saves skip revalidation, so the title stayed on screen until
+    // the next full render. Found by the 2026-08-13 persona audit; introduced
+    // by the section-order change that same day, which is the exact bug that
+    // change existed to prevent.
     "project_address",
     "date_iso",
     "show_cip_notice",

@@ -2081,7 +2081,12 @@ export default async function OpportunityDetailPage({
   // A delivery tool is open — the page becomes that tool, with a back arrow.
   // `work-order` is the DEFAULT sub for `project`, so arriving at `?tab=project`
   // with no sub lands on the tool list rather than jumping straight into one.
-  const toolView = primary === "project" && !!rawSub;
+  // A legacy `?tab=closeout` resolves to primary=project + sub=closeout via
+  // resolveTabParam, but carries no rawSub — so keying off rawSub alone left
+  // those links on the tool LIST instead of opening the tool the user asked
+  // for. Both shapes now open the tool; a bare `?tab=project` (neither rawSub
+  // nor a resolved sub) still lands on the list, which is the intent below.
+  const toolView = primary === "project" && (!!rawSub || !!resolvedSub);
 
   // The Activity rail. A read of records that already exist — status log,
   // notes, tasks, proposals — merged into one chronology. Fetched only for the

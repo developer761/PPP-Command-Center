@@ -599,7 +599,12 @@ export async function updateInvoiceCoreFields(
     // note while the rate reads zero, so nothing contradicted it on screen.
     const { data: inv } = await sb
       .from("commercial_invoices")
-      .select("account_id")
+      // `opportunity_id` MUST be selected: it is read two lines below, and a
+      // column missing from a PostgREST select comes back undefined rather
+      // than erroring — so the per-job exemption silently never applied here.
+      // The identical mistake was caught in the create path the same day and
+      // missed here; six audit lenses found it independently.
+      .select("account_id, opportunity_id")
       .eq("id", invoice_id)
       .maybeSingle();
     const acctId = (inv as { account_id?: string } | null)?.account_id ?? null;

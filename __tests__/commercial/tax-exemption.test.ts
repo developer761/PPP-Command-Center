@@ -73,6 +73,22 @@ describe("every tax path uses the shared rule", () => {
     }
   });
 
+  it("the invoice EDIT path selects the job's override too", () => {
+    // Same trap, second location — missed on the first pass. Any select whose
+    // result is read for opportunity_id must actually ask for it.
+    const src = read("lib/commercial/invoices/db.ts");
+    for (const m of src.matchAll(/\.from\("commercial_invoices"\)[\s\S]{0,400}?\.select\("([^"]+)"\)/g)) {
+      const after = src.slice(m.index! + m[0].length, m.index! + m[0].length + 700);
+      if (!after.includes("opportunity_id")) continue;
+      // `select("*")` returns every column, so it is fine.
+      if (m[1].trim() === "*") continue;
+      expect(
+        m[1],
+        `a commercial_invoices select reads opportunity_id but does not select it: ${m[1]}`
+      ).toContain("opportunity_id");
+    }
+  });
+
   it("the invoice create path actually SELECTS the job's override", () => {
     // The trap this guards: a column missing from a PostgREST select comes
     // back undefined rather than erroring, so the override would read as
