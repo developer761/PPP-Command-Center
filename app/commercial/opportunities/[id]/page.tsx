@@ -156,6 +156,7 @@ import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
 import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
 import { ProjectHome } from "@/components/commercial/project-home";
+import { deriveProjectAttention, type ProjectMoney, type ProjectSchedule } from "@/lib/commercial/projects/project-attention";
 import { DealAnalytics } from "@/components/commercial/deal-analytics";
 import { STAGE_MEANING } from "@/lib/commercial/opportunities/kanban-columns";
 import { SubmitButton } from "@/components/commercial/submit-button";
@@ -1999,6 +2000,75 @@ export default async function OpportunityDetailPage({
     retainageHeldCents: pathRetainageCents,
     warrantyThroughAt: pathWarrantyThrough,
   });
+
+  // ── Project command-center data (Karan 2026-08-14) ──────────────────────
+  // The Project tab is a command center, not a launcher: what NEEDS attention,
+  // the money (a mini P&L), the schedule. All assembled from reads already done
+  // above so there is no extra round-trip.
+  const toolHref = (key: string) => deliveryTools.find((t) => t.key === key)?.href ?? "#";
+  const projectMoney: ProjectMoney = {
+    hasContract: pathFin?.hasContract ?? false,
+    contractCents: pathFin?.contractCents ?? 0,
+    baseCents: pathContractBaseCents,
+    approvedCoCents: pathApprovedCoCents,
+    billedCents: pathFin?.billedPreTaxCents ?? 0,
+    collectedCents: pathFin?.collectedCents ?? 0,
+    outstandingCents: openInvoiceCents,
+    retainageCents: pathRetainageCents,
+    costsCents: costsSoFar,
+    marginCents: pathMargin?.cents ?? 0,
+    marginPct: pathMargin?.pct ?? null,
+  };
+  const startYmd = etDateOf(opp.proposed_start_at);
+  const projectSchedule: ProjectSchedule = {
+    wonIso: etDateOf(opp.decided_at),
+    targetStartIso: startYmd,
+    targetEndIso: etDateOf(opp.proposed_end_at),
+    startInDays: startYmd ? daysFromTodayEt(startYmd) : null,
+    crewHours: Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)),
+    onSite: pathOnSite,
+  };
+  // The single most-overdue issued invoice with a balance still on it.
+  const overdueInvoiceForAttention =
+    pathInvoices
+      .filter((inv) => deriveInvoiceStatus(inv) === "overdue" && (Number(inv.balance_cents) || 0) > 0)
+      .map((inv) => ({
+        number: inv.invoice_number ?? "—",
+        balanceCents: Number(inv.balance_cents) || 0,
+        daysLate: etDateOf(inv.due_at) ? -daysFromTodayEt(etDateOf(inv.due_at)!) : 0,
+      }))
+      .sort((a, b) => b.daysLate - a.daysLate)[0] ?? null;
+  const projectAttention = pathIsWon
+    ? deriveProjectAttention(
+        {
+          onSite: pathOnSite,
+          billing: opp.status === "billing",
+          hasContract: pathFin?.hasContract ?? false,
+          contractCents: pathFin?.contractCents ?? 0,
+          billedPreTaxCents: pathFin?.billedPreTaxCents ?? 0,
+          openInvoiceCents,
+          overdueInvoice: overdueInvoiceForAttention,
+          retainageCents: pathRetainageCents,
+          pendingCoCount,
+          pendingCoCents: pathChangeOrders
+            .filter((c) => c.status === "pending")
+            .reduce((a, c) => a + (c.amount_cents ?? 0), 0),
+          submittalsNotSent: liveSubmittals.length === 0,
+          closeoutNotStarted: liveCloseout.length === 0,
+          crewHours: projectSchedule.crewHours,
+          targetStartInDays: projectSchedule.startInDays,
+          hrefs: {
+            invoices: toolHref("invoices"),
+            changeOrders: toolHref("change-orders"),
+            submittals: toolHref("submittals"),
+            aia: toolHref("aia"),
+            closeout: toolHref("closeout"),
+            schedule: toolHref("work-order"),
+          },
+        },
+        formatCentsCompact
+      )
+    : [];
   // The identity line: what am I looking at, and whose is it. A won job leads
   // with its project number — that is the number on the paperwork in the field.
   // AUDIT 2026-08-12: the ACCOUNT used to sit here too, and the breadcrumb six
@@ -2580,7 +2650,13 @@ export default async function OpportunityDetailPage({
           pane (Karan 2026-08-14: "the project tab is still empty"). Gated on
           !toolView so a chosen tool renders its own body below instead. */}
       {primary === "project" && !toolView && (
-        <ProjectHome tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
+        <ProjectHome
+          tools={deliveryTools}
+          attention={projectAttention}
+          money={projectMoney}
+          schedule={projectSchedule}
+          stageMeaning={STAGE_MEANING[opp.status] ?? null}
+        />
       )}
 
       {/* Overview + the Activity rail (Salesforce's record layout). The rail
