@@ -8,6 +8,7 @@ import {
   formatOrderTotal,
   formatBucketsCans,
   summarizeOrder,
+  addCustomItemsToTotal,
   type GallonEstimate,
 } from "@/lib/supplier-order/estimate-gallons";
 import { normalizeBuildPayload } from "@/lib/supplier-order/build-state";
@@ -156,5 +157,44 @@ describe("normalizeBuildPayload (#18)", () => {
     expect(p.customColorItems).toEqual([
       { id: "c1", label: "Color Match: Behr 56, eggshell", qty: 1, unit: "qt" },
     ]);
+  });
+});
+
+
+/**
+ * Kate round-3 #28 — a custom color item is a real order line, so it has to
+ * count toward TOTAL. If it didn't, the vendor would cross-check the total
+ * against the lines and find it short, which is worse than no total at all.
+ */
+describe("addCustomItemsToTotal (#28)", () => {
+  const base = { buckets: 0, cans: 0, quarts: 0, sizedColors: 0, reviewColors: 0 };
+
+  it("adds gallon items and re-packages into buckets", () => {
+    // 6 gallons reads as "1 bucket + 1 gal", not "6 gal".
+    expect(addCustomItemsToTotal(base, [{ qty: 6, unit: "gal" }])).toMatchObject({ buckets: 1, cans: 1 });
+  });
+
+  it("adds quarts to the quart total, never to gallons", () => {
+    const t = addCustomItemsToTotal(base, [{ qty: 3, unit: "qt" }]);
+    expect(t).toMatchObject({ buckets: 0, cans: 0, quarts: 3 });
+  });
+
+  it("combines with the estimate total rather than replacing it", () => {
+    const withEstimate = { ...base, buckets: 1, cans: 2 };
+    expect(addCustomItemsToTotal(withEstimate, [{ qty: 2, unit: "gal" }])).toMatchObject({ buckets: 1, cans: 4 });
+  });
+
+  it("ignores a unit it can't sum rather than miscounting it as gallons", () => {
+    expect(addCustomItemsToTotal(base, [{ qty: 5, unit: "each" }])).toMatchObject({ buckets: 0, cans: 0, quarts: 0 });
+  });
+
+  it("ignores zero and negative quantities", () => {
+    expect(addCustomItemsToTotal(base, [{ qty: 0, unit: "gal" }, { qty: -3, unit: "gal" }]))
+      .toMatchObject({ buckets: 0, cans: 0 });
+  });
+
+  it("preserves the review-colors count", () => {
+    const t = addCustomItemsToTotal({ ...base, reviewColors: 2 }, [{ qty: 1, unit: "gal" }]);
+    expect(t.reviewColors).toBe(2);
   });
 });

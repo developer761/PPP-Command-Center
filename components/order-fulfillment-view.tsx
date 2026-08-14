@@ -281,7 +281,7 @@ export default function OrderFulfillmentView({
   }
 
   return (
-    <div className="space-y-5 pb-28 max-w-3xl">
+    <div className="space-y-5 pb-4 max-w-3xl">
       <div>
         <Link
           href={builderHref}
@@ -540,7 +540,9 @@ export default function OrderFulfillmentView({
 
       {/* Actions */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-ppp-charcoal-100 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
+        // STICKY, not fixed — the desktop sidebar is a normal flex child of the
+        // shell, so a viewport-width fixed bar sits on top of it.
+        className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 bg-white border-t border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
         style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
       >
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 flex-wrap">

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
 import { AUTOSAVE_FLAG, AUTOSAVE_DEBOUNCE_MS, isBackgroundSave } from "@/lib/commercial/autosave-flag";
 
 /**
@@ -34,26 +34,42 @@ const WRAPPERS = [
 ];
 
 /**
- * Every server action wired to one of those wrappers, with the revalidate
- * helper it must not reach on a background save.
+ * Every server action wired to one of those wrappers — DISCOVERED, not listed.
+ *
+ * This started as a hand-written list of three and was wrong within the hour:
+ * it missed `saveCoverAutosaveAction` on the submittals page, which revalidated
+ * the very route it was being typed into ("the submittals page is autosaving
+ * and it boots us out"). A list of known surfaces cannot catch the surface
+ * nobody remembered, which is the whole failure mode being defended against
+ * here. So walk the tree, find everything wired to an autosave wrapper, and
+ * make a NEW surface fail this test by default rather than pass by omission.
  */
-const ACTIONS = [
-  {
-    file: "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx",
-    action: "saveProposalAction",
-    revalidator: "revalidatePath(",
-  },
-  {
-    file: "app/commercial/accounts/[id]/work-order/[dealId]/work-order-tool.tsx",
-    action: "autosaveWorkOrderAction",
-    revalidator: "revalidateWO(",
-  },
-  {
-    file: "app/commercial/accounts/[id]/closeout/[dealId]/closeout-tool.tsx",
-    action: "autosaveCoverAction",
-    revalidator: "revalidateCloseout(",
-  },
-];
+function discoverAutosaveActions(): { file: string; action: string }[] {
+  const out: { file: string; action: string }[] = [];
+  const walk = (dir: string) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name !== "node_modules" && e.name !== ".next") walk(p);
+      } else if (e.name.endsWith(".tsx")) {
+        const src = readFileSync(p, "utf8");
+        const re = /<Autosave(?:Proposal)?Form\b[^>]*?\saction=\{([A-Za-z0-9_$]+)\}/g;
+        for (const m of src.matchAll(re)) {
+          const rel = relative(ROOT, p);
+          if (!out.some((x) => x.file === rel && x.action === m[1])) {
+            out.push({ file: rel, action: m[1] });
+          }
+        }
+      }
+    }
+  };
+  walk(join(ROOT, "app"));
+  return out;
+}
+
+const ACTIONS = discoverAutosaveActions();
+/** Any call that triggers a re-render of the tree being typed into. */
+const REVALIDATE_RE = /revalidate[A-Za-z]*\(/;
 
 describe("autosave flag helper", () => {
   it("only treats an explicit '1' as a background save", () => {
@@ -132,24 +148,35 @@ describe("every autosave wrapper tags its background saves", () => {
   }
 });
 
-describe("every autosave action skips revalidation on a background save", () => {
-  for (const { file, action, revalidator } of ACTIONS) {
-    it(`${action} guards before ${revalidator}`, () => {
-      const src = read(file);
-      const start = src.indexOf(`function ${action}(`);
-      expect(start, `${file}: no ${action}`).toBeGreaterThan(-1);
+/** The action's body, scoped so a NEIGHBOURING action's guard can't satisfy it —
+ *  the exact way an earlier structural test in this repo read the wrong
+ *  statement and stayed green while the code it guarded was broken. */
+function bodyOf(file: string, action: string): string {
+  const src = read(file);
+  const start = src.indexOf(`function ${action}(`);
+  expect(start, `${file}: no ${action}`).toBeGreaterThan(-1);
+  const nextFn = src.indexOf("\nasync function ", start + 1);
+  return src.slice(start, nextFn === -1 ? src.length : nextFn);
+}
 
-      // Scope to this action's body so a guard in a NEIGHBOURING action can't
-      // make this pass — the exact way an earlier structural test in this repo
-      // read the wrong statement and stayed green while broken.
-      const nextFn = src.indexOf("\nasync function ", start + 1);
-      const body = src.slice(start, nextFn === -1 ? src.length : nextFn);
+describe("every autosave action skips revalidation on a background save", () => {
+  it("found the autosaving surfaces at all", () => {
+    // If the discovery regex stops matching (a wrapper is renamed, the action
+    // is passed differently), every test below would vacuously pass over an
+    // empty list. Fail loudly instead.
+    expect(ACTIONS.length).toBeGreaterThanOrEqual(4);
+  });
+
+  for (const { file, action } of ACTIONS) {
+    it(`${action} (${file.split("/").slice(-2).join("/")}) guards before revalidating`, () => {
+      const body = bodyOf(file, action);
+      const m = body.match(REVALIDATE_RE);
+      if (!m) return; // nothing to revalidate → nothing to guard.
 
       const guard = body.indexOf("isBackgroundSave(formData)");
       expect(guard, `${action}: no isBackgroundSave guard`).toBeGreaterThan(-1);
 
-      const revalidate = body.indexOf(revalidator);
-      expect(revalidate, `${action}: no ${revalidator} to guard`).toBeGreaterThan(-1);
+      const revalidate = body.indexOf(m[0]);
       expect(
         guard,
         `${action}: the guard is read AFTER the revalidate, so it does nothing`
@@ -164,14 +191,11 @@ describe("every autosave action skips revalidation on a background save", () => 
       // Skipping the write instead of the revalidate would turn autosave into
       // "silently discard everything typed" — a far worse bug than the one
       // being fixed, and an easy one to introduce by hoisting the guard.
-      const src = read(file);
-      const start = src.indexOf(`function ${action}(`);
-      const nextFn = src.indexOf("\nasync function ", start + 1);
-      const body = src.slice(start, nextFn === -1 ? src.length : nextFn);
+      const body = bodyOf(file, action);
       const guard = body.indexOf("isBackgroundSave(formData)");
-      const before = body.slice(0, guard);
+      if (guard === -1) return; // covered by the test above.
       expect(
-        /await (update|save|upsert)/i.test(before),
+        /await (\w*\.)?(update|save|edit|upsert)/i.test(body.slice(0, guard)),
         `${action}: the guard sits BEFORE the write — autosave would save nothing`
       ).toBe(true);
     });

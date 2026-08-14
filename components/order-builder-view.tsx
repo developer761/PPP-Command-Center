@@ -363,7 +363,7 @@ export default function OrderBuilderView({
   const needQty = estimates.filter((e) => e.manualOnly || (e.buckets === 0 && e.cans === 0));
 
   return (
-    <div className="space-y-5 pb-28">
+    <div className="space-y-5 pb-4">
       {/* Header */}
       <div>
         <Link
@@ -858,7 +858,11 @@ export default function OrderBuilderView({
       {/* Sticky advance bar */}
       {supplier && (
         <div
-          className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-ppp-charcoal-100 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
+          // STICKY, not fixed. The desktop sidebar is a normal flex child of the
+          // shell, so a viewport-width fixed bar sits on top of it. Sticky keeps
+          // the bar pinned to the bottom of the scroll area while staying inside
+          // the content column, which is right on both desktop and mobile.
+          className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 bg-white border-t border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
         >
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 flex-wrap">

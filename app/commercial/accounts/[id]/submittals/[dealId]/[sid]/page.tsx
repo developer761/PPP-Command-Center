@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import SubmittalDirectUpload from "@/components/commercial/submittal-direct-upload";
 import { DateField } from "@/components/commercial/date-field";
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
+import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 import { createClient } from "@/lib/supabase/server";
@@ -184,6 +185,11 @@ async function saveCoverAutosaveAction(formData: FormData): Promise<void> {
     updated_by_user_id: user.id,
   });
   if (!result.ok) throw new Error(result.error);
+  // Background save → skip the revalidate, keep the write. This one revalidated
+  // the page being typed into, so every debounce tick re-rendered the cover
+  // form under the cursor: Karan 2026-08-13, "the submittals page is autosaving
+  // and it boots us out and won't let us go back into it."
+  if (isBackgroundSave(formData)) return;
   revalidatePath(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`);
   // The same submittal also renders inside the deal drill-in, which is a
   // different route — without this an inline save shows stale data.
