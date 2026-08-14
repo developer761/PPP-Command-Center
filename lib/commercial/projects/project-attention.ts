@@ -180,3 +180,61 @@ export function deriveProjectAttention(
 
   return out.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 }
+
+// ── Delivery spine ─────────────────────────────────────────────────────────
+//
+// The Project tab used to end in a grid of clickable tool cards (Submittals /
+// Work Order / AIA / Costs …) — but those tools are already the deal's tab bar,
+// so it was a second copy of the navigation ("serves no purpose", Karan
+// 2026-08-15). This replaces it with a progress SPINE that answers the one
+// thing the tabs can't: where is this job in delivery, right now.
+//
+// Six stages, Won → Close-out. The pipeline STATUS drives the sequential stages
+// (Pre-con / Production / Billing); Submittals and Close-out read their own
+// tool state, because they're parallel workstreams, not strictly sequential —
+// so the spine can honestly show "in pre-con AND submittals out" at once.
+
+export type SpineState = "done" | "current" | "todo";
+export type SpineStage = { key: string; label: string; state: SpineState; meta: string | null };
+
+/** A delivery tool's coarse state + short label, as the strip already carries. */
+export type SpineToolState = { status: "done" | "active" | "todo"; label: string } | null | undefined;
+
+function toolSpineState(t: SpineToolState): SpineState {
+  return t?.status === "done" ? "done" : t?.status === "active" ? "current" : "todo";
+}
+
+export function deriveDeliverySpine(input: {
+  status: string;
+  wonLabel: string | null;
+  onSite: boolean;
+  submittals: SpineToolState;
+  /** Billing = the AIA/invoices workstream. */
+  billing: SpineToolState;
+  closeout: SpineToolState;
+}): SpineStage[] {
+  // Sequential rank of the pipeline status. 0 = won but not yet started.
+  const rank: Record<string, number> = { pre_construction: 1, in_progress: 2, billing: 3, post_sale_closed: 4 };
+  const r = rank[input.status] ?? 0;
+
+  const precon: SpineState = r >= 2 ? "done" : "current"; // won/pre-con → current; past it → done
+  const production: SpineState = r >= 3 ? "done" : r === 2 ? "current" : "todo";
+  const billingSeq: SpineState =
+    r >= 4 ? "done" : r === 3 ? "current" : toolSpineState(input.billing) === "current" ? "current" : "todo";
+  // Submittals + Close-out read their own tool state (parallel workstreams), but
+  // fall back to the pipeline so a job that's already in production shows
+  // submittals DONE even with no tool data, and a closed job sits at Close-out.
+  const sub = toolSpineState(input.submittals);
+  const submittals: SpineState = sub === "done" ? "done" : r >= 2 ? "done" : sub;
+  const close = toolSpineState(input.closeout);
+  const closeout: SpineState = close === "done" ? "done" : close === "current" ? "current" : r >= 4 ? "current" : "todo";
+
+  return [
+    { key: "won", label: "Won", state: "done", meta: input.wonLabel },
+    { key: "precon", label: "Pre-con", state: precon, meta: precon === "done" ? "done" : null },
+    { key: "submittals", label: "Submittals", state: submittals, meta: input.submittals?.label ?? null },
+    { key: "production", label: "Production", state: production, meta: input.onSite ? "on site" : null },
+    { key: "billing", label: "Billing", state: billingSeq, meta: input.billing?.label ?? null },
+    { key: "closeout", label: "Close-out", state: closeout, meta: input.closeout?.label ?? null },
+  ];
+}

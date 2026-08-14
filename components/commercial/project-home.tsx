@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { DeliveryTool } from "./delivery-tools-strip";
-import type { AttentionItem, ProjectMoney, ProjectSchedule } from "@/lib/commercial/projects/project-attention";
+import type { AttentionItem, ProjectMoney, ProjectSchedule, SpineStage } from "@/lib/commercial/projects/project-attention";
+import { deriveDeliverySpine } from "@/lib/commercial/projects/project-attention";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 
 /**
@@ -38,26 +39,6 @@ function startRelLabel(s: ProjectSchedule): string | null {
   return `${Math.abs(s.startInDays)} day${Math.abs(s.startInDays) === 1 ? "" : "s"} ago`;
 }
 
-const TOOL_ACCENT: Record<DeliveryTool["status"], { border: string; iconBg: string; iconText: string; dot: string; state: string }> = {
-  done: { border: "border-emerald-200 hover:border-emerald-300", iconBg: "bg-emerald-50", iconText: "text-emerald-600", dot: "bg-emerald-500", state: "text-emerald-700" },
-  active: { border: "border-cc-brand-200 hover:border-cc-brand-300", iconBg: "bg-cc-brand-50", iconText: "text-cc-brand-600", dot: "bg-cc-brand-500", state: "text-ppp-charcoal-700" },
-  todo: { border: "border-ppp-charcoal-100 hover:border-ppp-charcoal-200", iconBg: "bg-ppp-charcoal-50", iconText: "text-ppp-charcoal-400", dot: "bg-ppp-charcoal-300", state: "text-ppp-charcoal-400 italic" },
-};
-
-function ToolIcon({ toolKey }: { toolKey: string }) {
-  const c = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
-  switch (toolKey) {
-    case "submittals": return <svg {...c}><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>;
-    case "work-order": return <svg {...c}><path d="M9 2h6a1 1 0 0 1 1 1v1h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1zM9 4v1h6V4" /></svg>;
-    case "change-orders": return <svg {...c}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>;
-    case "costs": return <svg {...c}><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>;
-    case "aia": return <svg {...c}><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>;
-    case "invoices": return <svg {...c}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6M9 13h6M9 17h6" /></svg>;
-    case "closeout": return <svg {...c}><path d="m9 12 2 2 4-4M12 2 4 5v6c0 5.5 3.8 8.9 8 10 4.2-1.1 8-4.5 8-10V5l-8-3z" /></svg>;
-    default: return <svg {...c}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6" /></svg>;
-  }
-}
-
 function Panel({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-ppp-charcoal-100 bg-surface overflow-hidden">
@@ -80,13 +61,65 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
   );
 }
 
+const SPINE_TONE: Record<SpineStage["state"], { bar: string; dot: string; lbl: string; meta: string }> = {
+  done: { bar: "bg-emerald-500", dot: "bg-emerald-500 border-emerald-500", lbl: "text-ppp-charcoal", meta: "text-emerald-700" },
+  current: { bar: "bg-gradient-to-r from-emerald-500 to-cc-brand-500", dot: "bg-cc-brand-500 border-cc-brand-500 ring-4 ring-cc-brand-500/20", lbl: "text-cc-brand-700", meta: "text-cc-brand-700" },
+  todo: { bar: "bg-ppp-charcoal-100", dot: "bg-surface border-ppp-charcoal-200", lbl: "text-ppp-charcoal-400", meta: "text-ppp-charcoal-400" },
+};
+
+/**
+ * The delivery SPINE — where the job is in its lifecycle, at a glance. Replaces
+ * the old tool-card grid, which just duplicated the deal's tab bar. A horizontal
+ * run of six stages (Won → Close-out); scrolls on a narrow phone rather than
+ * wrapping, so the sequence always reads left-to-right.
+ */
+function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMeaning?: string | null }) {
+  const doneN = stages.filter((st) => st.state === "done").length;
+  return (
+    <section aria-label="Project delivery" className="rounded-xl border border-ppp-charcoal-100 bg-surface overflow-hidden">
+      <header className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-ppp-charcoal-100">
+        <h2 className="text-[11px] font-bold uppercase tracking-widest text-ppp-charcoal-600">Delivery</h2>
+        <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">{doneN} of {stages.length} stages complete</span>
+      </header>
+      <div className="px-4 pt-5 pb-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <ol className="flex min-w-[380px]">
+          {stages.map((st, i) => {
+            const t = SPINE_TONE[st.state];
+            const first = i === 0;
+            const last = i === stages.length - 1;
+            return (
+              <li key={st.key} className="relative flex-1 min-w-[62px] text-center pt-7 px-0.5">
+                <span aria-hidden className={`absolute top-[9px] h-[3px] ${t.bar} ${first ? "left-1/2 right-0" : last ? "left-0 right-1/2" : "left-0 right-0"}`} />
+                <span
+                  aria-hidden
+                  className={`absolute left-1/2 -translate-x-1/2 rounded-full border-[3px] z-10 ${t.dot} ${st.state === "current" ? "top-[1px] h-[17px] w-[17px]" : "top-[2px] h-[15px] w-[15px]"}`}
+                />
+                <div className={`text-[11px] font-bold leading-tight ${t.lbl}`}>{st.label}</div>
+                {st.meta && <div className={`text-[9.5px] mt-0.5 truncate ${t.meta}`}>{st.meta}</div>}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+      {stageMeaning && (
+        <p className="px-4 py-2.5 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/50 text-[11.5px] text-ppp-charcoal-600">
+          <span aria-hidden className="text-cc-brand-600 font-bold">▸ </span>
+          <span className="font-semibold text-ppp-charcoal-700">Where it is now:</span> {stageMeaning}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function ProjectHome({
+  status,
   attention,
   money: m,
   schedule: s,
   tools,
   stageMeaning,
 }: {
+  status: string;
   attention: AttentionItem[];
   money: ProjectMoney;
   schedule: ProjectSchedule;
@@ -95,15 +128,20 @@ export function ProjectHome({
 }) {
   if (tools.length === 0) return null;
 
-  // Group consecutive tools by phase (array already arrives in work order).
-  const groups: { phase: string; tools: DeliveryTool[] }[] = [];
-  for (const t of tools) {
-    const last = groups[groups.length - 1];
-    if (last && last.phase === t.phase) last.tools.push(t);
-    else groups.push({ phase: t.phase, tools: [t] });
-  }
-  const done = tools.filter((t) => t.status === "done").length;
-  const notStarted = tools.filter((t) => t.status === "todo").length;
+  // Build the delivery spine from the pipeline status + the tools that carry
+  // their own state (submittals, billing = invoices/AIA, close-out).
+  const toolByKey = (k: string) => {
+    const t = tools.find((x) => x.key === k);
+    return t ? { status: t.status, label: t.state } : null;
+  };
+  const spine = deriveDeliverySpine({
+    status,
+    wonLabel: fmtDate(s.wonIso),
+    onSite: s.onSite,
+    submittals: toolByKey("submittals"),
+    billing: toolByKey("invoices") ?? toolByKey("aia"),
+    closeout: toolByKey("closeout"),
+  });
 
   const billedPct = m.hasContract && m.contractCents > 0 ? Math.round((m.billedCents / m.contractCents) * 100) : 0;
   const collectedPct = m.hasContract && m.contractCents > 0 ? Math.round((m.collectedCents / m.contractCents) * 100) : 0;
@@ -204,43 +242,8 @@ export function ProjectHome({
         </Panel>
       </div>
 
-      {/* ── DELIVERY TOOLS (jump-in row) ───────────────────────────────── */}
-      <section aria-label="Project delivery" className="rounded-xl border border-ppp-charcoal-100 bg-surface overflow-hidden">
-        <header className="flex items-baseline justify-between gap-3 px-4 py-2.5 border-b border-ppp-charcoal-100">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-ppp-charcoal-600">Delivery</h2>
-          <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">{done} done · {notStarted} not started · {tools.length} tools</span>
-        </header>
-        <div className="p-3 space-y-3">
-          {groups.map((g) => (
-            <div key={g.phase}>
-              <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1.5 px-0.5">{g.phase}</div>
-              <div className="flex flex-wrap gap-2">
-                {g.tools.map((t) => {
-                  const a = TOOL_ACCENT[t.status];
-                  return (
-                    <Link key={t.key} href={t.href} className={`group flex-1 min-w-[220px] flex items-center gap-3 rounded-lg border bg-surface px-3 py-2.5 min-h-[44px] transition-all hover:shadow-sm ${a.border}`}>
-                      <span className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${a.iconBg} ${a.iconText}`}><ToolIcon toolKey={t.key} /></span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800 truncate leading-tight">{t.label}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${a.dot}`} />
-                          <span className={`text-[11.5px] ${a.state} truncate`}>{t.state}</span>
-                        </div>
-                      </div>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-ppp-charcoal-300 group-hover:text-cc-brand-600 group-hover:translate-x-0.5 transition-all"><path d="M9 18l6-6-6-6" /></svg>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-        {stageMeaning && (
-          <p className="px-4 py-2.5 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/50 text-[11.5px] text-ppp-charcoal-600">
-            <span className="font-semibold text-ppp-charcoal-700">Where it is now:</span> {stageMeaning}
-          </p>
-        )}
-      </section>
+      {/* ── DELIVERY SPINE — where the job is, not a second copy of the tabs ── */}
+      <DeliverySpine stages={spine} stageMeaning={stageMeaning} />
     </div>
   );
 }

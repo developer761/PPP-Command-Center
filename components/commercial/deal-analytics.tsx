@@ -2,11 +2,8 @@ import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/f
 import {
   DonutChart,
   GaugeRing,
-  HBars,
   MiniBars,
-  StatCard,
   type DonutSegment,
-  type HBarItem,
 } from "@/components/commercial/charts";
 
 /**
@@ -87,57 +84,10 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
       valueLabel: formatCentsCompact(value),
     }));
 
-  // The money chain. Each step can only shrink from the one above it, so the
-  // gaps between the bars are what there is to notice.
-  const chain: HBarItem[] = [
-    {
-      label: "Contract to date",
-      value: a.contractToDateCents,
-      tone: "navy",
-      valueLabel: formatCentsFull(a.contractToDateCents),
-      sub:
-        a.approvedCoCents !== 0
-          ? `${formatCentsCompact(a.contractBaseCents)} base ${a.approvedCoCents > 0 ? "+" : "−"} ${formatCentsCompact(Math.abs(a.approvedCoCents))} change orders`
-          : "No approved change orders",
-    },
-    {
-      label: "Invoiced",
-      value: a.invoicedCents,
-      tone: "brand",
-      valueLabel: formatCentsFull(a.invoicedCents),
-      sub:
-        unbilled > 0
-          ? `${formatCentsCompact(unbilled)} still to bill`
-          : unbilled < 0
-          ? `Over-billed by ${formatCentsCompact(-unbilled)}`
-          : "Fully billed",
-    },
-    {
-      label: "Collected",
-      // Scaled onto the pre-tax axis so the bar sits honestly beside the other
-      // three; the LABEL shows the real money received.
-      value: a.invoicedWithTaxCents > 0 ? Math.round(a.invoicedCents * (a.collectedCents / a.invoicedWithTaxCents)) : 0,
-      tone: "emerald",
-      valueLabel: formatCentsFull(a.collectedCents),
-      sub:
-        a.openBalanceCents > 0
-          ? `${formatCentsCompact(a.openBalanceCents)} outstanding`
-          : a.retainageCents > 0
-          ? `${formatCentsCompact(a.retainageCents)} retainage held`
-          : "All paid",
-    },
-    {
-      label: "Costs",
-      value: a.costsCents,
-      tone: "amber",
-      valueLabel: formatCentsFull(a.costsCents),
-      sub: `${formatCentsCompact(a.purchasesCents)} purchases · ${formatCentsCompact(a.crewLaborCents)} crew`,
-    },
-  ];
-
   // Money not yet in hand — the one figure the four bars don't state outright:
   // what's left to bill + what's billed-but-unpaid + retainage still held.
   const stillToCome = Math.max(0, unbilled) + a.openBalanceCents + a.retainageCents;
+  const hasContract = a.contractToDateCents > 0;
   const marginValueTone =
     a.marginPct === null
       ? "text-ppp-charcoal"
@@ -147,73 +97,101 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
       ? "text-amber-700"
       : "text-emerald-700";
 
+  // Money-flow widths, all on the SAME (pre-tax contract) axis so the bars
+  // stack honestly and the GAPS (to-bill, outstanding, retainage) read at a
+  // glance. Collected is scaled onto that axis; its label shows the real cash.
+  const pct = (v: number) => (hasContract ? Math.max(0, Math.min(100, Math.round((v / a.contractToDateCents) * 100))) : 0);
+  const invoicedW = pct(a.invoicedCents);
+  const collectedScaled = a.invoicedWithTaxCents > 0 ? Math.round(a.invoicedCents * (a.collectedCents / a.invoicedWithTaxCents)) : 0;
+  const collectedW = pct(collectedScaled);
+  const toBill = Math.max(0, unbilled);
+  const notCollected = a.openBalanceCents + a.retainageCents;
+
   return (
     <div className="space-y-4">
-      {/* THE BOTTOM LINE, first and biggest — the one answer this tab exists to
-          give. Reads even on a job with no costs logged yet (says so, rather
-          than flattering a 100% margin), so a thin job isn't a blank screen. */}
-      <div className="rounded-xl border border-ppp-charcoal-100 bg-gradient-to-br from-ppp-charcoal-50/70 to-surface p-5">
-        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
-          <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">Bottom line</div>
-            <div className={`font-condensed text-[34px] font-black leading-none tabular-nums ${marginValueTone}`}>
-              {a.marginPct === null ? "—" : formatCentsFull(a.marginCents)}
+      {/* THE BOTTOM LINE, first and biggest — profit + margin — then a single
+          money-flow visual (Contract → Invoiced → Collected) where each bar sits
+          under the one above so the gaps are the finding. Reads even on a job
+          with no costs logged (says so, not a flattering 100% margin). */}
+      <section className="rounded-xl border border-ppp-charcoal-100 bg-surface overflow-hidden">
+        <div className="p-5 bg-gradient-to-br from-emerald-50/50 via-surface to-surface">
+          <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">Profit to date</div>
+              <div className={`font-condensed text-[38px] sm:text-[44px] font-black leading-[0.92] tabular-nums ${marginValueTone}`}>
+                {a.marginPct === null ? "—" : formatCentsFull(a.marginCents)}
+              </div>
+              <div className="text-[12.5px] text-ppp-charcoal-600 mt-1.5">
+                {a.marginPct === null ? (
+                  "Set a contract to see the margin."
+                ) : (
+                  <>
+                    <strong className="font-semibold">{a.marginPct}% margin</strong> · billed minus cost
+                    {a.costsCents === 0 && <span className="text-amber-700"> · no costs logged yet</span>}
+                  </>
+                )}
+              </div>
             </div>
-            <div className="text-[12px] text-ppp-charcoal-600 mt-1">
-              {a.marginPct === null ? (
-                "Set a contract to see the margin."
-              ) : (
-                <>
-                  <strong className="font-semibold">{a.marginPct}% margin</strong> · billed minus cost
-                  {a.costsCents === 0 && <span className="text-amber-700"> · no costs logged yet</span>}
-                </>
-              )}
+            <div className="flex gap-7">
+              <div>
+                <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Collected</div>
+                <div className="font-condensed text-[22px] font-black tabular-nums text-emerald-700 leading-tight">{formatCentsFull(a.collectedCents)}</div>
+                <div className="text-[10.5px] text-ppp-charcoal-400 tabular-nums">{collectedPct}% of invoiced</div>
+              </div>
+              <div>
+                <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Still to come</div>
+                <div className="font-condensed text-[22px] font-black tabular-nums text-ppp-navy-700 leading-tight">{formatCentsFull(stillToCome)}</div>
+                <div className="text-[10.5px] text-ppp-charcoal-400">bill + owed + retainage</div>
+              </div>
             </div>
           </div>
-          <div className="flex gap-6">
-            <div>
-              <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Collected</div>
-              <div className="font-condensed text-[21px] font-black tabular-nums text-emerald-700 leading-tight">{formatCentsFull(a.collectedCents)}</div>
-              <div className="text-[10.5px] text-ppp-charcoal-500 tabular-nums">{collectedPct}% of invoiced</div>
+
+          {hasContract ? (
+            <div className="mt-5 space-y-1.5">
+              {/* Contract — the full width everything else is measured against. */}
+              <div className="flex h-8 rounded-lg overflow-hidden">
+                <div className="flex items-center px-3 text-[11px] font-bold text-white bg-ppp-navy-700 whitespace-nowrap tabular-nums w-full">
+                  Contract {formatCentsCompact(a.contractToDateCents)}
+                </div>
+              </div>
+              {/* Invoiced + the still-to-bill gap. */}
+              <div className="flex h-8 rounded-lg overflow-hidden bg-ppp-charcoal-50 border border-ppp-charcoal-100">
+                <div className="flex items-center px-3 text-[11px] font-bold text-white bg-cc-brand-500 whitespace-nowrap tabular-nums overflow-hidden" style={{ flex: `0 0 ${Math.max(invoicedW, toBill > 0 ? 0 : 100)}%` }}>
+                  Invoiced {formatCentsCompact(a.invoicedCents)}
+                </div>
+                {toBill > 0 && (
+                  <div className="flex items-center px-3 text-[11px] font-semibold text-ppp-charcoal-500 whitespace-nowrap tabular-nums" style={{ flex: "1" }}>
+                    {formatCentsCompact(toBill)} to bill
+                  </div>
+                )}
+              </div>
+              {/* Collected + the outstanding/retainage gap. */}
+              <div className="flex h-8 rounded-lg overflow-hidden bg-ppp-charcoal-50 border border-ppp-charcoal-100">
+                <div className="flex items-center px-3 text-[11px] font-bold text-white bg-emerald-500 whitespace-nowrap tabular-nums overflow-hidden" style={{ flex: `0 0 ${Math.max(collectedW, notCollected > 0 ? 0 : 100)}%` }}>
+                  Collected {formatCentsCompact(a.collectedCents)}
+                </div>
+                {notCollected > 0 && (
+                  <div className="flex items-center px-3 text-[11px] font-semibold text-ppp-charcoal-500 whitespace-nowrap tabular-nums" style={{ flex: "1" }}>
+                    {a.openBalanceCents > 0 && `${formatCentsCompact(a.openBalanceCents)} outstanding`}
+                    {a.openBalanceCents > 0 && a.retainageCents > 0 && " · "}
+                    {a.retainageCents > 0 && `${formatCentsCompact(a.retainageCents)} retainage`}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-[10.5px] text-ppp-charcoal-500">
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-ppp-navy-700" />Contract</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-cc-brand-500" />Invoiced</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Collected</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-ppp-charcoal-200" />Not yet</span>
+              </div>
             </div>
-            <div>
-              <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Still to come</div>
-              <div className="font-condensed text-[21px] font-black tabular-nums text-ppp-charcoal leading-tight">{formatCentsFull(stillToCome)}</div>
-              <div className="text-[10.5px] text-ppp-charcoal-500">to bill + owed + retainage</div>
-            </div>
-          </div>
+          ) : (
+            <p className="mt-4 text-[12.5px] text-ppp-charcoal-400 italic">
+              No contract set yet — win the deal and set its contract to see the money flow.
+            </p>
+          )}
         </div>
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          label="Contract to date"
-          value={formatCentsFull(a.contractToDateCents)}
-          sub={a.approvedCoCents !== 0 ? `incl. ${formatCentsCompact(a.approvedCoCents)} in COs` : "no change orders"}
-          tone="navy"
-        />
-        <StatCard
-          label="Invoiced"
-          value={formatCentsFull(a.invoicedCents)}
-          sub={unbilled > 0 ? `${formatCentsCompact(unbilled)} left to bill` : unbilled < 0 ? "over-billed" : "fully billed"}
-          tone="brand"
-          spark={a.billingByMonth.map((m) => m.invoicedCents)}
-          sparkLabels={a.billingByMonth.map((m) => m.label)}
-        />
-        <StatCard
-          label="Collected"
-          value={formatCentsFull(a.collectedCents)}
-          sub={`${collectedPct}% of what we've invoiced (incl. tax)`}
-          tone="emerald"
-          spark={a.billingByMonth.map((m) => m.collectedCents)}
-          sparkLabels={a.billingByMonth.map((m) => m.label)}
-        />
-        <StatCard
-          label="Margin"
-          value={a.marginPct === null ? "—" : `${a.marginPct}%`}
-          sub={formatCentsFull(a.marginCents)}
-          tone={a.marginPct === null ? "neutral" : a.marginPct < 0 ? "rose" : a.marginPct < 15 ? "amber" : "emerald"}
-        />
-      </div>
+      </section>
 
       {a.unratedHours > 0 && (
         <p className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[12px] text-amber-900">
@@ -292,14 +270,6 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
           </div>
         </div>
       )}
-
-      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-        <h3 className="text-[13px] font-bold text-ppp-charcoal">The money chain</h3>
-        <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 mb-3">
-          Each step can only shrink from the one above it, so the gaps are the story.
-        </p>
-        <HBars items={chain} max={Math.max(a.contractToDateCents, a.invoicedCents, a.costsCents, 1)} />
-      </div>
     </div>
   );
 }
