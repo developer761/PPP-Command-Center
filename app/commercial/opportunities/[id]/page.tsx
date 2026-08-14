@@ -156,6 +156,7 @@ import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
 import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
 import { ProjectHome } from "@/components/commercial/project-home";
+import { ProjectTeamCard } from "@/components/commercial/project-team-card";
 import { deriveProjectAttention, type ProjectMoney, type ProjectSchedule } from "@/lib/commercial/projects/project-attention";
 import { DealAnalytics } from "@/components/commercial/deal-analytics";
 import { STAGE_MEANING } from "@/lib/commercial/opportunities/kanban-columns";
@@ -2252,6 +2253,19 @@ export default async function OpportunityDetailPage({
     etTodayIso()
   );
 
+  // Project-home extras — Team & contacts + a project-scoped Activity rail.
+  // Loaded ONLY when the Project tab is showing its home, so no other tab pays.
+  const showProjectHome = primary === "project" && !toolView && pathIsWon && !isDeletedDeal;
+  const projectTeam = showProjectHome ? await listOpportunityTeam(opp.id).catch(() => []) : [];
+  const projectContacts = showProjectHome && account ? await listAccountContacts(account.id).catch(() => []) : [];
+  const projectActivityFeed = buildActivityFeed(
+    showProjectHome ? await loadActivityEntries(opp.id).catch(() => []) : [],
+    etTodayIso()
+  );
+  const projectGcContact =
+    projectContacts.find((c) => c.contact.id === opp.primary_contact_id)?.contact ??
+    null;
+
   const editedOk = pickFirst(sp.edited) === "1";
   const clonedOk = pickFirst(sp.cloned) === "1";
 
@@ -2690,6 +2704,32 @@ export default async function OpportunityDetailPage({
           schedule={projectSchedule}
           stageMeaning={STAGE_MEANING[opp.status] ?? null}
         />
+      )}
+      {/* Project command center blocks D + E — who's on it & who to call, and a
+          project-scoped activity rail. Karan 2026-08-14. */}
+      {showProjectHome && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          <ProjectTeamCard
+            members={projectTeam.map((p) => ({
+              name: p.user_full_name ?? p.user_email,
+              roleLabel: opportunityAssignmentRoleLabel(
+                (p.assignments.find((x) => x.is_primary) ?? p.assignments[0])?.role ?? "sales_rep"
+              ),
+            }))}
+            estimatorName={opp.estimator_name ?? null}
+            gcContact={
+              projectGcContact
+                ? {
+                    name: projectGcContact.full_name,
+                    title: projectGcContact.title,
+                    phone: projectGcContact.phone,
+                    email: projectGcContact.email,
+                  }
+                : null
+            }
+          />
+          <ActivityRail feed={projectActivityFeed} todayIso={etTodayIso()} oppId={opp.id} />
+        </div>
       )}
 
       {/* Overview + the Activity rail (Salesforce's record layout). The rail
