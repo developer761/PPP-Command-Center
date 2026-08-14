@@ -1342,3 +1342,15 @@ c33e74d files tsc-clean (accounts-page tsc error is separate uncommitted WIP), 6
   + DB-CHECK-parity test (reads the CHECK from migrations). 🟡 run 142. ✓
 - They also verified the restructure wasn't disturbed (Project sub-tabs explicit, no phantom tools from the compliance
   categories; removed lines were GC-prefill or overflow fixes). tsc clean, 659 tests.
+
+---
+
+## ✅ VERIFY — editable rating meanings (`3815ca7`, Stephanie). CLEAN, no miss. 3rd mirrored-constants + DB-CHECK lane.
+- **Stored values stay A/B/C** (migration 143 adds a separate `commercial_account_rating_labels` table and does NOT
+  touch the rating CHECK, so filter/sort/CSV/no-re-grade keep working). Seeds Preferred/Standard/Caution `ON CONFLICT
+  DO NOTHING` (idempotent). ✓
+- **Resolver crash-proof (pill on EVERY row):** `getRatingLabels` starts from the fallback set, try/catch on the read
+  (pre-migration/transient → fallbacks), ignores unknown codes, always returns a COMPLETE A/B/C set — never throws /
+  never partial. `updateRatingLabel` rejects codes not in RATING_CODES (form can't add a code). ✓
+- **Mirrored-constants (3rd) + DB-CHECK lane:** codes in pure `rating-codes.ts`; test asserts RATING_CODES == the
+  rating CHECK, every code has a fallback, form can't add a code. 🟡 run 143. tsc clean, 665 tests. ✓
