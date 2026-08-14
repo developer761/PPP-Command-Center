@@ -2458,12 +2458,8 @@ export default async function OpportunityDetailPage({
       {!isDeletedDeal && !toolView && primary !== "project" && (
         <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
       )}
-      {/* Karan 2026-08-14 — the Project HOME: each delivery tool as a card with
-          its live status + a quick link, grouped by phase. Replaces the cramped
-          strip-as-list on the Project tab. */}
-      {!isDeletedDeal && !toolView && primary === "project" && (
-        <ProjectHome tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
-      )}
+      {/* The Project HOME (delivery tool cards) renders in the Project tab BODY
+          below the tab bar, not here above it — see further down. */}
 
       {/* ── Focused tool view ──────────────────────────────────────────────
           Karan 2026-08-13: "when I click on something like change orders it
@@ -2577,6 +2573,14 @@ export default async function OpportunityDetailPage({
         </div>
       )}
       </>
+      )}
+
+      {/* Project HOME — rendered as the tab BODY (below the tab bar), so
+          clicking Project lands on the delivery tool cards instead of an empty
+          pane (Karan 2026-08-14: "the project tab is still empty"). Gated on
+          !toolView so a chosen tool renders its own body below instead. */}
+      {primary === "project" && !toolView && (
+        <ProjectHome tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} />
       )}
 
       {/* Overview + the Activity rail (Salesforce's record layout). The rail

@@ -85,10 +85,12 @@ export function StageKpiStrip({
         </div>
       )}
       {kpis.length > 0 && (
-        // A GRID, not a ticker: 2-up on a phone, widening to 4-up, so every
-        // number is on screen at once with its detail line intact. auto-rows so
-        // a wrapped fourth/fifth tile lines up rather than dangling.
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-px bg-ppp-charcoal-100">
+        // ONE row, tiles spread to FILL the width (flex-1) — not a wrapping
+        // grid. Karan 2026-08-14: the grid left 4 tiles up top and a 5th alone
+        // below with three empty cells of blank space. flex-1 divides the row
+        // evenly across however many KPIs there are; on a phone the min-width
+        // keeps them legible and the row scrolls rather than crushing.
+        <div className="flex items-stretch divide-x divide-ppp-charcoal-100 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {kpis.map((k) => {
             const body = (
               <div className="flex h-full items-stretch gap-2.5 bg-surface group-hover:bg-cc-brand-50/60 transition-colors px-3 py-2.5">
@@ -120,11 +122,11 @@ export function StageKpiStrip({
             // component, because `Link` and `div` do not share a prop type and
             // the union silently widens `href` to `string | undefined`.
             return k.href ? (
-              <Link key={k.key} href={`${basePath}${k.href}`} className="group block min-h-[44px]">
+              <Link key={k.key} href={`${basePath}${k.href}`} className="group flex-1 min-w-[7.5rem] block min-h-[44px]">
                 {body}
               </Link>
             ) : (
-              <div key={k.key} className="group min-h-[44px]">
+              <div key={k.key} className="group flex-1 min-w-[7.5rem] min-h-[44px]">
                 {body}
               </div>
             );
