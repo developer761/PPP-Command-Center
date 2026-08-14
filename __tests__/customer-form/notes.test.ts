@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractCustomerFreeText } from "@/lib/customer-form/notes";
+import { extractCustomerFreeText, extractMachineColorLines } from "@/lib/customer-form/notes";
 
 describe("extractCustomerFreeText — pre-fill only shows the customer's own text", () => {
   it("returns empty for null/empty", () => {
@@ -82,5 +82,52 @@ describe("extractCustomerFreeText — round-3 #31 room headers", () => {
     expect(extractCustomerFreeText(raw)).toBe(
       "Kitchen:\nWatch the new cabinets, they are still curing"
     );
+  });
+});
+
+/**
+ * Kate round-3 #16 — the colors Salesforce keeps in ColorNotes__c have to reach
+ * the order. On a line with two or more orphan surfaces they are the ONLY
+ * record of those colors, so missing them means the vendor never hears about
+ * them.
+ */
+describe("extractMachineColorLines — round-3 #16", () => {
+  it("pulls out the orphan-surface colors", () => {
+    const raw = [
+      "Dining Room:",
+      "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
+      "Door: 2108-40 Stardust (2108-40) — Semi-Gloss",
+    ].join("\n");
+    expect(extractMachineColorLines(raw)).toEqual([
+      "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
+      "Door: 2108-40 Stardust (2108-40) — Semi-Gloss",
+    ]);
+  });
+
+  it("excludes the customer's own words — the builder sources those separately", () => {
+    const raw = [
+      "Kitchen:",
+      "Cabinets: Super White — Satin",
+      "",
+      "Customer notes: please knock, dog inside",
+    ].join("\n");
+    expect(extractMachineColorLines(raw)).toEqual(["Cabinets: Super White — Satin"]);
+  });
+
+  it("excludes the don't-paint lines, which come from skippedSurfaces", () => {
+    const raw = 'Customer selected "Don\'t paint this surface" on Trim.';
+    expect(extractMachineColorLines(raw)).toEqual([]);
+  });
+
+  it("returns nothing for empty or notes-only content", () => {
+    expect(extractMachineColorLines(null)).toEqual([]);
+    expect(extractMachineColorLines("   ")).toEqual([]);
+    expect(extractMachineColorLines("Customer notes: just the customer talking")).toEqual([]);
+  });
+
+  it("round-trips against extractCustomerFreeText without overlap", () => {
+    const raw = ["Den:", "Door: Stardust — Satin", "", "Customer notes: hello"].join("\n");
+    expect(extractMachineColorLines(raw)).toEqual(["Door: Stardust — Satin"]);
+    expect(extractCustomerFreeText(raw)).toBe("hello");
   });
 });
