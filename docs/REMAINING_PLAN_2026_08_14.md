@@ -1,17 +1,30 @@
 # Remaining plan — Commercial CC (2026-08-14, end of night)
 
-## ⏰ 0. FIRST THING WHEN YOU WAKE UP — check Vercel + the Command Center
-Confirmed live before bed: the KPI strip is **one row** and the Project-tab
-delivery cards now sit **below** the tab bar. The LAST push, `8697c81a`, then
-**redesigned the Project home** (cards fill the row, tool icons, no blank space)
-to fix the "scrappy / so much blank space" look — that one still needs a look.
-Code is verified clean (CI green, `npm run build` green).
-- [ ] Vercel → **Deployments**: confirm `8697c81a` ("Project home: fill the row…")
-  is **Ready** on Production. If canceled/failed, hit **Redeploy** (⋯ menu).
-- [ ] Hard-refresh `hub.precisionpaintingplus.net` (**⌘⇧R**), open a WON deal →
-  **Project** tab, and check the delivery cards: filled rows, icons, tight — no
-  empty columns. Tell me if it still needs work.
-- [ ] While there, do the **Migration 137** upload check (§5 below).
+## ⏰ 0. FIRST THING WHEN YOU WAKE UP — the Vercel deploy is STALLED
+**Confirmed live before bed:** KPI strip = **one row**, Project-tab cards now sit
+**below** the tab bar. ✅
+
+**NOT yet live:** the Project-home **redesign** (`8697c81a` — cards fill the row,
+tool icons, no blank space, fixes the "scrappy / blank space" look). Vercel's
+last successful deploy is `beca888`; every push after it — `8697c81a`, `d090b9cf`,
+and two empty nudge commits (`90b466e0`, `aa483639`) — **did not trigger a deploy
+at all** (no queued / building / failed row). Deploys worked fine earlier today
+then abruptly stopped → almost certainly **Vercel Hobby's daily deploy cap** hit
+after a huge number of pushes from both sessions today (silent stop, no error —
+same class as the cron-limit gotcha).
+
+Code is verified clean 3 ways: **CI Vitest green · `npm run build` green (exit 0)
+· all commits on `origin/main`.** Nothing is lost — this is a delivery cap, not a
+code problem, and it resolves itself when the cap window resets.
+
+- [ ] Vercel → **Deployments**: if a row for `aa483639`/`8697c81a` is now **Ready**,
+  the cap reset overnight — you're done.
+- [ ] If still nothing: **⋯ → Redeploy** on the top row. If it goes through → great.
+  If it's blocked / errors about limits → it's the daily cap; it'll deploy on the
+  next reset, or upgrade to Pro to unthrottle heavy-build days.
+- [ ] Once live: hard-refresh (**⌘⇧R**) → WON deal → **Project** tab → confirm the
+  tightened cards (filled rows, icons, no empty columns).
+- [ ] Do the **Migration 137** upload check (§5 below).
 
 ---
 
