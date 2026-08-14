@@ -1953,6 +1953,12 @@ export default async function OpportunityDetailPage({
           // It reads like the AIA tile: collected against what has been
           // invoiced, with what is outstanding, and retainage last because it
           // is the chunk that arrives after everything else.
+          // "Paid in full" (green/done) must mean BILLING is complete, not just
+          // that the invoices raised so far are paid. With $50 of a $55 contract
+          // billed + collected, the raised invoices are paid but there's $5 still
+          // to bill — so it stays IN PROGRESS (amber) with a "to bill" note rather
+          // than reading as finished (audit 2026-08-15, same class as the spine's
+          // "$50 paid in full" fix).
           state:
             pathInvoices.length === 0
               ? "None raised"
@@ -1960,11 +1966,13 @@ export default async function OpportunityDetailPage({
               ? `${formatCentsCompact(collectedCents)} of ${formatCentsCompact(invoicedCents)} · ${formatCentsCompact(openInvoiceCents)} out`
               : pathRetainageCents > 0
               ? `${formatCentsCompact(pathRetainageCents)} retainage held`
+              : contractToDate > 0 && billedSoFar < contractToDate
+              ? `${formatCentsCompact(invoicedCents)} paid · ${formatCentsCompact(contractToDate - billedSoFar)} to bill`
               : `${formatCentsCompact(invoicedCents)} paid in full`,
           status:
             pathInvoices.length === 0
               ? "todo"
-              : openInvoiceCents > 0 || pathRetainageCents > 0
+              : openInvoiceCents > 0 || pathRetainageCents > 0 || (contractToDate > 0 && billedSoFar < contractToDate)
               ? "active"
               : "done",
         },

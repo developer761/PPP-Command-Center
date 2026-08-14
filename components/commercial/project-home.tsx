@@ -95,7 +95,9 @@ function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMe
             const marker = green
               ? "bg-emerald-500 border-emerald-500 text-white"
               : amber
-              ? "bg-amber-400 border-amber-400 text-white"
+              // Dark check on amber — a WHITE tick on light amber-400 is ~1.4:1,
+              // effectively invisible (audit 2026-08-15).
+              ? "bg-amber-400 border-amber-400 text-amber-950"
               : "bg-surface border-ppp-charcoal-200 text-transparent";
             const bar = green ? "bg-emerald-500" : amber ? "bg-amber-400" : "bg-ppp-charcoal-100";
             // A tick = done (or a discrete out-of-order thing). The current
