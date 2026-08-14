@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { jobDisplayName } from "@/lib/commercial/opportunities/job-name";
 import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
 import { CONTACT_ROLES, roleLabel as contactRoleLabel } from "@/lib/commercial/contacts/roles";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
@@ -1772,8 +1773,16 @@ export default async function OpportunityDetailPage({
   const pathContractBaseCents = contractToDate - pathApprovedCoCents;
   const invoicedCents = pathFin?.invoicedCents ?? 0;
   const collectedCents = pathFin?.collectedCents ?? 0;
+  // ISSUED invoices only. A draft has a generated balance and a void invoice
+  // keeps its old one, so summing every non-deleted row reported money as
+  // "still out" that no GC has ever been asked for — while the KPI strip on
+  // the same page, which is issued-only, said $0. Two numbers, one screen.
+  const OPEN_INVOICE_STATUSES = new Set(["sent", "partial", "overdue"]);
   const openInvoiceCents = pathInvoices.reduce(
-    (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
+    (n, inv) =>
+      OPEN_INVOICE_STATUSES.has(String(inv.status))
+        ? n + Math.max(0, Number(inv.balance_cents) || 0)
+        : n,
     0
   );
   const costsSoFar = pathFin?.totalCostCents ?? 0;
@@ -2186,15 +2195,15 @@ export default async function OpportunityDetailPage({
           <span aria-hidden className="text-ppp-charcoal-300">/</span>
           <span
             className="inline-flex items-center min-h-[32px] px-1 text-ppp-charcoal-700 truncate max-w-[300px]"
-            title={derivedOppName(opp, account?.company_name ?? null)}
+            title={jobDisplayName(opp, account?.company_name ?? null)}
           >
-            {derivedOppName(opp, account?.company_name ?? null)}
+            {jobDisplayName(opp, account?.company_name ?? null)}
           </span>
         </nav>
         <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate">
-              {derivedOppName(opp, account?.company_name ?? null)}
+              {jobDisplayName(opp, account?.company_name ?? null)}
             </h1>
             <div className="text-sm text-ppp-charcoal-500 mt-1 flex items-center gap-2 flex-wrap">
               {/* Karan 2026-07-21: primary opportunity id = the global
@@ -2416,7 +2425,7 @@ export default async function OpportunityDetailPage({
               href={`/commercial/opportunities/${opp.id}`}
               className="block text-[11.5px] text-ppp-charcoal-500 hover:text-cc-brand-700 hover:underline truncate"
             >
-              {derivedOppName(opp, account?.company_name ?? null)}
+              {jobDisplayName(opp, account?.company_name ?? null)}
             </Link>
           </div>
         </div>

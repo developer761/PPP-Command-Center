@@ -18,6 +18,14 @@ const REPORTS: { href: string; label: string; exact?: boolean }[] = [
   { href: "/commercial/reports/geography", label: "Geography" },
   { href: "/commercial/reports/ar-aging", label: "AR Aging" },
   { href: "/commercial/reports/win-loss", label: "Win / Loss" },
+  // These four exist as routes and are linked from the Reports index, but were
+  // missing here — so opening one rendered a tab bar with no tab marked
+  // current, and no way back to the six that were listed.
+  { href: "/commercial/reports/cash-flow", label: "Cash flow" },
+  { href: "/commercial/reports/change-orders", label: "Change orders" },
+  { href: "/commercial/reports/labor", label: "Labor" },
+  { href: "/commercial/reports/revenue", label: "Revenue" },
+  { href: "/commercial/reports/estimator", label: "Estimator" },
 ];
 
 export function ReportTabs() {

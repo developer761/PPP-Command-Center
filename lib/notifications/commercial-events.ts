@@ -888,6 +888,12 @@ export async function sendClientInvoiceDunningEmail(input: {
   accountName: string;
   daysPastDue: number;
 }): Promise<{ ok: boolean }> {
+  // Read the operating company rather than hardcoding a name. This was the one
+  // outbound commercial email that named a company in its body, and it named
+  // the RESIDENTIAL one — so a Tomco GC chasing a past-due invoice got a
+  // reminder signed "Precision Painting Plus".
+  const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
+  const company = await getOperatingCompany();
   const money = formatMoneyCents(input.balanceCents);
   const dueStr = input.dueDateIso
     ? new Date(input.dueDateIso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" })
@@ -901,13 +907,13 @@ export async function sendClientInvoiceDunningEmail(input: {
     `If payment is already on its way, thank you and please disregard this notice. Otherwise, we'd appreciate settling the balance at your earliest convenience. Reply to this email with any questions.`,
     ``,
     `Thank you,`,
-    `Precision Painting Plus / Tomco`,
+    company.name,
   ].join("\n");
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
   <p>Hello,</p>
   <p>This is a friendly reminder that <strong>Invoice ${escape(input.invoiceNumber)}</strong> has an outstanding balance of <strong>${escape(money)}</strong>${dueStr ? `, due ${escape(dueStr)}` : ""} — now <strong>${input.daysPastDue} days past due</strong>.</p>
   <p>If payment is already on its way, thank you and please disregard this notice. Otherwise, we'd appreciate settling the balance at your earliest convenience. Reply to this email with any questions.</p>
-  <p style="margin-top:24px;">Thank you,<br/>Precision Painting Plus / Tomco</p>
+  <p style="margin-top:24px;">Thank you,<br/>${company.name}</p>
 </div>`;
   const res = await sendEmail({
     to: input.to,

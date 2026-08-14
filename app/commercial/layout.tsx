@@ -123,9 +123,13 @@ export default async function CommercialDashboardLayout({
       {/* R7 — onboarding guided tour. Always mounted so a "Take the tour" button
           can replay it any time; it AUTO-shows only for first-timers (NULL flag),
           then stamps itself so it never auto-opens again. */}
+      {/* NOT for crew-only logins. Its two siblings above are gated the same
+          way; this one was left ungated, so a newly provisioned painter's
+          first sight of the platform was an admin tour dimming the screen and
+          pointing at pages they cannot open. */}
       <OnboardingWalkthrough
         firstName={firstName}
-        autoStart={profile?.commercial_onboarding_seen_at == null}
+        autoStart={!crewOnly && profile?.commercial_onboarding_seen_at == null}
       />
     </CommercialChrome>
     </div>

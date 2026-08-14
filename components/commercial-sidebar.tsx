@@ -161,6 +161,7 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, crewO
             { label: "Home", href: "/commercial/crew", icon: <IconHardHat /> },
             { label: "My schedule", href: "/commercial/crew/schedule", icon: <IconHardHat /> },
             { label: "My jobs", href: "/commercial/crew/jobs", icon: <IconHardHat /> },
+            { label: "Today's hours", href: "/commercial/crew/log", icon: <IconHardHat /> },
             { label: "My hours", href: "/commercial/crew/hours", icon: <IconHardHat /> },
             { label: "Clock in / out", href: "/commercial/field-ops/clock-station", icon: <IconHardHat /> },
           ],

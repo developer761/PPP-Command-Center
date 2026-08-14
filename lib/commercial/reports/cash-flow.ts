@@ -241,10 +241,17 @@ export async function getCashFlowReport(range: {
 
   // What is still out, right now — the bridge to AR aging. Per-invoice clamp so
   // one overpayment can't mask another invoice's debt.
-  const openCents = invoices.reduce((n, i) => n + Math.max(0, Number(i.balance_cents) || 0), 0);
+  // A DRAFT has a generated balance but has never been sent, so counting it as
+  // owed overstated the receivable and made this figure impossible to
+  // reconcile against AR Aging — which is issued-only. Nobody owes you money
+  // you have not billed them for.
+  const isReceivable = (i: { status: string }) => i.status !== "draft";
+  const openCents = invoices
+    .filter(isReceivable)
+    .reduce((n, i) => n + Math.max(0, Number(i.balance_cents) || 0), 0);
   const openByAccount = new Map<string, number>();
   for (const i of invoices) {
-    if (!i.account_id) continue;
+    if (!i.account_id || !isReceivable(i)) continue;
     openByAccount.set(i.account_id, (openByAccount.get(i.account_id) ?? 0) + Math.max(0, Number(i.balance_cents) || 0));
   }
 

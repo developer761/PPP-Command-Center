@@ -178,6 +178,21 @@ export async function getChangeOrderVendorReport(range: {
 
   if (cos.length === 0 && purchases.length === 0) return EMPTY;
 
+  // Which invoices are still DRAFTS. A change order parked on a draft has not
+  // been billed to the customer, and treating the pointer alone as "billed"
+  // hid exactly the work this report exists to surface.
+  const pointedInvoiceIds = [...new Set(cos.map((c) => c.invoiced_invoice_id).filter(Boolean))] as string[];
+  const draftInvoiceIds = new Set<string>();
+  if (pointedInvoiceIds.length > 0) {
+    const { data: invRows } = await sb
+      .from("commercial_invoices")
+      .select("id, status")
+      .in("id", pointedInvoiceIds);
+    for (const r of (invRows ?? []) as { id: string; status: string }[]) {
+      if (r.status === "draft") draftInvoiceIds.add(r.id);
+    }
+  }
+
   // ── Change orders, keyed on when they were RAISED ──────────────────────
   const inWindow = cos.filter((c) => {
     const d = etDateOf(c.created_at);
@@ -229,7 +244,13 @@ export async function getChangeOrderVendorReport(range: {
       // as "no change orders".
       if (amount > 0) out.co.approvedAddCents += amount;
       else out.co.approvedDeductCents += abs;
-      if (!c.invoiced_invoice_id && amount > 0) {
+      // A CO pointing at an UNSENT DRAFT invoice has not been billed to anyone.
+      // Keying on the mere presence of the pointer marked it billed the moment
+      // it was parked on a draft, so "Approved, unbilled" under-reported the
+      // work Tomco has done and not yet charged for — the one number this
+      // section exists to surface.
+      const billed = Boolean(c.invoiced_invoice_id) && !draftInvoiceIds.has(c.invoiced_invoice_id!);
+      if (!billed && amount > 0) {
         out.co.unbilledCount += 1;
         out.co.unbilledCents += amount;
       }
