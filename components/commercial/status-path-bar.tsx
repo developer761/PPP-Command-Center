@@ -387,7 +387,11 @@ export function StatusPathBar({
           // Pre-Construction as underway before anyone had touched it. Null
           // means nothing is highlighted — the whole path reads as ahead of
           // you, which is what "won, not started" actually means.
-          currentKey={inDelivery ? status : null}
+          // A COMPLETED job (post_sale_closed) is DONE — every delivery stage is
+          // passed/green, not "Completed" sitting amber as if in progress. Only a
+          // still-running delivery status is the amber current stage (audit
+          // 2026-08-15). currentKey null + notStarted false → all passed.
+          currentKey={inDelivery && status !== "post_sale_closed" ? status : null}
           notStarted={!inDelivery}
           currentSub={inDelivery ? subStatus : null}
           cta={inDelivery ? null : manualNext ?? null}
