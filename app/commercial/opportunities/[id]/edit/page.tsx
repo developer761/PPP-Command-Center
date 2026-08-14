@@ -140,7 +140,12 @@ export default async function EditOpportunityPage({
   // that GET's it lands the user on the account page with the sheet
   // pre-opened. The action + form below stay live so an in-flight POST
   // (from the sheet's form) still writes through this route.
-  redirect(`/commercial/accounts/${opp.account_id}?tab=opportunities&edit=${opp.id}#deal-edit-sheet`);
+  // `deal_back=1` so saving returns to the DEAL, not the account's Deals tab.
+  // This is the one affordance on the deal page that ejected you off the deal
+  // entirely — and since most of what the sheet edits (title, client, address,
+  // the RFP/due/follow-up dates) is inline-editable on the deal itself, being
+  // dumped on the account list afterwards was pure loss of place.
+  redirect(`/commercial/accounts/${opp.account_id}?tab=opportunities&edit=${opp.id}&deal_back=1#deal-edit-sheet`);
 
 
   // Unreachable — redirect above throws. Kept as an assertion.

@@ -137,6 +137,8 @@ type SP = Promise<{
    *  form) OR from a redirect after error. `created=1` + `created_title`
    *  fire the success toast. */
   new_deal?: string;
+  /** Set by the deal page's Edit link so saving returns to the deal. */
+  deal_back?: string;
   created?: string;
   created_title?: string;
   /** B1 (Katie 2026-08): set when a NEW opportunity was just created and we
@@ -737,6 +739,7 @@ export default async function CommercialAccountDetailPage({
           account={account}
           overview={overview}
           openNewDeal={sp.new_deal === "1"}
+          dealBack={sp.deal_back === "1"}
           createdTitle={sp.created === "1" ? sp.created_title ?? null : null}
           projectStartedOppId={
             typeof sp.project_started === "string" &&
@@ -1742,6 +1745,11 @@ async function editDealFromAccountAction(formData: FormData) {
   revalidatePath("/commercial");
   // Success — drop ?edit= so the sheet closes + land on Deals tab with
   // the saved flash. User never leaves the account context.
+  // Came from the deal page? Go back to the deal. Otherwise the account's
+  // Deals tab, as before.
+  if (String(formData.get("deal_back") ?? "") === "1") {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&saved=1`);
+  }
   redirect(`/commercial/accounts/${account_id}?tab=deals&saved=1`);
 }
 
@@ -3600,6 +3608,7 @@ async function OpportunitiesTab({
   account,
   overview,
   openNewDeal,
+  dealBack,
   createdTitle,
   editDealId,
   savedFlash,
@@ -3611,6 +3620,9 @@ async function OpportunitiesTab({
   keptValues,
 }: {
   accountId: string;
+  /** True when the edit sheet was opened from the DEAL page, so saving
+   *  returns there rather than to this account's Deals tab. */
+  dealBack?: boolean;
   /** Katie 2026-07-19: new-deal form pre-fills client_name + property
    *  address from this account so Alex isn't retyping the same info
    *  every deal. */
@@ -3837,6 +3849,7 @@ async function OpportunitiesTab({
             estimators={estimators}
             errorMessage={errorMessage}
             lifecycle={editLifecycle}
+            dealBack={dealBack}
           />
         );
       })()}
@@ -6172,12 +6185,16 @@ async function DealEditSheet({
   estimators,
   errorMessage,
   lifecycle,
+  dealBack,
 }: {
   deal: CommercialOpportunity;
   accountId: string;
   /** For the derived deal name in the header — consistent with the list. */
   accountName: string;
   primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
+  /** True when the sheet was opened from the DEAL page (?deal_back=1), so
+   *  saving returns to the deal rather than the account's Deals tab. */
+  dealBack?: boolean;
   estimators: EligibleEstimator[];
   /** Karan 2026-07-10 audit fix (P1): when the edit action fails +
    *  redirects back with ?edit=<opp>&error=..., the tab-level
@@ -6478,6 +6495,10 @@ async function DealEditSheet({
         >
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="opp_id" value={deal.id} />
+          {/* Set when the sheet was opened FROM the deal page, so saving
+              returns there instead of dumping the user on the account's
+              Deals tab. */}
+          <input type="hidden" name="deal_back" value={dealBack ? "1" : ""} />
 
           {/* ─── Section: About this opportunity ─── */}
           <SheetSection title="About this opportunity">
