@@ -513,6 +513,17 @@ export default async function CommercialAccountsPage({
           <div className="flex-1 min-w-[200px]">
             <CommercialAccountsSearchAutocomplete defaultValue={search ?? ""} />
           </div>
+          {/* Preserve the active filters when Enter submits the search. The
+              filter controls belong to a SEPARATE form (accounts-filter-form),
+              so a bare search submit dropped rating/compliance/tag/sort + the
+              quick-filter chips and reset the view (audit DOC14). */}
+          {rating && <input type="hidden" name="rating" value={rating} />}
+          {compliance && <input type="hidden" name="compliance" value={compliance} />}
+          {tagFilter && <input type="hidden" name="tag" value={tagFilter} />}
+          {sort !== "created_desc" && <input type="hidden" name="sort" value={sort} />}
+          {filterStale && <input type="hidden" name="stale" value="1" />}
+          {filterExpiring && <input type="hidden" name="expiring" value="1" />}
+          {filterIssue && <input type="hidden" name="issue" value="1" />}
 
           {/* Filter popover — every filter (rating, compliance,
               tag, 3 chips) lives here. Native <details> for zero-JS state. */}

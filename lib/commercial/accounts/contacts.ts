@@ -429,7 +429,11 @@ export async function updateAccountContact(
     full_name: name,
     // Empty means "clear it", which is a real edit — a contact who has left
     // should be able to lose their direct line.
-    email: input.email?.trim() || null,
+    // Lowercase to match addContactToAccount, which stores + dedups on the
+    // lowercased email. Storing a mixed-case email on UPDATE meant a later add
+    // of the same address (lowercased) didn't match it, so the two coexisted as
+    // duplicate contact rows (audit DOC11).
+    email: input.email?.trim().toLowerCase() || null,
     phone: input.phone?.trim() || null,
     title: input.title?.trim() || null,
   };
