@@ -2660,15 +2660,16 @@ export default async function OpportunityDetailPage({
           (Overview/Documents/Activity/Project). Debrief, Invoices and
           Proposals are leaves with no sub-nav. Pills are red-tinted when
           active so the two-level hierarchy is visually obvious. */}
-      {/* Karan 2026-08-13: back from a tool "brought this up again" — because
-          the tool-list view still carried the sub-tab pills AND the delivery
-          strip, which are the same seven tools listed twice.
+      {/* The delivery tools (Submittals / Work Order / … / Closeout) are sub-tabs
+          of `project`, and these pills are how you OPEN them. They render on the
+          Project HOME — the spine above carries the STATUS ("where is the job"),
+          these carry the NAVIGATION ("open this tool"), so the two are
+          complementary, not the duplicate the old tool-card grid was.
 
-          On `project` the strip IS the list, and it is the better one: it
-          carries each tool's STATE, which pills cannot. So the pills stand
-          down here and stay for docs/activity/overview, where there is no
-          strip and they are the only navigation. */}
-      {isGroup(primary) && primary !== "project" && (
+          Hidden once a tool is open (toolView): that focused view has its own
+          back-arrow header, and stacking the pills above it is the extra layer of
+          chrome Karan asked to strip on a tool page (2026-08-13). */}
+      {isGroup(primary) && (primary !== "project" || !toolView) && (
         <div className="flex flex-wrap items-center gap-1.5">
           {SUB_TABS_BY_PRIMARY[primary].map((s) => {
             const active = s.key === sub;
