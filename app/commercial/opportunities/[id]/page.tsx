@@ -1094,15 +1094,14 @@ async function requireCommercialUser(): Promise<string> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  // assertCommercialAccess IS the access check — it reads the profile via the
+  // SERVICE-ROLE client (cached) and enforces has_new_platform_access + is_active.
+  // A second, redundant read via the AUTH client used to sit here and silently
+  // booted valid users to the login page: `profiles` is RLS-guarded, so the
+  // anon+JWT read returns null whenever the policy filters it, and null tripped
+  // `redirect("/")`. Deleting a document ran this and threw the user clean off
+  // the platform (Karan 2026-08-14). One authoritative check, service-role.
   await assertCommercialAccess(user.id);
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_new_platform_access")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (!(profile as { has_new_platform_access?: boolean } | null)?.has_new_platform_access) {
-    redirect("/");
-  }
   return user.id;
 }
 
