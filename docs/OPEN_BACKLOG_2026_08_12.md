@@ -1386,3 +1386,24 @@ fast net missed. Lanes strengthened above.
 do-not-bid warning missing from the 2nd creation path · retired doc categories hidden on account Documents tab ·
 inline-field Clear saves instead of clears · project nickname discarded · invoice tax-exempt substantiation keyed on
 account · stale TOTAL after final-price override · contacts card overflow at 360px.
+
+---
+
+## ✅ VERIFY — remaining 14 audit defects cleared (`ab0df292`). CLEAN, no miss. All 7 triaged findings closed.
+Second persona-audit pass; everything that survived adversarial verification fixed. Deep-verified the highest-risk
+(data-loss + money):
+- **#3 inline Clear saved instead of cleared** — the button carried `name="value"` colliding with the text input, and
+  FormData.get returns the FIRST. Now a separate `name="clear"` flag; the action reads `wantsClear =
+  get("clear")==="1"` FIRST and parses empty when set (page.tsx:611). The duplicate-form-name class, fixed right. ✓
+- **#5 invoice tax cert keyed on the account, wrong BOTH ways** — now `resolveTaxExemption({opp, account})`: prints the
+  line only when the resolver says exempt, cites the certificate of whichever record grants it, and prints NOTHING for
+  a job marked taxable under an exempt account. ✓
+- **#4 project nickname discarded** — the create-deal action never read the `title_override` the "Project nickname"
+  input posts (it wins on the PDF PROJECT line + project card, so this was data-loss). Now read + saved. ✓
+- **#7 contacts card 360px overflow** — mobile scanner now 0 fixed-widths >360px. ✓
+Remaining 10 (work-order redirect `?tab=project&sub=work-order`, soft-deleted-deal Invoices reachable, retired-doc
+categories included when they hold a doc, empty account-create docs hidden, do-not-bid on the pipeline create path,
+new-invoice tax default via the resolver, Attention-contact last-explicit-wins on both surfaces, final-price override
+revalidation exception, product relink, ?back origin preserved) — same fix patterns applied consistently, adversarially
+verified + tested. Also verified NOT changed: 2 duplicate-form-name warnings are ternary branches (one renders) —
+false positives confirmed. tsc clean, 669 tests. **All 7 triaged findings + 7 more closed.**
