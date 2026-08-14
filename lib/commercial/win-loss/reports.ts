@@ -373,3 +373,52 @@ export async function getLessonsLearnedFeed(
       };
     });
 }
+
+export type AwaitingDebriefRow = {
+  id: string;
+  account_id: string;
+  label: string;
+  decided_at: string | null;
+};
+
+/**
+ * Won opportunities that still need a debrief — the actual work-list behind the
+ * dashboard's "Awaiting debrief" card. The card linked to this report but the
+ * report only showed filed debriefs, so there was nothing to act on (audit N19).
+ * Scoped exactly like the dashboard count: pre_sale_closed + won + no
+ * win_loss_debriefed_at (the only state a debrief can be filed from).
+ */
+export async function getWinsAwaitingDebrief(limit = 50): Promise<AwaitingDebriefRow[]> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_opportunities")
+    .select("id, account_id, title, title_override, client_name, property_street, decided_at, account:commercial_accounts!inner(company_name, deleted_at)")
+    .eq("status", "pre_sale_closed")
+    .eq("sub_status", "won")
+    .is("win_loss_debriefed_at", null)
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .is("account.deleted_at", null)
+    .order("decided_at", { ascending: false })
+    .limit(limit);
+  type Row = {
+    id: string;
+    account_id: string;
+    title: string | null;
+    title_override: string | null;
+    client_name: string | null;
+    property_street: string | null;
+    decided_at: string | null;
+    account: { company_name: string | null } | Array<{ company_name: string | null }> | null;
+  };
+  return ((data as unknown as Row[] | null) ?? []).map((o) => {
+    const acct = Array.isArray(o.account) ? o.account[0] ?? null : o.account;
+    return {
+      id: o.id,
+      account_id: o.account_id,
+      label:
+        (o.title_override || o.title || o.client_name || o.property_street || acct?.company_name || "Untitled deal").trim(),
+      decided_at: o.decided_at,
+    };
+  });
+}

@@ -11,6 +11,7 @@ import {
   getCompetitorBreakdown,
   getDecidingFactorBreakdown,
   getLessonsLearnedFeed,
+  getWinsAwaitingDebrief,
   etMidnightToUTC,
 } from "@/lib/commercial/win-loss/reports";
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
@@ -158,12 +159,16 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
   const durationMs = Math.max(0, toMs - fromMs);
   const prevRange = { fromIso: new Date(fromMs - durationMs).toISOString(), toIso: range.fromIso };
 
-  const [summary, prevSummary, competitors, factors, lessons] = await Promise.all([
+  const [summary, prevSummary, competitors, factors, lessons, awaitingDebrief] = await Promise.all([
     getWinLossSummary(range),
     getWinLossSummary(prevRange),
     getCompetitorBreakdown(range, 10),
     getDecidingFactorBreakdown(range),
     getLessonsLearnedFeed(range, 20),
+    // The actual work-list behind the dashboard's "Awaiting debrief" card, which
+    // links here (audit N19). Whole-book, not range-scoped — an un-debriefed win
+    // needs filing regardless of which period is on screen.
+    getWinsAwaitingDebrief(50),
   ]);
 
   // Win-rate delta vs prior period (only meaningful when both periods had
@@ -259,6 +264,41 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           </p>
         )}
       </div>
+
+      {/* Wins awaiting a debrief — the actionable list behind the dashboard's
+          "Awaiting debrief" card, which links here (audit N19). Whole-book, so
+          it can be worked to empty regardless of the period on screen. */}
+      {awaitingDebrief.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+          <header className="px-4 py-2.5 border-b border-amber-200 flex items-center justify-between gap-2">
+            <h2 className="text-[12.5px] font-bold text-amber-900">
+              {awaitingDebrief.length} win{awaitingDebrief.length === 1 ? "" : "s"} awaiting a debrief
+            </h2>
+            <span className="text-[11px] text-amber-700">A quick debrief is what makes this report useful.</span>
+          </header>
+          <ul className="divide-y divide-amber-200/70">
+            {awaitingDebrief.slice(0, 8).map((d) => (
+              <li key={d.id}>
+                <Link
+                  href={`/commercial/accounts/${d.account_id}/debrief/${d.id}`}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-amber-100/60 min-h-[44px]"
+                >
+                  <span className="min-w-0 truncate text-[13px] font-semibold text-amber-900">{d.label}</span>
+                  <span className="shrink-0 text-[12px] font-semibold text-amber-800 inline-flex items-center gap-0.5">
+                    Debrief
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {awaitingDebrief.length > 8 && (
+            <p className="px-4 py-2 text-[11px] text-amber-700 border-t border-amber-200">
+              +{awaitingDebrief.length - 8} more — open each deal to file its debrief.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* KPI strip. Karan 2026-07-09 polish: added a "$ won ratio" tile
           because count-based win rate hides big-vs-small deal dynamics

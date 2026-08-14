@@ -22,6 +22,10 @@ const KIND_META: Record<string, KindMeta> = {
   commercial_document_expiring: { label: "Document expiring", category: "warning" },
   commercial_hot_deal_cooling: { label: "Hot deal cooling", category: "warning" },
   commercial_debrief_overdue: { label: "Debrief needed", category: "warning" },
+  // Commercial — intake. Without this entry the kind was absent from the filter
+  // dropdown (notificationKindsForPlatform reads KIND_META) and rendered a
+  // de-prefixed fallback label everywhere (audit N16).
+  commercial_bid_submitted: { label: "New bid submitted", category: "success" },
   // Commercial — invoicing
   commercial_invoice_created: { label: "Invoice created", category: "info" },
   commercial_invoice_payment_recorded: { label: "Payment recorded", category: "success" },
