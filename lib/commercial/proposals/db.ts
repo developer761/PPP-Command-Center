@@ -623,6 +623,25 @@ export async function updateProposalStatus(input: {
     .maybeSingle();
   if (!before) return { ok: false, error: "Proposal not found." };
   const beforeRow = before as CommercialProposal;
+  // A WON (or lost) proposal is a DECIDED outcome — a won proposal IS the signed
+  // contract. It is not "replaced by a newer revision": the status machine says
+  // won → ['sent'] only (reopen), never won → superseded. But createProposal
+  // revision supersedes its parent unconditionally, and this writer never
+  // checked the transition, so re-quoting a won deal flipped the won proposal to
+  // superseded → no proposal read `won` → the contract base ladder dropped to
+  // the new DRAFT everywhere it's read (margin, AIA "Original Contract Sum",
+  // the whole P&L followed) with no user action (audit F1). Refuse it here so
+  // every path is covered; the revision is still created, the win is preserved,
+  // and the contract only moves when the new revision is itself won.
+  if (
+    input.to_status === "superseded" &&
+    (beforeRow.status === "won" || beforeRow.status === "lost")
+  ) {
+    return {
+      ok: false,
+      error: "A won or lost proposal can't be replaced by a revision — reopen it to Sent first.",
+    };
+  }
   const patch: Record<string, unknown> = {
     status: input.to_status,
     updated_by_user_id: input.acting_user_id ?? null,
