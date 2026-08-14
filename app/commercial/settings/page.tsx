@@ -103,6 +103,14 @@ const CARDS: Card[] = [
     icon: <IconUsers />,
     adminOnly: true,
   },
+  {
+    href: "/commercial/settings/field-ops",
+    label: "Field operations",
+    blurb:
+      "Clock-in rules for the crew magic-link — the override PIN that lets someone clock in early (crew can't punch until 10 min before their scheduled start). Admin-only.",
+    icon: <IconUsers />,
+    adminOnly: true,
+  },
 ];
 
 export default async function CommercialSettingsHubPage() {
