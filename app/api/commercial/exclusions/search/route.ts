@@ -56,6 +56,9 @@ export async function POST(request: Request) {
   if (!auth?.user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // Same crew gate as GET — this write path is not page-allowlisted, so a
+  // crew login must not be able to seed the shared exclusions library.
+  { const denied = await denyCrewApi(auth?.user?.id); if (denied) return denied; }
   const sb = commercialDb();
   const { data: profile } = await sb
     .from("profiles")

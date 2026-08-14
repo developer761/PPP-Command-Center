@@ -36,6 +36,14 @@ async function confirmHoursAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  // A server action POSTs to the page path and runs even when the render gate
+  // would have redirected — so re-check access HERE. Without it, an admin who
+  // deactivates this login in Settings→Access (profile.is_active=false) while
+  // the employee row stays active could keep filing payable hours, since
+  // getEmployeeForUser only checks the employee row (audit FO3). allowCrew:true
+  // because crew IS the audience for this page.
+  const { assertCommercialAccess } = await import("@/lib/commercial/auth");
+  await assertCommercialAccess(user.id, { allowCrew: true });
   const { getEmployeeForUser } = await import("@/lib/commercial/crew-access");
   const employee = await getEmployeeForUser(user.id);
   // Your own hours or nobody's. The employee comes from the SESSION, never
@@ -61,6 +69,10 @@ async function absenceAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  // Same re-check as confirmHoursAction — a deactivated login must not keep
+  // writing to the daily log (audit FO3).
+  const { assertCommercialAccess } = await import("@/lib/commercial/auth");
+  await assertCommercialAccess(user.id, { allowCrew: true });
   const { getEmployeeForUser } = await import("@/lib/commercial/crew-access");
   const employee = await getEmployeeForUser(user.id);
   if (!employee) redirect("/commercial/crew");

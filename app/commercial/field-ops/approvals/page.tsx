@@ -69,7 +69,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
   const rows = await listPendingApprovals();
   // Capped-guess (force-closed) rows are excluded from the zero-variance sweep —
   // they need a human eye — so the button count must exclude them too.
-  const zeroCount = rows.filter((r) => r.status === "submitted" && r.variance === 0 && !r.capped).length;
+  const zeroCount = rows.filter((r) => r.status === "submitted" && r.variance === 0 && !r.capped && !r.absent).length;
 
   // Group by employee.
   const byEmp = new Map<string, { name: string; rows: ApprovalRow[] }>();
@@ -116,7 +116,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                     <div className="flex items-center gap-3 flex-wrap">
                       <div className="min-w-0 flex-1">
                         <div className="text-[12.5px] font-semibold text-ppp-charcoal truncate">{r.job_name}</div>
-                        <div className="text-[11px] text-ppp-charcoal-500">{fmtEtDate(r.work_date)} · {r.source === "clocked" ? "clocked" : "manual"}{r.status === "questioned" ? " · questioned" : ""}{r.capped && <span className="text-amber-700 font-semibold"> · capped guess — review</span>}</div>
+                        <div className="text-[11px] text-ppp-charcoal-500">{fmtEtDate(r.work_date)} · {r.source === "clocked" ? "clocked" : "manual"}{r.status === "questioned" ? " · questioned" : ""}{r.capped && <span className="text-amber-700 font-semibold"> · capped guess — review</span>}{r.absent && <span className="text-rose-700 font-semibold"> · marked absent — review</span>}</div>
                         {r.status === "questioned" && r.questioned_reason && (
                           <div className="text-[11px] text-amber-800 mt-0.5">“{r.questioned_reason}”</div>
                         )}

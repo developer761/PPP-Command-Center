@@ -2,6 +2,23 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { daysFromTodayEt } from "@/lib/date-et";
+
+/**
+ * Which days a painter may self-log. The UI only ever offers today + yesterday
+ * (the honest window — you fill it in that evening or the next morning), but the
+ * server actions read `work_date` straight from the form, so a crafted POST
+ * could file hours or an absence against ANY date. Backdating a no-show to a
+ * day the painter was scheduled reads as variance 0 and gets swept up by the
+ * zero-variance bulk-approve, while the Approvals UI (today/yesterday only)
+ * shows nobody the row — silent pay for a day not worked (audit FO2). Anything
+ * older than yesterday goes through a scheduler, which is what approvals are for.
+ */
+function selfLogDateError(workDate: string): string | null {
+  const offset = daysFromTodayEt(workDate);
+  if (offset === 0 || offset === -1) return null;
+  return "You can only log today or yesterday. Ask your scheduler to record an older day.";
+}
 
 /**
  * The Foreman Daily Log — one painter, one day, under thirty seconds.
@@ -186,6 +203,8 @@ export async function submitDailyHours(input: {
   hours: number;
   actorUserId: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  const dateErr = selfLogDateError(input.workDate);
+  if (dateErr) return { ok: false, error: dateErr };
   const hours = Number(input.hours);
   if (!Number.isFinite(hours) || hours < 0) return { ok: false, error: "Hours must be a number." };
   // A 24-hour day is a typo, not a shift. Capped rather than rejected — the
@@ -252,6 +271,8 @@ export async function submitDailyAbsence(input: {
   if (!ABSENCE_TYPES.some((t) => t.value === input.type)) {
     return { ok: false, error: "Pick a reason." };
   }
+  const dateErr = selfLogDateError(input.workDate);
+  if (dateErr) return { ok: false, error: dateErr };
   const sb = commercialDb();
   const { data: existing } = await sb
     .from("commercial_absences")

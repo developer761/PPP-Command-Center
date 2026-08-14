@@ -33,6 +33,7 @@ export type ApprovalRow = {
   source: string;
   questioned_reason: string | null;
   capped: boolean; // a contributing punch was force-closed (capped guess) — never auto-approve
+  absent: boolean; // an absence (PTO/Sick/…) is on file for this employee+day — never auto-approve
 };
 
 export async function listPendingApprovals(): Promise<ApprovalRow[]> {
@@ -108,6 +109,25 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
     }
   }
 
+  // Which employee+days have an absence (PTO/Sick/…) on file? An entry that
+  // lands at exactly the scheduled hours reads as variance 0 and the
+  // zero-variance sweep would pay it — but if the painter ALSO told us they
+  // weren't there that day, that contradiction is precisely what a human must
+  // resolve, never an auto-approve. Keyed by employee+date (an absence is a
+  // whole day, not per-job). Bounded to the pending entries' employees + dates,
+  // so `.in()` stays under the row cap (audit FO1).
+  const absentKeys = new Set<string>();
+  {
+    const { data: absRows } = await sb
+      .from("commercial_absences")
+      .select("employee_id, work_date")
+      .in("employee_id", empIds)
+      .in("work_date", dates);
+    for (const a of (absRows ?? []) as { employee_id: string; work_date: string }[]) {
+      absentKeys.add(`${a.employee_id}|${a.work_date}`);
+    }
+  }
+
   return entries.map((e) => {
     const scheduled = sched.get(schedKey(e.employee_id, e.job_id, e.work_date)) ?? null;
     return {
@@ -124,6 +144,7 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
       source: e.source,
       questioned_reason: e.questioned_reason,
       capped: capKeys.has(schedKey(e.employee_id, e.job_id, e.work_date)),
+      absent: absentKeys.has(`${e.employee_id}|${e.work_date}`),
     };
   });
 }
@@ -195,8 +216,10 @@ export async function overrideTimeEntryHours(id: string, hours: number, actorUse
 export async function bulkApproveZeroVariance(actorUserId: string): Promise<{ approved: number }> {
   const rows = await listPendingApprovals();
   // Exclude capped-guess entries — a force-closed missed-clock-out must be
-  // approved by a human, one at a time, never in the zero-variance sweep.
-  const zero = rows.filter((r) => r.status === "submitted" && r.variance === 0 && !r.capped);
+  // approved by a human, one at a time, never in the zero-variance sweep. Same
+  // for absent-day entries: hours that tie the schedule but sit on a day the
+  // painter marked off are a contradiction only a human should settle (FO1).
+  const zero = rows.filter((r) => r.status === "submitted" && r.variance === 0 && !r.capped && !r.absent);
   let approved = 0;
   for (const r of zero) {
     const res = await approveTimeEntry(r.id, actorUserId);
