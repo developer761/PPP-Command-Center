@@ -139,8 +139,13 @@ export default async function CreateProposalRoute({
     created_by_user_id: user.id,
   });
   if (!result.ok) {
+    // Land on the deal's Proposals tab WITH the error. The old target —
+    // `.../deals/${dealId}/proposal` — is a 302 shim that forwards on params
+    // only and drops the query, so a failed create redirected through it and
+    // arrived with no message at all: a silent failure. Go straight to the tab
+    // that renders it, so the estimator sees why the proposal wasn't created.
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal?error=${encodeURIComponent(result.error)}`
+      `/commercial/opportunities/${dealId}?tab=proposals&error=${encodeURIComponent(result.error)}#deal-proposals`
     );
   }
 

@@ -154,7 +154,7 @@ import {
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
-import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
+import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
 import { ProjectHome } from "@/components/commercial/project-home";
 import { DealAnalytics } from "@/components/commercial/deal-analytics";
 import { STAGE_MEANING } from "@/lib/commercial/opportunities/kanban-columns";
@@ -2176,6 +2176,22 @@ export default async function OpportunityDetailPage({
           <span>Changes saved.</span>
         </div>
       )}
+      {/* The inline pencil-edit on the Info tab redirects with
+          ?saved_field=<label> — declared in the searchParams type, produced by
+          the action, and rendered by nothing. Saving an inline field was
+          therefore completely silent, while its ef_error sibling DID render:
+          failure spoke up, success didn't. Names the field so it's clear which
+          of several pencils took. Self-clearing so it doesn't outlive its
+          moment on a page that revalidates in place. */}
+      {pickFirst(sp.saved_field) && (
+        <SelfClearingFlash
+          params={["saved_field"]}
+          role="status"
+          className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800"
+        >
+          <span aria-hidden>✓</span> <strong>{pickFirst(sp.saved_field)}</strong> saved.
+        </SelfClearingFlash>
+      )}
       {clonedOk && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
@@ -2704,6 +2720,9 @@ export default async function OpportunityDetailPage({
           // The editor is a full-width route of its own; hand it this tab to
           // come back to so a save doesn't eject you to the account page.
           backHref={`/commercial/opportunities/${opp.id}?tab=proposals#deal-proposals`}
+          // A failed "New proposal" (createProposal error) lands here — show it
+          // rather than dropping it on the shim it used to redirect through.
+          errorMessage={pickFirst(sp.error)}
         />
       )}
       {/* `toolView` gates the bodies: arriving at `?tab=project` with no tool

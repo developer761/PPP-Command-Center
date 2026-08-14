@@ -20,11 +20,15 @@ export function DealProposalsSection({
   oppId,
   proposals,
   backHref,
+  errorMessage,
 }: {
   accountId: string;
   oppId: string;
   proposals: CommercialProposal[];
   backHref: string;
+  /** Surfaces a failed "New proposal" — createProposal errors used to redirect
+   *  to a shim that discarded the message, so a failed create looked silent. */
+  errorMessage?: string | null;
 }) {
   const base = `/commercial/accounts/${accountId}/deals/${oppId}/proposal`;
   const sorted = [...proposals].sort((a, b) => b.revision_number - a.revision_number);
@@ -56,6 +60,11 @@ export function DealProposalsSection({
           New proposal
         </Link>
       </div>
+      {errorMessage && (
+        <div role="alert" className="mx-4 mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12.5px] text-rose-800">
+          {errorMessage}
+        </div>
+      )}
       {sorted.length === 0 ? (
         <p className="px-4 py-3 text-[12px] text-ppp-charcoal-500">
           No proposals yet — build one from the button above (an opportunity

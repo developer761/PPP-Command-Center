@@ -21,6 +21,7 @@
 import { flashMessage } from "@/lib/commercial/flash";
 import { makeCarries, FIELDS_INPUT_NAME, fieldsFor } from "@/lib/commercial/proposals/form-fields";
 import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
+import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
@@ -1570,9 +1571,10 @@ export default async function ProposalEditorPage({
         </section>
       )}
 
-      {sp.saved === "1" && (
-        <div role="status" className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-emerald-800">Saved.</div>
-      )}
+      {/* No `?saved=1` banner: the manual Save button was removed on
+          2026-07-20 and autosave is revalidate-only (it never navigates with
+          ?saved=1), so this banner could never fire — a dead gate. The live
+          "Saving… → Saved" feedback is the AutosaveProposalForm status pill. */}
       {sp.created === "1" && (
         <div role="status" className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-2.5 text-sm text-cc-brand-800">
           Proposal created. Header prefilled from the opportunity — start with inclusions below.
@@ -1620,10 +1622,19 @@ export default async function ProposalEditorPage({
           <strong>Reopened proposal only.</strong> The parent opportunity already moved forward (past Pre-Sale Closed) so it was left as-is. Move it back manually on the pipeline kanban if you meant to reopen the whole opportunity.
         </div>
       )}
+      {/* Self-clearing: the line-item actions are revalidate-only (no success
+          redirect, deliberately — see updateLineItemAction), so nothing was
+          taking ?error= back out of the URL. Save a line item badly, fix it,
+          save again: the save succeeded and the red banner was still sitting
+          there, with no dismiss and no way to tell a stale failure from a fresh
+          one. */}
       {sp.error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5 text-sm text-rose-800" role="alert">
+        <SelfClearingFlash
+          params={["error"]}
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5 text-sm text-rose-800"
+        >
           {flashMessage(sp.error)}
-        </div>
+        </SelfClearingFlash>
       )}
       {/* R1d approval flash banners */}
       {sp.approval === "requested" && (
