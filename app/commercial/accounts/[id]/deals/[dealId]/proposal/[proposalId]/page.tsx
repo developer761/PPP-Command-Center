@@ -1887,8 +1887,17 @@ export default async function ProposalEditorPage({
           </svg>
         }
         right={
+          /* The INCLUSIONS subtotal, not the contract total.
+             This read `proposal.total_cents`, which is the whole contract: it
+             folds in the labor rows (which print their own subtotal two
+             sections down) and is replaced outright by a final-price override.
+             So a proposal with $1,000 of inclusions and 8h of labor at $500
+             showed "2 lines · $1,500" here and "8 hrs · $500" there — the same
+             $500 counted twice on one screen, with no way to tell which number
+             was the real one. Computed the same way the Labor header computes
+             its own. */
           <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
-            {inclusions.length} line{inclusions.length === 1 ? "" : "s"} · <strong className="text-ppp-charcoal-800">{formatDollars(proposal.total_cents)}</strong>
+            {inclusions.length} line{inclusions.length === 1 ? "" : "s"} · <strong className="text-ppp-charcoal-800">{formatDollars(inclusions.reduce((a, r) => a + Math.round(Number(r.quantity) * r.unit_price_cents), 0))}</strong>
           </span>
         }
       >

@@ -174,8 +174,18 @@ export function AutosaveProposalForm({
         onSubmit={(e) => e.preventDefault()}
         className="space-y-4"
       >
+        {/* No `pointer-events-none` on the frozen fieldset.
+            `fieldset[disabled]` already disables every form control inside —
+            inputs, selects, textareas and buttons — natively. The extra
+            pointer-events kill went further and disabled things that are not
+            form controls at all: on a sent or won proposal it made the
+            marked-up plan-set download links dead to mouse and touch (Tab +
+            Enter still worked, which is how this hid), and blocked attaching a
+            bid document, which files to the DEAL and has nothing to do with
+            whether the proposal is frozen. Reading and downloading are not
+            editing. */}
         {disabled ? (
-          <fieldset disabled className="space-y-4 opacity-70 pointer-events-none">
+          <fieldset disabled className="space-y-4 opacity-70">
             {children}
           </fieldset>
         ) : (

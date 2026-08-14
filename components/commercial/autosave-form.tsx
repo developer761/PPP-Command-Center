@@ -139,8 +139,12 @@ export function AutosaveForm({
         onSubmit={(e) => e.preventDefault()}
         className={formClassName}
       >
+        {/* No `pointer-events-none` on the frozen fieldset — see the sibling in
+            autosave-proposal-form.tsx. fieldset[disabled] disables the form
+            controls on its own; killing pointer events also kills links and
+            downloads inside a frozen record, which are read-only actions. */}
         {disabled ? (
-          <fieldset disabled className={`${formClassName} opacity-70 pointer-events-none`}>{children}</fieldset>
+          <fieldset disabled className={`${formClassName} opacity-70`}>{children}</fieldset>
         ) : (
           children
         )}
