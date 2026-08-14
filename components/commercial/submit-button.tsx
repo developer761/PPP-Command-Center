@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useFormStatus } from "react-dom";
 
 /**
@@ -50,7 +51,18 @@ export function SubmitButton({
   /** For a button rendered OUTSIDE its form, linked by the form id. */
   form?: string;
 }) {
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  // `useFormStatus` reports on the form this button is NESTED IN. When `form`
+  // points at a DIFFERENT form (the pattern for a per-row action that must not
+  // carry the surrounding bulk form's payload), that reading is about the
+  // wrong form — so the button showed no feedback at all on click, and on a
+  // page inside a bulk form it would flip to "pending" when the BULK action
+  // ran instead. Both wrong in opposite directions.
+  //
+  // For that case, track it locally: the click is the signal, and the server
+  // action's revalidation unmounts or re-renders this button when it lands.
+  const [clicked, setClicked] = useState(false);
+  const pending = form ? clicked : status.pending;
   const label =
     pending && pendingLabel !== undefined
       ? pendingLabel
@@ -65,6 +77,7 @@ export function SubmitButton({
       // the guard against a second submit.
       disabled={disabled || pending}
       aria-busy={pending || undefined}
+      onClick={form ? () => setClicked(true) : undefined}
       formAction={formAction}
       name={name}
       value={value}

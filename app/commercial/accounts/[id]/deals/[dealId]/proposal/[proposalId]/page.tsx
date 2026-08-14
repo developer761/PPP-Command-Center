@@ -1009,8 +1009,23 @@ export default async function ProposalEditorPage({
   // "billed of contract" sums invoice SUBTOTALS — tax-inclusive totals would
   // inflate billedPct and falsely trip overBilled on any taxed invoice.
   const billedCents = issuedForProposal.reduce((s, inv) => s + inv.subtotal_cents, 0);
+  // Credit every approved CO whose money is INSIDE billedCents, not just the
+  // ones tagged to this proposal.
+  //
+  // billedCents sums the subtotals of this proposal's issued invoices, and
+  // those invoices carry change-order lines — including general COs raised
+  // against the deal rather than tagged to a proposal. Counting that money as
+  // billed while refusing to add it to the contract made the panel report
+  // over-billing on a job that was billed exactly right. A CO billed on one of
+  // these invoices belongs on both sides of the comparison or neither.
+  const issuedInvoiceIds = new Set(issuedForProposal.map((inv) => inv.id));
   const netCoForProposal = dealChangeOrders
-    .filter((c) => c.status === "approved" && c.proposal_id === proposalId)
+    .filter(
+      (c) =>
+        c.status === "approved" &&
+        (c.proposal_id === proposalId ||
+          (c.invoiced_invoice_id ? issuedInvoiceIds.has(c.invoiced_invoice_id) : false))
+    )
     .reduce((s, c) => s + c.amount_cents, 0);
   const effectiveContractCents = Math.max(0, proposal.total_cents + netCoForProposal);
   const remainingCents = Math.max(0, effectiveContractCents - billedCents);

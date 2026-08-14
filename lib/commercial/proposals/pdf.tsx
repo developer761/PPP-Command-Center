@@ -1304,6 +1304,12 @@ export function ProposalPdfDocument({
   // itemized prices so only the single, reconciled TOTAL shows.
   const itemizedSumCents = [...inclusions, ...laborRows].reduce((s, it) => s + lineTotalCents(it), 0);
   const overrideActive = mode !== "internal" && Math.abs(proposal.total_cents - itemizedSumCents) > 1;
+  // On the INTERNAL report the itemized math is deliberately kept, so an
+  // override means the printed line prices genuinely do not add up to the
+  // TOTAL beneath them. That is correct — but silently correct, and the person
+  // reading it is the approver checking exactly that arithmetic. Say so.
+  const overrideOnInternal =
+    mode === "internal" && Math.abs(proposal.total_cents - itemizedSumCents) > 1;
   const showLineTable = mode === "internal" || (proposal.pdf_show_line_prices && !overrideActive);
 
   return (
@@ -1348,7 +1354,27 @@ export function ProposalPdfDocument({
         {mode !== "internal" && <Text style={styles.intro}>{intro}</Text>}
 
         {showLineTable ? (
-          <InclusionsInternal items={inclusions} internal={mode === "internal"} groupByPhase />
+          <>
+            {overrideOnInternal && (
+              <Text
+                style={{
+                  fontSize: 9,
+                  color: "#92400e",
+                  backgroundColor: YELLOW_BG,
+                  borderWidth: 1,
+                  borderColor: YELLOW_BORDER,
+                  padding: 6,
+                  marginBottom: 6,
+                }}
+              >
+                <Text style={{ fontFamily: "Times-Bold" }}>Final price override in effect. </Text>
+                The line prices below sum to {formatDollars(itemizedSumCents)}; the TOTAL is set
+                manually to {formatDollars(proposal.total_cents)}. The customer copy shows only
+                the TOTAL.
+              </Text>
+            )}
+            <InclusionsInternal items={inclusions} internal={mode === "internal"} groupByPhase />
+          </>
         ) : (
           <InclusionsCustomer
             items={inclusions}

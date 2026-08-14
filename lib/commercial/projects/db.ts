@@ -6,6 +6,7 @@
  * latest AIA application's status + % complete. Service-role only.
  */
 import { commercialDb } from "@/lib/commercial/db";
+import { lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { pickContractBaseCents, contractProposalCents, type ContractProposalRow } from "@/lib/commercial/aia/constants";
@@ -320,10 +321,13 @@ export async function listProjects(opts: {
           .order("id", { ascending: true })
     );
     for (const l of liData) {
-      const done =
-        Math.max(0, Math.round(l.from_previous_cents)) +
-        Math.max(0, Math.round(l.this_period_cents)) +
-        Math.max(0, Math.round(l.materials_stored_cents));
+      // The SHARED rule, not a re-implementation. This clamped every column at
+      // zero, which silently discards a billed DEDUCTIVE (credit) line — so a
+      // job with one reported a different % complete and different retainage
+      // on the projects index and the dashboard than on the deal page and the
+      // printed certificate, which both use lineCompletedStoredCents. Same job,
+      // three surfaces, two answers.
+      const done = lineCompletedStoredCents(l);
       completedByApp.set(l.application_id, (completedByApp.get(l.application_id) ?? 0) + done);
       // Credit lines count — see the note in computeG702's SOV total.
       sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.round(l.scheduled_value_cents));
