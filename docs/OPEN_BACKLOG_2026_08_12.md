@@ -1537,3 +1537,58 @@ tsc clean, 669 tests.
 The build session flagged (rather than guessed): `/commercial/projects` and `/commercial/post-job/work-orders` are ALSO
 LIVE routes absent from the sidebar since the restructure — reachable but with no nav entry. Whether each should be
 (a) restored to the sidebar or (b) removed as a route is a PRODUCT call, not a bug fix. Karan to decide per route.
+
+---
+
+## ✅ ROUND-3 HANDOFF — 8 DEFECTS, ALL FIXED + VERIFIED (review session, 2026-08-14)
+Took the round-3 table, fixed in order, watched each fail before trusting it (repro from the code path, then a
+regression test where the logic was unit-testable). tsc clean throughout.
+- **#1 submittal actions ejected to the list** (`b7f9d482`) — `withBack()` returned a deal-origin `back` VERBATIM
+  instead of the action's own detail `url`, so every add-item/save bounced you to the list. Extracted
+  `safeBack`/`withBack` to `lib/commercial/submittals/back-url.ts` + regression test that fails on the old behavior. ✓
+- **#2 + #8 email-pause silenced the in-app bell** (`3908a779`) — opp side early-returned before the bell insert
+  (log even said "in-app only" while skipping it); account side never checked the pause pref at all. Now pause skips
+  ONLY the email; the bell always fires. Both sides symmetric. ✓
+- **#3 payroll re-download OT per-range not per-week** (`11f5c641`) — `redownloadPayroll` summed the whole range and
+  capped at 40, inventing OT across week boundaries (35h+35h → 40/30 instead of 70/0) so a re-issued CSV didn't match
+  the original run. Extracted pure `weeklyExportedRows()` (per-week 40h split, matching `exportPayroll`) + test;
+  aligned line ending to the export's CRLF so a recovered file is byte-identical. ✓
+- **#4 opportunity "Still out" dropped viewed invoices** (`01e4b5bc`) — hand-rolled local set `{sent,partial,overdue}`
+  omitted `viewed` (opened-but-unpaid = money still out). Routed through canonical `BILLABLE_INVOICE_STATUSES` +
+  `deriveInvoiceStatus`, matching the dashboard AR tile. Added a parity test pinning `viewed` and checking the
+  canonical statuses against the Postgres CHECK. ✓
+- **#5 deal edit from the deal page saved silently** (`c9178728`) — `deal_back` success sent `?saved=1` to the opp
+  page, which keys its "Changes saved." banner on `?edited=1` and never reads `saved`. Matched the flag the
+  destination renders; swept every account/opp→opp-page redirect (all others already resolve to a read). ✓
+- **#6 cross-form SubmitButton stuck busy after failure** (`8753cf06`) — the `form={id}` button's `clicked` flag never
+  reset, so on the archived-deals unarchive buttons a failed action (redirect back, row still there) left it reading
+  "…"/aria-busy forever. Added a timeout backstop; success unmounts first and cleans it up. (`useSearchParams` would be
+  the cleaner signal but the leaf renders in ~120 places and would risk forcing dynamic rendering.) ✓
+- **#7 deal-edit sheet + deal-action errors ejected to the Home tab** (`3d2d2f9d`) — the editable Opportunities list
+  lives on `?tab=opportunities`; `?tab=deals` resolves to the Home DASHBOARD (a different surface). The sheet's
+  closeHref/Cancel and the non-dealBack save went to `?tab=deals` (off the list), and SIX deal-action error redirects
+  (status flip, delete, archive, not-found) sent `?tab=deals&error=` to Home — which renders no `sp.error`, so the
+  error silently vanished and the action looked like a no-message eject. All now target `?tab=opportunities` (honoring
+  dealBack → deal page). Swept: `sp.saved`/`sp.status_error` render top-level; the delete UndoToast is in the layout;
+  plain no-flash `?tab=deals` nav correctly lands on the dashboard — left alone. ✓
+
+---
+
+## ✅ PROPOSAL-EDITOR LENS RE-RUN (review session, 2026-08-14) — the lens that errored out in round 3.
+Audited `proposal/[proposalId]/page.tsx` (all 6 server actions), the two autosave wrappers, `exclusion-picker.tsx`,
+`proposals/{db,constants,form-fields,hydrate}.ts`, and the status DB CHECK, across three lenses. **Overwhelmingly
+clean — this surface has been audited heavily already (nearly every action carries round-N fix comments).** Verified
+clean: the `carries()` patch-only save correctly handles unchecked-checkbox and wipe-on-blank; the exclusion picker
+serializes `[]` on empty (clearing persists) and syncs its uncontrolled input + dispatches a bubbling change for
+autosave; the autosave wrapper re-throws NEXT_REDIRECT (no eject); proposal statuses match the migration-103 CHECK
+exactly (8/8, all labeled); the total is pure pre-tax line-item sum (or override), integer cents, per-line rounded,
+alternates excluded — no tax-basis mixing (the editor's contract-vs-billed math explicitly uses invoice SUBTOTALS).
+- **ONE finding — line-item update/delete reintroduced the no-op-redirect bug that `add` was fixed for.**
+  `addLineItemAction` was deliberately changed to revalidate-ONLY because `revalidatePath` + `redirect()` to the same
+  path+`#hash` is a no-op nav that leaves the recomputed total unpainted until a manual refresh AND trips the autosave
+  "Leave site?" guard. But `updateLineItemAction` + `deleteLineItemAction` still did exactly that on success. Changed
+  both to revalidate-only, matching `add`; `?back=` is preserved for free (the URL is untouched, and `sp.back` drives
+  the Back link). **Note:** this change sits in the working tree INTERLEAVED with the build session's in-flight
+  `autosave-flag.ts` refactor of this same file, so it is intentionally left uncommitted here to avoid sweeping that
+  WIP — it will land with the next `git add -A`. Self-documented in the code comment. Build session: please glance at
+  it when you commit the autosave-flag work.
