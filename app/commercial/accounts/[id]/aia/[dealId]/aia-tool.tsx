@@ -26,6 +26,7 @@ import {
   upsertAiaLineItem,
   deleteAiaLineItem,
   resolveG702,
+  reconcileDraftChangeOrderRows,
   getEffectiveContractBaseCents,
 } from "@/lib/commercial/aia/db";
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
@@ -183,6 +184,11 @@ async function setStatusAction(formData: FormData) {
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
   if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   if (!["draft", "submitted", "paid"].includes(status)) redirect(`${base(id, dealId, origin)}&app=${appId}${backQ(back)}`);
+  // Issuing freezes lines 1+2. Reconcile the draft's schedule of values FIRST so
+  // any change order approved since it was seeded is on the G703 before it
+  // freezes — otherwise the issued certificate is frozen already not footing
+  // (audit F2). No-op if it's already issued.
+  if (status !== "draft") await reconcileDraftChangeOrderRows(appId);
   const result = await updateAiaApplication(appId, { status }, userId);
   if (!result.ok) redirect(`${base(id, dealId, origin)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   // Auto-file the G702/G703 workbook when the application is submitted to the GC
@@ -419,6 +425,12 @@ export async function AiaTool({
             // Stale / cross-deal app id — fall back to the list in place (no
             // redirect, so it stays graceful inline just like Closeout).
             return <AiaApplicationList id={id} dealId={dealId} back={sp.back ?? ""} origin={variant} createAction={createApplicationAction} />;
+          }
+          // A draft tracks the deal: fold in any change orders approved since it
+          // was seeded so its two sheets foot before we render/export it (audit
+          // F2). No-op on an issued (frozen) certificate.
+          if (application.status === "draft") {
+            await reconcileDraftChangeOrderRows(selectedAppId);
           }
           const [lines, g702] = await Promise.all([
             listAiaLineItems(selectedAppId),

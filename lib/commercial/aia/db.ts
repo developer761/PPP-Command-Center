@@ -419,6 +419,91 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
   await sb.from("commercial_aia_line_items").insert(rows);
 }
 
+/**
+ * Keep a DRAFT application's schedule of values in step with the deal's approved
+ * change orders.
+ *
+ * The G703 is seeded once, at creation. A change order approved AFTER that hit
+ * G702 line 2 (netCO is computed live) but never got a G703 row, so the
+ * certificate's two sheets stopped footing — line 3 (Contract Sum to Date) sat
+ * above the G703 grand total by the new CO's amount on the document the GC
+ * receives (audit F2). App 2+ pick up "COs since the prior app" via the
+ * carry-forward seed; App 1 (and any single draft) had no such catch-up.
+ *
+ * Only ever touches a DRAFT: an ISSUED certificate freezes lines 1+2 at issue
+ * and must never restate, so this is a no-op for anything else. Idempotent —
+ * appends a row per approved CO not already present, and removes a CO row ONLY
+ * when its CO is no longer approved AND nothing has been billed against it (a
+ * row with billing is left for a human, since deleting it would drop money the
+ * certificate already reported).
+ */
+export async function reconcileDraftChangeOrderRows(applicationId: string): Promise<void> {
+  const app = await getAiaApplication(applicationId);
+  if (!app || app.status !== "draft") return;
+  const [lines, cos] = await Promise.all([
+    listAiaLineItems(applicationId),
+    listChangeOrders(app.opportunity_id),
+  ]);
+  const approved = cos.filter((c) => c.status === "approved");
+  const approvedById = new Set(approved.map((c) => c.id));
+  const approvedByNo = new Set(approved.map((c) => String(c.co_number)));
+
+  const coRows = lines.filter(
+    (l) => l.change_order_id || /^CO-0*\d+$/i.test(l.item_no ?? "")
+  );
+  const presentIds = new Set<string>();
+  const presentNos = new Set<string>();
+  for (const l of coRows) {
+    if (l.change_order_id) presentIds.add(l.change_order_id);
+    const m = /^CO-0*(\d+)$/i.exec(l.item_no ?? "");
+    if (m) presentNos.add(m[1]);
+  }
+
+  const sb = commercialDb();
+
+  // 1. Append approved COs that have no row yet.
+  const missing = approved.filter(
+    (c) => !presentIds.has(c.id) && !presentNos.has(String(c.co_number))
+  );
+  if (missing.length > 0) {
+    let pos = lines.reduce((m, l) => Math.max(m, l.position ?? 0), 0) + 1000;
+    const rows = missing.map((co) => {
+      const r = {
+        application_id: applicationId,
+        position: pos,
+        item_no: `CO-${String(co.co_number).padStart(3, "0")}`,
+        description: `Change Order ${co.co_number}: ${co.title}`.slice(0, 500),
+        // Signed — a deduct CO is a real negative credit line.
+        scheduled_value_cents: Math.round(Number(co.amount_cents)),
+        from_previous_cents: 0,
+        this_period_cents: 0,
+        materials_stored_cents: 0,
+        change_order_id: co.id,
+      };
+      pos += 1000;
+      return r;
+    });
+    await sb.from("commercial_aia_line_items").insert(rows);
+  }
+
+  // 2. Remove CO rows whose CO is no longer approved AND carries no billing.
+  for (const l of coRows) {
+    const noMatch = /^CO-0*(\d+)$/i.exec(l.item_no ?? "");
+    const stillApproved =
+      (l.change_order_id ? approvedById.has(l.change_order_id) : false) ||
+      (noMatch ? approvedByNo.has(noMatch[1]) : false);
+    const billed =
+      l.from_previous_cents + l.this_period_cents + l.materials_stored_cents !== 0;
+    if (!stillApproved && !billed) {
+      await sb
+        .from("commercial_aia_line_items")
+        .delete()
+        .eq("id", l.id)
+        .eq("application_id", applicationId);
+    }
+  }
+}
+
 export async function updateAiaApplication(
   id: string,
   patch: Partial<Pick<AiaApplication, "period_from" | "period_to" | "original_contract_cents" | "retainage_pct" | "status" | "notes">>,
