@@ -1477,3 +1477,18 @@ other path not regressed. Page-flow / place-preservation lane satisfied. tsc cle
 are now fully worked through and verified. My four+ own-misses this session are all guarded by tests the build session
 wrote (DB-CHECK parity, render-parity, autosave seam, link resolution, filter-matches-real-data). Platform is in strong
 shape pending the migration batch (136/137/139-143).**
+
+---
+
+## ✅ VERIFY — onboarding/Undo/email-opt-in/clock-station (`d95ca87f`). CLEAN, no miss.
+- **Onboarding tour** — 3 of 8 steps spotlighted sidebar rows (Proposals/Projects/Invoices) the restructure moved
+  INSIDE the deal, so the tour dimmed the screen and pointed at nothing. Dead steps removed, rewritten to the current
+  deal-centric model. ✓
+- **Missing Undo** — deal-page delete was the ONE delete path with no Undo; now carries `undo_id/undo_kind/undo_label`
+  so the layout's UndoToast makes the soft-delete reversible (parity with the account path). ✓
+- **Ignored email opt-in** — team-assignment emails ignored Settings→Notifications "Email paused". Now
+  `getUserEmailPref` → `if (pref.enabled === false) { return }` BEFORE sending, so a paused user gets in-app only.
+  Respects the "warn/respect preference, don't override" rule. ✓
+- **Clock station** — a crew member with no PIN was told to set it on a supervisor-only page they can't open; copy now
+  says who sets it. ✓
+tsc clean, 669 tests.
