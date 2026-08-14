@@ -551,8 +551,9 @@ async function updateLineItemAction(formData: FormData) {
   if (originalUpdatedAt && originalUpdatedAt !== owning.updated_at) {
     redirect(
       // No #line-items hash on error — it would scroll past the top error
-      // banner (audit fix). Stay at the top so the message is seen.
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("This line item was updated in another tab. Refresh to see the latest, then re-apply your change.")}`
+      // banner (audit fix). Stay at the top so the message is seen. proposalHref
+      // carries ?back= so the error doesn't eject you from the Proposals queue.
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("This line item was updated in another tab. Refresh to see the latest, then re-apply your change.")}`, proposalBack(formData))
     );
   }
   // F.6: phase is optional. Empty string → null → clears the phase.
@@ -668,9 +669,7 @@ async function sendProposalAction(formData: FormData) {
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
-  redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?sent=1`
-  );
+  redirect(proposalHref(accountId, dealId, proposalId, "?sent=1", proposalBack(formData)));
 }
 
 // ── R1d approval workflow actions ──────────────────────────────────────
@@ -862,9 +861,7 @@ async function reopenProposalActionForm(formData: FormData) {
   );
   revalidatePath(`/commercial/accounts/${accountId}`);
   const flag = result.deal_reopened ? "reopened" : "reopened_solo";
-  redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?outcome=${flag}`
-  );
+  redirect(proposalHref(accountId, dealId, proposalId, `?outcome=${flag}`, proposalBack(formData)));
 }
 
 /** Karan 2026-07-15: Mark a Sent proposal Won or Lost. Delegates all
@@ -912,9 +909,7 @@ async function markProposalOutcomeAction(formData: FormData) {
   const kept = result.deal_left_in_delivery
     ? `&deal_kept=${encodeURIComponent(result.deal_left_in_delivery)}`
     : "";
-  redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?outcome=${outcome}${kept}`
-  );
+  redirect(proposalHref(accountId, dealId, proposalId, `?outcome=${outcome}${kept}`, proposalBack(formData)));
 }
 
 // ─────────────── page render ───────────────
@@ -1932,6 +1927,7 @@ export default async function ProposalEditorPage({
               }))}
               submitAction={addLineItemAction}
               isAlternate={false}
+              backHref={backParam}
             />
           )}
         </div>
@@ -1979,6 +1975,7 @@ export default async function ProposalEditorPage({
               }))}
               submitAction={addLineItemAction}
               isAlternate={true}
+              backHref={backParam}
             />
           )}
         </div>
@@ -2054,6 +2051,7 @@ export default async function ProposalEditorPage({
               submitAction={addLineItemAction}
               isAlternate={false}
               isLabor={true}
+              backHref={backParam}
             />
           )}
         </div>
@@ -2470,6 +2468,9 @@ function AddLineItemForm({
       <input type="hidden" name="proposal_id" value={proposalId} />
       {isAlternate && <input type="hidden" name="is_alternate" value="on" />}
       {isLabor && <input type="hidden" name="is_labor" value="on" />}
+      {/* Carry the origin so a validation-error redirect keeps ?back= — else
+          adding a line item that fails ejects you from the Proposals queue. */}
+      <input type="hidden" name="back" value={backHref} />
       <input type="hidden" id={`${prefix}-pid`} name="product_id" defaultValue="" />
       <input type="hidden" id={`${prefix}-pname`} name="product_name" defaultValue="" />
 
