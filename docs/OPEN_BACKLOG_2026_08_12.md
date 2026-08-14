@@ -1512,3 +1512,12 @@ tsc clean, 669 tests.
   read the wrong one (no feedback on the row click, spurious pending on the bulk action). Now `pending = form ?
   clicked : status.pending`. (A `form=`-elsewhere edge in the 103-forms SubmitButton sweep I'd verified.) ✓
 tsc clean, 669 tests. **BOTH adversarial audits (56-agent + 49-agent) now fully cleared and verified.**
+
+---
+
+## ✅ MIGRATIONS CONFIRMED LIVE IN PROD (Karan ran them, review session verified 2026-08-14):
+136 (roles) · 139 (tax_exempt) · 140 (do_not_bid) · 141 (opportunity_contacts) · 142 (closeout finish_schedule) ·
+143 (rating_labels, seeded A/B/C) — all confirmed via prod checks (columns/tables present; CHECK constraints accept
+the new values). **137 (storage RLS / browser uploads)** is an authenticated-browser policy not testable via the
+service-role REST path — confirm by an actual upload (Documents / Work Orders succeeding = healthy). Everything the
+smoke test + both audits produced is now verified in code AND live in the DB.
