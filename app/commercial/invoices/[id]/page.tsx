@@ -1122,6 +1122,20 @@ export async function InvoiceDetailView({
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <CopyInvoiceLinkButton />
+            {/* Branded invoice PDF — the exact document that gets emailed to the
+                GC. Opens inline so the team can preview/print/download it. */}
+            <a
+              href={`/api/commercial/invoices/${invoice.id}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+              title="Preview / download the branded invoice PDF"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 15h6 M9 11h2" />
+              </svg>
+              View PDF
+            </a>
             {/* New invoice for this deal — Karan 2026-07-07: "give the ability to
                 add another invoice even after the first one is created." Shown for
                 any POST-SALE project (won + in-progress/billing/post-sale), not just
