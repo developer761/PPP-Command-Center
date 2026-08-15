@@ -107,16 +107,49 @@ N14 ⌘K rename/won-lost.
   - **F11** (reopened-expired banner) ✅ — dedicated `?approval=reopened_expired`
     flag + banner (proposal page:798/1661).
   - **F12** = C.10 (deal drill-in navigation) — handled above.
-- [ ] **C.6 — Completeness (20 gaps)** (`COMPLETENESS_PUNCHLIST_2026_08.md`):
-  money/dispatch first — **C2** (void hard-deletes CO billing — confirm) · C3
-  (tax-exempt skipped on CO path) · C4 (delete-confirm understates cascade) · C5
-  (deactivated employee still scheduled) — then ~9 mutations that swallow their
-  failure Result (C7–C10), then C1 (proposal PDF hardcoded footer → thread
-  `getOperatingCompany`).
-- [ ] **C.8 — Re-audit remainder R1–R23** (`REAUDIT_SHIPPED_2026_08.md`): **R1
-  first** — confirm/flip `dealMargin()` to billed-based (auto-fixes R2/R12/R17/
-  R21/R22), then R3 (Closed-column flood-guard), R4 (crew welcome <10min
-  suppression), R5/R6 crew scope, R7–R16 half-solves.
+- [x] **C.6 — Completeness (20 gaps)** — ✅ all verified done (2026-08-14). Every
+  C1–C15 item was already resolved by prior work (many overlap the 3-tier audit's
+  fail-open/DOC findings under different labels). Spot-verified each:
+  - **C1** proposal PDF footer threads `getOperatingCompany` (pdf.tsx renders from
+    `company.*`; both callers pass it) · **C2** void wrapped in ConfirmSubmitButton
+    with a "un-bills N COs" message when CO lines exist · **C3** `dealTaxPct` reads
+    `account/opp.tax_exempt` (db.ts:407-425) · **C4** deal-delete confirm enumerates
+    invoices/costs/WO/crew shifts · **C5** deactivate cancels future
+    `commercial_assignments` + clears the clock PIN (employees.ts:250-267).
+  - **C6** closeout transmittal/warranty pass `accountName` → `to_company ||
+    accountName || "—"` · **C7** removePayment · **C8** team remove/update (error +
+    `promotedAdmin` heads-up) · **C9** toggleActive · **C10** all five deletes
+    (job/team/closeout-item/AIA-line/schedule-email) now capture the Result and
+    redirect `?error=` on failure.
+  - **C11** estimator snapshot falls back to the team `estimator` role
+    (hydrate.ts:136-147) — the practical blank-sign-off case is covered; the rare
+    *both*-empty deal still prints no estimator block + no send-warn (LOW, left) ·
+    **C12** "Tax-exempt — Cert #…" surfaced on the invoice · **C13** dead
+    `suggestedTaxPct/taxHit` removed · **C14** `formatCentsFull` isFinite guard ·
+    **C15** `ComingSoonTab` deleted.
+  No new code needed.
+- [x] **C.8 — Re-audit remainder R1–R27** — ✅ all verified done (2026-08-14). Every
+  finding was already fixed by prior work; spot-checked the criticals + money ones:
+  - **R1** `dealMargin()` flipped to BILLED-based (`marginFrom(billedPreTaxCents,
+    totalCostCents)`, financials.ts:233) with contract as a labeled "vs contract
+    (budget)" line — auto-resolves **R2/R12/R17/R21/R22**.
+  - **R3** board restructured to column-based / `OPEN_COLUMN_KEYS` (old
+    `anyOnBoard` flood path gone) · **R4** the false-premise <10 min welcome
+    suppression removed (documented at schedule-email-send.ts:484) · **R5** scope
+    threaded into welcome + shift + day-of + weekly (`scopesFor`/`buildBody`) ·
+    **R6** `getCrewScopeForOpp` splits inclusions from alternates (db.ts:468-469).
+  - **R7** standalone deal page gated on `dealPhase` (page.tsx:4002) · **R11**
+    costs-tool routes through `dealMargin` · **R13** resolved by the `closed_out_at`
+    column split (decided_at keeps the win date on a delivery reopen) · **R14**
+    pre-sale→Completed in WARN_TRANSITIONS (decided-at test covers it) · **R15/R23**
+    one `statusPillTone` source · **R16** magic link renders per-job scope.
+  - **R24** reports (job-costs/geography) now billed-based via `marginFrom` ·
+    **R25** migration-126 guard on the main opportunities UPDATE (status.ts:406
+    drops `status_user_set_at`/`closed_out_at` and retries) · **R26** account bid
+    rollup uses `listCurrentProposalTotalByOpp` + `dealValueCents` fallback ·
+    **R27** `proposalTrailsDeal` restricts the sub-tiebreak to `estimating`
+    (targets.ts:220). **R19** correctly left DECLINED.
+  No new code needed.
 - [ ] **C.5 — Consistency (27 items)** (`CONSISTENCY_PUNCHLIST_2026_08.md`):
   surgical batch (H3, M1, M4–M6, L2–L9) now; five (H1/H2/H4/H6/M7) gated on
   Karan's D1–D5 answers.
