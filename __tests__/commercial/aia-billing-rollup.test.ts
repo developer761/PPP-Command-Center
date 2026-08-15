@@ -3,10 +3,11 @@ import { aiaBilledCollectedFrom } from "@/lib/commercial/aia/constants";
 
 /** The money logic that makes an AIA-billed job stop reading "$0 billed" in the
  *  deal P&L. Billed = latest issued app's Total Completed & Stored (gross, line
- *  4); collected = Σ paid apps' Current Payment Due (line 8, net of retainage). */
+ *  4); collected = latest PAID app's Total Earned Less Retainage (line 6). Both
+ *  are a cumulative line off ONE app, so the detail + batch paths can't drift. */
 describe("aiaBilledCollectedFrom", () => {
-  it("no issued applications → $0/$0", () => {
-    expect(aiaBilledCollectedFrom({ latestIssued: null, paid: [] })).toEqual({
+  it("no issued application → $0/$0", () => {
+    expect(aiaBilledCollectedFrom({ latestIssued: null, latestPaid: null })).toEqual({
       billedCents: 0,
       collectedCents: 0,
     });
@@ -15,38 +16,39 @@ describe("aiaBilledCollectedFrom", () => {
   it("billed = latest issued app's Total Completed & Stored (gross, incl. retainage)", () => {
     const r = aiaBilledCollectedFrom({
       latestIssued: { totalCompletedStoredCents: 20_000_00 },
-      paid: [],
+      latestPaid: null, // submitted-but-unpaid → nothing collected
     });
     expect(r.billedCents).toBe(20_000_00);
-    expect(r.collectedCents).toBe(0); // submitted-but-unpaid → nothing collected
+    expect(r.collectedCents).toBe(0);
   });
 
-  it("collected = Σ paid apps' Current Payment Due (net of retainage)", () => {
-    // App 1 paid $9,500 (net of 5% retainage on $10k), App 2 paid $9,500 → $19,000
-    // collected against $20,000 billed; the $1,000 retainage stays outstanding.
+  it("collected = latest PAID app's Total Earned Less Retainage (net of retainage)", () => {
+    // $20k completed, latest paid app earned-less-5%-retainage = $19k collected;
+    // the $1k retainage stays outstanding.
     const r = aiaBilledCollectedFrom({
       latestIssued: { totalCompletedStoredCents: 20_000_00 },
-      paid: [{ currentPaymentDueCents: 9_500_00 }, { currentPaymentDueCents: 9_500_00 }],
+      latestPaid: { totalEarnedLessRetainageCents: 19_000_00 },
     });
     expect(r.billedCents).toBe(20_000_00);
     expect(r.collectedCents).toBe(19_000_00);
-    // Outstanding (billed − collected) = $1,000 retainage still held.
-    expect(r.billedCents - r.collectedCents).toBe(1_000_00);
+    expect(r.billedCents - r.collectedCents).toBe(1_000_00); // retainage held, outstanding
+  });
+
+  it("latest app submitted (unpaid) but a PRIOR app paid → collected = that paid app's line 6", () => {
+    // App 2 just submitted ($20k completed); App 1 was paid ($9.5k earned-less-retainage).
+    const r = aiaBilledCollectedFrom({
+      latestIssued: { totalCompletedStoredCents: 20_000_00 },
+      latestPaid: { totalEarnedLessRetainageCents: 9_500_00 },
+    });
+    expect(r.billedCents).toBe(20_000_00);
+    expect(r.collectedCents).toBe(9_500_00);
   });
 
   it("never reports collected > billed (data-glitch guard on the CEO dashboard)", () => {
     const r = aiaBilledCollectedFrom({
       latestIssued: { totalCompletedStoredCents: 5_000_00 },
-      paid: [{ currentPaymentDueCents: 9_000_00 }],
+      latestPaid: { totalEarnedLessRetainageCents: 9_000_00 },
     });
     expect(r.collectedCents).toBe(5_000_00); // clamped to billed
-  });
-
-  it("ignores a negative current-payment-due row rather than crediting it", () => {
-    const r = aiaBilledCollectedFrom({
-      latestIssued: { totalCompletedStoredCents: 10_000_00 },
-      paid: [{ currentPaymentDueCents: 6_000_00 }, { currentPaymentDueCents: -100_00 }],
-    });
-    expect(r.collectedCents).toBe(6_000_00);
   });
 });

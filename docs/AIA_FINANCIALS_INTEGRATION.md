@@ -1,5 +1,27 @@
 # AIA billing → deal financials integration (Phase D finding, 2026-08-14)
 
+## ✅ STATUS: SHIPPED (2026-08-14, Karan "fix everything")
+Wired across BOTH app-code rollup paths with one shared definition, so every
+rendered surface agrees:
+- `getProjectFinancials` (deal page · delivery Billing stage · invoice-new · costs tool)
+- `listProjects` (dashboard bars · portfolio · account detail billing)
+
+The account-overview SQL view (`commercial_account_overview_v`) turned out NOT to
+be a third surface: its `total_invoiced` / `total_paid` / `balance_owed` fields are
+defined on the type but rendered **nowhere**, so no SQL AIA math was needed.
+
+**Definitions used** (Katie/Alex still to confirm the retainage treatment):
+billed = latest ISSUED app's Total Completed & Stored (G702 line 4, gross);
+collected = latest PAID app's Total Earned Less Retainage (G702 line 6). Both a
+cumulative line off one app, so the detail + batch paths are penny-consistent
+(both use the shared `lineCompletedStoredCents` / per-line retainage rule).
+Unit-tested in `aiaBilledCollectedFrom` (5 cases).
+
+Original finding + design below (kept for context).
+
+---
+
+
 ## The problem
 AIA progress billing (G702/G703) is a **separate ledger** from `commercial_invoices`
 — issuing/paying an AIA application writes **no** invoice row. But every financial

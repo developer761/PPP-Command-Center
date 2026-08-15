@@ -287,14 +287,37 @@ export async function listProjects(opts: {
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
-  const latestAppByOpp = new Map<string, { id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number }>();
+  type AppRow = { id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number };
+  const latestAppByOpp = new Map<string, AppRow>();
+  // Latest ISSUED (submitted/paid) app → AIA billed; latest PAID app → AIA
+  // collected. Separate from `latestAppByOpp` (which drives the contract base and
+  // includes drafts) so an in-prep draft never counts as billed. Mirrors the
+  // single-deal `aiaBillingRollup` so the deal page + dashboard agree.
+  const latestIssuedByOpp = new Map<string, AppRow>();
+  const latestPaidByOpp = new Map<string, AppRow>();
   for (const a of appData) {
     const cur = latestAppByOpp.get(a.opportunity_id);
     if (!cur || a.application_number > cur.application_number) latestAppByOpp.set(a.opportunity_id, a);
+    if (a.status === "submitted" || a.status === "paid") {
+      const iss = latestIssuedByOpp.get(a.opportunity_id);
+      if (!iss || a.application_number > iss.application_number) latestIssuedByOpp.set(a.opportunity_id, a);
+    }
+    if (a.status === "paid") {
+      const pd = latestPaidByOpp.get(a.opportunity_id);
+      if (!pd || a.application_number > pd.application_number) latestPaidByOpp.set(a.opportunity_id, a);
+    }
   }
 
-  // ── Batch: completed-to-date + scheduled-value total for those latest apps ──
-  const latestAppIds = [...latestAppByOpp.values()].map((a) => a.id);
+  // ── Batch: completed-to-date + scheduled-value total. Fetch lines for the
+  // latest app (contract base) PLUS the latest-issued + latest-paid apps (AIA
+  // billed/collected), deduped — usually the same one or two apps. ──
+  const latestAppIds = [
+    ...new Set([
+      ...[...latestAppByOpp.values()].map((a) => a.id),
+      ...[...latestIssuedByOpp.values()].map((a) => a.id),
+      ...[...latestPaidByOpp.values()].map((a) => a.id),
+    ]),
+  ];
   const completedByApp = new Map<string, number>();
   const sovByApp = new Map<string, number>();
   const retainageByApp = new Map<string, number>();
@@ -302,7 +325,7 @@ export async function listProjects(opts: {
   // same way computeG702 / the G703 sheet does), keeping the portfolio total
   // penny-consistent with each project's AIA page.
   const pctByApp = new Map<string, number>();
-  for (const a of latestAppByOpp.values()) {
+  for (const a of [...latestAppByOpp.values(), ...latestIssuedByOpp.values(), ...latestPaidByOpp.values()]) {
     pctByApp.set(a.id, Math.min(100, Math.max(0, a.retainage_pct)));
   }
   if (latestAppIds.length > 0) {
@@ -369,13 +392,30 @@ export async function listProjects(opts: {
     const retainageHeld = latest ? retainageByApp.get(latest.id) ?? 0 : 0;
     const pct = latest && contractToDate > 0 ? Math.round((completed / contractToDate) * 10000) : null;
     const inv = invByOpp.get(o.id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
+    // Fold in AIA billing (separate ledger from invoices) so an AIA-billed job
+    // stops reading "$0 billed" — the SAME definitions as the single-deal
+    // getProjectFinancials/aiaBillingRollup, so the deal page + dashboard agree:
+    // billed = latest ISSUED app's completed-to-date; collected = latest PAID
+    // app's completed-less-retainage. Additive with invoices (a both-ledgers
+    // deal is the flagged double-bill). See docs/AIA_FINANCIALS_INTEGRATION.md.
+    const issuedApp = latestIssuedByOpp.get(o.id);
+    const paidApp = latestPaidByOpp.get(o.id);
+    const aiaBilled = issuedApp ? completedByApp.get(issuedApp.id) ?? 0 : 0;
+    const aiaCollected = Math.min(
+      aiaBilled,
+      paidApp ? Math.max(0, (completedByApp.get(paidApp.id) ?? 0) - (retainageByApp.get(paidApp.id) ?? 0)) : 0
+    );
+    const billedPreTaxTotal = inv.billedPreTax + aiaBilled;
+    const invoicedTotal = inv.invoiced + aiaBilled;
+    const paidTotal = inv.paid + aiaCollected;
+    const outstandingTotal = inv.openBalance + Math.max(0, aiaBilled - aiaCollected);
     // Left to bill = contract − PRE-TAX billed (clamped). Over-billed when the
     // pre-tax billed exceeds the (pre-tax) contract — unapproved CO, deduct CO,
     // or a mistake — surfaced, never a negative, and never a phantom over-bill
     // from sales tax. hasContract gates whether "left to bill" is meaningful.
     const hasContract = contractToDate > 0;
-    const leftToBill = hasContract ? Math.max(0, contractToDate - inv.billedPreTax) : 0;
-    const overBilled = hasContract && inv.billedPreTax > contractToDate;
+    const leftToBill = hasContract ? Math.max(0, contractToDate - billedPreTaxTotal) : 0;
+    const overBilled = hasContract && billedPreTaxTotal > contractToDate;
     // Job P&L (Phase 2): margin vs the SAME contractToDate used everywhere else
     // (base + net-approved COs), so the card ties out with the deal P&L (audit C1).
     const costs = costsByOpp.get(o.id) ?? emptyCostBreakdown();
@@ -400,17 +440,18 @@ export async function listProjects(opts: {
       latestAppNumber: latest?.application_number ?? null,
       latestAppStatus: (latest?.status as ProjectRow["latestAppStatus"]) ?? null,
       percentCompleteBps: pct,
-      invoicedCents: inv.invoiced,
-      billedContractCents: inv.billedPreTax,
-      paidCents: inv.paid,
+      invoicedCents: invoicedTotal,
+      billedContractCents: billedPreTaxTotal,
+      paidCents: paidTotal,
       invoiceCount: inv.invoiceCount,
       draftInvoiceCount: inv.draftCount,
       draftedCents: inv.draftedCents,
       leftToBillCents: leftToBill,
       // True open receivable = Σ per-invoice max(0, balance) (invByOpp.openBalance)
-      // — one clamped, issued-only "Outstanding" definition everywhere, so a
-      // credit/deduct/overpaid invoice can't understate the deal's real balance.
-      outstandingCents: inv.openBalance,
+      // + AIA outstanding (billed − collected, incl. retainage held) — one
+      // clamped "Outstanding" definition, so a credit/deduct/overpaid invoice
+      // can't understate the deal's real balance.
+      outstandingCents: outstandingTotal,
       overBilled,
       closeoutStatus: closeoutByOpp.get(o.id) ?? null,
       isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",

@@ -854,19 +854,25 @@ export async function aiaBillingRollup(
   const issued = apps.filter((a) => a.status === "submitted" || a.status === "paid");
   if (issued.length === 0) return { billedCents: 0, collectedCents: 0, hasAia: false };
 
-  // Billed = the LATEST issued application's cumulative Total Completed & Stored.
+  // Billed = latest ISSUED app's Total Completed & Stored; collected = latest
+  // PAID app's Total Earned Less Retainage. Both cumulative lines off one app.
   const latestIssued = issued[issued.length - 1];
-  const latestG702 = await resolveG702(latestIssued.id);
-
-  // Collected = Σ PAID applications' Current Payment Due (cash actually remitted).
   const paidApps = apps.filter((a) => a.status === "paid");
-  const paidG702s = (await Promise.all(paidApps.map((a) => resolveG702(a.id)))).filter(
-    (g): g is NonNullable<typeof g> => g != null
-  );
+  const latestPaid = paidApps.length > 0 ? paidApps[paidApps.length - 1] : null;
+
+  const [latestIssuedG702, latestPaidG702] = await Promise.all([
+    resolveG702(latestIssued.id),
+    latestPaid && latestPaid.id !== latestIssued.id
+      ? resolveG702(latestPaid.id)
+      : Promise.resolve(null),
+  ]);
+  // If the latest issued app IS the latest paid app, reuse its G702.
+  const latestPaidResolved =
+    latestPaid == null ? null : latestPaid.id === latestIssued.id ? latestIssuedG702 : latestPaidG702;
 
   const { billedCents, collectedCents } = aiaBilledCollectedFrom({
-    latestIssued: latestG702,
-    paid: paidG702s,
+    latestIssued: latestIssuedG702,
+    latestPaid: latestPaidResolved,
   });
   return { billedCents, collectedCents, hasAia: true };
 }

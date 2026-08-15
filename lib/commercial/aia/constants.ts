@@ -169,25 +169,31 @@ export function formatApplicationNumber(n: number): string {
  *     contract sum (also gross), matching how a regular invoice's pre-tax
  *     subtotal is "billed". Retainage is a payment-timing withholding, not a
  *     reduction in what was billed, so it stays IN this number.
- *   - **collected** = Σ of PAID applications' "Current Payment Due" (G702 line
- *     8) — the cash the GC actually remitted (net of retainage). Retainage held
- *     stays uncollected until final, so `billed − collected` correctly carries
- *     it as outstanding.
+ *   - **collected** = the LATEST PAID application's cumulative "Total Earned Less
+ *     Retainage" (G702 line 6). AIA payment is sequential — paying application N
+ *     settles everything earned-less-retainage through N — so the latest paid
+ *     app's line 6 IS the cash collected to date (net of retainage). Retainage
+ *     held stays uncollected, so `billed − collected` correctly carries it (plus
+ *     any submitted-but-unpaid amount) as outstanding.
+ *
+ * Both figures are the cumulative line off ONE application each, so this works
+ * identically for the single-deal detail path AND the batch (listProjects) path
+ * — no per-application summing that the two surfaces could drift on.
  *
  * Pure so the money logic is unit-tested away from the DB; the async wrapper in
- * db.ts just resolves the G702s and calls this.
+ * db.ts just resolves the two G702s and calls this.
  */
 export function aiaBilledCollectedFrom(input: {
-  /** Resolved G702 of the latest ISSUED (submitted/paid) application, if any. */
+  /** G702 of the latest ISSUED (submitted/paid) application → billed. */
   latestIssued: Pick<AiaG702, "totalCompletedStoredCents"> | null;
-  /** Resolved G702s of every PAID application. */
-  paid: ReadonlyArray<Pick<AiaG702, "currentPaymentDueCents">>;
+  /** G702 of the latest PAID application → collected. Null when nothing paid. */
+  latestPaid: Pick<AiaG702, "totalEarnedLessRetainageCents"> | null;
 }): { billedCents: number; collectedCents: number } {
   const billedCents = Math.max(0, input.latestIssued?.totalCompletedStoredCents ?? 0);
-  const collectedCents = input.paid.reduce((s, g) => s + Math.max(0, g.currentPaymentDueCents), 0);
+  const collectedRaw = Math.max(0, input.latestPaid?.totalEarnedLessRetainageCents ?? 0);
   // Never report more collected than billed (a data glitch shouldn't invent
   // negative outstanding on the CEO's dashboard).
-  return { billedCents, collectedCents: Math.min(collectedCents, billedCents) };
+  return { billedCents, collectedCents: Math.min(collectedRaw, billedCents) };
 }
 
 /**

@@ -16,7 +16,7 @@ import "server-only";
  */
 
 import { commercialDb } from "@/lib/commercial/db";
-import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
+import { getEffectiveContractBaseCents, aiaBillingRollup } from "@/lib/commercial/aia/db";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { costBreakdownForProject, type CostBreakdown } from "@/lib/commercial/purchases/db";
 import { fieldOpsLaborForOpp } from "@/lib/commercial/field-ops/labor-cost";
@@ -63,7 +63,7 @@ type InvRow = {
 
 export async function getProjectFinancials(oppId: string): Promise<ProjectFinancials> {
   const sb = commercialDb();
-  const [base, netCo, costs, labor, invRes] = await Promise.all([
+  const [base, netCo, costs, labor, invRes, aia] = await Promise.all([
     getEffectiveContractBaseCents(oppId),
     netApprovedChangeOrderCents(oppId),
     costBreakdownForProject(oppId),
@@ -73,6 +73,11 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
       .select("status, total_cents, subtotal_cents, paid_cents, balance_cents")
       .eq("opportunity_id", oppId)
       .is("deleted_at", null),
+    // AIA is a SEPARATE billing ledger — a job billed via G702/G703 writes no
+    // commercial_invoices. `listProjects` folds the same figures the same way,
+    // so the deal page, dashboard, portfolio + account detail all agree. No-op
+    // (hasAia:false) for a non-AIA deal.
+    aiaBillingRollup(oppId),
   ]);
 
   const contractCents = base + netCo;
@@ -94,14 +99,19 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     openBalanceCents += Math.max(0, bal);
     creditCents += Math.max(0, -bal);
   }
-  // NOTE (Phase D, 2026-08-14): AIA is a separate billing ledger — a job billed
-  // via G702/G703 writes no commercial_invoices, so `billed`/`collected` here
-  // (and in listProjects + the account-overview SQL view) exclude it, and an
-  // AIA-billed job reads "$0 billed". The tested reconciliation helper is ready
-  // (`aiaBillingRollup`), but wiring it into ONE surface without the others
-  // would make the deal page and the dashboard disagree — so the fix is
-  // deliberately held for a coordinated pass across all three surfaces + finance
-  // sign-off on the definitions. See docs/AIA_FINANCIALS_INTEGRATION.md.
+  // Fold in AIA billing (separate ledger — see aiaBillingRollup). AIA amounts
+  // are pre-tax contract values with no separate sales-tax line, so `invoiced`
+  // (the with-tax AR figure) takes the same amount as `billed`. Retainage held
+  // stays in the open balance (billed − collected). Additive with invoices: a
+  // deal that used both is the double-bill the CO-picker warns about, not
+  // something to net. Definitions per docs/AIA_FINANCIALS_INTEGRATION.md (Karan
+  // 2026-08-14 "fix everything"; Katie/Alex still to confirm retainage treatment).
+  if (aia.hasAia) {
+    invoicedCents += aia.billedCents;
+    billedPreTaxCents += aia.billedCents;
+    collectedCents += aia.collectedCents;
+    openBalanceCents += Math.max(0, aia.billedCents - aia.collectedCents);
+  }
 
   const fieldOpsLaborCents = labor.cents;
   const totalCostCents = costs.total + fieldOpsLaborCents;
