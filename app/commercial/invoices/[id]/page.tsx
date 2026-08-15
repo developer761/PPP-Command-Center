@@ -728,7 +728,11 @@ export async function InvoiceDetailView({
       due: m.due_at ? fmtEtDate(m.due_at) : null,
       amountCents: m.amount_cents,
       paidCents: paid,
-      overdue: !!m.due_at && m.due_at < nowIso && paid < m.amount_cents,
+      // ET calendar days, same rule as the header countdown + the status badge
+      // (F10). A raw instant compare against a noon-ET-anchored due_at flagged
+      // the milestone overdue at noon ON its own due date; a milestone is
+      // overdue only once its ET calendar day has passed.
+      overdue: !!m.due_at && (daysBetween(nowIso, m.due_at) ?? 1) < 0 && paid < m.amount_cents,
     };
   });
   // If milestones don't cover the whole subtotal (a flat line item still sits

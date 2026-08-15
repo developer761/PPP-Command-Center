@@ -81,11 +81,32 @@ N14 ⌘K rename/won-lost.
     the deal. Now takes a validated `?from=`; the deal's two "New invoice" links
     stamp the deal invoices tab, so the arrow comes home (create already forced a
     return to the deal via `void rt`). Other origins keep the global-list default.
-- [ ] **C.7 — Flow + logic remainder** (`FLOW_LOGIC_PUNCHLIST_2026_08.md`): F1/F2
-  ✅ done; remaining F3 (`decided_at`), F4 (no-bid reclassified), F5 (void→draft
-  keeps a payment), **F6** (AIA original-contract — confirm vs M2), F7–F9
-  (drag-to-Proposal revert, Start-Project maze, lost-flip leaves the account),
-  **F10** (due-date TZ — confirm vs N6/D6).
+- [x] **C.7 — Flow + logic remainder** — ✅ done (2026-08-14). Cross-checked every
+  finding against current code; all but one were already fixed by prior work:
+  - **F1** (won-deal re-quote) ✅ · **F2** (AIA G702/G703 footing + frozen certs) ✅
+    — the emergency-tier fixes.
+  - **F3** (`decided_at` 3 ways) ✅ — status.ts:331/334 + `closed_out_at` column
+    (same as C.9 A1/A3).
+  - **F4** (no-bid debrief reclassified as Loss) ✅ — debrief.ts:244-252 protects
+    the `no_bid` marker.
+  - **F5** (void→draft keeps a payment) ✅ — status.ts:85-87 reconciles
+    `paid_cents → status` on any move into draft.
+  - **F6** (operator-entered AIA original-contract ignored) ✅ —
+    `original_contract_is_manual` (db.ts:578) ranked top of `pickContractBaseCents`
+    (constants.ts:228).
+  - **F7** (drag→Proposal with unsent proposal reverts) ✅ — move-status/route.ts:154
+    rejects with an explanatory message.
+  - **F8** (Start-Project maze) ✅ — `nextStep` returns a "Start the job" CTA for won
+    deals (attention.ts:174), rendered on dashboard/pipeline/deal status bar; debrief
+    now stays on-page; not gated on debrief.
+  - **F9** (lost-flip leaves the account) ✅ — routes to the account-scoped debrief
+    page (`/commercial/accounts/<id>/debrief/<opp>?close=lost`, page.tsx:1404).
+  - **F10** (due-date TZ) — header/badge already ET-fixed; **the milestone-segment
+    `overdue` flag was the one gap** (raw instant compare vs noon-ET-anchored
+    due_at) → NOW fixed to ET `daysBetween < 0` (invoices/[id]/page.tsx:731).
+  - **F11** (reopened-expired banner) ✅ — dedicated `?approval=reopened_expired`
+    flag + banner (proposal page:798/1661).
+  - **F12** = C.10 (deal drill-in navigation) — handled above.
 - [ ] **C.6 — Completeness (20 gaps)** (`COMPLETENESS_PUNCHLIST_2026_08.md`):
   money/dispatch first — **C2** (void hard-deletes CO billing — confirm) · C3
   (tax-exempt skipped on CO path) · C4 (delete-confirm understates cascade) · C5
