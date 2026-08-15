@@ -363,7 +363,15 @@ async function changeStatusAction(formData: FormData) {
   //   3. User didn't see the form (legacy path / API call) → same placeholder
   // Re-opening (from terminal → non-terminal) clears the debriefed_at flag
   // so a future re-close requires a new debrief.
-  const isTerminal = isTerminalOpportunityStatus(to_status);
+  // The WIN/LOSS debrief belongs to a decided BID, i.e. `pre_sale_closed` only.
+  // `post_sale_closed` is also "terminal", but it means a DELIVERED job — and
+  // treating it as a bid outcome meant marking a job Completed posted a fake
+  // `closed as WON — debrief pending` note to the account timeline, wiped the
+  // debrief flag the deal earned at its win, dropped the user on a "No-bid
+  // debrief" form that saves nothing, and left an amber badge on the Debrief
+  // tab that nothing could ever clear. The client component and the kanban
+  // route already scope this correctly; this writer was the odd one out.
+  const isTerminal = to_status === "pre_sale_closed";
   // v2 (2026-07-13): derive the legacy outcome value from the v2 target
   // tuple. writeDebrief + postPlaceholderAutoNote expect "won"|"lost"|"no_bid".
   let flipOutcome: "won" | "lost" | "no_bid" = "won";
@@ -643,6 +651,17 @@ async function reopenOpportunityAction(formData: FormData) {
   // v2 (2026-07-13): re-engage a decided bid by dropping it back at the
   // top of the funnel. Qualifying / Solicitation is the equivalent of
   // "fresh lead we might bid again."
+  //
+  // Server-side guard to match the button's gate: this is for a decided BID
+  // only. A delivered job (`post_sale_closed`) reopened this way loses its win
+  // date permanently, so refuse it here too rather than trusting the UI.
+  const current = await getCommercialOpportunity(opp_id);
+  if (current && current.status !== "pre_sale_closed") {
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=` +
+        encodeURIComponent("Only a closed bid can be reopened. To restart a delivered job, move it back through Change status.")
+    );
+  }
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: "qualifying" as OpportunityStatus,
@@ -2519,7 +2538,13 @@ export default async function OpportunityDetailPage({
                 only allowed next is reopened anyway; one focused action
                 in the header beats a whole "Move this opportunity forward" card
                 with a dropdown of one option. */}
-            {(isTerminalOpportunityStatus(opp.status)) && (
+            {/* pre_sale_closed ONLY — a decided BID. `post_sale_closed` is also
+                terminal, but it's a DELIVERED job: reopening one dropped it at
+                Qualifying, nulled `decided_at` (losing the win date for good,
+                since re-winning restamps it to today), pulled a finished job
+                back onto the open-pipeline KPIs and demoted its won proposal to
+                draft — all from one unconfirmed click in the header. */}
+            {opp.status === "pre_sale_closed" && (
               <form action={reopenOpportunityAction} className="contents">
                 <input type="hidden" name="opp_id" value={opp.id} />
                 <SubmitButton

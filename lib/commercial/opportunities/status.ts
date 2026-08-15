@@ -252,14 +252,17 @@ export async function changeOpportunityStatus(
           error: "Pick a reason for losing (or `no_bid` if we declined to bid).",
         };
       }
-      if (!input.note || !input.note.trim()) {
-        return {
-          ok: false,
-          error: "Add a short note explaining the loss.",
-        };
-      }
+      // The NOTE is not required. It used to hard-reject an empty one, but the
+      // only field feeding it is labelled "(optional)" on the form (the
+      // dedicated loss-note field was removed in 2026-06-24 and this check
+      // stayed), so marking a deal Lost from the deal page was a dead end: the
+      // deal didn't move, the error named a field that wasn't on screen, and
+      // the user's picks were discarded on the reload. The structured
+      // `loss_reason` above is the part the reports actually read, and it IS
+      // still required. Per the never-reject rule, a missing note records a
+      // marker instead of blocking the move.
       lossReason = input.loss_reason;
-      lossNote = input.note.trim();
+      lossNote = input.note?.trim() || "No note recorded.";
     }
   }
 
