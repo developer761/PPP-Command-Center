@@ -4,6 +4,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
 import { loadDashboardData } from "@/lib/data-source";
 import { deriveOpenMaterialsWorkOrders, getSupplierName, type OpenWorkOrderForMaterials } from "@/lib/salesforce/materials";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
+import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import type { SourceLine, PreviewGroup, PreviewColor } from "@/components/order-builder-view";
 
@@ -23,10 +24,9 @@ export type OrderPageData = {
   canOrderMaterials: boolean;
 };
 
-/** Surfaces that map to a dedicated colour field on the WOLI. Anything else the
- *  rep selected in Salesforce is an "orphan" surface carrying the Other colour —
- *  same rule the Rooms & Colors list uses, kept in step deliberately. */
-const STANDARD_SURFACES = ["Walls", "Ceiling", "Trim", "Floor"];
+// STANDARD_SURFACES is imported, not redeclared — the Rooms & Colors list and
+// this page must classify surfaces identically or a colour shows in one and
+// vanishes from the other.
 
 export async function loadOrderPageData(
   rawWoId: string

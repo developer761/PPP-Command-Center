@@ -1,3 +1,5 @@
+import { ORPHAN_SURFACES } from "@/lib/customer-form/surface-mapping";
+
 /**
  * Extract just the CUSTOMER's own free-text from a WorkOrderLineItem's raw
  * ColorNotes__c, dropping the machine-generated preamble the color form writes
@@ -47,7 +49,17 @@ export function extractCustomerFreeText(raw: string | null | undefined): string 
  * duplicated machine line in a textarea is cosmetic, an erased crew note is
  * data loss.
  */
-const ORPHAN_SURFACE_PREFIX = /^\s*(?:cabinets?|accent wall|doors?|windows?|closets?|shelves|shelf|other)\s*:\s*\S/i;
+// DERIVED from the shared set, never re-typed. A second hand-written list is
+// exactly how round-2 #04 came back: add "Railing" to ORPHAN_SURFACES and a
+// literal regex here would silently stop recognising it, leaking our own
+// machine text back to the customer as if they'd typed it.
+const ORPHAN_SURFACE_PREFIX = new RegExp(
+  `^\\s*(?:${[...ORPHAN_SURFACES]
+    .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .sort((a, b) => b.length - a.length)
+    .join("|")})\\s*:\\s*\\S`,
+  "i"
+);
 /** " — Semi-Gloss" / " (HC-15)" — written by us, not typed by a person. */
 const MACHINE_FINGERPRINT = /\s—\s\S|\([A-Za-z0-9][A-Za-z0-9.\-\/ ]{0,14}\)\s*$/;
 const ORPHAN_LINE_RE = {

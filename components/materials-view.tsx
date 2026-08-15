@@ -80,6 +80,7 @@ import {
   type RoomSurface,
 } from "@/lib/supplier-order/estimate-gallons";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
+import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
@@ -1891,7 +1892,6 @@ function LineItemRow({
   // Rooms & Colors because the display only mapped Walls/Ceiling/Trim/Floor/Other.
   // Now those named surfaces show with their real label (carrying the shared
   // ColorOther__c value), so nothing selected in SF is silently dropped.
-  const STANDARD_SURFACES = ["Walls", "Ceiling", "Trim", "Floor"];
   const orphanSurfaces = surfaces.filter((s) => !STANDARD_SURFACES.includes(s) && s !== "Other");
   const slots: Array<{ label: string; surface: string; color: SnapshotPaintColor | null; finish: string | null }> = [
     { label: "Walls", surface: "Walls", color: item.wall, finish: item.raw.finishWall },

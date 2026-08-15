@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractCustomerFreeText, extractMachineColorLines } from "@/lib/customer-form/notes";
+import { ORPHAN_SURFACES, STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
 
 describe("extractCustomerFreeText — pre-fill only shows the customer's own text", () => {
   it("returns empty for null/empty", () => {
@@ -171,5 +172,37 @@ describe("crew-written notes are never mistaken for machine output", () => {
     expect(extractMachineColorLines(raw)).toEqual([
       "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
     ]);
+  });
+});
+
+/**
+ * Drift guard: the notes extractor derives its surface list from
+ * ORPHAN_SURFACES rather than repeating it.
+ *
+ * A second hand-written list is precisely how round-2 #04 came back — the logic
+ * was right in one place and absent in another. If someone adds a surface to
+ * ORPHAN_SURFACES, a literal regex here would silently stop recognising our own
+ * machine output and leak it back to the customer as their own words.
+ */
+describe("orphan surface list is derived, not duplicated", () => {
+  it.each([...ORPHAN_SURFACES])("recognises a machine line for %s", (surface) => {
+    const line = `${surface}: HC-15 Henderson Buff (HC-15) — Semi-Gloss`;
+    expect(extractMachineColorLines(line)).toEqual([line]);
+    expect(extractCustomerFreeText(line)).toBe("");
+  });
+
+  it("still treats a human note on those same surfaces as human", () => {
+    for (const surface of ORPHAN_SURFACES) {
+      const note = `${surface}: needs prep first`;
+      expect(extractMachineColorLines(note)).toEqual([]);
+      expect(extractCustomerFreeText(note)).toBe(note);
+    }
+  });
+
+  it("does not claim a STANDARD surface — those have their own colour fields", () => {
+    for (const surface of STANDARD_SURFACES) {
+      const line = `${surface}: 2108-50 Silver Fox (2108-50) — Eggshell`;
+      expect(extractMachineColorLines(line)).toEqual([]);
+    }
   });
 });

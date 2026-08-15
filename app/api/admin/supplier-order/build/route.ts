@@ -52,7 +52,20 @@ function admin() {
  */
 function isMissingTable(err: unknown): boolean {
   const e = err as { code?: string; message?: string } | null;
-  return e?.code === "42P01" || /supplier_order_builds/i.test(e?.message ?? "");
+  const msg = e?.message ?? "";
+  // Narrow on purpose. The previous version matched ANY error whose message
+  // mentioned the table — so a unique violation, an RLS denial or a type error
+  // all read as "table missing", and the route answered 200/"saved" for a write
+  // that genuinely failed. Only these mean the relation isn't there:
+  //   42P01                       — Postgres undefined_table
+  //   PGRST205                    — PostgREST "table not found in schema cache"
+  //   "relation ... does not exist" / "Could not find the table ..."
+  return (
+    e?.code === "42P01" ||
+    e?.code === "PGRST205" ||
+    /relation "?[\w.]*supplier_order_builds"? does not exist/i.test(msg) ||
+    /could not find the table[^\n]*supplier_order_builds/i.test(msg)
+  );
 }
 
 export async function GET(request: Request) {

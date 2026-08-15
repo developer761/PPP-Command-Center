@@ -117,6 +117,10 @@ export default function OrderBuilderView({
   const [extrasSearch, setExtrasSearch] = useState("");
   const [advancing, setAdvancing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The server accepted the write but isn't keeping it (saved-order table
+  // missing). Distinct from an error — nothing failed, it just won't survive,
+  // and the next step will read an empty order.
+  const [notPersisted, setNotPersisted] = useState(false);
 
   /* ── Persist ─────────────────────────────────────────────────────────────
    * Autosave is debounced and fire-and-forget; the commit on "Continue" is
@@ -131,7 +135,7 @@ export default function OrderBuilderView({
       supplierAccountId: string,
       body: OrderBuildPayload,
       commit: boolean
-    ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    ): Promise<{ ok: true; persisted: boolean } | { ok: false; error: string }> => {
       const res = await fetch("/api/admin/supplier-order/build", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -141,7 +145,11 @@ export default function OrderBuilderView({
       if (!res.ok || data.ok === false) {
         return { ok: false, error: data.message ?? data.error ?? `HTTP ${res.status}` };
       }
-      return { ok: true };
+      // The route answers 200 with persistence:"unavailable" when the table
+      // isn't there — an honest "I took it but didn't keep it". Trusting the
+      // page-load flag alone would keep reporting "Order saved" if saving
+      // stopped working mid-session. Believe the response, not the page load.
+      return { ok: true, persisted: data.persistence !== "unavailable" };
     },
     [workOrderId]
   );
@@ -154,7 +162,9 @@ export default function OrderBuilderView({
     const snapshot = payload;
     const t = setTimeout(() => {
       void save(accountId, snapshot, false).then((r) => {
-        setSaveError(r.ok ? null : r.error);
+        if (!r.ok) { setSaveError(r.error); setNotPersisted(false); return; }
+        setSaveError(null);
+        setNotPersisted(!r.persisted);
       });
     }, 600);
     return () => clearTimeout(t);
@@ -343,6 +353,7 @@ export default function OrderBuilderView({
       setAdvancing(false);
       return;
     }
+    setNotPersisted(!r.persisted);
     router.push(
       `/dashboard/materials/${encodeURIComponent(workOrderId)}/order/${encodeURIComponent(supplier.accountId)}`
     );
@@ -869,6 +880,10 @@ export default function OrderBuilderView({
             <div className="text-[11px] text-ppp-charcoal-500 min-w-0">
               {saveError ? (
                 <span className="text-ppp-orange-700">Couldn&apos;t save: {saveError}</span>
+              ) : notPersisted ? (
+                <span className="text-ppp-orange-700">
+                  Not being saved — quantities and extras won&apos;t reach the next step. Finish in one go, or ask Karan to apply migration 144.
+                </span>
               ) : needQty.length > 0 ? (
                 <span className="text-ppp-orange-700">
                   {needQty.length === 1 ? "1 color still needs" : `${needQty.length} colors still need`} a quantity — you can set them on the next step too.

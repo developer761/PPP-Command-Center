@@ -40,12 +40,18 @@ type Draft = {
   pickupDefault?: boolean;
 };
 
-/** Today in the viewer's own timezone, as yyyy-mm-dd. Using toISOString() here
- *  would hand back UTC and let somebody east of Greenwich pick "yesterday". */
-function todayLocalISO(): string {
-  const d = new Date();
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
+/**
+ * Today in PPP's timezone, as yyyy-mm-dd.
+ *
+ * Eastern, not the viewer's local zone. PPP operates Eastern and the other 29
+ * "today" call sites in this codebase all use this exact form — a second
+ * convention is how a date ends up meaning two different days in two places.
+ * The earlier version here derived the viewer's local day, so a laptop set to
+ * Pacific could offer a required-by date that is already yesterday in the
+ * office.
+ */
+function todayEtISO(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
 export default function OrderFulfillmentView({
@@ -78,7 +84,7 @@ export default function OrderFulfillmentView({
   viewerPhone: string | null;
 }) {
   const woLabel = workOrderNumber ?? workOrderId.slice(-6);
-  const today = todayLocalISO();
+  const today = todayEtISO();
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(true);

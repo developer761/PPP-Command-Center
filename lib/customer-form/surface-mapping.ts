@@ -35,6 +35,12 @@ export const STANDARD_SURFACE_FIELDS: Record<string, { color: string; finish: st
  * Keyed by lowercased Surfaces__c label, plus a few defensive singulars and a
  * literal "other" (which naturally lands in the Other field when it's alone).
  */
+/** The four surfaces with a dedicated colour field on the WorkOrderLineItem.
+ *  Anything else the rep selected is an "orphan" (see ORPHAN_SURFACES) and
+ *  shares the Other slot / overflows to Color Notes. Exported so the Rooms &
+ *  Colors list and the order page classify surfaces identically. */
+export const STANDARD_SURFACES: readonly string[] = ["Walls", "Ceiling", "Trim", "Floor"];
+
 export const ORPHAN_SURFACES = new Set([
   "cabinets",
   "cabinet",
