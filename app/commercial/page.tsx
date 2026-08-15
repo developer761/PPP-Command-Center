@@ -451,7 +451,7 @@ export default async function CommercialDashboardPage() {
         <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={winLossMonthHref} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
         <DashStat label="Active GCs" value={accounts.filter((a) => !a.do_not_bid).length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
         <DashStat label="Under contract" value={production.activeProjects > 0 ? formatCentsCompact(production.contractValueCents) : "—"} sub={production.activeProjects > 0 ? `${production.activeProjects} active` : "no jobs yet"} tone="navy" href="/commercial/opportunities?lane=under_contract" />
-        <DashStat label="Owed to us" value={formatCentsCompact(arOutstandingCents)} sub={arOverdueCount > 0 ? `${formatCentsCompact(arOverdueCents)} overdue` : "all current"} tone={arOverdueCount > 0 ? "rose" : "blue"} href={arOverdueCount > 0 ? "/commercial/reports/ar-aging" : "/commercial/reports/ar-aging"} />
+        <DashStat label="Owed to us" value={formatCentsCompact(arOutstandingCents)} sub={arOutstandingCents === 0 ? "invoices all paid" : arOverdueCount > 0 ? `${formatCentsCompact(arOverdueCents)} overdue` : "unpaid invoices, none overdue"} tone={arOverdueCount > 0 ? "rose" : "blue"} href="/commercial/reports/ar-aging" />
       </section>
 
       {/* ─── NEEDS ATTENTION strip ─── */}
@@ -621,27 +621,27 @@ export default async function CommercialDashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <QuickAction
             primary
-            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the general contractor first — opportunities live under the GC.")}`}
+            href="/commercial/opportunities?new_deal=1#new-deal-sheet"
             title="Start a bid"
-            sub="Pick a GC to log the opportunity under."
+            sub="New opportunity — pick or add the GC as you go."
+            icon={<IconPlus />}
+          />
+          <QuickAction
+            href="/commercial/opportunities/new-from-rfp"
+            title="Start from an RFP"
+            sub="Paste the bid invitation; AI fills it in."
             icon={<IconPlus />}
           />
           <QuickAction
             href="/commercial/accounts/new"
-            title="Add general contractor"
-            sub="Create a new commercial GC account."
+            title="Add a GC"
+            sub="Create a new general-contractor account."
             icon={<IconBuilding />}
           />
           <QuickAction
-            href="/commercial/opportunities"
-            title="Pipeline board"
-            sub="Drag opportunities through stages."
-            icon={<IconKanban />}
-          />
-          <QuickAction
             href="/commercial/reports/win-loss"
-            title="Win/Loss report"
-            sub="Quarterly debrief numbers."
+            title="Win / Loss"
+            sub="Win rate and why deals were lost."
             icon={<IconChart />}
           />
         </div>
