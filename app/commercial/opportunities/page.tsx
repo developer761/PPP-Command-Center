@@ -1075,6 +1075,17 @@ export default async function CommercialOpportunitiesPage({
             sortLabel={SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated"}
             chips={viewChips}
           />
+          {/* Paste an invitation-to-bid → Claude pre-fills a new opportunity. */}
+          <Link
+            href="/commercial/opportunities/new-from-rfp"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 transition-colors touch-manipulation min-h-[44px] shrink-0"
+            title="Paste an RFP email and let Claude fill in the opportunity"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2L12 3z" />
+            </svg>
+            From RFP
+          </Link>
           <Link
             href="?new_deal=1#new-deal-sheet"
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px] shrink-0"
