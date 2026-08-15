@@ -97,16 +97,31 @@ export default async function ChangeOrdersReportPage({
         ))}
       </div>
 
-      {/* The one number here that is money on the floor rather than history. */}
-      {co.unbilledCount > 0 && (
+      {/* The one number here that is money on the floor rather than history —
+          so it counts ACROSS ALL TIME, not the selected range. A change order
+          raised last year and still unbilled is the most urgent case there is,
+          and it used to disappear the moment the range rolled past it. */}
+      {(co.unbilledCount > 0 || co.unbilledCreditCount > 0) && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5">
-          <p className="text-[13.5px] font-bold text-amber-900">
-            {formatCentsFull(co.unbilledCents)} in approved change orders has never been invoiced.
-          </p>
-          <p className="text-[12px] text-amber-800 mt-0.5">
-            {co.unbilledCount} change order{co.unbilledCount === 1 ? "" : "s"} the GC has agreed to pay for
-            and nobody has asked them for. Bill them from each deal&rsquo;s Invoices tab.
-          </p>
+          {co.unbilledCount > 0 && (
+            <>
+              <p className="text-[13.5px] font-bold text-amber-900">
+                {formatCentsFull(co.unbilledCents)} in approved change orders has never been invoiced.
+              </p>
+              <p className="text-[12px] text-amber-800 mt-0.5">
+                {co.unbilledCount} change order{co.unbilledCount === 1 ? "" : "s"} the GC has agreed to pay for
+                and nobody has asked them for &mdash; all time, not just {range.label}. Bill them from each
+                deal&rsquo;s Invoices tab.
+              </p>
+            </>
+          )}
+          {co.unbilledCreditCount > 0 && (
+            <p className={`text-[12px] text-amber-800 ${co.unbilledCount > 0 ? "mt-2 pt-2 border-t border-amber-200" : ""}`}>
+              <span className="font-bold text-amber-900">{formatCentsFull(co.unbilledCreditCents)}</span> in
+              approved credit{co.unbilledCreditCount === 1 ? "" : "s"} ({co.unbilledCreditCount}) has never been
+              applied either &mdash; that&rsquo;s owed back to the GC.
+            </p>
+          )}
         </div>
       )}
 

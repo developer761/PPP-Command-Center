@@ -79,6 +79,10 @@ export type ChangeOrderVendorReport = {
     /** Approved, not yet on any invoice — money agreed and never asked for. */
     unbilledCount: number;
     unbilledCents: number;
+    /** Approved CREDIT change orders never billed back — kept apart so they
+     *  can't net against the adds above. */
+    unbilledCreditCount: number;
+    unbilledCreditCents: number;
     byAccount: CoByAccount[];
   };
   vendors: VendorRow[];
@@ -104,6 +108,8 @@ const EMPTY: ChangeOrderVendorReport = {
     decidedSample: 0,
     unbilledCount: 0,
     unbilledCents: 0,
+    unbilledCreditCount: 0,
+    unbilledCreditCents: 0,
     byAccount: [],
   },
   vendors: [],
@@ -225,6 +231,31 @@ export async function getChangeOrderVendorReport(range: {
     }
   }
 
+  // ── "Approved, never invoiced" is a STOCK, not a flow ───────────────────
+  // This is the one number here that is money on the floor, so it runs over
+  // EVERY change order, not the date window. It used to be tallied inside the
+  // `inWindow` loop, which meant a CO raised last November and still unbilled
+  // simply vanished from the banner once the default range rolled over to this
+  // year — and the banner hides itself at count 0, so nothing hinted that
+  // $200k of agreed work was sitting uncollected. Raised / approval-rate /
+  // days-to-decide are genuinely flows and stay on the window.
+  for (const c of cos) {
+    if (c.status !== "approved") continue;
+    const amount = Number(c.amount_cents) || 0;
+    const billed = Boolean(c.invoiced_invoice_id) && !draftInvoiceIds.has(c.invoiced_invoice_id!);
+    if (billed) continue;
+    if (amount > 0) {
+      out.co.unbilledCount += 1;
+      out.co.unbilledCents += amount;
+    } else if (amount < 0) {
+      // A stranded CREDIT is also unbilled work — the GC is owed it back. Kept
+      // in its own bucket so it can't net against the adds and report "nothing
+      // outstanding" when both sides are large.
+      out.co.unbilledCreditCount += 1;
+      out.co.unbilledCreditCents += Math.abs(amount);
+    }
+  }
+
   const byAccount = new Map<string, CoByAccount>();
   let decideDays = 0;
   let decideSample = 0;
@@ -249,11 +280,6 @@ export async function getChangeOrderVendorReport(range: {
       // it was parked on a draft, so "Approved, unbilled" under-reported the
       // work Tomco has done and not yet charged for — the one number this
       // section exists to surface.
-      const billed = Boolean(c.invoiced_invoice_id) && !draftInvoiceIds.has(c.invoiced_invoice_id!);
-      if (!billed && amount > 0) {
-        out.co.unbilledCount += 1;
-        out.co.unbilledCents += amount;
-      }
     }
 
     if (c.status !== "pending") {
