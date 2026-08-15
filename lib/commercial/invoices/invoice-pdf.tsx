@@ -222,9 +222,11 @@ function InvoiceDoc(input: InvoicePdfInput) {
                 <Text>-{fmt(input.paidCents)}</Text>
               </View>
             ) : null}
+            {/* Overpaid invoices read as a CREDIT, not a negative "balance due"
+                ("Balance due -$100" would look like the GC owes a negative). */}
             <View style={styles.balanceBox}>
-              <Text style={styles.balanceLabel}>Balance due</Text>
-              <Text style={styles.balanceVal}>{fmt(input.balanceCents)}</Text>
+              <Text style={styles.balanceLabel}>{input.balanceCents < 0 ? "Credit balance" : "Balance due"}</Text>
+              <Text style={styles.balanceVal}>{fmt(Math.abs(input.balanceCents))}</Text>
             </View>
           </View>
         </View>

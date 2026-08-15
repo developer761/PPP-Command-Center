@@ -64,4 +64,11 @@ describe("renderInvoicePdf", () => {
     );
     expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
   });
+
+  it("renders an OVERPAID invoice (negative balance → credit) without breaking", async () => {
+    const buf = await renderInvoicePdf(
+      baseInput({ paidCents: 600000, balanceCents: -56875 })
+    );
+    expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
 });

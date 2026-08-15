@@ -52,13 +52,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     getBrandSignatureBuffer().catch(() => null),
   ]);
 
-  // Contract adjustment — shown only when a contract sum is actually known.
+  // Contract adjustment — shown only when a contract sum is known AND this CO
+  // could actually move it (pending = proposed, approved = applied). A DECLINED
+  // CO never adjusts the contract, so printing a "revised contract sum" for it
+  // would be a number that will never happen (Phase D catch).
   // `netApproved` already includes THIS CO when it's approved, so back it out to
-  // get the "prior" sum, then add it once to get "revised" (works for pending +
-  // approved alike).
+  // get the "prior" sum, then add it once to get "revised" (pending + approved).
   const contractToDate = base + netApproved;
   const thisApproved = co.status === "approved";
-  const priorContractCents = base > 0 ? contractToDate - (thisApproved ? co.amount_cents : 0) : null;
+  const showAdjustment = base > 0 && co.status !== "declined";
+  const priorContractCents = showAdjustment ? contractToDate - (thisApproved ? co.amount_cents : 0) : null;
   const revisedContractCents = priorContractCents != null ? priorContractCents + co.amount_cents : null;
 
   const billTo: string[] = [];
