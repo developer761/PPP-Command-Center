@@ -172,13 +172,31 @@ export async function finalizeDocumentUpload(
   input: FinalizeDocumentUploadInput
 ): Promise<{ ok: true; document: CommercialDocument } | { ok: false; error: string }> {
   const sb = commercialDb();
+
+  // ─── Ownership FIRST — before anything can delete an object ───────────────
+  // `storage_key` is caller-supplied, and every cleanup path below deletes
+  // exactly that key. Validating ownership only after the cheap format checks
+  // meant a caller could name ANY object in the bucket, fail an early check on
+  // purpose (e.g. an empty mime type), and have the cleanup delete another
+  // deal's file — a one-request, unrecoverable wipe of someone else's contract.
+  // Nothing may call removeObject() until the key is proven to belong here.
+  if (!isValidParentType(input.parent_type)) {
+    return { ok: false, error: "Invalid parent." };
+  }
+  const expectedPrefix = `${input.parent_type}s/${input.parent_id}/`;
+  if (!input.storage_key.startsWith(expectedPrefix)) {
+    return { ok: false, error: "That upload doesn't belong to this deal." };
+  }
+  const leaf = input.storage_key.slice(expectedPrefix.length);
+  const documentId = leaf.split("-", 5).join("-"); // uuid = first 5 dash-joined groups
+  if (!UUID_RE.test(documentId)) {
+    return { ok: false, error: "Malformed upload reference." };
+  }
+
+  // Safe from here: the key is inside this parent's own prefix.
   const removeObject = () =>
     sb.storage.from(STORAGE_BUCKET).remove([input.storage_key]).catch(() => undefined);
 
-  if (!isValidParentType(input.parent_type)) {
-    await removeObject();
-    return { ok: false, error: "Invalid parent." };
-  }
   if (!input.file_name?.trim()) {
     await removeObject();
     return { ok: false, error: "Missing filename." };
@@ -193,19 +211,6 @@ export async function finalizeDocumentUpload(
   if (!guard.ok) {
     await removeObject();
     return guard;
-  }
-
-  // The storage key MUST belong to this parent, and its filename segment must
-  // be the pre-allocated document id — stops a caller from pointing finalize at
-  // another parent's object or forging an arbitrary row id.
-  const expectedPrefix = `${input.parent_type}s/${input.parent_id}/`;
-  if (!input.storage_key.startsWith(expectedPrefix)) {
-    return { ok: false, error: "That upload doesn't belong to this deal." };
-  }
-  const leaf = input.storage_key.slice(expectedPrefix.length);
-  const documentId = leaf.split("-", 5).join("-"); // uuid = first 5 dash-joined groups
-  if (!UUID_RE.test(documentId)) {
-    return { ok: false, error: "Malformed upload reference." };
   }
 
   // Confirm the object landed + sniff its head + read its true size.
@@ -255,6 +260,19 @@ export async function finalizeDocumentUpload(
     .select("*")
     .single();
   if (insertErr) {
+    // A UNIQUE violation means THIS key already has a committed row — a retried
+    // finalize (dropped response, proxy retry, double-click), not an orphan.
+    // Deleting the object here would destroy the bytes the surviving row points
+    // at, leaving a permanently broken download. Return the existing row instead.
+    if ((insertErr as { code?: string }).code === "23505") {
+      const { data: existing } = await sb
+        .from("commercial_documents")
+        .select("*")
+        .eq("id", documentId)
+        .maybeSingle();
+      if (existing) return { ok: true, document: existing as CommercialDocument };
+      return { ok: false, error: insertErr.message };
+    }
     await removeObject();
     return { ok: false, error: insertErr.message };
   }

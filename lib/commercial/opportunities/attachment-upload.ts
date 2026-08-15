@@ -127,6 +127,27 @@ export async function finalizeAttachmentUpload(
   input: FinalizeAttachmentInput
 ): Promise<{ ok: true; attachment: OpportunityAttachment } | { ok: false; error: string }> {
   const sb = commercialDb();
+
+  // ─── Ownership FIRST — before anything can delete an object ───────────────
+  // `storage_key` is caller-supplied and every cleanup path below deletes that
+  // exact key, so the prefix check has to come before the first removeObject()
+  // call — otherwise naming another deal's key and deliberately failing an
+  // early check (e.g. an empty mime type) deletes that deal's file for good.
+  const guard = await guardParent(input.opportunity_id);
+  if (!guard.ok) {
+    return guard;
+  }
+  const expectedPrefix = `${guard.accountId}/${input.opportunity_id}/`;
+  if (!input.storage_key.startsWith(expectedPrefix)) {
+    return { ok: false, error: "That upload doesn't belong to this deal." };
+  }
+  const leaf = input.storage_key.slice(expectedPrefix.length);
+  const attachmentId = leaf.split("-", 5).join("-"); // uuid = first 5 dash-groups
+  if (!UUID_RE.test(attachmentId)) {
+    return { ok: false, error: "Malformed upload reference." };
+  }
+
+  // Safe from here: the key is inside this deal's own prefix.
   const removeObject = () =>
     sb.storage.from(OPPORTUNITY_ATTACHMENT_BUCKET).remove([input.storage_key]).catch(() => undefined);
 
@@ -137,25 +158,6 @@ export async function finalizeAttachmentUpload(
   if (!ALLOWED_MIME_TYPES.has(input.mime_type)) {
     await removeObject();
     return { ok: false, error: `File type not allowed: ${input.mime_type || "(unknown)"}.` };
-  }
-
-  const guard = await guardParent(input.opportunity_id);
-  if (!guard.ok) {
-    await removeObject();
-    return guard;
-  }
-
-  // The key MUST belong to this account+opp, and its leaf must start with the
-  // pre-allocated attachment id — stops a caller pointing finalize at another
-  // deal's object or forging an arbitrary row id.
-  const expectedPrefix = `${guard.accountId}/${input.opportunity_id}/`;
-  if (!input.storage_key.startsWith(expectedPrefix)) {
-    return { ok: false, error: "That upload doesn't belong to this deal." };
-  }
-  const leaf = input.storage_key.slice(expectedPrefix.length);
-  const attachmentId = leaf.split("-", 5).join("-"); // uuid = first 5 dash-groups
-  if (!UUID_RE.test(attachmentId)) {
-    return { ok: false, error: "Malformed upload reference." };
   }
 
   // Confirm the object landed + sniff its head + read its true size.
@@ -214,6 +216,18 @@ export async function finalizeAttachmentUpload(
     .select("*")
     .single();
   if (insertErr) {
+    // UNIQUE violation = this key already has a committed row (a retried
+    // finalize), not an orphan. Removing the object would strand that row with
+    // no bytes behind it, so hand back the existing attachment instead.
+    if ((insertErr as { code?: string }).code === "23505") {
+      const { data: existing } = await sb
+        .from("commercial_opportunity_attachments")
+        .select("*")
+        .eq("storage_key", input.storage_key)
+        .maybeSingle();
+      if (existing) return { ok: true, attachment: existing as OpportunityAttachment };
+      return { ok: false, error: insertErr.message };
+    }
     await removeObject();
     return { ok: false, error: insertErr.message };
   }

@@ -69,23 +69,44 @@ export function isCrewAllowedPath(pathname: string): boolean {
  *   - Any role other than crew also lifts the restriction, so adding someone
  *     to a second role can't accidentally trap them.
  *
- * On a lookup error it returns false (unrestricted). That's the safe direction
- * here only because a crew login cannot exist without an explicit crew role
- * being granted first — a DB blip must not lock a foreman out of their job.
+ * ── On a lookup error this fails CLOSED (restricted) ────────────────────────
+ *
+ * It used to return false — unrestricted — reasoning that a DB blip shouldn't
+ * lock a foreman out of their job. That had it backwards. This one predicate is
+ * the ONLY enforcement point for the whole crew boundary (the page gate, every
+ * server action, and ~25 API routes), so failing open meant a transient error
+ * on this table served a painter the entire book of business — accounts export,
+ * AR aging, every invoice — silently, with nothing logged. That is exactly the
+ * silent leak the allowlist above exists to prevent.
+ *
+ * The lock-out worry is handled directly instead: a platform admin is never
+ * treated as crew-only, so the failure mode is a painter briefly seeing their
+ * own crew home instead of a wider surface. A support call, not a leak.
  */
 export async function isCrewOnlyUser(userId: string): Promise<boolean> {
+  const restrictOnError = async (): Promise<boolean> => {
+    // Don't strand an admin behind a transient error on the roles table.
+    try {
+      const { getProfileByUserId } = await import("@/lib/auth/profile");
+      const profile = await getProfileByUserId(userId);
+      if (profile?.is_admin) return false;
+    } catch {
+      /* fall through — deny */
+    }
+    return true;
+  };
   try {
     const sb = commercialDb();
     const { data, error } = await sb
       .from("commercial_user_roles")
       .select("role")
       .eq("user_id", userId);
-    if (error) return false;
+    if (error) return restrictOnError();
     const roles = ((data ?? []) as { role: string }[]).map((r) => r.role);
     if (roles.length === 0) return false;
     return roles.includes("crew") && roles.every((r) => r === "crew");
   } catch {
-    return false;
+    return restrictOnError();
   }
 }
 
