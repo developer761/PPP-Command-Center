@@ -67,6 +67,7 @@ export async function ChangeOrdersPanel({
   oppId,
   accountId,
   back = "",
+  from = "",
   baseContractCents,
   proposals = [],
   addAction,
@@ -88,6 +89,9 @@ export async function ChangeOrdersPanel({
   accountId: string;
   /** The ?back= sidebar-tool origin to carry through every form action. */
   back?: string;
+  /** The ?from= deal-tab origin (overview/docs/activity) so the inline back
+   *  arrow returns to where the tool was opened, even after a save. */
+  from?: string;
   /** "route" | "inline" — where the tool is rendered, so actions return you here. */
   origin?: string;
   /** Canonical base URL for this panel's own links (Dismiss/Cancel/Edit). The
@@ -264,6 +268,7 @@ export async function ChangeOrdersPanel({
             <input type="hidden" name="opp_id" value={oppId} />
             <input type="hidden" name="account_id" value={accountId} />
                       <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="from" value={from} />
                       <input type="hidden" name="origin" value={origin} />
             <div>
               <label className={LABEL_CLS} htmlFor="co-title">Title</label>
@@ -304,6 +309,7 @@ export async function ChangeOrdersPanel({
                       <input type="hidden" name="opp_id" value={oppId} />
                       <input type="hidden" name="account_id" value={accountId} />
                       <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="from" value={from} />
                       <input type="hidden" name="origin" value={origin} />
                       <input type="hidden" name="co_id" value={co.id} />
                       <div className="text-[12px] font-bold text-ppp-charcoal">{formatChangeOrderNumber(co.co_number)}</div>
@@ -414,6 +420,7 @@ export async function ChangeOrdersPanel({
                               <input type="hidden" name="opp_id" value={oppId} />
                               <input type="hidden" name="account_id" value={accountId} />
                               <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="from" value={from} />
                       <input type="hidden" name="origin" value={origin} />
                               <input type="hidden" name="co_id" value={co.id} />
                               <input type="hidden" name="on" value="0" />
@@ -428,6 +435,7 @@ export async function ChangeOrdersPanel({
                                   <input type="hidden" name="opp_id" value={oppId} />
                                   <input type="hidden" name="account_id" value={accountId} />
                       <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="from" value={from} />
                       <input type="hidden" name="origin" value={origin} />
                                   <input type="hidden" name="co_id" value={co.id} />
                                   <input type="hidden" name="decision" value="approved" />
@@ -437,6 +445,7 @@ export async function ChangeOrdersPanel({
                                   <input type="hidden" name="opp_id" value={oppId} />
                                   <input type="hidden" name="account_id" value={accountId} />
                       <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="from" value={from} />
                       <input type="hidden" name="origin" value={origin} />
                                   <input type="hidden" name="co_id" value={co.id} />
                                   <input type="hidden" name="decision" value="declined" />
@@ -450,6 +459,7 @@ export async function ChangeOrdersPanel({
                                 <input type="hidden" name="opp_id" value={oppId} />
                                 <input type="hidden" name="account_id" value={accountId} />
                                 <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="from" value={from} />
                       <input type="hidden" name="origin" value={origin} />
                                 <input type="hidden" name="co_id" value={co.id} />
                                 <input type="hidden" name="on" value="1" />
@@ -466,6 +476,7 @@ export async function ChangeOrdersPanel({
                                 <input type="hidden" name="opp_id" value={oppId} />
                                 <input type="hidden" name="account_id" value={accountId} />
                       <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="from" value={from} />
                       <input type="hidden" name="origin" value={origin} />
                                 <input type="hidden" name="co_id" value={co.id} />
                                 <input type="hidden" name="decision" value="approved" />
@@ -476,6 +487,7 @@ export async function ChangeOrdersPanel({
                               <input type="hidden" name="opp_id" value={oppId} />
                               <input type="hidden" name="account_id" value={accountId} />
                       <input type="hidden" name="back" value={back} />
+                      <input type="hidden" name="from" value={from} />
                       <input type="hidden" name="origin" value={origin} />
                               <input type="hidden" name="co_id" value={co.id} />
                               <ConfirmSubmitButton

@@ -35,6 +35,7 @@ import {
 } from "@/lib/commercial/change-orders/db";
 import { ChangeOrdersPanel } from "@/components/commercial/change-orders-panel";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
+import { normalizeToolOrigin, toolOriginQs } from "@/lib/commercial/tool-origin";
 
 export type ChangeOrdersSP = {
   co_ok?: string;
@@ -45,6 +46,7 @@ export type ChangeOrdersSP = {
   co_amt?: string;
   co_desc?: string;
   back?: string;
+  from?: string;
 };
 
 async function requireCommercialUser(): Promise<string> {
@@ -69,11 +71,15 @@ export function coBase(accountId: string, oppId: string, origin?: string): strin
   // account's deal (Project sub-tab) view when embedded there. Never jump.
   return `/commercial/opportunities/${oppId}?tab=project&sub=change-orders`;
 }
-function coRedirect(accountId: string, oppId: string, params: Record<string, string>, back = "", origin = ""): never {
+function coRedirect(accountId: string, oppId: string, params: Record<string, string>, back = "", origin = "", from = ""): never {
   const p = { ...params };
   // Preserve the sidebar-tool origin (?back=/commercial/post-job/...) so the
   // "← Back to Change Orders" header survives every action.
   if (back && back.startsWith("/commercial/post-job/")) p.back = back;
+  // Preserve the deal-tab origin (?from=overview) so the inline back arrow
+  // returns to where the tool was opened even after a save.
+  const fromTab = normalizeToolOrigin(from);
+  if (fromTab) p.from = fromTab;
   const qs = new URLSearchParams(p).toString();
   const b = coBase(accountId, oppId, origin);
   redirect(qs ? `${b}${b.includes("?") ? "&" : "?"}${qs}` : b);
@@ -108,6 +114,7 @@ async function addChangeOrderAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id)) redirect("/commercial/accounts");
   const rawTitle = String(formData.get("title") ?? "");
   const rawAmount = String(formData.get("amount") ?? "");
@@ -117,7 +124,7 @@ async function addChangeOrderAction(formData: FormData) {
   const preserve = { co_title: rawTitle.slice(0, 200), co_amt: rawAmount.slice(0, 40), co_desc: rawDesc.slice(0, 1000) };
   const signed = signedAmountCents(rawAmount, rawDirection);
   if (signed === null || signed === 0) {
-    coRedirect(account_id, opp_id, { error: "Enter an amount greater than zero, then pick Add or Deduct.", ...preserve }, back, origin);
+    coRedirect(account_id, opp_id, { error: "Enter an amount greater than zero, then pick Add or Deduct.", ...preserve }, back, origin, from);
   }
   const result = await createChangeOrder({
     opportunity_id: opp_id,
@@ -127,9 +134,9 @@ async function addChangeOrderAction(formData: FormData) {
     proposal_id: UUID_RE.test(rawProposal) ? rawProposal : null,
     created_by_user_id: userId,
   });
-  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error, ...preserve }, back, origin);
+  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error, ...preserve }, back, origin, from);
   revalidateChangeOrderSurfaces(account_id, opp_id);
-  coRedirect(account_id, opp_id, { co_ok: "added" }, back, origin);
+  coRedirect(account_id, opp_id, { co_ok: "added" }, back, origin, from);
 }
 
 async function editChangeOrderAction(formData: FormData) {
@@ -139,6 +146,7 @@ async function editChangeOrderAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const co_id = String(formData.get("co_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(co_id)) redirect("/commercial/accounts");
   const rawTitle = String(formData.get("title") ?? "");
@@ -149,7 +157,7 @@ async function editChangeOrderAction(formData: FormData) {
   const preserve = { edit_co: co_id, co_title: rawTitle.slice(0, 200), co_amt: rawAmount.slice(0, 40), co_desc: rawDesc.slice(0, 1000) };
   const signed = signedAmountCents(rawAmount, rawDirection);
   if (signed === null || signed === 0) {
-    coRedirect(account_id, opp_id, { error: "Enter an amount greater than zero, then pick Add or Deduct.", ...preserve }, back, origin);
+    coRedirect(account_id, opp_id, { error: "Enter an amount greater than zero, then pick Add or Deduct.", ...preserve }, back, origin, from);
   }
   const result = await updateChangeOrder(
     co_id,
@@ -161,9 +169,9 @@ async function editChangeOrderAction(formData: FormData) {
     },
     userId,
   );
-  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error, ...preserve }, back, origin);
+  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error, ...preserve }, back, origin, from);
   revalidateChangeOrderSurfaces(account_id, opp_id);
-  coRedirect(account_id, opp_id, { co_ok: "saved" }, back, origin);
+  coRedirect(account_id, opp_id, { co_ok: "saved" }, back, origin, from);
 }
 
 async function decideChangeOrderAction(formData: FormData) {
@@ -173,14 +181,15 @@ async function decideChangeOrderAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const co_id = String(formData.get("co_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(co_id)) redirect("/commercial/accounts");
-  if (decision !== "approved" && decision !== "declined") coRedirect(account_id, opp_id, { error: "Unknown decision." }, back, origin);
+  if (decision !== "approved" && decision !== "declined") coRedirect(account_id, opp_id, { error: "Unknown decision." }, back, origin, from);
   const result = await decideChangeOrder(co_id, decision as "approved" | "declined", userId);
-  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error }, back, origin);
+  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error }, back, origin, from);
   revalidateChangeOrderSurfaces(account_id, opp_id);
-  coRedirect(account_id, opp_id, { co_ok: decision === "approved" ? "approved" : "declined" }, back, origin);
+  coRedirect(account_id, opp_id, { co_ok: decision === "approved" ? "approved" : "declined" }, back, origin, from);
 }
 
 async function billChangeOrderAction(formData: FormData) {
@@ -190,11 +199,12 @@ async function billChangeOrderAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const co_id = String(formData.get("co_id") ?? "");
   const on = String(formData.get("on") ?? "1") === "1";
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(co_id)) redirect("/commercial/accounts");
   const result = await setChangeOrderInvoiced(co_id, on, userId);
-  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error }, back, origin);
+  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error }, back, origin, from);
   revalidateChangeOrderSurfaces(account_id, opp_id);
   revalidatePath("/commercial/invoices");
   if (result.invoice) {
@@ -218,7 +228,8 @@ async function billChangeOrderAction(formData: FormData) {
     opp_id,
     { co_ok: on ? "billed" : "unbilled", ...(result.warning ? { heads_up: result.warning } : {}) },
     back,
-    origin
+    origin,
+    from
   );
 }
 
@@ -229,12 +240,13 @@ async function deleteChangeOrderAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const co_id = String(formData.get("co_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(co_id)) redirect("/commercial/accounts");
   const result = await deleteChangeOrder(co_id, userId);
-  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error }, back, origin);
+  if (!result.ok) coRedirect(account_id, opp_id, { error: result.error }, back, origin, from);
   revalidateChangeOrderSurfaces(account_id, opp_id);
-  coRedirect(account_id, opp_id, { co_ok: "deleted" }, back, origin);
+  coRedirect(account_id, opp_id, { co_ok: "deleted" }, back, origin, from);
 }
 
 /**
@@ -292,8 +304,9 @@ export async function ChangeOrdersTool({
       oppId={opp.id}
       accountId={id}
       back={sp.back ?? ""}
+      from={sp.from ?? ""}
       origin={variant}
-      basePath={coBase(id, dealId, variant)}
+      basePath={`${coBase(id, dealId, variant)}${toolOriginQs(sp.from)}`}
       baseContractCents={baseContractCents}
       proposals={proposals}
       addAction={addChangeOrderAction}

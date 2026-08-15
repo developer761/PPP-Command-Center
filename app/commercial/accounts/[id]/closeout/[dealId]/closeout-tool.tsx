@@ -54,9 +54,10 @@ import { PendingSubmitButton } from "@/components/commercial/pending-submit-butt
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { CloseoutItemControls } from "@/components/commercial/closeout-item-controls";
 import { INPUT_CLS, TEXTAREA_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { toolOriginQs } from "@/lib/commercial/tool-origin";
 
 type PP = Promise<{ id: string; dealId: string }>;
-type SP = Promise<{ pkg?: string; error?: string; ok?: string; back?: string }>;
+type SP = Promise<{ pkg?: string; error?: string; ok?: string; back?: string; from?: string }>;
 
 async function requireUser(): Promise<string> {
   const supabase = await createClient();
@@ -70,10 +71,12 @@ async function requireUser(): Promise<string> {
 function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
 }
-function base(id: string, dealId: string, origin?: string) {
+function base(id: string, dealId: string, origin?: string, from?: string) {
   // Return you to WHERE you are — standalone tool when opened directly, the
   // account's deal (Project sub-tab) view when embedded there. Never jump.
-  return `/commercial/opportunities/${dealId}?tab=project&sub=closeout`;
+  // `from` (overview/docs/activity) rides along so the page's back arrow
+  // returns to the tab the tool was opened from, even after a save.
+  return `/commercial/opportunities/${dealId}?tab=project&sub=closeout${toolOriginQs(from)}`;
 }
 function revalidateCloseout(id: string, dealId: string) {
   revalidatePath(`/commercial/opportunities/${dealId}`);
@@ -100,11 +103,12 @@ async function createPackageAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId)) redirect("/commercial/accounts");
   const res = await createCloseoutPackage({ opportunity_id: dealId, created_by_user_id: userId });
-  if (!res.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin, from)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   revalidateCloseout(id, dealId);
-  redirect(`${base(id, dealId, origin)}&pkg=${res.value.id}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&pkg=${res.value.id}${backQ(back)}`);
 }
 
 /** Autosave-friendly cover save: same write, but RETURNS (no redirect) so the
@@ -150,16 +154,17 @@ async function changeStatusAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   const to = String(formData.get("to") ?? "") as CloseoutStatus;
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
   if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
   const res = await changeCloseoutStatus(pkgId, to, userId);
-  if (!res.ok) redirect(`${base(id, dealId, origin)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin, from)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   // Auto-file the transmittal (+ warranty) when the package is sent to the GC.
   if (to === "sent") await autoFileCloseoutPackage(id, dealId, pkgId, userId);
   revalidateCloseout(id, dealId);
-  redirect(`${base(id, dealId, origin)}&pkg=${pkgId}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&pkg=${pkgId}${backQ(back)}`);
 }
 
 /** Render + file the closeout transmittal and (when a warranty term is set) the
@@ -221,6 +226,7 @@ async function upsertItemAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
   if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
@@ -237,9 +243,9 @@ async function upsertItemAction(formData: FormData) {
     },
     userId
   );
-  if (!res.ok) redirect(`${base(id, dealId, origin)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin, from)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   revalidateCloseout(id, dealId);
-  redirect(`${base(id, dealId, origin)}&pkg=${pkgId}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&pkg=${pkgId}${backQ(back)}`);
 }
 
 /**
@@ -254,6 +260,7 @@ async function saveItemAutosaveAction(formData: FormData): Promise<{ ok: boolean
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   const itemId = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId) || !UUID_RE.test(itemId)) {
@@ -284,6 +291,7 @@ async function deleteItemAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   const itemId = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId) || !UUID_RE.test(itemId)) redirect("/commercial/accounts");
@@ -292,10 +300,10 @@ async function deleteItemAction(formData: FormData) {
   revalidateCloseout(id, dealId);
   if (!res.ok) {
     redirect(
-      `${base(id, dealId, origin)}&pkg=${pkgId}&error=${encodeURIComponent(res.error ?? "Could not remove that item.")}${backQ(back)}`
+      `${base(id, dealId, origin, from)}&pkg=${pkgId}&error=${encodeURIComponent(res.error ?? "Could not remove that item.")}${backQ(back)}`
     );
   }
-  redirect(`${base(id, dealId, origin)}&pkg=${pkgId}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&pkg=${pkgId}${backQ(back)}`);
 }
 
 async function deletePackageAction(formData: FormData) {
@@ -305,17 +313,18 @@ async function deletePackageAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
   if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
   const res = await deleteCloseoutPackage(pkgId, userId);
-  if (!res.ok) redirect(`${base(id, dealId, origin)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin, from)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   revalidateCloseout(id, dealId);
-  redirect(`${base(id, dealId, origin)}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}${backQ(back)}`);
 }
 
 // ── Tool body (shared by the standalone route + the deal Project sub-tab) ──
-export type CloseoutSP = { pkg?: string; error?: string; ok?: string; back?: string };
+export type CloseoutSP = { pkg?: string; error?: string; ok?: string; back?: string; from?: string };
 export async function CloseoutTool({
   id,
   dealId,
@@ -358,6 +367,7 @@ export async function CloseoutTool({
       <input type="hidden" name="account_id" value={id} />
       <input type="hidden" name="opp_id" value={dealId} />
       <input type="hidden" name="back" value={sp.back ?? ""} />
+      <input type="hidden" name="from" value={sp.from ?? ""} />
       <input type="hidden" name="origin" value={variant} />
       {activePkg && <input type="hidden" name="pkg_id" value={activePkg.id} />}
     </>
@@ -385,7 +395,7 @@ export async function CloseoutTool({
             const on = activePkg?.id === p.id;
             const meta = CLOSEOUT_STATUS_META[p.status];
             return (
-              <Link key={p.id} href={`${base(id, dealId, variant)}&pkg=${p.id}`} aria-current={on ? "page" : undefined}
+              <Link key={p.id} href={`${base(id, dealId, variant, sp.from ?? "")}&pkg=${p.id}`} aria-current={on ? "page" : undefined}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${on ? "bg-cc-brand-50 border-cc-brand-300 text-cc-brand-800" : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50"}`}>
                 Package · {meta.label}
               </Link>
@@ -396,6 +406,7 @@ export async function CloseoutTool({
           <input type="hidden" name="account_id" value={id} />
           <input type="hidden" name="opp_id" value={dealId} />
           <input type="hidden" name="back" value={sp.back ?? ""} />
+      <input type="hidden" name="from" value={sp.from ?? ""} />
       <input type="hidden" name="origin" value={variant} />
           <PendingSubmitButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation" pendingLabel="Creating…">
             + New close-out package

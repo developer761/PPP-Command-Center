@@ -41,9 +41,10 @@ import { DateField } from "@/components/commercial/date-field";
 import { DonutChart, GaugeRing } from "@/components/commercial/charts";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { toolOriginQs } from "@/lib/commercial/tool-origin";
 
 type PP = Promise<{ id: string; dealId: string }>;
-type SP = Promise<{ app?: string; error?: string; ok?: string; back?: string }>;
+type SP = Promise<{ app?: string; error?: string; ok?: string; back?: string; from?: string }>;
 
 async function requireCommercialUser(): Promise<string> {
   const supabase = await createClient();
@@ -72,10 +73,12 @@ async function ownsAiaContext(accountId: string, dealId: string, appId?: string)
 
 /** Canonical home for AIA billing = the deal's Project sub-tab. Already carries
  *  a query string, so callers append params with `&`. */
-function base(id: string, dealId: string, origin?: string): string {
+function base(id: string, dealId: string, origin?: string, from?: string): string {
   // Return you to WHERE you are — standalone tool when opened directly, the
   // account's deal (Project sub-tab) view when embedded there. Never jump.
-  return `/commercial/opportunities/${dealId}?tab=project&sub=aia`;
+  // `from` (overview/docs/activity) rides along so the page back arrow returns
+  // to the tab the tool was opened from, even after a save.
+  return `/commercial/opportunities/${dealId}?tab=project&sub=aia${toolOriginQs(from)}`;
 }
 function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
@@ -97,6 +100,7 @@ async function createApplicationAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId)) redirect("/commercial/accounts");
   if (!(await ownsAiaContext(id, dealId))) redirect("/commercial/accounts");
   const retainageRaw = String(formData.get("retainage_pct") ?? "");
@@ -108,9 +112,9 @@ async function createApplicationAction(formData: FormData) {
     period_from: toEtNoon(String(formData.get("period_from") ?? "")),
     created_by_user_id: userId,
   });
-  if (!result.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
+  if (!result.ok) redirect(`${base(id, dealId, origin, from)}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
-  redirect(`${base(id, dealId, origin)}&app=${result.value.id}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&app=${result.value.id}${backQ(back)}`);
 }
 
 async function updateApplicationAction(formData: FormData) {
@@ -120,6 +124,7 @@ async function updateApplicationAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
   if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
@@ -136,9 +141,9 @@ async function updateApplicationAction(formData: FormData) {
     },
     userId
   );
-  if (!result.ok) redirect(`${base(id, dealId, origin)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
+  if (!result.ok) redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
-  redirect(`${base(id, dealId, origin)}&app=${appId}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
 }
 
 /** Non-redirecting variant of updateApplicationAction for the autosaving
@@ -150,6 +155,7 @@ async function saveSettingsAutosaveAction(formData: FormData): Promise<{ ok: boo
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) return { ok: false, error: "Bad request." };
   if (!(await ownsAiaContext(id, dealId, appId))) return { ok: false, error: "Not found." };
@@ -179,23 +185,24 @@ async function setStatusAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   const status = String(formData.get("status") ?? "") as AiaApplicationStatus;
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
   if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
-  if (!["draft", "submitted", "paid"].includes(status)) redirect(`${base(id, dealId, origin)}&app=${appId}${backQ(back)}`);
+  if (!["draft", "submitted", "paid"].includes(status)) redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
   // Issuing freezes lines 1+2. Reconcile the draft's schedule of values FIRST so
   // any change order approved since it was seeded is on the G703 before it
   // freezes — otherwise the issued certificate is frozen already not footing
   // (audit F2). No-op if it's already issued.
   if (status !== "draft") await reconcileDraftChangeOrderRows(appId);
   const result = await updateAiaApplication(appId, { status }, userId);
-  if (!result.ok) redirect(`${base(id, dealId, origin)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
+  if (!result.ok) redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   // Auto-file the G702/G703 workbook when the application is submitted to the GC
   // (best-effort — never blocks the status change).
   if (status === "submitted") await autoFileAiaApplication(id, dealId, appId, userId);
   revalidateAia(id, dealId);
-  redirect(`${base(id, dealId, origin)}&app=${appId}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
 }
 
 /** Build + file the AIA application workbook as a deal document (category
@@ -242,13 +249,14 @@ async function deleteApplicationAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
   if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   const result = await deleteAiaApplication(appId, userId);
-  if (!result.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
+  if (!result.ok) redirect(`${base(id, dealId, origin, from)}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
-  redirect(`${base(id, dealId, origin)}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}${backQ(back)}`);
 }
 
 async function upsertLineAction(formData: FormData) {
@@ -258,6 +266,7 @@ async function upsertLineAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   const lineId = String(formData.get("line_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
@@ -272,9 +281,9 @@ async function upsertLineAction(formData: FormData) {
     this_period_cents: cents("this_period"),
     materials_stored_cents: cents("materials_stored"),
   }, userId);
-  if (!result.ok) redirect(`${base(id, dealId, origin)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
+  if (!result.ok) redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
-  redirect(`${base(id, dealId, origin)}&app=${appId}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
 }
 
 /**
@@ -290,6 +299,7 @@ async function saveLineAutosaveAction(formData: FormData): Promise<AiaLineSaveRe
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   const lineId = String(formData.get("line_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(lineId)) {
@@ -332,6 +342,7 @@ async function deleteLineAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   const lineId = String(formData.get("line_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(lineId)) redirect("/commercial/accounts");
@@ -342,13 +353,13 @@ async function deleteLineAction(formData: FormData) {
   revalidateAia(id, dealId);
   if (!res.ok) {
     redirect(
-      `${base(id, dealId, origin)}&app=${appId}&error=${encodeURIComponent(res.error ?? "Could not remove that line.")}${backQ(back)}`
+      `${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(res.error ?? "Could not remove that line.")}${backQ(back)}`
     );
   }
-  redirect(`${base(id, dealId, origin)}&app=${appId}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
 }
 
-export type AiaSP = { app?: string; error?: string; ok?: string; back?: string };
+export type AiaSP = { app?: string; error?: string; ok?: string; back?: string; from?: string };
 export async function AiaTool({
   id,
   dealId,
@@ -370,7 +381,7 @@ export async function AiaTool({
   // nothing locked). A bid simply has no applications yet.
 
   const dealName = derivedOppName(opp, account.company_name);
-  const b = base(id, dealId, variant);
+  const b = base(id, dealId, variant, sp.from ?? "");
 
   // Hidden fields shared by all forms (account + deal + app context + origin so
   // an action returns you here, not to the account page).
@@ -379,6 +390,7 @@ export async function AiaTool({
       <input type="hidden" name="account_id" value={id} />
       <input type="hidden" name="opp_id" value={dealId} />
       <input type="hidden" name="back" value={sp.back ?? ""} />
+      <input type="hidden" name="from" value={sp.from ?? ""} />
       <input type="hidden" name="origin" value={variant} />
     </>
   );
@@ -443,6 +455,7 @@ export async function AiaTool({
                 accountId={id}
                 dealId={dealId}
                 back={sp.back ?? ""}
+                from={sp.from ?? ""}
                 origin={variant}
                 lines={lines}
                 g702={g702!}
@@ -498,6 +511,7 @@ export async function AiaTool({
           id={id}
           dealId={dealId}
           back={sp.back ?? ""}
+          from={sp.from ?? ""}
           origin={variant}
           createAction={createApplicationAction}
         />
@@ -512,12 +526,14 @@ async function AiaApplicationList({
   id,
   dealId,
   back = "",
+  from = "",
   origin = "",
   createAction,
 }: {
   id: string;
   dealId: string;
   back?: string;
+  from?: string;
   origin?: string;
   createAction: (fd: FormData) => void | Promise<void>;
 }) {
@@ -601,7 +617,7 @@ async function AiaApplicationList({
             {applications.map((a) => (
               <li key={a.id}>
                 <Link
-                  href={`${base(id, dealId, origin)}&app=${a.id}`}
+                  href={`${base(id, dealId, origin, from)}&app=${a.id}`}
                   className="flex items-center justify-between gap-3 rounded-lg border border-ppp-charcoal-100 px-3.5 py-2.5 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
                 >
                   <span className="min-w-0">
@@ -627,6 +643,7 @@ async function AiaApplicationList({
           <input type="hidden" name="account_id" value={id} />
           <input type="hidden" name="opp_id" value={dealId} />
           <input type="hidden" name="back" value={back} />
+          <input type="hidden" name="from" value={from} />
           <input type="hidden" name="origin" value={origin} />
           <div>
             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>

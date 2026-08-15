@@ -62,6 +62,7 @@ export function AiaApplicationDetail({
   accountId,
   dealId,
   back = "",
+  from = "",
   origin = "",
   lines,
   g702,
@@ -79,6 +80,9 @@ export function AiaApplicationDetail({
   dealId: string;
   /** ?back= sidebar-tool origin, carried through every form action. */
   back?: string;
+  /** ?from= deal-tab origin (overview/docs/activity) so the page back arrow
+   *  returns to where the tool was opened, even after a save. */
+  from?: string;
   /** inline/route origin so an action returns you to WHERE you are (not the
    *  inline deal Project tab by default). */
   origin?: string;
@@ -105,6 +109,7 @@ export function AiaApplicationDetail({
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="opp_id" value={dealId} />
       <input type="hidden" name="back" value={back} />
+      <input type="hidden" name="from" value={from} />
       <input type="hidden" name="origin" value={origin} />
     </>
   );

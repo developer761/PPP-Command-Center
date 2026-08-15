@@ -52,6 +52,7 @@ export default function PurchaseForm({
   oppId,
   accountId,
   back,
+  from = "",
   origin = "",
   categories,
   recentVendors,
@@ -65,6 +66,9 @@ export default function PurchaseForm({
   oppId: string;
   accountId: string;
   back: string;
+  /** ?from= deal-tab origin so the page back arrow returns to where the tool was
+   *  opened, even after a save. */
+  from?: string;
   /** Where the tool is rendered ("route" | "inline") so the action returns you here. */
   origin?: string;
   /** [value, label] pairs in display order. */
@@ -150,6 +154,7 @@ export default function PurchaseForm({
       <input type="hidden" name="opp_id" value={oppId} />
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="back" value={back} />
+      <input type="hidden" name="from" value={from} />
       <input type="hidden" name="origin" value={origin} />
       {purchase && <input type="hidden" name="purchase_id" value={purchase.id} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -24,9 +24,10 @@ import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { DonutChart } from "@/components/commercial/charts";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { toolOriginQs } from "@/lib/commercial/tool-origin";
 
 type PP = Promise<{ id: string; dealId: string }>;
-type SP = Promise<{ error?: string; back?: string }>;
+type SP = Promise<{ error?: string; back?: string; from?: string }>;
 
 async function createSubmittalAction(formData: FormData) {
   "use server";
@@ -38,6 +39,7 @@ async function createSubmittalAction(formData: FormData) {
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const backQ = back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
   // Detail-page ?back for the new submittal's "Back to submittals": a guarded
   // post-job origin wins; otherwise, when created from the INLINE deal tab, point
@@ -47,7 +49,7 @@ async function createSubmittalAction(formData: FormData) {
   const backQfirst = back && back.startsWith("/commercial/post-job/")
     ? `?back=${encodeURIComponent(back)}`
     : origin === "inline"
-      ? `?back=${encodeURIComponent(`/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals`)}`
+      ? `?back=${encodeURIComponent(`/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals${toolOriginQs(from)}`)}`
       : "";
   if (!UUID_RE.test(account_id) || !UUID_RE.test(opportunity_id)) redirect("/commercial/accounts");
   // Return you to WHERE you are — standalone submittals log when opened directly,
@@ -81,7 +83,7 @@ async function createSubmittalAction(formData: FormData) {
     re_subject: "Submittals",
     created_by_user_id: user.id,
   });
-  if (!result.ok) redirect(`${base}&error=${encodeURIComponent(result.error)}${backQ}`);
+  if (!result.ok) redirect(`${base}&error=${encodeURIComponent(result.error)}${backQ}${toolOriginQs(from)}`);
   revalidatePath(`/commercial/opportunities/${opportunity_id}`);
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/post-job/submittals");
@@ -90,7 +92,7 @@ async function createSubmittalAction(formData: FormData) {
   redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${result.submittal.id}${backQfirst}`);
 }
 
-export type SubmittalsSP = { error?: string; back?: string };
+export type SubmittalsSP = { error?: string; back?: string; from?: string };
 export async function SubmittalsTool({
   id,
   dealId,
@@ -185,6 +187,7 @@ export async function SubmittalsTool({
           <input type="hidden" name="opportunity_id" value={dealId} />
           <input type="hidden" name="origin" value={variant} />
           <input type="hidden" name="back" value={sp.back ?? ""} />
+          <input type="hidden" name="from" value={sp.from ?? ""} />
           <SubmitButton
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm min-h-[44px] touch-manipulation shrink-0"
           >
@@ -204,7 +207,7 @@ export async function SubmittalsTool({
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {submittals.map((s) => (
-              <SubmittalRow key={s.id} submittal={s} oppId={dealId} accountId={id} back={sp.back} origin={variant} />
+              <SubmittalRow key={s.id} submittal={s} oppId={dealId} accountId={id} back={sp.back} from={sp.from ?? ""} origin={variant} />
             ))}
           </ul>
         </section>
@@ -223,12 +226,14 @@ function SubmittalStat({ label, value, tone }: { label: string; value: number; t
   );
 }
 
-function SubmittalRow({ submittal, oppId, accountId, back, origin = "" }: { submittal: OpportunitySubmittalWithItemCount; oppId: string; accountId: string; back?: string; origin?: string }) {
+function SubmittalRow({ submittal, oppId, accountId, back, from = "", origin = "" }: { submittal: OpportunitySubmittalWithItemCount; oppId: string; accountId: string; back?: string; from?: string; origin?: string }) {
   // Forward where the user is so the detail's Back / save-redirect returns HERE
   // (the deal's Project sub-tab when embedded, the standalone log otherwise, or a
-  // deeper origin like the global submittals index if one was passed in).
+  // deeper origin like the global submittals index if one was passed in). `from`
+  // rides along so the deal page's back arrow still returns to the tab the tool
+  // was opened from once you come back out of a submittal's detail.
   const logHere =
-    `/commercial/opportunities/${oppId}?tab=project&sub=submittals`;
+    `/commercial/opportunities/${oppId}?tab=project&sub=submittals${toolOriginQs(from)}`;
   const backHref = `?back=${encodeURIComponent(back && back.startsWith("/commercial/") ? back : logHere)}`;
   // Inside the deal, opening a submittal STAYS inside the deal — `&sid=` swaps
   // the tool's list for that submittal's detail without leaving the page. From
@@ -246,7 +251,7 @@ function SubmittalRow({ submittal, oppId, accountId, back, origin = "" }: { subm
   // returns to the deal's Submittals tool rather than the standalone log, so
   // the deal stays the place you came from.
   const inlineBack = `?back=${encodeURIComponent(
-    `/commercial/opportunities/${oppId}?tab=project&sub=submittals`
+    `/commercial/opportunities/${oppId}?tab=project&sub=submittals${toolOriginQs(from)}`
   )}`;
   const itemHref =
     origin === "inline"

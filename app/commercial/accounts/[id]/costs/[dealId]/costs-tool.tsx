@@ -32,6 +32,7 @@ import { getDocumentsByIds } from "@/lib/commercial/documents/db";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import PurchaseForm from "@/components/commercial/purchase-form";
+import { normalizeToolOrigin, toolOriginQs } from "@/lib/commercial/tool-origin";
 import { DonutChart, GaugeRing, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import Link from "next/link";
@@ -49,6 +50,7 @@ export type CostsSP = {
   heads_up?: string;
   edit_purchase?: string;
   back?: string;
+  from?: string;
   // Preserved add-form inputs after a validation error (audit M3).
   pu_cat?: string;
   pu_vendor?: string;
@@ -81,11 +83,15 @@ function costsBase(accountId: string, oppId: string, origin?: string): string {
   // between the two.
   return `/commercial/opportunities/${oppId}?tab=project&sub=transactions`;
 }
-function costsRedirect(accountId: string, oppId: string, params: Record<string, string>, back = "", origin = ""): never {
+function costsRedirect(accountId: string, oppId: string, params: Record<string, string>, back = "", origin = "", from = ""): never {
   const p = { ...params };
   // Preserve a valid back-target (the sidebar tool index OR the invoices deal
   // page) across the redirect so the header arrow survives a form action.
   if (back && (back.startsWith("/commercial/post-job/") || back.startsWith("/commercial/invoices/new?opp="))) p.back = back;
+  // Preserve the deal-tab origin (?from=overview) so the inline back arrow
+  // returns to where the tool was opened even after a save.
+  const fromTab = normalizeToolOrigin(from);
+  if (fromTab) p.from = fromTab;
   const qs = new URLSearchParams(p).toString();
   const b = costsBase(accountId, oppId, origin);
   redirect(qs ? `${b}${b.includes("?") ? "&" : "?"}${qs}` : b);
@@ -138,6 +144,7 @@ async function addPurchaseAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id)) redirect("/commercial/accounts");
   await assertDealOwned(opp_id, account_id);
   const category = String(formData.get("category") ?? "materials");
@@ -150,7 +157,7 @@ async function addPurchaseAction(formData: FormData) {
   const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000) };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
-    costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", ...preserve }, back, origin);
+    costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", ...preserve }, back, origin, from);
   }
   // Blank date → today's ET date at 16:00Z (stable, matches the edit prefill).
   const purchased_at = new Date(`${rawDate || etToday()}T16:00:00Z`).toISOString();
@@ -165,7 +172,7 @@ async function addPurchaseAction(formData: FormData) {
     description: description || null,
     created_by_user_id: userId,
   });
-  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, ...preserve }, back, origin);
+  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, ...preserve }, back, origin, from);
   // Optional receipt — best-effort, never blocks the purchase; warn if it fails.
   const receipt = await readReceiptFile(formData);
   let receiptFailed = false;
@@ -174,7 +181,7 @@ async function addPurchaseAction(formData: FormData) {
     receiptFailed = !r.ok;
   }
   revalidateCostSurfaces(account_id, opp_id);
-  costsRedirect(account_id, opp_id, { cost_ok: "added", ...(receiptFailed ? { heads_up: RECEIPT_FAILED_NOTE } : {}) }, back, origin);
+  costsRedirect(account_id, opp_id, { cost_ok: "added", ...(receiptFailed ? { heads_up: RECEIPT_FAILED_NOTE } : {}) }, back, origin, from);
 }
 
 async function updatePurchaseAction(formData: FormData) {
@@ -184,6 +191,7 @@ async function updatePurchaseAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const purchase_id = String(formData.get("purchase_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(purchase_id)) redirect("/commercial/accounts");
   await assertDealOwned(opp_id, account_id);
@@ -195,7 +203,7 @@ async function updatePurchaseAction(formData: FormData) {
   const description = String(formData.get("description") ?? "");
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
-    costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", edit_purchase: purchase_id }, back, origin);
+    costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", edit_purchase: purchase_id }, back, origin, from);
   }
   const res = await updatePurchase(
     purchase_id,
@@ -211,7 +219,7 @@ async function updatePurchaseAction(formData: FormData) {
     userId,
     opp_id,
   );
-  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, edit_purchase: purchase_id }, back, origin);
+  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, edit_purchase: purchase_id }, back, origin, from);
   const receipt = await readReceiptFile(formData);
   let receiptFailed = false;
   if (receipt) {
@@ -219,7 +227,7 @@ async function updatePurchaseAction(formData: FormData) {
     receiptFailed = !r.ok;
   }
   revalidateCostSurfaces(account_id, opp_id);
-  costsRedirect(account_id, opp_id, { cost_ok: "saved", ...(receiptFailed ? { heads_up: RECEIPT_FAILED_NOTE } : {}) }, back, origin);
+  costsRedirect(account_id, opp_id, { cost_ok: "saved", ...(receiptFailed ? { heads_up: RECEIPT_FAILED_NOTE } : {}) }, back, origin, from);
 }
 
 async function deletePurchaseAction(formData: FormData) {
@@ -229,13 +237,14 @@ async function deletePurchaseAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const purchase_id = String(formData.get("purchase_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(purchase_id)) redirect("/commercial/accounts");
   await assertDealOwned(opp_id, account_id);
   const res = await deletePurchase(purchase_id, userId, opp_id);
-  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error }, back, origin);
+  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error }, back, origin, from);
   revalidateCostSurfaces(account_id, opp_id);
-  costsRedirect(account_id, opp_id, { cost_ok: "deleted" }, back, origin);
+  costsRedirect(account_id, opp_id, { cost_ok: "deleted" }, back, origin, from);
 }
 
 function marginTone(pct: number | null): { text: string; bar: string; label: string } {
@@ -314,13 +323,13 @@ export async function ProjectCostsTool({
       {sp.cost_ok && COST_OK_MESSAGES[sp.cost_ok] ? (
         <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800">
           <span>{COST_OK_MESSAGES[sp.cost_ok]}</span>
-          <Link href={costsBase(id, dealId, variant)} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
+          <Link href={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
         </div>
       ) : null}
       {sp.error ? (
         <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-rose-50 border border-rose-200 text-rose-700">
           <span>{sp.error}</span>
-          <Link href={costsBase(id, dealId, variant)} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
+          <Link href={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
         </div>
       ) : null}
       {sp.heads_up ? (
@@ -515,7 +524,7 @@ export async function ProjectCostsTool({
             <span className="group-open:hidden">Log a transaction</span>
             <span className="hidden group-open:inline">Close</span>
           </summary>
-          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add transaction" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc }} />
+          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add transaction" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc }} />
         </details>
 
         {purchases.length > 0 && (
@@ -534,7 +543,7 @@ export async function ProjectCostsTool({
               return (
                 <li key={pu.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-3.5">
                   {isEditing ? (
-                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Save" purchase={pu} cancelHref={costsBase(id, dealId, variant)} />
+                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Save" purchase={pu} cancelHref={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} />
                   ) : (
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0">
@@ -565,11 +574,12 @@ export async function ProjectCostsTool({
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <div className={`text-base font-bold tabular-nums text-ppp-charcoal`}>−{formatCentsFull(pu.amount_cents)}</div>
                         <div className="flex items-center gap-1">
-                          <Link href={`${costsBase(id, dealId, variant)}&edit_purchase=${pu.id}`} className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Edit</Link>
+                          <Link href={`${`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`}&edit_purchase=${pu.id}`} className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Edit</Link>
                           <form action={deletePurchaseAction}>
                             <input type="hidden" name="opp_id" value={dealId} />
                             <input type="hidden" name="account_id" value={id} />
                             <input type="hidden" name="back" value={sp.back ?? ""} />
+                            <input type="hidden" name="from" value={sp.from ?? ""} />
                             <input type="hidden" name="origin" value={variant} />
                             <input type="hidden" name="purchase_id" value={pu.id} />
                             <ConfirmSubmitButton message={`Delete this ${purchaseCategoryLabel(pu.category).toLowerCase()} transaction? This can't be undone.`} pendingLabel="Deleting…" className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[44px]">Delete</ConfirmSubmitButton>

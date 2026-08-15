@@ -178,6 +178,7 @@ import { AttentionBanner } from "@/components/commercial/attention-banner";
 import { attentionFor, nextStep, sensibleNextStatuses } from "@/lib/commercial/opportunities/attention";
 import { getProjectForOpportunity } from "@/lib/commercial/projects/ensure";
 import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
+import { normalizeToolOrigin } from "@/lib/commercial/tool-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -2238,11 +2239,7 @@ export default async function OpportunityDetailPage({
   // dumping you on the Project tool list. Validated against the group tabs that
   // actually carry the strip; anything else (or absent, e.g. a link from the
   // Project home cards) falls back to the tool list.
-  const rawFrom = pickFirst(sp.from);
-  const backTab =
-    rawFrom === "overview" || rawFrom === "docs" || rawFrom === "activity"
-      ? rawFrom
-      : "project";
+  const backTab = normalizeToolOrigin(pickFirst(sp.from)) ?? "project";
   // Legacy compat: many downstream server actions still redirect with
   // `?tab=team&error=...` etc. The `tab` variable below stays a flat
   // SubTab | "debrief" so all the existing tab === "team" checks below

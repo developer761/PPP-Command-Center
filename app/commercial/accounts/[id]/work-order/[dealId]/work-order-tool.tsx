@@ -44,8 +44,9 @@ import { LiveScopeCount } from "@/components/commercial/live-scope-count";
 import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { toolOriginQs } from "@/lib/commercial/tool-origin";
 
-export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; filefail?: string; back?: string; /** Which of the deal's work orders to show (migration 123 allows several). */ wo?: string };
+export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; filefail?: string; back?: string; /** Deal-tab the tool was opened from (overview/docs/activity), so the page back arrow returns there after a save. */ from?: string; /** Which of the deal's work orders to show (migration 123 allows several). */ wo?: string };
 
 async function requireUser(): Promise<string> {
   const supabase = await createClient();
@@ -57,7 +58,7 @@ async function requireUser(): Promise<string> {
 function backQ(back: string): string {
   return back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
 }
-function base(id: string, dealId: string, origin?: string, woId?: string | null) {
+function base(id: string, dealId: string, origin?: string, woId?: string | null, from?: string) {
   // Stay on the standalone tool page when the action came from there; only the
   // embedded Project-tab usage returns to the account page (its canonical home).
   //
@@ -71,7 +72,9 @@ function base(id: string, dealId: string, origin?: string, woId?: string | null)
   // `?tab=work-order` resolved to the Project tab with no sub, so every save
   // and every Send ejected the user out of the tool onto the tool list — and
   // the ?saved / ?error toast rendered on a screen they were no longer on.
-  return `/commercial/opportunities/${dealId}?tab=project&sub=work-order${woQs}`;
+  // `from` (overview/docs/activity) rides along so the page's back arrow
+  // returns to the tab the tool was opened from, even after a save.
+  return `/commercial/opportunities/${dealId}?tab=project&sub=work-order${woQs}${toolOriginQs(from)}`;
 }
 function revalidateWO(id: string, dealId: string) {
   revalidatePath(`/commercial/opportunities/${dealId}`);
@@ -95,6 +98,7 @@ async function createWorkOrderAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId)) redirect("/commercial/accounts");
   // "Open the work order" reuses the deal's existing sheet; "Add another work
   // order" deliberately makes a second one (migration 123 allows several).
@@ -104,9 +108,9 @@ async function createWorkOrderAction(formData: FormData) {
     created_by_user_id: userId,
     reuse_existing: !another,
   });
-  if (!res.ok) redirect(`${base(id, dealId, origin)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin, null, from)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   revalidateWO(id, dealId);
-  redirect(`${base(id, dealId, origin, res.value.id)}${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, res.value.id, from)}${backQ(back)}`);
 }
 
 /** Autosave the editable draft fields (crew, start date, notes). */
@@ -153,12 +157,13 @@ async function changeStatusAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const back = String(formData.get("back") ?? "");
   const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
   const woId = String(formData.get("wo_id") ?? "");
   const to = String(formData.get("to") ?? "") as WorkOrderStatus;
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(woId)) redirect("/commercial/accounts");
   if (!(await woBelongs(woId, id, dealId))) redirect("/commercial/accounts");
   const res = await changeWorkOrderStatus(woId, to, userId);
-  if (!res.ok) redirect(`${base(id, dealId, origin, woId)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
+  if (!res.ok) redirect(`${base(id, dealId, origin, woId, from)}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
   // File the frozen PDF into Documents when the WO is sent to the crew — and, if
   // a crew email is on file, email them that exact PDF.
   let emailFlag = "";
@@ -180,8 +185,8 @@ async function changeStatusAction(formData: FormData) {
     }
   }
   revalidateWO(id, dealId);
-  if (fileFailed) redirect(`${base(id, dealId, origin, woId)}&filefail=1${backQ(back)}`);
-  redirect(`${base(id, dealId, origin, woId)}&ok=1${emailFlag}${backQ(back)}`);
+  if (fileFailed) redirect(`${base(id, dealId, origin, woId, from)}&filefail=1${backQ(back)}`);
+  redirect(`${base(id, dealId, origin, woId, from)}&ok=1${emailFlag}${backQ(back)}`);
 }
 
 /** Email the crew the Work Order PDF (commercial channel). Best-effort — a
@@ -378,6 +383,7 @@ export async function WorkOrderTool({
       <input type="hidden" name="account_id" value={id} />
       <input type="hidden" name="opp_id" value={dealId} />
       <input type="hidden" name="back" value={spv.back ?? ""} />
+            <input type="hidden" name="from" value={spv.from ?? ""} />
       {/* Where the tool is rendered, so an action returns you here instead of
           always bouncing to the account page. */}
       <input type="hidden" name="origin" value={variant} />
@@ -421,7 +427,7 @@ export async function WorkOrderTool({
             return (
               <Link
                 key={w.id}
-                href={`${base(id, dealId, variant)}&wo=${w.id}${backQ(spv.back ?? "")}`}
+                href={`${base(id, dealId, variant, null, spv.from ?? "")}&wo=${w.id}${backQ(spv.back ?? "")}`}
                 aria-current={active ? "page" : undefined}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[36px] touch-manipulation ${
                   active
@@ -439,6 +445,7 @@ export async function WorkOrderTool({
             <input type="hidden" name="opp_id" value={dealId} />
             <input type="hidden" name="origin" value={variant} />
             <input type="hidden" name="back" value={spv.back ?? ""} />
+            <input type="hidden" name="from" value={spv.from ?? ""} />
             <input type="hidden" name="another" value="1" />
             <PendingSubmitButton
               className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-300 text-[12px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[36px] touch-manipulation"
@@ -502,6 +509,7 @@ export async function WorkOrderTool({
             <input type="hidden" name="account_id" value={id} />
             <input type="hidden" name="opp_id" value={dealId} />
             <input type="hidden" name="back" value={spv.back ?? ""} />
+            <input type="hidden" name="from" value={spv.from ?? ""} />
             <input type="hidden" name="origin" value={variant} />
             <PendingSubmitButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation" pendingLabel="Creating…">
               + Create work order
