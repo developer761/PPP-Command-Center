@@ -18,7 +18,18 @@ export async function paginateAll<T>(
   const PAGE = 1000;
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data } = await make().range(from, from + PAGE - 1);
+    const { data, error } = await make().range(from, from + PAGE - 1);
+    // THROW, never swallow. This helper backs the money rollups (invoice
+    // totals, AR, payroll hours, purchase costs). Discarding the error made a
+    // failed page look like an empty one: a transient PostgREST blip on the
+    // first page rendered "Invoiced $0.00 / Balance $0.00" on a real account,
+    // and a failure on page 2 silently truncated the totals to 1000 rows. An
+    // error page is recoverable; a confidently wrong dollar figure is not.
+    if (error) {
+      const msg =
+        (error as { message?: string })?.message ?? String(error);
+      throw new Error(`paginateAll failed at offset ${from}: ${msg}`);
+    }
     const rows = (data as T[] | null) ?? [];
     out.push(...rows);
     if (rows.length < PAGE) break;
