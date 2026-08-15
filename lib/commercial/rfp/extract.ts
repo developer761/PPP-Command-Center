@@ -105,7 +105,17 @@ export async function extractRfp(rawText: string): Promise<RfpExtractResult> {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1024,
+        // 4096, not 1024. Adaptive thinking is ON BY DEFAULT on this model and
+        // `max_tokens` caps thinking + output TOGETHER — so a 1024 ceiling could
+        // be consumed by reasoning before the tool call was fully emitted. The
+        // turn then stops at `max_tokens` with a partial or missing tool block,
+        // and the operator just sees an empty form and concludes "the AI found
+        // nothing." This is pure structured extraction, so thinking is disabled
+        // and effort held low: no reasoning to buy, and the whole budget goes
+        // to the fields.
+        max_tokens: 4096,
+        thinking: { type: "disabled" },
+        output_config: { effort: "low" },
         tools: [EXTRACT_TOOL],
         tool_choice: { type: "tool", name: EXTRACT_TOOL.name },
         system:
@@ -125,11 +135,32 @@ export async function extractRfp(rawText: string): Promise<RfpExtractResult> {
     return { ok: false, error: `The AI service returned an error (${res.status}). Try again or fill the form by hand.` };
   }
 
-  let parsed: { content?: Array<{ type: string; name?: string; input?: Record<string, unknown> }> };
+  let parsed: {
+    content?: Array<{ type: string; name?: string; input?: Record<string, unknown> }>;
+    stop_reason?: string;
+  };
   try {
     parsed = JSON.parse(bodyText);
   } catch {
     return { ok: false, error: "The AI response couldn't be read. Try again or fill the form by hand." };
+  }
+
+  // A truncated turn yields a partial or absent tool block. Without this check
+  // it fell through to the generic "didn't return the fields" message, which
+  // reads as "there was nothing to find" rather than "it ran out of room" —
+  // two very different things for the operator staring at a blank form.
+  if (parsed.stop_reason === "max_tokens") {
+    console.error("[rfp/extract] hit max_tokens before the tool call completed");
+    return {
+      ok: false,
+      error: "That RFP was too long for one pass — trim it to the key details and try again, or fill the form by hand.",
+    };
+  }
+  if (parsed.stop_reason === "refusal") {
+    return {
+      ok: false,
+      error: "The AI declined to read that text. Fill the form in by hand.",
+    };
   }
 
   const toolBlock = parsed.content?.find((b) => b.type === "tool_use" && b.name === EXTRACT_TOOL.name);
