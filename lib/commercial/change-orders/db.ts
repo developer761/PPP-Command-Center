@@ -403,8 +403,18 @@ async function resolveCurrentDealInvoice(oppId: string): Promise<CommercialInvoi
 }
 
 /** Tax % for an auto-created draft, from the deal's property ZIP (mirrors the
- *  deal-invoice create form). 0 when no jurisdiction matches. */
-async function dealTaxPct(oppId: string): Promise<number> {
+ *  deal-invoice create form).
+ *
+ *  Returns the REASON alongside the rate. A 0% can mean three very different
+ *  things — exempt, no ZIP on the deal, or a ZIP that matches no jurisdiction —
+ *  and only the first is intentional. The unmatched-ZIP case is a silent
+ *  under-collection: the deal-invoice form warns about it, but this path
+ *  (approve a CO → auto-create a draft → send) produced a 0%-tax invoice with
+ *  nothing on any screen to catch it. The caller surfaces `reason` as a
+ *  heads-up; it never blocks. */
+type DealTaxResult = { pct: number; reason: "rate" | "exempt" | "no_zip" | "unmatched_zip" };
+
+async function dealTaxPctDetailed(oppId: string): Promise<DealTaxResult> {
   const opp = await getCommercialOpportunity(oppId);
   // A tax-exempt customer is exempt on every path. The deal invoice form forces
   // 0% for them; this one read the ZIP and nothing else, so ticking a change
@@ -425,11 +435,31 @@ async function dealTaxPct(oppId: string): Promise<number> {
         accountTaxExempt: (acct as { tax_exempt?: boolean } | null)?.tax_exempt ?? null,
       })
     ) {
-      return 0;
+      return { pct: 0, reason: "exempt" };
     }
   }
-  const hit = resolveTaxForZip(opp?.property_zip ?? null, await listTaxJurisdictions({ activeOnly: true }));
-  return hit ? thouToPct(hit.jurisdiction.combined_rate_thou) : 0;
+  const zip = opp?.property_zip ?? null;
+  if (!zip || !zip.trim()) return { pct: 0, reason: "no_zip" };
+  const hit = resolveTaxForZip(zip, await listTaxJurisdictions({ activeOnly: true }));
+  if (!hit) return { pct: 0, reason: "unmatched_zip" };
+  return { pct: thouToPct(hit.jurisdiction.combined_rate_thou), reason: "rate" };
+}
+
+/** The rate alone, for callers that don't surface the reason. */
+async function dealTaxPct(oppId: string): Promise<number> {
+  return (await dealTaxPctDetailed(oppId)).pct;
+}
+
+/** A never-reject heads-up when a draft was created at 0% for a reason nobody
+ *  chose. Null when the rate is real or the customer is genuinely exempt. */
+export function taxHeadsUpFor(reason: DealTaxResult["reason"]): string | null {
+  if (reason === "unmatched_zip") {
+    return "This draft was created with 0% sales tax — the job's ZIP doesn't match any tax jurisdiction on file. Check the rate before sending.";
+  }
+  if (reason === "no_zip") {
+    return "This draft was created with 0% sales tax — the job has no property ZIP, so no rate could be looked up. Check the rate before sending.";
+  }
+  return null;
 }
 
 /**
@@ -502,18 +532,24 @@ async function tickChangeOrderOn(
     }
   }
 
+  // Set when an auto-created draft landed at 0% tax for a reason nobody chose
+  // (no ZIP, or a ZIP matching no jurisdiction). Rides out on the same toast.
+  let taxWarning: string | null = null;
+
   if (!invoiceId) {
     // `"new"` forces a fresh CO-only draft; otherwise reuse the current draft.
     const current = choice === "new" ? null : await resolveCurrentDealInvoice(co.opportunity_id);
     if (current) {
       invoiceId = current.id;
     } else {
+      const dealTax = await dealTaxPctDetailed(co.opportunity_id);
+      taxWarning = taxHeadsUpFor(dealTax.reason);
       const res = await createCommercialInvoice({
         opportunity_id: co.opportunity_id,
         account_id: co.account_id,
         created_by_user_id: userId,
         notes: `Change order billing`,
-        tax_pct: await dealTaxPct(co.opportunity_id),
+        tax_pct: dealTax.pct,
         // DRAFT (Karan's choice): the CO counts as invoiced once you send it.
         skipCreatedNotification: true,
       });
@@ -532,6 +568,7 @@ async function tickChangeOrderOn(
   // and the AIA double-bill caution, so both ride out on the same toast.
   let warning: string | undefined = [
     targetWarning,
+    taxWarning ?? undefined,
     (await dealHasIssuedAia(co.opportunity_id))
       ? "Heads up: this deal also bills through AIA, whose certificate already includes approved change orders — putting this one on a regular invoice too may double-count it."
       : undefined,

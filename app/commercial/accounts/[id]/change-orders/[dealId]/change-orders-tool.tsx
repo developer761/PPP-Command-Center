@@ -222,15 +222,30 @@ async function billChangeOrderAction(formData: FormData) {
   // page's purpose-built "review & send" nudge, which was previously unreachable
   // (audit F5).
   if (on && result.createdDraft && result.invoice) {
-    redirect(`/commercial/invoices/${result.invoice.id}?co_billed=1`);
+    // Carry the heads-up through. The AIA double-bill caution is set ONLY in
+    // the branch that mints a fresh draft — which is exactly this branch — so
+    // dropping it here made that warning unreachable on every path it was
+    // written for: approve a CO on a deal already billing through AIA, land on
+    // the new draft, and nothing tells you the same money is on the G702.
+    const headsUp = result.warning ? `&heads_up=${encodeURIComponent(result.warning)}` : "";
+    redirect(`/commercial/invoices/${result.invoice.id}?co_billed=1${headsUp}`);
   }
   // Otherwise stay on the Change Orders tool (so you can tick more than one),
   // showing the updated chip. A never-reject heads-up (over-credit,
   // credit-on-untick, repriced-sent-bill) rides along as a small note.
+  // A CREDIT has nothing to reduce on an empty invoice, so it can come back
+  // applied-for-$0 with no invoice attached. Reporting the usual green "added
+  // to the invoice" there was a lie: the credit landed nowhere, the CO stayed
+  // un-billed, and (until the report fix) it showed up in no unbilled tally
+  // either. Say so instead.
+  const nothingApplied = on && !result.invoice;
   coRedirect(
     account_id,
     opp_id,
-    { co_ok: on ? "billed" : "unbilled", ...(result.warning ? { heads_up: result.warning } : {}) },
+    {
+      co_ok: nothingApplied ? "nothing_to_credit" : on ? "billed" : "unbilled",
+      ...(result.warning ? { heads_up: result.warning } : {}),
+    },
     back,
     origin,
     from

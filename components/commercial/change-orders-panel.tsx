@@ -59,6 +59,10 @@ const CO_OK_MESSAGES: Record<string, string> = {
   deleted: "Change order deleted.",
   billed: "Change order added to the invoice.",
   unbilled: "Change order removed from the invoice.",
+  // A credit with nothing to reduce. Not an error — the CO stays approved and
+  // billable — but it must not read as "done".
+  nothing_to_credit:
+    "This credit wasn't applied — there's no billed amount on this deal to reduce yet. Bill the work first, then apply the credit.",
 };
 
 type ProposalOption = { id: string; label: string; totalCents?: number; hasInvoice?: boolean };
@@ -163,9 +167,20 @@ export async function ChangeOrdersPanel({
   return (
     <div className="space-y-3">
       {okFlag && CO_OK_MESSAGES[okFlag] ? (
-        <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800">
+        <div
+          className={`rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
+            // "Nothing happened" must not wear the same green tick as "done".
+            okFlag === "nothing_to_credit"
+              ? "bg-amber-50 border border-amber-200 text-amber-800"
+              : "bg-emerald-50 border border-emerald-200 text-emerald-800"
+          }`}
+        >
           <span className="inline-flex items-start gap-2">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg>
+            {okFlag === "nothing_to_credit" ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0"><path d="M12 9v4 M12 17h.01 M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg>
+            )}
             {CO_OK_MESSAGES[okFlag]}
           </span>
           <Link href={basePath} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
