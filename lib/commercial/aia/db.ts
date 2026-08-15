@@ -10,6 +10,7 @@ import { netApprovedChangeOrderCents, listChangeOrders } from "@/lib/commercial/
 import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/proposals/db";
 import {
   computeG702,
+  aiaBilledCollectedFrom,
   pickContractBaseCents,
   isAiaChangeOrderLine,
   DEFAULT_RETAINAGE_PCT,
@@ -834,6 +835,40 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
     lines,
     previousCertificatesCents,
   });
+}
+
+/**
+ * A deal's AIA billing collapsed into { billed, collected } so the deal
+ * financials can include it (Phase D — AIA was a separate ledger invisible to
+ * the P&L, so an AIA-billed job read "$0 billed" everywhere).
+ *
+ * `hasAia` distinguishes "no AIA applications" (leave the invoice-only figures
+ * alone) from "AIA billed $0" (a real, if unusual, state). Definitions live in
+ * `aiaBilledCollectedFrom`. Pre-tax throughout (the contract + invoice subtotals
+ * this reconciles with are pre-tax).
+ */
+export async function aiaBillingRollup(
+  opportunityId: string
+): Promise<{ billedCents: number; collectedCents: number; hasAia: boolean }> {
+  const apps = await listAiaApplications(opportunityId); // ordered by application_number asc
+  const issued = apps.filter((a) => a.status === "submitted" || a.status === "paid");
+  if (issued.length === 0) return { billedCents: 0, collectedCents: 0, hasAia: false };
+
+  // Billed = the LATEST issued application's cumulative Total Completed & Stored.
+  const latestIssued = issued[issued.length - 1];
+  const latestG702 = await resolveG702(latestIssued.id);
+
+  // Collected = Σ PAID applications' Current Payment Due (cash actually remitted).
+  const paidApps = apps.filter((a) => a.status === "paid");
+  const paidG702s = (await Promise.all(paidApps.map((a) => resolveG702(a.id)))).filter(
+    (g): g is NonNullable<typeof g> => g != null
+  );
+
+  const { billedCents, collectedCents } = aiaBilledCollectedFrom({
+    latestIssued: latestG702,
+    paid: paidG702s,
+  });
+  return { billedCents, collectedCents, hasAia: true };
 }
 
 /**

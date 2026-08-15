@@ -94,6 +94,14 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     openBalanceCents += Math.max(0, bal);
     creditCents += Math.max(0, -bal);
   }
+  // NOTE (Phase D, 2026-08-14): AIA is a separate billing ledger — a job billed
+  // via G702/G703 writes no commercial_invoices, so `billed`/`collected` here
+  // (and in listProjects + the account-overview SQL view) exclude it, and an
+  // AIA-billed job reads "$0 billed". The tested reconciliation helper is ready
+  // (`aiaBillingRollup`), but wiring it into ONE surface without the others
+  // would make the deal page and the dashboard disagree — so the fix is
+  // deliberately held for a coordinated pass across all three surfaces + finance
+  // sign-off on the definitions. See docs/AIA_FINANCIALS_INTEGRATION.md.
 
   const fieldOpsLaborCents = labor.cents;
   const totalCostCents = costs.total + fieldOpsLaborCents;

@@ -155,6 +155,42 @@ export function formatApplicationNumber(n: number): string {
 }
 
 /**
+ * Collapse a deal's AIA payment applications into the two figures the deal's
+ * financial rollups need — so an AIA-billed job stops reading "$0 billed"
+ * (Phase D, Karan 2026-08-14). AIA is a SEPARATE billing ledger from
+ * `commercial_invoices`; the deal financials sum only invoices, so AIA revenue
+ * was invisible to the P&L, margin, delivery Billing stage, Account 360, and the
+ * dashboard.
+ *
+ * Definitions (standard AIA accounting):
+ *   - **billed** = the LATEST issued (submitted/paid) application's cumulative
+ *     "Total Completed & Stored to date" (G702 line 4). That is the GROSS value
+ *     of work certified to the GC — pre-retainage, directly comparable to the
+ *     contract sum (also gross), matching how a regular invoice's pre-tax
+ *     subtotal is "billed". Retainage is a payment-timing withholding, not a
+ *     reduction in what was billed, so it stays IN this number.
+ *   - **collected** = Σ of PAID applications' "Current Payment Due" (G702 line
+ *     8) — the cash the GC actually remitted (net of retainage). Retainage held
+ *     stays uncollected until final, so `billed − collected` correctly carries
+ *     it as outstanding.
+ *
+ * Pure so the money logic is unit-tested away from the DB; the async wrapper in
+ * db.ts just resolves the G702s and calls this.
+ */
+export function aiaBilledCollectedFrom(input: {
+  /** Resolved G702 of the latest ISSUED (submitted/paid) application, if any. */
+  latestIssued: Pick<AiaG702, "totalCompletedStoredCents"> | null;
+  /** Resolved G702s of every PAID application. */
+  paid: ReadonlyArray<Pick<AiaG702, "currentPaymentDueCents">>;
+}): { billedCents: number; collectedCents: number } {
+  const billedCents = Math.max(0, input.latestIssued?.totalCompletedStoredCents ?? 0);
+  const collectedCents = input.paid.reduce((s, g) => s + Math.max(0, g.currentPaymentDueCents), 0);
+  // Never report more collected than billed (a data glitch shouldn't invent
+  // negative outstanding on the CEO's dashboard).
+  return { billedCents, collectedCents: Math.min(collectedCents, billedCents) };
+}
+
+/**
  * Is this G703 line a CHANGE ORDER line (G702 line 2), rather than base contract
  * work (line 1)?
  *
