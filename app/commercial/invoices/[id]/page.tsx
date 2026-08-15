@@ -63,6 +63,7 @@ import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
 import { SegmentedMeter, type MeterSegment } from "@/components/commercial/segmented-meter";
 import { getCommercialAccount, formatAccountNumber } from "@/lib/commercial/accounts/db";
+import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
 import { getCommercialOpportunity, derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 import { getProposal, proposalDisplayId } from "@/lib/commercial/proposals/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
@@ -87,6 +88,10 @@ type SP = Promise<{
   from?: string;
   /** Phase G: set when this invoice was just created to bill a change order. */
   co_billed?: string;
+  /** Invoice-email outcome flags. */
+  email_ok?: string;
+  email_error?: string;
+  email_headsup?: string;
 }>;
 
 // ────────────── Server actions ──────────────
@@ -136,6 +141,37 @@ const DRILL_IN_RE = /^\/commercial\/accounts\/[0-9a-f-]{36}\?tab=projects&projec
  *  guard rejects is silently dropped, so omitting the new shape would kill
  *  every back link from the deal page with nothing to show for it. */
 const OPP_PAGE_RE = /^\/commercial\/opportunities\/[0-9a-f-]{36}(\?|#|$)/i;
+
+/** Email the branded invoice PDF to the GC (Katie's #1). Human-reviewed —
+ *  recipient/subject/message come from the send panel; nothing auto-sends. */
+async function emailInvoiceAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const base = `/commercial/invoices/${invoice_id}`;
+  const { emailInvoiceToGc } = await import("@/lib/commercial/invoices/email");
+  const res = await emailInvoiceToGc({
+    invoice_id,
+    actor_user_id: user.id,
+    to_email: String(formData.get("to_email") ?? ""),
+    cc_email: String(formData.get("cc_email") ?? "") || null,
+    subject: String(formData.get("subject") ?? ""),
+    message: String(formData.get("message") ?? ""),
+    include_attachments: String(formData.get("include_attachments") ?? "") === "1",
+  });
+  await revalidateInvoiceContext(invoice_id);
+  if (!res.ok) {
+    redirect(withFrom(`${base}?email_error=${encodeURIComponent(res.error)}#email-invoice`, from));
+  }
+  const q = new URLSearchParams({ email_ok: res.to_email });
+  if (res.warning) q.set("email_headsup", res.warning);
+  redirect(withFrom(`${base}?${q.toString()}`, from));
+}
 
 async function addLineItemAction(formData: FormData) {
   "use server";
@@ -682,7 +718,7 @@ export async function InvoiceDetailView({
   // Belongs to the deal it is being shown under, or it is not shown.
   if (expectAccountId && invoice.account_id !== expectAccountId) return miss();
   if (expectOppId && invoice.opportunity_id !== expectOppId) return miss();
-  const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver, milestones, attachments] = await Promise.all([
+  const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver, milestones, attachments, contacts] = await Promise.all([
     listInvoiceLineItems(invoice.id),
     listInvoicePayments(invoice.id),
     listInvoiceStatusLog(invoice.id),
@@ -692,7 +728,11 @@ export async function InvoiceDetailView({
     getInvoiceLienWaiver(invoice.id),
     listMilestonesForInvoice(invoice.id),
     listInvoiceAttachments(invoice.id),
+    listAccountContacts(invoice.account_id).catch(() => []),
   ]);
+  // Prefill the invoice-email recipient with the account's primary contact
+  // (else the first contact that has an email). Katie: autofill aggressively.
+  const emailRecipientDefault = contacts.find((c) => c.contact.email)?.contact.email ?? "";
   // Per-milestone lien-waiver docs (for the ✓/download state on each row).
   // One documents query for all milestones (was a 3N-query loop).
   const milestoneWaivers = await getMilestoneLienWaivers(milestones);
@@ -1002,6 +1042,18 @@ export async function InvoiceDetailView({
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
           <span aria-hidden className="shrink-0 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>Status updated.</span>
+        </div>
+      )}
+      {pickFirst(sp.email_ok) && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+          <span aria-hidden className="shrink-0 mt-0.5 text-emerald-700"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13 M22 2l-7 20-4-9-9-4 20-7z" /></svg></span>
+          <span>Invoice emailed to <strong>{pickFirst(sp.email_ok)}</strong>.{pickFirst(sp.email_headsup) ? ` ${pickFirst(sp.email_headsup)}` : ""}</span>
+        </div>
+      )}
+      {pickFirst(sp.email_error) && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-700 flex items-start gap-2">
+          <span aria-hidden className="shrink-0 mt-0.5"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01" /></svg></span>
+          <span>{pickFirst(sp.email_error)}</span>
         </div>
       )}
       {savedTarget === "milestone" && (
@@ -1323,6 +1375,64 @@ export async function InvoiceDetailView({
               </form>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Email the invoice to the GC (Katie's #1). Progressive disclosure — a
+          <details> so it stays out of the way until you want to send. Recipient
+          prefills from the account's primary contact; subject + message prefill
+          to sensible Tomco defaults; Brendan + ops are silently BCC'd. */}
+      {!isVoid && (
+        <section id="email-invoice" className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
+          <details {...(pickFirst(sp.email_error) ? { open: true } : {})}>
+            <summary className="cursor-pointer list-none flex items-center justify-between gap-3 min-h-[44px] select-none">
+              <div>
+                <h2 className="text-sm font-bold text-ppp-charcoal flex items-center gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-blue-600"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M22 6l-10 7L2 6" /></svg>
+                  Email to GC
+                </h2>
+                <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+                  Sends the branded PDF{invoice.status === "draft" ? " and marks this invoice sent" : ""}. Brendan + ops are BCC&rsquo;d.
+                </p>
+              </div>
+              <span className="text-[12px] font-semibold text-ppp-blue-700 shrink-0">Compose →</span>
+            </summary>
+            <form action={emailInvoiceAction} className="mt-4 space-y-3">
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <input type="hidden" name="from" value={fromRaw ?? ""} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="inv-to" className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">To</label>
+                  <input id="inv-to" name="to_email" type="email" required defaultValue={emailRecipientDefault} placeholder="ap@generalcontractor.com" className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600 min-h-[44px]" />
+                </div>
+                <div>
+                  <label htmlFor="inv-cc" className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">CC <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
+                  <input id="inv-cc" name="cc_email" type="email" placeholder="pm@generalcontractor.com" className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600 min-h-[44px]" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="inv-subj" className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Subject</label>
+                <input id="inv-subj" name="subject" required defaultValue={`Invoice ${invoice.invoice_number}${opp ? ` — ${derivedOppName(opp, account?.company_name ?? null)}` : account ? ` — ${account.company_name}` : ""}`} maxLength={200} className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600 min-h-[44px]" />
+              </div>
+              <div>
+                <label htmlFor="inv-msg" className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Message</label>
+                <textarea id="inv-msg" name="message" required rows={5} defaultValue={`Hello,\n\nPlease find attached invoice ${invoice.invoice_number}${opp ? ` for ${derivedOppName(opp, account?.company_name ?? null)}` : ""}. The total is ${formatCentsFull(invoice.total_cents)}${invoice.balance_cents > 0 ? `, with a balance due of ${formatCentsFull(invoice.balance_cents)}` : ""}${invoice.due_at ? ` by ${fmtEtDate(invoice.due_at)}` : ""}.\n\nPayment details are on the invoice. Please reply with any questions.\n\nThank you.`} className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600" />
+              </div>
+              {attachments.length > 0 && (
+                <label className="flex items-center gap-2 text-[12.5px] text-ppp-charcoal-700 select-none">
+                  <input type="checkbox" name="include_attachments" value="1" className="h-4 w-4 rounded border-ppp-charcoal-300 accent-ppp-blue-600" />
+                  Also attach the {attachments.length} file{attachments.length === 1 ? "" : "s"} on this invoice
+                </label>
+              )}
+              <div className="flex items-center gap-2 pt-1">
+                <SubmitButton className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 2 11 13 M22 2l-7 20-4-9-9-4 20-7z" /></svg>
+                  Send invoice
+                </SubmitButton>
+                <a href={`/api/commercial/invoices/${invoice.id}/pdf`} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold text-ppp-charcoal-600 hover:text-ppp-charcoal underline underline-offset-2">Preview PDF first</a>
+              </div>
+            </form>
+          </details>
         </section>
       )}
 
