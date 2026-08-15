@@ -219,7 +219,14 @@ export async function bulkApproveZeroVariance(actorUserId: string): Promise<{ ap
   // approved by a human, one at a time, never in the zero-variance sweep. Same
   // for absent-day entries: hours that tie the schedule but sit on a day the
   // painter marked off are a contradiction only a human should settle (FO1).
-  const zero = rows.filter((r) => r.status === "submitted" && r.variance === 0 && !r.capped && !r.absent);
+  // Also exclude SELF-LOGGED entries. The crew Daily Log pre-fills the
+  // scheduled hours, so a manual row matching the schedule is not evidence of
+  // anything — it's the default value coming back. Sweeping those through at
+  // "zero variance" is how a painter who worked 4.75h got paid 8h without
+  // anyone looking. A human approves self-reported time, one row at a time.
+  const zero = rows.filter(
+    (r) => r.status === "submitted" && r.variance === 0 && !r.capped && !r.absent && r.source !== "manual"
+  );
   let approved = 0;
   for (const r of zero) {
     const res = await approveTimeEntry(r.id, actorUserId);

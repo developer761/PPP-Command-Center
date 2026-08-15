@@ -68,8 +68,13 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const rows = await listPendingApprovals();
   // Capped-guess (force-closed) rows are excluded from the zero-variance sweep —
-  // they need a human eye — so the button count must exclude them too.
-  const zeroCount = rows.filter((r) => r.status === "submitted" && r.variance === 0 && !r.capped && !r.absent).length;
+  // they need a human eye — so the button count must exclude them too. Same for
+  // SELF-LOGGED (`manual`) rows: the crew log pre-fills the scheduled hours, so
+  // "matches the schedule" tells you nothing there. Must mirror
+  // bulkApproveZeroVariance exactly or the button over-promises.
+  const zeroCount = rows.filter(
+    (r) => r.status === "submitted" && r.variance === 0 && !r.capped && !r.absent && r.source !== "manual"
+  ).length;
 
   // Group by employee.
   const byEmp = new Map<string, { name: string; rows: ApprovalRow[] }>();

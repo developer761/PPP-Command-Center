@@ -188,14 +188,14 @@ async function syncTimeEntry(
 
   const { data: existing } = await sb
     .from("commercial_time_entries")
-    .select("id, status, source, approved_by_user_id")
+    .select("id, status, source, approved_by_user_id, actual_hours")
     .eq("employee_id", employeeId)
     .eq("job_id", jobId)
     .eq("work_date", dateIso)
     .maybeSingle();
 
   if (existing) {
-    const cur = existing as { id: string; status: string; source: string; approved_by_user_id: string | null };
+    const cur = existing as { id: string; status: string; source: string; approved_by_user_id: string | null; actual_hours: number };
     // Never clobber a SETTLED entry: a paid/exported entry (terminal — recomputing
     // it would flip it back to approved and re-pay it on the next export, a
     // double-pay; audit round 9), a manually-set (source='manual'), human-approved
@@ -208,6 +208,29 @@ async function syncTimeEntry(
       cur.status === "questioned" ||
       (cur.status === "approved" && !!cur.approved_by_user_id);
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    // ── A settled entry keeps its hours, but the CONFLICT must not vanish ────
+    //
+    // The crew Daily Log arrives pre-filled with the SCHEDULED hours and writes
+    // source='manual'. From that moment this function refused to touch the row,
+    // so every real punch that day was computed and thrown away with no flag,
+    // no note and nothing in Approvals. Because the pre-filled number equals
+    // the schedule, the row then sat at variance 0 and got swept up by
+    // "Approve N matching" — a painter who clocked 4.75h was paid 8h, and the
+    // contradiction existed only in commercial_time_punches, which no screen
+    // reconciles. Record the disagreement so a human sees it.
+    const settledHours = Number((cur as { actual_hours?: number }).actual_hours ?? 0);
+    const punchesDisagree = punches.length > 0 && Math.abs(rounded - settledHours) > 0.25;
+    if (settled && punchesDisagree) {
+      patch.questioned_reason =
+        `Clock punches total ${rounded}h but this entry records ${settledHours}h (${cur.source}).`;
+      // An exported entry is terminal (already paid) and a human-approved one
+      // reflects a decision somebody made — leave those statuses alone and let
+      // the reason carry the trace. A self-logged, still-submitted entry is the
+      // dangerous case: flag it so it can never auto-approve.
+      if (cur.status === "submitted") {
+        patch.status = "questioned";
+      }
+    }
     if (!settled) {
       patch.actual_hours = rounded;
       patch.source = "clocked";
