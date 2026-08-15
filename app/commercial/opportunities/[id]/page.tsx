@@ -2270,7 +2270,8 @@ export default async function OpportunityDetailPage({
   // tab that renders it, so every other tab pays nothing for it.
   const activityFeed = buildActivityFeed(
     tab === "info" && !isDeletedDeal ? await loadActivityEntries(opp.id) : [],
-    etTodayIso()
+    etTodayIso(),
+    { at: opp.follow_up_at, notes: opp.follow_up_notes }
   );
 
   // Project-home extras — Team & contacts + a project-scoped Activity rail.
@@ -2280,7 +2281,8 @@ export default async function OpportunityDetailPage({
   const projectContacts = showProjectHome && account ? await listAccountContacts(account.id).catch(() => []) : [];
   const projectActivityFeed = buildActivityFeed(
     showProjectHome ? await loadActivityEntries(opp.id).catch(() => []) : [],
-    etTodayIso()
+    etTodayIso(),
+    { at: opp.follow_up_at, notes: opp.follow_up_notes }
   );
   const projectGcContact =
     projectContacts.find((c) => c.contact.id === opp.primary_contact_id)?.contact ??
@@ -2466,6 +2468,10 @@ export default async function OpportunityDetailPage({
                 // signed off. Nothing failed: a defaulted prop nobody passes is
                 // invisible to the compiler and to every test.
                 proposalApproved={dealProposals.some((p) => p.status === "approved")}
+                // Billing started (invoice or AIA) → the Billing delivery stage
+                // shows amber even if the deal is still officially earlier, so the
+                // top bar agrees with the Project spine (Karan 2026-08-15).
+                billingStarted={billedSoFar > 0}
               />
             </div>
           </div>

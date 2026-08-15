@@ -163,6 +163,11 @@ function PathRow({
   /** With no current stage: is the ladder entirely AHEAD (a won job that has
    *  not started) rather than entirely behind (a closed sale)? */
   notStarted,
+  /** Stages with real ACTIVITY that sit AHEAD of the current one — e.g. billing
+   *  started while the deal is still officially Pre-Construction. They render
+   *  amber (in-progress) instead of grey, so the chevron matches the Project
+   *  spine, which shows early activity (Karan 2026-08-15). */
+  activeKeys,
   /** Terminal outcomes rendered side by side at the tail. */
   outcomes,
   cta,
@@ -174,6 +179,7 @@ function PathRow({
   currentSub?: string | null;
   skipped?: string[];
   notStarted?: boolean;
+  activeKeys?: string[];
   outcomes?: { key: string; label: string; reached: boolean }[];
   /** The next-step. Rendered by NextStepButton so a one-destination move
    *  posts on click instead of opening a form — see that component. */
@@ -187,7 +193,11 @@ function PathRow({
   // opposite ends, same absent key, which is why `notStarted` says which.
   const currentIdx = currentKey === null ? (notStarted ? -1 : stages.length) : idx;
   const stateFor = (i: number): StageState => {
-    if (i > currentIdx) return "future";
+    if (i > currentIdx) {
+      // A stage ahead of the official one but already worked (billing started
+      // early) reads as in-progress, not "not reached" — matches the spine.
+      return activeKeys?.includes(stages[i]?.key ?? "") ? "current" : "future";
+    }
     if (i === currentIdx) return "current";
     // Behind the current stage — but did it actually go through here? A deal
     // dragged from Proposal straight into delivery never passed Closed Won, and
@@ -307,6 +317,10 @@ export function StatusPathBar({
   statusLog = [],
   /** The next step a person can take when no artifact implies it. */
   manualNext,
+  /** Has any billing happened (invoice or AIA)? If so the Billing delivery stage
+   *  shows amber even while the deal is officially at an earlier stage, so the
+   *  chevron agrees with the Project spine (Karan 2026-08-15). */
+  billingStarted = false,
 }: {
   /** The deal's current proposal has been approved but not yet sent.
    *
@@ -321,6 +335,7 @@ export function StatusPathBar({
   hasWinDate?: boolean;
   statusLog?: readonly { from_status?: string | null; to_status: string }[];
   manualNext?: NextStep | null;
+  billingStarted?: boolean;
 }) {
   const won = isWon({ status, sub_status: subStatus });
   const lost = isLost({ status, sub_status: subStatus });
@@ -392,6 +407,9 @@ export function StatusPathBar({
           // still-running delivery status is the amber current stage (audit
           // 2026-08-15). currentKey null + notStarted false → all passed.
           currentKey={inDelivery && status !== "post_sale_closed" ? status : null}
+          // Billing amber when money's moved, even if the deal is officially at
+          // an earlier delivery stage — matches the Project spine.
+          activeKeys={billingStarted ? ["billing"] : []}
           notStarted={!inDelivery}
           currentSub={inDelivery ? subStatus : null}
           cta={inDelivery ? null : manualNext ?? null}

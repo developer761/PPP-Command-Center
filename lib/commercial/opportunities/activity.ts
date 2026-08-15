@@ -84,7 +84,12 @@ function etDay(iso: string): string {
 
 export function buildActivityFeed(
   entries: ActivityEntry[],
-  todayIso: string
+  todayIso: string,
+  /** The deal's scheduled follow-up (follow_up_at + notes). Surfaced as an
+   *  Upcoming item so "Add follow-up" actually SHOWS here with its note — it was
+   *  stored on the deal and only drove the amber nudge, so the note read as if it
+   *  went nowhere (Karan 2026-08-15). */
+  followUp?: { at?: string | null; notes?: string | null } | null
 ): ActivityFeed {
   // ── Ahead of us ─────────────────────────────────────────────────────────
   // Open tasks with a due date. Overdue first, then soonest — the order
@@ -92,6 +97,18 @@ export function buildActivityFeed(
   const upcoming = entries
     .filter((e) => e.kind === "task" && !e.done && e.dueAt)
     .sort((a, b) => String(a.dueAt).localeCompare(String(b.dueAt)));
+  if (followUp?.at) {
+    upcoming.push({
+      id: "follow-up",
+      kind: "task",
+      at: followUp.at,
+      dueAt: followUp.at,
+      done: false,
+      title: "Follow up",
+      detail: followUp.notes?.trim() || null,
+    });
+    upcoming.sort((a, b) => String(a.dueAt).localeCompare(String(b.dueAt)));
+  }
   const overdueCount = upcoming.filter((e) => etDay(String(e.dueAt)) < todayIso).length;
 
   // ── Behind us ───────────────────────────────────────────────────────────
