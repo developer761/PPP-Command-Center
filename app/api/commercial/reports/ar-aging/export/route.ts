@@ -4,15 +4,11 @@ import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getArAging, type ArAgingRow } from "@/lib/commercial/reports/ar-aging";
 import { etTodayIso } from "@/lib/date-et";
+import { csvEscape as csv } from "@/lib/commercial/csv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** CSV-escape a field (quote + double inner quotes when needed). */
-function csv(v: string | number): string {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 const money = (cents: number) => (cents / 100).toFixed(2);
 
 export async function GET() {

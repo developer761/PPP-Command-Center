@@ -5,6 +5,7 @@ import { listTagsForAccounts } from "./tags";
 import { listAccountOverviews } from "./overview";
 import { ACTIVITY_STALE_DAYS } from "./constants";
 import { daysAgoEt } from "@/lib/date-et";
+import { csvEscape } from "@/lib/commercial/csv";
 
 /** The list page's post-fetch quick-filter chips (stale / expiring / issue /
  *  tag). Not DB-level filters — they read the per-account overview + tags. */
@@ -55,23 +56,6 @@ const HEADERS = [
   "Created",
 ] as const;
 
-function csvEscape(value: unknown): string {
-  if (value === null || value === undefined) return "\"\"";
-  const raw =
-    typeof value === "string"
-      ? value
-      : typeof value === "number" || typeof value === "boolean"
-      ? String(value)
-      : JSON.stringify(value);
-  // OWASP CSV-injection defense: a value starting with `= + - @ \t \r`
-  // is treated as a formula by Excel / LibreOffice / Sheets. A company
-  // named "=cmd|'/c calc'!A1" or notes pasted from Excel would otherwise
-  // execute when the user opens the CSV. Prefixing with a single quote
-  // neutralizes it — Excel renders literal text without firing the
-  // formula engine. Mirrors the same fix in opportunities/export.ts.
-  const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
-  return `"${s.replace(/"/g, '""')}"`;
-}
 
 function isoDate(s: string | null | undefined): string {
   if (!s) return "";

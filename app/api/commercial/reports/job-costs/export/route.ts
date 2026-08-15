@@ -5,14 +5,11 @@ import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getJobCostsReport, COST_BUCKET_COLUMNS } from "@/lib/commercial/reports/job-costs";
 import { opportunityStatusLabelV2 } from "@/lib/commercial/opportunities/constants";
 import { etTodayIso } from "@/lib/date-et";
+import { csvEscape as csv } from "@/lib/commercial/csv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function csv(v: string | number): string {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 const money = (cents: number) => (cents / 100).toFixed(2);
 
 export async function GET() {

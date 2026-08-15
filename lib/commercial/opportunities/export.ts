@@ -17,6 +17,7 @@ import { listOpenTaskStatsByOpp } from "./tasks";
 import { listAttachmentCountByOpp } from "./attachments";
 import { commercialDb } from "@/lib/commercial/db";
 import { probabilityFor } from "./constants";
+import { csvEscape } from "@/lib/commercial/csv";
 
 /**
  * CSV export of the global Opportunities pipeline.
@@ -59,22 +60,6 @@ const HEADERS = [
   "Updated",
 ] as const;
 
-function csvEscape(value: unknown): string {
-  if (value === null || value === undefined) return "\"\"";
-  const raw =
-    typeof value === "string"
-      ? value
-      : typeof value === "number" || typeof value === "boolean"
-      ? String(value)
-      : JSON.stringify(value);
-  // OWASP CSV-injection defense: a value starting with `= + - @ \t \r`
-  // is treated as a formula by Excel / LibreOffice / Sheets. An opp
-  // titled "=cmd|'/c calc'!A1" would execute when the user opens the
-  // CSV. Prefixing with a single quote neutralizes it: Excel renders
-  // the literal text without firing the formula engine.
-  const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
-  return `"${s.replace(/"/g, '""')}"`;
-}
 
 function isoDate(s: string | null | undefined): string {
   if (!s) return "";

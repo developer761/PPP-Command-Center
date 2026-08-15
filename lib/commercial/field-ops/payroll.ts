@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { csvEscape } from "@/lib/commercial/csv";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { mondayOf, addDaysIso } from "./schedule";
 
@@ -114,9 +115,12 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
   return { rows, approvedCount: approved.length, unapprovedCount, periodStart, periodEnd };
 }
 
+// Shared, hardened escaper — this file feeds an OUTSIDE payroll processor, so
+// a crew name beginning `=` or carrying an interior CR has to be neutralized.
+// Called through directly rather than aliased at module scope: a top-level
+// `const x = importedBinding` is fragile under Turbopack chunking.
 function csvCell(v: string | number): string {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return csvEscape(v);
 }
 
 /** Marginal reg/OT for one employee across their weeks, given each week's
@@ -139,22 +143,29 @@ export type PayrollCsvRow = { name: string; ref: string | null; reg: number; ot:
  * at 40h PER WEEK (bucketed by the Monday of each work week). Pure and
  * DB-free so the OT rule can be tested directly — the re-download path summed
  * the whole range and capped at 40, which invented overtime across week
- * boundaries (round-3 handoff #3). Every row here is already `exported`, so
- * there is no baseline split: each hour is the "pay" side of its week.
+ * boundaries (round-3 handoff #3).
+ *
+ * `priorRows` are hours in the same weeks that an EARLIER pass already paid.
+ * They set the 40h baseline so a week paid across two passes doesn't restart
+ * at zero on the second one. Omit it (the common single-pass case) and every
+ * hour is the "pay" side of its week, as before.
  */
 export function weeklyExportedRows(
   rows: { employee_id: string; work_date: string; actual_hours: number }[],
-  empMeta: Map<string, { name: string; external_ref: string | null }>
+  empMeta: Map<string, { name: string; external_ref: string | null }>,
+  priorRows: { employee_id: string; work_date: string; actual_hours: number }[] = []
 ): PayrollCsvRow[] {
   const byEmp = new Map<string, Map<string, { pay: number; base: number }>>();
-  for (const r of rows) {
+  const bucket = (r: { employee_id: string; work_date: string; actual_hours: number }, kind: "pay" | "base") => {
     const wk = mondayOf(r.work_date);
     if (!byEmp.has(r.employee_id)) byEmp.set(r.employee_id, new Map());
     const wm = byEmp.get(r.employee_id)!;
     const cur = wm.get(wk) ?? { pay: 0, base: 0 };
-    cur.pay += Number(r.actual_hours) || 0;
+    cur[kind] += Number(r.actual_hours) || 0;
     wm.set(wk, cur);
-  }
+  };
+  for (const r of priorRows) bucket(r, "base");
+  for (const r of rows) bucket(r, "pay");
   const out: PayrollCsvRow[] = [];
   for (const [empId, weeks] of byEmp) {
     const { reg, ot, total } = marginalRegOt(weeks);
@@ -190,10 +201,25 @@ export function weeklyExportedRows(
  * gone for good, with payroll still to run. This rebuilds the same figures
  * from the rows already marked exported. Read-only: no period is created, no
  * status changes, so it cannot cause a double payment.
+ *
+ * ── Scoped to ONE pay period, not to the date range ──────────────────────────
+ *
+ * It used to re-sum every `exported` row in the range with a zero baseline,
+ * while the real export pays only the MARGINAL hours above what a prior pass
+ * already paid. Those two cannot agree once a range spans more than one export
+ * pass — and the page's default range is the last 14 days, which snaps out to
+ * three Mon–Sun weeks. Re-downloading after two weekly runs therefore produced
+ * ONE row per employee covering all three weeks, including hours already on
+ * last week's cheque: run it and the crew is paid twice for the same days.
+ *
+ * So it now reproduces a single export pass, keyed by the `pay_period_id` that
+ * `exportPayroll` stamps on every row it locks: the latest period overlapping
+ * the requested range. The CSV reports that period's own span, not the range
+ * that was typed.
  */
 export async function redownloadPayroll(fromIso: string, toIso: string): Promise<string> {
-  const periodStart = mondayOf(fromIso);
-  const periodEnd = addDaysIso(mondayOf(toIso), 6);
+  const rangeStart = mondayOf(fromIso);
+  const rangeEnd = addDaysIso(mondayOf(toIso), 6);
   const sb = commercialDb();
 
   const { data: emps } = await sb.from("commercial_employees").select("id, display_name, worker_type, external_ref");
@@ -205,17 +231,78 @@ export async function redownloadPayroll(fromIso: string, toIso: string): Promise
   const emptyCsv = header.map(csvCell).join(",");
   if (w2Ids.length === 0) return emptyCsv;
 
+  // The most recent export pass that overlaps the requested range.
+  const { data: periodRow } = await sb
+    .from("commercial_pay_periods")
+    .select("id, start_date, end_date, exported_at")
+    .lte("start_date", rangeEnd)
+    .gte("end_date", rangeStart)
+    .order("exported_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const period = periodRow as { id: string; start_date: string; end_date: string; exported_at: string } | null;
+
+  // Legacy rows exported before pay periods were stamped carry no id; those
+  // fall back to the range, which is correct for them because there is at most
+  // one such pass. Anything stamped is scoped to its own period.
+  const periodStart = period?.start_date ?? rangeStart;
+  const periodEnd = period?.end_date ?? rangeEnd;
+
   const rows = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number }>(() =>
-    sb
-      .from("commercial_time_entries")
-      .select("employee_id, work_date, actual_hours")
-      .eq("status", "exported")
-      .gte("work_date", periodStart)
-      .lte("work_date", periodEnd)
-      .in("employee_id", w2Ids)
-      .order("id")
+    period
+      ? sb
+          .from("commercial_time_entries")
+          .select("employee_id, work_date, actual_hours")
+          .eq("status", "exported")
+          .eq("pay_period_id", period.id)
+          .in("employee_id", w2Ids)
+          .order("id")
+      : sb
+          .from("commercial_time_entries")
+          .select("employee_id, work_date, actual_hours")
+          .eq("status", "exported")
+          .is("pay_period_id", null)
+          .gte("work_date", periodStart)
+          .lte("work_date", periodEnd)
+          .in("employee_id", w2Ids)
+          .order("id")
   );
   if (rows.length === 0) return emptyCsv;
+
+  // A week can be paid across MORE THAN ONE pass (hours approved late land in a
+  // later period). The original run paid only the hours above what earlier
+  // passes had already paid, so reproducing it needs that same baseline —
+  // otherwise a second-pass week restarts at 0 and re-credits its first 40h as
+  // regular time that was already paid. Baseline = hours in the SAME weeks
+  // locked by a pass that ran BEFORE this one.
+  const weeks = new Set(rows.map((r) => mondayOf(r.work_date)));
+  const baseline: { employee_id: string; work_date: string; actual_hours: number }[] = [];
+  if (period) {
+    const { data: earlier } = await sb
+      .from("commercial_pay_periods")
+      .select("id")
+      .lt("exported_at", period.exported_at);
+    const earlierIds = ((earlier ?? []) as { id: string }[]).map((p) => p.id);
+    const priorRows = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number; pay_period_id: string | null }>(() =>
+      sb
+        .from("commercial_time_entries")
+        .select("employee_id, work_date, actual_hours, pay_period_id")
+        .eq("status", "exported")
+        .neq("pay_period_id", period.id)
+        .gte("work_date", [...weeks].sort()[0])
+        .lte("work_date", addDaysIso([...weeks].sort().slice(-1)[0], 6))
+        .in("employee_id", w2Ids)
+        .order("id")
+    );
+    for (const r of priorRows) {
+      // Only weeks this period actually touched, and only passes that preceded
+      // it. Rows with no period id are pre-pay-period legacy exports, which by
+      // definition came first.
+      if (!weeks.has(mondayOf(r.work_date))) continue;
+      if (r.pay_period_id !== null && !earlierIds.includes(r.pay_period_id)) continue;
+      baseline.push(r);
+    }
+  }
 
   // Split OT at 40h PER WEEK, exactly as the original export did. The old code
   // summed the whole range per employee and capped at 40 — which only matched
@@ -224,7 +311,7 @@ export async function redownloadPayroll(fromIso: string, toIso: string): Promise
   // CSV never paid (35h + 35h → 40 reg + 30 OT instead of 70 reg), so the
   // re-issued file didn't reconcile against the run it exists to reproduce
   // (round-3 handoff #3).
-  const outRows = weeklyExportedRows(rows, empMeta);
+  const outRows = weeklyExportedRows(rows, empMeta, baseline);
   const lines = [header.map(csvCell).join(",")];
   for (const r of outRows) {
     lines.push([r.name, r.ref ?? "", r.reg, r.ot, r.total, periodStart, periodEnd].map(csvCell).join(","));
