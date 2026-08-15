@@ -585,7 +585,31 @@ function formatDateLong(iso: string | undefined): string {
  *  priced by square foot" render clean on the PDF instead of "Install
  *  \tlabor…" or wide gaps. */
 function normalizeWs(s: string): string {
-  return s.replace(/[\t ]+/g, " ").replace(/ *\n */g, "\n").trim();
+  return transliterateToWinAnsi(s).replace(/[\t ]+/g, " ").replace(/ *\n */g, "\n").trim();
+}
+
+/**
+ * Map characters that WinAnsiEncoding can't represent onto ones it can.
+ *
+ * These PDFs render in the standard-14 fonts, which @react-pdf/pdfkit embeds
+ * as WinAnsi. A code point outside that map is emitted raw, so it prints as a
+ * stray symbol rather than the character typed — U+2212 MINUS came out as `"`.
+ * Scope text is pasted straight from GC specs, where prime/double-prime marks
+ * (6′ 6″), non-breaking hyphens and math symbols are routine, so sanitize here
+ * rather than waiting to be told a proposal printed garbage.
+ */
+export function transliterateToWinAnsi(s: string): string {
+  return s
+    .replace(/−/g, "-") // minus sign
+    .replace(/[′‵]/g, "'") // prime / reversed prime  → foot mark
+    .replace(/[″‶]/g, '"') // double prime            → inch mark
+    .replace(/[‑‐]/g, "-") // non-breaking / plain hyphen
+    .replace(/⁄/g, "/") // fraction slash
+    .replace(/ /g, " ") // non-breaking space
+    .replace(/≤/g, "<=")
+    .replace(/≥/g, ">=")
+    .replace(/×/g, "x")
+    .replace(/≈/g, "~");
 }
 
 /** Split "**Bold lead:** rest of the sentence." into the two parts so we
@@ -1042,6 +1066,13 @@ function LineItemTable({
       {header}
       {grouping.groups.map((g) => {
         const subtotal = g.rows.reduce((sum, it) => sum + lineTotalCents(it), 0);
+        // If ANY row in this phase has its price hidden, don't print a subtotal
+        // number. It included the hidden line, so the visible rows didn't add
+        // up to it — and the GC could recover the price we deliberately hid by
+        // subtracting them. (The flat GRAND total including hidden lines is
+        // intentional and documented above; a per-phase subtotal is not the
+        // same thing, because it sits directly beneath the rows it contradicts.)
+        const hasHiddenPrice = g.rows.some((it) => it.show_price === false);
         const [firstRow, ...restRows] = g.rows;
         return (
           <View key={g.key}>
@@ -1058,7 +1089,7 @@ function LineItemTable({
             ))}
             <View style={styles.liSubtotalRow} wrap={false}>
               <Text style={styles.liSubtotalLabel}>{g.label} subtotal</Text>
-              <Text style={styles.liSubtotalAmount}>{formatDollars(subtotal)}</Text>
+              <Text style={styles.liSubtotalAmount}>{hasHiddenPrice ? "—" : formatDollars(subtotal)}</Text>
             </View>
           </View>
         );

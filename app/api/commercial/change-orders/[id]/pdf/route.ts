@@ -52,6 +52,15 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     getBrandSignatureBuffer().catch(() => null),
   ]);
 
+  // Chain of trust, same as the transmittal / warranty / work-order routes. Both
+  // loaders hard-filter `deleted_at`, so a deleted parent came back null and the
+  // route happily streamed a full letterhead change order addressed to
+  // "Customer" with no bill-to — reachable from any bookmarked URL long after
+  // the deal was removed.
+  if (!account || !opp) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
   // Contract adjustment — shown only when a contract sum is known AND this CO
   // could actually move it (pending = proposed, approved = applied). A DECLINED
   // CO never adjusts the contract, so printing a "revised contract sum" for it

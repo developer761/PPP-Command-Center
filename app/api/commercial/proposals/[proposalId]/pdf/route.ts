@@ -68,12 +68,27 @@ export async function GET(
   // else in the app.
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
-    .select("id")
+    .select("id, account_id")
     .eq("id", proposal.opportunity_id)
     .is("deleted_at", null)
     .maybeSingle();
   if (!oppRow) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  // ...and the ACCOUNT above it. `sendProposal` already refuses the "deal live,
+  // account archived" case; the PDF route didn't, so the document was still
+  // reachable for an archived GC.
+  const accountId = (oppRow as { account_id: string | null }).account_id;
+  if (accountId) {
+    const { data: accRow } = await sb
+      .from("commercial_accounts")
+      .select("id")
+      .eq("id", accountId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!accRow) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
   }
 
   const lineItems = await listLineItemsForProposal(proposalId);

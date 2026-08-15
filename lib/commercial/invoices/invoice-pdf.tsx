@@ -2,6 +2,7 @@ import "server-only";
 
 import { Document, Page, View, Text, Image, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
 import * as React from "react";
+import { etDateOf, isPastEt } from "@/lib/date-et";
 
 Font.registerHyphenationCallback((word) => [word]);
 
@@ -49,6 +50,23 @@ const styles = StyleSheet.create({
   msgBox: { marginTop: 20, borderLeftWidth: 3, borderLeftColor: "#EE662E", paddingLeft: 10 },
   remitBox: { marginTop: 22, borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 4, padding: 10, backgroundColor: "#f9fafb" },
   footer: { position: "absolute", bottom: 30, left: 54, right: 54, fontSize: 7.5, color: "#9ca3af", textAlign: "center", borderTopWidth: 0.5, borderTopColor: "#e5e7eb", paddingTop: 6 },
+  // VOIDED watermark — same treatment the submittal PDF uses. A voided invoice
+  // still has to be printable as a record, but a printed copy must never be
+  // mistakable for a live bill: the route rendered one that looked completely
+  // payable, balance box and all.
+  voidWatermark: {
+    position: "absolute",
+    top: "40%",
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontSize: 90,
+    fontFamily: "Helvetica-Bold",
+    color: "#FEE2E2",
+    opacity: 0.6,
+    transform: "rotate(-25deg)",
+    letterSpacing: 8,
+  },
 });
 
 export type CompanyRemit = {
@@ -96,6 +114,8 @@ export type InvoicePdfInput = {
   rows: InvoicePdfRow[];
   company: CompanyRemit;
   logo?: Buffer | null;
+  /** Voided invoices still render (as a record) but are stamped VOIDED. */
+  isVoid?: boolean;
 };
 
 const fmt = (c: number): string =>
@@ -103,7 +123,12 @@ const fmt = (c: number): string =>
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  // Through etDateOf FIRST. These columns are TIMESTAMPTZ, and slicing the raw
+  // ISO string took the UTC calendar day — so a document produced after ~8pm
+  // ET was stamped TOMORROW, and disagreed with the same date on screen.
+  // etDateOf returns a bare YYYY-MM-DD untouched (a DATE column has no zone to
+  // convert), so this is safe for both kinds of column.
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(etDateOf(iso) ?? "");
   if (!m) return "—";
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${months[parseInt(m[2], 10) - 1]} ${parseInt(m[3], 10)}, ${m[1]}`;
@@ -129,10 +154,20 @@ function remitLines(c: CompanyRemit): string[] {
 function InvoiceDoc(input: InvoicePdfInput) {
   const website = (input.company.website ?? "").replace(/^https?:\/\//, "").replace(/\/$/, "");
   const headerContact = [input.company.phone, website].filter(Boolean).join("   ·   ");
-  const overdue = input.balanceCents > 0 && !!input.dueAt && new Date(input.dueAt) < new Date();
+  // ET CALENDAR days, not a raw instant compare. `new Date(dueAt) < new Date()`
+  // flipped an invoice to red "overdue" at midday on its own due date — the
+  // exact bug isInvoiceOverdue was written to fix, re-introduced here. An
+  // invoice is not late until the day AFTER it was due.
+  const dueDay = etDateOf(input.dueAt);
+  const overdue = input.balanceCents > 0 && !!dueDay && isPastEt(dueDay);
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
+        {input.isVoid ? (
+          <Text style={styles.voidWatermark} fixed>
+            VOIDED
+          </Text>
+        ) : null}
         {/* Letterhead */}
         <View>
           {input.logo ? <Image src={input.logo} style={styles.logoImage} /> : <Text style={styles.wordmark}>{input.company.name}</Text>}
@@ -206,7 +241,13 @@ function InvoiceDoc(input: InvoicePdfInput) {
             </View>
             <View style={styles.totLine}>
               <Text style={styles.totLabel}>
-                {input.isTaxExempt
+                {/* The exemption label is driven by the deal's CURRENT flag,
+                    but the amount is the invoice's FROZEN tax_pct. Flip a deal
+                    to exempt after issuing a taxable invoice and the two
+                    disagree — the PDF certified an exemption while charging
+                    $431.25 of tax on the same line. Only claim exemption when
+                    the invoice actually carries no tax. */}
+                {input.isTaxExempt && input.taxCents === 0
                   ? `Tax-exempt${input.taxExemptCertNumber ? ` · Cert #${input.taxExemptCertNumber}` : ""}`
                   : `Tax (${Number(input.taxPct).toFixed(3).replace(/\.?0+$/, "")}%)`}
               </Text>

@@ -2,6 +2,7 @@ import "server-only";
 
 import { Document, Page, View, Text, Image, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
 import * as React from "react";
+import { etDateOf } from "@/lib/date-et";
 import {
   CLOSEOUT_ITEM_KIND_LABEL,
   CLOSEOUT_ITEM_STATUS_LABEL,
@@ -54,7 +55,12 @@ type ItemInput = { kind: CloseoutItemKind; label: string | null; included: boole
 
 function fmtDate(ymd: string | null): string {
   if (!ymd) return "—";
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  // Through etDateOf FIRST. These columns are TIMESTAMPTZ, and slicing the raw
+  // ISO string took the UTC calendar day — so a document produced after ~8pm
+  // ET was stamped TOMORROW, and disagreed with the same date on screen.
+  // etDateOf returns a bare YYYY-MM-DD untouched (a DATE column has no zone to
+  // convert), so this is safe for both kinds of column.
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(etDateOf(ymd) ?? "");
   if (!m) return ymd;
   const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   return `${months[parseInt(m[2], 10) - 1]} ${parseInt(m[3], 10)}, ${m[1]}`;

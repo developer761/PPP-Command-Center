@@ -33,6 +33,13 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
     getBrandLogoBuffer().catch(() => null),
   ]);
 
+  // The docblock above promised this and it was never implemented. Both loaders
+  // hard-filter `deleted_at`, so a soft-deleted account or deal came back null
+  // and the PDF quietly degraded to `Bill to: Customer` with no address and no
+  // project line — then the Email-to-GC panel, which doesn't check either,
+  // shipped that document on Tomco letterhead. Refuse to build it instead.
+  if (!account || !opp) return null;
+
   // Rows — line items win; fall back to milestones for a milestone invoice.
   let rows: InvoicePdfRow[];
   if (lineItems.length > 0) {
@@ -80,6 +87,7 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
     : null;
 
   return {
+    isVoid: inv.status === "void",
     invoiceNumber: inv.invoice_number,
     issuedAt: inv.issued_at ?? inv.created_at ?? null,
     dueAt: inv.due_at,

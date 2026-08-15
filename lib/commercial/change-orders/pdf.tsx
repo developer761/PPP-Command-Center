@@ -2,6 +2,7 @@ import "server-only";
 
 import { Document, Page, View, Text, Image, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
 import * as React from "react";
+import { etDateOf } from "@/lib/date-et";
 
 Font.registerHyphenationCallback((word) => [word]);
 
@@ -72,11 +73,20 @@ export type ChangeOrderPdfInput = {
 
 const fmt = (c: number): string =>
   `${c < 0 ? "-" : ""}$${Math.abs(c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const signed = (c: number): string => `${c < 0 ? "−" : "+"}${fmt(Math.abs(c))}`;
+// ASCII hyphen, NOT U+2212 MINUS SIGN. These PDFs render in standard-14
+// Helvetica, which @react-pdf/pdfkit embeds as WinAnsiEncoding — and WinAnsi
+// has no slot for U+2212, so pdfkit emitted the raw code point and a credit
+// change order printed as `"$500.00` (0x22 = quotedbl) on the copy the GC signs.
+const signed = (c: number): string => `${c < 0 ? "-" : "+"}${fmt(Math.abs(c))}`;
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  // Through etDateOf FIRST. These columns are TIMESTAMPTZ, and slicing the raw
+  // ISO string took the UTC calendar day — so a document produced after ~8pm
+  // ET was stamped TOMORROW, and disagreed with the same date on screen.
+  // etDateOf returns a bare YYYY-MM-DD untouched (a DATE column has no zone to
+  // convert), so this is safe for both kinds of column.
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(etDateOf(iso) ?? "");
   if (!m) return "—";
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${months[parseInt(m[2], 10) - 1]} ${parseInt(m[3], 10)}, ${m[1]}`;
