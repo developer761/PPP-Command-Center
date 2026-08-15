@@ -304,15 +304,28 @@ export async function updateMilestone(
     update.name = n.slice(0, 200);
   }
   let lowerBelowPaid = false;
+  let coAmountIgnored = false;
   if (patch.amount_cents !== undefined) {
     const a = Math.round(patch.amount_cents);
     if (!Number.isFinite(a) || a <= 0) return { ok: false, error: "Enter an amount greater than $0." };
+    // A CHANGE-ORDER milestone's amount is owned by the change order, not by
+    // this form. Editing it here moved only the invoice: the CO's own
+    // `amount_cents` stayed put, so the contract-to-date, the CO panel's
+    // "Billed" figure and any G703 row seeded from it all disagreed with what
+    // the GC was actually billed. `removeLineItem` already refuses to touch a
+    // CO line for exactly this reason; this writer was the gap. Per the
+    // never-reject rule the rest of the edit (name, due date, notes) still
+    // saves — only the amount is held, with a heads-up.
+    if (existing.change_order_id) {
+      coAmountIgnored = true;
+    } else {
     // Never block the edit (Karan rule). Lowering below what's already been paid
     // leaves the milestone/invoice showing a credit — flag it as a heads-up, not
     // a rejection.
-    const paid = (await getMilestonePaidMap(existing.invoice_id)).get(id) ?? 0;
-    lowerBelowPaid = a < paid;
-    update.amount_cents = a;
+      const paid = (await getMilestonePaidMap(existing.invoice_id)).get(id) ?? 0;
+      lowerBelowPaid = a < paid;
+      update.amount_cents = a;
+    }
   }
   if (patch.due_at !== undefined) update.due_at = patch.due_at;
   if (patch.notes !== undefined) update.notes = patch.notes;
@@ -329,17 +342,21 @@ export async function updateMilestone(
 
   // Keep the paired charge in sync: rewrite the line item, then recompute the
   // invoice subtotal via a remove+add would lose position, so update in place.
-  if (existing.line_item_id && (patch.name !== undefined || patch.amount_cents !== undefined)) {
+  if (existing.line_item_id && (patch.name !== undefined || update.amount_cents !== undefined)) {
     const liPatch: Record<string, unknown> = {};
     if (patch.name !== undefined) liPatch.description = (update.name as string).slice(0, 500);
-    if (patch.amount_cents !== undefined) liPatch.unit_price_cents = update.amount_cents;
+    if (update.amount_cents !== undefined) liPatch.unit_price_cents = update.amount_cents;
     await sb.from("commercial_invoice_line_items").update(liPatch).eq("id", existing.line_item_id);
     await recomputeSubtotal(existing.invoice_id);
   }
   return {
     ok: true,
     value: data as InvoiceMilestone,
-    warning: lowerBelowPaid ? "That's below what's already been paid on this milestone — the invoice may now show a credit." : undefined,
+    warning: coAmountIgnored
+      ? "The amount comes from the change order, so it wasn't changed here — edit the change order itself to move it. Everything else was saved."
+      : lowerBelowPaid
+      ? "That's below what's already been paid on this milestone — the invoice may now show a credit."
+      : undefined,
   };
 }
 

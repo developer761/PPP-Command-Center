@@ -658,6 +658,17 @@ async function bulkDeleteInvoicesFromDetailAction(formData: FormData) {
         note: `Bulk-deleted (orphan cleanup, ${scope})${(r.paid_cents ?? 0) > 0 ? ` — had $${((r.paid_cents ?? 0) / 100).toFixed(2)} paid; auto-voided` : ""}`.slice(0, 500),
       }))
     );
+    // Release any change orders ticked onto these invoices (audit M1). The two
+    // copies of this bulk action on the invoices LIST page do this; this one
+    // didn't — and because the CO line item survives on the soft-deleted
+    // invoice, the partial unique index on change_order_id kept holding the
+    // slot. The CO then read as un-billed, offered "re-bill", and every retry
+    // failed on a raw duplicate-key error: that change order could never be
+    // billed again and its dollars were invisible to AR.
+    const { releaseTickedChangeOrders } = await import("@/lib/commercial/invoices/status");
+    for (const r of rows) {
+      await releaseTickedChangeOrders(r.id);
+    }
   }
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");

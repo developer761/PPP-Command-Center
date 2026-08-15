@@ -648,6 +648,13 @@ export async function updateInvoiceCoreFields(
   const { error } = await sb.from("commercial_invoices").update(clean).eq("id", invoice_id);
   if (error) return { ok: false, error: error.message };
   await logUpdate("commercial_invoices", invoice_id, before, clean, actorUserId);
+  // A tax-rate change moves the GENERATED total/balance, so the paid/partial
+  // decision has to be re-run — otherwise applying a rate to an already-paid
+  // invoice left it reading "Paid" with real money outstanding, invisible to
+  // both the overdue badge and the dunning cron.
+  if (clean.tax_pct !== undefined) {
+    await reconcileInvoiceStatusToTotal(invoice_id);
+  }
   return { ok: true };
 }
 
@@ -800,8 +807,22 @@ export async function recomputeSubtotal(invoice_id: string): Promise<void> {
   if (subErr) {
     console.error(`[commercial/invoices] recomputeSubtotal: subtotal write failed for ${invoice_id}: ${subErr.message}`);
   }
-  // Re-read the row so we see the GENERATED total_cents post-update,
-  // then reconcile status if the change moved the paid/balance line.
+  await reconcileInvoiceStatusToTotal(invoice_id);
+}
+
+/**
+ * Re-decide paid / partial / sent after anything moved an invoice's TOTAL.
+ *
+ * `total_cents` and `balance_cents` are GENERATED columns, so a write to
+ * `subtotal_cents` OR to `tax_pct` silently moves the balance without touching
+ * status. Only the line-item path used to call this, which meant setting a tax
+ * rate on an already-paid invoice left it sitting behind a green "Paid" pill
+ * with a real balance owing — and the dunning cron excludes `paid`, so that
+ * balance was never chased. Any writer that changes the total must call this.
+ */
+export async function reconcileInvoiceStatusToTotal(invoice_id: string): Promise<void> {
+  const sb = commercialDb();
+  // Re-read the row so we see the GENERATED total_cents post-update.
   const { data: after } = await sb
     .from("commercial_invoices")
     .select("status, total_cents, paid_cents, paid_at")
@@ -813,13 +834,15 @@ export async function recomputeSubtotal(invoice_id: string): Promise<void> {
   const paid = after.paid_cents as number;
   let nextStatus: InvoiceStatus | null = null;
   let nextPaidAt: string | null | undefined = undefined;
-  if (status === "void") return;
+  // A draft isn't billed yet, and void is terminal — neither should be dragged
+  // into a paid/partial state by a total change.
+  if (status === "void" || status === "draft") return;
   if (paid >= total && total > 0 && status !== "paid") {
     nextStatus = "paid";
     if (!after.paid_at) nextPaidAt = new Date().toISOString();
   } else if (paid > 0 && paid < total && status === "paid") {
-    // Total went up (line item added) beyond what's been paid — regress
-    // to partial so the balance surfaces again.
+    // Total went up (line item added, or tax applied) beyond what's been paid —
+    // regress to partial so the balance surfaces again.
     nextStatus = "partial";
     nextPaidAt = null;
   } else if (paid === 0 && (status === "paid" || status === "partial")) {

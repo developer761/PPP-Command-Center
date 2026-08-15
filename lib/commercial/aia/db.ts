@@ -399,7 +399,32 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
     });
   }
   let nextNo = rows.length + 1;
-  const approvedCOs = (await listChangeOrders(app.opportunity_id)).filter((c) => c.status === "approved");
+  const approvedCOsAll = (await listChangeOrders(app.opportunity_id)).filter((c) => c.status === "approved");
+  // Skip COs already billed on a live invoice — seeding one onto the schedule
+  // of values charges the GC a second time for the same change (see the same
+  // guard in reconcileDraftChangeOrderRows). A void/soft-deleted invoice
+  // doesn't count as billed, so those COs still belong here.
+  const seedPointedIds = [
+    ...new Set(
+      approvedCOsAll
+        .map((c) => (c as { invoiced_invoice_id?: string | null }).invoiced_invoice_id)
+        .filter(Boolean)
+    ),
+  ] as string[];
+  const seedLiveInvoiceIds = new Set<string>();
+  if (seedPointedIds.length > 0) {
+    const { data: invRows } = await sb
+      .from("commercial_invoices")
+      .select("id, status, deleted_at")
+      .in("id", seedPointedIds);
+    for (const r of (invRows ?? []) as { id: string; status: string; deleted_at: string | null }[]) {
+      if (r.status !== "void" && !r.deleted_at) seedLiveInvoiceIds.add(r.id);
+    }
+  }
+  const approvedCOs = approvedCOsAll.filter((c) => {
+    const invId = (c as { invoiced_invoice_id?: string | null }).invoiced_invoice_id;
+    return !(invId && seedLiveInvoiceIds.has(invId));
+  });
   for (const co of approvedCOs) {
     rows.push({
       application_id: app.id,
@@ -461,9 +486,52 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
 
   const sb = commercialDb();
 
+  // Which invoices pointed at by a CO are void or soft-deleted — those don't
+  // count as "already billed", so the CO legitimately belongs on the G703.
+  const pointedInvoiceIds = [
+    ...new Set(
+      approved
+        .map((c) => (c as { invoiced_invoice_id?: string | null }).invoiced_invoice_id)
+        .filter(Boolean)
+    ),
+  ] as string[];
+  const voidedOrDeletedInvoiceIds = new Set<string>();
+  if (pointedInvoiceIds.length > 0) {
+    const { data: invRows } = await sb
+      .from("commercial_invoices")
+      .select("id, status, deleted_at")
+      .in("id", pointedInvoiceIds);
+    for (const r of (invRows ?? []) as { id: string; status: string; deleted_at: string | null }[]) {
+      if (r.status === "void" || r.deleted_at) voidedOrDeletedInvoiceIds.add(r.id);
+    }
+    // An id that resolved to no row at all is a dangling pointer — treat it as
+    // not-billed so the CO still reaches the certificate.
+    for (const id of pointedInvoiceIds) {
+      if (!(invRows ?? []).some((r) => (r as { id: string }).id === id)) {
+        voidedOrDeletedInvoiceIds.add(id);
+      }
+    }
+  }
+
   // 1. Append approved COs that have no row yet.
+  //
+  // EXCLUDE COs already billed on a live invoice. The double-bill guard was
+  // one-directional: `dealHasIssuedAia` warns when you tick a CO onto an
+  // invoice for a deal that already has an AIA certificate, but nothing
+  // stopped the reverse — a CO invoiced and sent to the GC then got seeded
+  // onto the G703 as well, and G702 line 3 certified it a second time. The
+  // GC receives two charges for the same change, and the deal's billed total
+  // exceeds its own contract sum.
+  const billedElsewhere = new Set(
+    approved
+      .filter((c) => {
+        const invId = (c as { invoiced_invoice_id?: string | null }).invoiced_invoice_id;
+        return Boolean(invId) && !voidedOrDeletedInvoiceIds.has(invId!);
+      })
+      .map((c) => c.id)
+  );
   const missing = approved.filter(
-    (c) => !presentIds.has(c.id) && !presentNos.has(String(c.co_number))
+    (c) => !presentIds.has(c.id) && !presentNos.has(String(c.co_number)) && !billedElsewhere.has(c.id)
   );
   if (missing.length > 0) {
     let pos = lines.reduce((m, l) => Math.max(m, l.position ?? 0), 0) + 1000;
@@ -483,7 +551,21 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
       pos += 1000;
       return r;
     });
-    await sb.from("commercial_aia_line_items").insert(rows);
+    // UPSERT, and CHECK the error. This runs from a page render, so two people
+    // opening the same draft certificate (or a render racing the PDF export)
+    // both computed the same missing rows. Migration 128's unique index on
+    // (application_id, change_order_id) then aborted the loser's WHOLE batch —
+    // and the result was discarded, so the G703 silently rendered with the CO
+    // rows missing while G702 line 2 still counted them. The certificate the GC
+    // receives didn't foot, with nothing on screen to say why.
+    const { error: insErr } = await sb
+      .from("commercial_aia_line_items")
+      .upsert(rows, { onConflict: "application_id,change_order_id", ignoreDuplicates: true });
+    if (insErr) {
+      console.error(
+        `[commercial/aia] reconcileDraftChangeOrderRows: failed to add ${rows.length} change-order line(s) to application ${applicationId}: ${insErr.message}`
+      );
+    }
   }
 
   // 2. Remove CO rows whose CO is no longer approved AND carries no billing.
@@ -956,7 +1038,16 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
   let sovTotalCents = 0;
   if (app) {
     const lines = await listAiaLineItems(app.id);
-    sovTotalCents = lines.reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
+    // EXCLUDE change-order rows — this is the ORIGINAL contract base, and every
+    // caller adds `netApprovedChangeOrderCents` on top of what comes back. The
+    // two sibling paths already filter them (`resolveG702`, `listProjects`);
+    // this one didn't, so a CO counted twice: once inside the SOV total and
+    // once again when the caller added net COs. That inflated the deal's
+    // contract-to-date, its margin-vs-contract, and the "revised contract sum"
+    // printed on the change-order PDF the GC signs. (audit M2, third site)
+    sovTotalCents = lines
+      .filter((l) => !isAiaChangeOrderLine(l))
+      .reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
   }
   return pickContractBaseCents({
     hasBillingApp: !!app,
