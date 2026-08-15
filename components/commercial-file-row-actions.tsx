@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 /**
  * Client-side row-action strip for a document on the Files sub-tab.
@@ -193,6 +194,11 @@ function VersionBumpSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // This sheet is `aria-modal="true"` and full-width on a phone, so the page
+  // scrolling behind it was invisible until you dismissed it and found yourself
+  // somewhere else in the file list.
+  useScrollLock(true);
 
   // Close on Escape — matches modal + popover conventions elsewhere.
   useEffect(() => {

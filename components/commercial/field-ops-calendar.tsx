@@ -18,6 +18,7 @@ import { INPUT_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commerc
 import type { MonthDay, DayCrew, DayOff } from "@/lib/commercial/field-ops/schedule";
 import { ABSENCE_TYPES } from "@/lib/commercial/field-ops/absence-constants";
 import { jobStatusLabel, type JobStatus } from "@/lib/commercial/field-ops/job-constants";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 // A work order's status, shown next to the crew on the calendar (Karan 2026-08).
 // Dot = the dense month/agenda chips; pill = the readable day roster + slide-out.
@@ -150,6 +151,12 @@ export function FieldOpsCalendar({
   // Confirm step when copying a week forward: crew who were off THIS week, and
   // which of them the user says are working next week (checked = copy them).
   const [copyConfirm, setCopyConfirm] = useState<{ sourceMonday: string; offCrew: { employee_id: string; name: string }[]; working: Set<string> } | null>(null);
+  // Both of these render `aria-modal="true"` overlays and neither locked the
+  // page behind them — open a day's crew sheet, scroll, and the calendar
+  // underneath moved. <main> is the scroller in this shell, so the usual body
+  // lock is a no-op; useScrollLock targets the real one.
+  useScrollLock(!!(addDay || person));
+  useScrollLock(copyOpen);
   // A11y focus management for the day/person slide-out (R7-a11y #6): move focus
   // into the panel on open, restore it to the triggering element on close.
   const panelRef = useRef<HTMLDivElement>(null);

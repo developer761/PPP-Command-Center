@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import CommercialSidebar from "@/components/commercial-sidebar";
 import CommercialTopbar from "@/components/commercial-topbar";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 /**
  * Chrome wrapper for `/commercial/*` — sibling to dashboard-chrome.tsx.
@@ -35,13 +36,12 @@ export default function CommercialChrome({ children, user, showSwitcher, isAdmin
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
-  useEffect(() => {
-    if (mobileOpen) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = prev; };
-    }
-  }, [mobileOpen]);
+  // `document.body.style.overflow = "hidden"` does NOTHING here: the scroller
+  // in this shell is <main className="flex-1 overflow-y-auto">, not <body>. So
+  // the drawer opened and the page kept scrolling behind it on every Commercial
+  // page — on the phone the CEO reads this on. useScrollLock targets the real
+  // scroller (that's why it exists).
+  useScrollLock(mobileOpen);
 
   useEffect(() => {
     if (!mobileOpen) return;
