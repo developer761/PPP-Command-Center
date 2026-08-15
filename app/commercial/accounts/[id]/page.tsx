@@ -1228,7 +1228,17 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
       oppId={oppId}
       returnTo={returnTo}
       defaultTax={defaultTax}
-      taxNote={taxExempt ? (taxResolution.source === "opportunity" ? "This JOB is flagged tax-exempt, so tax defaulted to 0%." : "This customer is flagged tax-exempt, so tax defaulted to 0%. Type a rate here if this job is taxable.") : taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
+      taxNote={
+        taxExempt
+          ? (taxResolution.source === "opportunity" ? "This JOB is flagged tax-exempt, so tax defaulted to 0%." : "This customer is flagged tax-exempt, so tax defaulted to 0%. Type a rate here if this job is taxable.")
+          : taxHit
+          ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.`
+          // Unmatched ZIP / no ZIP silently defaulted to 0% with nothing said —
+          // a taxable job would then under-collect (Phase D catch). Prompt to verify.
+          : propertyZip
+          ? `No tax jurisdiction matched ${propertyZip}, so tax defaulted to 0%. Set a rate if this job is taxable, or add the ZIP under Settings → Tax.`
+          : "No property ZIP on this deal, so tax defaulted to 0%. Set a rate here if this job is taxable."
+      }
       proposals={wonProposals.map((pr) => {
         const billed = billedByProposal.get(pr.id) ?? 0;
         const remaining = Math.max(0, pr.total_cents - billed);
