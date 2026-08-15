@@ -439,15 +439,37 @@ async function dealTaxPct(oppId: string): Promise<number> {
 export async function setChangeOrderInvoiced(
   coId: string,
   on: boolean,
-  userId: string
+  userId: string,
+  /** Which invoice under this deal to bill the CO on. A live DRAFT invoice's id
+   *  targets it; the sentinel `"new"` forces a fresh CO-only draft; null/omitted
+   *  keeps the legacy behaviour (the deal's current draft, else a new one).
+   *  Karan 2026-08-14: the team picks the invoice a change order lands on. */
+  targetInvoiceId?: string | null
 ): Promise<TickResult> {
   const co = await getChangeOrder(coId);
   if (!co) return { ok: false, error: "Change order not found." };
   if (!(await oppIsLive(co.opportunity_id))) return { ok: false, error: DELETED_DEAL_ERROR };
-  return on ? tickChangeOrderOn(co, userId) : tickChangeOrderOff(co, userId);
+  return on ? tickChangeOrderOn(co, userId, targetInvoiceId ?? null) : tickChangeOrderOff(co, userId);
 }
 
-async function tickChangeOrderOn(co: CommercialChangeOrder, userId: string): Promise<TickResult> {
+/** Does this deal already bill through an ISSUED AIA application? If so, line 2
+ *  of its G702 already captures net approved change orders, so also billing a CO
+ *  on a regular invoice double-counts it — the tick path warns (never rejects). */
+async function dealHasIssuedAia(oppId: string): Promise<boolean> {
+  const { count } = await commercialDb()
+    .from("commercial_aia_applications")
+    .select("id", { count: "exact", head: true })
+    .eq("opportunity_id", oppId)
+    .is("deleted_at", null)
+    .in("status", ["submitted", "paid"]);
+  return (count ?? 0) > 0;
+}
+
+async function tickChangeOrderOn(
+  co: CommercialChangeOrder,
+  userId: string,
+  targetInvoiceId: string | null = null
+): Promise<TickResult> {
   if (co.status !== "approved") return { ok: false, error: "Approve the change order before billing it." };
   if (co.amount_cents === 0) return { ok: false, error: "A $0 change order has nothing to bill." };
   // Already on a LIVE invoice → treat as a no-op success (it's a toggle, and a
@@ -459,36 +481,69 @@ async function tickChangeOrderOn(co: CommercialChangeOrder, userId: string): Pro
   const sb = commercialDb();
   const label = `${formatChangeOrderNumber(co.co_number)} — ${co.title}`.slice(0, 200);
 
-  // Target invoice (existing current, else a fresh draft with ZIP tax).
-  let invoiceId: string;
+  // Target invoice — the team's pick (a live draft on THIS deal), else `"new"`
+  // for a CO-only draft, else the deal's current draft, else a fresh draft.
+  let invoiceId: string | null = null;
   let createdDraft = false;
-  const current = await resolveCurrentDealInvoice(co.opportunity_id);
-  if (current) {
-    invoiceId = current.id;
-  } else {
-    const res = await createCommercialInvoice({
-      opportunity_id: co.opportunity_id,
-      account_id: co.account_id,
-      created_by_user_id: userId,
-      notes: `Change order billing`,
-      tax_pct: await dealTaxPct(co.opportunity_id),
-      // DRAFT (Karan's choice): the CO counts as invoiced once you send it.
-      skipCreatedNotification: true,
-    });
-    if (!res.ok) return { ok: false, error: res.error };
-    invoiceId = res.invoice.id;
-    createdDraft = true;
+  let targetWarning: string | undefined;
+  let choice = targetInvoiceId;
+
+  if (choice && choice !== "new") {
+    const chosen = await getCommercialInvoice(choice);
+    // Must be a live DRAFT on this deal. An issued/sent/paid invoice is frozen
+    // (a CO line can't join it); a stale pick (it was sent since the page
+    // loaded, or belongs elsewhere) falls through to a NEW draft rather than
+    // silently retargeting some other draft the user didn't choose.
+    if (chosen && chosen.opportunity_id === co.opportunity_id && !chosen.deleted_at && chosen.status === "draft") {
+      invoiceId = chosen.id;
+    } else {
+      choice = "new";
+      targetWarning = "The invoice you picked isn't an open draft anymore — this change order went on a new invoice instead.";
+    }
   }
+
+  if (!invoiceId) {
+    // `"new"` forces a fresh CO-only draft; otherwise reuse the current draft.
+    const current = choice === "new" ? null : await resolveCurrentDealInvoice(co.opportunity_id);
+    if (current) {
+      invoiceId = current.id;
+    } else {
+      const res = await createCommercialInvoice({
+        opportunity_id: co.opportunity_id,
+        account_id: co.account_id,
+        created_by_user_id: userId,
+        notes: `Change order billing`,
+        tax_pct: await dealTaxPct(co.opportunity_id),
+        // DRAFT (Karan's choice): the CO counts as invoiced once you send it.
+        skipCreatedNotification: true,
+      });
+      if (!res.ok) return { ok: false, error: res.error };
+      invoiceId = res.invoice.id;
+      createdDraft = true;
+    }
+  }
+  // Narrowing guard (never expected — the block above always sets or returns).
+  if (!invoiceId) return { ok: false, error: "Couldn't resolve an invoice for this change order." };
 
   // Deduct floor: an invoice can never total below $0. Cap a credit at the
   // current subtotal + surface a heads-up (never-reject).
   let applied = co.amount_cents;
-  let warning: string | undefined;
+  // Seed the heads-up with the retarget note (if the picked invoice was stale)
+  // and the AIA double-bill caution, so both ride out on the same toast.
+  let warning: string | undefined = [
+    targetWarning,
+    (await dealHasIssuedAia(co.opportunity_id))
+      ? "Heads up: this deal also bills through AIA, whose certificate already includes approved change orders — putting this one on a regular invoice too may double-count it."
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ") || undefined;
   if (applied < 0) {
     const inv = await getCommercialInvoice(invoiceId);
     const subtotal = inv?.subtotal_cents ?? 0;
     if (subtotal + applied < 0) {
-      warning = `That credit (${formatCentsFull(-applied)}) is larger than this invoice (${formatCentsFull(subtotal)}) — applied ${formatCentsFull(subtotal)}; the remaining ${formatCentsFull(-applied - subtotal)} needs a bigger invoice.`;
+      const capNote = `That credit (${formatCentsFull(-applied)}) is larger than this invoice (${formatCentsFull(subtotal)}) — applied ${formatCentsFull(subtotal)}; the remaining ${formatCentsFull(-applied - subtotal)} needs a bigger invoice.`;
+      warning = warning ? `${warning} ${capNote}` : capNote;
       applied = -subtotal;
     }
     if (applied === 0) {

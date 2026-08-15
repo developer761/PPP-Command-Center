@@ -202,8 +202,12 @@ async function billChangeOrderAction(formData: FormData) {
   const from = String(formData.get("from") ?? "");
   const co_id = String(formData.get("co_id") ?? "");
   const on = String(formData.get("on") ?? "1") === "1";
+  // Which invoice under this deal to bill on: a draft's uuid, the sentinel "new"
+  // for a CO-only invoice, or "" to keep the default (current draft, else new).
+  const rawTarget = String(formData.get("target_invoice_id") ?? "");
+  const target = rawTarget === "new" || UUID_RE.test(rawTarget) ? rawTarget : null;
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(co_id)) redirect("/commercial/accounts");
-  const result = await setChangeOrderInvoiced(co_id, on, userId);
+  const result = await setChangeOrderInvoiced(co_id, on, userId, on ? target : null);
   if (!result.ok) coRedirect(account_id, opp_id, { error: result.error }, back, origin, from);
   revalidateChangeOrderSurfaces(account_id, opp_id);
   revalidatePath("/commercial/invoices");
@@ -299,6 +303,18 @@ export async function ChangeOrdersTool({
     hasInvoice: proposalsWithIssuedInvoice.has(p.id),
   }));
 
+  // Draft invoices are the only ones a change-order line can still join (an
+  // issued/paid invoice is frozen). The panel offers these + "New invoice" so
+  // the team picks where the CO lands. Newest first, matching the invoices tab.
+  const draftInvoices = dealInvoices
+    .filter((inv) => inv.status === "draft")
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+    .map((inv) => ({
+      id: inv.id,
+      number: inv.invoice_number,
+      subtotalCents: inv.subtotal_cents,
+    }));
+
   const panel = (
     <ChangeOrdersPanel
       oppId={opp.id}
@@ -309,6 +325,7 @@ export async function ChangeOrdersTool({
       basePath={`${coBase(id, dealId, variant)}${toolOriginQs(sp.from)}`}
       baseContractCents={baseContractCents}
       proposals={proposals}
+      draftInvoices={draftInvoices}
       addAction={addChangeOrderAction}
       editAction={editChangeOrderAction}
       decideAction={decideChangeOrderAction}

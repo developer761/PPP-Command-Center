@@ -70,6 +70,7 @@ export async function ChangeOrdersPanel({
   from = "",
   baseContractCents,
   proposals = [],
+  draftInvoices = [],
   addAction,
   editAction,
   decideAction,
@@ -104,6 +105,10 @@ export async function ChangeOrdersPanel({
   /** Proposals on this project, for the "which proposal does this CO amend?"
    *  picker. Empty when the deal has no proposals — the picker hides. */
   proposals?: ProposalOption[];
+  /** The deal's DRAFT invoices — the only ones a CO line can still join. The
+   *  "bill" control offers these + "New invoice" so the team picks the target.
+   *  Empty → the CO goes straight onto a fresh CO-only draft. */
+  draftInvoices?: { id: string; number: string; subtotalCents: number }[];
   addAction: CoAction;
   editAction: CoAction;
   decideAction: CoAction;
@@ -455,7 +460,7 @@ export async function ChangeOrdersPanel({
                               </>
                             )}
                             {co.status === "approved" && (
-                              <form action={billAction}>
+                              <form action={billAction} className="flex items-center gap-2 flex-wrap">
                                 <input type="hidden" name="opp_id" value={oppId} />
                                 <input type="hidden" name="account_id" value={accountId} />
                                 <input type="hidden" name="back" value={back} />
@@ -463,11 +468,36 @@ export async function ChangeOrdersPanel({
                       <input type="hidden" name="origin" value={origin} />
                                 <input type="hidden" name="co_id" value={co.id} />
                                 <input type="hidden" name="on" value="1" />
+                                {/* Pick which invoice under this deal it lands on.
+                                    Only DRAFTS are eligible (issued ones are
+                                    frozen); "New invoice" bills it on its own
+                                    fresh draft. No drafts → straight to a new one. */}
+                                {draftInvoices.length > 0 ? (
+                                  <label className="inline-flex items-center gap-1.5 text-[11px] text-ppp-charcoal-500">
+                                    <span className="font-medium">Bill on</span>
+                                    <select
+                                      name="target_invoice_id"
+                                      defaultValue={draftInvoices[0].id}
+                                      aria-label="Which invoice to bill this change order on"
+                                      className="px-2 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-medium text-ppp-charcoal min-h-[44px] max-w-[15rem]"
+                                      style={SELECT_BG_STYLE}
+                                    >
+                                      {draftInvoices.map((d) => (
+                                        <option key={d.id} value={d.id}>
+                                          {d.number} · draft · {formatCentsCompact(d.subtotalCents)}
+                                        </option>
+                                      ))}
+                                      <option value="new">+ New invoice</option>
+                                    </select>
+                                  </label>
+                                ) : (
+                                  <input type="hidden" name="target_invoice_id" value="new" />
+                                )}
                                 <PendingSubmitButton pendingLabel="Adding…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                                     <path d="M12 5v14 M5 12h14" />
                                   </svg>
-                                  {kind === "deduct" ? "Add credit to invoice" : "Add to invoice"}
+                                  {kind === "deduct" ? "Add credit" : "Add to invoice"}
                                 </PendingSubmitButton>
                               </form>
                             )}
