@@ -150,9 +150,36 @@ N14 ⌘K rename/won-lost.
     **R27** `proposalTrailsDeal` restricts the sub-tiebreak to `estimating`
     (targets.ts:220). **R19** correctly left DECLINED.
   No new code needed.
-- [ ] **C.5 — Consistency (27 items)** (`CONSISTENCY_PUNCHLIST_2026_08.md`):
-  surgical batch (H3, M1, M4–M6, L2–L9) now; five (H1/H2/H4/H6/M7) gated on
-  Karan's D1–D5 answers.
+- [x] **C.5 — Consistency (27 items)** — ✅ all verified done (2026-08-14). D1–D5
+  are now ANSWERED (doc bottom), and every item was already built to them:
+  - **H1/M1** one win rate = won ÷ (won+lost) by `decided_at`, not debrief-gated
+    (reports.ts:144, dashboard page.tsx:156-184) · **H2** billed-based margin
+    headline + labeled contract line (= C.8 R1) · **H3** projects "Invoiced" tile
+    now with-tax `invoicedCents` (page.tsx:84) · **H4** needs-debrief =
+    `pre_sale_closed` only across count/UI/cron (D3) · **H5** deal-stage routed
+    through `columnKeyForOpp` · **H6** proposal ID = shared `PROP-2026-0042(-R2)`
+    via `proposalRecordId` (D4).
+  - **M2** won-not-started split from "In delivery" via `dealPhase` · **M3**
+    `closeout` kept visible ("awaiting close-out docs") · **M4** Recent-Activity
+    uses `oppStatusDisplayLabel` (Won/Lost, not "Closed") · **M5** one name
+    "Transactions" (index title + pointer strings) · **M6** proposals-tab deal
+    link canonical `?tab=projects&project=` · **M7** deal-click no longer auto-pops
+    the `&edit=` sheet (D5; the remaining `&edit=` uses are the edit form's own
+    error-returns, correct).
+  - **L2–L9** done (L6 dashboard greeting via `getOperatingCompany`, L9 AR-donut
+    empty-state guard, etc.).
+  No new code needed.
+
+---
+
+## ✅ Last night's plan COMPLETE (2026-08-14)
+C.9 → C.10 → C.7 → C.6 → C.8 → C.5 all cleared. The build session had already
+remediated the vast majority; this verification pass confirmed each finding
+against current code and fixed the only two genuine gaps found:
+- **C.10** invoice-builder back arrow (`?from=`) so "New invoice" returns to the deal.
+- **C.7 F10** invoice milestone "overdue" flag → ET calendar days (was firing a day early).
+Plus the two delivery-tool navigation commits (back arrow → origin, surviving saves).
+All commits: tsc + 826 tests + production build clean.
 
 ## 🔬 2. Phase D — full re-audit
 - [ ] Fresh persona + adversarial agents over everything A–C. Non-negotiable: this
