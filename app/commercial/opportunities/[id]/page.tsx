@@ -3109,7 +3109,7 @@ async function OpportunityInvoicesPanel({
         </div>
         {!isDealDeleted && (
           <Link
-            href={`/commercial/invoices/new?opp=${oppId}`}
+            href={`/commercial/invoices/new?opp=${oppId}&from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -3130,7 +3130,7 @@ async function OpportunityInvoicesPanel({
           </p>
           {!isDealDeleted && (
             <Link
-              href={`/commercial/invoices/new?opp=${oppId}`}
+              href={`/commercial/invoices/new?opp=${oppId}&from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
               className="inline-flex items-center justify-center gap-1.5 mt-3 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Create the first invoice

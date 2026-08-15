@@ -52,13 +52,35 @@ N14 ⌘K rename/won-lost.
 > calls releaseTickedChangeOrders; confirm · **C.8 R1** (dealMargin billed-based)
 > ≈ M4 (post-job tile done) — confirm dealMargin() itself.
 
-- [ ] **C.9 — Auto-advance follow-ups** (`AUTOADVANCE_AUDIT_2026_08.md`):
-  A2 first (`markProposalOutcome` is a 2nd deal-state writer with no forward-only
-  guard), then A1/A3 (`decided_at` restamp + manual-jump stamp), then wire-or-drop
-  `foldAutoAdvanceTargets`.
-- [ ] **C.10 — Deal drill-in navigation:** keep an item opened from a deal tab
-  INSIDE the deal (submittals/proposals/invoices break out to standalone pages).
-  Sweep as a class — change-orders, AIA, costs, work-order, closeout, debrief too.
+- [x] **C.9 — Auto-advance follow-ups** — ✅ ALL FOUR already resolved by prior
+  fixes; the audit doc predates them (verified 2026-08-15, no new code needed):
+  - **A1** (won↔lost re-decision restamps `decided_at`) — DONE at
+    `status.ts:331` (`toPreSaleClosed && (…|| beforeRow.sub_status !== effectiveSubStatus)`).
+  - **A2** (`markProposalOutcome` 2nd unguarded writer) — DONE at
+    `proposals/db.ts:967-999`: the won case routes through
+    `autoAdvanceOpportunity('won', source:'auto_advance')` (engine's forward-only
+    guard declines on a lost deal); the direct lost write now passes `source`.
+  - **A3** (direct pre-sale→delivery jump stamps `decided_at`) — DONE at
+    `status.ts:334` (`toInDelivery && !beforeRow.decided_at`).
+  - **foldAutoAdvanceTargets** — WIRED into the drift reconciler
+    (`proposals/db.ts:2754`), no longer dead.
+  Covered by `auto-advance-engine.test.ts` + `decided-at.test.ts` (green).
+- [x] **C.10 — Deal drill-in navigation** — ✅ done (2026-08-14). Swept the class:
+  - change-orders / AIA / costs / work-order / closeout now render **inline** on
+    the deal's Project sub-tab (prior restructure); their back arrow returns to
+    the origin tab even after a save (the `from`-threading work above).
+  - **proposals** — opening one from the deal already carries
+    `?back=/commercial/opportunities/<id>?tab=proposals#deal-proposals`
+    (`deal-proposals-section` + page.tsx:2893), honoured by the proposal page's
+    "Back to Proposals". Clean.
+  - **submittal detail** — returns to the deal's Submittals tool, with `from`
+    carried through the detail page's opaque `?back=` (the threading work above).
+  - **invoice editor** — `?from=<deal invoices tab>` already returned to the deal.
+  - **invoice builder** (`/commercial/invoices/new?opp=`) — was the one real
+    break-out: its back arrow hard-pointed at the global list, ejecting you from
+    the deal. Now takes a validated `?from=`; the deal's two "New invoice" links
+    stamp the deal invoices tab, so the arrow comes home (create already forced a
+    return to the deal via `void rt`). Other origins keep the global-list default.
 - [ ] **C.7 — Flow + logic remainder** (`FLOW_LOGIC_PUNCHLIST_2026_08.md`): F1/F2
   ✅ done; remaining F3 (`decided_at`), F4 (no-bid reclassified), F5 (void→draft
   keeps a payment), **F6** (AIA original-contract — confirm vs M2), F7–F9

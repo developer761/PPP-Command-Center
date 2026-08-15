@@ -28,7 +28,7 @@ import { DealNewInvoiceForm } from "../../accounts/[id]/page";
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ opp?: string; error?: string; created?: string }>;
+type SP = Promise<{ opp?: string; error?: string; created?: string; from?: string }>;
 
 export default async function DealInvoicesPage({ searchParams }: { searchParams: SP }) {
   const supabase = await createClient();
@@ -64,7 +64,20 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
   // Billed-based, same rule as the deal page this tile links to.
   const invMargin = marginFrom(fin.billedPreTaxCents, fin.totalCostCents);
   const dealName = derivedOppName(opp!, account?.company_name ?? "");
-  const returnTo = `/commercial/invoices/new?opp=${opp!.id}`;
+  // Where the back arrow goes. This deal-scoped invoicing page is reached from
+  // several origins — a deal's Invoices tab, the global invoices list, an
+  // account, another invoice — so it can't hardcode one. The caller stamps
+  // `?from=<internal path>`; the arrow returns there (validated to /commercial/
+  // so nothing off-site rides in), else falls back to the all-invoices list.
+  // Karan 2026-08-14 (C.10): opening "New invoice" from a deal used to eject you
+  // to the global list; it now comes back to the deal.
+  const fromRaw = pickFirst(sp.from);
+  const backHref = fromRaw && fromRaw.startsWith("/commercial/") ? fromRaw : "/commercial/invoices";
+  const cameFromDeal = !!fromRaw && fromRaw.startsWith("/commercial/opportunities/");
+  // Preserve `from` across the create round-trip so the arrow still points home
+  // after the new draft lands you back on this page.
+  const fromQs = fromRaw && fromRaw.startsWith("/commercial/") ? `&from=${encodeURIComponent(fromRaw)}` : "";
+  const returnTo = `/commercial/invoices/new?opp=${opp!.id}${fromQs}`;
   // Issued invoices, newest first (drafts shown but tagged).
   const shown = invoices
     .filter((i) => i.status !== "void")
@@ -75,8 +88,8 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
       {/* Header — same shape as the production tools */}
       <div className="flex items-start gap-2">
         <Link
-          href="/commercial/invoices"
-          aria-label="Back to all invoices"
+          href={backHref}
+          aria-label={cameFromDeal ? "Back to the deal" : fromRaw ? "Back" : "Back to all invoices"}
           className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 touch-manipulation shrink-0 mt-1"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
