@@ -949,7 +949,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     id="wo-sort"
                     value={sortMode}
                     onChange={(e) => setSortMode(e.target.value as SortMode)}
-                    className="font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors"
+                    className="font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 text-base sm:text-inherit focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors"
                   >
                     {SORT_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -2607,7 +2607,7 @@ function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; init
           value={value}
           onChange={(e) => { setValue(e.target.value); setError(null); setWarning(null); }}
           aria-label="Work order follow-up date"
-          className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[40px]"
+          className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-base sm:text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[44px] sm:min-h-[40px]"
         />
         <button
           type="button"

@@ -408,7 +408,7 @@ export default function OrderBuilderView({
             <button
               type="button"
               onClick={() => setSupplier(null)}
-              className="text-xs font-medium text-ppp-blue-700 hover:underline px-2 py-1 touch-manipulation"
+              className="text-xs font-medium text-ppp-blue-700 hover:underline px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
             >
               Change vendor
             </button>
@@ -566,7 +566,7 @@ export default function OrderBuilderView({
                             type="button"
                             onClick={() => setUnit(e, u)}
                             aria-pressed={unit === u}
-                            className={`px-2.5 py-1 text-[11px] font-medium min-h-[32px] touch-manipulation transition-colors ${
+                            className={`px-3 py-1 text-[11px] font-medium min-h-[44px] sm:min-h-[32px] touch-manipulation transition-colors ${
                               unit === u
                                 ? "bg-ppp-blue-600 text-white"
                                 : "bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
@@ -635,7 +635,7 @@ export default function OrderBuilderView({
               onChange={(ev) => patch({ colorNotes: ev.target.value })}
               rows={4}
               placeholder="e.g. Deck: Gray Minwax · Not painting: Living Room · Trim"
-              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
             />
           </section>
 
@@ -751,7 +751,7 @@ export default function OrderBuilderView({
                         <button
                           type="button"
                           onClick={() => removeExtra(e.extraId)}
-                          className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-800 px-2 py-1 touch-manipulation"
+                          className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-800 px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
                           aria-label={`Remove ${e.name}`}
                         >
                           Remove
@@ -964,7 +964,7 @@ function CustomColorItems({
               <button
                 type="button"
                 onClick={() => onChange(items.filter((x) => x.id !== it.id))}
-                className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-800 px-2 py-1 touch-manipulation"
+                className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-800 px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
                 aria-label={`Remove ${it.label}`}
               >
                 Remove

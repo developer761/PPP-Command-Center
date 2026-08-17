@@ -280,7 +280,7 @@ export default function OrderFulfillmentView({
         <h1 className="text-xl font-bold text-ppp-navy">Order sent</h1>
         <p className="mt-2 text-sm text-ppp-charcoal-500">
           {sendResult.poNumber} delivered to{" "}
-          <strong className="text-ppp-charcoal">{sendResult.sentToEmail}</strong>
+          <strong className="text-ppp-charcoal break-all">{sendResult.sentToEmail}</strong>
         </p>
         <Link
           href={`/dashboard/materials/${encodeURIComponent(workOrderId)}`}
@@ -364,7 +364,7 @@ export default function OrderFulfillmentView({
           min={today}
           onChange={(e) => setRequiredBy(e.target.value)}
           aria-label="Required-by date"
-          className="ml-auto rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[44px]"
+          className="ml-auto rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-base sm:text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[44px]"
         />
       </section>
 
@@ -420,7 +420,7 @@ export default function OrderFulfillmentView({
                   return next;
                 })
               }
-              className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 font-medium hover:underline px-2 py-1 touch-manipulation"
+              className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 font-medium hover:underline px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
             >
               {useCustomAddress
                 ? "↺ Use the customer address instead"
@@ -497,7 +497,7 @@ export default function OrderFulfillmentView({
           onChange={(e) => setContactPhone(e.target.value)}
           placeholder="(631) 555-0134"
           aria-label="Contact phone for this order"
-          className="ml-auto w-48 rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ppp-blue-400"
+          className="ml-auto w-48 rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-base sm:text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ppp-blue-400"
         />
       </section>
 
@@ -529,7 +529,7 @@ export default function OrderFulfillmentView({
             value={editedBody ?? draft?.body ?? ""}
             onChange={(e) => setEditedBody(e.target.value)}
             rows={16}
-            className={`w-full px-3 py-2 text-sm sm:text-xs font-mono border rounded-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 ${
+            className={`w-full px-3 py-2 text-base sm:text-xs font-mono border rounded-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 ${
               loadingDraft && editedBody === null ? "border-ppp-blue-100 opacity-70" : "border-ppp-charcoal-100"
             }`}
           />
@@ -622,12 +622,14 @@ export default function OrderFulfillmentView({
                       ? "Add a delivery address before sending (or switch to Pickup)"
                       : ""
                 }
-                className="px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 min-h-[44px] max-w-full inline-flex items-center justify-center rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {sending ? "Sending…"
-                  : blockedForEmail ? "Send (email not set)"
-                  : draft?.sentToEmail ? `Send to ${draft.sentToEmail}`
-                  : "Send"}
+                <span className="truncate">
+                  {sending ? "Sending…"
+                    : blockedForEmail ? "Send (email not set)"
+                    : draft?.sentToEmail ? `Send to ${draft.sentToEmail}`
+                    : "Send"}
+                </span>
               </button>
             );
           })()}

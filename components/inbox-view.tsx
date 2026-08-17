@@ -530,7 +530,7 @@ export default function InboxView() {
               query ("submitted yesterday", "expired 7/20–7/28", "follow-up =
               today", …). */}
           {(() => {
-            const SEL = "rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[36px]";
+            const SEL = "rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-base sm:text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[44px] sm:min-h-[36px]";
             const active = !!(sentSender || sentStatus !== "all" || datePreset !== "any" || sentSort !== "newest");
             const clearAll = () => { setSentSender(""); setSentStatus("all"); setDateDim("sent"); setDatePreset("any"); setDateFrom(""); setDateTo(""); setSentSort("newest"); };
             return (

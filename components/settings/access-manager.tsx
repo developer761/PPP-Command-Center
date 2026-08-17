@@ -220,7 +220,7 @@ function AddUserForm({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="person@precisionpaintingplus.com"
-            className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
+            className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-base sm:text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
           />
         </Field>
         <Field label="Full name" hint="Optional — used for their greeting">
@@ -230,7 +230,7 @@ function AddUserForm({
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             placeholder="Jane Doe"
-            className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
+            className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-base sm:text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
           />
         </Field>
       </div>
@@ -246,7 +246,7 @@ function AddUserForm({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="(631) 555-0134"
-          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
+          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-base sm:text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
         />
       </Field>
 
@@ -260,7 +260,7 @@ function AddUserForm({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Set a password"
-              className="w-full rounded-lg border border-ppp-charcoal-200 pl-3 pr-10 py-2.5 text-sm font-mono focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
+              className="w-full rounded-lg border border-ppp-charcoal-200 pl-3 pr-10 py-2.5 text-base sm:text-sm font-mono focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
             />
             <button
               type="button"
@@ -441,7 +441,7 @@ function UserRow({
                 ? "Can't demote the last admin."
                 : "Change role"
             }
-            className="rounded-lg border border-ppp-charcoal-200 bg-white px-2.5 py-2 text-xs font-medium text-ppp-charcoal-600 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-ppp-charcoal-200 bg-white px-2.5 py-2 text-base sm:text-xs font-medium text-ppp-charcoal-600 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {USER_ROLES.map((r) => (
               <option key={r.value} value={r.value}>{r.label}</option>
@@ -491,7 +491,7 @@ function UserRow({
                 value={newPw}
                 onChange={(e) => setNewPw(e.target.value)}
                 autoComplete="new-password"
-                className="w-full rounded-lg border border-ppp-charcoal-200 pl-3 pr-10 py-2.5 text-sm font-mono focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
+                className="w-full rounded-lg border border-ppp-charcoal-200 pl-3 pr-10 py-2.5 text-base sm:text-sm font-mono focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
               />
               <button
                 type="button"
