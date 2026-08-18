@@ -22,7 +22,10 @@ import { probabilityFor } from "@/lib/commercial/opportunities/constants";
 
 // Every (status, sub_status) a deal can actually sit in, in ladder order.
 const LADDER: { status: string; sub: string; column: string }[] = [
-  { status: "qualifying", sub: "solicitation", column: "qualifying" },
+  // Brendan 2026-08-17: RFP is the entry stage and the Qualifying column
+  // is retired, so the legacy `solicitation` tuple now READS as RFP rather
+  // than landing on a column that no longer renders.
+  { status: "qualifying", sub: "solicitation", column: "rfp" },
   { status: "qualifying", sub: "rfp", column: "rfp" },
   { status: "estimating", sub: "estimating", column: "estimating" },
   { status: "estimating", sub: "proposal_pending_approval", column: "pending_approval" },

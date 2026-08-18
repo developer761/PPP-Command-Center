@@ -362,7 +362,7 @@ export async function changeOpportunityStatus(
     input.to_sub_status && isValidSubStatus(input.to_status, input.to_sub_status)
       ? input.to_sub_status
       : ((DEFAULT_SUB_STATUS_BY_STATUS as Record<string, string>)[input.to_status] ??
-        "solicitation");
+        "rfp");
   const patch: Record<string, unknown> = {
     status: input.to_status,
     sub_status: nextSubStatus,

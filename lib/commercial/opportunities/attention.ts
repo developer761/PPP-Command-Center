@@ -271,7 +271,7 @@ export function nextStep(
   // Sent meant it; the draft proposal is the lagging artifact, not the truth.
   const DEAL_STAGE_ORDER = ["qualifying", "rfp", "estimating", "pending_approval", "sent"];
   const STAGE_LABEL: Record<string, string> = {
-    qualifying: "Qualifying",
+    qualifying: "RFP",
     rfp: "RFP",
     estimating: "Estimating",
     pending_approval: "Pending Approval",

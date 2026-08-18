@@ -55,7 +55,8 @@ describe("kanban column map", () => {
 
   it("promotes RFP out of Qualifying without swallowing its siblings", () => {
     expect(columnKeyForOpp("qualifying", "rfp")).toBe("rfp");
-    expect(columnKeyForOpp("qualifying", "solicitation")).toBe("qualifying");
+    // Retired 2026-08-17: legacy `solicitation` rows fold into RFP.
+    expect(columnKeyForOpp("qualifying", "solicitation")).toBe("rfp");
     // AUDIT 2026-08-12: this used to expect "qualifying", and that expectation
     // WAS the bug Karan reported — `qualifying` carries an `estimating`
     // sub-status, so picking Estimating left the deal reading as Qualifying.
@@ -121,7 +122,7 @@ describe("kanban column map", () => {
     // itself. Qualifying is the fallback column for unrecognised statuses, so
     // narrowing it would hide the very rows that fallback rescues. All three
     // must fetch wide and filter in memory.
-    const WIDE = ["sent", "pending_approval", "estimating", "qualifying"];
+    const WIDE = ["sent", "pending_approval", "estimating", "rfp"];
     for (const key of WIDE) expect(columnDbStatusHint(key), key).toBeNull();
     for (const col of KANBAN_COLUMNS) {
       if (WIDE.includes(col.key)) continue;
@@ -183,7 +184,9 @@ describe("the state a deal is IN is what it says it is", () => {
     // …and the same class of lie one stage along.
     expect(oppStatusDisplayLabel("estimating", "proposal_pending_approval")).toBe("Pending Approval");
     expect(oppStatusDisplayLabel("proposal", "sent")).toBe("Sent");
-    expect(oppStatusDisplayLabel("qualifying", "solicitation")).toBe("Qualifying");
+    // A legacy `solicitation` row now reads as RFP everywhere, label included —
+    // the label is derived from the column, and Qualifying no longer has one.
+    expect(oppStatusDisplayLabel("qualifying", "solicitation")).toBe("RFP");
   });
 
   it("still says Won and Lost rather than Closed", () => {
@@ -279,7 +282,10 @@ describe("stages a brand-new deal may start at", () => {
       expect(offered, `a new deal must not start at "${gone}"`).not.toContain(gone);
     }
     // …and the early stages stay available, or there is nowhere to start.
-    expect(offered).toContain("qualifying");
+    // "Qualifying" is no longer offered to a new deal (Brendan 2026-08-17) —
+    // RFP is the entry stage. This asserts the retirement actually took.
+    expect(offered).not.toContain("qualifying");
+    expect(offered).toContain("rfp");
     expect(offered).toContain("rfp");
     expect(offered).toContain("estimating");
   });

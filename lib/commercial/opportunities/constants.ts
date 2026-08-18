@@ -109,7 +109,14 @@ type V2Status = (typeof OPPORTUNITY_STATUSES)[number];
  * longer something you can choose.
  */
 export const OFFERED_SUB_STATUSES: Record<string, readonly string[]> = {
-  qualifying: ["solicitation", "rfp"],
+  // Brendan 2026-08-17: "RFP should be the default stage for a new
+  // opportunity. We can remove qualifying from the opportunity. Because
+  // technically there is no opportunity if qualifying."
+  //
+  // `solicitation` stays VALID in SUB_STATUSES_BY_STATUS — rows created before
+  // this carry it and must not fail validation — it is simply no longer
+  // something anyone can choose. Same treatment `estimating` already got.
+  qualifying: ["rfp"],
 };
 
 export const SUB_STATUSES_BY_STATUS = {
@@ -150,7 +157,7 @@ export function isValidSubStatus(
  *  natural entry is "estimating" (we're pricing), not
  *  "proposal_pending_approval" (that comes AFTER pricing). */
 export const DEFAULT_SUB_STATUS_BY_STATUS: Record<V2Status, string> = {
-  qualifying: "solicitation",
+  qualifying: "rfp",
   estimating: "estimating",
   proposal: "sent",
   pre_sale_closed: "won",
@@ -177,7 +184,10 @@ export function laneForStatus(status: string): OpportunityLane {
 // ═══════════════════════════════════════════════════════════════════
 
 const STATUS_LABELS: Record<V2Status, string> = {
-  qualifying: "Qualifying",
+  // The DB status value stays `qualifying` (it is the pre-sale intake lane
+  // and renaming it would touch every history row), but the stage a person
+  // sees is RFP — Qualifying was retired 2026-08-17 (Brendan).
+  qualifying: "RFP",
   estimating: "Estimating",
   proposal: "Proposal",
   pre_sale_closed: "Closed",
@@ -308,7 +318,7 @@ export const DEFAULT_PROBABILITY_BY_SUB_STATUS: Record<string, number> = {
  *  (v1.1) don't break during the migration. Prefer the sub-status version
  *  above. Maps status → probability of its DEFAULT sub-status. */
 export const DEFAULT_PROBABILITY_BY_STATUS: Record<string, number> = {
-  qualifying: DEFAULT_PROBABILITY_BY_SUB_STATUS.solicitation,
+  qualifying: DEFAULT_PROBABILITY_BY_SUB_STATUS.rfp,
   estimating: DEFAULT_PROBABILITY_BY_SUB_STATUS.proposal_pending_approval,
   proposal: DEFAULT_PROBABILITY_BY_SUB_STATUS.sent,
   pre_sale_closed: DEFAULT_PROBABILITY_BY_SUB_STATUS.won,

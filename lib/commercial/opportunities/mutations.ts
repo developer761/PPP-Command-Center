@@ -134,7 +134,7 @@ export async function createCommercialOpportunity(
     input.sub_status && isValidSubStatus(status, input.sub_status)
       ? input.sub_status
       : ((DEFAULT_SUB_STATUS_BY_STATUS as Record<string, string>)[status] ??
-        "solicitation");
+        "rfp");
   // Auto-fill primary contact from the account if not supplied + the
   // account has a starred primary contact (Phase 1 Batch A feature).
   let primaryContactId = input.primary_contact_id ?? null;
@@ -291,7 +291,7 @@ export async function updateCommercialOpportunity(
     patch.sub_status =
       suppliedSub ??
       (DEFAULT_SUB_STATUS_BY_STATUS as Record<string, string>)[input.status] ??
-      "solicitation";
+      "rfp";
   } else if (input.sub_status !== undefined) {
     // Sub-status-only flip: caller is nudging within a lane. Only
     // accept if it validates against the CURRENT top-level status

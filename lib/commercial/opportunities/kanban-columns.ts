@@ -82,7 +82,9 @@ export type KanbanColumn = {
  * nothing is lost — they simply fold into Qualifying and Sent below.
  */
 export const PRE_CONTRACT_COLUMNS: readonly KanbanColumn[] = [
-  { key: "qualifying", label: "Qualifying", lane: "pre_contract" },
+  // "Qualifying" retired 2026-08-17 (Brendan) — an opportunity starts at
+  // RFP. The key itself stays defined below so legacy rows and any stored
+  // filter that still names it keep resolving instead of crashing.
   { key: "rfp", label: "RFP", lane: "pre_contract" },
   { key: "estimating", label: "Estimating", lane: "pre_contract" },
   { key: "pending_approval", label: "Pending Approval", lane: "pre_contract" },
@@ -110,7 +112,6 @@ export const KANBAN_COLUMNS: readonly KanbanColumn[] = [
  *  board's open strip. Won/Lost/Closed render as the terminal cluster
  *  with their own display cap, so they're excluded here. */
 export const OPEN_COLUMN_KEYS: readonly string[] = [
-  "qualifying",
   "rfp",
   "estimating",
   "pending_approval",
@@ -194,9 +195,11 @@ export function columnKeyForOpp(
       // Both tuples now resolve to the stage the words mean. The picker no
       // longer OFFERS the qualifying variant (see OFFERED_SUB_STATUSES), so no
       // new ones are created; this keeps the old rows reading correctly.
-      if (sub_status === "rfp") return "rfp";
       if (sub_status === "estimating") return "estimating";
-      return "qualifying";
+      // Everything else in this lane — including legacy `solicitation` and a
+      // null sub-status — now reads as RFP. The Qualifying column is gone, so
+      // returning it would put rows on a board column that no longer renders.
+      return "rfp";
     case "estimating":
       // Awaiting sign-off is its OWN stage now, not a fold into Proposal —
       // that fold is why moving a deal from pricing to pending-approval left
@@ -222,7 +225,10 @@ export function columnKeyForOpp(
     case "post_sale_closed":
       return status;
     default:
-      return "qualifying";
+      // Fallback for an unrecognised or null status. RFP is the lane's entry
+      // column now that Qualifying is retired, so junk lands there rather than
+      // on a column the board no longer renders (which would drop the card).
+      return "rfp";
   }
 }
 
@@ -259,7 +265,9 @@ export type ColumnTarget = {
 /**
  * The (status, sub_status) a drop on each column writes.
  *
- * Note `qualifying` targets `solicitation`, not `rfp` — dragging a deal
+ * NOTE: `qualifying` is no longer a drop target (Brendan 2026-08-17) — the
+ * lane's only column is RFP. Historic note kept for context:
+ * Note `qualifying` targeted `solicitation`, not `rfp` — dragging a deal
  * BACK to Qualifying from RFP has to actually leave the RFP column, and
  * solicitation is the natural entry point of that stage.
  *
@@ -278,7 +286,6 @@ export type ColumnTarget = {
  * list; the drag-and-drop API handles it with an explicit guard.
  */
 export const COLUMN_TARGET: Record<string, ColumnTarget> = {
-  qualifying: { status: "qualifying", sub_status: "solicitation" },
   rfp: { status: "qualifying", sub_status: "rfp" },
   estimating: { status: "estimating", sub_status: "estimating" },
   // The two stages Brendan asked to split apart. Both write a real tuple, so
@@ -350,10 +357,11 @@ export function columnDbStatusHint(key: string): string | null {
   // `pending_approval` shares the `estimating` status with `estimating`; and
   // `estimating` itself now holds BOTH (estimating, estimating) and the legacy
   // (qualifying, estimating) — narrowing it to one status would silently drop
-  // the second, which is the row Karan hit. Qualifying is the fallback column
-  // for unrecognised statuses, so narrowing it hides the rows that fallback
-  // exists to rescue. All four fetch wide and filter in memory.
-  if (key === "sent" || key === "pending_approval" || key === "estimating" || key === "qualifying") {
+  // the second, which is the row Karan hit. RFP is now the fallback column for
+  // unrecognised/null statuses (Qualifying retired 2026-08-17), so narrowing IT
+  // hides the rows that fallback exists to rescue. All four fetch wide and
+  // filter in memory.
+  if (key === "sent" || key === "pending_approval" || key === "estimating" || key === "rfp") {
     return null;
   }
   return COLUMN_TARGET[key]?.status ?? null;
