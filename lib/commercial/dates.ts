@@ -92,25 +92,4 @@ export function daysSinceIso(iso: string | null | undefined, now: number = Date.
   return Math.floor((now - t) / MS_PER_DAY);
 }
 
-/**
- * "Days idle" heat class for a row/card background. Karan 2026-07-11:
- * silent signal that draws the eye to stale work without adding chips
- * or badges. Threshold: 7 days = amber, 14 days = rose.
- *
- * Returns a Tailwind class list (bg + optional left border) suitable
- * for merging into a row's className. Empty string when the row is
- * fresh — callers can safely template it in without stripping.
- */
-export function idleHeatBg(daysIdle: number | null | undefined): string {
-  if (daysIdle == null || daysIdle < 7) return "";
-  if (daysIdle < 14) return "bg-amber-50/50";
-  return "bg-rose-50/50";
-}
-
-export function idleHeatBorder(daysIdle: number | null | undefined): string {
-  if (daysIdle == null || daysIdle < 7) return "";
-  if (daysIdle < 14) return "border-l-2 border-amber-400";
-  return "border-l-2 border-rose-400";
-}
-
 export { MS_PER_DAY };

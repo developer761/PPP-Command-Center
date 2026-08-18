@@ -344,11 +344,6 @@ export const PROBABILITY_PRESERVING_SUB_STATUSES: ReadonlySet<string> = new Set(
   "wip_on_hold",
 ]);
 
-/** v1.1 alias — kept during migration. */
-export const PROBABILITY_PRESERVING_STATUSES: ReadonlySet<string> = new Set([
-  "follow_up",
-]);
-
 // ═══════════════════════════════════════════════════════════════════
 // Terminal & open
 // ═══════════════════════════════════════════════════════════════════
@@ -409,11 +404,6 @@ export function isPostSaleProject(opp: StatusTuple): boolean {
 /** True when this opp is in Proposal/Follow Up (waiting on customer). */
 export function isFollowUp(opp: StatusTuple): boolean {
   return opp.status === "proposal" && opp.sub_status === "follow_up";
-}
-
-/** True when the opp has been decided (Won OR Lost OR Closeout OR Closed). */
-export function isDecided(opp: StatusTuple): boolean {
-  return isWon(opp) || isLost(opp) || (opp.status === "post_sale_closed");
 }
 
 /** True when the opp is in the Post-Sale lane (project delivery phase). */
@@ -534,14 +524,6 @@ export const WARN_TRANSITIONS: ReadonlySet<string> = new Set([
 // UI hints
 // ═══════════════════════════════════════════════════════════════════
 
-/** Statuses the list-page quick-flip dropdown should NOT expose.
- *  Terminal states need extra fields (loss_reason, decided_at) so
- *  the user must open the detail page. */
-export const QUICK_FLIP_BLOCKED_STATUSES: ReadonlySet<string> = new Set([
-  "pre_sale_closed",
-  "post_sale_closed",
-]);
-
 // ═══════════════════════════════════════════════════════════════════
 // Hot / stale / cooling constants (v2-adjusted)
 // ═══════════════════════════════════════════════════════════════════
@@ -558,8 +540,6 @@ export const HOT_DEAL_ACTIVE_STATUSES: readonly string[] = [
 ] as const;
 
 export const STALE_OPP_DAYS = 14;
-export const STALE_ACCOUNT_OPP_COOLING_MULTIPLIER = 4;
-
 /**
  * Was this deal WON inside the period starting `periodStartDate` (an ET
  * "YYYY-MM-DD")?

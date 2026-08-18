@@ -150,10 +150,6 @@ export function computeG702({
   };
 }
 
-export function formatApplicationNumber(n: number): string {
-  return `Application No. ${n}`;
-}
-
 /**
  * Collapse a deal's AIA payment applications into the two figures the deal's
  * financial rollups need — so an AIA-billed job stops reading "$0 billed"

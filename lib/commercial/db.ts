@@ -36,14 +36,3 @@ export type CommercialRole =
   // lib/commercial/crew-access.ts. Holding it and nothing else confines the
   // login to an allowlist of field-ops surfaces.
   | "crew";
-
-export const COMMERCIAL_ROLES: CommercialRole[] = [
-  "admin",
-  "estimator",
-  "pm",
-  "superintendent",
-  "foreman",
-  "office",
-  "field",
-  "crew",
-];

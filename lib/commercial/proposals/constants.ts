@@ -129,8 +129,6 @@ export function tomcoDefaultIntro(bidSetDateLabel?: string | null): string {
   return `${lead}. Provide all necessary material, equipment, and skilled labor to complete the project in a quality and professional manner.`;
 }
 
-export const TOMCO_DEFAULT_INTRO = tomcoDefaultIntro(null);
-
 // ────────────── Company footer (bottom of every Tomco PDF) ──────────────
 
 export const TOMCO_COMPANY_FOOTER = {
@@ -153,15 +151,6 @@ export function proposalTotalLabel(exclusionTexts: readonly string[]): string {
 }
 
 // ────────────── outcome bucket for reporting ──────────────
-
-/** Group statuses for the pipeline / win-loss report. */
-export function proposalOutcomeBucket(
-  s: string
-): "open" | "awarded" | "not_awarded" {
-  if (s === "won") return "awarded";
-  if (s === "lost" || s === "expired") return "not_awarded";
-  return "open";
-}
 
 // ────────────── revision lifecycle (Karan meeting 2026-08) ──────────────
 
@@ -205,7 +194,3 @@ export function proposalRevisionLabel(
  * read-side truth, not a substitute for that.
  */
 export const EDITABLE_PROPOSAL_STATUSES: readonly ProposalStatus[] = ["draft"];
-
-export function isProposalLocked(status: ProposalStatus): boolean {
-  return !EDITABLE_PROPOSAL_STATUSES.includes(status);
-}

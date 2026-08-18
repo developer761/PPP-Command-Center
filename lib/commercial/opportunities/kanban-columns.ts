@@ -162,10 +162,6 @@ export function kanbanMoveToLabel(key: string): string {
   return kanbanColumnLabel(key);
 }
 
-export function isPreContractColumn(key: string): boolean {
-  return COLUMN_BY_KEY.get(key)?.lane === "pre_contract";
-}
-
 // ═══════════════════════════════════════════════════════════════════
 // Tuple → column (where a deal SHOWS)
 // ═══════════════════════════════════════════════════════════════════
@@ -323,12 +319,6 @@ export function resolveColumnTarget(key: string): ColumnTarget | null {
   if (key === "pre_sale_closed") return null;
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(key)) return null;
   return COLUMN_TARGET[columnKeyForOpp(key, null)] ?? null;
-}
-
-/** The real top-level status behind a column key — used where a caller
- *  needs to compare against the status enum (validation, DAG hints). */
-export function columnRealStatus(key: string): string {
-  return COLUMN_TARGET[key]?.status ?? key;
 }
 
 /**

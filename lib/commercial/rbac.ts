@@ -65,8 +65,3 @@ export function emptyRoleCheck(): RoleCheck {
     roles: [],
   };
 }
-
-/** True when the user can see all commercial records (admin / office). */
-export function canSeeAllCommercial(rc: RoleCheck): boolean {
-  return rc.hasAdminRole || rc.hasOfficeRole;
-}

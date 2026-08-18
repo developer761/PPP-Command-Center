@@ -159,35 +159,3 @@ export function Banner({
     </div>
   );
 }
-
-/** CTA link rendered inside a Banner. Primary tone. Wraps to a new
- *  row on mobile via flex-wrap on the parent. */
-export function BannerCta({
-  href,
-  children,
-  tone = "primary",
-}: {
-  href: string;
-  children: ReactNode;
-  tone?: "primary" | "ghost";
-}) {
-  const cls =
-    tone === "primary"
-      ? "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 no-underline"
-      : "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 hover:bg-cc-brand-50 min-h-[44px] sm:min-h-[36px] touch-manipulation no-underline";
-  return (
-    <Link href={href} className={cls}>
-      {children}
-    </Link>
-  );
-}
-
-/** Actions row for a Banner. Right-aligns CTAs on desktop, stacks below
- *  the copy on mobile. Use inside <Banner> after the description. */
-export function BannerActions({ children }: { children: ReactNode }) {
-  return (
-    <div className="mt-3 flex items-center gap-2 flex-wrap sm:justify-start">
-      {children}
-    </div>
-  );
-}
