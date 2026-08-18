@@ -28,6 +28,7 @@ import {
   resolveG702,
   reconcileDraftChangeOrderRows,
   getEffectiveContractBaseCents,
+  aiaBillingRollupBulk,
 } from "@/lib/commercial/aia/db";
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { buildAiaWorkbookBuffer } from "@/lib/commercial/aia/export";
@@ -38,7 +39,6 @@ import type { AiaLineSaveResult } from "@/components/commercial/aia-line-row";
 import { AiaSettingsForm } from "@/components/commercial/aia-settings-form";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { DateField } from "@/components/commercial/date-field";
-import { DonutChart, GaugeRing } from "@/components/commercial/charts";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { toolOriginQs } from "@/lib/commercial/tool-origin";
@@ -537,10 +537,13 @@ async function AiaApplicationList({
   origin?: string;
   createAction: (fd: FormData) => void | Promise<void>;
 }) {
-  const [applications, netCO, baseContract] = await Promise.all([
+  const [applications, netCO, baseContract, billing] = await Promise.all([
     listAiaApplications(dealId),
     netApprovedChangeOrderCents(dealId),
     getEffectiveContractBaseCents(dealId),
+    // The SAME rollup the dashboard, AR aging and the GC statement use, so this
+    // page can't disagree with them about what's billed or owed.
+    aiaBillingRollupBulk([dealId]).then((m) => m.get(dealId) ?? null),
   ]);
   const baseContractCents = baseContract > 0 ? baseContract : null;
   const contractToDateCents = baseContractCents != null ? baseContractCents + netCO : null;
@@ -560,103 +563,207 @@ async function AiaApplicationList({
     ? "None yet"
     : [paidCount > 0 ? `${paidCount} paid` : null, submittedCount > 0 ? `${submittedCount} submitted` : null]
         .filter(Boolean).join(" · ") || undefined;
+  // ── What to do next ──────────────────────────────────────────────────
+  // Stephanie: "This entire section is kind of cumbersome and unorganized."
+  // Every other surface here tells you the next move; AIA didn't. Ordered by
+  // what actually blocks progress.
+  const draftApp = [...applications].sort((a, b) => b.application_number - a.application_number)
+    .find((a) => a.status === "draft");
+  const awaitingPayment = applications.filter((a) => a.status === "submitted");
+  const fullyBilled =
+    contractToDateCents != null && contractToDateCents > 0 && completedToDateCents >= contractToDateCents;
+  const nextStep: { text: string; tone: "todo" | "active" | "done" } =
+    applications.length === 0
+      ? { text: "Start Application No. 1 for the first billing period.", tone: "todo" }
+      : draftApp
+      ? { text: `Application No. ${draftApp.application_number} is still a draft — enter this period's work, then submit it to the GC.`, tone: "active" }
+      : awaitingPayment.length > 0
+      ? { text: `${awaitingPayment.length === 1 ? `Application No. ${awaitingPayment[0].application_number} is` : `${awaitingPayment.length} applications are`} with the GC. Record the payment when it arrives.`, tone: "active" }
+      : fullyBilled
+      ? { text: "Fully billed. Retainage is released at close-out.", tone: "done" }
+      : { text: "Everything so far is paid. Start the next application when the period closes.", tone: "todo" };
+
+  const billedCents = billing?.billedCents ?? completedToDateCents;
+  const retainageHeldCents = billing?.retainageHeldCents ?? 0;
+  const dueNowCents = billing?.dueNowCents ?? 0;
+  const leftToBillCents =
+    contractToDateCents != null ? Math.max(0, contractToDateCents - billedCents) : null;
+
   return (
     <div className="space-y-3">
-      {/* ── Contract summary strip — renders even with zero applications so the
-          page isn't a wall of white. Mirrors the Change Orders panel. ── */}
-      <section className="bg-gradient-to-br from-cc-brand-50/60 to-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-600 text-white">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" /></svg>
-          </span>
-          <div>
-            <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Contract to date</h2>
-            <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
-              The base contract plus approved change orders, as of today.{" "}
-              {frozenCount > 0
-                ? "An issued certificate keeps the figures it was sent with, so it can read lower than this — that difference is the change orders approved since, and they belong on the next application."
-                : "This is what each G702 certifies against."}
-            </p>
-          </div>
+      {/* ── 1. WHERE THIS JOB STANDS ──────────────────────────────────────
+          Was a gradient hero carrying four tiles PLUS a donut counting
+          applications by status PLUS a gauge repeating "% billed" PLUS a text
+          line repeating "contract to date" — analytics on a number that is
+          usually 3, and the same figure printed twice. None of it answered the
+          questions a billing person opens this page with. These five do. ── */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
+          <h2 className="text-sm font-bold text-ppp-charcoal">Where this job stands</h2>
+          {billedPct !== null && (
+            <span className="text-[11.5px] text-ppp-charcoal-500 tabular-nums">{billedPct}% billed</span>
+          )}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <AiaSummaryTile label="Original contract" value={baseContractCents != null ? formatCentsFull(baseContractCents) : "—"} hint={baseContractCents == null ? "No bid set" : undefined} />
-          <AiaSummaryTile label="Net approved COs" value={netCO === 0 ? formatCentsFull(0) : `${netCO < 0 ? "−" : "+"}${formatCentsFull(Math.abs(netCO))}`} tone={netCO < 0 ? "rose" : netCO > 0 ? "emerald" : "neutral"} />
-          <AiaSummaryTile label="Contract to date" value={contractToDateCents != null ? formatCentsFull(contractToDateCents) : "—"} emphasize />
-          <AiaSummaryTile label="Applications" value={String(applications.length)} hint={appsHint} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <AiaSummaryTile
+            label="Contract to date"
+            value={contractToDateCents != null ? formatCentsFull(contractToDateCents) : "—"}
+            hint={
+              baseContractCents == null
+                ? "No bid set"
+                : netCO !== 0
+                ? `base ${formatCentsFull(baseContractCents)} ${netCO < 0 ? "−" : "+"} COs ${formatCentsFull(Math.abs(netCO))}`
+                : "base contract"
+            }
+            emphasize
+          />
+          <AiaSummaryTile
+            label="Billed to date"
+            value={formatCentsFull(billedCents)}
+            hint={leftToBillCents != null ? `${formatCentsFull(leftToBillCents)} left to bill` : undefined}
+          />
+          <AiaSummaryTile
+            label="Owed now"
+            value={formatCentsFull(dueNowCents)}
+            tone={dueNowCents > 0 ? "rose" : "neutral"}
+            hint={dueNowCents > 0 ? "certified, not yet paid" : "nothing outstanding"}
+          />
+          <AiaSummaryTile
+            label="Retainage held"
+            value={formatCentsFull(retainageHeldCents)}
+            hint={retainageHeldCents > 0 ? "released at close-out" : "none held"}
+          />
         </div>
-        {applications.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-            <DonutChart
-              size={116}
-              segments={[
-                { label: "Paid", value: paidCount, tone: "emerald", valueLabel: String(paidCount) },
-                { label: "Submitted", value: submittedCount, tone: "blue", valueLabel: String(submittedCount) },
-                { label: "Draft", value: Math.max(0, applications.length - submittedCount - paidCount), tone: "neutral", valueLabel: String(Math.max(0, applications.length - submittedCount - paidCount)) },
-              ]}
-              centerValue={String(applications.length)}
-              centerLabel={applications.length === 1 ? "application" : "applications"}
+        {billedPct !== null && (
+          <div className="mt-3 h-1.5 rounded-full bg-ppp-charcoal-100 overflow-hidden" aria-hidden>
+            <div
+              className={`h-full rounded-full ${billedPct >= 100 ? "bg-emerald-500" : "bg-cc-brand-500"}`}
+              style={{ width: `${Math.min(100, billedPct)}%` }}
             />
-            <div className="flex items-center gap-4 justify-center">
-              <GaugeRing pct={billedPct ?? 0} tone={billedPct === null ? "neutral" : billedPct >= 100 ? "emerald" : "blue"} value={billedPct === null ? "—" : `${billedPct}%`} label="billed" size={104} />
-              <div className="min-w-0 text-[12px] space-y-1">
-                <div><span className="text-ppp-charcoal-500">Completed to date: </span><strong className="tabular-nums text-ppp-charcoal">{formatCentsFull(completedToDateCents)}</strong></div>
-                <div><span className="text-ppp-charcoal-500">Contract to date: </span><strong className="tabular-nums text-ppp-charcoal">{contractToDateCents != null ? formatCentsFull(contractToDateCents) : "—"}</strong></div>
-              </div>
-            </div>
           </div>
+        )}
+        {frozenCount > 0 && (
+          <p className="text-[11px] text-ppp-charcoal-500 mt-2.5 leading-snug">
+            An issued certificate keeps the figures it was sent with, so it can read lower than the
+            contract above — that difference is the change orders approved since, and they belong on
+            the next application.
+          </p>
         )}
       </section>
 
+      {/* ── 2. WHAT TO DO NEXT ──────────────────────────────────────────── */}
+      <section
+        className={`rounded-xl border px-4 py-3 flex items-start gap-2.5 ${
+          nextStep.tone === "active"
+            ? "border-amber-200 bg-amber-50"
+            : nextStep.tone === "done"
+            ? "border-emerald-200 bg-emerald-50"
+            : "border-ppp-charcoal-200 bg-ppp-charcoal-50"
+        }`}
+      >
+        <span
+          aria-hidden
+          className={`mt-0.5 inline-block h-2 w-2 rounded-full shrink-0 ${
+            nextStep.tone === "active" ? "bg-amber-500" : nextStep.tone === "done" ? "bg-emerald-500" : "bg-ppp-charcoal-400"
+          }`}
+        />
+        <div className="min-w-0">
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+            Next step
+          </span>
+          <span className="block text-[13px] text-ppp-charcoal mt-0.5">{nextStep.text}</span>
+        </div>
+      </section>
+
+      {/* ── 3. THE APPLICATIONS ────────────────────────────────────────────
+          Newest first — the one being worked on is the one you came for. Rows
+          now carry MONEY: a billing list where every row was just a number, a
+          date and a pill meant she had to open each one to find out what it
+          was worth. ── */}
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Payment applications</h2>
+        <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
+          <h2 className="text-sm font-bold text-ppp-charcoal">Payment applications</h2>
+          {applications.length > 0 && (
+            <span className="text-[11.5px] text-ppp-charcoal-500">
+              {applications.length} total{appsHint ? ` · ${appsHint}` : ""}
+            </span>
+          )}
+        </div>
+
         {applications.length === 0 ? (
-          <p className="text-[12px] text-ppp-charcoal-500 mb-3">No applications yet. Start the first billing period below.</p>
+          <div className="text-[12px] text-ppp-charcoal-500 mb-3 space-y-1">
+            <p>No applications yet. AIA billing runs one application per billing period.</p>
+            <p>
+              <strong className="text-ppp-charcoal-700">How it works:</strong> create the application
+              for this period &rarr; enter the work completed &rarr; send the G702/G703 to the GC
+              &rarr; record their payment. Each one carries forward from the last.
+            </p>
+          </div>
         ) : (
           <ul className="space-y-2 mb-4">
-            {applications.map((a) => (
-              <li key={a.id}>
-                <Link
-                  href={`${base(id, dealId, origin, from)}&app=${a.id}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-ppp-charcoal-100 px-3.5 py-2.5 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
-                >
-                  <span className="min-w-0">
-                    <span className="text-[13px] font-semibold text-ppp-charcoal">Application No. {a.application_number}</span>
-                    <span className="block text-[11px] text-ppp-charcoal-500">
-                      {a.period_to ? `Period to ${fmtEtDate(a.period_to)}` : "No period set"}
+            {[...applications]
+              .sort((a, b) => b.application_number - a.application_number)
+              .map((a) => (
+                <li key={a.id}>
+                  <Link
+                    href={`${base(id, dealId, origin, from)}&app=${a.id}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-ppp-charcoal-100 px-3.5 py-2.5 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
+                  >
+                    <span className="min-w-0">
+                      <span className="text-[13px] font-semibold text-ppp-charcoal">
+                        Application No. {a.application_number}
+                      </span>
+                      <span className="block text-[11px] text-ppp-charcoal-500">
+                        {a.period_to ? `Period to ${fmtEtDate(a.period_to)}` : "No period set"}
+                        {a.retainage_pct ? ` · ${a.retainage_pct}% retainage` : ""}
+                      </span>
                     </span>
-                  </span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold shrink-0 ${
-                    AIA_STATUS_META[a.status].tone === "emerald" ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : AIA_STATUS_META[a.status].tone === "ppp-blue" ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
-                    : "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200"
-                  }`}>
-                    {AIA_STATUS_META[a.status].label}
-                  </span>
-                </Link>
-              </li>
-            ))}
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold shrink-0 ${
+                        AIA_STATUS_META[a.status].tone === "emerald"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : AIA_STATUS_META[a.status].tone === "ppp-blue"
+                          ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
+                          : "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200"
+                      }`}
+                    >
+                      {AIA_STATUS_META[a.status].label}
+                    </span>
+                  </Link>
+                </li>
+              ))}
           </ul>
         )}
 
-        <form action={createAction} className="rounded-lg border border-dashed border-cc-brand-200 p-3.5 grid sm:grid-cols-3 gap-3 items-end">
-          <input type="hidden" name="account_id" value={id} />
-          <input type="hidden" name="opp_id" value={dealId} />
-          <input type="hidden" name="back" value={back} />
-          <input type="hidden" name="from" value={from} />
-          <input type="hidden" name="origin" value={origin} />
-          <div>
-            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
-            <DateField ariaLabel="Period to date" name="period_to" placeholder="Pick a date" />
-          </div>
-          <label className="block">
-            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Retainage (%)</span>
-            <input name="retainage_pct" inputMode="decimal" defaultValue={String(DEFAULT_RETAINAGE_PCT)} className={INPUT} />
-          </label>
-          <PendingSubmitButton pendingLabel="Creating…" className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+        {/* Once a job has applications, the create form is not what you came
+            for — it was a permanently-open dashed box under the list. Folded
+            away, and left open on a job with none. */}
+        <details open={applications.length === 0} className="group">
+          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-cc-brand-200 bg-cc-brand-50 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-100 min-h-[44px]">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform">
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
             New application
-          </PendingSubmitButton>
-        </form>
+          </summary>
+          <form action={createAction} className="mt-2.5 rounded-lg border border-dashed border-cc-brand-200 p-3.5 grid sm:grid-cols-3 gap-3 items-end">
+            <input type="hidden" name="account_id" value={id} />
+            <input type="hidden" name="opp_id" value={dealId} />
+            <input type="hidden" name="back" value={back} />
+            <input type="hidden" name="from" value={from} />
+            <input type="hidden" name="origin" value={origin} />
+            <div>
+              <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
+              <DateField ariaLabel="Period to date" name="period_to" placeholder="Pick a date" />
+            </div>
+            <label className="block">
+              <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Retainage (%)</span>
+              <input name="retainage_pct" inputMode="decimal" defaultValue={String(DEFAULT_RETAINAGE_PCT)} className={INPUT} />
+            </label>
+            <PendingSubmitButton pendingLabel="Creating…" className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+              Create application
+            </PendingSubmitButton>
+          </form>
+        </details>
       </section>
     </div>
   );
