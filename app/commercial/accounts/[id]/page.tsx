@@ -5343,46 +5343,6 @@ function ratingTone(r: "A" | "B" | "C"): "emerald" | "blue" | "amber" {
 
 
 
-function RollupTile({
-  label,
-  value,
-  sub,
-  tone,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  tone: "neutral" | "blue" | "emerald" | "warn" | "danger";
-}) {
-  // Color-audit 2026-07-28: "blue" now uses the real brand cyan (ppp-blue),
-  // not cc-brand red; added "emerald" for positive money (Paid). Value type is
-  // Roboto Condensed black to match the dashboard KPI treatment.
-  const ring =
-    tone === "blue"
-      ? "border-ppp-blue-200 bg-gradient-to-br from-surface to-ppp-blue-50/50"
-      : tone === "emerald"
-      ? "border-emerald-200 bg-gradient-to-br from-surface to-emerald-50/50"
-      : tone === "warn"
-      ? "border-amber-200 bg-gradient-to-br from-surface to-amber-50/40"
-      : tone === "danger"
-      ? "border-rose-200 bg-gradient-to-br from-surface to-rose-50/50"
-      : "border-ppp-charcoal-100 bg-surface";
-  const stripe =
-    tone === "blue" ? "bg-ppp-blue-500" : tone === "emerald" ? "bg-emerald-500" : tone === "warn" ? "bg-amber-500" : tone === "danger" ? "bg-rose-500" : "bg-ppp-charcoal-200";
-  return (
-    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
-      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
-        {label}
-      </div>
-      <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums">
-        {value}
-      </div>
-      {sub && <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>}
-    </div>
-  );
-}
-
 /**
  * AccountKpisTab — Karan 2026-07-08 rewrite.
  *
