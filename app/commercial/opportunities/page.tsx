@@ -1203,18 +1203,31 @@ export default async function CommercialOpportunitiesPage({
             placeholder="Search opportunities, GCs, addresses…"
             kinds={["opportunity", "account"]}
           />
+          {/* EVERY active filter has to ride the search submit, or pressing
+              Enter silently returns you to the unfiltered default view. The
+              link builders were fixed for this (audit D4); this form was
+              missed, so it preserved five things and dropped nine — including
+              the VIEW itself for By-GC, and lane / mine / estimator / new,
+              which are how the attention deep-links and saved views arrive. */}
           {validColumn && <input type="hidden" name="status" value={validColumn} />}
-          {viewMode === "list" && <input type="hidden" name="view" value="list" />}
+          {viewMode !== "sheet" && <input type="hidden" name="view" value={viewMode} />}
           {hotFilter && <input type="hidden" name="hot" value="1" />}
           {staleFilter && <input type="hidden" name="stale" value="1" />}
+          {includeArchived && <input type="hidden" name="archived" value="1" />}
+          {overdueFilter && <input type="hidden" name="overdue" value="1" />}
+          {coldRfpFilter && <input type="hidden" name="coldrfp" value="1" />}
+          {followupFilter && <input type="hidden" name="followup" value="1" />}
+          {mineFilter && <input type="hidden" name="mine" value="1" />}
+          {estimatorFilter && <input type="hidden" name="estimator" value={estimatorFilter} />}
+          {newFilter && <input type="hidden" name="new" value="7d" />}
+          {laneFilter && <input type="hidden" name="lane" value={laneFilter} />}
           {sourceSet.size > 0 && (
             <input type="hidden" name="sources" value={Array.from(sourceSet).join(",")} />
           )}
           {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
 
-          {/* View toggle — segmented control. Customer-first is the
-              default (Karan 2026-07-08 Batch 1c). Kanban + List remain
-              as opt-in alternate views for deal-first workflows. */}
+          {/* View toggle — segmented control. SHEET is the default (Karan
+              2026-08-17); By-GC and List are the opt-in alternates. */}
           <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-surface overflow-hidden shrink-0">
             <Link
               href={viewToggleHref("customer")}
