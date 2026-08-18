@@ -7,7 +7,7 @@ import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
 import { insertCustomerFormSubmittedNotification } from "@/lib/notifications/insert";
-import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { VALID_MATERIAL_TYPE_VALUES, toSalesforceMaterialType } from "@/lib/customer-form/material-types";
 import { alertSalesforceWriteFailure } from "@/lib/customer-form/sf-failure-alert";
 import {
   STANDARD_SURFACE_FIELDS,
@@ -538,12 +538,58 @@ export async function POST(
       console.warn(`[customer-form] dropping MaterialType__c write for WO ${status.token.work_order_id.slice(0, 8)}…: value "${customerMaterialType}" not in VALID_MATERIAL_TYPES allowlist (likely legacy SF value or tampered client). WOLI writes proceed normally.`);
       materialTypeDropped = true;
     } else {
-      attempts.push({
-        sObject: "WorkOrder",
-        recordId: status.token.work_order_id,
-        fields: { MaterialType__c: customerMaterialType },
+      // Translate the app's paint line into a value the RESTRICTED picklist
+      // actually accepts. The org's vocabulary is line + SCOPE ("Regal Select
+      // Interior"), which matches neither the old finish-bearing values nor the
+      // line-only ones Kate asked for — so every write to this field had been
+      // rejected with INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST since at least
+      // 2026-07-14, silently, visible only in sf_writes_audit.
+      //
+      // The scope isn't a question for a human: the work order already knows
+      // whether it's interior or exterior work, so we derive it.
+      const sfMaterialType = toSalesforceMaterialType(customerMaterialType, {
+        workTypeName: fresh.workTypeName,
+        lineItemProductNames: fresh.lineItems.map((li) => li.productName),
       });
+      if (!sfMaterialType) {
+        // No equivalent in the org's picklist (Ben, Mooreglo, Mooregard, Moore
+        // Life). Skipping beats guessing "Other" — recording the wrong paint on
+        // a real job is worse than recording none. Katie can add the value.
+        console.warn(`[customer-form] MaterialType__c write skipped for WO ${status.token.work_order_id.slice(0, 8)}…: "${customerMaterialType}" has no value in the restricted picklist. Ask Katie to add it.`);
+        materialTypeDropped = true;
+      } else {
+        attempts.push({
+          sObject: "WorkOrder",
+          recordId: status.token.work_order_id,
+          fields: { MaterialType__c: sfMaterialType },
+        });
+      }
     }
+  }
+
+  // "Colors Received" — the flag PPP actually runs on.
+  //
+  // WorkOrder.ColorsReceived__c is a live operational boolean: 1,937 work
+  // orders carry it today, and Katie's team reads it to know a job is ready to
+  // order materials for. The Command Center is the thing that KNOWS when
+  // colours arrive, and it was never setting it — WO 00306643 had a customer
+  // submission sitting in the Command Center while Salesforce still said
+  // "colors not received".
+  //
+  // Set only when at least one real colour landed on a line item: a notes-only
+  // submission (exterior jobs with no room breakdown) hasn't received colours.
+  // Never set it back to false — a human may have set it for reasons we can't
+  // see, and this is an "it happened" flag, not a mirror of our state.
+  const COLOR_FIELDS = ["ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c"];
+  const wroteAnyColor = attempts.some(
+    (a) => a.sObject === "WorkOrderLineItem" && COLOR_FIELDS.some((f) => a.fields[f])
+  );
+  if (wroteAnyColor) {
+    attempts.push({
+      sObject: "WorkOrder",
+      recordId: status.token.work_order_id,
+      fields: { ColorsReceived__c: true },
+    });
   }
 
   // Kate round-2 #10: append the customer's "Anything else we should know?"

@@ -214,3 +214,71 @@ export function filterMaterialTypesForWorkOrder(
   }
   return groups;
 }
+
+
+/* ─── Salesforce picklist mapping ───────────────────────────────────────────
+ *
+ * WorkOrder.MaterialType__c is a RESTRICTED picklist, and its vocabulary is
+ * neither what we used to send nor what we send now. Read from the live org:
+ *
+ *   Ultra Spec Interior · Regal Select Interior · Aura Interior
+ *   Ultra Spec Exterior · Regal Select Exterior · Aura Exterior
+ *   SW Emerald · SW Duration · SW Super Paint · Other
+ *
+ * It is LINE + SCOPE. The old app values carried a FINISH ("Regal Select
+ * Eggshell") and the new ones carry no scope ("Regal Select"), so BOTH are
+ * rejected — every MaterialType__c write had been failing with
+ * INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST since at least 2026-07-14, visible
+ * only in sf_writes_audit.
+ *
+ * Kate's #09 is still right for the UI: a human picks a line, and the finish is
+ * asked per surface. The scope isn't a question for a human at all — the work
+ * order already knows whether it's interior or exterior work. So we ask for the
+ * line and derive the rest.
+ */
+
+/** Exactly what the org accepts today. If Salesforce's picklist changes, this
+ *  must change with it — a value not in here is never sent. */
+export const SF_MATERIAL_TYPE_VALUES: ReadonlySet<string> = new Set([
+  "Ultra Spec Interior", "Regal Select Interior", "Aura Interior",
+  "Ultra Spec Exterior", "Regal Select Exterior", "Aura Exterior",
+  "SW Emerald", "SW Duration", "SW Super Paint", "Other",
+]);
+
+/** Lines the org expresses as "<line> Interior" / "<line> Exterior". */
+const SCOPED_SF_LINES = ["Ultra Spec", "Regal Select", "Aura"];
+
+/**
+ * Translate an app paint line into a value Salesforce will accept, using the
+ * work order's own interior/exterior context for the scope.
+ *
+ * Returns null when there is no valid mapping — the caller MUST then skip the
+ * write rather than send something the picklist will reject. Silently sending
+ * a doomed value is what hid this for a month.
+ */
+export function toSalesforceMaterialType(
+  appValue: string | null | undefined,
+  context: { workTypeName?: string | null; lineItemProductNames?: ReadonlyArray<string | null> }
+): string | null {
+  const line = paintLineFromValue(appValue);
+  if (!line) return null;
+  // Already speaks Salesforce (SW grades, "Other", or a legacy scoped value).
+  if (SF_MATERIAL_TYPE_VALUES.has(line)) return line;
+  if (SF_MATERIAL_TYPE_VALUES.has(appValue ?? "")) return appValue as string;
+
+  if (SCOPED_SF_LINES.includes(line)) {
+    const interior = isInteriorWorkOrder(context);
+    const exterior = isExteriorWorkOrder(context);
+    // A mixed or unknown job can't be resolved to one scope. Interior is the
+    // overwhelming majority of PPP's work, so it's the safer default — but only
+    // when there's no exterior signal at all.
+    const scope = exterior && !interior ? "Exterior" : "Interior";
+    const candidate = `${line} ${scope}`;
+    return SF_MATERIAL_TYPE_VALUES.has(candidate) ? candidate : null;
+  }
+
+  // Ben, Mooreglo, Mooregard, Moore Life have no equivalent in the org's
+  // picklist. Don't guess "Other" — that would silently record the wrong paint
+  // for a real job. Skip the write and let the caller say so.
+  return null;
+}
