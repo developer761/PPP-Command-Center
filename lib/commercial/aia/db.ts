@@ -931,10 +931,26 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
  */
 export async function aiaBillingRollup(
   opportunityId: string
-): Promise<{ billedCents: number; collectedCents: number; hasAia: boolean }> {
+): Promise<{
+  billedCents: number;
+  collectedCents: number;
+  /** Currently-payable receivable: G702 line 6 minus collected. Excludes
+   *  retainage by design — see aiaBilledCollectedFrom. */
+  dueNowCents: number;
+  /** Held back until close-out. Real money, just not yet due. */
+  retainageHeldCents: number;
+  hasAia: boolean;
+}> {
   const apps = await listAiaApplications(opportunityId); // ordered by application_number asc
   const issued = apps.filter((a) => a.status === "submitted" || a.status === "paid");
-  if (issued.length === 0) return { billedCents: 0, collectedCents: 0, hasAia: false };
+  if (issued.length === 0)
+    return {
+      billedCents: 0,
+      collectedCents: 0,
+      dueNowCents: 0,
+      retainageHeldCents: 0,
+      hasAia: false,
+    };
 
   // Billed = latest ISSUED app's Total Completed & Stored; collected = latest
   // PAID app's Total Earned Less Retainage. Both cumulative lines off one app.
@@ -952,11 +968,11 @@ export async function aiaBillingRollup(
   const latestPaidResolved =
     latestPaid == null ? null : latestPaid.id === latestIssued.id ? latestIssuedG702 : latestPaidG702;
 
-  const { billedCents, collectedCents } = aiaBilledCollectedFrom({
+  const { billedCents, collectedCents, dueNowCents, retainageHeldCents } = aiaBilledCollectedFrom({
     latestIssued: latestIssuedG702,
     latestPaid: latestPaidResolved,
   });
-  return { billedCents, collectedCents, hasAia: true };
+  return { billedCents, collectedCents, dueNowCents, retainageHeldCents, hasAia: true };
 }
 
 /**

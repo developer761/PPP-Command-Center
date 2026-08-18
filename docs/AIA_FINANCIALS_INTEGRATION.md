@@ -10,7 +10,36 @@ The account-overview SQL view (`commercial_account_overview_v`) turned out NOT t
 be a third surface: its `total_invoiced` / `total_paid` / `balance_owed` fields are
 defined on the type but rendered **nowhere**, so no SQL AIA math was needed.
 
-**Definitions used** (Katie/Alex still to confirm the retainage treatment):
+## ✅ RETAINAGE SETTLED (2026-08-17) — AR is NET of retainage
+
+Karan: *"just see whatever's best and what they would want and go with that."*
+So, decided rather than left open:
+
+**Accounts receivable = G702 line 6 (Total Earned Less Retainage) − collected.**
+Retainage is tracked and shown, never summed into what's owed.
+
+Why this and not gross:
+
+1. **It's what the contract actually says.** Retainage is not payable until
+   close-out. Billing a GC for it — which is what "total outstanding" on a
+   statement asserts — is asking for money the contract doesn't owe yet.
+2. **Gross would destroy the aging report.** Retainage sits for months *by
+   design*. Fold it into AR and every progress-billed job reads 90+ days past
+   due while the GC is perfectly current, so the one report that exists to say
+   "who is late" would flag everybody.
+3. **It matches how the trade keeps books.** "AR — Trade" and "Retainage
+   Receivable" are separate GL accounts precisely because the second isn't
+   currently collectible.
+4. **It doesn't hide anything.** `retainageHeldCents` rides alongside every
+   figure, the deal shows "Owed now $X · plus $Y retainage at close-out", and
+   the GC statement prints a stated retainage line explicitly marked as *not
+   included above*.
+
+Surfaces now folding AIA in (they previously showed $0 for an AIA-only GC):
+account rollup / Account 360 Collections · AR aging report · AR statement +
+its PDF · dashboard "Owed to us" · deal financials · project cards.
+
+**Definitions used:**
 billed = latest ISSUED app's Total Completed & Stored (G702 line 4, gross);
 collected = latest PAID app's Total Earned Less Retainage (G702 line 6). Both a
 cumulative line off one app, so the detail + batch paths are penny-consistent

@@ -95,6 +95,52 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
     }
   }
 
+  // AIA payment applications are receivables with no invoice row (2026-08-17).
+  // The report is the collections book; a job billed only through G702/G703 was
+  // simply absent from it. Amount = earned-less-retainage minus collected, so
+  // retainage never ages — see aiaBilledCollectedFrom for why that matters.
+  const aiaRows: {
+    accountId: string;
+    balance: number;
+    days: number;
+  }[] = [];
+  {
+    const { aiaBillingRollup, listAiaApplications } = await import("@/lib/commercial/aia/db");
+    const { DEFAULT_DUE_DAYS } = await import("@/lib/commercial/invoices/constants");
+    const liveOpps = await listCommercialOpportunities({ includeArchived: true });
+    for (const opp of liveOpps) {
+      const roll = await aiaBillingRollup(opp.id).catch(() => null);
+      if (!roll || !roll.hasAia || roll.dueNowCents <= 0) continue;
+      const apps = await listAiaApplications(opp.id).catch(() => []);
+      const issued = apps.filter((a) => a.status === "submitted" || a.status === "paid");
+      const latest = issued[issued.length - 1];
+      if (!latest) continue;
+      const issuedAt = latest.frozen_at ?? (latest.period_to ? `${latest.period_to}T16:00:00Z` : null);
+      const dueAt = issuedAt
+        ? new Date(new Date(issuedAt).getTime() + DEFAULT_DUE_DAYS * 86_400_000).toISOString()
+        : null;
+      aiaRows.push({
+        accountId: opp.account_id,
+        balance: roll.dueNowCents,
+        days: dueAt ? daysPastDue(dueAt, nowMs) : 0,
+      });
+      if (!acctIds.includes(opp.account_id)) acctIds.push(opp.account_id);
+    }
+    // Names for any account that ONLY has AIA billing — it wasn't in the
+    // invoice-derived id list, so it had no name resolved above.
+    const missing = acctIds.filter((id) => !nameById.has(id));
+    if (missing.length > 0) {
+      const sb2 = commercialDb();
+      const { data } = await sb2
+        .from("commercial_accounts")
+        .select("id, company_name")
+        .in("id", missing);
+      for (const a of (data ?? []) as { id: string; company_name: string | null }[]) {
+        nameById.set(a.id, a.company_name ?? "—");
+      }
+    }
+  }
+
   const byAccount = new Map<string, ArAgingRow>();
   const totals = emptyBuckets();
   let ageWeightSum = 0; // Σ balance × max(0, daysPastDue)
@@ -125,11 +171,35 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
     totals.total += bal;
   }
 
+  // Same aggregation for the AIA applications collected above — one row per GC
+  // whether the money came from an invoice or a payment application.
+  for (const a of aiaRows) {
+    const bucket = bucketOf(a.days);
+    ageWeightSum += a.balance * Math.max(0, a.days);
+    let row = byAccount.get(a.accountId);
+    if (!row) {
+      row = {
+        accountId: a.accountId,
+        accountName: nameById.get(a.accountId) ?? "—",
+        invoiceCount: 0,
+        oldestDays: 0,
+        ...emptyBuckets(),
+      };
+      byAccount.set(a.accountId, row);
+    }
+    row[bucket] += a.balance;
+    row.total += a.balance;
+    row.invoiceCount += 1;
+    row.oldestDays = Math.max(row.oldestDays, a.days);
+    totals[bucket] += a.balance;
+    totals.total += a.balance;
+  }
+
   const rows = [...byAccount.values()].sort((a, b) => b.total - a.total);
   return {
     rows,
     totals,
-    invoiceCount: open.length,
+    invoiceCount: open.length + aiaRows.length,
     customerCount: rows.length,
     weightedAvgAgeDays: totals.total > 0 ? Math.round(ageWeightSum / totals.total) : 0,
   };

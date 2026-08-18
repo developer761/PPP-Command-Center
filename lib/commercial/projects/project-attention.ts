@@ -63,10 +63,10 @@ export type ProjectMoney = {
   billedCents: number;
   collectedCents: number;
   outstandingCents: number;
-  /** Retainage held. A SUBSET of `outstandingCents` (the AIA fold counts
-   *  billed − collected, and retainage is exactly the part of that the GC is
-   *  sitting on) — never an additional amount owed. Render it inside the
-   *  Outstanding figure, never as a peer tile beside it. */
+  /** Retainage held — money owed at CLOSE-OUT, not now. Deliberately NOT in
+   *  `outstandingCents`, which is the currently-payable receivable (2026-08-17
+   *  decision; see aiaBilledCollectedFrom). Render it as a sub-line under the
+   *  owed-now figure, never as a peer tile that reads as a second debt. */
   retainageCents: number;
   costsCents: number;
   marginCents: number;

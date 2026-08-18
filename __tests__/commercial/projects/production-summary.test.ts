@@ -35,6 +35,7 @@ describe("summarizeProduction", () => {
       draftedCents: 0,
       leftToBillCents: 0,
       outstandingCents: 0,
+      aiaDueNowCents: 0,
       overBilled: false,
       closeoutStatus: null,
       isClosedOut: false,

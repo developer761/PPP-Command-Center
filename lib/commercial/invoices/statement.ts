@@ -12,12 +12,16 @@ import "server-only";
 
 import { listCommercialInvoices } from "./db";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { deriveInvoiceStatus, type InvoiceStatus } from "./constants";
+import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, type InvoiceStatus } from "./constants";
 import { daysPastDue as arDaysPastDue } from "@/lib/commercial/reports/ar-aging";
 
 export type ARStatementRow = {
   invoiceId: string;
   invoiceNumber: string;
+  /** "invoice" | "aia" — an AIA-billed job raises no invoice, so its payment
+   *  application IS the receivable. The GC recognises "Application No. 3"
+   *  exactly as it recognises an invoice number. */
+  kind?: "invoice" | "aia";
   dealName: string;
   issuedAt: string | null;
   dueAt: string | null;
@@ -43,6 +47,11 @@ export type ARStatement = {
   accountId: string;
   rows: ARStatementRow[];
   totalOutstandingCents: number;
+  /** Retainage the GC holds across this account's AIA jobs. Deliberately NOT in
+   *  `totalOutstandingCents`: it isn't payable until close-out, and bucketing it
+   *  by age would show every progress-billed job as 90+ days past due when the
+   *  GC is perfectly current. Stated as its own line so it is never invisible. */
+  retainageHeldCents: number;
   aging: ARAging;
   /** ISO timestamp the statement was generated (caller stamps for the PDF). */
   generatedAt: string;
@@ -126,8 +135,65 @@ export async function getOpenInvoiceStatementForAccount(
     bucket.count += 1;
   }
 
+  // ── AIA payment applications ────────────────────────────────────────────
+  //
+  // A job billed through G702/G703 writes NO `commercial_invoices` row, so
+  // before this the statement we hand a GC omitted the progress billing
+  // entirely — a GC being billed $400k could receive a statement reading $0
+  // outstanding. The application is the receivable; it belongs on the statement
+  // under the number the GC already knows it by.
+  //
+  // Amount = earned-less-retainage minus collected (2026-08-17 decision), so
+  // this is what they owe today. Due date = issue (frozen_at) + net terms.
+  let retainageHeldCents = 0;
+  const { aiaBillingRollup, listAiaApplications } = await import("@/lib/commercial/aia/db");
+  for (const opp of opps) {
+    if (opp.deleted_at) continue;
+    const roll = await aiaBillingRollup(opp.id).catch(() => null);
+    if (!roll || !roll.hasAia) continue;
+    retainageHeldCents += roll.retainageHeldCents;
+    if (roll.dueNowCents <= 0) continue;
+
+    const apps = await listAiaApplications(opp.id).catch(() => []);
+    const issuedApps = apps.filter((a) => a.status === "submitted" || a.status === "paid");
+    const latest = issuedApps[issuedApps.length - 1];
+    if (!latest) continue;
+
+    const issuedAt = latest.frozen_at ?? (latest.period_to ? `${latest.period_to}T16:00:00Z` : null);
+    const dueAt = issuedAt
+      ? new Date(new Date(issuedAt).getTime() + DEFAULT_DUE_DAYS * 86_400_000).toISOString()
+      : null;
+    const daysPastDue = dueAt ? arDaysPastDue(dueAt, now) : null;
+    const isOverdue = daysPastDue != null && daysPastDue > 0;
+
+    rows.push({
+      invoiceId: latest.id,
+      invoiceNumber: `Application No. ${latest.application_number}`,
+      kind: "aia",
+      dealName: derivedOppName(opp, null),
+      issuedAt,
+      dueAt,
+      totalCents: roll.billedCents,
+      paidCents: roll.collectedCents,
+      balanceCents: roll.dueNowCents,
+      status: isOverdue ? "overdue" : "sent",
+      daysPastDue,
+    });
+    totalOutstandingCents += roll.dueNowCents;
+    const bucket = aging[agingBucketKey(daysPastDue, isOverdue)];
+    bucket.cents += roll.dueNowCents;
+    bucket.count += 1;
+  }
+
   // Oldest first (most-overdue at the top of the statement).
   rows.sort((a, b) => (b.daysPastDue ?? -Infinity) - (a.daysPastDue ?? -Infinity));
 
-  return { accountId, rows, totalOutstandingCents, aging, generatedAt: new Date(now).toISOString() };
+  return {
+    accountId,
+    rows,
+    totalOutstandingCents,
+    retainageHeldCents,
+    aging,
+    generatedAt: new Date(now).toISOString(),
+  };
 }

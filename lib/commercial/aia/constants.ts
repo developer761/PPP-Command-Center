@@ -185,15 +185,48 @@ export function formatApplicationNumber(n: number): string {
  */
 export function aiaBilledCollectedFrom(input: {
   /** G702 of the latest ISSUED (submitted/paid) application → billed. */
-  latestIssued: Pick<AiaG702, "totalCompletedStoredCents"> | null;
+  latestIssued: Pick<
+    AiaG702,
+    "totalCompletedStoredCents" | "totalEarnedLessRetainageCents"
+  > | null;
   /** G702 of the latest PAID application → collected. Null when nothing paid. */
   latestPaid: Pick<AiaG702, "totalEarnedLessRetainageCents"> | null;
-}): { billedCents: number; collectedCents: number } {
+}): {
+  billedCents: number;
+  collectedCents: number;
+  /** G702 line 6 on the latest issued app — the part of `billed` the GC is
+   *  contractually obliged to pay NOW. */
+  earnedLessRetainageCents: number;
+  /** billed − earned-less-retainage. Owed eventually, at close-out. */
+  retainageHeldCents: number;
+  /** THE AR FIGURE: earned-less-retainage minus what's been collected. */
+  dueNowCents: number;
+} {
   const billedCents = Math.max(0, input.latestIssued?.totalCompletedStoredCents ?? 0);
+  // Line 6 can't exceed line 4; a bad import shouldn't produce negative retainage.
+  const earnedLessRetainageCents = Math.min(
+    billedCents,
+    Math.max(0, input.latestIssued?.totalEarnedLessRetainageCents ?? 0)
+  );
+  const retainageHeldCents = Math.max(0, billedCents - earnedLessRetainageCents);
   const collectedRaw = Math.max(0, input.latestPaid?.totalEarnedLessRetainageCents ?? 0);
   // Never report more collected than billed (a data glitch shouldn't invent
   // negative outstanding on the CEO's dashboard).
-  return { billedCents, collectedCents: Math.min(collectedRaw, billedCents) };
+  const collectedCents = Math.min(collectedRaw, billedCents);
+  return {
+    billedCents,
+    collectedCents,
+    earnedLessRetainageCents,
+    retainageHeldCents,
+    // NET OF RETAINAGE (decided 2026-08-17, docs/AIA_FINANCIALS_INTEGRATION.md).
+    // Retainage is not payable until close-out, so counting it as receivable
+    // would (a) overstate what any GC would acknowledge owing and (b) poison
+    // the aging report — retainage sits for months BY DESIGN, so every AIA job
+    // would read 90+ days past due and the report would stop meaning anything.
+    // Construction accounting splits "AR — Trade" from "Retainage Receivable"
+    // for exactly this reason. Retainage is carried separately, never dropped.
+    dueNowCents: Math.max(0, earnedLessRetainageCents - collectedCents),
+  };
 }
 
 /**

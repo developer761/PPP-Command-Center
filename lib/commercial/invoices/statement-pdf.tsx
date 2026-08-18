@@ -77,7 +77,7 @@ function StatementDoc({
   company: CompanyContact;
   logo?: Buffer | null;
 }) {
-  const { rows, totalOutstandingCents, aging, generatedAt } = statement;
+  const { rows, totalOutstandingCents, retainageHeldCents, aging, generatedAt } = statement;
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
@@ -101,7 +101,11 @@ function StatementDoc({
         </View>
 
         {rows.length === 0 ? (
-          <Text style={{ marginTop: 20, color: "#6b7280" }}>No open invoices — this account has a $0 balance. Thank you.</Text>
+          <Text style={{ marginTop: 20, color: "#6b7280" }}>
+            {retainageHeldCents > 0
+              ? `Nothing currently due — this account has a $0 payable balance. ${fmt(retainageHeldCents)} of retainage is held pending close-out. Thank you.`
+              : "No open invoices — this account has a $0 balance. Thank you."}
+          </Text>
         ) : (
           <>
             <View style={styles.tableHead} fixed>
@@ -127,9 +131,21 @@ function StatementDoc({
               );
             })}
             <View style={styles.totalRow}>
-              <Text style={[styles.bold, { marginRight: 12 }]}>Total outstanding</Text>
+              <Text style={[styles.bold, { marginRight: 12 }]}>Total currently due</Text>
               <Text style={[styles.bold, { fontSize: 12 }]}>{fmt(totalOutstandingCents)}</Text>
             </View>
+            {/* Retainage is stated, never summed into the total. It is not
+                payable until close-out, so a GC reading this statement must
+                see it as a separate obligation — putting it in the total would
+                be asking for money the contract doesn't owe yet. */}
+            {retainageHeldCents > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={{ marginRight: 12, color: "#6b7280" }}>
+                  Retainage held (due at close-out, not included above)
+                </Text>
+                <Text style={{ color: "#6b7280" }}>{fmt(retainageHeldCents)}</Text>
+              </View>
+            )}
 
             {/* Aging summary */}
             <View style={styles.agingBox} wrap={false}>

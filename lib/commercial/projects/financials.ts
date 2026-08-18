@@ -37,6 +37,10 @@ export type ProjectFinancials = {
   /** Σ per-invoice max(0, −balance) — overpayment credits, surfaced separately
    *  so an overpaid deal shows a credit, not a hidden $0 balance. */
   creditCents: number;
+  /** AIA retainage the GC is holding back. NOT in `openBalanceCents` — it isn't
+   *  payable until close-out — but it is real money, so it is carried here for
+   *  surfaces that want to show "owed now, plus X at close-out". */
+  retainageHeldCents: number;
   /** Purchases only (materials, subs, equipment, permits, subcontract labor…). */
   costs: CostBreakdown;
   /** Option A — burdened cost of in-house crew hours (approved time-entries ×
@@ -88,6 +92,7 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
   let collectedCents = 0;
   let openBalanceCents = 0;
   let creditCents = 0;
+  let aiaRetainageHeldCents = 0;
   for (const r of (invRes.data ?? []) as InvRow[]) {
     // Issued only — a draft isn't billed; a void doesn't count (mirrors the
     // account rollup + listProjects).
@@ -110,7 +115,13 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     invoicedCents += aia.billedCents;
     billedPreTaxCents += aia.billedCents;
     collectedCents += aia.collectedCents;
-    openBalanceCents += Math.max(0, aia.billedCents - aia.collectedCents);
+    // NET OF RETAINAGE (decided 2026-08-17). `dueNowCents` is G702 line 6 minus
+    // collected — what the GC is contractually obliged to pay today. This used
+    // to be `billed − collected`, which folded retainage into the receivable
+    // and made a GC who is fully current read as owing money. Retainage is
+    // carried separately (`retainageHeldCents`) and shown, never dropped.
+    openBalanceCents += aia.dueNowCents;
+    aiaRetainageHeldCents = aia.retainageHeldCents;
   }
 
   const fieldOpsLaborCents = labor.cents;
@@ -126,6 +137,7 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     collectedCents,
     openBalanceCents,
     creditCents,
+    retainageHeldCents: aiaRetainageHeldCents,
     costs,
     fieldOpsLaborCents,
     laborUnratedHours: labor.unratedHours,

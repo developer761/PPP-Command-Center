@@ -137,10 +137,16 @@ export default async function CommercialDashboardPage() {
       BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)) &&
       (i.opportunity_id == null || realOppIds.has(i.opportunity_id))
   );
-  const arOutstandingCents = billableInvoices
-    // Clamp per invoice so a credit/overpaid invoice can't net down the AR —
-    // one "Outstanding" definition platform-wide (matches the account rollup).
-    .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
+  // AIA payment applications are receivables with no invoice row, so a GC being
+  // progress-billed $400k through G702/G703 contributed nothing here (2026-08-17).
+  // Net of retainage — retainage is owed at close-out, not now, and folding it
+  // in would put every AIA job permanently in the overdue column.
+  const aiaDueNowCents = projectRows.reduce((acc, r) => acc + (r.aiaDueNowCents ?? 0), 0);
+  const arOutstandingCents =
+    billableInvoices
+      // Clamp per invoice so a credit/overpaid invoice can't net down the AR —
+      // one "Outstanding" definition platform-wide (matches the account rollup).
+      .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0) + aiaDueNowCents;
   // The slice of that owed on deals someone has archived — real money, but it
   // won't appear in Gross, so the tile says why the two don't tie out.
   const arArchivedCents = billableInvoices

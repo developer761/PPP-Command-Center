@@ -36,6 +36,18 @@ export type AccountInvoiceRollup = {
   /** DRAFT invoices — not yet billed. Shown separately, never in Invoiced. */
   drafted_cents: number;
   draft_count: number;
+  /** AIA billing folded in (2026-08-17). A job billed via G702/G703 writes NO
+   *  `commercial_invoices` row, so this rollup — the Account 360 Collections
+   *  tiles and the AR statement — read $0 for a GC being progress-billed
+   *  hundreds of thousands of dollars. The amounts here are the AIA
+   *  contribution ALREADY INCLUDED in the totals above, kept separately so a
+   *  surface can say where the money came from. */
+  aia_billed_cents: number;
+  aia_collected_cents: number;
+  /** Retainage the GC holds back. NOT in `open_balance_cents` — it isn't
+   *  payable until close-out, and folding it in would age every AIA job past
+   *  due by design. Surfaced so it can be shown beside what's owed now. */
+  retainage_held_cents: number;
 };
 
 /**
@@ -65,6 +77,9 @@ const ZERO: AccountInvoiceRollup = {
   overdue_count: 0,
   drafted_cents: 0,
   draft_count: 0,
+  aia_billed_cents: 0,
+  aia_collected_cents: 0,
+  retainage_held_cents: 0,
 };
 
 type InvoiceRow = {
@@ -88,7 +103,12 @@ export async function getInvoiceRollupForAccount(account_id: string): Promise<Ac
       .is("deleted_at", null)
       .order("id")
   );
-  if (rows.length === 0) return ZERO;
+  // AIA runs on its own ledger, so the invoice query above cannot see it. Pull
+  // every live opportunity for this GC and fold each one's application rollup
+  // in. Done BEFORE the early return: a GC billed only through AIA has zero
+  // invoice rows, which is exactly the case that read $0.
+  const aia = await aiaRollupForAccount(account_id);
+  if (rows.length === 0 && !aia.hasAia) return ZERO;
 
   const nonVoid = rows.filter((r) => r.status !== "void");
   const issued = nonVoid.filter((r) => r.status !== "draft");
@@ -103,14 +123,63 @@ export async function getInvoiceRollupForAccount(account_id: string): Promise<Ac
   const overdue = issued.filter((r) => deriveInvoiceStatus(r as unknown as { status: InvoiceStatus; due_at: string | null; balance_cents: number }) === "overdue").length;
 
   return {
-    invoiced_cents: invoiced,
-    paid_cents: paid,
-    balance_cents: balance,
-    open_balance_cents: openBalance,
+    invoiced_cents: invoiced + aia.billedCents,
+    paid_cents: paid + aia.collectedCents,
+    balance_cents: balance + aia.dueNowCents,
+    // Net of retainage — see the type doc + aiaBilledCollectedFrom.
+    open_balance_cents: openBalance + aia.dueNowCents,
     credit_cents: credit,
     invoice_count: nonVoid.length,
     overdue_count: overdue,
     drafted_cents: drafted,
     draft_count: drafts.length,
+    aia_billed_cents: aia.billedCents,
+    aia_collected_cents: aia.collectedCents,
+    retainage_held_cents: aia.retainageHeldCents,
   };
+}
+
+/**
+ * Sum every AIA application across a GC's live opportunities.
+ *
+ * Per-opportunity so it reuses the ONE `aiaBillingRollup` definition the deal
+ * page and the project cards use — a second, account-level SQL rollup is
+ * exactly how two surfaces start disagreeing about the same job.
+ */
+async function aiaRollupForAccount(account_id: string): Promise<{
+  billedCents: number;
+  collectedCents: number;
+  dueNowCents: number;
+  retainageHeldCents: number;
+  hasAia: boolean;
+}> {
+  const sb = commercialDb();
+  const { data: oppRows } = await sb
+    .from("commercial_opportunities")
+    .select("id")
+    .eq("account_id", account_id)
+    .is("deleted_at", null);
+  const ids = ((oppRows ?? []) as { id: string }[]).map((o) => o.id);
+  const zero = {
+    billedCents: 0,
+    collectedCents: 0,
+    dueNowCents: 0,
+    retainageHeldCents: 0,
+    hasAia: false,
+  };
+  if (ids.length === 0) return zero;
+  const { aiaBillingRollup } = await import("@/lib/commercial/aia/db");
+  const parts = await Promise.all(
+    ids.map((id) => aiaBillingRollup(id).catch(() => null))
+  );
+  return parts.filter((r): r is NonNullable<typeof r> => r !== null).reduce((acc, r) => {
+    if (!r.hasAia) return acc;
+    return {
+      billedCents: acc.billedCents + r.billedCents,
+      collectedCents: acc.collectedCents + r.collectedCents,
+      dueNowCents: acc.dueNowCents + r.dueNowCents,
+      retainageHeldCents: acc.retainageHeldCents + r.retainageHeldCents,
+      hasAia: true,
+    };
+  }, zero);
 }

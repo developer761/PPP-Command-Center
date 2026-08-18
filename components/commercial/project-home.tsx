@@ -243,16 +243,16 @@ export function ProjectHome({
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 pt-0.5">
               <Stat label="Collected" value={money(m.collectedCents)} tone={m.collectedCents > 0 ? "good" : undefined} />
-              {/* Retainage sits INSIDE Outstanding — it's the slice of
-                  billed-minus-collected the GC is holding back, not a second
-                  amount owed. As a peer tile beside it, "Outstanding $10k"
-                  next to "Retainage held $10k" read as $20k owed on a job
-                  where the whole $10k outstanding WAS the retainage. */}
+              {/* Outstanding is what the GC owes TODAY — net of retainage
+                  (2026-08-17 decision). Retainage is real money owed at
+                  close-out, so it rides as a sub-line rather than a peer tile:
+                  side by side, "Outstanding $10k" next to "Retainage held
+                  $10k" read as $20k due now. */}
               <Stat
-                label="Outstanding"
+                label="Owed now"
                 value={money(m.outstandingCents)}
                 tone={m.outstandingCents > 0 ? "warn" : undefined}
-                sub={m.retainageCents > 0 ? `incl. ${money(m.retainageCents)} retainage` : undefined}
+                sub={m.retainageCents > 0 ? `plus ${money(m.retainageCents)} retainage at close-out` : undefined}
               />
               {m.costsCents > 0 && <Stat label="Costs" value={money(m.costsCents)} />}
               {m.hasContract && m.marginPct !== null && (

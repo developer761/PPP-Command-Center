@@ -52,6 +52,8 @@ export type ProjectRow = {
   leftToBillCents: number;
   /** Invoiced − paid. The GC's outstanding balance (AR). */
   outstandingCents: number;
+  /** AIA slice of outstandingCents (net of retainage). */
+  aiaDueNowCents: number;
   /** Invoiced beyond the contract sum — flagged, never shown as negative. */
   overBilled: boolean;
   // ── Closeout (2026-07-30) — so the account/deal shows a "closed out" state ──
@@ -408,7 +410,16 @@ export async function listProjects(opts: {
     const billedPreTaxTotal = inv.billedPreTax + aiaBilled;
     const invoicedTotal = inv.invoiced + aiaBilled;
     const paidTotal = inv.paid + aiaCollected;
-    const outstandingTotal = inv.openBalance + Math.max(0, aiaBilled - aiaCollected);
+    // NET OF RETAINAGE (2026-08-17), matching getProjectFinancials: what the GC
+    // owes TODAY is earned-less-retainage minus collected. `retainageHeld`
+    // (already computed above off the latest app) carries the rest.
+    // Earned-less-retainage on the issued app, derived the same way the paid
+    // side above derives it: completed − retainage on that same application.
+    const aiaEarnedLessRetainage = issuedApp
+      ? Math.max(0, aiaBilled - (retainageByApp.get(issuedApp.id) ?? 0))
+      : 0;
+    const outstandingTotal =
+      inv.openBalance + Math.max(0, aiaEarnedLessRetainage - aiaCollected);
     // Left to bill = contract − PRE-TAX billed (clamped). Over-billed when the
     // pre-tax billed exceeds the (pre-tax) contract — unapproved CO, deduct CO,
     // or a mistake — surfaced, never a negative, and never a phantom over-bill
@@ -452,6 +463,10 @@ export async function listProjects(opts: {
       // clamped "Outstanding" definition, so a credit/deduct/overpaid invoice
       // can't understate the deal's real balance.
       outstandingCents: outstandingTotal,
+      /** The AIA slice of `outstandingCents` — currently payable, net of
+       *  retainage. Broken out so the dashboard's invoice-only AR tile can add
+       *  it without re-deriving the AIA ladder a third time. */
+      aiaDueNowCents: Math.max(0, aiaEarnedLessRetainage - aiaCollected),
       overBilled,
       closeoutStatus: closeoutByOpp.get(o.id) ?? null,
       isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",
