@@ -98,9 +98,11 @@ const FLIP_STAGES = [...PRE_CONTRACT_COLUMNS, ...POST_CONTRACT_COLUMNS]
   .filter((c) => COLUMN_TARGET[c.key])
   .map((c) => ({ key: c.key, label: c.label, target: COLUMN_TARGET[c.key], lane: c.lane }));
 
+// Qualifying was retired 2026-08-16 (RFP is the entry stage), so its hint is
+// gone with it — a hint for a stage nobody can select is a trap for the next
+// person editing this map.
 const CREATE_STAGE_HINT: Record<string, string> = {
-  qualifying: "They invited a bid — we're deciding whether to chase it.",
-  rfp: "The formal package landed. Defaults the RFP-received date to today.",
+  rfp: "An invitation to bid arrived. Sets the RFP-received date to today.",
   estimating: "We're putting a price together.",
 };
 
@@ -207,7 +209,9 @@ export function StatusSubStatusPicker({
   // there.
   const [createStage, setCreateStage] = useState<string>(() => {
     const fromInitial = CREATE_STAGES.find((st) => st.key === initialStatus);
-    return fromInitial?.key ?? CREATE_STAGES[0]?.key ?? "qualifying";
+    // "rfp" is the entry stage, so it is also the last-resort fallback — the
+    // old "qualifying" fallback names a stage that no longer exists.
+    return fromInitial?.key ?? CREATE_STAGES[0]?.key ?? "rfp";
   });
   const createTarget =
     CREATE_STAGES.find((st) => st.key === createStage)?.target ??
