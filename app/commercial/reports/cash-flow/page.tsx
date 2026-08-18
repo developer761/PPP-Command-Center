@@ -215,6 +215,16 @@ export default async function CashFlowReportPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ppp-charcoal-100">
+                  {/* Without this the table renders its header row and nothing
+                      else — which reads as broken rather than as "no payments
+                      in this window yet." */}
+                  {r.slowest.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-[12px] text-ppp-charcoal-500">
+                        No payments recorded in this window, so there&rsquo;s nobody to chase yet.
+                      </td>
+                    </tr>
+                  )}
                   {r.slowest.map((s) => (
                     <tr key={s.accountId} className="hover:bg-ppp-charcoal-50/60">
                       <td className="px-4 py-2.5 text-left font-semibold text-ppp-charcoal">

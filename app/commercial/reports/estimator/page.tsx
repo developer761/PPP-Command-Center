@@ -210,6 +210,14 @@ export default async function EstimatorReportPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ppp-charcoal-100">
+                  {/* Header-with-no-rows reads as a bug. Say what's missing. */}
+                  {report.rows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-6 text-center text-[12px] text-ppp-charcoal-500">
+                        No bids in this period yet &mdash; estimator numbers appear once opportunities are assigned and decided.
+                      </td>
+                    </tr>
+                  )}
                   {report.rows.map((r) => {
                     const decided = r.won + r.lost;
                     // A 100% rate off one decided bid is noise, and printing it

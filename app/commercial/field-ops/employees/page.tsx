@@ -24,13 +24,7 @@ import { SubmitButton } from "@/components/commercial/submit-button";
 
 /** Parse a loose "$25.50" / "25" cost-rate string to whole cents, or null when
  *  blank/invalid. Blank = "don't change the rate", never "set to $0". */
-function parseCostRateToCents(raw: string): number | null {
-  const cleaned = raw.replace(/[^0-9.]/g, "");
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n * 100);
-}
+import { parseCostRateToCents } from "@/lib/commercial/field-ops/cost-rate";
 
 export const dynamic = "force-dynamic";
 
@@ -69,8 +63,12 @@ async function addEmployeeAction(formData: FormData) {
   if (/^\d{4}$/.test(pin)) await setEmployeePin(result.employee.id, pin, userId);
   // Optional burdened cost rate ($/hr) — drives the auto crew-labor cost in job
   // P&L (Option A). Blank = set later on the Crew page.
-  const newRateCents = parseCostRateToCents(String(formData.get("cost_rate") ?? ""));
-  if (newRateCents != null) await setCostRate(result.employee.id, newRateCents, userId);
+  const rate = parseCostRateToCents(String(formData.get("cost_rate") ?? ""));
+  if ("error" in rate) redirect(`${BASE}?error=${encodeURIComponent(rate.error)}`);
+  if ("cents" in rate) {
+    const rr = await setCostRate(result.employee.id, rate.cents, userId);
+    if (!rr.ok) redirect(`${BASE}?error=${encodeURIComponent(rr.error)}`);
+  }
   // Instantly welcome them + start their schedule emails (fire-and-forget).
   if (result.employee.email) {
     const { sendWelcomeEmail } = await import("@/lib/commercial/field-ops/schedule-email-send");
@@ -105,11 +103,12 @@ async function editEmployeeAction(formData: FormData) {
   if (/^\d{4}$/.test(pin)) await setEmployeePin(id, pin, userId);
   // Burdened cost rate ($/hr) — only write when it actually changed, so we don't
   // churn a new effective-dated window on every unrelated Save.
-  const newRateCents = parseCostRateToCents(String(formData.get("cost_rate") ?? ""));
-  if (newRateCents != null) {
+  const rate = parseCostRateToCents(String(formData.get("cost_rate") ?? ""));
+  if ("error" in rate) redirect(`${BASE}?error=${encodeURIComponent(rate.error)}`);
+  if ("cents" in rate) {
     const cur = await currentCostRate(id);
-    if (cur !== newRateCents) {
-      const rr = await setCostRate(id, newRateCents, userId);
+    if (cur !== rate.cents) {
+      const rr = await setCostRate(id, rate.cents, userId);
       if (!rr.ok) redirect(`${BASE}?error=${encodeURIComponent(rr.error)}`);
     }
   }
