@@ -22,6 +22,7 @@
  */
 
 import { createContext, useContext, useRef, useState, useTransition, useEffect } from "react";
+import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
@@ -36,6 +37,10 @@ type Ctx = {
   onColumnDragOver: (e: React.DragEvent) => void;
   onColumnDrop: (e: React.DragEvent, targetStatus: string) => void;
   isValidDropTarget: (sourceStatus: string, targetStatus: string) => boolean;
+  /** The same move a drop performs, reachable without a mouse. HTML5 drag
+   *  events never fire on touch, so on a phone this board was a read-only wall
+   *  — and it is the DEFAULT view, on the surface Alex opens every morning. */
+  moveProposal: (proposalId: string, sourceStatus: string, targetStatus: string) => void;
 };
 
 const ProposalsDnDContext = createContext<Ctx | null>(null);
@@ -50,6 +55,25 @@ const ProposalsDnDContext = createContext<Ctx | null>(null);
 function isValidDropTargetFn(sourceStatus: string, targetStatus: string): boolean {
   return sourceStatus !== targetStatus;
 }
+
+/** The columns this board renders, in board order — the move menu offers
+ *  exactly these, so tapping can reach every lane a drag can. Kept here rather
+ *  than imported from the page so the client bundle doesn't pull the page in. */
+const MOVE_TARGETS = [
+  "draft",
+  "pending_approval",
+  "approved",
+  "sent",
+  "won",
+  "lost",
+  "expired",
+] as const;
+
+/** "Draft" is labelled "Current proposal" on this board (only the current
+ *  revision per deal renders here) — the menu must say the same thing the
+ *  column header says, or the two disagree about where the card is going. */
+const MOVE_LABEL: Record<string, string> = { draft: "Current proposal" };
+const moveLabel = (s: string) => MOVE_LABEL[s] ?? proposalStatusLabel(s);
 
 export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -124,6 +148,17 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
     setDragProposalId(null);
     setDragSourceStatus(null);
     if (!proposalId || !sourceStatus) return;
+    await moveProposal(proposalId, sourceStatus, targetStatus);
+  };
+
+  // The move itself — shared by the drop handler and the tap-driven "Move"
+  // menu, so touch and mouse take EXACTLY the same path (in-flight lock,
+  // optimistic hide, cascade toasts, debrief link and all).
+  const moveProposal = async (
+    proposalId: string,
+    sourceStatus: string,
+    targetStatus: string
+  ) => {
     if (!isValidDropTargetFn(sourceStatus, targetStatus)) {
       // Not a supported transition — silently snap back. E.g. same
       // column drop, or invalid combination.
@@ -243,6 +278,7 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         onColumnDragOver,
         onColumnDrop,
         isValidDropTarget: isValidDropTargetFn,
+        moveProposal,
       }}
     >
       {/* Karan 2026-07-16: visible "Moving…" pill so the user knows
@@ -406,24 +442,58 @@ export function ProposalDnDCard({
   const title = "Drag onto any column to move — parent opportunity follows automatically.";
   return (
     <div
+      className={`relative group/card transition-opacity duration-100 ${
+        isOptimisticallyMoved
+          ? "opacity-0 pointer-events-none absolute -z-10"
+          : isDragging
+            ? "opacity-40"
+            : ""
+      }`}
+      aria-hidden={isOptimisticallyMoved}
+    >
+      {/* Tap-driven move. HTML5 drag-and-drop is mouse-only: `dragstart` never
+          fires from a touch, so on a phone every card on this board was inert
+          — and the kanban is the DEFAULT view here. This runs the identical
+          moveProposal path, so the cascade, the toasts and the in-flight lock
+          are the same whichever way you move a card. Always visible on touch
+          (no hover to reveal it), fades in on hover for pointer users. */}
+      <details className="absolute top-1 right-1 z-20 sm:opacity-0 sm:group-hover/card:opacity-100 sm:focus-within:opacity-100 transition-opacity">
+        <summary
+          className="list-none cursor-pointer select-none inline-flex items-center justify-center h-7 min-w-[28px] px-1.5 rounded-md border border-ppp-charcoal-200 bg-surface/95 backdrop-blur text-[10px] font-bold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 shadow-sm"
+          aria-label="Move this proposal to another column"
+          title="Move to…"
+        >
+          Move ▾
+        </summary>
+        <div className="absolute right-0 mt-1 min-w-[168px] rounded-lg border border-ppp-charcoal-200 bg-surface shadow-xl p-1">
+          {MOVE_TARGETS.filter((s) => s !== sourceStatus).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={(e) => {
+                // Close the menu, then move. Without closing first the popover
+                // survives the refresh and hangs over the re-rendered board.
+                (e.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                ctx.moveProposal(proposalId, sourceStatus, s);
+              }}
+              className="w-full text-left px-2.5 py-2 rounded-md text-[12px] font-medium text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:text-cc-brand-800 min-h-[36px]"
+            >
+              {moveLabel(s)}
+            </button>
+          ))}
+        </div>
+      </details>
+    <div
       draggable={draggable}
       onDragStart={
         draggable ? (e) => ctx.onCardDragStart(e, proposalId, sourceStatus) : undefined
       }
       onDragEnd={draggable ? ctx.onCardDragEnd : undefined}
-      className={`transition-opacity duration-100 ${
-        isOptimisticallyMoved
-          ? "opacity-0 pointer-events-none absolute -z-10"
-          : isDragging
-            ? "opacity-40 cursor-grabbing"
-            : draggable
-              ? "cursor-grab"
-              : ""
-      }`}
-      aria-hidden={isOptimisticallyMoved}
+      className={isDragging ? "cursor-grabbing" : draggable ? "cursor-grab" : ""}
       title={title}
     >
       {children}
+    </div>
     </div>
   );
 }

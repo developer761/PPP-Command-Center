@@ -89,6 +89,30 @@ function formBack(fd: FormData): string | null {
   return safeBack(String(fd.get("back") ?? "") || undefined);
 }
 
+/**
+ * Error-redirect base that KEEPS `?back`.
+ *
+ * Every success path here routed through `withBack`; every ERROR path built a
+ * bare `...?error=` URL. So one empty Description or a bad Copies value silently
+ * stripped the origin, and because the form's hidden `back` input is re-rendered
+ * from the URL, it never came back — the "← Back to Submittals" arrow degraded
+ * to a generic breadcrumb for the rest of the visit, on the surface where a
+ * validation error is MOST likely (a 10-line item table).
+ */
+function errBase(
+  account_id: string,
+  opportunity_id: string,
+  submittal_id: string,
+  fd: FormData
+): string {
+  const back = formBack(fd);
+  const url = withBack(
+    `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`,
+    back
+  );
+  return `${url}${back ? "&" : "?"}error=`;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Cover form edit action — draft-only (lib enforces)
 // ─────────────────────────────────────────────────────────────────────
@@ -138,7 +162,7 @@ async function editCoverAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent(result.error)
     );
   }
@@ -217,7 +241,7 @@ async function addItemAction(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim();
   if (!description) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent("Description is required.")
     );
   }
@@ -225,7 +249,7 @@ async function addItemAction(formData: FormData) {
   const copies = parseInt(copiesRaw, 10);
   if (!Number.isFinite(copies) || copies < 1) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent("Copies must be a positive whole number.")
     );
   }
@@ -242,7 +266,7 @@ async function addItemAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent(result.error)
     );
   }
@@ -267,7 +291,7 @@ async function editItemAction(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim();
   if (!description) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent("Description is required.")
     );
   }
@@ -286,7 +310,7 @@ async function editItemAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent(result.error)
     );
   }
@@ -310,7 +334,7 @@ async function deleteItemAction(formData: FormData) {
   const result = await deleteSubmittalItem(opportunity_id, submittal_id, item_id, user.id);
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent(result.error)
     );
   }
@@ -339,7 +363,7 @@ async function deleteSubmittalAction(formData: FormData) {
   if (!result.ok) {
     redirect(
       withBack(
-        `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+        errBase(account_id, opportunity_id, submittal_id, formData) +
           encodeURIComponent(result.error),
         back
       )
@@ -378,7 +402,7 @@ async function linkAttachmentAction(formData: FormData) {
   );
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent(result.error)
     );
   }
@@ -459,7 +483,7 @@ async function unlinkAttachmentAction(formData: FormData) {
   );
   if (!result.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+      errBase(account_id, opportunity_id, submittal_id, formData) +
         encodeURIComponent(result.error)
     );
   }
@@ -594,7 +618,7 @@ async function changeStatusAction(formData: FormData) {
     if (!reason) {
       redirect(
         withBack(
-          `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+          errBase(account_id, opportunity_id, submittal_id, formData) +
             encodeURIComponent("Void reason is required."),
           formBack(formData)
         )
@@ -607,7 +631,7 @@ async function changeStatusAction(formData: FormData) {
   if (!result.ok) {
     redirect(
       withBack(
-        `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
+        errBase(account_id, opportunity_id, submittal_id, formData) +
           encodeURIComponent(result.error),
         formBack(formData)
       )
@@ -661,7 +685,7 @@ async function createRevisionAction(formData: FormData) {
   });
   if (!createRes.ok) {
     redirect(
-      `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${parent_submittal_id}?error=` +
+      errBase(account_id, opportunity_id, parent_submittal_id, formData) +
         encodeURIComponent(createRes.error)
     );
   }

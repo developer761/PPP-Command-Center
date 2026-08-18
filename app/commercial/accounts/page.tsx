@@ -864,9 +864,18 @@ export default async function CommercialAccountsPage({
                     <label htmlFor="bulk_user_id" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500">
                       Assign staff to selected
                     </label>
+                    {/* NOT `required`. Every bulk control lives in ONE form
+                        (the whole account list is that form, so the row
+                        checkboxes post with it), and HTML validation is
+                        form-wide: an empty required field here blocked the
+                        SIBLING "Apply tag" submit, which sat above it and had
+                        nothing to do with assignment. Clicking Apply tag did
+                        nothing at all — the browser tried to focus this field,
+                        which is fine to leave blank when you're tagging.
+                        Both fields are already validated server-side (see
+                        bulkAssignAccountsAction), which is where it belongs. */}
                     <SearchableSelect
                       name="bulk_user_id"
-                      required
                       ariaLabel="Assign staff to selected"
                       placeholder="Search staff…"
                       options={assignableStaff.map((p) => ({
@@ -879,7 +888,6 @@ export default async function CommercialAccountsPage({
                       id="bulk_role"
                       name="bulk_role"
                       defaultValue=""
-                      required
                       className={SELECT_CLS}
                       style={SELECT_BG_STYLE}
                     >
