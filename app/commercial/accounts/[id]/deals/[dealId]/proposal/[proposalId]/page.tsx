@@ -235,6 +235,7 @@ async function saveProposalAction(formData: FormData) {
   const header = { ...existing.header_json };
   if (carries("gc_company")) header.gc_company = text("gc_company") || undefined;
   if (carries("attention")) header.attention = text("attention") || undefined;
+  if (carries("title")) header.title = text("title") || undefined;
   if (carries("phone")) header.phone = text("phone") || undefined;
   if (carries("email")) header.email = text("email") || undefined;
   if (carries("project_name")) header.project_name = text("project_name") || undefined;
@@ -250,7 +251,7 @@ async function saveProposalAction(formData: FormData) {
       : undefined;
   }
   const headerTouched = [
-    "gc_company", "attention", "phone", "email", "project_name",
+    "gc_company", "attention", "title", "phone", "email", "project_name",
     "project_address", "date_iso", "show_cip_notice", "gc_address_lines",
   ].some(carries);
 
@@ -479,6 +480,17 @@ async function addLineItemAction(formData: FormData) {
   const quantity = Number(String(formData.get("quantity") ?? "1"));
   const unit = String(formData.get("unit") ?? "each").trim() || "each";
   const unit_price_cents = dollarsInputToCents(String(formData.get("unit_price") ?? "0"));
+  // Blank override = compute qty x unit price. Any unparseable or non-positive
+  // entry is treated as blank rather than rejected — a bad keystroke in an
+  // optional field should not block the save (never-reject rule).
+  const overrideRaw = String(formData.get("line_total_override") ?? "").trim();
+  const line_total_override_cents = overrideRaw
+    ? (() => {
+        const c = dollarsInputToCents(overrideRaw);
+        return Number.isFinite(c) && c > 0 ? c : null;
+      })()
+    : null;
+
   const is_alternate = formData.get("is_alternate") === "on";
   const is_labor = formData.get("is_labor") === "on";
   const phaseRaw = String(formData.get("phase") ?? "").trim();
@@ -497,6 +509,7 @@ async function addLineItemAction(formData: FormData) {
       is_labor: is_labor && !is_alternate,
       // R1a: checkbox defaults checked; unchecked → absent → false (hide price).
       show_price: formData.get("show_price") === "on",
+      line_total_override_cents,
     },
     userId
   );
@@ -580,6 +593,14 @@ async function updateLineItemAction(formData: FormData) {
   // otherwise slips past updateLineItem's `< 0`/`=== 0` checks and writes null,
   // dropping the row from the TOTAL (Karan 2026-07-27 audit).
   const rawQty = Number(String(formData.get("quantity") ?? "1"));
+  // Same tolerant parse as the add path: blank or unparseable → no override.
+  const overrideRawU = String(formData.get("line_total_override") ?? "").trim();
+  const line_total_override_cents = overrideRawU
+    ? (() => {
+        const c = dollarsInputToCents(overrideRawU);
+        return Number.isFinite(c) && c > 0 ? c : null;
+      })()
+    : null;
   const result = await updateLineItem(
     {
       id,
@@ -591,6 +612,7 @@ async function updateLineItemAction(formData: FormData) {
       unit_price_cents: dollarsInputToCents(String(formData.get("unit_price") ?? "0")),
       is_alternate: formData.get("is_alternate") === "on",
       show_price: formData.get("show_price") === "on",
+      line_total_override_cents,
       phase,
     },
     userId
@@ -1814,6 +1836,10 @@ export default async function ProposalEditorPage({
                   <input type="text" name="attention" defaultValue={proposal.header_json.attention ?? ""} className={INPUT_CLS} placeholder="e.g. Bryon" />
                 </label>
                 <label className="block">
+                  <span className={LABEL_CLS}>Title</span>
+                  <input type="text" name="title" defaultValue={proposal.header_json.title ?? ""} className={INPUT_CLS} placeholder="e.g. Project Manager" />
+                </label>
+                <label className="block">
                   <span className={LABEL_CLS}>Phone</span>
                   <input type="text" name="phone" defaultValue={proposal.header_json.phone ?? ""} className={INPUT_CLS} placeholder="e.g. 212-912-0011" />
                 </label>
@@ -2359,18 +2385,36 @@ function LineItemsTable({
                 <span className={LABEL_CLS}>Unit price</span>
                 <input type="text" id={`price-${r.id}`} inputMode="decimal" name="unit_price" defaultValue={centsToDollarInput(r.unit_price_cents)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
+              {/* Brendan 2026-08-17: "we should be able to override a line item
+                  price as well. So we can have the accurate qty if we decide to
+                  discount or charge more." Blank = qty x unit price. */}
+              <label className="block">
+                <span className={LABEL_CLS}>Override total <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  name="line_total_override"
+                  defaultValue={r.line_total_override_cents != null ? centsToDollarInput(r.line_total_override_cents) : ""}
+                  placeholder="qty x unit price"
+                  className={`${INPUT_CLS} tabular-nums`}
+                />
+              </label>
             </div>
 
-            {/* R1a: per-line price visibility. Alternates always print their price
-                (a priceless alternate is meaningless to a GC) — preserve their
-                value via a hidden field so a save doesn't flip them off. Only
-                affects the client PDF when "Show per-line prices" is on. */}
+            {/* Per-line price visibility on the CUSTOMER proposal (migration
+                148). Ticked → that line prints its own total inline, just the
+                money. Unticked → the customer copy shows only the single TOTAL,
+                which is Tomco's normal convention. The itemized table (internal
+                copy, or the "full breakdown" toggle) always shows every number
+                regardless. Alternates always print their price — a priceless
+                alternate is meaningless to a GC — so their value is preserved
+                via a hidden field rather than a checkbox. */}
             {r.is_alternate ? (
               <input type="hidden" name="show_price" value={r.show_price === false ? "" : "on"} />
             ) : (
               <label className="inline-flex items-center gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none">
-                <input type="checkbox" name="show_price" defaultChecked={r.show_price !== false} className="w-4 h-4 accent-cc-brand-600" />
-                Show this line&rsquo;s price on the client PDF
+                <input type="checkbox" name="show_price" defaultChecked={r.show_price === true} className="w-4 h-4 accent-cc-brand-600" />
+                Show this line&rsquo;s price on the customer proposal
               </label>
             )}
 
