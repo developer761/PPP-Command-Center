@@ -43,6 +43,11 @@ import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { type TaxJurisdictionLite } from "@/lib/commercial/tax/constants";
 import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { getInvoiceRollupForAccount } from "@/lib/commercial/invoices/rollup";
+import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
+import { defaultStatementMessage } from "@/lib/commercial/invoices/statement-email";
+import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { LABEL_CLS, INPUT_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 import { InstantSearch } from "@/components/commercial/instant-search";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +80,9 @@ type SP = Promise<{
   /** Karan 2026-07-08: single-deal focus + bulk-delete flash. */
   opportunity_id?: string;
   bulk_deleted?: string;
+  /** AR-statement send result (Katie). */
+  stmt_ok?: string;
+  stmt_error?: string;
 }>;
 
 /** Server action for the inline "+ Record payment" collapsible on the
@@ -316,6 +324,35 @@ async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
   redirect(`/commercial/invoices?bulk_deleted=${rows.length}`);
+}
+
+/**
+ * Email the AR statement to the GC (Katie). Human-reviewed like every other
+ * outbound: recipient, subject and body all come from the form, nothing sends
+ * itself. Read-only — a statement changes no record, so re-sending is safe.
+ */
+async function emailStatementAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  const base = `/commercial/invoices?account_id=${account_id}`;
+  const { emailStatementToGc } = await import("@/lib/commercial/invoices/statement-email");
+  const res = await emailStatementToGc({
+    account_id,
+    actor_user_id: user.id,
+    to_email: String(formData.get("to_email") ?? ""),
+    cc_email: String(formData.get("cc_email") ?? "") || null,
+    subject: String(formData.get("subject") ?? ""),
+    message: String(formData.get("message") ?? ""),
+  });
+  if (!res.ok) {
+    redirect(`${base}&stmt_error=${encodeURIComponent(res.error)}#email-statement`);
+  }
+  redirect(`${base}&stmt_ok=${encodeURIComponent(res.to_email)}`);
 }
 
 export default async function CommercialInvoicesPage({ searchParams }: { searchParams: SP }) {
@@ -600,6 +637,39 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const scopedPaidCount = scopedInvoices.filter((i) => (i.paid_cents ?? 0) > 0 && i.status !== "void").length;
   const scopedIsOrphan = opportunityIdFilter && !oppById.has(opportunityIdFilter);
   const scopedAccountIsDeleted = !!(accountIdFilter && accountFilter?.deleted_at);
+
+  // ── AR statement for the scoped GC (Katie) ──────────────────────────────
+  //
+  // This lives here because `?tab=invoices` on the account page REDIRECTS to
+  // this surface — the account's own invoices tab has been an unreachable
+  // orphan for a while. Anything built there is invisible.
+  //
+  // `hasStatement` includes retainage-only accounts: AR went net of retainage
+  // on 2026-08-17, so a GC who is current on payables but holding $50k back has
+  // a zero open balance, and the statement — which states that retainage
+  // explicitly — is exactly what they should be sent.
+  const statementRollup =
+    accountIdFilter && !scopedAccountIsDeleted
+      ? await getInvoiceRollupForAccount(accountIdFilter)
+      : null;
+  const statementContacts =
+    accountIdFilter && !scopedAccountIsDeleted
+      ? await listAccountContacts(accountIdFilter).catch(() => [])
+      : [];
+  const hasStatement =
+    !!statementRollup &&
+    (statementRollup.open_balance_cents > 0 || statementRollup.retainage_held_cents > 0);
+  // Prefer whoever actually pays — an AP / billing title — then the first
+  // contact with an email. Katie shouldn't have to look the address up.
+  const statementToDefault =
+    statementContacts.find((c) =>
+      /account(s|ing)?\s*payable|\bap\b|billing|controller|bookkeep/i.test(c.contact.title ?? "")
+    )?.contact.email ||
+    statementContacts.find((c) => c.contact.email)?.contact.email ||
+    "";
+  const statementCompany = accountFilter?.company_name ?? "your account";
+  const statementOk = pickFirst(sp.stmt_ok) ?? null;
+  const statementError = pickFirst(sp.stmt_error) ?? null;
   // Show the focus banner when either filter narrows the list.
   const showFocusBanner = !!opportunityIdFilter || !!accountIdFilter;
   // Karan 2026-07-08: relaxed the payment-block. On a DELETED parent
@@ -666,6 +736,89 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           </span>
         </div>
       )}
+      {/* ── AR statement for this GC (Katie) ────────────────────────────────
+          The PDF has been downloadable since Phase 1C, but chasing money is
+          the job, and doing it meant download → open mail client → attach, for
+          every GC, every time. Invoices and proposals both send from inside
+          the platform; the one document whose whole purpose is getting paid
+          did not. Same review-before-send shape as those two. */}
+      {hasStatement && statementRollup && (
+        <section id="email-statement" className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          {statementOk && (
+            <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
+              Statement sent to <strong>{statementOk}</strong>.
+            </div>
+          )}
+          {statementError && (
+            <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12.5px] text-rose-800">
+              {statementError}
+            </div>
+          )}
+          <details {...(statementError ? { open: true } : {})}>
+            <summary className="cursor-pointer list-none flex items-center justify-between gap-3 min-h-[44px] select-none">
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-ppp-charcoal flex items-center gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-blue-600"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M22 6l-10 7L2 6" /></svg>
+                  Statement of account
+                </h2>
+                <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+                  {formatCentsCompact(statementRollup.open_balance_cents)} currently due
+                  {statementRollup.retainage_held_cents > 0
+                    ? ` · ${formatCentsCompact(statementRollup.retainage_held_cents)} retainage held`
+                    : ""}
+                  . Email it to the GC, or preview the PDF.
+                </p>
+              </div>
+              <span className="text-[12px] font-semibold text-ppp-blue-700 shrink-0">Compose →</span>
+            </summary>
+            <form action={emailStatementAction} className="mt-4 space-y-3">
+              <input type="hidden" name="account_id" value={accountIdFilter ?? ""} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="stmt-to" className={LABEL_CLS}>To</label>
+                  <input id="stmt-to" name="to_email" type="email" required defaultValue={statementToDefault} placeholder="ap@generalcontractor.com" className={INPUT_CLS} />
+                </div>
+                <div>
+                  <label htmlFor="stmt-cc" className={LABEL_CLS}>CC <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
+                  <input id="stmt-cc" name="cc_email" type="email" placeholder="pm@generalcontractor.com" className={INPUT_CLS} />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="stmt-subj" className={LABEL_CLS}>Subject</label>
+                <input id="stmt-subj" name="subject" required maxLength={200} defaultValue={`Statement of account — ${statementCompany}`} className={INPUT_CLS} />
+              </div>
+              <div>
+                <label htmlFor="stmt-msg" className={LABEL_CLS}>Message</label>
+                <textarea
+                  id="stmt-msg"
+                  name="message"
+                  required
+                  rows={7}
+                  defaultValue={defaultStatementMessage({
+                    companyName: statementCompany,
+                    totalOutstandingCents: statementRollup.open_balance_cents,
+                    retainageHeldCents: statementRollup.retainage_held_cents,
+                    invoiceCount: statementRollup.invoice_count,
+                  })}
+                  className={TEXTAREA_CLS}
+                />
+              </div>
+              <div className="flex items-center gap-3 pt-1 flex-wrap">
+                <PendingSubmitButton
+                  pendingLabel="Sending…"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30"
+                >
+                  Send statement
+                </PendingSubmitButton>
+                <a href={`/api/commercial/accounts/${accountIdFilter}/statement`} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold text-ppp-charcoal-600 hover:text-ppp-charcoal underline underline-offset-2 min-h-[44px] inline-flex items-center">
+                  Preview PDF
+                </a>
+              </div>
+            </form>
+          </details>
+        </section>
+      )}
+
       {/* Deleted-deal / deleted-account cleanup — keep the fuller banner (needs
           the warning + "Delete all N" affordance). */}
       {showFocusBanner && (scopedIsOrphan || scopedAccountIsDeleted) && (
