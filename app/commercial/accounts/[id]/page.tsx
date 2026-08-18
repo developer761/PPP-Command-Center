@@ -75,6 +75,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { listAccountTags, listAllDistinctTags, addAccountTag, removeAccountTag, MAX_TAG_LENGTH, type AccountTag } from "@/lib/commercial/accounts/tags";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import CommercialAddressFields from "@/components/commercial-address-fields";
+import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 // InfoDot import removed 2026-07-08 Batch 2b — labels use native `title`
 // attribute for hover tooltips instead of the visible `?` badge.
 
@@ -4393,41 +4394,6 @@ function pipelineBlockTone(
   return { stripe: t.solid, pill, bar: t.solid, val: t.text };
 }
 
-function statusPillTone(
-  status: OpportunityStatus | string,
-  sub_status?: string | null,
-): { cls: string } {
-  // Terminal (v2 + v1 legacy).
-  // Won is NAVY, not emerald — Karan's call, and the won-not-started card on
-  // this same page is navy. A green pill sitting directly above that navy card
-  // read as two different states for one deal.
-  if (status === "pre_sale_closed" && sub_status === "won") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
-  if (status === "pre_sale_closed" && sub_status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
-  if (status === "won") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
-  if (status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
-  // 2026-07-28 color audit: semantic palette only (cc-brand red is the action
-  // color, never a status). Active stage → ppp-blue, working/attention →
-  // amber, done → emerald, lost → rose, early → charcoal. Labels distinguish
-  // stages that share a tone.
-  // v2 Post-Sale lane.
-  if (status === "pre_construction") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
-  if (status === "in_progress") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
-  if (status === "billing") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
-  // A finished job is navy too — it is the same "won" family, further along.
-  if (status === "post_sale_closed") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
-  // v2 Pre-Sale intermediate.
-  if (status === "proposal" && sub_status === "follow_up") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
-  if (status === "proposal") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
-  if (status === "estimating") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
-  if (status === "qualifying" && sub_status === "rfp") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
-  if (status === "qualifying") return { cls: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200" };
-  // v1.1 legacy fallbacks (shouldn't hit post-migration but defensive).
-  if (status === "follow_up") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
-  if (status === "proposal_sent") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
-  if (status === "proposal_pending_approval") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
-  if (status === "rfp") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
-  return { cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100" };
-}
 
 // ─────────────── Account Proposals sub-tab (Karan 2026-07-15) ───────────────
 // Surfaces every proposal revision on every deal for THIS account, grouped

@@ -22,10 +22,14 @@ export type OppSheetRow = {
   age: string;
 };
 
+// These are lane buckets, not raw statuses, so they can't route through
+// statusPillTone directly — but they must AGREE with it. `won` was emerald
+// here and navy on Account 360 and the project card, so one won job read as
+// three different states across three surfaces in one session.
 const STATUS_TONE: Record<OppSheetRow["statusTone"], string> = {
   pre: "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200",
   delivery: "bg-ppp-blue-50 text-ppp-blue-800 border-ppp-blue-200",
-  won: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  won: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200",
   lost: "bg-rose-50 text-rose-700 border-rose-200",
   neutral: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200",
 };

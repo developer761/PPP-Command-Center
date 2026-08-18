@@ -121,6 +121,7 @@ import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-t
 import { listTeams } from "@/lib/commercial/teams/db";
 import { IconBulb } from "@/components/commercial/inline-icons";
 import CommercialAddressFields from "@/components/commercial-address-fields";
+import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -3311,11 +3312,18 @@ function StageChip({
     subLabel &&
     subLabel.toLowerCase() !== currentLabel.toLowerCase() &&
     !(columnKey === "rfp" && sub_status === "rfp");
-  // Current-stage "you are here" pill: matches the kanban ramp — pre-sale
-  // active = ppp-blue, post-sale (won work) = emerald. (Was cyan / cc-brand-red.)
-  const currentPillCls = isPostSale
-    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-    : "bg-ppp-blue-600 text-white border-ppp-blue-600 shadow-sm";
+  // Current-stage "you are here" pill.
+  //
+  // Was emerald for post-sale rows, which INVERTED Karan's one colour rule:
+  // green means DONE everywhere else on the platform, so a job at In Progress
+  // read "Pre-Const(grey) → In Progress(solid green) → Billing(grey)" — the
+  // finished stage looking un-started and the in-flight stage looking
+  // complete. Click into the same deal and the chevron bar said the opposite.
+  //
+  // Amber is the rule's in-progress colour, and it carries "you are here" on
+  // its own; the lane is already conveyed by the labels and the aria-label, so
+  // it no longer needs its own hue.
+  const currentPillCls = "bg-amber-400 text-ppp-charcoal-900 border-amber-500 shadow-sm";
   // Compact: just the current stage as one pill (list rows).
   if (compact) {
     return (
@@ -3342,13 +3350,14 @@ function StageChip({
         {stages.map((s, i) => {
           const isPast = i < currentIdx;
           const isCurrent = i === currentIdx;
+          // green = done · amber = in progress · grey = not started.
           const pillCls = isCurrent
             ? currentPillCls
             : isPast
-              ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
+              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
               : "bg-surface text-ppp-charcoal-400 border-ppp-charcoal-200";
           const connectorCls = isPast
-            ? "bg-ppp-charcoal-300"
+            ? "bg-emerald-300"
             : "bg-ppp-charcoal-200 opacity-60";
           const isLast = i === stages.length - 1;
           return (
@@ -3420,23 +3429,10 @@ function StatusPill({
   // tints with the semantic palette (pre-sale active → ppp-blue, working →
   // amber, won → emerald, lost/no-bid → rose, neutral/early → charcoal). The
   // pill LABEL keeps the stages distinct where they share a tone.
-  const map: Record<string, string> = {
-    solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    rfp: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
-    estimating: "bg-amber-100 text-amber-900 border-amber-300",
-    proposal_pending_approval: "bg-ppp-navy-100 text-ppp-navy-700 border-ppp-navy-200",
-    proposal_sent: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
-    follow_up: "bg-amber-100 text-amber-900 border-amber-300",
-    won: "bg-emerald-100 text-emerald-800 border-emerald-300",
-    lost: "bg-rose-100 text-rose-800 border-rose-300",
-    // Retired v1.0 values (fallback for un-migrated rows)
-    inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    negotiating: "bg-amber-100 text-amber-900 border-amber-300",
-    on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    no_bid: "bg-rose-100 text-rose-800 border-rose-300",
-    reopened: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
-  };
-  const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
+  // One shared tone (was a dead v1 map whose keys barely intersect the live
+  // enum, so "Won", "Lost" and "Sent" all rendered the same grey — the colour
+  // channel carried no information at all).
+  const { cls } = statusPillTone(status, subStatus);
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}>
       {/* Won and Lost both map to "Closed" on the status alone, so the board

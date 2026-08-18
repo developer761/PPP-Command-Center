@@ -31,7 +31,10 @@ function projectStatusTone(status: string): { stripe: string; pill: string } {
     case "billing":
       return { stripe: "bg-amber-500", pill: "bg-amber-50 text-amber-700 border-amber-200" };
     case "post_sale_closed":
-      return { stripe: "bg-ppp-charcoal-400", pill: "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200" };
+      // Navy, not grey. A finished job is the same "won" family further along,
+      // and grey is the platform's "not started" tone — a completed job was
+      // reading as one that had never begun.
+      return { stripe: "bg-ppp-navy-500", pill: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
     default:
       return { stripe: "bg-ppp-charcoal-300", pill: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" };
   }

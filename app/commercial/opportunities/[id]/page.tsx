@@ -179,6 +179,7 @@ import { attentionFor, nextStep, sensibleNextStatuses } from "@/lib/commercial/o
 import { getProjectForOpportunity } from "@/lib/commercial/projects/ensure";
 import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
 import { normalizeToolOrigin } from "@/lib/commercial/tool-origin";
+import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 
 export const dynamic = "force-dynamic";
 
@@ -2451,7 +2452,7 @@ export default async function OpportunityDetailPage({
                 </Link>
               )}
               <span aria-hidden>·</span>
-              <StatusPill status={opp.status} />
+              <StatusPill status={opp.status} subStatus={opp.sub_status} />
               {opp.archived_at && (
                 <>
                   <span aria-hidden>·</span>
@@ -6475,31 +6476,17 @@ function KpiTile({
 }
 
 
-function StatusPill({ status }: { status: OpportunityStatus | string }) {
-  // Karan 2026-07-09 Phase A.1: v1.1 CEO status model. Map covers the
-  // 8 Pre-Contract values + retired v1.0 values so any un-migrated
-  // historic row still tints correctly.
-  // 2026-07-28 color audit: semantic palette (see opportunities list StatusPill).
-  const map: Record<string, string> = {
-    solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    rfp: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
-    estimating: "bg-amber-100 text-amber-900 border-amber-300",
-    proposal_pending_approval: "bg-ppp-navy-100 text-ppp-navy-700 border-ppp-navy-200",
-    proposal_sent: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
-    follow_up: "bg-amber-100 text-amber-900 border-amber-300",
-    won: "bg-emerald-100 text-emerald-800 border-emerald-300",
-    lost: "bg-rose-100 text-rose-800 border-rose-300",
-    // Retired v1.0 values (fallback for un-migrated rows)
-    inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    negotiating: "bg-amber-100 text-amber-900 border-amber-300",
-    on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    no_bid: "bg-rose-100 text-rose-800 border-rose-300",
-    reopened: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
-  };
-  const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
+function StatusPill({ status, subStatus }: { status: OpportunityStatus | string; subStatus?: string | null }) {
+  // Was a dead v1 map keyed on retired statuses — its intersection with the
+  // live enum was `estimating` alone, so seven of eight statuses fell through
+  // to grey. Worse, the label came from the single-arg helper, which maps BOTH
+  // closed statuses to the word "Closed": a won deal and a lost deal rendered
+  // as the identical grey pill, an inch above a status bar correctly reading
+  // "Closed Won". Now the one shared tone + the sub-status-aware label.
+  const { cls } = statusPillTone(status, subStatus);
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${cls}`}>
-      {opportunityStatusLabel(status)}
+      {oppStatusDisplayLabel(status, subStatus ?? null)}
     </span>
   );
 }
