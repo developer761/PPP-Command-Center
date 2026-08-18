@@ -51,12 +51,13 @@ function Panel({ title, children, right }: { title: string; children: React.Reac
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" | "bad" }) {
+function Stat({ label, value, tone, sub }: { label: string; value: string; tone?: "good" | "warn" | "bad"; sub?: string }) {
   const v = tone === "good" ? "text-emerald-700" : tone === "warn" ? "text-amber-700" : tone === "bad" ? "text-rose-700" : "text-ppp-charcoal";
   return (
     <div className="min-w-0">
       <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500 truncate">{label}</div>
       <div className={`font-condensed text-[17px] font-black tabular-nums leading-tight truncate ${v}`}>{value}</div>
+      {sub && <div className="text-[10px] text-ppp-charcoal-500 tabular-nums truncate mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -233,8 +234,17 @@ export function ProjectHome({
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 pt-0.5">
               <Stat label="Collected" value={money(m.collectedCents)} tone={m.collectedCents > 0 ? "good" : undefined} />
-              <Stat label="Outstanding" value={money(m.outstandingCents)} tone={m.outstandingCents > 0 ? "warn" : undefined} />
-              {m.retainageCents > 0 && <Stat label="Retainage held" value={money(m.retainageCents)} tone="warn" />}
+              {/* Retainage sits INSIDE Outstanding — it's the slice of
+                  billed-minus-collected the GC is holding back, not a second
+                  amount owed. As a peer tile beside it, "Outstanding $10k"
+                  next to "Retainage held $10k" read as $20k owed on a job
+                  where the whole $10k outstanding WAS the retainage. */}
+              <Stat
+                label="Outstanding"
+                value={money(m.outstandingCents)}
+                tone={m.outstandingCents > 0 ? "warn" : undefined}
+                sub={m.retainageCents > 0 ? `incl. ${money(m.retainageCents)} retainage` : undefined}
+              />
               {m.costsCents > 0 && <Stat label="Costs" value={money(m.costsCents)} />}
               {m.hasContract && m.marginPct !== null && (
                 <Stat label="Margin" value={`${m.marginPct}%`} tone={m.marginPct < 0 ? "bad" : m.marginPct < 15 ? "warn" : "good"} />

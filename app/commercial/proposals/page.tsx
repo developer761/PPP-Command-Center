@@ -381,7 +381,9 @@ export default async function ProposalsIndexPage({
           <StatTile label="Open" value={openCount.toString()} tone="charcoal" />
           <StatTile label="Sent · awaiting reply" value={sentCount.toString()} tone="brand" />
           <StatTile label="Won" value={wonCount.toString()} tone="emerald" />
-          <StatTile label="Outstanding total" value={formatDollarsCompact(outstandingCents)} tone="brand" />
+          {/* Value of proposals awaiting a GC decision — deliberately NOT
+              "Outstanding", which means unpaid AR everywhere else. */}
+          <StatTile label="Awaiting decision" value={formatDollarsCompact(outstandingCents)} tone="brand" />
         </div>
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-center">
           {proposalMix.length > 0 ? (

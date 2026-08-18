@@ -65,7 +65,18 @@ function bucketOf(days: number): keyof Omit<ArAgingBuckets, "total"> {
 
 export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   const invoices = await listCommercialInvoices({});
+  // Orphan guard, matching the dashboard "Owed to us" tile that links here: an
+  // invoice whose deal was soft-deleted (or whose account was, which cascades to
+  // the deal) is gone from the app and must be gone from the collections book.
+  // ARCHIVED deals stay — archiving is a tidy-up, not a write-off, and their
+  // debt is still owed. `includeArchived` is what makes the two agree; the tile
+  // read $0 against this report's $40,000 before either side had a guard.
+  const { listCommercialOpportunities } = await import("@/lib/commercial/opportunities/db");
+  const realOppIds = new Set(
+    (await listCommercialOpportunities({ includeArchived: true })).map((o) => o.id)
+  );
   const open = invoices.filter((i) => {
+    if (i.opportunity_id != null && !realOppIds.has(i.opportunity_id)) return false;
     const s = deriveInvoiceStatus(i);
     return s !== "draft" && s !== "void" && i.balance_cents > 0;
   });

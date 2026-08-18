@@ -63,6 +63,10 @@ export type ProjectMoney = {
   billedCents: number;
   collectedCents: number;
   outstandingCents: number;
+  /** Retainage held. A SUBSET of `outstandingCents` (the AIA fold counts
+   *  billed − collected, and retainage is exactly the part of that the GC is
+   *  sitting on) — never an additional amount owed. Render it inside the
+   *  Outstanding figure, never as a peer tile beside it. */
   retainageCents: number;
   costsCents: number;
   marginCents: number;

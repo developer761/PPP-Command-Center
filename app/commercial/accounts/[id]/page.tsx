@@ -4592,7 +4592,12 @@ async function AccountProposalsTab({
                 )}
                 {outstandingCents > 0 && (
                   <div>
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-ppp-charcoal-500">Outstanding</div>
+                    {/* NOT money owed. This is the value of proposals still
+                        awaiting a GC decision — it sat two sections above an
+                        "Outstanding" that means unpaid AR and a third that
+                        means open balance on active jobs, all with different
+                        values. One word, three meanings, one page. */}
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-ppp-charcoal-500">Awaiting decision</div>
                     <div className="font-condensed text-xl font-bold text-ppp-charcoal leading-none mt-0.5">{fmt(outstandingCents)}</div>
                   </div>
                 )}
@@ -6026,7 +6031,7 @@ async function AccountKpisTab({
             label={isCredit ? "Credit" : "Outstanding"}
             value={formatCentsCompact(isCredit ? rollup.credit_cents : rollup.open_balance_cents)}
             tone={isCredit ? "emerald" : rollup.open_balance_cents > 0 ? "blue" : "neutral"}
-            sub={!hasInvoicing ? "not billed" : isCredit ? "overpaid" : rollup.open_balance_cents === 0 ? "settled" : "unpaid"}
+            sub={!hasInvoicing ? "not billed" : isCredit ? "overpaid" : rollup.open_balance_cents === 0 ? "settled" : "unpaid invoices"}
           />
           <MiniFig label="Overdue" value={String(rollup.overdue_count)} tone={rollup.overdue_count > 0 ? "rose" : "neutral"} sub={rollup.overdue_count > 0 ? "past due" : "on track"} />
         </div>
@@ -6092,7 +6097,11 @@ async function AccountKpisTab({
             ) : (
               <MiniFig label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} tone="neutral" sub="contract − billed" />
             )}
-            <MiniFig label="Outstanding" value={formatCentsCompact(production.outstandingCents)} tone={production.outstandingCents > 0 ? "amber" : "neutral"} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "open balance"} />
+            {/* Scoped to ACTIVE jobs and folds the AIA ledger, so it legitimately
+                differs from the Collections "Outstanding" above (whole account,
+                invoices only). Same word, two values, one page — the label now
+                carries the scope. */}
+            <MiniFig label="Open · active jobs" value={formatCentsCompact(production.outstandingCents)} tone={production.outstandingCents > 0 ? "amber" : "neutral"} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "unpaid, incl. AIA"} />
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-center mt-4">
             <div className="flex items-center justify-center">

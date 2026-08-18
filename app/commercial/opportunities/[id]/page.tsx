@@ -1871,13 +1871,24 @@ export default async function OpportunityDetailPage({
   // undercounted the instant a customer viewed an invoice, while the KPI strip
   // on the same page (issued-only) still counted it. Draft/void stay excluded
   // (not yet billed / cancelled). One definition, platform-wide (round-3 #4).
-  const openInvoiceCents = pathInvoices.reduce(
+  //
+  // ...and it must include AIA. This local reduce only walks
+  // `commercial_invoices`; an AIA-billed job writes NO invoice rows, so a deal
+  // with $100k certified and $60k received read "$0 out" here while the project
+  // card, Projects tab and Account 360 (which fold `aiaBillingRollup`) showed
+  // the real $40k. Worse, the tool-strip line built from these same locals
+  // printed "$60k of $100k · $0 out" — a sentence that doesn't add up.
+  // `getProjectFinancials.openBalanceCents` is the folded, per-invoice-clamped
+  // figure every rollup above this page already uses, so take it and keep the
+  // reduce only as the pre-win fallback (pathFin is null before the job is won).
+  const openInvoiceFromInvoicesCents = pathInvoices.reduce(
     (n, inv) =>
       BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(inv))
         ? n + Math.max(0, Number(inv.balance_cents) || 0)
         : n,
     0
   );
+  const openInvoiceCents = pathFin ? pathFin.openBalanceCents : openInvoiceFromInvoicesCents;
   const costsSoFar = pathFin?.totalCostCents ?? 0;
   const deliveryTools: DeliveryTool[] = pathIsWon
     ? [
