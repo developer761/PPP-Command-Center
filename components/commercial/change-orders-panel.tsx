@@ -294,9 +294,17 @@ export async function ChangeOrdersPanel({
             page mostly white — open the add form so the page is immediately
             usable + a compact one-line intro instead of a tall empty state. */}
         {items.length === 0 && (
-          <p className="text-[12px] text-ppp-charcoal-500 mb-3">
-            No change orders yet. When scope changes mid-job, add one below — approved additions roll into the contract sum and bill on their own invoice.
-          </p>
+          <div className="text-[12px] text-ppp-charcoal-500 mb-3 space-y-1">
+            <p>
+              No change orders yet. A change order is extra work added to this contract &mdash; it lives on the job, not as a new opportunity.
+            </p>
+            {/* Stephanie asked "how do I generate a change order within a
+                project?" She was already in the right place; what was missing
+                was anyone telling her the shape of the job. Spell it out. */}
+            <p>
+              <strong className="text-ppp-charcoal-700">How it works:</strong> add it below &rarr; send it to the GC for written approval &rarr; record their answer. It only counts toward the contract sum once it&rsquo;s approved, and then it bills on its own invoice.
+            </p>
+          </div>
         )}
         <details className="group mb-3 border border-cc-brand-200 rounded-lg" open={addAttemptFailed || items.length === 0}>
           <summary className="cursor-pointer list-none px-3.5 py-2.5 min-h-[44px] flex items-center gap-2 text-[12px] font-semibold text-cc-brand-700 select-none">

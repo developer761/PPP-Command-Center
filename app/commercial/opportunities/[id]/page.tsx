@@ -1929,7 +1929,10 @@ export default async function OpportunityDetailPage({
           href: tabHref("change-orders"),
           state:
             pathChangeOrders.length === 0
-              ? "None"
+              // "None" reads as a status and stops the reader. This tile is
+              // where Stephanie asked "how do I generate a change order within
+              // a project?" — so say what to do, not what isn't there.
+              ? "Add one"
               : pendingCoCount > 0
               ? `${pendingCoCount} awaiting a decision`
               : approvedCoCount > 0
