@@ -145,30 +145,31 @@ export async function getOpenInvoiceStatementForAccount(
   //
   // Amount = earned-less-retainage minus collected (2026-08-17 decision), so
   // this is what they owe today. Due date = issue (frozen_at) + net terms.
+  // Batched — the first cut called `aiaBillingRollup` (several queries) plus
+  // `listAiaApplications` once per opportunity, in sequence.
   let retainageHeldCents = 0;
-  const { aiaBillingRollup, listAiaApplications } = await import("@/lib/commercial/aia/db");
-  for (const opp of opps) {
-    if (opp.deleted_at) continue;
-    const roll = await aiaBillingRollup(opp.id).catch(() => null);
-    if (!roll || !roll.hasAia) continue;
+  const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
+  const liveOpps = opps.filter((o) => !o.deleted_at);
+  const rollups = await aiaBillingRollupBulk(liveOpps.map((o) => o.id));
+  const oppRowById = new Map(liveOpps.map((o) => [o.id, o] as const));
+  for (const [oppId, roll] of rollups) {
     retainageHeldCents += roll.retainageHeldCents;
     if (roll.dueNowCents <= 0) continue;
+    const opp = oppRowById.get(oppId);
+    if (!opp) continue;
 
-    const apps = await listAiaApplications(opp.id).catch(() => []);
-    const issuedApps = apps.filter((a) => a.status === "submitted" || a.status === "paid");
-    const latest = issuedApps[issuedApps.length - 1];
-    if (!latest) continue;
-
-    const issuedAt = latest.frozen_at ?? (latest.period_to ? `${latest.period_to}T16:00:00Z` : null);
+    const issuedAt =
+      roll.latestIssuedFrozenAt ??
+      (roll.latestIssuedPeriodTo ? `${roll.latestIssuedPeriodTo}T16:00:00Z` : null);
     const dueAt = issuedAt
       ? new Date(new Date(issuedAt).getTime() + DEFAULT_DUE_DAYS * 86_400_000).toISOString()
       : null;
-    const daysPastDue = dueAt ? arDaysPastDue(dueAt, now) : null;
-    const isOverdue = daysPastDue != null && daysPastDue > 0;
+    const aiaDaysPastDue = dueAt ? arDaysPastDue(dueAt, now) : null;
+    const isOverdue = aiaDaysPastDue != null && aiaDaysPastDue > 0;
 
     rows.push({
-      invoiceId: latest.id,
-      invoiceNumber: `Application No. ${latest.application_number}`,
+      invoiceId: roll.latestIssuedId,
+      invoiceNumber: `Application No. ${roll.latestIssuedNumber}`,
       kind: "aia",
       dealName: derivedOppName(opp, null),
       issuedAt,
@@ -177,12 +178,12 @@ export async function getOpenInvoiceStatementForAccount(
       paidCents: roll.collectedCents,
       balanceCents: roll.dueNowCents,
       status: isOverdue ? "overdue" : "sent",
-      daysPastDue,
+      daysPastDue: aiaDaysPastDue,
     });
     totalOutstandingCents += roll.dueNowCents;
-    const bucket = aging[agingBucketKey(daysPastDue, isOverdue)];
-    bucket.cents += roll.dueNowCents;
-    bucket.count += 1;
+    const aiaBucket = aging[agingBucketKey(aiaDaysPastDue, isOverdue)];
+    aiaBucket.cents += roll.dueNowCents;
+    aiaBucket.count += 1;
   }
 
   // Oldest first (most-overdue at the top of the statement).

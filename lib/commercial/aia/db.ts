@@ -8,9 +8,11 @@ import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { netApprovedChangeOrderCents, listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/proposals/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import {
   computeG702,
   aiaBilledCollectedFrom,
+  lineCompletedStoredCents,
   pickContractBaseCents,
   isAiaChangeOrderLine,
   DEFAULT_RETAINAGE_PCT,
@@ -1095,4 +1097,156 @@ async function priorCertificateCents(app: AiaApplication, depth: number): Promis
   if (!prior) return 0;
   const g = await resolveG702(prior.id, depth + 1);
   return g?.totalEarnedLessRetainageCents ?? 0;
+}
+
+// ── Bulk AIA billing rollup ────────────────────────────────────────────────
+
+export type AiaRollupEntry = {
+  billedCents: number;
+  collectedCents: number;
+  /** Currently payable: G702 line 6 minus collected. Excludes retainage. */
+  dueNowCents: number;
+  retainageHeldCents: number;
+  hasAia: true;
+  /** The latest ISSUED application — what a statement / aging row cites. */
+  latestIssuedId: string;
+  latestIssuedNumber: number;
+  latestIssuedFrozenAt: string | null;
+  latestIssuedPeriodTo: string | null;
+};
+
+/**
+ * The same rollup as {@link aiaBillingRollup}, for MANY opportunities, in two
+ * queries total.
+ *
+ * The per-opportunity version fans out: `listAiaApplications` plus up to two
+ * `resolveG702` calls, each of which is several more round-trips. Calling it in
+ * a loop — which the AR aging report, the AR statement and the account rollup
+ * all did after AIA was folded into them — meant a page load issuing roughly
+ * `5 × (number of opportunities)` SEQUENTIAL queries. At 200 live
+ * opportunities that is over a thousand, one after another, before the report
+ * renders. It worked on the handful of rows in the test data and would have
+ * fallen over on a real book of business.
+ *
+ * Two queries here regardless of N: applications for every requested
+ * opportunity, then line items for the latest-issued + latest-paid apps only.
+ * The math is the SHARED `lineCompletedStoredCents` per-line rule and the pure
+ * `aiaBilledCollectedFrom`, so figures stay penny-identical to the deal page
+ * and the printed certificate — this is a batching change, not a second
+ * definition.
+ *
+ * Opportunities with no issued application are simply absent from the map.
+ */
+export async function aiaBillingRollupBulk(
+  opportunityIds: string[]
+): Promise<Map<string, AiaRollupEntry>> {
+  const out = new Map<string, AiaRollupEntry>();
+  const ids = [...new Set(opportunityIds)].filter(Boolean);
+  if (ids.length === 0) return out;
+
+  const sb = commercialDb();
+  const apps = await paginateAll<{
+    id: string;
+    opportunity_id: string;
+    application_number: number;
+    status: string;
+    retainage_pct: number;
+    frozen_at: string | null;
+    period_to: string | null;
+  }>(() =>
+    sb
+      .from("commercial_aia_applications")
+      .select("id, opportunity_id, application_number, status, retainage_pct, frozen_at, period_to")
+      .in("opportunity_id", ids)
+      .is("deleted_at", null)
+      .order("id", { ascending: true })
+  );
+  if (apps.length === 0) return out;
+
+  // Highest application_number wins, matching listAiaApplications' ordering.
+  type App = (typeof apps)[number];
+  const latestIssued = new Map<string, App>();
+  const latestPaid = new Map<string, App>();
+  for (const a of apps) {
+    if (a.status === "submitted" || a.status === "paid") {
+      const cur = latestIssued.get(a.opportunity_id);
+      if (!cur || a.application_number > cur.application_number) latestIssued.set(a.opportunity_id, a);
+    }
+    if (a.status === "paid") {
+      const cur = latestPaid.get(a.opportunity_id);
+      if (!cur || a.application_number > cur.application_number) latestPaid.set(a.opportunity_id, a);
+    }
+  }
+  if (latestIssued.size === 0) return out;
+
+  const wantedAppIds = [
+    ...new Set([
+      ...[...latestIssued.values()].map((a) => a.id),
+      ...[...latestPaid.values()].map((a) => a.id),
+    ]),
+  ];
+  const pctByApp = new Map<string, number>();
+  for (const a of [...latestIssued.values(), ...latestPaid.values()]) {
+    pctByApp.set(a.id, Math.min(100, Math.max(0, a.retainage_pct)));
+  }
+
+  const lines = await paginateAll<{
+    application_id: string;
+    scheduled_value_cents: number;
+    from_previous_cents: number;
+    this_period_cents: number;
+    materials_stored_cents: number;
+  }>(() =>
+    sb
+      .from("commercial_aia_line_items")
+      .select("application_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents")
+      .in("application_id", wantedAppIds)
+      .order("id", { ascending: true })
+  );
+
+  const completedByApp = new Map<string, number>();
+  const retainageByApp = new Map<string, number>();
+  for (const l of lines) {
+    const done = lineCompletedStoredCents(l);
+    completedByApp.set(l.application_id, (completedByApp.get(l.application_id) ?? 0) + done);
+    // Retainage summed PER LINE at the app's rate — the same way computeG702 and
+    // the G703 sheet do it, so rounding lands on the same penny.
+    const pct = pctByApp.get(l.application_id) ?? 0;
+    retainageByApp.set(
+      l.application_id,
+      (retainageByApp.get(l.application_id) ?? 0) + Math.round((done * pct) / 100)
+    );
+  }
+
+  for (const [oppId, issued] of latestIssued) {
+    const issuedCompleted = completedByApp.get(issued.id) ?? 0;
+    const issuedRetainage = retainageByApp.get(issued.id) ?? 0;
+    const paid = latestPaid.get(oppId);
+    const paidCompleted = paid ? completedByApp.get(paid.id) ?? 0 : 0;
+    const paidRetainage = paid ? retainageByApp.get(paid.id) ?? 0 : 0;
+
+    const { billedCents, collectedCents, dueNowCents, retainageHeldCents } =
+      aiaBilledCollectedFrom({
+        latestIssued: {
+          totalCompletedStoredCents: issuedCompleted,
+          totalEarnedLessRetainageCents: issuedCompleted - issuedRetainage,
+        },
+        latestPaid: paid
+          ? { totalEarnedLessRetainageCents: paidCompleted - paidRetainage }
+          : null,
+      });
+
+    out.set(oppId, {
+      billedCents,
+      collectedCents,
+      dueNowCents,
+      retainageHeldCents,
+      hasAia: true,
+      latestIssuedId: issued.id,
+      latestIssuedNumber: issued.application_number,
+      latestIssuedFrozenAt: issued.frozen_at,
+      latestIssuedPeriodTo: issued.period_to,
+    });
+  }
+  return out;
 }

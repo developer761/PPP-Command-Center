@@ -142,9 +142,10 @@ export async function getInvoiceRollupForAccount(account_id: string): Promise<Ac
 /**
  * Sum every AIA application across a GC's live opportunities.
  *
- * Per-opportunity so it reuses the ONE `aiaBillingRollup` definition the deal
- * page and the project cards use — a second, account-level SQL rollup is
- * exactly how two surfaces start disagreeing about the same job.
+ * One bulk call rather than a fan-out per opportunity: `aiaBillingRollupBulk`
+ * resolves the whole set in two queries and reuses the ONE `aiaBilledCollectedFrom`
+ * definition the deal page and the project cards use — a second, account-level
+ * SQL rollup is exactly how two surfaces start disagreeing about the same job.
  */
 async function aiaRollupForAccount(account_id: string): Promise<{
   billedCents: number;
@@ -168,18 +169,17 @@ async function aiaRollupForAccount(account_id: string): Promise<{
     hasAia: false,
   };
   if (ids.length === 0) return zero;
-  const { aiaBillingRollup } = await import("@/lib/commercial/aia/db");
-  const parts = await Promise.all(
-    ids.map((id) => aiaBillingRollup(id).catch(() => null))
-  );
-  return parts.filter((r): r is NonNullable<typeof r> => r !== null).reduce((acc, r) => {
-    if (!r.hasAia) return acc;
-    return {
+  const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
+  const rollups = await aiaBillingRollupBulk(ids);
+  let acc = zero;
+  for (const r of rollups.values()) {
+    acc = {
       billedCents: acc.billedCents + r.billedCents,
       collectedCents: acc.collectedCents + r.collectedCents,
       dueNowCents: acc.dueNowCents + r.dueNowCents,
       retainageHeldCents: acc.retainageHeldCents + r.retainageHeldCents,
       hasAia: true,
     };
-  }, zero);
+  }
+  return acc;
 }

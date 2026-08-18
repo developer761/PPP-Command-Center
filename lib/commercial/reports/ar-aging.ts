@@ -99,32 +99,34 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   // The report is the collections book; a job billed only through G702/G703 was
   // simply absent from it. Amount = earned-less-retainage minus collected, so
   // retainage never ages — see aiaBilledCollectedFrom for why that matters.
-  const aiaRows: {
-    accountId: string;
-    balance: number;
-    days: number;
-  }[] = [];
+  //
+  // Batched. The first cut looped `aiaBillingRollup` per opportunity, and that
+  // helper fans out to several queries each — so this report issued roughly
+  // five sequential round-trips per live opportunity before rendering. Two
+  // queries now, whatever the pipeline size.
+  const aiaRows: { accountId: string; balance: number; days: number }[] = [];
   {
-    const { aiaBillingRollup, listAiaApplications } = await import("@/lib/commercial/aia/db");
+    const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
     const { DEFAULT_DUE_DAYS } = await import("@/lib/commercial/invoices/constants");
     const liveOpps = await listCommercialOpportunities({ includeArchived: true });
-    for (const opp of liveOpps) {
-      const roll = await aiaBillingRollup(opp.id).catch(() => null);
-      if (!roll || !roll.hasAia || roll.dueNowCents <= 0) continue;
-      const apps = await listAiaApplications(opp.id).catch(() => []);
-      const issued = apps.filter((a) => a.status === "submitted" || a.status === "paid");
-      const latest = issued[issued.length - 1];
-      if (!latest) continue;
-      const issuedAt = latest.frozen_at ?? (latest.period_to ? `${latest.period_to}T16:00:00Z` : null);
+    const rollups = await aiaBillingRollupBulk(liveOpps.map((o) => o.id));
+    const accountByOpp = new Map(liveOpps.map((o) => [o.id, o.account_id] as const));
+    for (const [oppId, roll] of rollups) {
+      if (roll.dueNowCents <= 0) continue;
+      const accountId = accountByOpp.get(oppId);
+      if (!accountId) continue;
+      const issuedAt =
+        roll.latestIssuedFrozenAt ??
+        (roll.latestIssuedPeriodTo ? `${roll.latestIssuedPeriodTo}T16:00:00Z` : null);
       const dueAt = issuedAt
         ? new Date(new Date(issuedAt).getTime() + DEFAULT_DUE_DAYS * 86_400_000).toISOString()
         : null;
       aiaRows.push({
-        accountId: opp.account_id,
+        accountId,
         balance: roll.dueNowCents,
         days: dueAt ? daysPastDue(dueAt, nowMs) : 0,
       });
-      if (!acctIds.includes(opp.account_id)) acctIds.push(opp.account_id);
+      if (!acctIds.includes(accountId)) acctIds.push(accountId);
     }
     // Names for any account that ONLY has AIA billing — it wasn't in the
     // invoice-derived id list, so it had no name resolved above.
