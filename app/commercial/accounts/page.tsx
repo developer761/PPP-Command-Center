@@ -1257,7 +1257,7 @@ function AccountRow({
                     <SignalPill
                       icon="star"
                       tone="amber"
-                      label="Repeat GC"
+                      label="Repeat business"
                       title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account.`}
                     />
                   )}

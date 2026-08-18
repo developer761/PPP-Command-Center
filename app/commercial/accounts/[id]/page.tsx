@@ -581,7 +581,7 @@ export default async function CommercialAccountDetailPage({
                 <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Key Relationship</Pill>
               )}
               {!account.is_key_relationship && (overview?.won_opps_count ?? 0) > 0 && (
-                <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Repeat GC</Pill>
+                <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Repeat business</Pill>
               )}
               {account.do_not_bid && (
                 <Pill tone="rose">

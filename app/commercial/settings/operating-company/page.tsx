@@ -88,7 +88,7 @@ export default async function OperatingCompanyPage({
           Settings
         </Link>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">Operating Company</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">This identity appears on your generated documents — invoices, AIA billing, transmittals, warranties, work orders and statements. (The GC <strong>proposal</strong> uses Tomco&apos;s fixed 1:1 letterhead and isn&apos;t driven by this identity.) Edit it once here.</p>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">This identity appears on your generated documents — invoices, AIA billing, transmittals, warranties, work orders and statements. (The GC copy of a <strong>proposal</strong> uses Tomco&apos;s fixed 1:1 letterhead and isn&apos;t driven by this identity.) Edit it once here.</p>
       </div>
 
       {sp.ok && (
@@ -149,7 +149,7 @@ export default async function OperatingCompanyPage({
         <h2 className="text-[13px] font-bold text-ppp-charcoal mb-1 flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" /> Branding
         </h2>
-        <p className="text-[11.5px] text-ppp-charcoal-500 mb-3">The logo appears on your generated PDFs (invoices, transmittals, warranties, work orders). The GC proposal keeps Tomco&apos;s fixed letterhead. The signature is what &ldquo;Tap to sign&rdquo; drops onto documents that need a signature.</p>
+        <p className="text-[11.5px] text-ppp-charcoal-500 mb-3">The logo appears on your generated PDFs (invoices, transmittals, warranties, work orders). The GC copy of a proposal keeps Tomco&apos;s fixed letterhead. The signature is what &ldquo;Tap to sign&rdquo; drops onto documents that need a signature.</p>
         <div className="grid grid-cols-1 gap-3">
           <BrandAssetUpload kind="logo" label="Logo / letterhead" hint="PNG, JPEG or WEBP · max 5 MB. Transparent PNG works best." hasAsset={!!c.logo_asset_key} />
 
