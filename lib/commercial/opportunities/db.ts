@@ -201,18 +201,80 @@ export type CommercialOpportunity = {
 };
 
 /**
- * Derived display name — "{Account} - {Client} - {Location}" (Katie's spec).
- * Priority order:
- *   1. opp.title_override (migration 069) — user's custom name wins if set.
- *   2. Computed "{account} - {client} - {street}". If Client Name is blank
- *      it's dropped from the join (Katie: "If Client Name is blank, leave it
- *      out") → "{account} - {street}". Consecutive identical parts dedupe so
- *      we never render "Karan - Karan".
- *   3. opp.title fallback (single part / legacy rows).
+ * Derived display name.
  *
- * Katie 2026-07-20; re-confirmed by Karan 2026-07-28 ("let's do Katie's").
- * `title_override` still lets a user set a fully custom name.
+ * Priority order:
+ *   1. `title_override` — the "Project nickname" field. Explicit, always wins.
+ *   2. `title` — the "Opportunity name" field, WHEN the person actually typed
+ *      one (see below).
+ *   3. Computed "{account} - {client} - {street}" (Katie's spec). Client is
+ *      dropped when blank; consecutive identical parts dedupe so a deal whose
+ *      account == client never reads "Karan - Karan".
+ *
+ * Step 2 is new (Stephanie, 2026-08-18): *"Why am I not seeing the job name
+ * once it is converted into a project? Only the GC and the address?"*
+ *
+ * She was typing a name into the field labelled "Opportunity name" — a
+ * REQUIRED field — and it was displayed nowhere, because this function read
+ * `title_override` and then went straight to the computed form. `title` only
+ * appeared as a last-ditch fallback that could never be reached, since the
+ * computed branch practically always returns something.
+ *
+ * The catch is that "Opportunity name" is AUTO-FILLED with
+ * "MM-DD-YYYY Builder - Client - Street" and most people leave it alone. Simply
+ * preferring `title` would have re-labelled every existing opportunity with
+ * that date-prefixed string — uglier than what they see now, and a jarring
+ * change to a whole book of work.
+ *
+ * So `isAutoFilledTitle` tells the two apart: strip a leading date prefix, and
+ * if what's left is just the computed name again, it's the untouched default
+ * and we fall through. Anything else is a name a person chose, and it wins.
+ * Existing deals therefore look exactly as they do today; the moment someone
+ * types a real name, it shows up everywhere.
  */
+function computedOppName(
+  opp: { client_name?: string | null; property_street?: string | null },
+  accountName: string | null | undefined
+): string {
+  const parts: string[] = [];
+  if (accountName && accountName.trim()) parts.push(accountName.trim());
+  if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
+  const location = (opp.property_street && opp.property_street.trim()) || "";
+  if (location) parts.push(location);
+  const deduped = parts.filter(
+    (p, i) => i === 0 || p.toLowerCase() !== parts[i - 1].toLowerCase()
+  );
+  return deduped.join(" - ");
+}
+
+/** Loose compare — punctuation and spacing drift between the auto-fill and the
+ *  recomputed name (a street gets edited, a client name gains a comma) must not
+ *  make an untouched default look hand-written. */
+function looseEq(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return norm(a) === norm(b) && norm(a).length > 0;
+}
+
+/**
+ * Is this `title` just the untouched auto-fill, rather than a name someone
+ * chose? Exported for tests — the whole behaviour turns on this one call.
+ */
+export function isAutoFilledTitle(
+  title: string | null | undefined,
+  opp: { client_name?: string | null; property_street?: string | null },
+  accountName: string | null | undefined
+): boolean {
+  const t = (title ?? "").trim();
+  if (!t) return true; // nothing typed at all
+  // The auto-fill prefixes MM-DD-YYYY; strip it before comparing.
+  const withoutDate = t.replace(/^\d{1,2}-\d{1,2}-\d{4}\s*/, "").trim();
+  const computed = computedOppName(opp, accountName);
+  if (looseEq(withoutDate, computed)) return true;
+  // A date prefix and nothing else meaningful behind it is still a default.
+  if (!withoutDate) return true;
+  return false;
+}
+
 export function derivedOppName(
   opp: Pick<CommercialOpportunity, "title" | "client_name"> & {
     property_street?: string | null;
@@ -220,26 +282,19 @@ export function derivedOppName(
   },
   accountName: string | null | undefined,
 ): string {
-  // (1) Explicit user override wins.
+  // (1) Explicit nickname wins.
   const override = opp.title_override?.trim();
   if (override) return override;
 
-  // (2) Computed {account} - {client} - {street}, client dropped when blank.
-  const parts: string[] = [];
-  if (accountName && accountName.trim()) parts.push(accountName.trim());
-  if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
-  const location = (opp.property_street && opp.property_street.trim()) || "";
-  if (location) parts.push(location);
+  // (2) A name the person actually typed into "Opportunity name".
+  const title = (opp.title ?? "").trim();
+  if (title && !isAutoFilledTitle(title, opp, accountName)) return title;
 
-  // Dedupe consecutive identical parts (case-insensitive) so a deal whose
-  // account == client doesn't read "Karan - Karan".
-  const deduped = parts.filter(
-    (p, i) => i === 0 || p.toLowerCase() !== parts[i - 1].toLowerCase()
-  );
-  if (deduped.length >= 2) return deduped.join(" - ");
+  // (3) Computed "{account} - {client} - {street}".
+  const computed = computedOppName(opp, accountName);
+  if (computed) return computed;
 
-  // (3) Legacy / single-part fallback.
-  return opp.title || deduped[0] || "Untitled opportunity";
+  return title || "Untitled opportunity";
 }
 
 // formatDealNumber (the "No. ALT-0125" formatter) was retired 2026-07-21:
