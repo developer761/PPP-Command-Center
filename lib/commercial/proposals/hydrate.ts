@@ -150,15 +150,28 @@ export async function hydrateProposalContext(
   if (estimatorUserId) {
     const { data } = await sb
       .from("profiles")
-      .select("full_name, sf_user_name, email")
+      .select("full_name, sf_user_name, email, phone, title")
       .eq("user_id", estimatorUserId)
       .maybeSingle();
-    const p = data as { full_name: string | null; sf_user_name: string | null; email: string | null } | null;
+    const p = data as {
+      full_name: string | null;
+      sf_user_name: string | null;
+      email: string | null;
+      phone: string | null;
+      title: string | null;
+    } | null;
     // `full_name` first: a provisioned user (an admin-created login, which is
     // how Kim exists) has no Salesforce mapping, so reading only sf_user_name
     // left their name blank on the signed proposal.
     if (p?.full_name || p?.sf_user_name) estimator.name = (p.full_name || p.sf_user_name) as string;
     if (p?.email) estimator.email = p.email;
+    // Brendan 2026-08-17: the sign-off printed a name and nothing else, so the
+    // GC had no way to reach whoever priced the job — and the estimator had to
+    // retype their own title and phone on every proposal. Both now pre-fill
+    // from the profile (phone column added in 145 and never read; title added
+    // in 151). Still editable per proposal.
+    if (p?.phone) estimator.phone = p.phone;
+    if (p?.title) estimator.title = p.title;
   }
   // Fall back to free-text estimator name if no user linked.
   if (!estimator.name && opp.estimator_name) {

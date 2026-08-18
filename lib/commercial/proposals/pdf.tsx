@@ -1045,9 +1045,16 @@ function InclusionsCustomer({
 function LiRow({
   it,
   showAlternateBadge,
+  priceOnly = false,
 }: {
   it: CommercialProposalLineItem;
   showAlternateBadge: boolean;
+  /** Brendan 2026-08-17, on the customer copy with per-line prices turned on:
+   *  "it shows also the unit price and the unit and quantity. We don't want
+   *  that. Just the price is good." So the CUSTOMER table is description +
+   *  line total. The internal copy keeps qty / unit / unit price, because
+   *  checking that math is the whole reason the internal copy exists. */
+  priceOnly?: boolean;
 }) {
   return (
     <View style={styles.liRow}>
@@ -1061,8 +1068,12 @@ function LiRow({
         ) : null}
         {it.description}
       </Text>
-      <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
-      <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
+      {!priceOnly && (
+        <>
+          <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
+          <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
+        </>
+      )}
       {/* The itemized TABLE always shows its numbers. It only renders in two
           situations — the internal estimator copy, and a customer copy where
           someone deliberately turned on "show the full breakdown" — and in
@@ -1070,7 +1081,9 @@ function LiRow({
           here: since migration 148 it means "print this line's price inline on
           the DEFAULT customer proposal", which is a different question. Reading
           it here would have blanked every cell to "—" after the backfill. */}
-      <Text style={[styles.liCell, styles.liCellPrice]}>{formatDollars(it.unit_price_cents)}</Text>
+      {!priceOnly && (
+        <Text style={[styles.liCell, styles.liCellPrice]}>{formatDollars(it.unit_price_cents)}</Text>
+      )}
       <Text style={[styles.liCell, styles.liCellLine]}>{formatDollars(lineTotalCents(it))}</Text>
     </View>
   );
@@ -1080,9 +1093,12 @@ function LineItemTable({
   items,
   showAlternateBadge,
   groupByPhase = false,
+  priceOnly = false,
 }: {
   items: CommercialProposalLineItem[];
   showAlternateBadge: boolean;
+  /** Customer copy: description + price, nothing else (Brendan 2026-08-17). */
+  priceOnly?: boolean;
   /** Katie 2026-07-28: group the priced table by phase with a per-phase
    *  subtotal. Only the base inclusions table sets this (not labor/alternates).
    *  Falls back to a flat table when no line item carries a phase. */
@@ -1092,12 +1108,18 @@ function LineItemTable({
     ? groupItemsByPhase(items)
     : { anyHasPhase: false, groups: [] as PhaseGroup[] };
   const header = (
-    <View style={styles.liHeaderRow}>
+    <View style={styles.liHeaderRow} fixed>
       <Text style={[styles.liHeaderCell, styles.liCellDesc]}>Description</Text>
-      <Text style={[styles.liHeaderCell, styles.liCellQty]}>Qty</Text>
-      <Text style={[styles.liHeaderCell, styles.liCellUnit]}>Unit</Text>
-      <Text style={[styles.liHeaderCell, styles.liCellPrice]}>Unit price</Text>
-      <Text style={[styles.liHeaderCell, styles.liCellLine]}>Line total</Text>
+      {!priceOnly && (
+        <>
+          <Text style={[styles.liHeaderCell, styles.liCellQty]}>Qty</Text>
+          <Text style={[styles.liHeaderCell, styles.liCellUnit]}>Unit</Text>
+          <Text style={[styles.liHeaderCell, styles.liCellPrice]}>Unit price</Text>
+        </>
+      )}
+      <Text style={[styles.liHeaderCell, styles.liCellLine]}>
+        {priceOnly ? "Price" : "Line total"}
+      </Text>
     </View>
   );
   // Flat table when not grouping OR when no line carries a phase (every legacy
@@ -1108,7 +1130,7 @@ function LineItemTable({
       <View style={styles.liTable}>
         {header}
         {items.map((it) => (
-          <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} />
+          <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} />
         ))}
       </View>
     );
@@ -1137,10 +1159,10 @@ function LineItemTable({
               <View style={styles.liPhaseHeader}>
                 <Text style={styles.liPhaseHeaderText}>{g.label}</Text>
               </View>
-              {firstRow && <LiRow it={firstRow} showAlternateBadge={showAlternateBadge} />}
+              {firstRow && <LiRow it={firstRow} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} />}
             </View>
             {restRows.map((it) => (
-              <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} />
+              <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} />
             ))}
             <View style={styles.liSubtotalRow} wrap={false}>
               <Text style={styles.liSubtotalLabel}>{g.label} subtotal</Text>
@@ -1173,7 +1195,7 @@ function InclusionsInternal({
   return (
     <View style={{ marginTop: 4 }}>
       <Text style={styles.sectionUnderlineHeader}>{internal ? `${heading} (internal line-item view):` : `${heading}:`}</Text>
-      <LineItemTable items={items} showAlternateBadge={false} groupByPhase={groupByPhase} />
+      <LineItemTable items={items} showAlternateBadge={false} groupByPhase={groupByPhase} priceOnly={!internal} />
     </View>
   );
 }
@@ -1232,7 +1254,7 @@ function AlternateSectionInternal({
       {altNotes && (
         <Text style={{ marginBottom: 4, fontSize: 11 }}>{altNotes}</Text>
       )}
-      {items.length > 0 && <LineItemTable items={items} showAlternateBadge={false} />}
+      {items.length > 0 && <LineItemTable items={items} showAlternateBadge={false} priceOnly={!internal} />}
     </View>
   );
 }
@@ -1295,8 +1317,21 @@ function EstimatorBlock({
       <Text style={styles.estHeader}>Estimator:</Text>
       {e.name && <Text style={styles.estName}>{e.name}</Text>}
       {e.title && <Text style={styles.estRow}>{e.title}</Text>}
-      {e.phone && <Text style={styles.estRow}>{e.phone}</Text>}
-      {e.email && <Text style={styles.estRow}>{e.email}</Text>}
+      {/* Brendan 2026-08-17: "Phone number, title and email are not showing on
+          pdf for client." The block rendered whatever the snapshot held — and
+          the snapshot only ever pre-filled name and email, so a proposal went
+          out naming the estimator with no way to reach them.
+
+          Phone and title now pre-fill from the profile (hydrate), and these
+          fall back to the company's own contact details so this block can
+          NEVER be a dead end: the GC always has a number and an address to
+          reply to, even on a proposal created before any of that was set. */}
+      {(e.phone || company?.phone) && (
+        <Text style={styles.estRow}>{e.phone || company?.phone}</Text>
+      )}
+      {(e.email || company?.email) && (
+        <Text style={styles.estRow}>{e.email || company?.email}</Text>
+      )}
     </View>
   );
 }
