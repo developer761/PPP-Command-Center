@@ -36,6 +36,46 @@ function fmtDisplay(s: string): string {
   const p = parseYmd(s);
   return p ? `${MONTHS_SHORT[p.m - 1]} ${p.d}, ${p.y}` : "";
 }
+/**
+ * Parse a TYPED date into `yyyy-mm-dd`, or null.
+ *
+ * Brendan 2026-08-17: "please allow us to type a date in manually since most
+ * bid sets are from at least a year ago and we'd have to click all the way
+ * back every time." The picker alone meant ~14 month-taps to reach last year.
+ * Accepts the shapes people actually type; anything else reverts on blur.
+ */
+function monthIndexFrom(nameRaw: string): number | null {
+  const n = nameRaw.toLowerCase().slice(0, 3);
+  const i = MONTHS.findIndex((x) => x.toLowerCase().startsWith(n));
+  return i >= 0 ? i + 1 : null;
+}
+function mkYmd(y: number, m: number, d: number): string | null {
+  if (!Number.isFinite(y) || y < 1000 || y > 9999) return null;
+  if (m < 1 || m > 12) return null;
+  if (d < 1 || d > daysInMonth(y, m)) return null;
+  return toYmd(y, m, d);
+}
+export function parseTypedDate(raw: string): string | null {
+  const s = (raw ?? "").trim();
+  if (!s) return null;
+  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(s);
+  if (m) return mkYmd(+m[1], +m[2], +m[3]);
+  // US order — 8/5/2025, 8-5-25, 08.05.2025
+  m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/.exec(s);
+  if (m) {
+    let y = +m[3];
+    if (y < 100) y += y >= 70 ? 1900 : 2000;
+    return mkYmd(y, +m[1], +m[2]);
+  }
+  // Aug 5, 2025 / August 5 2025
+  m = /^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(s);
+  if (m) { const mi = monthIndexFrom(m[1]); return mi ? mkYmd(+m[3], mi, +m[2]) : null; }
+  // 5 Aug 2025
+  m = /^(\d{1,2})\s+([A-Za-z]{3,})\.?,?\s+(\d{4})$/.exec(s);
+  if (m) { const mi = monthIndexFrom(m[2]); return mi ? mkYmd(+m[3], mi, +m[1]) : null; }
+  return null;
+}
+
 function daysInMonth(y: number, m: number): number {
   return new Date(y, m, 0).getDate(); // m is 1-12; day 0 of next month
 }
@@ -89,18 +129,26 @@ export function DateField({
   const hiddenRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  // The typed text. Mirrors the committed value unless the user is mid-edit.
+  const [draft, setDraft] = useState<string>(() => fmtDisplay(controlled ? (controlledValue ?? "") : defaultValue));
+  const [typing, setTyping] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   // The popover renders in a PORTAL (position: fixed) so it can never be clipped
   // by an overflow-hidden card (e.g. the proposal editor's sections). Position
   // is computed from the trigger's viewport rect + re-computed on scroll/resize.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!typing) setDraft(fmtDisplay(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, typing]);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
 
   const POP_W = 268;
   const POP_H = 360; // approx calendar height, for the flip-up decision only
   function reposition() {
-    const b = btnRef.current;
+    const b = wrapRef.current ?? btnRef.current;
     if (!b || typeof window === "undefined") return;
     const r = b.getBoundingClientRect();
     const winH = window.innerHeight;
@@ -166,7 +214,8 @@ export function DateField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  function commit(next: string) {
+  /** Write the value without touching popover state (used by typed entry). */
+  function writeValue(next: string) {
     if (controlled) {
       onValueChange?.(next);
     } else {
@@ -182,7 +231,36 @@ export function DateField({
     // Keep the calendar viewing the month it just picked into.
     const p = parseYmd(next);
     if (p) setView({ y: p.y, m: p.m });
+  }
+
+  function commit(next: string) {
+    writeValue(next);
+    setDraft(fmtDisplay(next));
+    setTyping(false);
     setOpen(false);
+  }
+
+  /** Blur/Enter on the text box: accept what parses, silently revert what
+   *  doesn't (never trap the user behind a validation error on a date field). */
+  function commitTyped() {
+    setTyping(false);
+    const s = draft.trim();
+    if (!s) {
+      if (value) writeValue("");
+      setDraft("");
+      return;
+    }
+    const iso = parseTypedDate(s);
+    const rejected =
+      !iso ||
+      (minP && iso < toYmd(minP.y, minP.m, minP.d)) ||
+      (maxP && iso > toYmd(maxP.y, maxP.m, maxP.d));
+    if (rejected) {
+      setDraft(fmtDisplay(value));
+      return;
+    }
+    writeValue(iso);
+    setDraft(fmtDisplay(iso));
   }
 
   const minP = parseYmd(min ?? "");
@@ -223,31 +301,55 @@ export function DateField({
           ? <input type="hidden" name={name} value={value} readOnly required={required} />
           : null
         : <input ref={hiddenRef} type="hidden" name={name} defaultValue={defaultValue} required={required} />}
-      <button
-        ref={btnRef}
-        type="button"
-        id={id}
-        disabled={disabled}
-        onClick={() => !disabled && setOpen((o) => !o)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label={ariaLabel}
-        className={`w-full flex items-center gap-2 rounded-lg border pl-3 ${value && !disabled ? "pr-12" : "pr-3"} py-2 min-h-[44px] text-left text-[13.5px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 ${
+      {/* Trigger = a real TEXT INPUT plus a calendar button, not a button
+          alone. Brendan 2026-08-17: bid sets are usually a year or more old,
+          and paging the calendar back twelve-plus months every time was the
+          complaint. Typing is now the fast path; the calendar stays for
+          browsing. Anything unparseable reverts on blur rather than trapping
+          the user behind a validation error on a date field. */}
+      <div
+        ref={wrapRef}
+        className={`w-full flex items-center gap-2 rounded-lg border pl-3 ${value && !disabled ? "pr-12" : "pr-3"} py-2 min-h-[44px] text-left text-[13.5px] transition-colors ${
           disabled
             ? "border-ppp-charcoal-100 bg-ppp-charcoal-50 text-ppp-charcoal-400 cursor-not-allowed"
             : open
             ? "border-cc-brand-400 ring-2 ring-cc-brand-100 bg-surface text-ppp-charcoal"
-            : "border-ppp-charcoal-200 bg-surface text-ppp-charcoal hover:border-ppp-charcoal-300"
+            : "border-ppp-charcoal-200 bg-surface text-ppp-charcoal focus-within:border-cc-brand-400 focus-within:ring-2 focus-within:ring-cc-brand-100 hover:border-ppp-charcoal-300"
         }`}
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-cc-brand-600">
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <path d="M16 2v4 M8 2v4 M3 10h18" />
-        </svg>
-        <span className={`flex-1 ${value ? "" : "text-ppp-charcoal-400"}`}>
-          {value ? fmtDisplay(value) : placeholder}
-        </span>
-      </button>
+        <button
+          ref={btnRef}
+          type="button"
+          disabled={disabled}
+          onClick={() => !disabled && setOpen((o) => !o)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-label={ariaLabel ? `${ariaLabel} — open calendar` : "Open calendar"}
+          className="shrink-0 inline-flex items-center justify-center h-8 w-8 -ml-1.5 rounded text-cc-brand-600 hover:bg-ppp-charcoal-50 disabled:text-ppp-charcoal-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 touch-manipulation"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4 M8 2v4 M3 10h18" />
+          </svg>
+        </button>
+        <input
+          type="text"
+          id={id}
+          inputMode="numeric"
+          autoComplete="off"
+          disabled={disabled}
+          value={draft}
+          placeholder={placeholder}
+          aria-label={ariaLabel}
+          onChange={(e) => { setTyping(true); setDraft(e.target.value); }}
+          onBlur={commitTyped}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commitTyped(); }
+            else if (e.key === "Escape" && open) setOpen(false);
+          }}
+          className="flex-1 min-w-0 bg-transparent outline-none placeholder:text-ppp-charcoal-400 disabled:cursor-not-allowed"
+        />
+      </div>
       {/* Clear is a REAL sibling button (not nested inside the trigger button —
           invalid + keyboard-unreachable). A FULL-height 44px target flush to the
           right edge with a divider, so it's an unambiguous zone rather than a
