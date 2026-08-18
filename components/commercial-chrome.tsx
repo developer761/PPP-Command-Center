@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import CommercialSidebar from "@/components/commercial-sidebar";
 import CommercialTopbar from "@/components/commercial-topbar";
+import ActionRequiredBar from "@/components/commercial/action-required-bar";
 import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 /**
@@ -83,6 +84,9 @@ export default function CommercialChrome({ children, user, showSwitcher, isAdmin
       <div className="flex-1 flex flex-col min-w-0">
         <CommercialTopbar user={user} onOpenMenu={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto">
+          {/* Sticky above the page content, inside the scroller so it pins as
+              you scroll. Crew logins never see it — approvals aren't theirs. */}
+          {!crewOnly && <ActionRequiredBar />}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
             {children}
           </div>

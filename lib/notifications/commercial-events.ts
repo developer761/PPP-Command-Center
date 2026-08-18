@@ -161,9 +161,26 @@ async function dispatchCommercialNotification(input: {
    *  notifications — falls back to their profile email. Used for the approval
    *  loop (approvers ARE the gate; a bell they never see stalls proposals). */
   alwaysEmail?: boolean;
+  /** Deliver even when the actor IS the recipient.
+   *
+   *  The self-skip below is right for FYI events ("Someone edited X") — you
+   *  don't need telling about your own action. It is WRONG when the event
+   *  hands the actor a task or moves work into their court, because then the
+   *  skip means the workflow stalls with nobody told at all.
+   *
+   *  Brendan 2026-08-17: "When I send for approval I don't see any
+   *  notification… When I make a change request I didn't get a notification."
+   *  He is both the estimator and the approver, which is normal in a shop this
+   *  size — so every approval notification was self-addressed and silently
+   *  dropped, leaving a proposal sitting in pending_approval with no trace. */
+  allowSelfNotify?: boolean;
 }): Promise<{ ok: true; written: boolean } | { ok: false; error: string }> {
-  // Self-skip — actor already knows.
-  if (input.actingUserId && input.actingUserId === input.recipientUserId) {
+  // Self-skip — actor already knows. Opt out for task-handoff kinds.
+  if (
+    !input.allowSelfNotify &&
+    input.actingUserId &&
+    input.actingUserId === input.recipientUserId
+  ) {
     return { ok: true, written: false };
   }
   try {
@@ -1420,16 +1437,25 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
   gcCompany: string | null;
   actingUserId: string | null;
   actorName: string;
-}): Promise<{ fanout: number }> {
+}): Promise<{ fanout: number; approverCount: number }> {
   // Lazy import to avoid a server-only cycle (db.ts ↔ this file both import
   // each other's helpers).
   const { listProposalApproverUserIds } = await import(
     "@/lib/commercial/proposals/db"
   );
-  const approverIds = (await listProposalApproverUserIds()).filter(
+  const allApprovers = await listProposalApproverUserIds();
+  const others = allApprovers.filter(
     (uid) => !(input.actingUserId && uid === input.actingUserId)
   );
-  if (approverIds.length === 0) return { fanout: 0 };
+  // Normally notify everyone BUT the requester. If the requester is the only
+  // approver, notify them anyway — the proposal is now gated on an action only
+  // they can take, and dropping it left the request completely silent.
+  const selfIsSoleApprover =
+    others.length === 0 &&
+    !!input.actingUserId &&
+    allApprovers.includes(input.actingUserId);
+  const approverIds = others.length > 0 ? others : allApprovers;
+  if (approverIds.length === 0) return { fanout: 0, approverCount: 0 };
 
   const { accountId, oppTitle } = await resolveOppAccountAndTitle(input.opportunityId);
   if (!accountId) {
@@ -1442,7 +1468,7 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
         proposal_id_short: input.proposalId.slice(0, 8),
       },
     });
-    return { fanout: 0 };
+    return { fanout: 0, approverCount: 0 };
   }
 
   const relativeLink = `/commercial/accounts/${accountId}/deals/${input.opportunityId}/proposal/${input.proposalId}`;
@@ -1481,6 +1507,7 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
     approverIds.map(async (uid) => {
       const r = await dispatchCommercialNotification({
         kind: "commercial_proposal_approval_requested",
+        allowSelfNotify: selfIsSoleApprover,
         recipientUserId: uid,
         actingUserId: input.actingUserId,
         sourceId: input.proposalId,
@@ -1493,7 +1520,7 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
       if (r.ok && r.written) fanout += 1;
     })
   );
-  return { fanout };
+  return { fanout, approverCount: approverIds.length };
 }
 
 /**
@@ -1584,6 +1611,10 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
     link: relativeLink,
     email: { subject, text, html },
     alwaysEmail: true, // the requester is waiting on this decision — always email
+    // A decision changes the proposal's state (back to draft, or cleared to
+    // send). Even when you approved your own request, that transition is the
+    // thing you act on next — so it is a handoff, not an FYI.
+    allowSelfNotify: true,
   });
   return { ok: r.ok, written: r.ok ? (r as { written: boolean }).written : false };
 }
