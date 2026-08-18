@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { resolveViewer } from "@/lib/auth/viewer-server";
+import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { isAdminEmail } from "@/lib/auth/admin";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { sendCustomerFormInvite, sendEmail } from "@/lib/email/resend";
@@ -41,6 +44,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
+    // Capability gate. This route re-sends REAL outbound mail — including
+    // re-firing a stored supplier order to a vendor, which is the one action
+    // send/route.ts reserves for admins.
+    //
+    // The scope check further down is NOT a substitute. Account Managers get
+    // scope:"all" (they are allowed to SEE every work order), so the ownership
+    // branch was skipped entirely for them, and any signed-in AM could POST
+    // {"id":"order:<uuid>"} to email a purchase order to a supplier — the uuids
+    // being handed out by /api/admin/sent. Seeing something is not the same
+    // permission as re-sending it.
+    //
+    // Colour forms follow canEnterColors (admin or AM); supplier orders follow
+    // canOrderMaterials (admin only). Enforced per-branch below, because the
+    // two kinds genuinely differ.
+    const caps = capabilitiesFor(normalizeRole(viewer.role, viewer.isAdmin));
+    const profile = await getProfileByUserId(viewer.supabaseUserId);
+    if (profile && profile.is_active === false && !isAdminEmail(viewer.email)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
     let body: { id?: string };
     try {
       body = await request.json();
@@ -55,6 +78,16 @@ export async function POST(request: Request) {
     const [kindTag, ref] = body.id.split(":", 2);
     if (!ref || (kindTag !== "form" && kindTag !== "order")) {
       return NextResponse.json({ error: "invalid_id_format" }, { status: 400 });
+    }
+
+    // Re-sending a colour form emails a customer; re-sending a supplier order
+    // emails a vendor a purchase order. Different blast radius, different
+    // capability — a rep can do neither, an AM can do the first only.
+    if (kindTag === "form" && !caps.canEnterColors) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    if (kindTag === "order" && !caps.canOrderMaterials) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
 
     const sb = adminClient();

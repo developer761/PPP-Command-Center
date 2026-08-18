@@ -148,11 +148,24 @@ export async function getMaterialsPageAuxData(
       // Kate tests kept reading "Customer Submitted".
       .select("token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind, created_by_user_id")
       .in("work_order_id", workOrderIds)
-      // Push the preview-skip filter down to the DB instead of doing it
-      // in the JS loop. Speed pass 2026-06-29 — fewer rows over the wire
-      // + skips the per-row dance below. Loop-level guard at row.kind
-      // stays as defensive belt-and-suspenders.
-      .neq("kind", "preview")
+      // NO .neq("kind", "preview") HERE — it silently deleted the feature.
+      //
+      // `kind` is nullable with no default, and EVERY real customer invite is
+      // written with kind = null. PostgREST turns .neq into `kind <> 'preview'`,
+      // which evaluates to NULL for a NULL row — not TRUE — so every genuine
+      // sent colour form was filtered out of this query. Measured against
+      // production: 35 of 90 tokens invisible. The consequence was that after
+      // sending a form the badge still read "not sent", the progress bar never
+      // advanced, and Send Reminder never appeared — only internal-entry
+      // tokens (kind='internal') survived, which is why the bug hid behind
+      // every "the progress bar is stuck" report.
+      //
+      // Introduced 2026-06-29 (53658899) as a speed tweak: "push the preview
+      // skip down to the DB". The JS guard it was meant to replace is still
+      // in the loop below, so filtering in JS is both correct and sufficient.
+      // If this is ever pushed down again it MUST be
+      // .or("kind.is.null,kind.neq.preview") — the form used by
+      // app/api/admin/sent/route.ts, which got this right.
       .order("created_at", { ascending: false }),
     sb
       .from("supplier_orders")

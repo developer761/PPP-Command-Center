@@ -728,7 +728,14 @@ function PickupLocationPicker({
         <input
           type="text"
           autoFocus
-          value={value.trim()}
+          // NOT value.trim(). Trimming a CONTROLLED input's value removes the
+          // trailing space on every render, so the space is gone before the
+          // next character arrives — "BM Smithtown" could only ever be typed
+          // as "BMSmithtown", and that string goes straight into the vendor
+          // email as "PICKUP at BMSmithtown". The trim was there to hide the
+          // " " sentinel written when "Other" is selected; handle that at the
+          // sentinel instead.
+          value={value === " " ? "" : value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="e.g. BM Smithtown · 123 Main St"
           className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"

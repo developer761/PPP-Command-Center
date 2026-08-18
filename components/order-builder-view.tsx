@@ -513,8 +513,15 @@ export default function OrderBuilderView({
                 const isPlaceholder = e.manualOnly || (e.buckets === 0 && e.cans === 0);
                 return (
                   <li key={key} className="px-4 py-3 text-xs">
+                    {/* basis-full sm:basis-auto makes the name take its own row
+                        on a phone. flex-wrap alone never fired here: flex-1 is
+                        `flex: 1 1 0%`, so the name's hypothetical size is 0 and
+                        the browser keeps both children on one line, handing the
+                        name whatever the shrink-0 button cluster leaves — which
+                        at 320px is nothing, and the parent's overflow-hidden
+                        then clipped the "+" button off the card. */}
                     <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 basis-full sm:basis-auto sm:flex-1 break-words">
                         <div>
                           <span className="font-medium text-ppp-charcoal">{e.colorName}</span>
                           {e.colorCode && <span className="text-ppp-charcoal-400 ml-1">{e.colorCode}</span>}
@@ -541,7 +548,7 @@ export default function OrderBuilderView({
                           −
                         </button>
                         <span
-                          className={`font-semibold min-w-[6rem] text-right whitespace-nowrap ${isPlaceholder ? "text-ppp-orange-700" : "text-ppp-charcoal"}`}
+                          className={`font-semibold min-w-[5rem] sm:min-w-[6rem] text-right ${isPlaceholder ? "text-ppp-orange-700" : "text-ppp-charcoal"}`}
                         >
                           {isPlaceholder ? "⚠️ set qty" : formatOrderQuantity(e)}
                         </span>
@@ -779,11 +786,16 @@ export default function OrderBuilderView({
               }
             />
           </section>
+        </>
+      )}
 
-          {/* ── Reference: what Salesforce holds (#14) + the draft preview (#15).
-              `#preview` is the target of the work-order page's "Preview
-              Materials Order" button, so that button still lands somewhere
-              meaningful now that preview and building share one screen. */}
+      {/* Reference panels — Salesforce line items (#14) + the draft preview
+          (#15). Rendered OUTSIDE the vendor gate on purpose: the work-order
+          page's "Preview Materials Order" button links to #preview, and while
+          this lived inside {supplier && …} that anchor simply didn't exist in
+          the DOM until a vendor was picked — the link scrolled nowhere and
+          dropped the user on a vendor picker instead. Looking at the colours
+          is a read-only act; it shouldn't require choosing a store first. */}
           <section id="preview" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-4">
             <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
@@ -863,8 +875,6 @@ export default function OrderBuilderView({
               </div>
             </div>
           </section>
-        </>
-      )}
 
       {/* Sticky advance bar */}
       {supplier && (

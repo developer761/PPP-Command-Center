@@ -1218,13 +1218,19 @@ function LineItemSection({
     return bits.length > 0 ? bits.join(" · ") : "No picks yet";
   })();
 
+  // NO overflow-hidden on this card. It was clipping the room header's tinted
+  // background to the rounded corners — but an overflow:hidden ancestor also
+  // clips absolutely-positioned descendants, and the colour-suggestion dropdown
+  // is one. About a third of the results were sheared off flat inside the card,
+  // on the customer-facing form. The header carries its own rounded top corners
+  // instead, which achieves the same visual.
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-2xl overflow-hidden">
+    <div className="bg-white border border-ppp-charcoal-100 rounded-2xl">
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
         aria-expanded={!collapsed}
-        className="w-full text-left px-5 sm:px-7 py-4 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 hover:bg-[var(--color-surface-muted)]/70 active:bg-[var(--color-surface-muted)]/90 transition-colors touch-manipulation"
+        className="w-full text-left rounded-t-2xl px-5 sm:px-7 py-4 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 hover:bg-[var(--color-surface-muted)]/70 active:bg-[var(--color-surface-muted)]/90 transition-colors touch-manipulation"
       >
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-condensed text-lg sm:text-xl font-bold text-ppp-navy flex-1 min-w-0">
@@ -1393,7 +1399,7 @@ function SurfaceRow({
           <button
             type="button"
             onClick={toggleSkip}
-            className="text-xs text-ppp-blue hover:text-ppp-blue-700 font-medium shrink-0"
+            className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 font-medium shrink-0 px-3 py-2 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
           >
             Add color instead
           </button>
@@ -1584,7 +1590,7 @@ function ColorPicker({
           <button
             type="button"
             onClick={clear}
-            className="text-xs text-ppp-blue hover:text-ppp-blue-700 font-medium shrink-0"
+            className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 font-medium shrink-0 px-3 py-2 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
           >
             Change
           </button>
@@ -1598,7 +1604,22 @@ function ColorPicker({
             setQuery(e.target.value);
             setOpen(true);
           }}
-          placeholder="Type a color name or code (e.g. Stardust, 2108-40)"
+          onKeyDown={(e) => {
+            // The colour search sits INSIDE the form, which has a submit
+            // button — so HTML implicit submission fires the real submit
+            // handler on Enter. Mobile keyboards label that key "Go", and
+            // typing a colour then pressing it would submit the whole form
+            // mid-entry: the customer lands on the thank-you screen with
+            // half their rooms blank, and the materials order goes out on
+            // partial picks. Validation can't catch it — a partly-filled
+            // form is legal.
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const top = results[0];
+              if (top) pickColor(top);
+            }
+          }}
+placeholder="Type a color name or code (e.g. Stardust, 2108-40)"
           className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
         />
       )}
