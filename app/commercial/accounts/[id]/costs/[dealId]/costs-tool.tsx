@@ -201,9 +201,14 @@ async function updatePurchaseAction(formData: FormData) {
   const rawHours = String(formData.get("hours") ?? "");
   const rawDate = String(formData.get("purchased_at") ?? "");
   const description = String(formData.get("description") ?? "");
+  // Round-trip the typed values, exactly as addPurchaseAction does. Without
+  // this the edit form reopened from the DB row — so a rejected correction
+  // silently restored the OLD amount and presented it as what you had typed.
+  // Worse than losing the input: you can hit Save again believing it's fixed.
+  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000) };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
-    costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", edit_purchase: purchase_id }, back, origin, from);
+    costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", edit_purchase: purchase_id, ...preserve }, back, origin, from);
   }
   const res = await updatePurchase(
     purchase_id,
@@ -219,7 +224,7 @@ async function updatePurchaseAction(formData: FormData) {
     userId,
     opp_id,
   );
-  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, edit_purchase: purchase_id }, back, origin, from);
+  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, edit_purchase: purchase_id, ...preserve }, back, origin, from);
   const receipt = await readReceiptFile(formData);
   let receiptFailed = false;
   if (receipt) {
@@ -543,7 +548,7 @@ export async function ProjectCostsTool({
               return (
                 <li key={pu.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-3.5">
                   {isEditing ? (
-                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Save" purchase={pu} cancelHref={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} />
+                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Save" purchase={pu} preserve={editId === pu.id ? { cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc } : undefined} cancelHref={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} />
                   ) : (
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0">

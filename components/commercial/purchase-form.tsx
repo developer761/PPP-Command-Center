@@ -80,11 +80,15 @@ export default function PurchaseForm({
   cancelHref?: string;
   preserve?: { cat?: string; vendor?: string; amt?: string; hours?: string; date?: string; desc?: string };
 }) {
-  const initCat = purchase?.category ?? preserve?.cat ?? "materials";
-  const initAmt = purchase ? (purchase.amount_cents / 100).toFixed(2) : (preserve?.amt ?? "");
+  // `preserve` WINS over `purchase`. It is only ever populated by a rejected
+  // submit, so it is what the user typed a moment ago; the DB row is the stale
+  // value they were trying to change. Reading the row first made a rejected
+  // edit look like it had reverted itself.
+  const initCat = preserve?.cat ?? purchase?.category ?? "materials";
+  const initAmt = preserve?.amt ?? (purchase ? (purchase.amount_cents / 100).toFixed(2) : "");
   const initHours =
-    purchase?.hours != null ? String(purchase.hours) : (preserve?.hours ?? "");
-  const defDate = purchase ? purchase.purchased_at.slice(0, 10) : (preserve?.date ?? "");
+    preserve?.hours ?? (purchase?.hours != null ? String(purchase.hours) : "");
+  const defDate = preserve?.date ?? (purchase ? purchase.purchased_at.slice(0, 10) : "");
 
   const [category, setCategory] = useState(initCat);
   const [amount, setAmount] = useState(initAmt);
@@ -196,7 +200,7 @@ export default function PurchaseForm({
             name="vendor"
             list={isLabor ? "pu-worker-list" : "pu-vendor-list"}
             maxLength={200}
-            defaultValue={purchase?.vendor ?? preserve?.vendor ?? ""}
+            defaultValue={preserve?.vendor ?? purchase?.vendor ?? ""}
             className={INPUT_CLS}
             placeholder={isLabor ? "Worker or sub name" : "Sherwin-Williams"}
           />
@@ -241,7 +245,7 @@ export default function PurchaseForm({
 
       <div>
         <label className={LABEL_CLS} htmlFor="pu-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-        <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={purchase?.description ?? preserve?.desc ?? ""} className={TEXTAREA_CLS} placeholder={isLabor ? "Scope of work / notes" : "What this was for"} />
+        <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={preserve?.desc ?? purchase?.description ?? ""} className={TEXTAREA_CLS} placeholder={isLabor ? "Scope of work / notes" : "What this was for"} />
       </div>
       <div>
         <label className={LABEL_CLS} htmlFor="pu-receipt">Receipt photo <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>

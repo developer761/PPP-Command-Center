@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -62,6 +62,56 @@ export function DealInvoiceBuilder({
     { name: "", amount: "", due: "" },
   ]);
   const [proposalId, setProposalId] = useState("");
+
+  // ── Survive a rejected submit ───────────────────────────────────────────
+  //
+  // Everything above is component state with no server seed. The create action
+  // reports failure by REDIRECTING back here with ?error=, which remounts this
+  // component — so a rejected invoice ("milestones must total the invoice
+  // amount") threw away every row Katie had just typed, on the one form where
+  // eight hand-entered rows is normal. She then has to retype all eight to fix
+  // one of them, which is how a validation message turns into a data-loss bug.
+  //
+  // The draft is stashed per deal on every change and restored ONLY when the
+  // page comes back carrying an error, so a fresh visit still starts clean.
+  const draftKey = `cc:invoice-builder:${oppId}`;
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    try {
+      if (!new URLSearchParams(window.location.search).has("error")) {
+        window.sessionStorage.removeItem(draftKey);
+        return;
+      }
+      const raw = window.sessionStorage.getItem(draftKey);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Partial<{
+        mode: "flat" | "milestones";
+        flatAmount: string;
+        rows: Row[];
+        proposalId: string;
+      }>;
+      if (d.mode === "flat" || d.mode === "milestones") setMode(d.mode);
+      if (typeof d.flatAmount === "string") setFlatAmount(d.flatAmount);
+      if (Array.isArray(d.rows) && d.rows.length > 0) setRows(d.rows);
+      if (typeof d.proposalId === "string") setProposalId(d.proposalId);
+    } catch {
+      // A corrupt or unavailable store must never stop the form rendering.
+    }
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!restored.current) return;
+    try {
+      window.sessionStorage.setItem(
+        draftKey,
+        JSON.stringify({ mode, flatAmount, rows, proposalId })
+      );
+    } catch {
+      // Private mode / quota — the form still works, it just won't restore.
+    }
+  }, [draftKey, mode, flatAmount, rows, proposalId]);
 
   const selectedProposal = proposals.find((p) => p.id === proposalId) ?? null;
   // Target = what's LEFT to bill on the proposal (contract − already billed), so
