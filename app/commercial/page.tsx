@@ -656,12 +656,6 @@ export default async function CommercialDashboardPage() {
             icon={<IconPlus />}
           />
           <QuickAction
-            href="/commercial/opportunities/new-from-rfp"
-            title="Start from an RFP"
-            sub="Paste the bid invitation; AI fills it in."
-            icon={<IconPlus />}
-          />
-          <QuickAction
             href="/commercial/accounts/new"
             title="Add a GC"
             sub="Create a new general-contractor account."

@@ -1298,7 +1298,7 @@ export default async function ProposalEditorPage({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
-                title="Customer proposal — what the GC sees. No internal bid notes or per-line prices."
+                title="GC copy — what the GC sees. No internal bid notes or per-line prices."
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -2129,7 +2129,7 @@ export default async function ProposalEditorPage({
             renderer never rendered this field at all. Now honest. */}
         <EditorSection
           title={<>Bid notes <span className="ml-1 text-[10px] font-semibold uppercase tracking-widest text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Internal only</span></>}
-          subtitle="Estimator scratch-pad — only on the internal-mode PDF, never on the customer copy."
+          subtitle="Estimator scratch-pad — only on the internal-mode PDF, never on the GC copy."
           icon={
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" />

@@ -581,7 +581,7 @@ export default async function CommercialAccountDetailPage({
                 <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Key Relationship</Pill>
               )}
               {!account.is_key_relationship && (overview?.won_opps_count ?? 0) > 0 && (
-                <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Repeat customer</Pill>
+                <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Repeat GC</Pill>
               )}
               {account.do_not_bid && (
                 <Pill tone="rose">
@@ -3408,7 +3408,7 @@ async function NewDealForm({
           role="alert"
           className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-900"
         >
-          <strong className="font-semibold">This customer is flagged do not bid.</strong>{" "}
+          <strong className="font-semibold">This GC is flagged do not bid.</strong>{" "}
           {account.do_not_bid_reason?.trim()
             ? account.do_not_bid_reason.trim()
             : "No reason was recorded."}
@@ -4860,7 +4860,7 @@ async function AccountProposalsTab({
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-cc-brand-50 touch-manipulation"
-                              title="Open the customer PDF in a new tab"
+                              title="Open the GC copy (PDF) in a new tab"
                               aria-label={`Open PDF for revision ${r.revision_number}`}
                             >
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

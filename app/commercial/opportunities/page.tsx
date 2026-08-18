@@ -93,6 +93,7 @@ import { activeViewKey, filterChips } from "@/lib/commercial/opportunities/saved
 import { isUnderContract } from "@/lib/commercial/opportunities/attention";
 import { SavedViewPicker } from "@/components/commercial/saved-view-picker";
 import { OpportunitySheet, type OppSheetRow } from "@/components/commercial/opportunity-sheet";
+import { InstantSearch } from "@/components/commercial/instant-search";
 import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
 import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
 import { nextStep } from "@/lib/commercial/opportunities/attention";
@@ -550,8 +551,13 @@ export default async function CommercialOpportunitiesPage({
   // A stale ?view=kanban link lands on the list rather than 404ing.
   // Karan 2026-08-14: "sheet" = a dense Salesforce-style table (just the titles
   // + columns). By-customer and list stay; sheet is the third, scan-everything view.
+  //
+  // SHEET IS THE DEFAULT (Karan 2026-08-17). The dense table is the view you
+  // actually work from — every opportunity, every column, one scan — so it is
+  // what a bare /commercial/opportunities shows. List and By-GC are the
+  // deliberate alternatives now, not the other way round.
   const viewMode: "list" | "customer" | "sheet" =
-    viewRaw === "customer" ? "customer" : viewRaw === "sheet" ? "sheet" : "list";
+    viewRaw === "customer" ? "customer" : viewRaw === "list" ? "list" : "sheet";
 
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently updated" },
@@ -824,9 +830,10 @@ export default async function CommercialOpportunitiesPage({
   if (validColumn) baseParams.set("status", validColumn);
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
+  // Sheet is the default, so it needs no param — but list and by-GC do, or
+  // changing a filter would silently drop you back into the sheet.
   if (viewMode === "list") baseParams.set("view", "list");
   else if (viewMode === "customer") baseParams.set("view", "customer");
-  else if (viewMode === "sheet") baseParams.set("view", "sheet");
   // Attention deep-link filters live in baseParams so every builder that
   // clones it preserves them automatically (unlike stale/hot/archived,
   // which have toggle builders and are re-added manually). setSortHref +
@@ -1077,17 +1084,6 @@ export default async function CommercialOpportunitiesPage({
             sortLabel={SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated"}
             chips={viewChips}
           />
-          {/* Paste an invitation-to-bid → Claude pre-fills a new opportunity. */}
-          <Link
-            href="/commercial/opportunities/new-from-rfp"
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 transition-colors touch-manipulation min-h-[44px] shrink-0"
-            title="Paste an RFP email and let Claude fill in the opportunity"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2L12 3z" />
-            </svg>
-            From RFP
-          </Link>
           <Link
             href="?new_deal=1#new-deal-sheet"
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px] shrink-0"
@@ -1204,24 +1200,16 @@ export default async function CommercialOpportunitiesPage({
           + Sort popover + Export + Clear. ─── */}
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
         <form className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <svg
-              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"
-              aria-hidden
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-            <input
-              id="q"
-              name="q"
-              type="search"
-              defaultValue={search ?? ""}
-              placeholder="Search opportunities by title…"
-              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
-            />
-          </div>
+          {/* Type "br" and Brendans Test Co is right there, clickable — no
+              Enter, no reload, no scanning a filtered list for the row you
+              already know you want. Enter still filters the list. */}
+          <InstantSearch
+            className="flex-1 min-w-[200px]"
+            name="q"
+            defaultValue={search ?? ""}
+            placeholder="Search opportunities, GCs, addresses…"
+            kinds={["opportunity", "account"]}
+          />
           {validColumn && <input type="hidden" name="status" value={validColumn} />}
           {viewMode === "list" && <input type="hidden" name="view" value="list" />}
           {hotFilter && <input type="hidden" name="hot" value="1" />}
@@ -1242,12 +1230,12 @@ export default async function CommercialOpportunitiesPage({
                   ? "bg-cc-brand-50 text-cc-brand-700"
                   : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
               }`}
-              title="By customer — one card per account with all their opportunities + money summary"
+              title="By GC — one card per account with all their opportunities + money summary"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M3 21h18 M6 21V7l6-4 6 4v14 M10 9h4 M10 13h4 M10 17h4" />
               </svg>
-              By customer
+              By GC
             </Link>
             <Link
               href={viewToggleHref("list")}
@@ -1960,7 +1948,7 @@ function NewDealSlideOut({
           <div>
             <label htmlFor="new-deal-team" className={LABEL_CLS}>Team</label>
             <select id="new-deal-team" name="team_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
-              <option value="">— Customer&apos;s team —</option>
+              <option value="">— GC&apos;s team —</option>
               {allTeams.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}

@@ -16,6 +16,7 @@ import { ProjectCard } from "@/components/commercial/project-card";
 import { DonutChart, HBars, type ChartTone } from "@/components/commercial/charts";
 import { ProgressMeter } from "@/components/commercial/progress-meter";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { InstantSearch } from "@/components/commercial/instant-search";
 
 type SP = Promise<{ q?: string; closed?: string }>;
 
@@ -173,10 +174,13 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
 
       {/* Filters */}
       <form className="flex items-center gap-2 flex-wrap" action="/commercial/projects">
-        <div className="relative flex-1 min-w-[200px]">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.3-4.3" /></svg>
-          <input name="q" defaultValue={search} placeholder="Search projects…" className="w-full pl-9 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]" />
-        </div>
+        <InstantSearch
+          className="flex-1 min-w-[200px]"
+          name="q"
+          defaultValue={search}
+          placeholder="Search projects, GCs, addresses…"
+          kinds={["opportunity", "account"]}
+        />
         {includeClosed && <input type="hidden" name="closed" value="1" />}
         <SubmitButton
           className="px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"

@@ -79,7 +79,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
   return (
     <div ref={rootRef} className="relative">
       <label htmlFor="new-deal-account" className={LABEL_CLS}>
-        Customer <span className="text-rose-600">*</span>
+        GC <span className="text-rose-600">*</span>
       </label>
       <input
         id="new-deal-account"
@@ -94,7 +94,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onInputKey}
-        placeholder="Type a customer name…"
+        placeholder="Type a GC name…"
         autoComplete="off"
         className={INPUT_CLS}
         aria-autocomplete="list"
@@ -143,7 +143,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
         <p className="text-[11px] text-rose-600 mt-1">Pick one from the list.</p>
       )}
       {selectedId && (
-        <p className="text-[11px] text-emerald-700 mt-1">✓ Customer selected.</p>
+        <p className="text-[11px] text-emerald-700 mt-1">✓ GC selected.</p>
       )}
     </div>
   );

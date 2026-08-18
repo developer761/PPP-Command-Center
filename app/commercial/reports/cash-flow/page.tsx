@@ -208,7 +208,7 @@ export default async function CashFlowReportPage({
               <table className="w-full min-w-[440px] text-[12.5px]">
                 <thead>
                   <tr className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 bg-ppp-charcoal-50/60">
-                    <th className="px-4 py-2 text-left">Customer</th>
+                    <th className="px-4 py-2 text-left">GC</th>
                     <th className="px-4 py-2 text-right">Days to pay</th>
                     <th className="px-4 py-2 text-right">Collected</th>
                     <th className="px-4 py-2 text-right">Still owed</th>

@@ -47,9 +47,9 @@ import {
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
 import { SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
-import CommercialAccountsSearchAutocomplete from "@/components/commercial-accounts-search-autocomplete";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
+import { InstantSearch } from "@/components/commercial/instant-search";
 import {
   listTagsForAccounts,
   listAllDistinctTags,
@@ -510,9 +510,18 @@ export default async function CommercialAccountsPage({
           the header interactive on mobile). ─── */}
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
         <form className="flex flex-wrap items-center gap-2">
-          <div className="flex-1 min-w-[200px]">
-            <CommercialAccountsSearchAutocomplete defaultValue={search ?? ""} />
-          </div>
+          {/* This page had the ONLY type-ahead in the platform — Karan asked
+              for it here once and it never propagated, so every other search
+              box still made you press Enter. Now it uses the same shared
+              component as the rest, which also gives it keyboard nav and
+              lets a GC search surface that GC's opportunities. */}
+          <InstantSearch
+            className="flex-1 min-w-[200px]"
+            name="q"
+            defaultValue={search ?? ""}
+            placeholder="Search GCs, opportunities, addresses…"
+            kinds={["account", "opportunity"]}
+          />
           {/* Preserve the active filters when Enter submits the search. The
               filter controls belong to a SEPARATE form (accounts-filter-form),
               so a bare search submit dropped rating/compliance/tag/sort + the
@@ -1248,7 +1257,7 @@ function AccountRow({
                     <SignalPill
                       icon="star"
                       tone="amber"
-                      label="Repeat customer"
+                      label="Repeat GC"
                       title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account.`}
                     />
                   )}

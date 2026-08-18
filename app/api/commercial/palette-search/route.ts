@@ -60,6 +60,21 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawQ = (searchParams.get("q") ?? "").trim();
   if (rawQ.length === 0) return NextResponse.json({ results: [] });
+  // Optional `kinds=opportunity,account` scope. The ⌘K palette sends nothing
+  // and gets everything; a page's own search box sends the kind that page is
+  // about, so typing in the Opportunities search doesn't surface a document.
+  // Unknown names are ignored rather than erroring — a scope is a narrowing
+  // hint, never a reason to return no results at all.
+  const ALL_KINDS = ["account", "opportunity", "proposal", "invoice", "document"] as const;
+  const kindsRaw = (searchParams.get("kinds") ?? "").trim();
+  const requested = kindsRaw
+    ? kindsRaw.split(",").map((s) => s.trim()).filter((s): s is (typeof ALL_KINDS)[number] =>
+        (ALL_KINDS as readonly string[]).includes(s)
+      )
+    : [];
+  const kinds = new Set<string>(requested.length > 0 ? requested : ALL_KINDS);
+  const want = (k: string) => kinds.has(k);
+  const EMPTY = { data: [] as never[] };
   // Escape SQL LIKE wildcards — audit fix 2026-07-11: also escape
   // backslash because Postgres uses `\` as the default LIKE escape
   // character. Without this, a query of `\` becomes `%\%` which is a
@@ -96,14 +111,14 @@ export async function GET(request: Request) {
     (amountCents !== null ? `,total_cents.eq.${amountCents}` : "");
 
   const [accountsRes, oppsRes, proposalsRes, invoicesRes, documentsRes] = await Promise.all([
-    sb
+    want("account") ? sb
       .from("commercial_accounts")
       .select("id, company_name, city, state, account_seq")
       .is("deleted_at", null)
       .or(acctOr)
       .order("company_name")
-      .limit(MAX_PER_KIND),
-    sb
+      .limit(MAX_PER_KIND) : EMPTY,
+    want("opportunity") ? sb
       .from("commercial_opportunities")
       .select("id, title, title_override, client_name, property_street, project_number, account_id, status, sub_status")
       .is("deleted_at", null)
@@ -113,28 +128,28 @@ export async function GET(request: Request) {
         `title.ilike.${pattern},title_override.ilike.${pattern},client_name.ilike.${pattern},property_street.ilike.${pattern},project_number.ilike.${idPattern}`
       )
       .order("updated_at", { ascending: false })
-      .limit(MAX_PER_KIND),
-    sb
+      .limit(MAX_PER_KIND) : EMPTY,
+    want("proposal") ? sb
       .from("commercial_proposals")
       .select("id, proposal_seq, revision_number, status, opportunity_id, header_json, commercial_opportunities!commercial_proposals_opportunity_id_fkey(account_id, client_name, title, project_number)")
       .is("deleted_at", null)
       .or(propOr)
       .order("updated_at", { ascending: false })
-      .limit(MAX_PER_KIND),
-    sb
+      .limit(MAX_PER_KIND) : EMPTY,
+    want("invoice") ? sb
       .from("commercial_invoices")
       .select("id, invoice_number, po_number, account_id, opportunity_id, total_cents, status")
       .is("deleted_at", null)
       .or(invoiceOr)
       .order("issued_at", { ascending: false })
-      .limit(MAX_PER_KIND),
-    sb
+      .limit(MAX_PER_KIND) : EMPTY,
+    want("document") ? sb
       .from("commercial_documents")
       .select("id, file_name, category, parent_type, parent_id")
       .is("deleted_at", null)
       .ilike("file_name", `%${safe}%`)
       .order("created_at", { ascending: false })
-      .limit(MAX_PER_KIND),
+      .limit(MAX_PER_KIND) : EMPTY,
   ]);
 
   const results: PaletteResult[] = [];

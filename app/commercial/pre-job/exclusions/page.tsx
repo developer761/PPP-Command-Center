@@ -36,6 +36,7 @@ import {
   INPUT_CLS,
   LABEL_CLS,
 } from "@/lib/commercial/form-classnames";
+import { InstantSearch } from "@/components/commercial/instant-search";
 import { SubmitButton } from "@/components/commercial/submit-button";
 
 export const dynamic = "force-dynamic";
@@ -202,12 +203,13 @@ export default async function ExclusionsLibraryPage({
       >
         <label className="flex-1 min-w-[200px]">
           <span className={LABEL_CLS}>Search</span>
-          <input
-            type="text"
+          {/* Filters live — see the products page for why libraries don't jump. */}
+          <InstantSearch
             name="q"
+            mode="filter"
             defaultValue={q}
             placeholder="e.g. sales tax, lift, materials"
-            className={INPUT_CLS}
+            ariaLabel="Search exclusions"
           />
         </label>
         <label>

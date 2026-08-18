@@ -188,7 +188,7 @@ export default function NewProposalPicker({
                   autoFocus
                   value={accountQuery}
                   onChange={(e) => setAccountQuery(e.target.value)}
-                  placeholder="Search customers…"
+                  placeholder="Search GCs…"
                   className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]"
                 />
                 <ul className="max-h-64 overflow-y-auto divide-y divide-ppp-charcoal-100 border border-ppp-charcoal-100 rounded-lg">

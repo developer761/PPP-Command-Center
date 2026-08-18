@@ -2561,7 +2561,7 @@ export default async function OpportunityDetailPage({
                 <input type="hidden" name="opp_id" value={opp.id} />
                 <SubmitButton
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-cc-brand-200 bg-surface text-cc-brand-700 text-[12px] font-semibold hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[44px] touch-manipulation"
-                  title="Customer's back in play? Reopen puts this opportunity back into the active pipeline."
+                  title="GC back in play? Reopen puts this opportunity back into the active pipeline."
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.8 2.8L3 8" />
@@ -3630,7 +3630,7 @@ async function OpportunityInvoicesPanel({
                     <div className="flex-1 h-px bg-ppp-charcoal-100" />
                   </div>
                   <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Customer message</span>
+                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Message to the GC</span>
                     <textarea
                       name="customer_message"
                       rows={3}
@@ -4232,7 +4232,7 @@ async function InfoTab({
             <SearchableSelect
               name="contact_id"
               options={accountContactOptions}
-              placeholder="Search the customer's people…"
+              placeholder="Search the GC's people…"
               ariaLabel="Person to add to this job"
             />
             <div className="flex items-end gap-2 flex-wrap">

@@ -14,6 +14,7 @@ import {
   productUnitLabel,
 } from "@/lib/commercial/products/constants";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
+import { InstantSearch } from "@/components/commercial/instant-search";
 
 /**
  * Product Library — Phase D catalog + F.6 variations.
@@ -178,16 +179,17 @@ export default async function ProductsCatalogPage({
         method="GET"
         className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row gap-2 flex-wrap"
       >
-        <label className="flex-1 min-w-[180px]">
-          <span className="sr-only">Search products</span>
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            placeholder="Search SKU, name, or variation…"
-            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
-          />
-        </label>
+        {/* mode="filter": a price-list row isn't a page you navigate to, so
+            there is nothing to jump into — the list itself narrows as you
+            type. Same rule (no Enter), the shape the surface calls for. */}
+        <InstantSearch
+          className="flex-1 min-w-[180px]"
+          name="q"
+          mode="filter"
+          defaultValue={q}
+          placeholder="Search SKU, name, or variation…"
+          ariaLabel="Search products"
+        />
         <label className="sm:w-40">
           <span className="sr-only">Surface area</span>
           <select

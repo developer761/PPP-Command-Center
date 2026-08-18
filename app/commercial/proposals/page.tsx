@@ -463,7 +463,7 @@ export default async function ProposalsIndexPage({
             No proposals yet{activeStatus ? ` in "${proposalStatusLabel(activeStatus)}"` : ""}.
           </p>
           <p className="text-[13px] text-ppp-charcoal-500 max-w-md mx-auto">
-            Click <strong>+ New proposal</strong> above to pick a customer + opportunity and start the first revision.
+            Click <strong>+ New proposal</strong> above to pick a GC + opportunity and start the first revision.
           </p>
         </div>
       ) : viewMode === "list" ? (
@@ -602,7 +602,7 @@ function ProposalCard({
   const gc =
     row.header_json?.gc_company?.trim() ||
     row.opportunity?.account?.company_name ||
-    "(missing customer)";
+    "(missing GC)";
   // Karan 2026-07-15: user's custom name for this specific revision —
   // "R11 · Warehouse Repaint" instead of just "R11". Editable on the
   // proposal editor as the "Project name" field on the header block.
@@ -680,7 +680,7 @@ function ProposalCard({
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center w-5 h-5 rounded text-ppp-charcoal-400 hover:text-cc-brand-700 hover:bg-cc-brand-50"
-            title="Open the customer PDF in a new tab"
+            title="Open the GC copy (PDF) in a new tab"
             aria-label={`Open PDF for revision ${row.revision_number}`}
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1447,7 +1447,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 px-3 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-surface border-l border-ppp-charcoal-100 shrink-0"
-                              title="Open the customer PDF in a new tab"
+                              title="Open the GC copy (PDF) in a new tab"
                               aria-label={`Open PDF for revision ${r.revision_number}`}
                             >
                               <svg

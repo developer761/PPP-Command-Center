@@ -431,7 +431,7 @@ export async function ChangeOrdersPanel({
                         {billedLive ? (
                           <>
                             {coChips.get(co.id)?.isDraft ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-[12px] font-semibold text-amber-800" title="On a draft invoice — not billed to the customer until you send it">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-[12px] font-semibold text-amber-800" title="On a draft invoice — not billed to the GC until you send it">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                                 On {coChips.get(co.id)!.invoiceNumber} · draft — send to bill
                               </span>

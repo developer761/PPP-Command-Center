@@ -35,7 +35,7 @@ export default async function ArAgingReportPage() {
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-bold text-ppp-charcoal">AR aging</h2>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">Open invoice balances by how far past due, per customer. The composition bar shows how much of what you&rsquo;re owed is current vs slipping.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">Open invoice balances by how far past due, per GC. The composition bar shows how much of what you&rsquo;re owed is current vs slipping.</p>
           {/* The other half of this book. Aging is the snapshot; cash flow is
               the trend of the same money, so each links to the other rather
               than making someone remember which page holds which half. */}
@@ -111,7 +111,7 @@ export default async function ArAgingReportPage() {
               <table className="w-full text-[12.5px] min-w-[640px]">
                 <thead>
                   <tr className="text-ppp-charcoal-500 border-b border-ppp-charcoal-200 bg-ppp-charcoal-50/50">
-                    <th className="text-left font-semibold px-3 py-2.5">Customer</th>
+                    <th className="text-left font-semibold px-3 py-2.5">GC</th>
                     {BUCKETS.map((b) => (
                       <th key={b.key} className="text-right font-semibold px-3 py-2.5">{b.label}</th>
                     ))}
@@ -138,7 +138,7 @@ export default async function ArAgingReportPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-ppp-charcoal-200 bg-ppp-charcoal-50/60 font-bold">
-                    <td className="px-3 py-2.5 text-ppp-charcoal">All customers</td>
+                    <td className="px-3 py-2.5 text-ppp-charcoal">All GCs</td>
                     {BUCKETS.map((b) => (
                       <td key={b.key} className={`text-right px-3 py-2.5 tabular-nums ${aging.totals[b.key] > 0 && b.danger ? "text-rose-700" : "text-ppp-charcoal-700"}`}>
                         {aging.totals[b.key] > 0 ? formatCentsFull(aging.totals[b.key]) : "—"}

@@ -43,6 +43,7 @@ import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { type TaxJurisdictionLite } from "@/lib/commercial/tax/constants";
 import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { InstantSearch } from "@/components/commercial/instant-search";
 
 export const dynamic = "force-dynamic";
 
@@ -1054,21 +1055,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
         <form className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[200px]">
-            <svg
-              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"
-              aria-hidden
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-            <input
-              id="q"
+            <InstantSearch
               name="q"
-              type="search"
               defaultValue={search ?? ""}
-              placeholder="Search by invoice #, customer, or opportunity…"
-              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600 min-h-[44px]"
+              placeholder="Search by invoice #, GC, or opportunity…"
+              kinds={["invoice", "account", "opportunity"]}
             />
           </div>
           {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
@@ -1781,7 +1772,7 @@ function FullDetailByOpp({
     const wonList = wonOppsForAccount ?? [];
     return (
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
-        <div className="text-sm font-semibold text-ppp-charcoal">No invoices for this customer yet</div>
+        <div className="text-sm font-semibold text-ppp-charcoal">No invoices for this GC yet</div>
         {wonList.length > 0 ? (
           <p className="mt-1 text-sm text-ppp-charcoal-500 max-w-md mx-auto">
             {wonList.length === 1
@@ -1792,7 +1783,7 @@ function FullDetailByOpp({
         ) : (
           <>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
-              An invoice attaches to an opportunity marked <strong>Won</strong>. Win one of this customer's opportunities first.
+              An invoice attaches to an opportunity marked <strong>Won</strong>. Win one of this GC's opportunities first.
             </p>
             <Link
               href={`/commercial/accounts/${accountId}?tab=deals`}
@@ -2212,7 +2203,7 @@ function FullDetailByOpp({
                               which violated the "no jumping" mandate. */}
                           <label className="block sm:col-span-4">
                             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
-                              Notes <span className="font-normal text-ppp-charcoal-400">(internal — never on the customer copy — optional)</span>
+                              Notes <span className="font-normal text-ppp-charcoal-400">(internal — never on the GC copy — optional)</span>
                             </span>
                             <textarea
                               name="notes"

@@ -352,7 +352,7 @@ export async function ProjectCostsTool({
           </span>
           <div>
             <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Job P&amp;L</h2>
-            <p className="text-[11px] text-ppp-charcoal-500 leading-snug">Contract minus job costs. What we bill the customer never changes with cost.</p>
+            <p className="text-[11px] text-ppp-charcoal-500 leading-snug">Contract minus job costs. What we bill the GC never changes with cost.</p>
           </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
