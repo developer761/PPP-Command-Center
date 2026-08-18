@@ -58,8 +58,8 @@ export function resolveToolBack(back: string | undefined): { path: string; label
   if (!back) return null;
   if (TOOL_BACK[back]) return TOOL_BACK[back];
   if (INVOICE_DEAL_BACK_RE.test(back)) return { path: back, label: "Invoices" };
-  if (DEAL_DRILL_IN_BACK_RE.test(back)) return { path: back, label: "Deal" };
-  if (OPPORTUNITY_BACK_RE.test(back)) return { path: back, label: "Deal" };
+  if (DEAL_DRILL_IN_BACK_RE.test(back)) return { path: back, label: "Opportunity" };
+  if (OPPORTUNITY_BACK_RE.test(back)) return { path: back, label: "Opportunity" };
   return null;
 }
 

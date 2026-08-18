@@ -1218,7 +1218,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           ) : (
             <>
               <p className="mt-1 text-sm text-ppp-charcoal-500">
-                An invoice attaches to a deal marked <strong>Won</strong>. Win a deal first, then come back.
+                An invoice attaches to an opportunity marked <strong>Won</strong>. Win one first, then come back.
               </p>
               <Link
                 href="/commercial/opportunities"
@@ -1792,7 +1792,7 @@ function FullDetailByOpp({
         ) : (
           <>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
-              An invoice attaches to a deal marked <strong>Won</strong>. Win one of this customer's deals first.
+              An invoice attaches to an opportunity marked <strong>Won</strong>. Win one of this customer's opportunities first.
             </p>
             <Link
               href={`/commercial/accounts/${accountId}?tab=deals`}

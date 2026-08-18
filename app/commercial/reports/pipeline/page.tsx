@@ -101,7 +101,7 @@ export default async function PipelineReportPage() {
                 <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
                   <Metric label="Bid value" value={formatCentsCompact(r.bidCents)} />
                   <Metric label="Weighted" value={formatCentsCompact(r.weightedCents)} />
-                  <Metric label="Avg deal" value={r.count > 0 ? formatCentsCompact(r.avgDealCents) : "—"} />
+                  <Metric label="Avg opportunity" value={r.count > 0 ? formatCentsCompact(r.avgDealCents) : "—"} />
                   <Metric label="Win prob." value={r.probabilityPct === null ? "—" : `${r.probabilityPct}%`} />
                 </div>
               </div>

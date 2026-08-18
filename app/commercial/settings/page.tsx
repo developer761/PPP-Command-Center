@@ -73,7 +73,7 @@ const CARDS: Card[] = [
   },
   {
     href: "/commercial/settings/archived",
-    label: "Archived deals",
+    label: "Archived opportunities",
     blurb:
       "Opportunities you've archived out of the pipeline. Restore one to bring it back, or leave it filed away — nothing is deleted.",
     icon: <IconArchive />,

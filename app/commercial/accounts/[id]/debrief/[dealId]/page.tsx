@@ -278,7 +278,7 @@ export default async function AccountDebriefPage({
           href={`/commercial/opportunities/${dealId}`}
           className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 min-h-[44px]"
         >
-          <span aria-hidden>←</span> Back to the deal
+          <span aria-hidden>←</span> Back to the opportunity
         </Link>
         <div>
           <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">

@@ -287,7 +287,7 @@ export default async function CompetitorsAdminPage({
           <StatTile
             label="$ lost to rivals"
             value={totalDollarLost > 0 ? formatCentsCompact(totalDollarLost) : "$0"}
-            sub={totalDollarLost > 0 ? "sum of midpoint bids on lost deals" : "no bid-value on any loss yet"}
+            sub={totalDollarLost > 0 ? "sum of midpoint bids on lost opportunities" : "no bid-value on any loss yet"}
             tone={totalDollarLost > 0 ? "bad" : undefined}
           />
           <StatTile label="Top rival" value={topRival?.name ?? "—"} sub={topRival ? `${statsById.get(topRival.id)?.lost_count ?? 0} losses to them` : "no losses yet"} tone="bad" />

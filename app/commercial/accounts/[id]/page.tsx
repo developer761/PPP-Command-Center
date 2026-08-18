@@ -5973,7 +5973,7 @@ async function AccountKpisTab({
             <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
             Profitability
           </h3>
-          <span className="text-[11px] text-ppp-charcoal-500">all deals for this GC · Gross = billed, Net = billed − costs</span>
+          <span className="text-[11px] text-ppp-charcoal-500">all opportunities for this GC · Gross = billed, Net = billed − costs</span>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Gross revenue" value={formatCentsCompact(acctGrossCents)} tone="brand" sub="billed to date" spark={acctRevenueMonthly.map((r) => r.value)} sparkLabels={acctRevenueMonthly.map((r) => r.label)} />
@@ -6500,7 +6500,7 @@ async function DealEditSheet({
                 </span>
                 <div className="min-w-0">
                   <div className="text-sm font-bold text-ppp-charcoal leading-tight">Closeout &amp; Warranty</div>
-                  <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">Close-out package + transmittal + warranty letter</div>
+                  <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">Closeout package + transmittal + warranty letter</div>
                 </div>
               </div>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>

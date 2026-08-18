@@ -176,7 +176,7 @@ export function deriveProjectAttention(
     out.push({
       key: "closeout",
       severity: "low",
-      title: "Close-out not started",
+      title: "Closeout not started",
       detail: "job is fully billed",
       href: i.hrefs.closeout,
     });
@@ -272,7 +272,7 @@ export function deriveDeliverySpine(input: {
     { key: "submittals", label: "Submittals", state: toolSpineState(input.submittals), current: false, meta: input.submittals?.label ?? null },
     { key: "production", label: "Production", state: production, current: false, meta: input.onSite ? "on site" : null },
     { key: "billing", label: "Billing", state: billing, current: false, meta: billingMeta },
-    { key: "closeout", label: "Close-out", state: toolSpineState(input.closeout), current: false, meta: input.closeout?.label ?? null },
+    { key: "closeout", label: "Closeout", state: toolSpineState(input.closeout), current: false, meta: input.closeout?.label ?? null },
   ];
   for (const s of stages) s.current = s.key === currentKey;
   return stages;

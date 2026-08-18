@@ -383,7 +383,7 @@ export default async function CommercialDashboardPage() {
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
           Are we making money?
-          <span className="text-[11px] font-medium text-ppp-charcoal-500">— whole company · every deal</span>
+          <span className="text-[11px] font-medium text-ppp-charcoal-500">— whole company · every opportunity</span>
         </h2>
         {/* Calm zero-state on a brand-new workspace — one line, not four "$0"
             tiles + a flat chart that read as "is this broken?" (2026-08 first-run
@@ -425,7 +425,7 @@ export default async function CommercialDashboardPage() {
               {revCostSegments.length > 0 ? (
                 <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(totalCostCents)} centerLabel="job costs" />
               ) : (
-                <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">No job costs logged yet. Add them on any deal&rsquo;s Transactions tab.</p>
+                <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">No job costs logged yet. Add them on any opportunity&rsquo;s Transactions tab.</p>
               )}
               {laborUnratedHours > 0 && (
                 <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
@@ -670,7 +670,7 @@ export default async function CommercialDashboardPage() {
           <QuickAction
             href="/commercial/reports/win-loss"
             title="Win / Loss"
-            sub="Win rate and why deals were lost."
+            sub="Win rate and why opportunities were lost."
             icon={<IconChart />}
           />
         </div>

@@ -86,7 +86,7 @@ export default async function JobCostsReportPage() {
       {t.dealCount === 0 ? (
         <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No job costs yet</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Once a deal has a contract, billing, or a logged cost, it shows up here with its margin. Log costs on any deal&rsquo;s Transactions tab.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Once an opportunity has a contract, billing, or a logged cost, it shows up here with its margin. Log costs on any deal&rsquo;s Transactions tab.</p>
           <Link href="/commercial/accounts" className="inline-flex items-center gap-1.5 mt-4 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12.5px] font-semibold text-cc-brand-700 hover:bg-ppp-charcoal-50 min-h-[44px]">
             Go to accounts
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>

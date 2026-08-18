@@ -237,14 +237,14 @@ export function nextStep(
         label: "Mark it completed",
         move: { to: "post_sale_closed", sub: "closed" },
         href: `/commercial/opportunities/${oppId}?tab=info&focus=status&to=post_sale_closed#change-status`,
-        why: "Close-out is done and nothing is outstanding.",
+        why: "Closeout is done and nothing is outstanding.",
       };
     }
     if (i.closeoutComplete === true && i.moneyClear === false) {
       return {
         label: "Chase the last payment",
         href: `/commercial/opportunities/${oppId}?tab=project&sub=invoices`,
-        why: "Close-out is done, but money is still out — including any retainage.",
+        why: "Closeout is done, but money is still out — including any retainage.",
       };
     }
     return {

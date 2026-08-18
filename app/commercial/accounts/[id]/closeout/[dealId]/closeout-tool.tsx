@@ -479,7 +479,7 @@ export async function CloseoutTool({
 
           {/* Checklist */}
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-            <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Close-out checklist</h2>
+            <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Closeout checklist</h2>
             <ul className="space-y-2">
               {items.map((it) => (
                 <li key={it.id} className="border border-ppp-charcoal-100 rounded-lg p-3">

@@ -117,6 +117,10 @@ function TransmittalDoc({ pkg, items, dealName, accountName, company, logo }: { 
           </View>
         </View>
 
+        {/* "Close-Out" hyphenated ONLY here and in the default subject line:
+            this is the title of Tomco's real transmittal document, verified
+            against their samples. The app chrome says "Closeout" everywhere.
+            Don't normalize this one to match it. */}
         <Text style={styles.h1}>Letter of Transmittal — Project Close-Out</Text>
         <View style={styles.block}>
           <Text style={styles.label}>Re</Text>

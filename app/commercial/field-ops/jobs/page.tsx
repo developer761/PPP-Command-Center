@@ -145,7 +145,7 @@ export default async function FieldOpsJobsPage({
     <div className="pb-8 max-w-4xl">
       <div className="mb-5">
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Work Orders</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">What the crew gets scheduled on. Won commercial deals flow in here automatically when you <strong>Send to Field Ops</strong> from the deal. You can also add one manually below — <strong>connect it to a deal</strong> (it&rsquo;ll show on that deal&rsquo;s Work Orders too), or leave the deal blank for a <strong>PPP, prevailing-wage, or one-off</strong> job.</p>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">What the crew gets scheduled on. Won commercial opportunities flow in here automatically when you <strong>Send to Field Ops</strong> from the deal. You can also add one manually below — <strong>connect it to a deal</strong> (it&rsquo;ll show on that deal&rsquo;s Work Orders too), or leave the deal blank for a <strong>PPP, prevailing-wage, or one-off</strong> job.</p>
       </div>
 
       {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error}</div>}
@@ -155,9 +155,9 @@ export default async function FieldOpsJobsPage({
         <h2 className="text-sm font-bold text-ppp-charcoal">Add a work order</h2>
         {dealOptions.length > 0 && (
           <div>
-            <span className={LABEL_CLS}>Connect to a deal (optional)</span>
-            <SearchableSelect name="opportunity_id" ariaLabel="Connect to a deal" options={dealOptions} placeholder="Search a deal / GC to link it" />
-            <p className="text-[11px] text-ppp-charcoal-400 mt-1">Links this work order to that account + deal, like a real WO. Leave blank for PPP / prevailing-wage / one-off jobs.</p>
+            <span className={LABEL_CLS}>Connect to an opportunity (optional)</span>
+            <SearchableSelect name="opportunity_id" ariaLabel="Connect to an opportunity" options={dealOptions} placeholder="Search an opportunity / GC to link it" />
+            <p className="text-[11px] text-ppp-charcoal-400 mt-1">Links this work order to that account + opportunity, like a real WO. Leave blank for PPP / prevailing-wage / one-off jobs.</p>
           </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -196,7 +196,7 @@ export default async function FieldOpsJobsPage({
       {jobs.length === 0 ? (
         <div className="text-center py-10 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No work orders yet</p>
-          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Send a deal&rsquo;s work order to Field Ops, or add a one-off above — then schedule the crew onto it.</p>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Send an opportunity&rsquo;s work order to Field Ops, or add a one-off above — then schedule the crew onto it.</p>
         </div>
       ) : (
         <ul className="space-y-2">

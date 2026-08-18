@@ -463,7 +463,7 @@ export default async function ProposalsIndexPage({
             No proposals yet{activeStatus ? ` in "${proposalStatusLabel(activeStatus)}"` : ""}.
           </p>
           <p className="text-[13px] text-ppp-charcoal-500 max-w-md mx-auto">
-            Click <strong>+ New proposal</strong> above to pick a customer + deal and start the first revision.
+            Click <strong>+ New proposal</strong> above to pick a customer + opportunity and start the first revision.
           </p>
         </div>
       ) : viewMode === "list" ? (

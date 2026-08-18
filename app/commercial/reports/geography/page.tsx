@@ -52,7 +52,7 @@ export default async function GeographyReportPage() {
           <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">
             {t.dealCount === 0
               ? "Once deals are logged with a job-site address, this map of where the work is shows up here."
-              : `${t.unspecifiedCount} ${t.unspecifiedCount === 1 ? "deal has" : "deals have"} no site address yet. Add the property city/zip on a deal and it appears here.`}
+              : `${t.unspecifiedCount} ${t.unspecifiedCount === 1 ? "opportunity has" : "opportunities have"} no site address yet. Add the property city/zip on a deal and it appears here.`}
           </p>
           <Link href="/commercial/accounts" className="inline-flex items-center gap-1.5 mt-4 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12.5px] font-semibold text-cc-brand-700 hover:bg-ppp-charcoal-50 min-h-[44px]">
             Go to accounts
@@ -63,14 +63,14 @@ export default async function GeographyReportPage() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Tile label="Towns" value={String(t.cityCount)} tone="brand" sub={`${t.zipCount} zip${t.zipCount === 1 ? "" : "s"}`} />
-            <Tile label="Located deals" value={String(t.locatedCount)} tone="navy" sub={t.unspecifiedCount > 0 ? `${t.unspecifiedCount} missing address` : "all mapped"} />
-            <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="emerald" sub="across all deals" />
+            <Tile label="Located opportunities" value={String(t.locatedCount)} tone="navy" sub={t.unspecifiedCount > 0 ? `${t.unspecifiedCount} missing address` : "all mapped"} />
+            <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="emerald" sub="across all opportunities" />
             <Tile label="States" value={String(t.stateCount)} tone="neutral" sub={geo.byState.slice(0, 3).map((s) => s.label).join(" · ") || undefined} />
           </div>
 
           {t.unspecifiedCount > 0 && (
             <p className="text-[11.5px] text-amber-700 leading-snug bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              <span className="font-semibold">{t.unspecifiedCount} {t.unspecifiedCount === 1 ? "deal has" : "deals have"} no site address</span> — they&rsquo;re counted in totals but can&rsquo;t be placed on the map below. Add a property city/zip on each deal to include it.
+              <span className="font-semibold">{t.unspecifiedCount} {t.unspecifiedCount === 1 ? "opportunity has" : "opportunities have"} no site address</span> — they&rsquo;re counted in totals but can&rsquo;t be placed on the map below. Add a property city/zip on each deal to include it.
             </p>
           )}
 

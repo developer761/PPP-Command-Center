@@ -64,7 +64,7 @@ const STEPS: TourStep[] = [
   {
     route: "/commercial/opportunities",
     target: '[data-tour="/commercial/opportunities"]',
-    title: "The deal is the record",
+    title: "The opportunity is the record",
     body: "Open any deal and everything for that job is on it — the proposal, the work order, submittals, change orders, AIA billing and invoices. You rarely need to go looking elsewhere.",
   },
   {

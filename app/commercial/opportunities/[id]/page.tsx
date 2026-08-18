@@ -4586,7 +4586,7 @@ async function DebriefTab({
       )}
       {(statusOk || justClosed) && !isDebriefed && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
-          Deal saved as <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>. Capture the {outcomeLabel.toLowerCase()} debrief below to feed the quarterly Win/Loss report — or skip and come back later.
+          Opportunity saved as <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>. Capture the {outcomeLabel.toLowerCase()} debrief below to feed the quarterly Win/Loss report — or skip and come back later.
         </div>
       )}
       {debriefSaved && (

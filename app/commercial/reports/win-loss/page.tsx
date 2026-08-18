@@ -312,8 +312,8 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
         <span
           tabIndex={0}
           role="img"
-          aria-label="Counts every deal DECIDED in this period, by its decision date — a win counts whether or not a debrief has been filed. The competitor and deciding-factor breakdowns below still come from debriefs, because that is where the reasons are recorded."
-          title="Counts every deal DECIDED in this period, by its decision date — a win counts whether or not a debrief has been filed. The competitor and deciding-factor breakdowns below still come from debriefs, because that is where the reasons are recorded."
+          aria-label="Counts every opportunity DECIDED in this period, by its decision date — a win counts whether or not a debrief has been filed. The competitor and deciding-factor breakdowns below still come from debriefs, because that is where the reasons are recorded."
+          title="Counts every opportunity DECIDED in this period, by its decision date — a win counts whether or not a debrief has been filed. The competitor and deciding-factor breakdowns below still come from debriefs, because that is where the reasons are recorded."
           className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-ppp-charcoal-300 text-ppp-charcoal-500 text-[9px] font-bold cursor-help focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
         >
           ?
@@ -369,7 +369,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           </h2>
           <p className="text-sm text-ppp-charcoal-500">
             Try a wider range, or head to the{" "}
-            <Link href="/commercial/opportunities" className="text-cc-brand-700 underline">pipeline</Link> to close some deals.
+            <Link href="/commercial/opportunities" className="text-cc-brand-700 underline">pipeline</Link> to close some opportunities.
           </p>
         </section>
       ) : (
