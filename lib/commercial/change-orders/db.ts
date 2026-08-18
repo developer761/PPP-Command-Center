@@ -49,6 +49,9 @@ export type CommercialChangeOrder = {
   decided_by_user_id: string | null;
   decided_at: string | null;
   invoiced_invoice_id: string | null;
+  /** When the CO document was emailed to the GC for approval (migration 153).
+   *  NOT a status — see the migration for why sent and answered stay separate. */
+  sent_at: string | null;
   created_by_user_id: string | null;
   deleted_at: string | null;
   created_at: string;

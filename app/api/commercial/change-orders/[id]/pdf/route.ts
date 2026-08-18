@@ -39,77 +39,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const co = await getChangeOrder(id);
-  if (!co) return NextResponse.json({ error: "not_found" }, { status: 404 });
-
-  const [account, opp, base, netApproved, company, logo, signature] = await Promise.all([
-    getCommercialAccount(co.account_id),
-    getCommercialOpportunity(co.opportunity_id),
-    getEffectiveContractBaseCents(co.opportunity_id),
-    netApprovedChangeOrderCents(co.opportunity_id),
-    getOperatingCompany(),
-    getBrandLogoBuffer().catch(() => null),
-    getBrandSignatureBuffer().catch(() => null),
-  ]);
-
-  // Chain of trust, same as the transmittal / warranty / work-order routes. Both
-  // loaders hard-filter `deleted_at`, so a deleted parent came back null and the
-  // route happily streamed a full letterhead change order addressed to
-  // "Customer" with no bill-to — reachable from any bookmarked URL long after
-  // the deal was removed.
-  if (!account || !opp) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
-
-  // Contract adjustment — shown only when a contract sum is known AND this CO
-  // could actually move it (pending = proposed, approved = applied). A DECLINED
-  // CO never adjusts the contract, so printing a "revised contract sum" for it
-  // would be a number that will never happen (Phase D catch).
-  // `netApproved` already includes THIS CO when it's approved, so back it out to
-  // get the "prior" sum, then add it once to get "revised" (pending + approved).
-  const contractToDate = base + netApproved;
-  const thisApproved = co.status === "approved";
-  const showAdjustment = base > 0 && co.status !== "declined";
-  const priorContractCents = showAdjustment ? contractToDate - (thisApproved ? co.amount_cents : 0) : null;
-  const revisedContractCents = priorContractCents != null ? priorContractCents + co.amount_cents : null;
-
-  const billTo: string[] = [];
-  const street = [account?.billing_street, account?.billing_street2].map((s) => s?.trim()).filter(Boolean) as string[];
-  billTo.push(...street);
-  const cityLine = [
-    [account?.billing_city?.trim(), account?.billing_state?.trim()].filter(Boolean).join(", "),
-    account?.billing_zip?.trim(),
-  ]
-    .filter(Boolean)
-    .join(" ");
-  if (cityLine) billTo.push(cityLine);
+  // One shared builder, used by this route AND by the email path, so both
+  // render the same document with the same contract adjustment (2026-08-18).
+  const { buildChangeOrderPdfInput } = await import("@/lib/commercial/change-orders/pdf-data");
+  const built = await buildChangeOrderPdfInput(id);
+  if (!built.ok) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   let pdfBuffer: Buffer;
   try {
     const { renderChangeOrderPdf } = await import("@/lib/commercial/change-orders/pdf");
-    pdfBuffer = await renderChangeOrderPdf({
-      coNumber: formatChangeOrderNumber(co.co_number),
-      title: co.title,
-      description: co.description,
-      amountCents: co.amount_cents,
-      isDeduct: co.amount_cents < 0,
-      status: CHANGE_ORDER_STATUS_META[co.status]?.label ?? co.status,
-      dateIso: co.decided_at ?? co.created_at ?? null,
-      accountName: account?.company_name ?? "Customer",
-      billTo,
-      dealName: opp ? derivedOppName(opp, account?.company_name ?? null) : null,
-      priorContractCents,
-      revisedContractCents,
-      company: {
-        name: company.name,
-        phone: company.phone,
-        website: company.website,
-        signature_name: company.signature_name,
-        signature_title: company.signature_title,
-      },
-      logo,
-      signature,
-    });
+    pdfBuffer = await renderChangeOrderPdf(built.input);
   } catch (err) {
     console.error("[change-order-pdf] render failed:", err);
     return NextResponse.json(
@@ -118,7 +57,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     );
   }
 
-  const safeName = formatChangeOrderNumber(co.co_number).replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 40);
+  const safeName = built.fileBase;
   return new NextResponse(new Uint8Array(pdfBuffer), {
     status: 200,
     headers: {

@@ -26,6 +26,7 @@ import {
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { defaultChangeOrderMessage } from "@/lib/commercial/change-orders/email";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 type CoAction = (formData: FormData) => void | Promise<void>;
@@ -80,6 +81,10 @@ export async function ChangeOrdersPanel({
   decideAction,
   billAction,
   deleteAction,
+  sendAction,
+  sendToDefault = "",
+  sendOk = null,
+  sendError = null,
   okFlag,
   errorMessage,
   headsUp,
@@ -103,6 +108,12 @@ export async function ChangeOrdersPanel({
    *  caller decides whether that's the standalone tool route or the deal's
    *  Project sub-tab, so the panel works identically inline or on its own page. */
   basePath: string;
+  /** Email this CO to the GC for written approval. Omit to hide the control. */
+  sendAction?: (formData: FormData) => void | Promise<void>;
+  /** Best-guess recipient — the GC's AP/billing contact. */
+  sendToDefault?: string;
+  sendOk?: string | null;
+  sendError?: string | null;
   /** The deal's base bid (midpoint) — the "original contract" the COs adjust.
    *  Null when the deal has no bid range; the summary adapts. */
   baseContractCents: number | null;
@@ -186,6 +197,16 @@ export async function ChangeOrdersPanel({
           <Link href={basePath} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
         </div>
       ) : null}
+      {sendOk && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800 mb-2">
+          Change order sent to <strong>{sendOk}</strong>. It stays <strong>pending</strong> until you record their answer.
+        </div>
+      )}
+      {sendError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12.5px] text-rose-800 mb-2">
+          {sendError}
+        </div>
+      )}
       {errorMessage ? (
         <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-rose-50 border border-rose-200 text-rose-700">
           <span>{errorMessage}</span>
@@ -428,6 +449,60 @@ export async function ChangeOrdersPanel({
                           </svg>
                           Document
                         </a>
+                        {/* Stephanie 2026-08-18: a change order "requires us to
+                            first submit it in writing in proposal format and
+                            then an approval from the customer." The document was
+                            already the right shape — scope, amount, revised
+                            contract sum, and an "Accepted by (Owner / GC)"
+                            signature line. Sending it was the missing step, so
+                            it happened in someone's mail client and left no
+                            trace on the job. Sending does NOT approve it: the
+                            status still moves only when a person records the
+                            customer's answer. */}
+                        {sendAction && co.status !== "declined" && (
+                          <details className="inline-block">
+                            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-[12px] font-semibold text-ppp-blue-800 hover:bg-ppp-blue-100 min-h-[44px]">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M22 6l-10 7L2 6" />
+                              </svg>
+                              {co.sent_at ? "Send again" : "Send for approval"}
+                            </summary>
+                            <div className="mt-2 w-full sm:w-[30rem] max-w-full rounded-lg border border-ppp-charcoal-200 bg-surface p-3 space-y-2.5 shadow-sm">
+                              <form action={sendAction} className="space-y-2.5">
+                                <input type="hidden" name="change_order_id" value={co.id} />
+                                <input type="hidden" name="back" value={back} />
+                                <input type="hidden" name="from" value={from} />
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  <label className="block">
+                                    <span className={LABEL_CLS}>To</span>
+                                    <input name="to_email" type="email" required defaultValue={sendToDefault} placeholder="pm@generalcontractor.com" className={INPUT_CLS} />
+                                  </label>
+                                  <label className="block">
+                                    <span className={LABEL_CLS}>CC <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
+                                    <input name="cc_email" type="email" className={INPUT_CLS} />
+                                  </label>
+                                </div>
+                                <label className="block">
+                                  <span className={LABEL_CLS}>Subject</span>
+                                  <input name="subject" required maxLength={200} defaultValue={`${formatChangeOrderNumber(co.co_number)} for approval${co.title ? ` — ${co.title}` : ""}`} className={INPUT_CLS} />
+                                </label>
+                                <label className="block">
+                                  <span className={LABEL_CLS}>Message</span>
+                                  <textarea name="message" required rows={7} defaultValue={defaultChangeOrderMessage({ coNumber: co.co_number, title: co.title, amountCents: co.amount_cents, projectName: null })} className={TEXTAREA_CLS} />
+                                </label>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <PendingSubmitButton pendingLabel="Sending…" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px]">
+                                    Send to GC
+                                  </PendingSubmitButton>
+                                  <a href={`/api/commercial/change-orders/${co.id}/pdf`} target="_blank" rel="noopener noreferrer" className="text-[11.5px] font-semibold text-ppp-charcoal-600 hover:text-ppp-charcoal underline underline-offset-2">Preview first</a>
+                                </div>
+                                <p className="text-[11px] text-ppp-charcoal-400 leading-snug">
+                                  Brendan and ops are copied. Sending doesn&rsquo;t approve it &mdash; mark it approved once the GC signs and returns it.
+                                </p>
+                              </form>
+                            </div>
+                          </details>
+                        )}
                         {billedLive ? (
                           <>
                             {coChips.get(co.id)?.isDraft ? (

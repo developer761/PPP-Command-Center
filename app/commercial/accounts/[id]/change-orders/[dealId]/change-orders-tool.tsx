@@ -21,6 +21,7 @@ import {
   derivedOppName,
 } from "@/lib/commercial/opportunities/db";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
+import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { getInvoiceContext, listCommercialInvoices } from "@/lib/commercial/invoices/db";
@@ -39,6 +40,9 @@ import { normalizeToolOrigin, toolOriginQs } from "@/lib/commercial/tool-origin"
 
 export type ChangeOrdersSP = {
   co_ok?: string;
+  /** Change-order send result (Stephanie 2026-08-18). */
+  co_sent?: string;
+  co_send_error?: string;
   error?: string;
   heads_up?: string;
   edit_co?: string;
@@ -252,6 +256,45 @@ async function billChangeOrderAction(formData: FormData) {
   );
 }
 
+/**
+ * Email a change order to the GC for written approval.
+ *
+ * Stephanie: a CO "requires us to first submit it in writing in proposal format
+ * and then an approval from the customer." The document and the approval
+ * statuses both existed; sending was the gap, so it happened outside the
+ * platform and left no trace on the job.
+ *
+ * Human-reviewed like every other outbound here — recipient, subject and body
+ * all come from the form. Sending does NOT approve: status still moves only
+ * when someone records the customer's answer.
+ */
+async function sendChangeOrderAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const account_id = String(formData.get("account_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
+  const change_order_id = String(formData.get("change_order_id") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(account_id) || !UUID_RE.test(change_order_id)) {
+    redirect("/commercial/accounts");
+  }
+
+  const { emailChangeOrderToGc } = await import("@/lib/commercial/change-orders/email");
+  const res = await emailChangeOrderToGc({
+    change_order_id,
+    actor_user_id: userId,
+    to_email: String(formData.get("to_email") ?? ""),
+    cc_email: String(formData.get("cc_email") ?? "") || null,
+    subject: String(formData.get("subject") ?? ""),
+    message: String(formData.get("message") ?? ""),
+  });
+  if (!res.ok) coRedirect(account_id, opp_id, { co_send_error: res.error }, back, origin, from);
+  revalidateChangeOrderSurfaces(account_id, opp_id);
+  coRedirect(account_id, opp_id, { co_sent: res.to_email }, back, origin, from);
+}
+
 async function deleteChangeOrderAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
@@ -302,10 +345,19 @@ export async function ChangeOrdersTool({
   // four surfaces show the same "contract to date" (was the bare bid midpoint).
   const base = await getEffectiveContractBaseCents(dealId);
   const baseContractCents = base > 0 ? base : null;
-  const [proposalRows, dealInvoices] = await Promise.all([
+  const [proposalRows, dealInvoices, coContacts] = await Promise.all([
     listProposalsForOpp(dealId),
     listCommercialInvoices({ opportunityId: dealId }),
+    listAccountContacts(id).catch(() => []),
   ]);
+  // Best guess at who signs a change order: a PM or project contact first, then
+  // anyone with an email. Stephanie shouldn't retype the address every time.
+  const sendToDefault =
+    coContacts.find((c) =>
+      /project\s*manager|\bpm\b|superintend|construction/i.test(c.contact.title ?? "")
+    )?.contact.email ||
+    coContacts.find((c) => c.contact.email)?.contact.email ||
+    "";
   const proposalsWithIssuedInvoice = new Set(
     dealInvoices
       .filter((inv) => inv.proposal_id && inv.status !== "draft" && inv.status !== "void")
@@ -346,6 +398,10 @@ export async function ChangeOrdersTool({
       decideAction={decideChangeOrderAction}
       billAction={billChangeOrderAction}
       deleteAction={deleteChangeOrderAction}
+      sendAction={sendChangeOrderAction}
+      sendToDefault={sendToDefault}
+      sendOk={sp.co_sent ?? null}
+      sendError={sp.co_send_error ?? null}
       okFlag={sp.co_ok ?? null}
       errorMessage={sp.error ?? null}
       headsUp={sp.heads_up ?? null}
