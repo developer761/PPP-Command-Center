@@ -105,9 +105,49 @@ export default async function ArAgingReportPage() {
             </div>
           </section>
 
-          {/* Per-customer table. */}
+          {/* Per-GC breakdown. */}
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* ── Phone: cards. A 7-column aging grid in a sideways scroller is
+                readable but useless one-handed, and "who owes us, and how late"
+                is exactly the question someone asks from their phone. Each card
+                leads with the total, then only the buckets that actually carry
+                money — an empty column is noise here, where the table has to
+                keep the slot for alignment. ── */}
+            <ul className="sm:hidden divide-y divide-ppp-charcoal-100">
+              {aging.rows.map((r) => (
+                <li key={r.accountId}>
+                  <Link href={`/commercial/accounts/${r.accountId}`} className="block px-3.5 py-3 active:bg-cc-brand-50/60">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[13.5px] font-semibold text-ppp-charcoal leading-snug min-w-0">{r.accountName}</span>
+                      <span className="text-[14px] font-bold tabular-nums text-ppp-charcoal shrink-0">{formatCentsFull(r.total)}</span>
+                    </div>
+                    <div className="text-[11px] text-ppp-charcoal-400 mt-0.5">
+                      {r.invoiceCount} open · oldest {Math.max(0, r.oldestDays)}d
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {BUCKETS.filter((b) => r[b.key] > 0).map((b) => (
+                        <span
+                          key={b.key}
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10.5px] font-semibold tabular-nums ${
+                            b.danger
+                              ? "bg-rose-50 border-rose-200 text-rose-700"
+                              : "bg-ppp-charcoal-50 border-ppp-charcoal-200 text-ppp-charcoal-700"
+                          }`}
+                        >
+                          {b.label} {formatCentsFull(r[b.key])}
+                        </span>
+                      ))}
+                    </div>
+                  </Link>
+                </li>
+              ))}
+              <li className="px-3.5 py-3 bg-ppp-charcoal-50/60 flex items-center justify-between gap-2">
+                <span className="text-[12px] font-bold text-ppp-charcoal">All GCs</span>
+                <span className="text-[14px] font-bold tabular-nums text-ppp-charcoal">{formatCentsFull(aging.totals.total)}</span>
+              </li>
+            </ul>
+
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-[12.5px] min-w-[640px]">
                 <thead>
                   <tr className="text-ppp-charcoal-500 border-b border-ppp-charcoal-200 bg-ppp-charcoal-50/50">

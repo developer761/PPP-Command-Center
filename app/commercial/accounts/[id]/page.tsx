@@ -5255,7 +5255,7 @@ function EditableField({
         required={required}
         defaultValue={defaultValue ?? ""}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface hover:border-ppp-charcoal-300 focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-500 placeholder:italic min-h-[44px] text-ppp-charcoal transition-colors"
+        className="w-full px-3 py-2 text-base sm:text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface hover:border-ppp-charcoal-300 focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-500 placeholder:italic min-h-[44px] text-ppp-charcoal transition-colors"
       />
     </label>
   );
@@ -5736,7 +5736,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                     required
                     placeholder="0.00"
                     defaultValue={(invoice.balance_cents / 100).toFixed(2)}
-                    className="w-full mt-0.5 px-2 py-1.5 text-sm border border-ppp-charcoal-200 rounded-md tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    className="w-full mt-0.5 px-2 py-1.5 text-base sm:text-sm border border-ppp-charcoal-200 rounded-md tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                   />
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -5749,7 +5749,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                     <select
                       name="method"
                       defaultValue=""
-                      className="w-full mt-0.5 px-2 py-1.5 pr-8 text-[13px] bg-surface border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 appearance-none bg-no-repeat cursor-pointer"
+                      className="w-full mt-0.5 px-2 py-1.5 pr-8 text-base sm:text-[13px] bg-surface border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 appearance-none bg-no-repeat cursor-pointer"
                       style={SELECT_BG_STYLE}
                     >
                       <option value="">Choose method</option>
@@ -5766,7 +5766,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                     name="reference"
                     maxLength={120}
                     placeholder="Check #, transaction ID…"
-                    className="w-full mt-0.5 px-2 py-1.5 text-[13px] border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    className="w-full mt-0.5 px-2 py-1.5 text-base sm:text-[13px] border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                   />
                 </label>
                 <PendingSubmitButton

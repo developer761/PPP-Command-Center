@@ -3578,7 +3578,7 @@ async function OpportunityInvoicesPanel({
                       maxLength={64}
                       defaultValue={editing.payment_terms ?? ""}
                       placeholder="Net 30"
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                     />
                   </label>
                 </section>
@@ -3598,7 +3598,7 @@ async function OpportunityInvoicesPanel({
                       name="po_number"
                       maxLength={64}
                       defaultValue={editing.po_number ?? ""}
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                     />
                   </label>
                   <label className="block">
@@ -3609,7 +3609,7 @@ async function OpportunityInvoicesPanel({
                       pattern="[0-9.]*"
                       name="tax_pct"
                       defaultValue={editing.tax_pct ?? ""}
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 max-w-[140px]"
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 max-w-[140px]"
                     />
                     {taxSuggestion && !editing.tax_pct && (
                       <span className="mt-1 block text-[10.5px] leading-snug text-ppp-charcoal-500">
@@ -3637,7 +3637,7 @@ async function OpportunityInvoicesPanel({
                       maxLength={2000}
                       defaultValue={editing.customer_message ?? ""}
                       placeholder="Shown on the invoice PDF"
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                     />
                   </label>
                   <label className="block">
@@ -3648,7 +3648,7 @@ async function OpportunityInvoicesPanel({
                       maxLength={2000}
                       defaultValue={editing.notes ?? ""}
                       placeholder="Only visible to your team"
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                     />
                   </label>
                 </section>
@@ -4093,7 +4093,7 @@ async function InfoTab({
             <select
               name="tax_exempt"
               defaultValue={opp.tax_exempt === true ? "exempt" : opp.tax_exempt === false ? "taxable" : "inherit"}
-              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[13px] min-h-[44px]"
+              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[13px] min-h-[44px]"
             >
               <option value="inherit">
                 Follow the customer{account?.tax_exempt ? " (exempt)" : " (taxable)"}
@@ -4112,7 +4112,7 @@ async function InfoTab({
               maxLength={60}
               defaultValue={opp.tax_exempt_cert_number ?? ""}
               placeholder="Only when this job is exempt"
-              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[13px] min-h-[44px]"
+              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[13px] min-h-[44px]"
             />
           </label>
           <SubmitButton
@@ -4243,7 +4243,7 @@ async function InfoTab({
                 <select
                   name="role"
                   defaultValue="superintendent"
-                  className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[13px] min-h-[44px]"
+                  className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[13px] min-h-[44px]"
                 >
                   {CONTACT_ROLES.map((r) => (
                     <option key={r} value={r}>

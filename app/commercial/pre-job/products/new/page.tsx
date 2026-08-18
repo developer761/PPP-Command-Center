@@ -352,7 +352,7 @@ export default async function NewProductPage({
             rows={2}
             defaultValue={sp.description ?? ""}
             placeholder="Frame paint + wood door clear finish."
-            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
+            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
           />
           <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
             Shown under the line item on the customer proposal PDF.
@@ -368,7 +368,7 @@ export default async function NewProductPage({
             rows={2}
             defaultValue={sp.notes ?? ""}
             placeholder="Internal reference — spec, min-order, retailer contact."
-            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
+            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
           />
           <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
             Never shown to customers. Team-only reference.

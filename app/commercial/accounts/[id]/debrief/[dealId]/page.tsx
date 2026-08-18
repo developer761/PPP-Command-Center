@@ -312,7 +312,7 @@ export default async function AccountDebriefPage({
               name="loss_reason"
               required
               defaultValue=""
-              className="w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-sm text-ppp-charcoal min-h-[44px]"
+              className="w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-sm text-ppp-charcoal min-h-[44px]"
             >
               <option value="" disabled>
                 Pick one…
@@ -341,7 +341,7 @@ export default async function AccountDebriefPage({
               required
               rows={3}
               placeholder="Came in 12% over the winning bid; GC went with an incumbent they'd used on two prior phases."
-              className="w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-sm text-ppp-charcoal"
+              className="w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-sm text-ppp-charcoal"
             />
           </div>
           <div className="flex items-center justify-end gap-2">

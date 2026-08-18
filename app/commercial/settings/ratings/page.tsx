@@ -130,7 +130,7 @@ export default async function RatingSettingsPage({
               maxLength={60}
               required
               defaultValue={labels[code].label}
-              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[14px] min-h-[44px]"
+              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[14px] min-h-[44px]"
             />
           </label>
 
@@ -144,7 +144,7 @@ export default async function RatingSettingsPage({
               rows={2}
               defaultValue={labels[code].description ?? ""}
               placeholder="e.g. Pays on time, runs clean jobs — bid everything they send."
-              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-[14px]"
+              className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[14px]"
             />
             <span className="block text-[11.5px] text-ppp-charcoal-500 mt-1">
               Shown on hover wherever the rating appears, so whoever grades the next account uses

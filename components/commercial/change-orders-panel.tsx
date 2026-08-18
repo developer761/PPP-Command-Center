@@ -509,7 +509,7 @@ export async function ChangeOrdersPanel({
                                       name="target_invoice_id"
                                       defaultValue={draftInvoices[0].id}
                                       aria-label="Which invoice to bill this change order on"
-                                      className="px-2 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-medium text-ppp-charcoal min-h-[44px] max-w-[15rem]"
+                                      className="px-2 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-base sm:text-[12px] font-medium text-ppp-charcoal min-h-[44px] max-w-[15rem]"
                                       style={SELECT_BG_STYLE}
                                     >
                                       {draftInvoices.map((d) => (

@@ -65,7 +65,7 @@ export function InlineFieldRow({
               rows={3}
               maxLength={field.maxLength}
               autoFocus
-              className="w-full rounded-lg border border-cc-brand-300 bg-surface px-2.5 py-2 text-[13px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-cc-brand-200"
+              className="w-full rounded-lg border border-cc-brand-300 bg-surface px-2.5 py-2 text-base sm:text-[13px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-cc-brand-200"
             />
           ) : (
             <input
