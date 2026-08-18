@@ -5459,7 +5459,7 @@ async function AccountInvoicesTab({
       {/* Rollup strip */}
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <RollupTile
-          label="Billed"
+          label="Invoiced"
           value={formatCentsFull(rollup.invoiced_cents)}
           sub={
             rollup.aia_billed_cents > 0
@@ -5470,7 +5470,7 @@ async function AccountInvoicesTab({
         />
         <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="emerald" />
         <RollupTile label={rollup.open_balance_cents === 0 && rollup.credit_cents > 0 ? "Credit" : "Balance"} value={formatCentsFull(rollup.open_balance_cents > 0 ? rollup.open_balance_cents : rollup.credit_cents)} sub={rollup.open_balance_cents > 0 ? (rollup.credit_cents > 0 ? `unpaid · ${formatCentsFull(rollup.credit_cents)} credit` : "unpaid") : rollup.credit_cents > 0 ? "overpaid" : "settled"} tone={rollup.open_balance_cents > 0 ? "warn" : rollup.credit_cents > 0 ? "emerald" : "neutral"} />
-        <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : rollup.overdue_count === 1 ? "invoice past due" : "invoices past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
+        <RollupTile label="Overdue invoices" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : rollup.overdue_count === 1 ? "invoice past due" : "invoices past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
       </section>
 
       {/* Primary CTAs — new invoice + drill to full list */}
@@ -6044,7 +6044,7 @@ async function AccountKpisTab({
           <Link href={`/commercial/invoices?account_id=${accountId}`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Invoices →</Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-          <MiniFig label="Billed" value={formatCentsCompact(rollup.invoiced_cents)} tone="brand" sub={billedSourceSub} />
+          <MiniFig label="Invoiced" value={formatCentsCompact(rollup.invoiced_cents)} tone="brand" sub={billedSourceSub} />
           <MiniFig label="Paid" value={formatCentsCompact(rollup.paid_cents)} tone="emerald" sub={hasInvoicing ? `${paidPct}% collected` : "—"} />
           <MiniFig
             label={isCredit ? "Credit" : "Outstanding"}
@@ -6064,7 +6064,10 @@ async function AccountKpisTab({
                 : "unpaid"
             }
           />
-          <MiniFig label="Overdue" value={String(rollup.overdue_count)} tone={rollup.overdue_count > 0 ? "rose" : "neutral"} sub={rollup.overdue_count > 0 ? "past due" : "on track"} />
+          {/* A COUNT, where every other "Overdue" on the platform is dollars.
+              The label carries the unit so the two can't be read as the same
+              number. */}
+          <MiniFig label="Overdue invoices" value={String(rollup.overdue_count)} tone={rollup.overdue_count > 0 ? "rose" : "neutral"} sub={rollup.overdue_count > 0 ? "past due" : "on track"} />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-center mt-4">
           <div className="lg:col-span-2 flex items-center justify-center">

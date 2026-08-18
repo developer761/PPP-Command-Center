@@ -132,7 +132,11 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
           <div className="mt-3 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/50 px-3 py-2.5">
             <div className="grid grid-cols-3 gap-2 text-center">
               <MoneyStat label="Contract" value={formatCentsCompact(p.contractToDateCents)} />
-              <MoneyStat label="Invoiced" value={formatCentsCompact(p.billedContractCents)} tone="emerald" />
+              {/* PRE-tax, like the Contract and Left-to-bill either side of it — so
+                  it is "Billed", not "Invoiced". Platform convention: Invoiced
+                  carries tax (the AR figure), Billed doesn't (it measures
+                  against a pre-tax contract). */}
+              <MoneyStat label="Billed" value={formatCentsCompact(p.billedContractCents)} tone="emerald" />
               <MoneyStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={p.overBilled ? formatCentsCompact(p.billedContractCents - p.contractToDateCents) : formatCentsCompact(p.leftToBillCents)} />
             </div>
             <div className="mt-2.5">
