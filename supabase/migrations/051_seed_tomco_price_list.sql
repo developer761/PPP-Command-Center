@@ -35,12 +35,12 @@ INSERT INTO public.commercial_products
   (sku, name, category, unit, default_unit_price_cents, notes)
 VALUES
   -- ── Interior Walls (6) ──
-  ('TC-IW-001', 'Paint Gypsum Wall 2 Coats', 'paint', 'linear_foot', 75, 'Standard interior wall paint (2 coats over existing).'),
-  ('TC-IW-002', 'Skim Coat Gypsum Walls', 'paint', 'linear_foot', 125, 'Prep only — skim coat for level-4 finish.'),
-  ('TC-IW-003', 'Prime & Paint Gypsum Walls 2 Coats', 'paint', 'linear_foot', 100, 'Primer + 2 finish coats on new/patched drywall.'),
-  ('TC-IW-004', 'Prime & Paint Wood Walls 2 Coats', 'paint', 'linear_foot', 100, 'Wood substrate — primer + 2 finish coats.'),
-  ('TC-IW-005', 'Interior CMU Walls - Block Fill & Paint 1 Coat', 'paint', 'linear_foot', 100, 'Block fill primer + 1 top coat on CMU.'),
-  ('TC-IW-006', 'Wood Walls Clear Coat', 'paint', 'linear_foot', 100, 'Natural wood — clear coat only.'),
+  ('TC-IW-001', 'Paint Gypsum Wall 2 Coats', 'paint', 'square_foot', 75, 'Standard interior wall paint (2 coats over existing).'),
+  ('TC-IW-002', 'Skim Coat Gypsum Walls', 'paint', 'square_foot', 125, 'Prep only — skim coat for level-4 finish.'),
+  ('TC-IW-003', 'Prime & Paint Gypsum Walls 2 Coats', 'paint', 'square_foot', 100, 'Primer + 2 finish coats on new/patched drywall.'),
+  ('TC-IW-004', 'Prime & Paint Wood Walls 2 Coats', 'paint', 'square_foot', 100, 'Wood substrate — primer + 2 finish coats.'),
+  ('TC-IW-005', 'Interior CMU Walls - Block Fill & Paint 1 Coat', 'paint', 'square_foot', 100, 'Block fill primer + 1 top coat on CMU.'),
+  ('TC-IW-006', 'Wood Walls Clear Coat', 'paint', 'square_foot', 100, 'Natural wood — clear coat only.'),
 
   -- ── Exterior (15) ──
   ('TC-EX-001', 'Bollards', 'paint', 'each', 5000, 'Per bollard, prep + 2 coats.'),
@@ -48,9 +48,9 @@ VALUES
   ('TC-EX-003', 'Drip Cap', 'paint', 'linear_foot', 500, 'Exterior metal drip cap.'),
   ('TC-EX-004', 'Gas Pipes', 'paint', 'linear_foot', 500, 'Exterior gas piping.'),
   ('TC-EX-005', 'Steel Lintels', 'paint', 'linear_foot', 500, 'Exterior steel lintels.'),
-  ('TC-EX-006', 'Power Washing', 'labor', 'linear_foot', 50, 'Standalone power-wash (surface prep).'),
+  ('TC-EX-006', 'Power Washing', 'labor', 'square_foot', 50, 'Standalone power-wash (surface prep).'),
   ('TC-EX-007', 'Steel I Beams', 'paint', 'linear_foot', 1000, 'Structural steel exposed exterior.'),
-  ('TC-EX-008', 'Exterior CMU Walls - Paint', 'paint', 'linear_foot', 200, 'Existing exterior CMU paint refresh.'),
+  ('TC-EX-008', 'Exterior CMU Walls - Paint', 'paint', 'square_foot', 200, 'Existing exterior CMU paint refresh.'),
   ('TC-EX-009', 'Pipe Railing', 'paint', 'linear_foot', 1000, 'Metal pipe railing.'),
   ('TC-EX-010', 'Caulk Control Joints', 'sundry', 'linear_foot', 700, 'Exterior caulk control-joint sealing.'),
   ('TC-EX-011', 'Precast Concrete Panels - Power Wash & Paint 2 Coats Loxon', 'paint', 'square_foot', 250, 'Loxon (masonry primer/finish) — precast concrete.'),
@@ -60,8 +60,8 @@ VALUES
   ('TC-EX-015', 'Exterior EIFS - Paint 2 Coats Flat', 'paint', 'square_foot', 200, 'EIFS system — flat finish 2 coats.'),
 
   -- ── Wallcovering (5) ──
-  ('TC-WC-001', 'Wallcovering Removal', 'labor', 'linear_foot', 125, 'Strip existing wallcovering.'),
-  ('TC-WC-002', 'Wallcovering Primer', 'sundry', 'linear_foot', 50, 'Prime walls before wallcovering install.'),
+  ('TC-WC-001', 'Wallcovering Removal', 'labor', 'square_foot', 125, 'Strip existing wallcovering.'),
+  ('TC-WC-002', 'Wallcovering Primer', 'sundry', 'square_foot', 50, 'Prime walls before wallcovering install.'),
   ('TC-WC-003', 'Wallcovering Install per lin.yd', 'labor', 'linear_yard', 2500, 'Install labor priced by linear yard of material.'),
   ('TC-WC-004', 'Wallcovering Install per sq.ft', 'labor', 'square_foot', 210, 'Install labor priced by square foot (alt to LY).'),
   ('TC-WC-005', 'Wallcovering Supply per lin.yd', 'sundry', 'linear_yard', 2500, 'Material supply component (contractor-owned vs specified).'),
