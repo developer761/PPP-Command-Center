@@ -138,7 +138,10 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
 
   const projectLabel =
     proposal.header_json.project_name?.trim() || proposal.header_json.gc_company?.trim() || "Proposal";
-  const filename = `${sanitizeFileName(`Proposal_${projectLabel}_R${proposal.revision_number}`)}.pdf`;
+  // Brendan 2026-08-17: "Can we remove the R1 on the attachment name". The
+  // revision is labelled inside the document, on the PROJECT line — the GC
+  // shouldn't have to read our internal revision counter off a filename.
+  const filename = `${sanitizeFileName(`Proposal_${projectLabel}`)}.pdf`;
 
   const { sendEmail } = await import("@/lib/email/resend");
   const r = await sendEmail({

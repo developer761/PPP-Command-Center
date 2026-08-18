@@ -145,10 +145,11 @@ export async function GET(
     );
   }
 
-  const rev = `R${proposal.revision_number}`;
+  // No `R{n}` in the filename (Brendan 2026-08-17) — the revision is labelled
+  // inside the document on the PROJECT line instead.
   const gc = (proposal.header_json.gc_company ?? "Proposal").replace(/[^A-Za-z0-9._-]+/g, "_");
   const project = (proposal.header_json.project_name ?? "").replace(/[^A-Za-z0-9._-]+/g, "_");
-  const filename = [gc, project, rev]
+  const filename = [gc, project]
     .filter(Boolean)
     .join("_") + (mode === "internal" ? "_internal.pdf" : ".pdf");
 

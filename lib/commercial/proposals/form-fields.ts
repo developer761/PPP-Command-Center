@@ -29,6 +29,7 @@ export const PROPOSAL_FIELD_GROUPS = {
   header: [
     "gc_company",
     "attention",
+    "title",
     "phone",
     "email",
     // NOT `project_name`. It is owned by the sticky AutosaveProposalName form

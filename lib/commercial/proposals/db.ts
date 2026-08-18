@@ -32,6 +32,10 @@ export type ProposalHeaderJson = {
   gc_company?: string;
   gc_address_lines?: string[];
   attention?: string;
+  /** The attention contact's job title (Brendan 2026-08-17: "title … not
+   *  showing on pdf for client"). `commercial_contacts.title` existed but was
+   *  never selected, never snapshotted and never rendered. */
+  title?: string;
   phone?: string;
   email?: string;
   project_name?: string;
@@ -169,6 +173,10 @@ export type CommercialProposalLineItem = {
   /** R1a: print this line's price on the client PDF (default true). Hidden lines
    *  still count toward the proposal total. */
   show_price: boolean;
+  /** Brendan 2026-08-17: overrides qty x unit_price for this line only, so a
+   *  line can be discounted or uplifted while the quantity stays honest on the
+   *  page. NULL = computed normally. */
+  line_total_override_cents: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -1900,6 +1908,7 @@ export type CreateLineItemInput = {
   /** R1a (migration 100): print this line's price on the client PDF. Default
    *  true. Hidden lines still count toward the total. */
   show_price?: boolean;
+  line_total_override_cents?: number | null;
 };
 
 /** Migration 071 deploy-safety helpers. `product_name` is a brand-new
@@ -2019,7 +2028,8 @@ export async function createLineItem(
       is_labor: input.is_labor ?? false,
       // R1a (migration 100): default true. On an un-migrated DB the generic
       // missing-column retry below drops it (defaults to true server-side).
-      show_price: input.show_price ?? true,
+      show_price: input.show_price ?? false,
+      line_total_override_cents: input.line_total_override_cents ?? null,
     }, input.product_name))
     .select("*")
     .single();
@@ -2081,6 +2091,7 @@ export type UpdateLineItemInput = {
   phase?: string | null;
   /** R1a: toggle per-line price visibility on the client PDF. */
   show_price?: boolean;
+  line_total_override_cents?: number | null;
 };
 
 export async function updateLineItem(
@@ -2140,6 +2151,7 @@ export async function updateLineItem(
   }
   if (input.is_alternate !== undefined) patch.is_alternate = input.is_alternate;
   if (input.show_price !== undefined) patch.show_price = input.show_price;
+  if (input.line_total_override_cents !== undefined) patch.line_total_override_cents = input.line_total_override_cents;
   if (input.position !== undefined) patch.position = input.position;
   if (input.phase !== undefined) {
     // F.6 audit fix: strip newlines + zero-width chars so a paste-in

@@ -21,6 +21,7 @@ import {
   TOMCO_COMPANY_FOOTER,
   tomcoDefaultIntro,
   proposalTotalLabel,
+  proposalRevisionLabel,
 } from "./constants";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
 import type {
@@ -311,6 +312,16 @@ const styles = StyleSheet.create({
   bulletBody: {
     flex: 1,
     fontSize: 11,
+  },
+  // Brendan 2026-08-17: a ticked line shows its price and nothing else — no
+  // unit price, no unit, no quantity. Right-aligned so a column of them reads
+  // cleanly against the single TOTAL below.
+  inlinePrice: {
+    fontSize: 11,
+    fontFamily: "Times-Bold",
+    marginLeft: 8,
+    textAlign: "right",
+    minWidth: 66,
   },
   bulletLead: {
     fontFamily: "Times-Bold",
@@ -684,7 +695,7 @@ function LogoBlock({
 }
 
 function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
-  const hasAttentionBlock = Boolean(h.attention || h.phone || h.email);
+  const hasAttentionBlock = Boolean(h.attention || h.title || h.phone || h.email);
   return (
     <View>
       <Text style={styles.sectionUnderlineHeader}>PROPOSAL SUBMITTED TO:</Text>
@@ -706,6 +717,7 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
           {h.attention && (
             <Text style={styles.addrLine}>Attention: {h.attention}</Text>
           )}
+          {h.title && <Text style={styles.addrLine}>{h.title}</Text>}
           {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
           {h.email && (
             <Text style={[styles.addrLine, styles.link]}>{h.email}</Text>
@@ -716,8 +728,15 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
   );
 }
 
-function ProjectBlock({ h }: { h: ProposalHeaderJson }) {
-  const name = h.project_name?.trim();
+function ProjectBlock({ h, revisionLabel }: { h: ProposalHeaderJson; revisionLabel?: string }) {
+  // Brendan 2026-08-17: "it's important that we label it R1 on the customer
+  // proposals. We typically put it right before the 'Tomco Office' on the
+  // project line." So the label leads the project NAME, not the address:
+  //   PROJECT: R1 Tomco Office, 123 Main Street, Bay Shore
+  // Uses the shared proposalRevisionLabel, which stays empty until numbering
+  // has started on the deal — an unsent first draft still prints no label.
+  const rawName = h.project_name?.trim();
+  const name = rawName && revisionLabel ? `${revisionLabel} ${rawName}` : rawName;
   const addr = h.project_address?.trim();
   if (!name && !addr) return null;
   // Tomco reference format is a single "PROJECT: Name, Address" line
@@ -758,6 +777,12 @@ function ProjectBlock({ h }: { h: ProposalHeaderJson }) {
  *  bold-lead out of the description, preserving how they were authored. */
 function ItemLine({ item }: { item: CommercialProposalLineItem }) {
   const productName = item.product_name?.trim();
+  // Brendan 2026-08-17: "when you click show line item price on the product it
+  // doesn't show up… Just the price is good." The per-line checkbox used to
+  // gate a cell in the itemized TABLE, which the default customer proposal
+  // never renders — so it did nothing here. Now a ticked line prints its own
+  // total inline, and ONLY the money: no unit price, no unit, no quantity.
+  const priceText = item.show_price === true ? formatDollars(lineTotalCents(item)) : null;
   if (productName) {
     const raw = normalizeWs(item.description ?? "");
     const bodyLines = raw.includes("\n")
@@ -785,6 +810,7 @@ function ItemLine({ item }: { item: CommercialProposalLineItem }) {
             <Text style={styles.bulletLead}>{productName}</Text>
             {bodyLines.length === 1 ? <Text>{" — " + bodyLines[0]}</Text> : null}
           </Text>
+          {priceText && <Text style={styles.inlinePrice}>{priceText}</Text>}
         </View>
         {bodyLines.length > 1 &&
           bodyLines.map((sub, i) => (
@@ -796,10 +822,10 @@ function ItemLine({ item }: { item: CommercialProposalLineItem }) {
       </View>
     );
   }
-  return <BulletLine text={item.description} />;
+  return <BulletLine text={item.description} price={priceText} />;
 }
 
-function BulletLine({ text }: { text: string }) {
+function BulletLine({ text, price }: { text: string; price?: string | null }) {
   const { lead, body } = splitBoldLead(text);
   // Split body by explicit newlines OR by ", " when there are ≥3
   // fragments (looks like a list of sub-items rather than a sentence
@@ -816,10 +842,13 @@ function BulletLine({ text }: { text: string }) {
     // first as inline and the rest as bulleted sub-lines.
     return (
       <View style={styles.itemLine}>
-        <Text style={{ fontSize: 11 }}>
-          <Text style={styles.bulletLead}>{lead}:</Text>
-          {bodyLines[0] ? <Text>{" " + bodyLines[0]}</Text> : null}
-        </Text>
+        <View style={styles.bulletRow}>
+          <Text style={[styles.bulletBody, { fontSize: 11 }]}>
+            <Text style={styles.bulletLead}>{lead}:</Text>
+            {bodyLines[0] ? <Text>{" " + bodyLines[0]}</Text> : null}
+          </Text>
+          {price && <Text style={styles.inlinePrice}>{price}</Text>}
+        </View>
         {shouldBulletSubs && bodyLines.slice(1).map((sub, i) => (
           <View key={i} style={styles.bulletSubRow}>
             <View style={styles.bulletSubDot} />
@@ -843,8 +872,23 @@ function BulletLine({ text }: { text: string }) {
     return (
       <View style={styles.itemLine}>
         {bodyLines.map((line, i) => (
-          <Text key={i} style={{ fontSize: 11 }}>{line}</Text>
+          <View key={i} style={styles.bulletRow}>
+            <Text style={[styles.bulletBody, { fontSize: 11 }]}>{line}</Text>
+            {/* Price rides the LAST line so it lands level with the end of
+                the item, not floating beside its first line. */}
+            {price && i === bodyLines.length - 1 && (
+              <Text style={styles.inlinePrice}>{price}</Text>
+            )}
+          </View>
         ))}
+      </View>
+    );
+  }
+  if (price) {
+    return (
+      <View style={[styles.itemLine, styles.bulletRow]}>
+        <Text style={[styles.bulletBody, { fontSize: 11 }]}>{body}</Text>
+        <Text style={styles.inlinePrice}>{price}</Text>
       </View>
     );
   }
@@ -896,6 +940,14 @@ function groupItemsByPhase(items: CommercialProposalLineItem[]): {
 /** Line total in cents — the ONE definition, so per-line, per-phase-subtotal,
  *  and grand-total all round identically and reconcile to the penny. */
 function lineTotalCents(it: CommercialProposalLineItem): number {
+  // An explicit override wins over qty x unit price, so an estimator can
+  // discount or uplift a line without faking the quantity (Brendan 2026-08-17).
+  // This is the single definition — per-line, per-phase subtotal and the grand
+  // total all route through it, so an override can never desync them.
+  const ov = it.line_total_override_cents;
+  if (ov !== null && ov !== undefined && Number.isFinite(Number(ov))) {
+    return Math.round(Number(ov));
+  }
   return Math.round(Number(it.quantity) * it.unit_price_cents);
 }
 
@@ -1011,12 +1063,15 @@ function LiRow({
       </Text>
       <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
       <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
-      {/* R1a: hide this line's price when show_price is explicitly false. The
-          row still counts toward the total (subtotals use lineTotalCents for
-          every row). `=== false` (not `!show_price`) so undefined/true → show,
-          which is correct for the deploy window before migration 100. */}
-      <Text style={[styles.liCell, styles.liCellPrice]}>{it.show_price === false ? "—" : formatDollars(it.unit_price_cents)}</Text>
-      <Text style={[styles.liCell, styles.liCellLine]}>{it.show_price === false ? "—" : formatDollars(lineTotalCents(it))}</Text>
+      {/* The itemized TABLE always shows its numbers. It only renders in two
+          situations — the internal estimator copy, and a customer copy where
+          someone deliberately turned on "show the full breakdown" — and in
+          both the whole point is the math. `show_price` is no longer consulted
+          here: since migration 148 it means "print this line's price inline on
+          the DEFAULT customer proposal", which is a different question. Reading
+          it here would have blanked every cell to "—" after the backfill. */}
+      <Text style={[styles.liCell, styles.liCellPrice]}>{formatDollars(it.unit_price_cents)}</Text>
+      <Text style={[styles.liCell, styles.liCellLine]}>{formatDollars(lineTotalCents(it))}</Text>
     </View>
   );
 }
@@ -1364,7 +1419,7 @@ export function ProposalPdfDocument({
           }
         />
         <SubmittedToBlock h={proposal.header_json} />
-        <ProjectBlock h={proposal.header_json} />
+        <ProjectBlock h={proposal.header_json} revisionLabel={proposalRevisionLabel(proposal)} />
         {/* Bid Set date. Folded into the intro sentence when we're using the
             default intro (see above); still printed as its own line when the
             estimator supplied a custom intro, so the date is never lost. */}

@@ -100,7 +100,7 @@ export async function hydrateProposalContext(
     const sb = commercialDb();
     const { data, error } = await sb
       .from("commercial_contacts")
-      .select("full_name, email, phone")
+      .select("full_name, email, phone, title")
       .eq("id", attentionContactId)
       .maybeSingle();
     if (error) {
@@ -110,11 +110,13 @@ export async function hydrateProposalContext(
       full_name: string | null;
       email: string | null;
       phone: string | null;
+      title: string | null;
     } | null;
     if (c) {
       if (c.full_name?.trim()) header.attention = c.full_name.trim();
       if (c.email) header.email = c.email;
       if (c.phone) header.phone = c.phone;
+      if (c.title?.trim()) header.title = c.title.trim();
     }
   }
 
