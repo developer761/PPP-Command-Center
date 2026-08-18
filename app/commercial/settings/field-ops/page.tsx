@@ -41,7 +41,14 @@ async function savePinAction(formData: FormData) {
   if (!/^\d{4,8}$/.test(raw)) {
     redirect(`${BASE}?error=${encodeURIComponent("PIN must be 4–8 digits.")}`);
   }
-  await setCommercialSetting(CLOCK_OVERRIDE_PIN_KEY, raw, user.id);
+  // setCommercialSetting THROWS on a write failure, which would drop the whole
+  // page into the error boundary for what is a retryable save. Catch it and use
+  // the banner this page already has.
+  try {
+    await setCommercialSetting(CLOCK_OVERRIDE_PIN_KEY, raw, user.id);
+  } catch {
+    redirect(`${BASE}?error=${encodeURIComponent("Couldn't save the PIN. Please try again.")}`);
+  }
   redirect(`${BASE}?ok=saved`);
 }
 

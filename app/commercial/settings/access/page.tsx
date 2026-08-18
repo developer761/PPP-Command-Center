@@ -118,7 +118,16 @@ async function toggleUserEmailAction(formData: FormData) {
       );
     }
   } else {
-    await setUserEmailEnabled({ userId, enabled: false });
+    const off = await setUserEmailEnabled({ userId, enabled: false });
+    // Turning email ON already reports failure; turning it OFF didn't, so a
+    // failed opt-out looked identical to a successful one — and the person
+    // keeps getting mail they just told the platform to stop sending.
+    if (!off.ok) {
+      redirect(
+        "/commercial/settings/access?se_error=" +
+          encodeURIComponent(off.error ?? "Couldn't turn off email notifications. Please try again.")
+      );
+    }
   }
   revalidatePath("/commercial/settings/access");
 }

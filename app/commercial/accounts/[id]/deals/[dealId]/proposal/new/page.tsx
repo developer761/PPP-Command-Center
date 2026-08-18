@@ -206,12 +206,20 @@ export default async function CreateProposalRoute({
     // the line copy so recomputeProposalTotal (inside updateProposal) pins
     // total_cents to the override once the line items exist.
     if (bidSetDate != null || finalPriceOverride != null) {
-      await updateProposal({
+      const carried = await updateProposal({
         id: result.proposal.id,
         bid_set_date: bidSetDate,
         final_price_override_cents: finalPriceOverride,
         updated_by_user_id: user.id,
       });
+      // Don't let this fail quietly. If the override doesn't carry, the new
+      // revision shows a COMPUTED total where Brendan set a price by hand —
+      // a wrong number that looks exactly like a right one.
+      if (!carried.ok) {
+        failed.push(
+          `The final price / bid-set date didn't carry to this revision (${carried.error}). Set them again before sending.`
+        );
+      }
     }
     if (failed.length > 0) {
       // Land on the editor with a warning + preserve query state so

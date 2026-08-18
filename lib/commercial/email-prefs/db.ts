@@ -60,27 +60,34 @@ export async function saveUserNotifyEmail(input: {
 export async function setUserEmailEnabled(input: {
   userId: string;
   enabled: boolean;
-}): Promise<{ ok: boolean }> {
+}): Promise<{ ok: boolean; error?: string }> {
   try {
     const sb = commercialDb();
     const { error } = await sb
       .from("commercial_user_email_prefs")
       .update({ enabled: input.enabled, updated_at: new Date().toISOString() })
       .eq("user_id", input.userId);
-    return { ok: !error };
+    // Carries a message now: the caller redirected on failure with nothing to
+    // say, and a toggle that reverts on reload with no explanation reads as a
+    // mis-click rather than a fault.
+    return error
+      ? { ok: false, error: "Couldn't change your email setting. Please try again." }
+      : { ok: true };
   } catch {
-    return { ok: false };
+    return { ok: false, error: "Couldn't change your email setting. Please try again." };
   }
 }
 
 /** Remove the saved email entirely. */
-export async function deleteUserEmailPref(userId: string): Promise<{ ok: boolean }> {
+export async function deleteUserEmailPref(userId: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const sb = commercialDb();
     const { error } = await sb.from("commercial_user_email_prefs").delete().eq("user_id", userId);
-    return { ok: !error };
+    return error
+      ? { ok: false, error: "Couldn't remove your email. Please try again." }
+      : { ok: true };
   } catch {
-    return { ok: false };
+    return { ok: false, error: "Couldn't remove your email. Please try again." };
   }
 }
 

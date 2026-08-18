@@ -2018,7 +2018,10 @@ async function removeTagAction(formData: FormData) {
   }
   // The lib verifies (tag_id, account_id) pairing so a stray tag UUID
   // from another account can't be deleted from this one.
-  await removeAccountTag(account_id, tag_id, user.id);
+  const removed = await removeAccountTag(account_id, tag_id, user.id);
+  if (!removed.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=info&error=` + encodeURIComponent(removed.error));
+  }
   redirect(`/commercial/accounts/${account_id}?tab=info`);
 }
 
@@ -2861,7 +2864,10 @@ async function removeAssignmentAction(formData: FormData) {
   // Security fix 2026-06-24: pass account_id so the lib double-scopes
   // the row + the update. Without this, a hand-crafted POST with a
   // foreign assignment_id could soft-delete a row from a different account.
-  await removeAssignment(account_id, assignment_id, user.id);
+  const removed = await removeAssignment(account_id, assignment_id, user.id);
+  if (!removed.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=` + encodeURIComponent(removed.error));
+  }
   redirect(`/commercial/accounts/${account_id}?tab=team`);
 }
 

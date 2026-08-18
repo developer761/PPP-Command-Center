@@ -78,11 +78,14 @@ async function createAction(formData: FormData) {
 async function toggleAction(formData: FormData) {
   "use server";
   const userId = await requireUser();
-  await setNotificationRuleEnabled({
+  const res = await setNotificationRuleEnabled({
     ownerUserId: userId,
     ruleId: String(formData.get("id") ?? ""),
     enabled: String(formData.get("enabled") ?? "") === "true",
   });
+  // A toggle that silently fails to save is worse than one that errors: the
+  // switch flips back on reload and you assume you mis-clicked.
+  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error)}`);
   revalidatePath(BASE);
   redirect(BASE);
 }
@@ -90,7 +93,8 @@ async function toggleAction(formData: FormData) {
 async function deleteAction(formData: FormData) {
   "use server";
   const userId = await requireUser();
-  await deleteNotificationRule({ ownerUserId: userId, ruleId: String(formData.get("id") ?? "") });
+  const res = await deleteNotificationRule({ ownerUserId: userId, ruleId: String(formData.get("id") ?? "") });
+  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error)}`);
   revalidatePath(BASE);
   redirect(`${BASE}?ok=deleted`);
 }
@@ -100,7 +104,7 @@ async function saveEmailAction(formData: FormData) {
   const userId = await requireUser();
   const res = await saveUserNotifyEmail({ userId, email: String(formData.get("email") ?? "") });
   revalidatePath(BASE);
-  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error)}#email`);
+  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error ?? "Couldn't save that. Please try again.")}#email`);
   redirect(`${BASE}?ok=email_saved#email`);
 }
 
@@ -116,7 +120,8 @@ async function testEmailAction() {
 async function toggleEmailAction(formData: FormData) {
   "use server";
   const userId = await requireUser();
-  await setUserEmailEnabled({ userId, enabled: String(formData.get("enabled") ?? "") === "true" });
+  const res = await setUserEmailEnabled({ userId, enabled: String(formData.get("enabled") ?? "") === "true" });
+  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error ?? "Couldn't save that. Please try again.")}#email`);
   revalidatePath(BASE);
   redirect(`${BASE}#email`);
 }
@@ -124,7 +129,8 @@ async function toggleEmailAction(formData: FormData) {
 async function removeEmailAction() {
   "use server";
   const userId = await requireUser();
-  await deleteUserEmailPref(userId);
+  const res = await deleteUserEmailPref(userId);
+  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error ?? "Couldn't save that. Please try again.")}#email`);
   revalidatePath(BASE);
   redirect(`${BASE}?ok=email_removed#email`);
 }

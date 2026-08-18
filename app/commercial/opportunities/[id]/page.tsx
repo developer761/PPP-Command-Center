@@ -950,7 +950,10 @@ async function removeTeamAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(assignment_id)) {
     redirect("/commercial/opportunities");
   }
-  await removeOpportunityAssignment(opportunity_id, assignment_id, user.id);
+  const removed = await removeOpportunityAssignment(opportunity_id, assignment_id, user.id);
+  if (!removed.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=` + encodeURIComponent(removed.error));
+  }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
 }
 
@@ -1013,7 +1016,10 @@ async function deleteTaskAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(task_id)) {
     redirect("/commercial/opportunities");
   }
-  await deleteOpportunityTask(opportunity_id, task_id, user.id);
+  const deleted = await deleteOpportunityTask(opportunity_id, task_id, user.id);
+  if (!deleted.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks&error=` + encodeURIComponent(deleted.error));
+  }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks`);
 }
 
@@ -1374,7 +1380,10 @@ async function deleteNoteAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(note_id)) {
     redirect("/commercial/opportunities");
   }
-  await deleteOpportunityNote(opportunity_id, note_id, user.id);
+  const deleted = await deleteOpportunityNote(opportunity_id, note_id, user.id);
+  if (!deleted.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=` + encodeURIComponent(deleted.error));
+  }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
 }
 
