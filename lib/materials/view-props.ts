@@ -55,6 +55,30 @@ async function loadFollowupDates(): Promise<Record<string, string>> {
   }
 }
 
+/** Worker-typed square footage for a SPECIFIC set of line items (migration
+ *  073). Used by the order path, which must see the same numbers the work-order
+ *  page shows. Deploy-safe: returns {} on any failure. */
+export async function loadSqftOverridesFor(woliIds: string[]): Promise<Record<string, number>> {
+  if (woliIds.length === 0) return {};
+  try {
+    const sb = createSupabaseAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+    const { data, error } = await sb
+      .from("wo_li_sqft_overrides")
+      .select("woli_id,sqft")
+      .in("woli_id", woliIds);
+    if (error || !data) return {};
+    const out: Record<string, number> = {};
+    for (const r of data as Array<{ woli_id: string; sqft: number }>) out[r.woli_id] = r.sqft;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /** Load all manually-entered sqft overrides (migration 073). Deploy-safe:
  *  returns {} if the table doesn't exist yet or the query fails. */
 async function loadSqftOverrides(): Promise<Record<string, number>> {

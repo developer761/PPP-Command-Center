@@ -6,6 +6,7 @@ import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrder
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { extractMachineColorLines } from "@/lib/customer-form/notes";
+import { denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
 import type {
   SnapshotAccount,
   SnapshotPaintColor,
@@ -137,6 +138,16 @@ export type BuildSupplierOrderInput = {
    *  the order goes out empty/short. Auto-detected groups still filter by
    *  manufacturer (to split brands across their mapped suppliers). */
   includeAllColors?: boolean;
+  /** Worker-typed square footage per WorkOrderLineItem (`wo_li_sqft_overrides`,
+   *  migration 073). The single most valuable manual entry in the whole flow —
+   *  ~77% of PPP's open rooms have no Sq_Footage__c at all, so without this the
+   *  estimator has nothing to work from and the vendor gets
+   *  "___ (PPP to confirm quantity)".
+   *
+   *  It was measured, typed, saved and shown on the work-order page — and then
+   *  dropped on the way to the order, because only view-props read the table.
+   *  The WO page and the email disagreed about the same room. */
+  sqftOverrides?: Record<string, number>;
   /** Kate round-3 #18/#22/#23/#26: the worker's COMMITTED per-line quantities,
    *  keyed by `${colorId}::${finish ?? ""}`. The email is rendered FROM these —
    *  previously the modal typed a quantity, then rewrote the rendered body with
@@ -313,8 +324,19 @@ async function nextPoNumber(workOrderId: string, woNumber: string): Promise<stri
 }
 
 /** Compute required-by: WO close date if it's already 3+ days out, else today + 3 days. */
+/** Today in PPP's timezone (Eastern), as yyyy-mm-dd. */
+function todayEtISO(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
 function computeRequiredByDate(workOrder: SnapshotWorkOrder, override?: string): string {
-  if (override) return override;
+  // Kate round-3 #32: never ask a vendor to deliver in the past. The override
+  // arrives from the client, so it is validated HERE — the date input's `min`
+  // and the display clamp are conveniences, not the rule. A hand-typed or
+  // tampered value used to render straight into the email body while the
+  // supplier_orders row recorded something else entirely.
+  const todayEt = todayEtISO();
+  if (override) return override < todayEt ? todayEt : override;
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   // Kate round-2 #24: default the "Required by" to the job's START date; if the
@@ -398,13 +420,22 @@ function resolveLineItems(
     // Surfaces on THIS supplier's order for this room — fed to the estimator.
     const roomSurfaces: RoomSurface[] = [];
 
-    type SurfaceSlot = { fieldKey: string; surfaceLabel: string; existingColorId: string | null };
+    // Each slot carries the WOLI's OWN finish (FinishWall__c etc.), not just its
+    // colour. Without it, a rep who enters colours directly in Salesforce — no
+    // customer form involved — produced order lines with no sheen at all, and
+    // two sheens of one colour MERGED into a single line, because the estimator
+    // buckets on `colorId::finish`. Simply White Eggshell on the walls and
+    // Simply White Semigloss on the trim became "4 gal — Simply White · Walls,
+    // Trim": the vendor mixes one sheen for a two-sheen job, and the merge
+    // changes the packaging arithmetic so the work-order page and the email
+    // disagree on the gallon total.
+    type SurfaceSlot = { fieldKey: string; surfaceLabel: string; existingColorId: string | null; existingFinish: string | null };
     const slots: SurfaceSlot[] = [
-      { fieldKey: "colorWallId",    surfaceLabel: "Walls",   existingColorId: woli.colorWallId },
-      { fieldKey: "colorCeilingId", surfaceLabel: "Ceiling", existingColorId: woli.colorCeilingId },
-      { fieldKey: "colorTrimId",    surfaceLabel: "Trim",    existingColorId: woli.colorTrimId },
-      { fieldKey: "colorOtherId",   surfaceLabel: "Other",   existingColorId: woli.colorOtherId },
-      { fieldKey: "colorFloorId",   surfaceLabel: "Floor",   existingColorId: woli.colorFloorId },
+      { fieldKey: "colorWallId",    surfaceLabel: "Walls",   existingColorId: woli.colorWallId,    existingFinish: woli.finishWall },
+      { fieldKey: "colorCeilingId", surfaceLabel: "Ceiling", existingColorId: woli.colorCeilingId, existingFinish: woli.finishCeiling },
+      { fieldKey: "colorTrimId",    surfaceLabel: "Trim",    existingColorId: woli.colorTrimId,    existingFinish: woli.finishTrim },
+      { fieldKey: "colorOtherId",   surfaceLabel: "Other",   existingColorId: woli.colorOtherId,   existingFinish: woli.finishOther },
+      { fieldKey: "colorFloorId",   surfaceLabel: "Floor",   existingColorId: woli.colorFloorId,   existingFinish: woli.finishFloor },
     ];
 
     for (const slot of slots) {
@@ -443,7 +474,7 @@ function resolveLineItems(
         colorName: color.name,
         colorCode: color.code,
         manufacturerName: input.supplierAccount.name,
-        finish: customerPick?.finish ?? null,
+        finish: customerPick?.finish ?? denormalizeFinishFromSf(slot.existingFinish),
         sqft,
         coats,
         sourceWoliId: woli.id,
@@ -458,7 +489,7 @@ function resolveLineItems(
         colorId,
         colorName: color.name,
         colorCode: color.code,
-        finish: customerPick?.finish ?? null,
+        finish: customerPick?.finish ?? denormalizeFinishFromSf(slot.existingFinish),
       });
     }
 
@@ -513,7 +544,9 @@ function resolveLineItems(
       rooms.push({
         woliId: woli.id,
         roomLabel,
-        floorAreaSqft: woli.sqFootage,
+        // A number a human measured beats a blank (or stale) Salesforce field.
+        // 0 means "cleared" and correctly falls back to Salesforce.
+        floorAreaSqft: input.sqftOverrides?.[woli.id] || woli.sqFootage,
         wallSurfaceAreaSqft: woli.wallSurfaceArea, // measured wall area wins when >0
         perimeterLf: woli.perimeter,        // 0/missing → estimator derives 4×√(floor)
         heightFt: woli.heightFt,            // 0/missing → estimator default (8 ft)
@@ -1052,8 +1085,13 @@ export async function buildSupplierOrderDraft(
   for (const li of input.woliRows) {
     const machineLines = extractMachineColorLines(li.colorNotes);
     if (machineLines.length === 0) continue;
+    // Kate round-3 #31: one surface per LINE. The Salesforce write was fixed to
+    // do this, and then this join(" · ") put them straight back onto a single
+    // run-on line — the exact separator she rejected — in the order's Color
+    // Notes box and in the vendor email's COLOR NOTES block.
     const label = (li.areaLabel ?? "").trim();
-    colorNotesDefaultParts.push(label ? `- ${label}: ${machineLines.join(" · ")}` : `- ${machineLines.join(" · ")}`);
+    if (label) colorNotesDefaultParts.push(`${label}:`);
+    for (const line of machineLines) colorNotesDefaultParts.push(line);
   }
   for (const { roomLabel, note } of perLineNotes) {
     colorNotesDefaultParts.push(roomLabel ? `- ${roomLabel}: ${note}` : `- ${note}`);

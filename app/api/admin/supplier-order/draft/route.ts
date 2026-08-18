@@ -13,6 +13,7 @@ import {
 } from "@/lib/supplier-order/builder";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { loadSqftOverridesFor } from "@/lib/materials/view-props";
 
 /**
  * Generates an auto-populated supplier order draft for a given WO + supplier.
@@ -236,6 +237,12 @@ export async function POST(request: Request) {
     console.warn("[supplier-order/draft] customer payload load failed (non-fatal):", err);
   }
 
+  // Kate round-3 #05: the square footage a worker typed on the work-order page
+  // has to reach the order, or the page's own promise ("the gallon estimator
+  // updates instantly") is false one click later and the vendor is asked to
+  // confirm a quantity we already know.
+  const sqftOverrides = await loadSqftOverridesFor(woliRows.map((w) => w.id));
+
   const draft = await buildSupplierOrderDraft({
     workOrder,
     woliRows,
@@ -250,6 +257,7 @@ export async function POST(request: Request) {
     specialInstructions: body.specialInstructions,
     requiredByDate: body.requiredByDate,
     includeAllColors: body.manualSupplier ?? false,
+    sqftOverrides,
     manualDeliveryAddress: body.manualDeliveryAddress,
     materialType: body.materialType, // Kate #16: estimator's main paint line
     colorNotes: body.colorNotes, // Kate #25: editable Color Notes

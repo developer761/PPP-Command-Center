@@ -121,6 +121,8 @@ export default function OrderBuilderView({
   // missing). Distinct from an error — nothing failed, it just won't survive,
   // and the next step will read an empty order.
   const [notPersisted, setNotPersisted] = useState(false);
+  /** Which vendor the in-memory payload was loaded for. */
+  const [loadedFor, setLoadedFor] = useState<string | null>(initialSupplierId);
 
   /* ── Persist ─────────────────────────────────────────────────────────────
    * Autosave is debounced and fire-and-forget; the commit on "Continue" is
@@ -158,6 +160,8 @@ export default function OrderBuilderView({
   // work order + supplier).
   useEffect(() => {
     if (!supplier) return;
+    // Don't write until the payload in memory is THIS vendor's.
+    if (loadedFor !== supplier.accountId) return;
     const accountId = supplier.accountId;
     const snapshot = payload;
     const t = setTimeout(() => {
@@ -168,7 +172,67 @@ export default function OrderBuilderView({
       });
     }, 600);
     return () => clearTimeout(t);
-  }, [payload, supplier, save]);
+  }, [payload, supplier, save, loadedFor]);
+
+  /* ── Load the saved order for THIS vendor ───────────────────────────────
+   * Without this, switching vendors carried the previous vendor's payload:
+   * the autosave (keyed on work order + supplier) immediately wrote Sherwin's
+   * quantities, extras and custom lines onto the Benjamin Moore row, and the
+   * BM order was never loaded at all. On a two-vendor job the tape got ordered
+   * twice and one vendor's order silently became the other's.
+   *
+   * `loadedFor` tracks which vendor the in-memory payload belongs to, so the
+   * autosave below can't fire with a mismatched pair.
+   */
+  useEffect(() => {
+    if (!supplier) return;
+    if (loadedFor === supplier.accountId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/supplier-order/build?workOrderId=${encodeURIComponent(workOrderId)}` +
+            `&supplierAccountId=${encodeURIComponent(supplier.accountId)}`
+        );
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (res.ok && data.ok !== false && data.payload) {
+          setPayload({
+            ...(data.payload as OrderBuildPayload),
+            // Keep the work order's paint line as the fallback for a vendor
+            // that has no saved order yet (#24).
+            mainMaterialType:
+              (data.payload as OrderBuildPayload).mainMaterialType || initialPayload.mainMaterialType || "",
+          });
+        }
+      } catch (err) {
+        console.warn("[order-builder] couldn't load this vendor's saved order:", err);
+      } finally {
+        if (!cancelled) setLoadedFor(supplier.accountId);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [supplier, workOrderId, loadedFor, initialPayload.mainMaterialType]);
+
+  // Resume: we know the vendor's id but not its name until the list loads.
+  useEffect(() => {
+    if (!supplier || supplier.name) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/suppliers/active");
+        const data = await res.json();
+        if (cancelled || !res.ok || !data.ok) return;
+        const hit = (data.suppliers ?? []).find(
+          (x: ActiveSupplier) => x.accountId === supplier.accountId
+        );
+        if (hit) setSupplier({ accountId: hit.accountId, name: hit.name });
+      } catch {
+        /* leave the placeholder — not worth failing the page over */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [supplier]);
 
   /* ── Extras catalogue ──────────────────────────────────────────────────── */
   useEffect(() => {
@@ -417,7 +481,12 @@ export default function OrderBuilderView({
         {supplier ? (
           <div className="px-4 py-3 flex items-center gap-2 text-sm">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-ppp-green-50 text-ppp-green-700 text-xs font-bold" aria-hidden>✓</span>
-            <span className="font-semibold text-ppp-charcoal">{supplier.name || "Selected vendor"}</span>
+            {/* On a resumed order the name isn't known until the supplier list
+                loads — say "Loading…" rather than "Selected vendor", which read
+                as a real state and left the only way to identify the store as
+                "Change vendor", i.e. discarding the order to find out what it
+                was for. */}
+            <span className="font-semibold text-ppp-charcoal">{supplier.name || "Loading vendor…"}</span>
           </div>
         ) : (
           <SupplierPickList
@@ -456,7 +525,7 @@ export default function OrderBuilderView({
             </div>
             {!payload.mainMaterialType && (
               <p className="mt-2 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
-                ⚠ Paint line not set — pick one here so the vendor knows which line to mix.
+                ⚠ Paint line not set — pick one here, or the customer can choose it on their colour form.
               </p>
             )}
           </section>

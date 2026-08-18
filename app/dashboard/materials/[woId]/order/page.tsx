@@ -1,5 +1,6 @@
 import Link from "next/link";
 import OrderBuilderView from "@/components/order-builder-view";
+import { paintLineFromValue } from "@/lib/customer-form/material-types";
 import {
   loadOrderPageData,
   loadLatestBuildForWorkOrder,
@@ -69,7 +70,17 @@ export default async function OrderBuilderPage({
       customerName={data.job.wo.accountName ?? null}
       sourceLines={data.sourceLines}
       previewGroups={data.previewGroups}
-      initialPayload={latest.payload}
+      // Kate round-3 #24: seed the paint line from the work order when the
+      // saved build has none. The AM picks a line on Internal Entry, it lands
+      // on WorkOrder.MaterialType__c — and the order form still showed an empty
+      // dropdown and an orange "Paint line not set" warning, which is exactly
+      // the complaint. The fallback chain existed only inside the EMAIL
+      // builder, so the email would have carried it while the screen denied it.
+      initialPayload={{
+        ...latest.payload,
+        mainMaterialType:
+          latest.payload.mainMaterialType || paintLineFromValue(data.job.wo.materialType) || "",
+      }}
       initialSupplierId={latest.supplierAccountId}
       persistenceAvailable={latest.available}
     />

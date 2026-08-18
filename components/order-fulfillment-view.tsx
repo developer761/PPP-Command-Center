@@ -110,6 +110,14 @@ export default function OrderFulfillmentView({
   const [copyError, setCopyError] = useState<string | null>(null);
   const sendInFlight = useRef(false);
 
+  // Kate round-3 #32: never offer a required-by date in the past. The computed
+  // default can be historic on an old work order, so clamp what we show.
+  const requiredByValue = useMemo(() => {
+    const raw = requiredBy || (draft?.requiredByDate ?? "").slice(0, 10);
+    if (!raw) return "";
+    return raw < today ? today : raw;
+  }, [requiredBy, draft, today]);
+
   /* ── Draft ─────────────────────────────────────────────────────────────
    * Rebuilt when a FULFILMENT input changes. The order half of the request is
    * the committed payload, passed through verbatim every time — so a rebuild
@@ -153,7 +161,12 @@ export default function OrderFulfillmentView({
             manualDeliveryAddress:
               fulfillment === "delivery" && deliveryAddr.street.trim() ? deliveryAddr : undefined,
             specialInstructions: instructions.trim() || undefined,
-            requiredByDate: requiredBy.trim() || undefined,
+            // The CLAMPED value — the same one the input displays and the one
+            // send uses. Sending raw state here meant typing 01/01/2020 showed
+            // today in the box (clamped) while the email body rendered
+            // "Required by: January 1, 2020", and the supplier_orders row
+            // recorded today. The record and the vendor's copy disagreed.
+            requiredByDate: requiredByValue || undefined,
             contactName: viewerName ?? undefined,
             contactPhone: contactPhone.trim() || undefined,
             // ── committed order state, read-only from here ──
@@ -180,7 +193,7 @@ export default function OrderFulfillmentView({
     return () => { cancelled = true; clearTimeout(t); };
   }, [
     workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr,
-    instructions, requiredBy, contactPhone, viewerName, orderPayloadJson,
+    instructions, requiredByValue, contactPhone, viewerName, orderPayloadJson,
   ]);
 
   // Whether this delivery address is in the five boroughs. Derived, not stored
@@ -200,13 +213,6 @@ export default function OrderFulfillmentView({
     }
   }, [draft, isNycDelivery, fulfillment]);
 
-  // Kate round-3 #32: never offer a required-by date in the past. The computed
-  // default can be historic on an old work order, so clamp what we show.
-  const requiredByValue = useMemo(() => {
-    const raw = requiredBy || (draft?.requiredByDate ?? "").slice(0, 10);
-    if (!raw) return "";
-    return raw < today ? today : raw;
-  }, [requiredBy, draft, today]);
 
   const bodyToSend = editedBody ?? draft?.body ?? "";
 
