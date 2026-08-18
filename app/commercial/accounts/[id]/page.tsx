@@ -5458,7 +5458,16 @@ async function AccountInvoicesTab({
       )}
       {/* Rollup strip */}
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
+        <RollupTile
+          label="Billed"
+          value={formatCentsFull(rollup.invoiced_cents)}
+          sub={
+            rollup.aia_billed_cents > 0
+              ? `${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"} + AIA`
+              : `${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`
+          }
+          tone="neutral"
+        />
         <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="emerald" />
         <RollupTile label={rollup.open_balance_cents === 0 && rollup.credit_cents > 0 ? "Credit" : "Balance"} value={formatCentsFull(rollup.open_balance_cents > 0 ? rollup.open_balance_cents : rollup.credit_cents)} sub={rollup.open_balance_cents > 0 ? (rollup.credit_cents > 0 ? `unpaid · ${formatCentsFull(rollup.credit_cents)} credit` : "unpaid") : rollup.credit_cents > 0 ? "overpaid" : "settled"} tone={rollup.open_balance_cents > 0 ? "warn" : rollup.credit_cents > 0 ? "emerald" : "neutral"} />
         <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : rollup.overdue_count === 1 ? "invoice past due" : "invoices past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
@@ -5897,6 +5906,16 @@ async function AccountKpisTab({
   const winRateRaw = overview ? winRate(overview) : null;
   const winRatePct = winRateRaw === null ? null : Math.round(winRateRaw * 100);
   const paidPct = rollup.invoiced_cents > 0 ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100)) : 0;
+  // AIA money has no invoice rows behind it, so a count alone would read
+  // "$400,000 invoiced · none yet" on a GC billed entirely through G702/G703.
+  const billedSourceSub =
+    rollup.aia_billed_cents > 0 && rollup.invoice_count > 0
+      ? `${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"} + AIA`
+      : rollup.aia_billed_cents > 0
+      ? "AIA applications"
+      : rollup.invoice_count > 0
+      ? `${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`
+      : "none yet";
   const decidedCount = (overview?.won_opps_count ?? 0) + (overview?.lost_opps_count ?? 0);
   const bidLow = overview?.total_active_bid_low_cents ?? 0;
   const bidHigh = overview?.total_active_bid_high_cents ?? 0;
@@ -6025,13 +6044,25 @@ async function AccountKpisTab({
           <Link href={`/commercial/invoices?account_id=${accountId}`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Invoices →</Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-          <MiniFig label="Invoiced" value={formatCentsCompact(rollup.invoiced_cents)} tone="brand" sub={rollup.invoice_count > 0 ? `${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}` : "none yet"} />
+          <MiniFig label="Billed" value={formatCentsCompact(rollup.invoiced_cents)} tone="brand" sub={billedSourceSub} />
           <MiniFig label="Paid" value={formatCentsCompact(rollup.paid_cents)} tone="emerald" sub={hasInvoicing ? `${paidPct}% collected` : "—"} />
           <MiniFig
             label={isCredit ? "Credit" : "Outstanding"}
             value={formatCentsCompact(isCredit ? rollup.credit_cents : rollup.open_balance_cents)}
             tone={isCredit ? "emerald" : rollup.open_balance_cents > 0 ? "blue" : "neutral"}
-            sub={!hasInvoicing ? "not billed" : isCredit ? "overpaid" : rollup.open_balance_cents === 0 ? "settled" : "unpaid invoices"}
+            sub={
+              !hasInvoicing
+                ? "not billed"
+                : isCredit
+                ? "overpaid"
+                : rollup.retainage_held_cents > 0
+                ? // Retainage is excluded from what's owed NOW, so say where it went
+                  // — otherwise "settled" on a job with $10k held reads as a bug.
+                  `plus ${formatCentsCompact(rollup.retainage_held_cents)} retainage`
+                : rollup.open_balance_cents === 0
+                ? "settled"
+                : "unpaid"
+            }
           />
           <MiniFig label="Overdue" value={String(rollup.overdue_count)} tone={rollup.overdue_count > 0 ? "rose" : "neutral"} sub={rollup.overdue_count > 0 ? "past due" : "on track"} />
         </div>

@@ -961,7 +961,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             tone="ppp-blue"
             label="Outstanding"
             value={formatCentsCompact(outstandingCents)}
-            sub={outstandingCents === 0 ? "no unpaid invoices" : "unpaid balance across the book"}
+            // "across the book" overclaimed: this page is the INVOICE ledger, and
+            // AIA progress billing lives on its own. Since the dashboard's
+            // "Owed to us" now folds AIA in, an unqualified "across the book"
+            // here would be a second, smaller number wearing the same words.
+            sub={outstandingCents === 0 ? "no unpaid invoices" : "unpaid invoices (excludes AIA)"}
           />
           <KpiCard
             tone={overdueCount > 0 ? "rose" : "neutral"}
