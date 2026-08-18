@@ -104,8 +104,17 @@ function DeliverySpine({ stages, stageMeaning }: { stages: SpineStage[]; stageMe
             // A tick = done (or a discrete out-of-order thing). The current
             // in-progress stage is a filled amber dot + ring, no tick.
             const check = isDone || partialOutOfOrder;
-            const labelTone = st.current ? "text-amber-700 font-bold" : green || amber ? "text-ppp-charcoal font-bold" : "text-ppp-charcoal-400 font-semibold";
-            const metaTone = st.current ? "text-amber-700" : green ? "text-emerald-700" : amber ? "text-amber-700" : "text-ppp-charcoal-400";
+            // Tone follows the MARKER, not `current`. Keying off `current`
+            // first meant the stage you're standing on printed an amber
+            // ("in progress") label over a green ticked marker the moment its
+            // work finished — the two halves of one stage disagreeing about
+            // whether it was done.
+            const labelTone = green
+              ? "text-emerald-800 font-bold"
+              : amber
+              ? "text-amber-700 font-bold"
+              : "text-ppp-charcoal-400 font-semibold";
+            const metaTone = green ? "text-emerald-700" : amber ? "text-amber-700" : "text-ppp-charcoal-400";
             return (
               <li key={st.key} className="relative flex-1 min-w-[62px] text-center pt-8 px-0.5">
                 <span aria-hidden className={`absolute top-[10px] h-[3px] ${bar} ${first ? "left-1/2 right-0" : last ? "left-0 right-1/2" : "left-0 right-0"}`} />

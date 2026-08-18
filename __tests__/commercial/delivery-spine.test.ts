@@ -11,12 +11,24 @@ const base = { wonLabel: "Jul 18", onSite: false, submittals: null, billing: nul
 const stage = (s: ReturnType<typeof deriveDeliverySpine>, key: string) => s.find((x) => x.key === key)!;
 
 describe("deriveDeliverySpine", () => {
-  it("won but not started: Won done, Pre-con is the current stage, rest todo", () => {
+  it("won but not started: Won done, NOTHING current, rest todo", () => {
+    // Pre-con used to carry the "you are here" ring here, which said
+    // pre-construction was underway on a job nobody had touched — and the
+    // chevron bar directly above showed the whole ladder ahead, so one screen
+    // contradicted itself. Won-but-not-started means no stage is current.
     const s = deriveDeliverySpine({ ...base, status: "pre_sale_closed" });
     expect(stage(s, "won").state).toBe("done");
     expect(stage(s, "precon").state).toBe("todo");
-    expect(stage(s, "precon").current).toBe(true);
+    expect(s.every((st) => !st.current)).toBe(true);
     expect(stage(s, "production").state).toBe("todo");
+  });
+
+  it("pre-construction: Pre-con is partial AND current", () => {
+    // The ring appears the moment the job actually enters pre-con — the stage
+    // it was previously showing on before anything had started.
+    const s = deriveDeliverySpine({ ...base, status: "pre_construction" });
+    expect(stage(s, "precon").state).toBe("partial");
+    expect(stage(s, "precon").current).toBe(true);
   });
 
   it("in production: Pre-con done, Production partial + current", () => {

@@ -247,7 +247,13 @@ export function deriveDeliverySpine(input: {
     billing = toolSpineState(input.billing);
   }
 
-  const currentKey = r >= 4 ? "closeout" : r === 3 ? "billing" : r === 2 ? "production" : "precon";
+  // r === 0 is "won, nothing started". Pointing the ring at Pre-con there says
+  // pre-construction is UNDERWAY on a job nobody has touched — the chevron bar
+  // directly above already fixed exactly this (it passes currentKey null) and
+  // the two then contradicted each other on one screen. Null = the whole ladder
+  // is ahead of you, which is what won-not-started means.
+  const currentKey =
+    r >= 4 ? "closeout" : r === 3 ? "billing" : r === 2 ? "production" : r === 1 ? "precon" : null;
 
   // STAGE-level billing meta, not an invoice's. The invoices tool's own label is
   // things like "$50 paid in full" — true of that ONE invoice, but under the

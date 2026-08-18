@@ -396,7 +396,17 @@ export function StatusPathBar({
         <PathRow
           title="Delivery"
           stages={DELIVERY_STAGES}
-          skipped={skippedStages(DELIVERY_STAGES.map((st) => st.key), statusLog)}
+          // No "skipped" on the DELIVERY ladder. It marks a stage from the
+          // status LOG alone, so a job moved straight from Won to In Progress
+          // had Pre-Construction stamped SKIPPED — while the Project spine two
+          // panels down showed the same stage green and ticked, because it goes
+          // by rank. Of the two the spine is right: delivery stages describe
+          // work, and pre-con on a small job is a phone call nobody logs a
+          // status for. Skipping remains meaningful on the SALE row above,
+          // where never having been Estimating is a real process fact — and
+          // Karan's one colour rule (green done / amber in-progress / grey not
+          // started) has no fourth state anyway.
+          skipped={[]}
           // AUDIT: the comment said "nothing is current yet" and then passed
           // "pre_construction" anyway, so a job won this morning showed
           // Pre-Construction as underway before anyone had touched it. Null
