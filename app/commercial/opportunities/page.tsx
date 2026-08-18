@@ -116,7 +116,6 @@ import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submitta
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
-import { HBars } from "@/components/commercial/charts";
 import { DateField } from "@/components/commercial/date-field";
 import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
 import { listTeams } from "@/lib/commercial/teams/db";
@@ -781,23 +780,6 @@ export default async function CommercialOpportunitiesPage({
   // stages the board does. Bucketing by status put every priced-but-unsent
   // deal under "Estimating" while its card sat in the Proposal column, and
   // after the RFP split would have hidden Request for Proposal entirely.
-  const stageBars = PRE_CONTRACT_COLUMNS.filter((c) =>
-    OPEN_COLUMN_KEYS.includes(c.key)
-  )
-    .map((col) => {
-      const inStage = presaleOpenOpps.filter(
-        (o) => columnKeyForOpp(o.status, o.sub_status) === col.key
-      );
-      const weighted = inStage.reduce((a, o) => a + oppValue(o), 0);
-      return {
-        label: col.label,
-        value: weighted,
-        tone: "blue" as const,
-        valueLabel: formatCentsCompact(weighted),
-        sub: `${inStage.length} opportunit${inStage.length === 1 ? "y" : "ies"}`,
-      };
-    })
-    .filter((s) => s.value > 0 || s.sub !== "0 opportunities");
   // Wins this month — mirrors the /commercial dashboard KPI so the two
   // surfaces agree. Uses UTC-month-start; close enough for exec-review
   // "how'd we do this month" scan.
@@ -995,14 +977,36 @@ export default async function CommercialOpportunitiesPage({
   // Snapshot pills — one per OPEN kanban column, in board order, counted the
   // same way the board buckets. Previously keyed off raw statuses, so the
   // pill count and the column card-count could disagree for the same deal.
-  const statusSnapshot: Array<{ status: string; label: string; count: number }> =
-    OPEN_COLUMN_KEYS.map((key) => ({
+  // ONE stage breakdown. There used to be two on this screen — a "Pipeline by
+  // stage" bar chart (pre-sale only, weighted $, not clickable) and these chips
+  // (every open stage, counts, clickable). Stacked, they showed DIFFERENT sets
+  // of stages for the same pipeline: the chart listed only Sent while the chips
+  // listed Sent, Pre-Construction and In Progress. Two panels headed "by stage"
+  // disagreeing is worse than either alone, so the weighted dollars moved onto
+  // the chips — which are the interactive, complete version — and the chart is
+  // gone. Fewer panels, more information, nothing to reconcile.
+  const statusSnapshot: Array<{
+    status: string;
+    label: string;
+    count: number;
+    weightedLabel: string | null;
+  }> = OPEN_COLUMN_KEYS.map((key) => {
+    const inStage = openOpps.filter(
+      (o) => columnKeyForOpp(o.status, o.sub_status) === key
+    );
+    // Weighted value is a PRE-SALE idea (value × stage odds); a job already in
+    // delivery is won, so quoting an expected value for it would be nonsense.
+    const presale = inStage.filter((o) =>
+      presaleOpenOpps.some((p) => p.id === o.id)
+    );
+    const weighted = presale.reduce((a, o) => a + oppValue(o), 0);
+    return {
       status: key,
       label: kanbanColumnLabel(key),
-      count: openOpps.filter(
-        (o) => columnKeyForOpp(o.status, o.sub_status) === key
-      ).length,
-    })).filter((r) => r.count > 0);
+      count: inStage.length,
+      weightedLabel: weighted > 0 ? formatCentsCompact(weighted) : null,
+    };
+  }).filter((r) => r.count > 0);
 
   const statusDrillHref = (s: string) => {
     const p = new URLSearchParams(baseParams);
@@ -1130,17 +1134,6 @@ export default async function CommercialOpportunitiesPage({
           />
         </div>
 
-        {/* Pipeline by stage — weighted $ per stage, a funnel of where open deals
-            sit (only when there are open deals). */}
-        {presaleOpenOpps.length > 0 && stageBars.length > 0 && (
-          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 mt-3">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <h2 className="text-[13px] font-bold text-ppp-charcoal">Pipeline by stage</h2>
-              <span className="text-[10px] text-ppp-charcoal-400 uppercase tracking-wider">weighted $</span>
-            </div>
-            <HBars items={stageBars} />
-          </div>
-        )}
       </header>
 
       {/* ─── Result banners ─── */}
@@ -1421,9 +1414,12 @@ export default async function CommercialOpportunitiesPage({
         )}
       </div>
 
-      {/* ─── Status snapshot (list mode only — kanban columns ARE the
-          snapshot) ─── */}
-      {viewMode === "list" && statusSnapshot.length > 0 && (
+      {/* ─── Status snapshot ───
+          Renders for LIST and SHEET. By-GC groups by account instead, so the
+          stage chips would fight its own grouping. This was list-only, which
+          silently removed the fastest filter on the platform the moment sheet
+          became the default view. ─── */}
+      {(viewMode === "list" || viewMode === "sheet") && statusSnapshot.length > 0 && (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3">
           <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2 flex items-center justify-between">
             <span>Open by stage</span>
@@ -1449,6 +1445,14 @@ export default async function CommercialOpportunitiesPage({
                   <strong className={isActive ? "text-white" : "text-ppp-charcoal"}>
                     {r.count}
                   </strong>
+                  {r.weightedLabel && (
+                    <span
+                      className={`tabular-nums ${isActive ? "text-white/80" : "text-ppp-charcoal-400"}`}
+                      title="Weighted value — bid value × the odds of this stage"
+                    >
+                      {r.weightedLabel}
+                    </span>
+                  )}
                   {isActive && <span aria-hidden className="text-white">×</span>}
                 </Link>
               );
