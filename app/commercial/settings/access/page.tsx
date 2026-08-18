@@ -19,6 +19,7 @@ import {
 import { listEmployees, updateEmployee } from "@/lib/commercial/field-ops/employees";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { UUID_RE } from "@/lib/commercial/uuid";
 
 const ACCESS = "/commercial/settings/access";
 
@@ -76,6 +77,52 @@ async function toggleCrewAction(formData: FormData) {
   );
 }
 
+/**
+ * Turn email notifications on or off for one person.
+ *
+ * Karan 2026-08-18: "Brendan should receive emails for approvals and stuff …
+ * and even me, Katie, Stephanie … if we have it on they receive email
+ * notifications for everything basically."
+ *
+ * The bell is always the source of truth; email has been opt-in since
+ * 2026-07-27 and there was no way to turn it on for somebody else — so the
+ * people who most need to be told (the approver, the owner) were bell-only
+ * unless they went and configured it themselves, which nobody had.
+ *
+ * ON writes their profile email into commercial_user_email_prefs and enables
+ * it, so every commercial notification they'd get in the bell also emails.
+ * OFF leaves the address saved and just disables delivery, so turning it back
+ * on doesn't lose the address.
+ */
+async function toggleUserEmailAction(formData: FormData) {
+  "use server";
+  await requireAccessAdmin();
+  const userId = String(formData.get("user_id") ?? "");
+  const enable = String(formData.get("enable") ?? "") === "1";
+  const email = String(formData.get("email") ?? "").trim();
+  if (!UUID_RE.test(userId)) redirect("/commercial/settings/access");
+  const { saveUserNotifyEmail, setUserEmailEnabled, getUserEmailPref } = await import(
+    "@/lib/commercial/email-prefs/db"
+  );
+  if (enable) {
+    const existing = await getUserEmailPref(userId);
+    // Re-enable a saved address if there is one; otherwise seed it from their
+    // login email, which is the address they already receive everything at.
+    const res = existing?.email
+      ? await setUserEmailEnabled({ userId, enabled: true })
+      : await saveUserNotifyEmail({ userId, email });
+    if (!("ok" in res) || !res.ok) {
+      redirect(
+        "/commercial/settings/access?se_error=" +
+          encodeURIComponent("Couldn't turn on email notifications — check the address on their profile.")
+      );
+    }
+  } else {
+    await setUserEmailEnabled({ userId, enabled: false });
+  }
+  revalidatePath("/commercial/settings/access");
+}
+
 async function toggleOptOutAction(formData: FormData) {
   "use server";
   const userId = await requireAccessAdmin();
@@ -121,6 +168,16 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
   // (managed on the PPP Access page) are shown too so the list is honest about
   // who can reach Commercial.
   const users = (await listManagedUsers()).filter((u) => u.has_new_platform_access);
+  // Which of them currently get emails, so the button can show real state
+  // rather than a toggle that always reads the same.
+  const { getUserEmailPref } = await import("@/lib/commercial/email-prefs/db");
+  const emailOnUserIds = new Set(
+    (
+      await Promise.all(
+        users.map(async (u) => ((await getUserEmailPref(u.user_id))?.enabled ? u.user_id : null))
+      )
+    ).filter(Boolean) as string[]
+  );
   // R1d: who can approve proposals (besides admins, who always can). Stored on
   // the operating-company singleton; toggled per-user below.
   const oc = await getOperatingCompany();
@@ -210,10 +267,32 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
                   <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{u.full_name || u.email}</div>
                   <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{u.email}</div>
                 </div>
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                {/* Email notifications — independent of the crew gate, so an
+                    admin (who has no crew toggle) can still be switched on. */}
+                <form action={toggleUserEmailAction}>
+                  <input type="hidden" name="user_id" value={u.user_id} />
+                  <input type="hidden" name="email" value={u.email ?? ""} />
+                  <input type="hidden" name="enable" value={emailOnUserIds.has(u.user_id) ? "0" : "1"} />
+                  <SubmitButton
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation ${
+                      emailOnUserIds.has(u.user_id)
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                        : "border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                    }`}
+                    title={
+                      emailOnUserIds.has(u.user_id)
+                        ? `Emailing ${u.email} for every notification. Click to stop.`
+                        : `Send ${u.email} an email for every notification, not just a bell.`
+                    }
+                  >
+                    {emailOnUserIds.has(u.user_id) ? "Emails on" : "Emails off"}
+                  </SubmitButton>
+                </form>
                 {isAdminUser ? (
-                  <span className="text-[11.5px] text-ppp-charcoal-400 shrink-0">Admin — always unrestricted</span>
+                  <span className="text-[11.5px] text-ppp-charcoal-400">Admin — always unrestricted</span>
                 ) : (
-                  <form action={toggleCrewAction} className="shrink-0">
+                  <form action={toggleCrewAction}>
                     <input type="hidden" name="user_id" value={u.user_id} />
                     <input type="hidden" name="make_crew" value={isCrew ? "0" : "1"} />
                     <SubmitButton
@@ -227,6 +306,7 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
                     </SubmitButton>
                   </form>
                 )}
+                </div>
               </li>
             );
           })}

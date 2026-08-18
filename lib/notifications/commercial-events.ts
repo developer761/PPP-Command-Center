@@ -205,6 +205,21 @@ async function dispatchCommercialNotification(input: {
     if (!p || p.is_active === false || p.has_new_platform_access === false) {
       return { ok: true, written: false };
     }
+    // CREW never receive Commercial notifications.
+    //
+    // `has_new_platform_access` isn't enough: a crew-only login can carry it
+    // and still be bounced off every Commercial surface by the crew allowlist.
+    // So a painter added to a deal's team was getting bell rows — and, for the
+    // alwaysEmail kinds, actual emails — pointing at pages that redirect them
+    // straight back to their own home. A notification you are structurally
+    // forbidden from acting on is noise at best and confusing at worst.
+    //
+    // Gated at the single dispatch chokepoint so it covers every kind at once
+    // rather than each fan-out remembering to check.
+    const { isCrewOnlyUser } = await import("@/lib/commercial/crew-access");
+    if (await isCrewOnlyUser(input.recipientUserId)) {
+      return { ok: true, written: false };
+    }
     // Bell row first — even if email fails, the assignee sees the dot.
     const { error: insErr } = await sb.from("notifications").insert({
       recipient_user_id: input.recipientUserId,
