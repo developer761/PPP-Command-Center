@@ -33,9 +33,21 @@ type Defaults = {
 export default function CommercialAddressFields({
   prefix,
   defaults,
+  showStreet2 = true,
+  streetLabel = "Street",
 }: {
-  prefix: "billing" | "site";
+  /** Drives every input name: `${prefix}_street`, `${prefix}_city`, …
+   *  "property" is the opportunity/project address — Brendan 2026-08-17:
+   *  "Can the new opportunity / project address be a searchable address to
+   *  ensure we find the correct address. Similar to the account address." The
+   *  generated names line up exactly with the fields the opportunity forms
+   *  already post, so this drops in without touching a server action. */
+  prefix: "billing" | "site" | "property";
   defaults?: Defaults;
+  /** Opportunities have no street2 column — hide the input rather than render
+   *  one that silently goes nowhere. */
+  showStreet2?: boolean;
+  streetLabel?: string;
 }) {
   const [street, setStreet] = useState(defaults?.street ?? "");
   const [street2, setStreet2] = useState(defaults?.street2 ?? "");
@@ -192,7 +204,7 @@ export default function CommercialAddressFields({
     <>
       <div>
         <label htmlFor={`${prefix}_street`} className={LABEL_CLS}>
-          Street
+          {streetLabel}
           {scriptStatus === "ready" && (
             <span className="ml-1.5 text-[10px] font-normal text-emerald-700 normal-case tracking-normal">
               · Autofill on
@@ -216,6 +228,7 @@ export default function CommercialAddressFields({
           norm. It is deliberately OUTSIDE the autocomplete: no geocoder can
           supply a floor, and letting the widget touch this field is how the
           typed "Suite 400" gets wiped by the next address pick. */}
+      {showStreet2 && (
       <div>
         <label htmlFor={`${prefix}_street2`} className={LABEL_CLS}>
           Floor / unit / suite <span className="font-normal normal-case tracking-normal text-ppp-charcoal-400">· optional</span>
@@ -230,6 +243,7 @@ export default function CommercialAddressFields({
           className={INPUT_CLS}
         />
       </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label htmlFor={`${prefix}_city`} className={LABEL_CLS}>

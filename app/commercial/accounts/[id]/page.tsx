@@ -74,6 +74,7 @@ import NewProposalPicker from "@/components/commercial/new-proposal-picker";
 import { commercialDb } from "@/lib/commercial/db";
 import { listAccountTags, listAllDistinctTags, addAccountTag, removeAccountTag, MAX_TAG_LENGTH, type AccountTag } from "@/lib/commercial/accounts/tags";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import CommercialAddressFields from "@/components/commercial-address-fields";
 // InfoDot import removed 2026-07-08 Batch 2b — labels use native `title`
 // attribute for hover tooltips instead of the visible `?` badge.
 
@@ -3500,19 +3501,20 @@ async function NewDealForm({
             (this job&apos;s location — every job is somewhere different)
           </span>
         </div>
-        <input
-          type="text"
-          name="property_street"
-          maxLength={200}
-          defaultValue={keptValues?.property_street ?? ""}
-          placeholder="Street"
-          className={inputCls}
+        {/* Searchable (Brendan 2026-08-17) — Places autocomplete fills
+            city/state/ZIP, and the ZIP is what picks the sales-tax
+            jurisdiction, so getting it right here matters downstream. */}
+        <CommercialAddressFields
+          prefix="property"
+          showStreet2={false}
+          streetLabel="Street"
+          defaults={{
+            street: keptValues?.property_street ?? "",
+            city: keptValues?.property_city ?? "",
+            state: keptValues?.property_state ?? "",
+            zip: keptValues?.property_zip ?? "",
+          }}
         />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-          <input type="text" name="property_city" maxLength={80} defaultValue={keptValues?.property_city ?? ""} placeholder="City" className={inputCls} />
-          <input type="text" name="property_state" maxLength={2} defaultValue={keptValues?.property_state ?? ""} placeholder="State" className={inputCls} />
-          <input type="text" name="property_zip" maxLength={10} defaultValue={keptValues?.property_zip ?? ""} placeholder="ZIP" className={inputCls} />
-        </div>
         {/* Stephanie 2026-08-13: "Autofills GC/Builders address, rarely the
             same as the opportunity address." The label already said every job
             is somewhere different while the fields quietly disagreed.
@@ -6828,20 +6830,21 @@ async function DealEditSheet({
                   — leave blank to use the account&apos;s site address
                 </span>
               </div>
-              <input
-                name="property_street"
-                aria-label="Property street"
-                type="text"
-                maxLength={200}
-                defaultValue={deal.property_street ?? ""}
-                placeholder="Street"
-                className={inputCls}
+              {/* Searchable (Brendan 2026-08-17). Also retires the bare
+                  `grid-cols-3` here, which crushed City to ~93px at 375px —
+                  the shared component collapses to one column below `sm`, the
+                  fix this page already applied to its two sibling forms. */}
+              <CommercialAddressFields
+                prefix="property"
+                showStreet2={false}
+                streetLabel="Street"
+                defaults={{
+                  street: deal.property_street ?? "",
+                  city: deal.property_city ?? "",
+                  state: deal.property_state ?? "",
+                  zip: deal.property_zip ?? "",
+                }}
               />
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                <input name="property_city" aria-label="Property city" type="text" maxLength={80} defaultValue={deal.property_city ?? ""} placeholder="City" className={inputCls} />
-                <input name="property_state" aria-label="Property state" type="text" maxLength={2} defaultValue={deal.property_state ?? ""} placeholder="ST" className={inputCls} />
-                <input name="property_zip" aria-label="Property ZIP" type="text" maxLength={10} defaultValue={deal.property_zip ?? ""} placeholder="ZIP" className={inputCls} />
-              </div>
             </div>
             <div>
               <label htmlFor="edit-desc" className={labelCls}>Description / scope summary</label>

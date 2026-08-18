@@ -120,6 +120,7 @@ import { DateField } from "@/components/commercial/date-field";
 import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
 import { listTeams } from "@/lib/commercial/teams/db";
 import { IconBulb } from "@/components/commercial/inline-icons";
+import CommercialAddressFields from "@/components/commercial-address-fields";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -1875,20 +1876,12 @@ function NewDealSlideOut({
             />
           </div>
 
-          <div>
-            <label htmlFor="new-deal-street" className={LABEL_CLS}>Project address</label>
-            <input
-              id="new-deal-street"
-              name="property_street"
-              maxLength={200}
-              placeholder="Street"
-              className={INPUT_CLS}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-              <input name="property_city" maxLength={80} placeholder="City" className={INPUT_CLS} />
-              <input name="property_state" maxLength={40} placeholder="State" className={INPUT_CLS} />
-              <input name="property_zip" maxLength={20} placeholder="ZIP" className={INPUT_CLS} />
-            </div>
+          {/* Searchable, same as the account address (Brendan 2026-08-17) —
+              Google Places autocomplete fills city/state/ZIP so the job lands
+              on the RIGHT address, which the ZIP-driven sales-tax lookup then
+              depends on. Same input names as before, so the action is unchanged. */}
+          <div className="space-y-3">
+            <CommercialAddressFields prefix="property" showStreet2={false} streetLabel="Project address" />
           </div>
 
           {/* Same order as the account-scoped form (Brendan 2026-08-12), so the
@@ -3309,7 +3302,7 @@ function StageChip({
     0,
     stages.findIndex((s) => s.key === stageKey)
   );
-  const currentLabel = stages[currentIdx]?.label ?? "Qualifying";
+  const currentLabel = stages[currentIdx]?.label ?? "RFP";
   const subLabel = sub_status ? opportunitySubStatusLabel(sub_status) : "";
   // Dedupe: "Estimating · Estimating" collapses to just the top pill, and
   // "RFP · Request for Proposal (RFP)" collapses to just "RFP" — the sub
