@@ -665,7 +665,7 @@ async function reopenOpportunityAction(formData: FormData) {
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: "qualifying" as OpportunityStatus,
-    to_sub_status: "solicitation",
+    to_sub_status: "rfp",
     acting_user_id: user.id,
   });
   if (!result.ok) {
