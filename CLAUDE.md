@@ -61,13 +61,9 @@ PPP CEO Alex looks at this on his phone every morning. Mobile responsiveness is 
 
 Karan's standing rule. Polish every surface; never ship "good enough." See `feedback_ppp_ui_quality_bar.md`.
 
-### Auto-log billable time
+### No time logging (Karan is full-time as of 2026-08-19)
 
-Every meaningful work block during a PPP session appends to `~/Desktop/PPP_Timesheet.md` AND the current week's `~/Desktop/PPP_Invoice_NNN.md`. Conservative — iterative polish = 0.25-0.50h, NOT full hours. See `feedback_ppp_auto_log_in_session.md` + `project_ppp_invoice_cadence.md` + `feedback_ppp_invoice_style.md` + `feedback_ppp_invoice_contact_email.md`.
-
-### Weekly invoice cadence
-
-Invoices ship every Sunday covering Mon-Sun. Monday starts a fresh PPP-00N file with only that week's work. Timesheet stays cumulative across weeks. See `project_ppp_invoice_cadence.md`.
+Karan went full-time with PPP on **2026-08-19** and no longer bills hourly. Do **not** write to `~/Desktop/PPP_Timesheet.md` (gone), `~/Desktop/PPP_Invoice_*.md`, or `~/Desktop/Commercial_Command_Center_Invoice_*.md`. The old weekly Sunday invoice cadence and the per-work-block auto-logging rule are both retired. Existing invoice files are historical records — don't edit them.
 
 ### Strategy doc on Desktop
 
@@ -154,6 +150,5 @@ git push origin main
 ## Files Karan keeps on Desktop (NOT in this repo)
 
 - `~/Desktop/PPP_Strategy_Notes.md` — live meeting talking points (one page max)
-- `~/Desktop/PPP_Timesheet.md` — cumulative timesheet across all weeks
-- `~/Desktop/PPP_Invoice_NNN.md` — current week's invoice (PPP-001 in week 1)
+- `~/Desktop/PPP_Invoice_*.md` — historical invoices from the contractor period (read-only; Karan is full-time as of 2026-08-19)
 - `~/Desktop/PPP_Brand_Guide_Company_Deck-2023.pptx` — source brand guide
