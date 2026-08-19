@@ -5,6 +5,7 @@ import { loadDashboardData } from "@/lib/data-source";
 import { deriveOpenMaterialsWorkOrders, getSupplierName, type OpenWorkOrderForMaterials } from "@/lib/salesforce/materials";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
+import { parseMachineColorLines } from "@/lib/customer-form/notes";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import type { SourceLine, PreviewGroup, PreviewColor } from "@/components/order-builder-view";
 
@@ -68,6 +69,33 @@ export async function loadOrderPageData(
       sqft: li.raw.sqFootage,
     });
 
+    // Kate round-3 #10: a room with 2+ orphan surfaces has its colours in
+    // ColorNotes__c and ColorOther__c deliberately blank — one field can't hold
+    // two. Reading only `li.other` meant this preview showed fewer colours than
+    // the order actually contains (the draft builder sources them from the
+    // customer's submitted payload), so the screen disagreed with the email.
+    // Re-link them to the catalog by code, then by name.
+    const notesBySurface = new Map(
+      parseMachineColorLines(li.raw.colorNotes).map((p) => [p.surface.toLowerCase(), p])
+    );
+    const relink = (surface: string): typeof li.wall => {
+      const note = notesBySurface.get(surface.toLowerCase());
+      if (!note) return li.other;
+      const byCode = note.colorCode
+        ? bundle.snapshot!.paintColors.find(
+            (c) => (c.code ?? "").toLowerCase() === note.colorCode!.toLowerCase()
+          )
+        : undefined;
+      const match =
+        byCode ??
+        bundle.snapshot!.paintColors.find(
+          (c) => c.name.toLowerCase() === note.colorName.toLowerCase()
+        );
+      // No catalog match (a custom mix, a discontinued code): fall back rather
+      // than dropping the surface. The colour still reaches the vendor through
+      // the order's Color Notes block.
+      return match ?? li.other;
+    };
     const slots: Array<{ surface: string; color: typeof li.wall }> = [
       { surface: "Walls", color: li.wall },
       { surface: "Ceiling", color: li.ceiling },
@@ -76,7 +104,7 @@ export async function loadOrderPageData(
       // Only use the generic "Other" slot when Salesforce didn't name the
       // orphan surfaces; otherwise the named ones below carry that colour.
       ...(orphans.length === 0 ? [{ surface: "Other", color: li.other }] : []),
-      ...orphans.map((s) => ({ surface: s, color: li.other })),
+      ...orphans.map((s) => ({ surface: s, color: relink(s) })),
     ];
 
     for (const slot of slots) {

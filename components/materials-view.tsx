@@ -81,6 +81,7 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
+import { parseMachineColorLines } from "@/lib/customer-form/notes";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
@@ -1893,7 +1894,24 @@ function LineItemRow({
   // Now those named surfaces show with their real label (carrying the shared
   // ColorOther__c value), so nothing selected in SF is silently dropped.
   const orphanSurfaces = surfaces.filter((s) => !STANDARD_SURFACES.includes(s) && s !== "Other");
-  const slots: Array<{ label: string; surface: string; color: SnapshotPaintColor | null; finish: string | null }> = [
+  // Kate round-3 #10: with 2+ orphan surfaces the submit route can't fit both
+  // colours in the single shared ColorOther__c, so it writes them into
+  // ColorNotes__c and leaves Other deliberately blank. Every orphan chip read
+  // from that blank field, so a room where the customer picked Cabinets AND
+  // Closet showed both as having no colour — and the team chased the customer
+  // for what they'd already sent. Read them back from where they actually live.
+  const orphanColorsFromNotes = new Map(
+    parseMachineColorLines(item.raw.colorNotes).map((p) => [p.surface.toLowerCase(), p])
+  );
+  const slots: Array<{
+    label: string;
+    surface: string;
+    color: SnapshotPaintColor | null;
+    finish: string | null;
+    /** Colour recovered from Color Notes — a name and code, not a linked
+     *  PaintColor record, so there's no hex and no catalog link. */
+    derived?: { name: string; code: string | null } | null;
+  }> = [
     { label: "Walls", surface: "Walls", color: item.wall, finish: item.raw.finishWall },
     { label: "Ceiling", surface: "Ceiling", color: item.ceiling, finish: item.raw.finishCeiling },
     { label: "Trim", surface: "Trim", color: item.trim, finish: item.raw.finishTrim },
@@ -1905,7 +1923,21 @@ function LineItemRow({
       : []),
   ].filter((s) => surfaces.includes(s.surface) || s.color);
   for (const s of orphanSurfaces) {
-    slots.push({ label: s, surface: s, color: item.other, finish: item.raw.finishOther });
+    const fromNotes = orphanColorsFromNotes.get(s.toLowerCase());
+    // The note is surface-SPECIFIC; ColorOther__c is one shared field that in a
+    // multi-orphan room may belong to a different surface entirely. Prefer the
+    // note wherever one exists.
+    if (fromNotes) {
+      slots.push({
+        label: s,
+        surface: s,
+        color: null,
+        finish: fromNotes.finish,
+        derived: { name: fromNotes.colorName, code: fromNotes.colorCode },
+      });
+    } else {
+      slots.push({ label: s, surface: s, color: item.other, finish: item.raw.finishOther });
+    }
   }
 
   const hasEffectiveSqft = effectiveSqftValue > 0;
@@ -1975,6 +2007,7 @@ function LineItemRow({
               surface={s.label}
               color={s.color}
               finish={s.finish}
+              derived={s.derived ?? null}
             />
           ))}
         </div>
@@ -2178,16 +2211,22 @@ function ColorChip({
   surface,
   color,
   finish,
+  derived = null,
 }: {
   surface: string;
   color: SnapshotPaintColor | null;
   finish: string | null;
+  /** Recovered from Color Notes rather than a Salesforce colour lookup —
+   *  name and code only, no hex, no catalog record behind it. */
+  derived?: { name: string; code: string | null } | null;
 }) {
   // Strict hex validation — only #RGB, #RRGGBB, #RRGGBBAA shapes render.
   // PPP's HexValue__c is mostly null on production data so most chips hit
   // the neutral-gray + code-badge fallback path.
   const validHex =
     color?.hexValue && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color.hexValue);
+  const displayName = color?.name ?? derived?.name ?? null;
+  const displayCode = color?.code ?? derived?.code ?? null;
   return (
     <div className="flex items-center gap-2 text-[11px] rounded-lg border border-ppp-charcoal-100 bg-[var(--color-surface-muted)] px-2.5 py-1.5">
       <div
@@ -2195,7 +2234,7 @@ function ColorChip({
         style={{
           backgroundColor: validHex
             ? color!.hexValue!
-            : color
+            : displayName
               ? "var(--color-ppp-charcoal-100, #e5e7eb)"
               : "transparent",
         }}
@@ -2206,14 +2245,14 @@ function ColorChip({
           {surface}
         </div>
         <div className="font-medium text-ppp-charcoal truncate">
-          {color ? color.name : "—"}
+          {displayName ?? "—"}
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-ppp-charcoal-500 mt-0.5">
           {/* Fallback for missing hex: show the SKU code as a mono badge so
               the rep has SOMETHING actionable to verify against the can. */}
-          {color?.code && !validHex && (
+          {displayCode && !validHex && (
             <span className="font-mono px-1 py-px rounded bg-ppp-charcoal-100/70 text-ppp-charcoal">
-              {color.code}
+              {displayCode}
             </span>
           )}
           {finish && <span className="truncate">{finish}</span>}

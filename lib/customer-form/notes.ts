@@ -120,3 +120,60 @@ export function extractMachineColorLines(raw: string | null | undefined): string
     // and not pushed into the vendor's order as if it were a colour.
     .filter((l) => ORPHAN_LINE_RE.test(l));
 }
+
+/**
+ * Parse the machine colour lines back into structured surface → colour records.
+ *
+ * The submit route writes one line per orphan surface in the 2+ case:
+ *
+ *     Cabinets: White Dove (OC-17) — Satin
+ *
+ * and deliberately leaves ColorOther__c blank, because a single Salesforce
+ * field can't hold two colours. Every reader that shows orphan surfaces was
+ * sourcing them from that blank field, so a room where the customer picked
+ * Cabinets AND Wainscoting displayed both as having no colour at all — and the
+ * team chased the customer for something they'd already provided.
+ *
+ * Kept in this file, immediately under the writer's format, because a parser
+ * living anywhere else drifts the moment the written shape changes.
+ */
+export type ParsedOrphanColor = {
+  surface: string;
+  colorName: string;
+  colorCode: string | null;
+  finish: string | null;
+};
+
+export function parseMachineColorLines(raw: string | null | undefined): ParsedOrphanColor[] {
+  const out: ParsedOrphanColor[] = [];
+  for (const line of extractMachineColorLines(raw)) {
+    const sep = line.indexOf(":");
+    if (sep === -1) continue;
+    const surface = line.slice(0, sep).trim();
+    let rest = line.slice(sep + 1).trim();
+    if (!surface || !rest) continue;
+
+    // Finish is the LAST " — " segment. Split from the right: a colour name can
+    // legitimately contain an em dash, the finish suffix is always terminal.
+    let finish: string | null = null;
+    const dash = rest.lastIndexOf(" — ");
+    if (dash !== -1) {
+      finish = rest.slice(dash + 3).trim() || null;
+      rest = rest.slice(0, dash).trim();
+    }
+
+    // Trailing "(CODE)" — same shape the fingerprint recognises, so a name with
+    // a parenthetical that isn't a code ("White (Custom Mix)") won't be eaten.
+    let colorCode: string | null = null;
+    const codeMatch = rest.match(/\(([A-Za-z0-9][A-Za-z0-9.\-/ ]{0,14})\)\s*$/);
+    if (codeMatch) {
+      colorCode = codeMatch[1].trim();
+      rest = rest.slice(0, codeMatch.index).trim();
+    }
+
+    const colorName = rest.trim();
+    if (!colorName) continue;
+    out.push({ surface, colorName, colorCode, finish });
+  }
+  return out;
+}
