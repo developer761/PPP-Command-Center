@@ -670,7 +670,8 @@ function formatPlacementSuffix(rooms: string[], surfaces: string[]): string {
   return ` — ${parts.join(" · ")}`;
 }
 
-function formatOrderSummaryBlock(
+/** Exported for tests: this is the exact paint block a vendor reads. */
+export function formatOrderSummaryBlock(
   estimates: GallonEstimate[],
   materialType: string | null,
   materialTypeOverrides?: Map<string, string>,
@@ -679,6 +680,12 @@ function formatOrderSummaryBlock(
   if (estimates.length === 0 && customColorItems.length === 0) {
     return "(no colors picked yet — customer has not submitted the color form)";
   }
+  // Every colour zeroed out and nothing typed by hand: there is no paint on
+  // this order. Say so plainly rather than emitting a header over an empty
+  // list, which reads to a vendor like the message got truncated.
+  if (estimates.every((e) => e.excluded) && customColorItems.length === 0) {
+    return "(no paint on this order — see the extras and notes below)";
+  }
   // Resolve the effective material type per color (override → fall through to
   // job-level). Then decide whether ALL colors share one product (single
   // header) or whether the job is mixed (per-line prefix, no header).
@@ -686,9 +693,14 @@ function formatOrderSummaryBlock(
     const key = `${e.colorId}::${e.finish ?? ""}`;
     return materialTypeOverrides?.get(key) ?? materialType ?? null;
   });
-  const uniq = new Set(effective.filter((m): m is string => !!m));
-  const allSame = uniq.size <= 1 && effective.every((m) => m === effective[0]);
-  const sharedMaterial = allSame ? effective[0] ?? null : null;
+  // Only lines that will actually be ordered decide whether the job has one
+  // shared paint line or a mix — otherwise an excluded colour on a different
+  // product line makes the header read "mixed — see each line below" when
+  // every remaining line shares one.
+  const orderedEffective = effective.filter((_, i) => !estimates[i].excluded);
+  const uniq = new Set(orderedEffective.filter((m): m is string => !!m));
+  const allSame = uniq.size <= 1 && orderedEffective.every((m) => m === orderedEffective[0]);
+  const sharedMaterial = allSame ? orderedEffective[0] ?? null : null;
   const lines: string[] = [];
   if (sharedMaterial) {
     lines.push(`  Paint product line: ${sharedMaterial}`);
@@ -699,6 +711,13 @@ function formatOrderSummaryBlock(
   }
   for (let i = 0; i < estimates.length; i++) {
     const e = estimates[i];
+    // The worker set this colour to zero — PPP is not buying it. It has to
+    // vanish from the vendor's order, not appear as "___ (PPP to confirm
+    // quantity)", which is what a zero used to render as. The colour still
+    // shows in the per-room placement block below, because the crew painting
+    // the room needs to know it, and it still shows in the builder UI as
+    // "not ordering" so the decision is visible and reversible.
+    if (e.excluded) continue;
     const mt = effective[i];
     const code = e.colorCode ? ` ${e.colorCode}` : "";
     const finish = e.finish ? ` · ${e.finish}` : "";

@@ -121,6 +121,14 @@ export type GallonEstimate = {
    *  than `needsMeasurement` (which just means "may be low / under-count").
    *  Karan 2026-06-09: surface a banner, do not auto-suggest gallons. */
   manualOnly: boolean;
+  /** The worker explicitly set this line to zero — "we're not buying this one".
+   *  Distinct from an unsized/zero ESTIMATE, which means "we don't know yet".
+   *  Without the distinction, decrementing a colour to 0 didn't remove it: the
+   *  vendor was emailed `___ — White Dove (PPP to confirm quantity)` for paint
+   *  PPP had deliberately decided not to order, and the builder row nagged
+   *  "⚠️ set qty" as though the worker had made a mistake. Only
+   *  `applyQuantityOverrides` can set this — the estimator never produces it. */
+  excluded?: boolean;
 };
 
 /** Map a Surfaces__c label to a paint bucket. Order matters: "Accent Wall"
@@ -423,6 +431,8 @@ export function applyQuantityOverrides(
       // An explicitly-typed quantity is an answer, not a gap.
       manualOnly: false,
       unsized: false,
+      // ...including zero, which is the answer "don't order this one".
+      excluded: buckets === 0 && cans === 0,
     };
   });
 }
@@ -434,6 +444,9 @@ export function summarizeOrder(estimates: GallonEstimate[]): {
 } {
   let buckets = 0, cans = 0, quarts = 0, sizedColors = 0, reviewColors = 0;
   for (const e of estimates) {
+    // A deliberately-excluded colour is neither ordered nor outstanding — it
+    // must not inflate "(+ N to confirm)" on the vendor email's TOTAL line.
+    if (e.excluded) continue;
     if (e.buckets > 0 || e.cans > 0) {
       if (e.unit === "qt") {
         quarts += e.cans;
@@ -503,6 +516,7 @@ export function formatOrderTotal(t: { buckets: number; cans: number; quarts: num
 
 /** Human-readable order, e.g. "1 bucket + 2 gal", "3 qt", "manual entry required". */
 export function formatOrderQuantity(e: GallonEstimate): string {
+  if (e.excluded) return "not ordering";
   if (e.manualOnly) return "manual entry required";
   if (e.unsized) return "needs review";
   if (e.buckets === 0 && e.cans === 0) return e.needsMeasurement ? "needs measurement" : "—";

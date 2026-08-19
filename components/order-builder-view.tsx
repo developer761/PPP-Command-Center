@@ -435,7 +435,10 @@ export default function OrderBuilderView({
   // the worker hasn't typed one. Because the server already folded the typed
   // quantities in, this is simply "what's left" — no second calculation to
   // disagree with the rows (#26).
-  const needQty = estimates.filter((e) => e.manualOnly || (e.buckets === 0 && e.cans === 0));
+  const needQty = estimates.filter(
+    // A colour the worker zeroed out on purpose is answered, not outstanding.
+    (e) => !e.excluded && (e.manualOnly || (e.buckets === 0 && e.cans === 0))
+  );
 
   return (
     <div className="space-y-5 pb-4">
@@ -579,7 +582,14 @@ export default function OrderBuilderView({
                 const override = payload.quantities[key];
                 const unit: PaintUnit = override?.unit ?? e.unit ?? "gal";
                 const total = overrideTotal({ buckets: e.buckets, cans: e.cans, unit });
-                const isPlaceholder = e.manualOnly || (e.buckets === 0 && e.cans === 0);
+                // Two very different zeros. `excluded` is the worker saying
+                // "don't buy this one" — a decision, shown neutrally and
+                // reversible via "reset to estimate". A placeholder zero is the
+                // estimator saying "I couldn't size this" — a gap, shown as a
+                // warning. Collapsing them made the deliberate choice look like
+                // an unfinished field and still shipped the colour to the vendor.
+                const isExcluded = !!e.excluded;
+                const isPlaceholder = !isExcluded && (e.manualOnly || (e.buckets === 0 && e.cans === 0));
                 return (
                   <li key={key} className="px-4 py-3 text-xs">
                     {/* basis-full sm:basis-auto makes the name take its own row
@@ -617,7 +627,13 @@ export default function OrderBuilderView({
                           −
                         </button>
                         <span
-                          className={`font-semibold min-w-[5rem] sm:min-w-[6rem] text-right ${isPlaceholder ? "text-ppp-orange-700" : "text-ppp-charcoal"}`}
+                          className={`font-semibold min-w-[5rem] sm:min-w-[6rem] text-right ${
+                            isPlaceholder
+                              ? "text-ppp-orange-700"
+                              : isExcluded
+                                ? "text-ppp-charcoal-400 italic font-normal"
+                                : "text-ppp-charcoal"
+                          }`}
                         >
                           {isPlaceholder ? "⚠️ set qty" : formatOrderQuantity(e)}
                         </span>
