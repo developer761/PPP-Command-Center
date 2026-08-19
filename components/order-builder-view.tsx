@@ -563,7 +563,7 @@ export default function OrderBuilderView({
               <div className="px-4 py-6 text-sm text-ppp-charcoal-500 italic">Working out what to buy…</div>
             )}
             {draftError && (
-              <div className="m-4 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700">
+              <div role="alert" className="m-4 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700">
                 Couldn&apos;t build the order: {draftError}
               </div>
             )}

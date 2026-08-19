@@ -47,7 +47,7 @@
  * `docs/ARCHITECTURE.md` → "Customer color form deep-dive".
  */
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
 import { resolveSwatchHex } from "@/lib/customer-form/color-swatch";
 import { classifySurface, denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
@@ -1109,7 +1109,12 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           <button
             type="submit"
             disabled={submitting}
-            className="shrink-0 inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg bg-ppp-blue text-white text-sm sm:text-base font-semibold hover:bg-ppp-blue-600 transition-colors shadow-md shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed"
+            // White on brand blue #2baae1 is 2.64:1 — below WCAG AA (4.5:1) and below
+            // even the 3:1 large-text floor. This is the one button an elderly
+            // homeowner has to find, on a phone, often outdoors. blue-700 (#15749c)
+            // is 5.24:1 and still reads as PPP blue. The brand fill is untouched
+            // everywhere it doesn't carry white text.
+            className="shrink-0 inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg bg-ppp-blue-700 text-white text-sm sm:text-base font-semibold hover:bg-ppp-blue-800 transition-colors shadow-md shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting
               ? "Saving…"
@@ -1124,8 +1129,18 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         </div>
       )}
 
+      {/* role="alert" + focus: this renders BELOW the submit button, so on a
+          phone it's off-screen when it appears. A customer pressed Submit,
+          heard and saw nothing change, and closed the tab believing they were
+          done — including on the drift path, where the fix is "reload", and
+          reloading discards everything they entered. */}
       {submitError && (
-        <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-sm text-ppp-orange-700">
+        <div
+          role="alert"
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+          className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-sm text-ppp-orange-700 scroll-mt-4"
+        >
           <span className="font-semibold">Something went wrong:</span> {submitError}
           <br />
           Please try again. If it keeps failing, reply to the PPP email and we&apos;ll fix it on our end.
@@ -1292,6 +1307,7 @@ function LineItemSection({
             <SurfaceRow
               key={surface}
               surface={surface}
+              roomLabel={title}
               pick={state.picks[surface] ?? emptyPick()}
               token={token}
               canApplyToAll={canApplyToAll}
@@ -1304,6 +1320,7 @@ function LineItemSection({
               Notes for this room
             </label>
             <textarea
+              aria-label={`Notes for ${title}`}
               value={state.notes}
               onChange={(e) => onNotesChange(e.target.value)}
               rows={2}
@@ -1321,6 +1338,7 @@ function LineItemSection({
 
 function SurfaceRow({
   surface,
+  roomLabel,
   pick,
   token,
   canApplyToAll,
@@ -1328,6 +1346,8 @@ function SurfaceRow({
   onApplyToAll,
 }: {
   surface: string;
+  /** Room heading, used only to disambiguate the row for screen readers. */
+  roomLabel: string;
   pick: SurfacePick;
   token: string;
   canApplyToAll: boolean;
@@ -1369,6 +1389,11 @@ function SurfaceRow({
   // A picked color with no finish is incomplete — flag it (submit also blocks).
   const finishMissing = !!pick.colorId && !pick.finish;
 
+  // Every control in this row is visually identified by the surface label to
+  // its left and the room heading above it — neither of which a screen reader
+  // ties to the control. Spelled out here so each one announces itself.
+  const rowContext = `${surface}, ${roomLabel}`;
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[110px_1fr_180px] gap-3 sm:items-start">
       <div className="flex items-center gap-2 sm:pt-2.5 justify-between sm:justify-start">
@@ -1386,6 +1411,7 @@ function SurfaceRow({
         <button
           type="button"
           onClick={toggleSkip}
+          aria-label={pick.skipped ? `Add a color for ${rowContext}` : `Skip ${rowContext}`}
           className="text-[11px] text-ppp-charcoal-500 hover:text-ppp-blue underline-offset-2 hover:underline transition-colors sm:hidden px-3 py-2 -my-2 -mr-1"
         >
           {pick.skipped ? "Add color" : "Skip this"}
@@ -1399,6 +1425,7 @@ function SurfaceRow({
           <button
             type="button"
             onClick={toggleSkip}
+            aria-label={`Add a color for ${rowContext} instead of skipping`}
             className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 font-medium shrink-0 px-3 py-2 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
           >
             Add color instead
@@ -1406,11 +1433,12 @@ function SurfaceRow({
         </div>
       ) : (
         <>
-          <ColorPicker pick={pick} onPick={handleColorPick} />
+          <ColorPicker pick={pick} onPick={handleColorPick} rowContext={rowContext} />
           <div className="flex flex-col gap-1">
             <select
               value={pick.finish ?? ""}
               onChange={(e) => onChange({ finish: e.target.value || null })}
+              aria-label={`Finish for ${rowContext}`}
               aria-invalid={finishMissing}
               // text-base on mobile to keep ≥16px and avoid iOS zoom-on-focus;
               // py-3 on mobile to hit 44px target. Native <select> renders the
@@ -1453,6 +1481,7 @@ function SurfaceRow({
             <button
               type="button"
               onClick={toggleSkip}
+              aria-label={`Don't paint ${rowContext}`}
               className="hidden sm:inline-block text-[10px] text-ppp-charcoal-500 hover:text-ppp-blue underline text-right"
             >
               Don&apos;t paint this surface
@@ -1469,14 +1498,19 @@ function SurfaceRow({
 function ColorPicker({
   pick,
   onPick,
+  rowContext,
 }: {
   pick: SurfacePick;
   onPick: (patch: Partial<SurfacePick>) => void;
+  /** "Walls, Living Room" — every control here is otherwise anonymous. */
+  rowContext: string;
 }) {
   const catalog = useCatalog();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const hintId = useId();
+  const countId = useId();
 
   // Client-side filter — zero latency per keystroke. Scoring matches the old
   // server-side scoring exactly:
@@ -1590,6 +1624,7 @@ function ColorPicker({
           <button
             type="button"
             onClick={clear}
+            aria-label={`Change the color for ${rowContext} (currently ${pick.colorName ?? "unset"})`}
             className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 font-medium shrink-0 px-3 py-2 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
           >
             Change
@@ -1599,6 +1634,9 @@ function ColorPicker({
         <input
           type="text"
           value={query}
+          aria-label={`Color for ${rowContext}`}
+          aria-describedby={open ? `${hintId} ${countId}` : hintId}
+          autoComplete="off"
           onFocus={() => setOpen(true)}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -1619,10 +1657,28 @@ function ColorPicker({
               if (top) pickColor(top);
             }
           }}
-placeholder="Type a color name or code (e.g. Stardust, 2108-40)"
+          placeholder="Type a color name or code (e.g. Stardust, 2108-40)"
           className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
         />
       )}
+      {/* There is no arrow-key navigation here, so this is deliberately NOT
+          announced as a combobox — that would promise keyboard behaviour the
+          widget doesn't have. Instead: say what Enter does, and announce the
+          match count as it changes. */}
+      <span id={hintId} className="sr-only">
+        Type a color name or code, then press Enter to choose the closest match.
+      </span>
+      <span id={countId} className="sr-only" aria-live="polite">
+        {!open || pick.colorId
+          ? ""
+          : catalog.status === "loading"
+            ? "Loading the color catalog."
+            : catalog.status === "error"
+              ? "The color catalog didn't load."
+              : results.length === 0
+                ? `No colors match ${query}.`
+                : `${results.length} color${results.length === 1 ? "" : "s"} available. ${results[0].name} is the closest match.`}
+      </span>
 
       {open && !pick.colorId && (
         <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto bg-white border border-ppp-charcoal-100 rounded-lg shadow-xl shadow-ppp-charcoal/10 z-50">

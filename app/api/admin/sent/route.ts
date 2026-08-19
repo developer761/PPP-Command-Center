@@ -206,7 +206,7 @@ export async function GET(request: Request) {
 
     let orderQuery = sb
       .from("supplier_orders")
-      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at, delivery_status")
+      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at, delivery_status, created_by_user_id")
       // The Sent tab is the complete record of what actually went out. An order
       // that progressed past "sent" (acknowledged/delivered) is still a sent
       // email — keep it visible so its lifecycle chips render. Excludes "failed"
@@ -303,7 +303,7 @@ export async function GET(request: Request) {
       // Same rule as the token retry above: keep the scope.
       let retryQ = sb
         .from("supplier_orders")
-        .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at")
+        .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at, created_by_user_id")
         .eq("status", "sent")
         .not("sent_at", "is", null);
       if (workOrderId) retryQ = retryQ.eq("work_order_id", workOrderId);
@@ -326,10 +326,18 @@ export async function GET(request: Request) {
         sent_at: string; resend_message_id: string | null; status: string;
         acknowledged_at: string | null; delivered_at: string | null;
         delivery_status?: string | null;
+        created_by_user_id?: string | null;
       }>) {
         messages.push({
           id: `order:${o.id}`,
           kind: "supplier_order",
+          // Kate round-3 #11: supplier orders never carried a sender, so the
+          // Sender filter — which matches on senderName — excluded every one of
+          // them. Combining Sender with any supplier status therefore returned
+          // zero rows always, and the Sender dropdown didn't even render on a
+          // supplier-orders-only view. The column existed (migration 005); it
+          // just wasn't selected.
+          senderId: o.created_by_user_id ?? null,
           sentAt: o.sent_at,
           recipientEmail: o.sent_to_email,
           recipientName: o.supplier_name,

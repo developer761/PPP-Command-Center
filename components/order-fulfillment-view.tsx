@@ -332,12 +332,21 @@ export default function OrderFulfillmentView({
       )}
 
       {draftError && (
-        <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
+        <div role="alert" className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
           Couldn&apos;t build the email: {draftError}
         </div>
       )}
+      {/* The Send button lives in the sticky bar at the BOTTOM; this renders at
+          the top of a long page. Without announcing and pulling focus, the only
+          feedback for the highest-stakes action here — emailing a vendor a real
+          purchase order — was a block ~500px above the viewport. */}
       {sendResult?.ok === false && (
-        <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3">
+        <div
+          role="alert"
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+          className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 scroll-mt-4"
+        >
           <div className="font-semibold text-ppp-orange-700 text-sm">Couldn&apos;t send.</div>
           <div className="text-xs text-ppp-orange-700 mt-1 break-words">{sendResult.error}</div>
           <button
