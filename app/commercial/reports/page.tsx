@@ -5,6 +5,7 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
 import { getJobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
+import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
 import { getLaborReport } from "@/lib/commercial/reports/labor";
 import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
 import { getCashFlowReport } from "@/lib/commercial/reports/cash-flow";
@@ -64,7 +65,7 @@ export default async function ReportsOverviewPage() {
     fromYmd: `${Math.floor(cashFromTotal / 12)}-${String((cashFromTotal % 12) + 1).padStart(2, "0")}-01`,
     toYmd: labourToday,
   };
-  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor] = await Promise.all([
+  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor, receivables] = await Promise.all([
     getPipelineReport(),
     getJobCostsReport(),
     getArAging(),
@@ -75,6 +76,7 @@ export default async function ReportsOverviewPage() {
     getCashFlowReport(cashRange),
     // Year to date, matching that report's own default preset.
     getChangeOrderVendorReport({ fromYmd: `${estYearLabel}-01-01`, toYmd: labourToday }),
+    getReceivablesReport(),
   ]);
   const topTown = geo.byCity[0] ?? null;
 
@@ -140,6 +142,21 @@ export default async function ReportsOverviewPage() {
         label: "Days to pay",
         value: cash.totals.avgDaysToPay === null ? "—" : `${cash.totals.avgDaysToPay}d`,
         tone: cash.totals.avgDaysToPay !== null && cash.totals.avgDaysToPay > 60 ? "amber" as const : undefined,
+      },
+    },
+    {
+      // Alex's ask (2026-08-19), modelled on Mary's hand-kept sheet. Sits above
+      // AR aging because it answers the question he actually asks — what's out
+      // and what's happening with it — where aging answers "who is late".
+      href: "/commercial/reports/receivables",
+      title: "Receivables",
+      blurb: "Every job with money out, invoices and AIA together, with a chase note per item.",
+      icon: <><path d="M3 6h18v12H3z" /><path d="M3 10h18" /><path d="M7 14h4" /></>,
+      primary: { label: "Outstanding", value: formatCentsCompact(receivables.totalOpenCents), tone: "brand" as const },
+      secondary: {
+        label: "Past due",
+        value: formatCentsCompact(receivables.overdueCents),
+        tone: receivables.overdueCents > 0 ? "amber" as const : "neutral" as const,
       },
     },
     {
