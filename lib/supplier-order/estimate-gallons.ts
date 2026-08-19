@@ -99,6 +99,12 @@ export type GallonEstimate = {
   finish: string | null;
   surfaces: string[];
   rooms: string[];
+  /** R4.19: which rooms each surface covers, so the order screen can render
+   *  "Walls — Kitchen, Bathroom · Ceiling — Kitchen". `surfaces` and `rooms`
+   *  are flat lists that lost the pairing: a colour on the kitchen walls and
+   *  the bathroom ceiling read "Kitchen, Bathroom · Walls, Ceiling", which
+   *  implies four combinations and names none of them. */
+  placements: Array<{ surface: string; rooms: string[] }>;
   /** 2-coat, post-deduction coverage area summed across rooms (pre-buffer). */
   totalSqft: number;
   /** 5-gallon buckets to order. */
@@ -249,6 +255,8 @@ type Bucket = {
   finish: string | null;
   surfaces: Set<string>;
   rooms: Set<string>;
+  /** surface label → the rooms it covers, insertion-ordered. */
+  placements: Map<string, Set<string>>;
   totalSqft: number;
   anyMissingFloor: boolean;
   unsized: boolean;
@@ -276,7 +284,7 @@ export function estimateOrderGallons(
     if (!b) {
       b = {
         colorId: s.colorId, colorName: s.colorName, colorCode: s.colorCode, finish: s.finish,
-        surfaces: new Set(), rooms: new Set(), totalSqft: 0, anyMissingFloor: false, unsized: false,
+        surfaces: new Set(), rooms: new Set(), placements: new Map(), totalSqft: 0, anyMissingFloor: false, unsized: false,
         allRoomsNoData: true, // assume yes until a measured room contributes
         contributingRoomCount: 0,
       };
@@ -296,6 +304,12 @@ export function estimateOrderGallons(
       const b = bucketFor(s);
       b.surfaces.add(s.surfaceLabel);
       if (room.roomLabel) b.rooms.add(room.roomLabel);
+      let placed = b.placements.get(s.surfaceLabel);
+      if (!placed) {
+        placed = new Set();
+        b.placements.set(s.surfaceLabel, placed);
+      }
+      if (room.roomLabel) placed.add(room.roomLabel);
       if (!seenThisRoom.has(b)) {
         b.contributingRoomCount += 1;
         // If ANY contributing room has real data, the bucket isn't manualOnly.
@@ -340,6 +354,7 @@ export function estimateOrderGallons(
       finish: b.finish,
       surfaces: Array.from(b.surfaces),
       rooms: Array.from(b.rooms),
+      placements: Array.from(b.placements, ([surface, rooms]) => ({ surface, rooms: Array.from(rooms) })),
       totalSqft: Math.round(b.totalSqft),
       buckets: bucketsCount,
       cans,

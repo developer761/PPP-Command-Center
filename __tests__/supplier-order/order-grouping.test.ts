@@ -16,6 +16,7 @@ function est(over: Partial<GallonEstimate> = {}): GallonEstimate {
   return {
     colorId: "c1", colorName: "1421 Bistro Blue", colorCode: "1421", finish: "Eggshell",
     surfaces: ["Walls"], rooms: ["Living Room"], totalSqft: 400,
+    placements: [{ surface: "Walls", rooms: ["Living Room"] }],
     buckets: 1, cans: 0, gallons: 5,
     needsMeasurement: false, unsized: false, manualOnly: false, ...over,
   };

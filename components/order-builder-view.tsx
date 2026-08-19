@@ -82,7 +82,6 @@ export default function OrderBuilderView({
   workOrderNumber,
   customerName,
   sourceLines,
-  previewGroups,
   initialPayload,
   initialSupplierId,
   persistenceAvailable,
@@ -91,7 +90,6 @@ export default function OrderBuilderView({
   workOrderNumber: string | null;
   customerName: string | null;
   sourceLines: SourceLine[];
-  previewGroups: PreviewGroup[];
   initialPayload: OrderBuildPayload;
   /** Resume straight into a supplier the worker already started building for. */
   initialSupplierId: string | null;
@@ -608,10 +606,24 @@ export default function OrderBuilderView({
                         </div>
                         {/* Kate round-3 #25: room(s) AND surface, so a colour used
                             in two rooms can't collapse into one nameless line. */}
+                        {/* R4.19: all the rooms then all the surfaces in one
+                            run made it impossible to tell which surface went
+                            with which room. Grouped by surface instead:
+                            "Walls — Kitchen, Bathroom · Ceiling — Kitchen". */}
                         <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-                          {e.rooms.length > 0 ? e.rooms.join(", ") : "Room not named in Salesforce"}
-                          {e.surfaces.length > 0 && (
-                            <span className="text-ppp-charcoal-400"> · {e.surfaces.join(", ")}</span>
+                          {e.placements && e.placements.length > 0 ? (
+                            <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                              {e.placements.map((pl) => (
+                                <span key={pl.surface}>
+                                  <span className="text-ppp-charcoal-600 font-medium">{pl.surface}</span>
+                                  <span className="text-ppp-charcoal-400"> — {pl.rooms.join(", ")}</span>
+                                </span>
+                              ))}
+                            </span>
+                          ) : e.rooms.length > 0 ? (
+                            e.rooms.join(", ")
+                          ) : (
+                            "Room not named in Salesforce"
                           )}
                         </div>
                       </div>
@@ -719,7 +731,9 @@ export default function OrderBuilderView({
             </label>
             <p className="text-[11px] text-ppp-charcoal-500 mb-2">
               Colours and finishes for surfaces that don&apos;t map to a standard field, non-BM/SW
-              colors, and anything the customer said. Goes on the order email.
+              colors, and anything the customer said. For the estimator — this
+              does NOT go to the vendor. If something in here needs buying, add
+              it as a custom color item above.
             </p>
             <textarea
               id="order-color-notes"
@@ -743,23 +757,58 @@ export default function OrderBuilderView({
               <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1.5">
                 Primer <span className="font-normal normal-case text-ppp-charcoal-400">— add if the job needs it</span>
               </div>
+              {/* R4.16: quantity lives next to the primer at the point it's
+                  added. It used to be settable only once you reached the email,
+                  which made it easy to tick a primer, forget, and send the
+                  default single gallon for a whole house. Same ± control the
+                  sundries list below already uses. */}
               <div className="flex flex-wrap gap-1.5">
                 {PRIMER_MATERIAL_TYPES.map((p) => {
                   const id = `primer-${p.value.toLowerCase().replace(/\s+/g, "-")}`;
-                  const on = selectedExtras.some((e) => e.extraId === id);
+                  const sel = selectedExtras.find((e) => e.extraId === id);
                   return (
-                    <button
+                    <div
                       key={p.value}
-                      type="button"
-                      onClick={() => togglePrimer(p.value)}
-                      className={`text-[11px] px-2.5 py-1.5 rounded-lg border min-h-[36px] touch-manipulation transition-colors ${
-                        on
-                          ? "bg-ppp-blue-600 text-white border-ppp-blue-700"
-                          : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+                      className={`inline-flex items-center rounded-lg border transition-colors ${
+                        sel ? "bg-ppp-blue-50 border-ppp-blue-200" : "bg-white border-ppp-charcoal-200"
                       }`}
                     >
-                      {on ? "✓ " : "+ "}{p.value}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => togglePrimer(p.value)}
+                        aria-pressed={!!sel}
+                        className={`text-[11px] px-2.5 py-1.5 rounded-l-lg min-h-[36px] touch-manipulation transition-colors ${
+                          sel ? "text-ppp-blue-800 font-semibold" : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 rounded-r-lg"
+                        }`}
+                      >
+                        {sel ? "✓ " : "+ "}{p.value}
+                      </button>
+                      {sel && (
+                        <span className="flex items-center gap-0.5 pr-1 pl-0.5 border-l border-ppp-blue-200">
+                          <button
+                            type="button"
+                            aria-label={`Decrease ${p.value}`}
+                            disabled={sel.qty <= 1}
+                            onClick={() => setExtraQty(id, sel.qty - 1)}
+                            className="h-9 w-9 sm:h-7 sm:w-7 rounded text-ppp-charcoal hover:bg-white disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none touch-manipulation"
+                          >
+                            −
+                          </button>
+                          <span className="font-mono font-semibold text-[11px] min-w-[2.5rem] text-center text-ppp-charcoal">
+                            {sel.qty} gal
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Increase ${p.value}`}
+                            disabled={sel.qty >= 99}
+                            onClick={() => setExtraQty(id, sel.qty + 1)}
+                            className="h-9 w-9 sm:h-7 sm:w-7 rounded text-ppp-charcoal hover:bg-white disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none touch-manipulation"
+                          >
+                            +
+                          </button>
+                        </span>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -881,14 +930,26 @@ export default function OrderBuilderView({
           the DOM until a vendor was picked — the link scrolled nowhere and
           dropped the user on a vendor picker instead. Looking at the colours
           is a read-only act; it shouldn't require choosing a store first. */}
-          <section id="preview" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-4">
-            <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
-                <div className="text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
-                  Source data (Salesforce)
-                </div>
-                <h3 className="text-sm font-semibold text-ppp-charcoal">Line items on this WO</h3>
-              </div>
+          {/* R4.17: the "Supplier → color → where it goes" panel was removed —
+              it restated the buy-list above with a different grouping, and the
+              two disagreed whenever the buy-list changed. */}
+          <section id="preview" className="scroll-mt-4">
+            {/* R4.18: collapsed by default. This is reference data an estimator
+                opens to check a number, not something they read on every order —
+                expanded it pushed the actual buy-list off the first screen. */}
+            <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
+              <summary className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] cursor-pointer list-none flex items-center justify-between gap-2 min-h-[44px] touch-manipulation">
+                <span>
+                  <span className="block text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
+                    Source data (Salesforce)
+                  </span>
+                  <span className="block text-sm font-semibold text-ppp-charcoal">
+                    Line items on this WO
+                    <span className="ml-1.5 font-normal text-ppp-charcoal-500">({sourceLines.length})</span>
+                  </span>
+                </span>
+                <span aria-hidden className="shrink-0 text-ppp-charcoal-400 transition-transform group-open:rotate-180">▾</span>
+              </summary>
               <ul className="divide-y divide-ppp-charcoal-100">
                 {sourceLines.map((l) => (
                   <li key={l.id} className="px-4 py-2.5 text-xs">
@@ -907,58 +968,8 @@ export default function OrderBuilderView({
                   <li className="px-4 py-4 text-xs text-ppp-charcoal-500 italic">No line items on this work order.</li>
                 )}
               </ul>
-            </div>
+            </details>
 
-            <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
-                <div className="text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
-                  Order draft preview
-                </div>
-                <h3 className="text-sm font-semibold text-ppp-charcoal">Supplier → color → where it goes</h3>
-              </div>
-              <div className="p-4 space-y-3">
-                {previewGroups.length === 0 ? (
-                  <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg p-3 text-xs text-ppp-orange-700">
-                    <strong>No colors picked yet.</strong> Send the color form, or enter the colors
-                    internally, to populate this view.
-                  </div>
-                ) : (
-                  previewGroups.map((g) => (
-                    <div key={g.supplierName} className="border border-ppp-charcoal-100 rounded-lg overflow-hidden">
-                      <div className="px-3 py-2 bg-ppp-blue-50 border-b border-ppp-blue-100 flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.supplierName}</span>
-                        <span className="shrink-0 text-[10px] text-ppp-charcoal-500">
-                          {g.colors.length} color{g.colors.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                      <ul className="divide-y divide-ppp-charcoal-100 text-xs">
-                        {g.colors.map((c) => (
-                          <li key={c.id} className="px-3 py-2 flex items-start gap-2">
-                            <span
-                              aria-hidden
-                              className="h-5 w-5 mt-0.5 rounded border border-ppp-charcoal-200 shrink-0"
-                              style={swatchStyle(c.hex)}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="font-medium text-ppp-charcoal">{c.name}</div>
-                              {c.code && <div className="text-[10px] text-ppp-charcoal-500 font-mono">{c.code}</div>}
-                              {/* #15: room + surface, never a generic "Area". */}
-                              <ul className="mt-1 space-y-0.5">
-                                {c.placements.map((p, i) => (
-                                  <li key={`${p.room}-${p.surface}-${i}`} className="text-[11px] text-ppp-charcoal-500">
-                                    {p.room} · <span className="text-ppp-charcoal-400">{p.surface}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
           </section>
 
       {/* Sticky advance bar */}
@@ -1002,13 +1013,6 @@ export default function OrderBuilderView({
   );
 }
 
-function swatchStyle(hex: string | null): React.CSSProperties {
-  const h = (hex ?? "").trim();
-  if (/^#?(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(h)) {
-    return { backgroundColor: h.startsWith("#") ? h : `#${h}` };
-  }
-  return { backgroundImage: "repeating-linear-gradient(45deg, #ddd 0 4px, #fafafa 4px 8px)" };
-}
 
 /**
  * Kate round-3 #28 — the COLOUR half of "Add custom item".

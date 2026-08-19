@@ -33,7 +33,10 @@ export type SupplierEmailTemplate = {
 export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
   subject:
     "PPP Order {{po_number}} — {{customer_name}} (WO {{wo_number}})",
-  greeting: "Hi {{supplier_name}} team,",
+  // R4.23: the vendor's own name came out of the greeting. They know who they
+  // are; it read as mail-merge filler, and when supplier_settings held a
+  // slightly different name than the account it was visibly wrong.
+  greeting: "Hi there,",
   intro:
     "Please prepare the following order for {{ppp_brand}}.\n\n" +
     "{{#ppp_account_number}}PPP Account: {{ppp_account_number}}\n{{/ppp_account_number}}" +

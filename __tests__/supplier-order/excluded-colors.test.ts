@@ -28,6 +28,7 @@ function estimate(over: Partial<GallonEstimate> = {}): GallonEstimate {
     finish: "eggshell",
     surfaces: ["Walls"],
     rooms: ["Living Room"],
+    placements: [{ surface: "Walls", rooms: ["Living Room"] }],
     totalSqft: 400,
     buckets: 1,
     cans: 2,

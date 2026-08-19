@@ -69,7 +69,6 @@ export default async function OrderBuilderPage({
       workOrderNumber={data.job.wo.workOrderNumber ?? null}
       customerName={data.job.wo.accountName ?? null}
       sourceLines={data.sourceLines}
-      previewGroups={data.previewGroups}
       // Kate round-3 #24: seed the paint line from the work order when the
       // saved build has none. The AM picks a line on Internal Entry, it lands
       // on WorkOrder.MaterialType__c — and the order form still showed an empty

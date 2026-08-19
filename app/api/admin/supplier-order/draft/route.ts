@@ -85,6 +85,7 @@ export async function POST(request: Request) {
     /** Kate round-3 #29: who the supplier should call. */
     contactName?: string;
     contactPhone?: string;
+    contactEmail?: string;
   };
   try {
     body = await request.json();
@@ -268,6 +269,7 @@ export async function POST(request: Request) {
     customColorItems: body.customColorItems,
     contactName: body.contactName ?? null,
     contactPhone: body.contactPhone ?? null,
+    contactEmail: body.contactEmail ?? null,
   });
 
   return NextResponse.json({ ok: true, draft });

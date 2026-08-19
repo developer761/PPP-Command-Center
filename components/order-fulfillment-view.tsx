@@ -65,6 +65,7 @@ export default function OrderFulfillmentView({
   persistenceAvailable,
   viewerName,
   viewerPhone,
+  viewerEmail,
 }: {
   workOrderId: string;
   workOrderNumber: string | null;
@@ -82,6 +83,10 @@ export default function OrderFulfillmentView({
   persistenceAvailable: boolean;
   viewerName: string | null;
   viewerPhone: string | null;
+  /** R4.29: the orderer's PPP address, or null when they're signed in with a
+   *  personal mailbox — see loadViewerContact. Goes in the email's questions
+   *  block, and the send route CCs the same address. */
+  viewerEmail: string | null;
 }) {
   const woLabel = workOrderNumber ?? workOrderId.slice(-6);
   const today = todayEtISO();
@@ -169,6 +174,7 @@ export default function OrderFulfillmentView({
             requiredByDate: requiredByValue || undefined,
             contactName: viewerName ?? undefined,
             contactPhone: contactPhone.trim() || undefined,
+            contactEmail: viewerEmail ?? undefined,
             // ── committed order state, read-only from here ──
             ...(JSON.parse(orderPayloadJson) as Record<string, unknown>),
           }),
@@ -193,7 +199,7 @@ export default function OrderFulfillmentView({
     return () => { cancelled = true; clearTimeout(t); };
   }, [
     workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr,
-    instructions, requiredByValue, contactPhone, viewerName, orderPayloadJson,
+    instructions, requiredByValue, contactPhone, viewerName, viewerEmail, orderPayloadJson,
   ]);
 
   // Whether this delivery address is in the five boroughs. Derived, not stored

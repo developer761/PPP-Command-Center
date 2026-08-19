@@ -30,6 +30,7 @@ function estimate(over: Partial<GallonEstimate> = {}): GallonEstimate {
     colorCode: "2108-50",
     finish: "Eggshell",
     surfaces: ["Walls"],
+    placements: [{ surface: "Walls", rooms: ["Living Room"] }],
     rooms: ["Living Room"],
     totalSqft: 0,
     buckets: 0,

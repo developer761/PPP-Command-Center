@@ -1,3 +1,4 @@
+import { isCompanyEmail } from "@/lib/auth/company-domain";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
@@ -273,12 +274,11 @@ export async function POST(request: Request) {
   // env COMPANY_EMAIL_DOMAINS (same list the customer-email lookup uses).
   const requesterEmail = (data.user.email ?? "").trim().toLowerCase();
   const supplierEmail = body.sentToEmail!.trim().toLowerCase();
-  const PPP_DOMAINS = (process.env.COMPANY_EMAIL_DOMAINS ?? "precisionpaintingplus.com,precisionpaintingplus.net")
-    .split(",")
-    .map((d) => d.trim().toLowerCase())
-    .filter(Boolean);
-  const isPppEmail = (e: string) =>
-    PPP_DOMAINS.some((d) => e.endsWith(`@${d}`));
+  // Shared with the draft route (R4.29) so the address printed in the email's
+  // questions block and the address actually CC'd can never disagree — telling
+  // a vendor to write to someone who isn't on the thread is worse than not
+  // naming anyone.
+  const isPppEmail = isCompanyEmail;
   const ccList: string[] = [];
   if (
     requesterEmail &&

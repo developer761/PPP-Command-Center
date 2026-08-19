@@ -1,3 +1,4 @@
+import { isCompanyEmail } from "@/lib/auth/company-domain";
 import Link from "next/link";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import OrderFulfillmentView from "@/components/order-fulfillment-view";
@@ -36,11 +37,11 @@ async function loadSupplierName(supplierAccountId: string): Promise<string> {
  * missing from a PostgREST select returns undefined and never errors, but a
  * select naming a missing column DOES error.)
  */
-async function loadViewerContact(): Promise<{ name: string | null; phone: string | null }> {
+async function loadViewerContact(): Promise<{ name: string | null; phone: string | null; email: string | null }> {
   try {
     const supabase = await createClient();
     const { data } = await supabase.auth.getUser();
-    if (!data?.user) return { name: null, phone: null };
+    if (!data?.user) return { name: null, phone: null, email: null };
     const profile = await getProfileByUserId(data.user.id);
     const name =
       (profile?.sf_user_name ?? "").trim() ||
@@ -64,9 +65,13 @@ async function loadViewerContact(): Promise<{ name: string | null; phone: string
       // Migration 145 pending — leave the field blank and editable.
     }
 
-    return { name, phone };
+    // R4.29: only a PPP mailbox goes in front of a vendor. The send route CCs
+    // on exactly this rule, so printing a personal address here would invite a
+    // reply to someone who isn't even on the thread.
+    const email = isCompanyEmail(data.user.email) ? (data.user.email ?? null) : null;
+    return { name, phone, email };
   } catch {
-    return { name: null, phone: null };
+    return { name: null, phone: null, email: null };
   }
 }
 
@@ -134,6 +139,7 @@ export default async function OrderFulfillmentPage({
       persistenceAvailable={build.available}
       viewerName={contact.name}
       viewerPhone={contact.phone}
+      viewerEmail={contact.email}
     />
   );
 }
