@@ -52,6 +52,13 @@ import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-da
 import { resolveSwatchHex } from "@/lib/customer-form/color-swatch";
 import { classifySurface, denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
 import { extractCustomerFreeText } from "@/lib/customer-form/notes";
+import {
+  readLocalDraft,
+  writeLocalDraft,
+  clearLocalDraft,
+  draftHasContent,
+  mergeDraftIntoState,
+} from "@/lib/customer-form/local-draft";
 
 /** Surface label → the WOLI slot holding its existing SF color/finish.
  *  Used to pre-fill the form from colors already saved in Salesforce when
@@ -406,6 +413,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   }, [formData, priorSubmission]);
 
   const [state, setState] = useState(initialState);
+  /** How many rooms came back from a local draft, once, on mount. */
+  const [restoredRooms, setRestoredRooms] = useState(0);
+  const [draftDismissed, setDraftDismissed] = useState(false);
 
   // Project-notes textarea seeding. ONLY the customer's own prior submission
   // pre-fills (re-edit case). We do NOT seed from SF Description anymore —
@@ -419,6 +429,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // Katie 2026-06-03: this dictates which Benjamin Moore / Sherwin-Williams
   // product line we mix the customer's chosen colors in.
   const [materialType, setMaterialType] = useState<string>(formData.materialType ?? "");
+
   const [submitting, setSubmitting] = useState(false);
   // Ref-based guard — React batches setState so two rapid clicks could
   // both pass `if (submitting) return` before either commits the new value.
@@ -426,6 +437,40 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   const submitInFlight = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  // ── Local draft: restore on mount ────────────────────────────────────────
+  // Runs once, client-side only (localStorage doesn't exist during SSR, and
+  // seeding state from it during render would hydration-mismatch). Preview
+  // tokens are excluded — staff testing the form shouldn't leave a draft
+  // behind, or resume one.
+  useEffect(() => {
+    if (isPreview) return;
+    const draft = readLocalDraft(token);
+    if (!draft || !draftHasContent(draft)) return;
+    const merged = mergeDraftIntoState(initialState, draft);
+    // localStorage doesn't exist during SSR, and reading it in render would
+    // hydration-mismatch, so restoring after mount is the only correct place.
+    // Costs one extra render, and only when a draft actually exists.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setState(merged.state as typeof initialState);
+    if (draft.globalNotes) setGlobalNotes(draft.globalNotes);
+    if (draft.materialType) setMaterialType(draft.materialType);
+    setRestoredRooms(merged.restoredRooms);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // Deliberately mount-only: re-running on `initialState` identity would
+    // clobber live typing every time the memo recomputed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Local draft: autosave ────────────────────────────────────────────────
+  // Debounced so a fast typist doesn't serialize the whole form on every
+  // keystroke. Nothing here can fail loudly — see local-draft.ts.
+  useEffect(() => {
+    if (isPreview || submitted) return;
+    const t = setTimeout(() => {
+      writeLocalDraft(token, { state, globalNotes, materialType });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [token, state, globalNotes, materialType, isPreview, submitted]);
   // Kate round-3 #30: Salesforce rejected the write. Surfaced to STAFF (an AM
   // doing Internal Entry) because they're the one who can act on it. A
   // homeowner is deliberately not shown this — their picks are saved in the
@@ -748,6 +793,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       if ((data as { salesforceWriteFailed?: boolean }).salesforceWriteFailed) {
         setSfWriteFailed(true);
       }
+      // Submitted successfully — the draft has done its job. Leaving it would
+      // resurrect pre-submit values over the customer's own saved answers the
+      // next time they open the link to make an edit.
+      clearLocalDraft(token);
       setSubmitted(true);
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
@@ -761,6 +810,37 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   return (
     <CatalogContext.Provider value={catalog}>
     <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
+      {/* Everything the customer had already filled in came back from this
+          browser. Worth saying out loud: without it they'd assume the form
+          remembered nothing and start over, which is the whole cost we're
+          avoiding. Green (not orange) — this is good news, not a warning. */}
+      {restoredRooms > 0 && !draftDismissed && (
+        <div className="bg-ppp-green-50 border border-ppp-green-100 rounded-xl px-4 py-3 flex items-start justify-between gap-3">
+          <p className="text-xs sm:text-sm text-ppp-charcoal-700 leading-relaxed">
+            <span className="font-semibold text-ppp-charcoal">We brought back what you&rsquo;d already filled in</span>
+            {" — "}
+            {restoredRooms === 1 ? "1 room" : `${restoredRooms} rooms`} restored from this device.
+            Check it over before you submit.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              // "Start fresh" has to clear the SAVED copy too, or the next
+              // load restores the very thing they just rejected.
+              clearLocalDraft(token);
+              setState(initialState);
+              setGlobalNotes(priorSubmission?.globalNotes ?? "");
+              setMaterialType(formData.materialType ?? "");
+              setRestoredRooms(0);
+              setDraftDismissed(true);
+            }}
+            className="shrink-0 text-xs font-medium text-ppp-charcoal-600 hover:text-ppp-charcoal underline underline-offset-2 px-2 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
+          >
+            Start fresh
+          </button>
+        </div>
+      )}
+
       {/* Greeting + WO header — all text editable via /dashboard/settings/templates.
           Kate round-2 #08: for Internal Entry (an AM entering on the customer's
           behalf) the customer-facing eyebrow/title/subtitle is stripped — this

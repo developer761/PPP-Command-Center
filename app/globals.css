@@ -204,6 +204,33 @@ body {
   --color-ppp-blue-700: #74aecb;   /* text — reads on dark */
   --color-ppp-blue-800: #9dc6db;
 
+  /* Orange (warning / attention) — muted terracotta.
+     Karan 2026-08: these had NO dark values at all, so every warning banner
+     kept its light-mode near-white tint (#fdefe5) on a near-black page. Where
+     the banner used the orange text token it stayed legible by accident; the
+     six that pair the tint with charcoal text rendered at 1.13:1 — off-white
+     text on an off-white block, i.e. invisible. Same story for green. */
+  --color-ppp-orange-50:  #2a1a12;
+  --color-ppp-orange-100: #382217;
+  --color-ppp-orange-200: #4d2f1f;
+  --color-ppp-orange-300: #6b4029;
+  --color-ppp-orange-400: #c9754b;
+  --color-ppp-orange-500: #b86a44;
+  --color-ppp-orange-600: #a25c3a;
+  --color-ppp-orange-700: #e3a687;   /* text — reads on dark */
+  --color-ppp-orange-800: #eec3ad;
+  --color-ppp-orange-900: #f5dbcd;
+
+  /* Green (success / go) — muted olive */
+  --color-ppp-green-50:  #1a2312;
+  --color-ppp-green-100: #243017;
+  --color-ppp-green-200: #334320;
+  --color-ppp-green-300: #4a6030;
+  --color-ppp-green-500: #6f9c39;
+  --color-ppp-green-600: #5d8430;
+  --color-ppp-green-700: #aecb84;   /* text — reads on dark */
+  --color-ppp-green-800: #c8dcab;
+
   /* Emerald — muted sage */
   --color-emerald-50:  #14231c;
   --color-emerald-100: #1a3026;
