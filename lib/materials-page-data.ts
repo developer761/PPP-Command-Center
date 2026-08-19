@@ -5,6 +5,7 @@ import type { FormStatus } from "@/lib/customer-form/wo-status";
 import type { WoProgress } from "@/lib/wo-progress/types";
 import { getJobCompletedAt } from "@/lib/wo-progress/completion";
 import { buildAttribution } from "@/lib/wo-progress/attribution";
+import { retainedPicksByLine, type RetainedPick } from "@/lib/customer-form/retained-picks";
 
 /**
  * One-shot loader for the materials page's two auxiliary datasets:
@@ -94,6 +95,9 @@ function pickMin(values: Array<string | null | undefined>): string | null {
 export type MaterialsPageAuxData = {
   formStatusByWO: Map<string, FormStatus>;
   progressByWO: Map<string, WoProgress>;
+  /** R4.9/R4.10: WO id → (line item id → the customer's actual per-surface
+   *  picks). Only populated when the caller asks — see `includeRetainedPicks`. */
+  retainedPicksByWO: Map<string, Map<string, RetainedPick[]>>;
 };
 
 /** Optional per-WO Salesforce metadata. When provided, the progress builder
@@ -105,10 +109,18 @@ export type WorkOrderCompletionMeta = { status: string | null; closeDate: string
 export async function getMaterialsPageAuxData(
   workOrderIds: string[],
   workOrderMeta?: Map<string, WorkOrderCompletionMeta>,
+  opts: {
+    /** Pull `submitted_payload` too. Off by default: it's a fat JSON column and
+     *  the browse list asks for ~460 work orders at once, while the only screen
+     *  that renders per-surface colours (Rooms & Colors) exists solely on the
+     *  focused work-order page, which asks for one. */
+    includeRetainedPicks?: boolean;
+  } = {},
 ): Promise<MaterialsPageAuxData> {
   const formStatusByWO = new Map<string, FormStatus>();
   const progressByWO = new Map<string, WoProgress>();
-  if (workOrderIds.length === 0) return { formStatusByWO, progressByWO };
+  const retainedPicksByWO = new Map<string, Map<string, RetainedPick[]>>();
+  if (workOrderIds.length === 0) return { formStatusByWO, progressByWO, retainedPicksByWO };
 
   // Seed all-defaults so callers can do constant-time lookups. When the caller
   // passed WO metadata, derive jobCompletedAt now so the bar reflects the SF
@@ -146,7 +158,10 @@ export async function getMaterialsPageAuxData(
       // the activity history can say WHO opened and submitted. Round 2 added the
       // attribution logic but only to the other loader, which is why the page
       // Kate tests kept reading "Customer Submitted".
-      .select("token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind, created_by_user_id")
+      .select(
+        "token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind, created_by_user_id" +
+          (opts.includeRetainedPicks ? ", submitted_payload" : "")
+      )
       .in("work_order_id", workOrderIds)
       // NO .neq("kind", "preview") HERE — it silently deleted the feature.
       //
@@ -210,6 +225,16 @@ export async function getMaterialsPageAuxData(
     const attribution = await buildAttribution(sb, bestByWo.values());
 
     for (const row of bestByWo.values()) {
+      // R4.9/R4.10: the customer's picks as they entered them. `bestByWo` ranks
+      // a submitted token above every other state, so when a WO has a
+      // submission this row IS that submission.
+      if (opts.includeRetainedPicks && row.submitted_at) {
+        const picks = retainedPicksByLine(
+          (row as { submitted_payload?: unknown }).submitted_payload
+        );
+        if (picks.size > 0) retainedPicksByWO.set(row.work_order_id, picks);
+      }
+
       // Progress stages from this same row
       const progress = progressByWO.get(row.work_order_id);
       if (progress) {
@@ -302,5 +327,5 @@ export async function getMaterialsPageAuxData(
     console.warn("[materials-aux] supplier_orders query failed:", ordersResult.reason);
   }
 
-  return { formStatusByWO, progressByWO };
+  return { formStatusByWO, progressByWO, retainedPicksByWO };
 }

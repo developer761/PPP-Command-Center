@@ -104,15 +104,18 @@ describe("vendor email paint block", () => {
     const block = formatOrderSummaryBlock(lines, null);
     expect(block).toContain("Stardust");
     expect(block).not.toContain("White Dove");
-    // And specifically not as the old placeholder, which asked the vendor to
-    // price the very thing PPP had decided not to buy.
-    expect(block).not.toContain("PPP to confirm quantity");
+    // And specifically not as the "needs a quantity" placeholder, which asked
+    // the vendor to price the very thing PPP had decided not to buy.
+    expect(block).not.toContain("TBD");
   });
 
   it("still shows the placeholder for a colour nobody has sized", () => {
     const block = formatOrderSummaryBlock([estimate({ buckets: 0, cans: 0, gallons: 0, manualOnly: true })], null);
     expect(block).toContain("White Dove");
-    expect(block).toContain("PPP to confirm quantity");
+    // R4.25: "___ (PPP to confirm quantity)" → "TBD". Kate flagged that the
+    // underscores were easy to miss on a printed order.
+    expect(block).toContain("TBD");
+    expect(block).not.toContain("___");
   });
 
   it("says so plainly when every colour was excluded", () => {
@@ -125,14 +128,15 @@ describe("vendor email paint block", () => {
     expect(block).toContain("no paint on this order");
   });
 
-  it("does not call the job 'mixed' because of an excluded line's product", () => {
+  it("does not group under an excluded line's product (R4.30)", () => {
     const overrides = new Map([[key, { buckets: 0, cans: 0, unit: "gal" as const }]]);
     const lines = applyQuantityOverrides([estimate(), stardust], overrides);
     const block = formatOrderSummaryBlock(lines, null, new Map([
-      [`c1::eggshell`, "Aura Interior"],   // excluded
+      [`c1::eggshell`, "Aura Interior"],   // excluded — must not create a group
       [`c2::satin`, "Regal Select Interior"],
     ]));
-    expect(block).toContain("Paint product line: Regal Select Interior");
-    expect(block).not.toContain("mixed");
+    expect(block).toContain("REGAL SELECT INTERIOR");
+    expect(block).not.toContain("AURA");
+    expect(block).not.toContain("[NOT SET]");
   });
 });

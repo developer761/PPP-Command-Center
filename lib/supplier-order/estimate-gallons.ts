@@ -522,3 +522,38 @@ export function formatOrderQuantity(e: GallonEstimate): string {
   if (e.buckets === 0 && e.cans === 0) return e.needsMeasurement ? "needs measurement" : "—";
   return formatBucketsCans(e.buckets, e.cans, e.unit ?? "gal");
 }
+
+/**
+ * A color's display label, without printing its code twice (R4.24).
+ *
+ * PPP's `PaintColor__c.Name` usually already starts with the code, and for some
+ * colors the name IS the code:
+ *
+ *     Name "1421 Bistro Blue"   Code "1421"          → "1421 Bistro Blue"
+ *     Name "Super White"        Code "Super White"   → "Super White"
+ *     Name "OC-45 Swiss Coffee" Code "OC-45"         → "OC-45 Swiss Coffee"
+ *     Name "White Dove"         Code "OC-17"         → "White Dove OC-17"
+ *
+ * Appending unconditionally produced order lines reading "1421 Bistro Blue 1421"
+ * and "Super White Super White", which a vendor reasonably reads as two
+ * different things.
+ *
+ * Comparison strips non-alphanumerics and case, so "HC-14" is recognised inside
+ * "HC 14 Princeton Gold" — the hyphenation is inconsistent in PPP's data and a
+ * literal `includes` would miss it.
+ */
+export function formatColorLabel(
+  name: string | null | undefined,
+  code: string | null | undefined
+): string {
+  const n = (name ?? "").trim();
+  const c = (code ?? "").trim();
+  if (!c) return n;
+  if (!n) return c;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const nn = norm(n);
+  const nc = norm(c);
+  // An empty normalised code (a code of "—" or "-") carries no information.
+  if (!nc) return n;
+  return nn.includes(nc) ? n : `${n} ${c}`;
+}

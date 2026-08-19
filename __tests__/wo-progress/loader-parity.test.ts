@@ -28,12 +28,35 @@ function read(rel: string): string {
   return readFileSync(join(process.cwd(), rel), "utf8");
 }
 
-/** The column list actually handed to PostgREST for customer_form_tokens. */
+/**
+ * The column list actually handed to PostgREST for customer_form_tokens.
+ *
+ * The select is not always one literal — materials-page-data.ts appends an
+ * optional column by concatenation. Collect EVERY string literal between
+ * `.select(` and its closing paren so a conditional tail can't hide a column
+ * (and, more importantly, can't make this guard silently stop finding the
+ * required ones and report a false failure).
+ */
 function tokenSelect(src: string): string | null {
   const i = src.indexOf('from("customer_form_tokens")');
   if (i === -1) return null;
-  const m = /\.select\(\s*(["'`])([\s\S]*?)\1\s*\)/.exec(src.slice(i, i + 1200));
-  return m ? m[2] : null;
+  const region = src.slice(i, i + 1600);
+  const start = region.indexOf(".select(");
+  if (start === -1) return null;
+  let depth = 0;
+  let end = -1;
+  for (let k = start + ".select".length; k < region.length; k++) {
+    const c = region[k];
+    if (c === "(") depth++;
+    else if (c === ")") {
+      depth--;
+      if (depth === 0) { end = k; break; }
+    }
+  }
+  if (end === -1) return null;
+  const call = region.slice(start, end);
+  const literals = [...call.matchAll(/(["'`])((?:[^\\]|\\.)*?)\1/g)].map((m) => m[2]);
+  return literals.length ? literals.join("") : null;
 }
 
 describe("progress loaders stay in step on attribution", () => {

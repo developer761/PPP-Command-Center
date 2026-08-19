@@ -1,3 +1,4 @@
+import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { NextResponse } from "next/server";
 import { validateToken, markSubmitted, markResubmitted } from "@/lib/customer-form/tokens";
 import { loadFormRenderData, invalidateFormRenderData } from "@/lib/customer-form/render-data";
@@ -812,7 +813,7 @@ export async function POST(
   if (writesFailedInfo) {
     const roomLabelById = new Map<string, string>();
     for (const li of fresh.lineItems) {
-      if (li.id) roomLabelById.set(li.id, (li.areaLabel ?? "").trim() || "Unnamed area");
+      if (li.id) roomLabelById.set(li.id, roomLabelFrom(li.areaLabel, li.productName, "Unnamed area"));
     }
     // AWAITED, unlike the routine notifications below. A floating promise can
     // be torn down when the serverless response returns, and this is the one

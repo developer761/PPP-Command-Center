@@ -772,15 +772,12 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       }
       // Material Type the customer picked wasn't in our current catalog
       // (legacy SF value or stale picklist). Submit saved everything else
-      // but skipped the paint-line write. Tell the customer so they know
-      // to mention the paint line when they hear from us. Without this
-      // they'd see the standard thank-you and assume their paint pick
-      // landed in our system. Audit 2026-06-07.
-      if ((data as { materialTypeDropped?: boolean }).materialTypeDropped) {
-        setPostSubmitNote(
-          "We saved your color picks, but the paint product line you selected isn't one we currently order. Please reply to our email with the paint line you'd like so we can make sure it's mixed correctly."
-        );
-      }
+      // R4.2: the "paint line isn't one we currently order" note used to render
+      // here. Kate had it removed — it asked a homeowner to resolve a picklist
+      // mismatch that is ours to resolve, and it landed on the thank-you screen
+      // as though they'd done something wrong. `materialTypeDropped` is still
+      // returned by the submit route and still visible to STAFF (the Salesforce
+      // write-failure banner), which is where it's actionable.
       // Preview-mode submit — admin tested the form. Override the celebratory
       // copy so it's obvious nothing actually persisted. The banner during
       // the form already warned, but the thank-you state would otherwise

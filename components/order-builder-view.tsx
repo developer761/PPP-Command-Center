@@ -510,7 +510,7 @@ export default function OrderBuilderView({
           <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
             <div className="flex items-center gap-3 flex-wrap">
               <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-ppp-charcoal">Paint product line</h2>
+                <h2 className="text-sm font-semibold text-ppp-charcoal">Default paint product line</h2>
                 <p className="text-[11px] text-ppp-charcoal-500">
                   Applies to every color — override per color below if the job mixes lines.
                 </p>
@@ -528,7 +528,7 @@ export default function OrderBuilderView({
             </div>
             {!payload.mainMaterialType && (
               <p className="mt-2 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
-                ⚠ Paint line not set — pick one here, or the customer can choose it on their colour form.
+                ⚠ Paint line not set — pick one here.
               </p>
             )}
           </section>

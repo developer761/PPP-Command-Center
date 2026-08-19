@@ -5,6 +5,7 @@ import { loadDashboardData } from "@/lib/data-source";
 import { deriveOpenMaterialsWorkOrders, getSupplierName, type OpenWorkOrderForMaterials } from "@/lib/salesforce/materials";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
+import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { parseMachineColorLines } from "@/lib/customer-form/notes";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import type { SourceLine, PreviewGroup, PreviewColor } from "@/components/order-builder-view";
@@ -49,7 +50,7 @@ export async function loadOrderPageData(
   >();
 
   for (const li of job.lineItems) {
-    const room = li.raw.areaLabel?.trim() || "Unnamed area";
+    const room = roomLabelFrom(li.raw.areaLabel, li.raw.productName, "Unnamed area");
     const selected = (li.raw.surfaces ?? "")
       .split(";")
       .map((s) => s.trim())

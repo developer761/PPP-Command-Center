@@ -43,9 +43,9 @@ export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
     "CUSTOMER + JOB\n" +
     "Customer: {{customer_name}}\n" +
     "Work Order: #{{wo_number}}\n",
-  outro:
-    "Reply to this email to confirm + provide delivery date / tracking info.\n" +
-    "All replies route to our Command Center inbox.",
+  // R4.26: "All replies route to our Command Center inbox." removed — it's an
+  // internal detail the vendor has no use for, and it read like a warning.
+  outro: "Reply to this email to confirm + provide delivery date / tracking info.\n",
   signoff: "Thanks,\n{{ppp_brand}}",
 };
 

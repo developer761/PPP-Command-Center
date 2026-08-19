@@ -4,6 +4,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
+import { opsAlertRecipients } from "@/lib/customer-form/sf-failure-alert";
 import { isJobComplete } from "@/lib/wo-progress/completion";
 
 /**
@@ -120,6 +121,38 @@ export async function GET() {
       message: present ? c.presentMessage : c.missingMessage,
       group: "platform",
       fix: present ? undefined : `Set ${c.envVar} in Vercel → Project Settings → Environment Variables.`,
+    });
+  }
+
+  // R4.32 / Kate: "confirm it's set in production, and to which addresses."
+  // Vercel encrypts sensitive env values one-way, so nobody — including us —
+  // can read the value back from the dashboard or the CLI. Reporting the parsed
+  // recipients here makes the answer self-serve and, more importantly, proves
+  // the string actually PARSES: a value set with the wrong separator, a typo'd
+  // domain, or smart quotes pasted from an email would show as "set" in Vercel
+  // and still silently deliver to nobody.
+  {
+    const raw = (process.env.PPP_SF_FAILURE_ALERT_EMAILS ?? "").trim();
+    const parsed = opsAlertRecipients();
+    const dropped = raw
+      ? raw.split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean).length - parsed.length
+      : 0;
+    checks.push({
+      id: "sf_failure_alert_emails",
+      label: "Failed-write alerts (PPP_SF_FAILURE_ALERT_EMAILS)",
+      status: parsed.length > 0 ? (dropped > 0 ? "warn" : "ok") : "warn",
+      message:
+        parsed.length === 0
+          ? raw
+            ? `Set, but nothing in it is a valid email address — Salesforce rejections will reach the person saving and NOBODY on the ops team. Value has ${raw.length} characters.`
+            : "Not set — when Salesforce rejects a write, the person saving is told but Kate and Katie are not."
+          : `${parsed.length} ops recipient${parsed.length === 1 ? "" : "s"}: ${parsed.join(", ")}` +
+            (dropped > 0 ? ` · ⚠ ${dropped} entr${dropped === 1 ? "y was" : "ies were"} discarded as malformed.` : ""),
+      group: "platform",
+      fix:
+        parsed.length > 0 && dropped === 0
+          ? undefined
+          : "Set PPP_SF_FAILURE_ALERT_EMAILS in Vercel → Project Settings → Environment Variables to a comma-separated list of addresses.",
     });
   }
 

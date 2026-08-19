@@ -2,9 +2,10 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
+import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { extractMachineColorLines } from "@/lib/customer-form/notes";
 import { denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
 import type {
@@ -163,6 +164,8 @@ export type BuildSupplierOrderInput = {
   /** Kate round-3 #29: who the supplier should call about this order. */
   contactName?: string | null;
   contactPhone?: string | null;
+  /** R4.29: ...and write to. The orderer is CC'd so the reply lands. */
+  contactEmail?: string | null;
 };
 
 /** A worker-typed colour line — one free-text field carrying colour + finish,
@@ -403,7 +406,7 @@ function resolveLineItems(
   }
 
   for (const woli of input.woliRows) {
-    const roomLabel = woli.areaLabel || "Untitled area";
+    const roomLabel = roomLabelFrom(woli.areaLabel, woli.productName);
     const sqft = woli.sqFootage > 0 ? woli.sqFootage : woli.wallSurfaceArea;
     const coats = woli.numCoats > 0 ? woli.numCoats : 2;
     // Each surface slot on a WOLI is either a customer-picked color (from
@@ -438,7 +441,44 @@ function resolveLineItems(
       { fieldKey: "colorFloorId",   surfaceLabel: "Floor",   existingColorId: woli.colorFloorId,   existingFinish: woli.finishFloor },
     ];
 
-    for (const slot of slots) {
+    // R4.15 — the slot list above is the five SALESFORCE FIELDS, so it only
+    // ever looks up "walls", "ceiling", "trim", "other", "floor". A customer
+    // who picked (or skipped) "Cabinets" or "Door" was invisible to it: the
+    // lookup for those labels never happened.
+    //
+    // Kate's report was that "Kitchen: Customer selected "Don't paint this
+    // surface" on Cabinets." reached Salesforce and Rooms & Colors but never
+    // reached Order Materials. This is why — and the same gap put the shared
+    // ColorOther__c colour on the order under the label "Other" instead of
+    // "Door", which is what the estimator actually needs to read.
+    //
+    // So walk the customer's OWN surfaces for anything the field list can't
+    // represent, and let them speak for themselves.
+    const fieldSurfaceKeys = new Set(slots.map((sl) => sl.surfaceLabel.toLowerCase()));
+    for (const [key, pick] of customerSurfaces) {
+      if (fieldSurfaceKeys.has(key)) continue;
+      if (pick.skipped) {
+        skipped.push({ roomLabel, surface: pick.surface });
+        continue;
+      }
+      if (!pick.colorId) continue;
+      slots.push({
+        fieldKey: `customer:${key}`,
+        surfaceLabel: pick.surface,
+        existingColorId: pick.colorId,
+        existingFinish: pick.finish ?? null,
+      });
+    }
+    // With the real orphan surfaces now carrying their own colours, the shared
+    // "Other" slot would double-count them — ColorOther__c holds a copy of
+    // whichever one Salesforce could fit. Drop it when the customer named the
+    // surfaces themselves.
+    const namedOrphans = [...customerSurfaces.keys()].filter((k) => !fieldSurfaceKeys.has(k));
+    const slotsToWalk = namedOrphans.length > 0
+      ? slots.filter((sl) => sl.surfaceLabel !== "Other")
+      : slots;
+
+    for (const slot of slotsToWalk) {
       const customerPick = customerSurfaces.get(slot.surfaceLabel.toLowerCase());
       // Customer explicitly opted out of this surface — record it for the
       // supplier email so they know the intent. We only surface the skip
@@ -698,73 +738,91 @@ export function formatOrderSummaryBlock(
   // product line makes the header read "mixed — see each line below" when
   // every remaining line shares one.
   const orderedEffective = effective.filter((_, i) => !estimates[i].excluded);
-  const uniq = new Set(orderedEffective.filter((m): m is string => !!m));
-  const allSame = uniq.size <= 1 && orderedEffective.every((m) => m === orderedEffective[0]);
-  const sharedMaterial = allSame ? orderedEffective[0] ?? null : null;
-  const lines: string[] = [];
-  if (sharedMaterial) {
-    lines.push(`  Paint product line: ${sharedMaterial}`);
-    lines.push("");
-  } else if (uniq.size > 0) {
-    lines.push(`  Paint product lines: mixed — see each line below`);
-    lines.push("");
-  }
+
+  // R4.30: group the lines under their paint line instead of prefixing every
+  // row with "[Regal Select] ". Colors with no line — and no default set for
+  // the order — collect under [NOT SET], because Kate's requirement is that
+  // nothing is silently unaccounted for: a row with no product line used to be
+  // visually identical to a row covered by the header.
+  //
+  // Only group when at least ONE line is actually set. Grouping an order where
+  // nobody picked anything would render a single "[NOT SET]" heading over the
+  // whole list, which is noise, not information.
+  const anyLineSet = orderedEffective.some((m) => !!m);
+  const NOT_SET = "[NOT SET]";
+  const groups = new Map<string, string[]>();
+  const groupOrder: string[] = [];
+  const pushGrouped = (group: string, line: string) => {
+    let arr = groups.get(group);
+    if (!arr) {
+      arr = [];
+      groups.set(group, arr);
+      groupOrder.push(group);
+    }
+    arr.push(line);
+  };
+
   for (let i = 0; i < estimates.length; i++) {
     const e = estimates[i];
     // The worker set this colour to zero — PPP is not buying it. It has to
-    // vanish from the vendor's order, not appear as "___ (PPP to confirm
-    // quantity)", which is what a zero used to render as. The colour still
-    // shows in the per-room placement block below, because the crew painting
-    // the room needs to know it, and it still shows in the builder UI as
-    // "not ordering" so the decision is visible and reversible.
+    // vanish from the vendor's order, not appear as a "to confirm" placeholder,
+    // which is what a zero used to render as. It still shows in the builder UI
+    // as "not ordering" so the decision is visible and reversible.
     if (e.excluded) continue;
     const mt = effective[i];
-    const code = e.colorCode ? ` ${e.colorCode}` : "";
+    // R4.24: the name usually already carries the code ("1421 Bistro Blue"),
+    // and sometimes IS the code ("Super White"). Appending unconditionally
+    // produced "1421 Bistro Blue 1421".
+    const label = formatColorLabel(e.colorName, e.colorCode);
+    // Finish stays. Kate's R4.30 mock-up omits it, but the estimator buckets on
+    // `colorId::finish` precisely because two sheens of one colour are two
+    // different SKUs — dropping it would have a vendor mix one sheen for a
+    // two-sheen job. R4.23 asked only for room and surface to come off.
     const finish = e.finish ? ` · ${e.finish}` : "";
-    // Kate round-2 #18: the "(Surfaces)" suffix is redundant for the vendor — the
-    // per-room placement block below already lists which surface each color goes
-    // on. Dropped from the order line.
-    // Prefix the per-line material type when the job is mixed; suppress when
-    // every line already shares the header value (no value in repeating it).
-    const matPrefix = !sharedMaterial && mt ? `[${mt}] ` : "";
-    // Kate round-3 #25: say WHERE each colour goes. Round 2 (#18) stripped the
-    // bare "(Surfaces)" suffix as redundant, but that left the buyer unable to
-    // tell two lines apart — and a colour used in two rooms collapsed into one
-    // line reading just "Walls" with no hint it covered both. Room(s) first,
-    // then surface(s), which is how PPP reads a job.
-    const placement = formatPlacementSuffix(e.rooms, e.surfaces);
-    // Manual-entry colors (no sqft on any contributing room) and zero-bucket
-    // estimates both render as a placeholder so the supplier reads a clean
-    // "___" instead of a numeric "0 gal" / "manual entry required" string.
-    // Belt-and-braces: even if a future estimate-gallons path ever produces
-    // manualOnly=true with non-zero buckets/cans, the supplier email stays
-    // honest because manualOnly is checked explicitly here.
-    const isManualPlaceholder = e.manualOnly || (e.buckets === 0 && e.cans === 0);
-    if (!isManualPlaceholder) {
-      lines.push(`  ${matPrefix}${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}${placement}`);
-    } else {
-      lines.push(`  ${matPrefix}___ — ${e.colorName}${code}${finish}${placement} (PPP to confirm quantity)`);
-    }
+    // R4.23: room and surface removed. The vendor doesn't stock by room; the
+    // placement detail is for PPP and stays on the order screen.
+    const manualPlaceholder = e.manualOnly || (e.buckets === 0 && e.cans === 0);
+    // R4.25: "___ (PPP to confirm quantity)" → "TBD". Kate flagged that "___"
+    // is easy to miss, and the parenthetical restated it at length.
+    const qty = manualPlaceholder ? "TBD" : formatOrderQuantity(e);
+    pushGrouped(mt || NOT_SET, `  ${qty} — ${label}${finish}`);
   }
   // Kate round-3 #28: worker-typed colour lines (stain, plaster, colour
   // matches) are real order lines, not a note the vendor has to interpret.
+  // They carry no product line, so they belong under [NOT SET] — which is
+  // exactly where Kate's R4.30 example puts "Behr 56 Semigloss".
   for (const c of customColorItems) {
     const label = c.label.trim();
     if (!label) continue;
     const qty = Math.max(1, Math.floor(c.qty || 1));
     const unit = (c.unit || "gal").trim();
-    lines.push(`  ${qty} ${unit} — ${label}`);
+    pushGrouped(NOT_SET, `  ${qty} ${unit} — ${label}`);
+  }
+
+  const lines: string[] = [];
+  if (!anyLineSet) {
+    // Nothing to group by — a flat list, as before.
+    for (const g of groupOrder) lines.push(...groups.get(g)!);
+  } else {
+    // [NOT SET] last: it reads as the exception, not as a peer heading.
+    const ordered = [...groupOrder.filter((g) => g !== NOT_SET), ...(groups.has(NOT_SET) ? [NOT_SET] : [])];
+    ordered.forEach((g, idx) => {
+      if (idx > 0) lines.push("");
+      lines.push(`  ${g === NOT_SET ? NOT_SET : g.toUpperCase()}`);
+      lines.push(...groups.get(g)!);
+    });
   }
   // Job total line — a quick cross-check for purchasing ("grab this many total").
   // Custom colour lines count toward the total — they're real order lines.
-  const t = addCustomItemsToTotal(summarizeOrder(estimates), customColorItems);
-  if (t.buckets > 0 || t.cans > 0 || t.quarts > 0) {
-    lines.push(`  ─────`);
-    lines.push(`  TOTAL: ${formatOrderTotal(t)}${t.reviewColors > 0 ? ` (+ ${t.reviewColors} to confirm)` : ""}`);
-  }
-  // Only warn when NO material type is set anywhere — a sharedMaterial OR
-  // any per-color overrides means the vendor has what they need.
-  if (uniq.size === 0) {
+  // R4.28: the job TOTAL line was removed. It restated the arithmetic the
+  // vendor does anyway, and every time the per-line rules changed (excluded
+  // colors, quarts, custom items) it was another place that could disagree
+  // with the lines directly above it.
+  // Only warn when NO product line is set anywhere. With R4.30 grouping in
+  // place a partially-set order already says so structurally — the unset rows
+  // sit under [NOT SET] — so the warning is reserved for the case where the
+  // grouping is suppressed entirely and the vendor has nothing to go on.
+  if (!anyLineSet) {
     lines.push("");
     lines.push("  ⚠ Paint product line not specified — please confirm before mixing.");
   }
@@ -801,7 +859,7 @@ function formatExtrasBlock(extras: SupplierOrderExtra[]): string {
   // place, but guard here too so a stale draft can't ship a confusing line.
   const visible = extras.filter((e) => e.qty > 0);
   if (visible.length === 0) return "";
-  const lines = ["EXTRAS (added by PPP worker)"];
+  const lines = ["EXTRAS"];
   for (const e of visible) {
     lines.push(`- ${e.name} × ${e.qty}${e.unit && e.unit !== "each" ? ` ${e.unit}` : ""}`);
   }
@@ -1034,6 +1092,7 @@ export async function buildSupplierOrderDraft(
     // should be whoever is placing the order.
     contact_name: (input.contactName ?? "").trim(),
     contact_phone: (input.contactPhone ?? "").trim(),
+    contact_email: (input.contactEmail ?? "").trim(),
   };
 
   const subject = render(template.subject, vars);
@@ -1053,7 +1112,7 @@ export async function buildSupplierOrderDraft(
     "",
     intro.trim(),
     "",
-    "ORDER — WHAT TO BUY",
+    "ORDER",
     orderSummaryBlock,
   ];
   // Customer notes from the form. Two sources:
@@ -1120,12 +1179,12 @@ export async function buildSupplierOrderDraft(
     for (const s of skippedSurfaces) colorNotesDefaultParts.push(`- ${s.roomLabel} · ${s.surface}`);
   }
   const colorNotesDefault = colorNotesDefaultParts.join("\n");
-  const colorNotes = (input.colorNotes ?? colorNotesDefault).trim();
-  if (colorNotes) {
-    sections.push("");
-    sections.push("COLOR NOTES");
-    sections.push(colorNotes);
-  }
+  // R4.14: COLOR NOTES no longer goes on the vendor email. Kate: color notes
+  // exist to inform the ESTIMATOR, not the supplier — when something in them
+  // needs ordering, the estimator adds it as a custom color item, which does
+  // reach the email as a real line. Still computed above because the order
+  // screen renders it (and persists it), just not appended here.
+  void colorNotesDefault;
   const extrasBlock = formatExtrasBlock(input.extras);
   if (extrasBlock) {
     sections.push("");
@@ -1136,15 +1195,19 @@ export async function buildSupplierOrderDraft(
     sections.push("FULFILMENT INSTRUCTIONS"); // Kate #25 rename
     sections.push(vars.special_instructions);
   }
-  // Kate round-3 #29: a reachable human on every order.
-  if (vars.contact_phone) {
-    sections.push("");
-    sections.push("QUESTIONS ABOUT THIS ORDER");
-    sections.push(
-      vars.contact_name
-        ? `${vars.contact_name} · ${vars.contact_phone}`
-        : vars.contact_phone
-    );
+  // Kate round-3 #29 + R4.29: a reachable human on every order — name, phone
+  // AND email, so a vendor who'd rather write than call has an address that
+  // isn't the shared inbox. The orderer is also CC'd on the send (see the send
+  // route), which is what makes replying to this address actually work.
+  {
+    const contactBits = [vars.contact_name, vars.contact_phone, vars.contact_email]
+      .map((v) => (v ?? "").trim())
+      .filter(Boolean);
+    if (contactBits.length > 0) {
+      sections.push("");
+      sections.push("QUESTIONS ABOUT THIS ORDER");
+      sections.push(contactBits.join(" · "));
+    }
   }
   sections.push("");
   sections.push(outro.trim());

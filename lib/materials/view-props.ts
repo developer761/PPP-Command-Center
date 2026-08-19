@@ -9,6 +9,7 @@ import {
 } from "@/lib/salesforce/materials";
 import { getMaterialsPageAuxData } from "@/lib/materials-page-data";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
+import type { RetainedPick } from "@/lib/customer-form/retained-picks";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import type { CoverageConfig } from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
@@ -29,6 +30,8 @@ export type MaterialsViewProps = {
   openJobsSerialized: SerializedOpenWorkOrderForMaterials[];
   /** Per-WOLI sqft overrides (Kate #17) keyed by WorkOrderLineItem Id. */
   sqftOverrides: Record<string, number>;
+  /** R4.9/R4.10: WO id → line item id → the customer's own per-surface picks. */
+  retainedPicks: Record<string, Record<string, RetainedPick[]>>;
 };
 
 /** Command Center follow-up dates (migration 146). Deploy-safe: returns {} if
@@ -149,6 +152,7 @@ export async function loadMaterialsViewProps(
       coverageConfig: undefined,
       openJobsSerialized: [],
       sqftOverrides: {},
+      retainedPicks: {},
     };
   }
 
@@ -159,9 +163,12 @@ export async function loadMaterialsViewProps(
   }
 
   const [aux, coverageConfig, sqftOverrides, followupDates] = await Promise.all([
-    getMaterialsPageAuxData(woIds, woMeta).catch((err) => {
+    // Retained picks only on the focused page — see the note on the option.
+    // Rooms & Colors is the only consumer and it exists only there (browse rows
+    // navigate to the focused page rather than opening a detail panel).
+    getMaterialsPageAuxData(woIds, woMeta, { includeRetainedPicks: !!opts.focusWoId }).catch((err) => {
       console.error("[materials] aux data load failed:", err);
-      return { formStatusByWO: new Map(), progressByWO: new Map() };
+      return { formStatusByWO: new Map(), progressByWO: new Map(), retainedPicksByWO: new Map() };
     }),
     coverageConfigPromise,
     // Narrowed alongside the job list: the WO page needs overrides for its own
@@ -195,6 +202,11 @@ export async function loadMaterialsViewProps(
 
   const formStatuses = Array.from(aux.formStatusByWO.values());
   const woProgress = Array.from(aux.progressByWO.values());
+  // Maps don't survive the RSC boundary — flatten to plain objects.
+  const retainedPicks: Record<string, Record<string, RetainedPick[]>> = {};
+  for (const [woId, byLine] of aux.retainedPicksByWO) {
+    retainedPicks[woId] = Object.fromEntries(byLine);
+  }
 
   // Slim the RSC payload — MaterialsView only reads workOrders / woLineItems /
   // accounts / paintColors from the snapshot.
@@ -229,5 +241,6 @@ export async function loadMaterialsViewProps(
     coverageConfig,
     openJobsSerialized,
     sqftOverrides,
+    retainedPicks,
   };
 }

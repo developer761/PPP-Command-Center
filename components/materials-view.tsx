@@ -81,7 +81,10 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
+import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { parseMachineColorLines } from "@/lib/customer-form/notes";
+import { pickIsAnswered, type RetainedPick } from "@/lib/customer-form/retained-picks";
+import { formatColorLabel } from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
@@ -107,6 +110,8 @@ type Props = {
    *  this WO's detail full-width (no list/filters/KPIs) with a Back link. The
    *  list page navigates here on row click instead of opening a right panel. */
   focusWoId?: string | null;
+  /** R4.9/R4.10: WO id → line item id → the customer's own per-surface picks. */
+  retainedPicks?: Record<string, Record<string, RetainedPick[]>>;
   /** Persisted per-WOLI sqft overrides (Kate #17) — hydrates the editable
    *  square-footage inputs so a typed value survives reloads. */
   sqftOverrides?: Record<string, number>;
@@ -154,7 +159,7 @@ const VIRTUOSO_COMPONENTS = {
   Item: VirtuosoLI,
 } as unknown as Components<OpenWorkOrderForMaterials>;
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides, retainedPicks = {} }: Props) {
   const router = useRouter();
   const { snapshot, viewer } = bundle;
 
@@ -1200,6 +1205,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       canOrderMaterials={canOrderMaterials}
                       canEnterColors={canEnterColors}
                       isAccountManager={isAccountManager}
+                      retainedPicks={retainedPicks[activeJob.wo.id]}
                       onActivityChange={() => setPastOrdersRefreshKey((k) => k + 1)}
                     />
                   </div>
@@ -1263,6 +1269,7 @@ function JobDetailImpl({
   canOrderMaterials,
   canEnterColors,
   isAccountManager,
+  retainedPicks,
   onActivityChange,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
@@ -1291,6 +1298,9 @@ function JobDetailImpl({
   canEnterColors: boolean;
   /** Viewer is an Account Manager — drives the "AMs can't order" explanation. */
   isAccountManager: boolean;
+  /** R4.9/R4.10: line item id → the customer's own per-surface picks, kept
+   *  verbatim in the Command Center because Salesforce cannot represent them. */
+  retainedPicks?: Record<string, RetainedPick[]>;
   /** Fired when something happens that the mail stream should reflect (e.g. a
    *  color form was just sent) so the parent bumps the stream's refresh key. */
   onActivityChange?: () => void;
@@ -1300,6 +1310,13 @@ function JobDetailImpl({
   // from parent-built indexes. Empty when not in snapshot (vendor WO or
   // stale account) — admin types manually. O(1) via Map vs the prior
   // O(N accounts) .find() per render.
+  // R4.9/R4.10: a retained pick stores a colour ID, so recovering its swatch
+  // needs the catalog. ~5k rows — indexed once per job, not per surface chip.
+  const paintColorsById = useMemo(
+    () => new Map(snapshot.paintColors.map((c) => [c.id, c])),
+    [snapshot.paintColors]
+  );
+
   const customerAccount = useMemo(() => {
     return (job.wo.accountId ? accountsById.get(job.wo.accountId) : undefined)
       ?? (job.wo.accountName ? accountByName.get(job.wo.accountName) : undefined)
@@ -1617,7 +1634,7 @@ function JobDetailImpl({
                           ? "1 room has no surfaces set in Salesforce"
                           : `${roomsWithoutSurfaces.length} rooms have no surfaces set in Salesforce`}
                       </strong>{" "}
-                      — {roomsWithoutSurfaces.slice(0, 3).map((li) => li.raw.areaLabel?.trim() || "unnamed room").join(", ")}
+                      — {roomsWithoutSurfaces.slice(0, 3).map((li) => roomLabelFrom(li.raw.areaLabel, li.raw.productName, "unnamed room")).join(", ")}
                       {roomsWithoutSurfaces.length > 3 ? ` +${roomsWithoutSurfaces.length - 3} more` : ""}. The customer
                       will see nothing to pick there. You can still send the form.
                     </div>
@@ -1833,6 +1850,8 @@ function JobDetailImpl({
               effectiveSqftValue={effectiveSqft(li.raw.id, li.raw.sqFootage)}
               onUpdateSqft={onUpdateSqft}
               canEnterColors={canEnterColors}
+              retainedPicks={retainedPicks?.[li.raw.id]}
+              paintColorsById={paintColorsById}
             />
           ))}
         </ul>
@@ -1878,6 +1897,8 @@ function LineItemRow({
   effectiveSqftValue,
   onUpdateSqft,
   canEnterColors,
+  retainedPicks,
+  paintColorsById,
 }: {
   item: ResolvedWoli;
   /** Sqft after applying the per-WOLI override (defaults to SF raw). */
@@ -1886,57 +1907,95 @@ function LineItemRow({
   onUpdateSqft: (woliId: string, sqft: number) => Promise<{ ok: boolean; error?: string }>;
   /** Admin/AM only. Reps are read-only (server route gates the same way). */
   canEnterColors: boolean;
+  /** R4.9/R4.10: what the customer actually entered for this line. */
+  retainedPicks?: RetainedPick[];
+  /** Catalog lookup so a retained pick can recover its swatch hex. */
+  paintColorsById: Map<string, SnapshotPaintColor>;
 }) {
   const surfaces = (item.raw.surfaces ?? "").split(";").map((s) => s.trim()).filter(Boolean);
-  // Kate round-2 #27: surfaces selected in Salesforce that aren't one of the
-  // standard color fields (Cabinets, Door, accent walls, …) used to vanish from
-  // Rooms & Colors because the display only mapped Walls/Ceiling/Trim/Floor/Other.
-  // Now those named surfaces show with their real label (carrying the shared
-  // ColorOther__c value), so nothing selected in SF is silently dropped.
   const orphanSurfaces = surfaces.filter((s) => !STANDARD_SURFACES.includes(s) && s !== "Other");
-  // Kate round-3 #10: with 2+ orphan surfaces the submit route can't fit both
-  // colours in the single shared ColorOther__c, so it writes them into
-  // ColorNotes__c and leaves Other deliberately blank. Every orphan chip read
-  // from that blank field, so a room where the customer picked Cabinets AND
-  // Closet showed both as having no colour — and the team chased the customer
-  // for what they'd already sent. Read them back from where they actually live.
-  const orphanColorsFromNotes = new Map(
+
+  // R4.9 / R4.10 — the customer's own picks, kept verbatim in the Command
+  // Center, are the source of truth here. Salesforce cannot represent this room
+  // faithfully: it has four colour fields plus ONE shared ColorOther__c, so any
+  // room with two "orphan" surfaces (Cabinets AND Door) is lossy the moment
+  // it's written. Two different wrong answers came out of reading it back:
+  //
+  //   Symptom A (WO 00306643 · Bathroom) — two orphans, so ColorOther__c is
+  //     left blank on purpose and both colours go to Color Notes as text.
+  //     Every orphan chip read that blank field: "Cabinets —", "Door —".
+  //   Symptom B (WO 00308360 · Kitchen) — one orphan skipped, one picked. The
+  //     Door's colour legitimately occupies the shared slot, and every orphan
+  //     chip read it, so Super White was painted onto Cabinets too — a surface
+  //     the customer had explicitly opted OUT of.
+  //
+  // Neither is recoverable from Salesforce. The retained payload has each
+  // surface with its own colour, finish and skip flag, so use it and stop
+  // reverse-engineering. Salesforce stays the fallback for line items nobody
+  // used the form on — a rep entering colours directly still renders.
+  const retainedBySurface = new Map(
+    (retainedPicks ?? []).filter(pickIsAnswered).map((p) => [p.surface.toLowerCase(), p])
+  );
+  // Parsing Color Notes remains the last resort: a submission from before the
+  // payload was retained has nowhere else to keep its orphan colours.
+  const notesBySurface = new Map(
     parseMachineColorLines(item.raw.colorNotes).map((p) => [p.surface.toLowerCase(), p])
   );
-  const slots: Array<{
+
+  type Slot = {
     label: string;
     surface: string;
     color: SnapshotPaintColor | null;
     finish: string | null;
-    /** Colour recovered from Color Notes — a name and code, not a linked
-     *  PaintColor record, so there's no hex and no catalog link. */
+    /** Colour known by name/code only — no linked PaintColor record, so no hex. */
     derived?: { name: string; code: string | null } | null;
-  }> = [
-    { label: "Walls", surface: "Walls", color: item.wall, finish: item.raw.finishWall },
-    { label: "Ceiling", surface: "Ceiling", color: item.ceiling, finish: item.raw.finishCeiling },
-    { label: "Trim", surface: "Trim", color: item.trim, finish: item.raw.finishTrim },
-    { label: "Floor", surface: "Floor", color: item.floor, finish: item.raw.finishFloor },
-    // Generic "Other" slot only when SF didn't name specific orphan surfaces —
-    // otherwise the named ones below carry the Other color.
-    ...(orphanSurfaces.length === 0
-      ? [{ label: "Other", surface: "Other", color: item.other, finish: item.raw.finishOther }]
-      : []),
-  ].filter((s) => surfaces.includes(s.surface) || s.color);
-  for (const s of orphanSurfaces) {
-    const fromNotes = orphanColorsFromNotes.get(s.toLowerCase());
-    // The note is surface-SPECIFIC; ColorOther__c is one shared field that in a
-    // multi-orphan room may belong to a different surface entirely. Prefer the
-    // note wherever one exists.
+    /** Customer chose "Don't paint this surface". */
+    skipped?: boolean;
+  };
+
+  const sfSlot = (label: string, surface: string, color: SnapshotPaintColor | null, finish: string | null): Slot =>
+    ({ label, surface, color, finish });
+
+  const buildSlot = (label: string, surface: string, sfColor: SnapshotPaintColor | null, sfFinish: string | null): Slot => {
+    const key = surface.toLowerCase();
+    const own = retainedBySurface.get(key);
+    if (own) {
+      if (own.skipped) return { label, surface, color: null, finish: null, skipped: true };
+      // Prefer the catalog record (it carries the hex for the swatch) but fall
+      // back to the name/code the customer's submission recorded, which is all
+      // we have for a colour that has since left the catalog.
+      const catalog = own.colorId ? paintColorsById.get(own.colorId) ?? null : null;
+      return catalog
+        ? { label, surface, color: catalog, finish: own.finish }
+        : { label, surface, color: null, finish: own.finish, derived: { name: own.colorName ?? "(color picked)", code: own.colorCode } };
+    }
+    const fromNotes = notesBySurface.get(key);
     if (fromNotes) {
-      slots.push({
-        label: s,
-        surface: s,
-        color: null,
-        finish: fromNotes.finish,
-        derived: { name: fromNotes.colorName, code: fromNotes.colorCode },
-      });
+      return { label, surface, color: null, finish: fromNotes.finish, derived: { name: fromNotes.colorName, code: fromNotes.colorCode } };
+    }
+    return sfSlot(label, surface, sfColor, sfFinish);
+  };
+
+  const slots: Slot[] = [
+    buildSlot("Walls", "Walls", item.wall, item.raw.finishWall),
+    buildSlot("Ceiling", "Ceiling", item.ceiling, item.raw.finishCeiling),
+    buildSlot("Trim", "Trim", item.trim, item.raw.finishTrim),
+    buildSlot("Floor", "Floor", item.floor, item.raw.finishFloor),
+    // The generic "Other" chip only when Salesforce didn't name the orphans.
+    ...(orphanSurfaces.length === 0 ? [buildSlot("Other", "Other", item.other, item.raw.finishOther)] : []),
+  ].filter((s) => surfaces.includes(s.surface) || s.color || s.derived || s.skipped);
+
+  for (const surface of orphanSurfaces) {
+    const key = surface.toLowerCase();
+    // Only fall back to the SHARED ColorOther__c when this surface is the ONLY
+    // orphan on the line. With two or more, that slot belongs to at most one of
+    // them and we have no way to tell which — painting it onto all of them is
+    // how Symptom B reached Kate.
+    const sharedIsUnambiguous = orphanSurfaces.length === 1;
+    if (retainedBySurface.has(key) || notesBySurface.has(key) || sharedIsUnambiguous) {
+      slots.push(buildSlot(surface, surface, sharedIsUnambiguous ? item.other : null, sharedIsUnambiguous ? item.raw.finishOther : null));
     } else {
-      slots.push({ label: s, surface: s, color: item.other, finish: item.raw.finishOther });
+      slots.push({ label: surface, surface, color: null, finish: null });
     }
   }
 
@@ -1948,7 +2007,7 @@ function LineItemRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-semibold text-ppp-charcoal text-sm">
-              {item.raw.areaLabel?.trim() || "Area"}
+              {roomLabelFrom(item.raw.areaLabel, item.raw.productName, "Area")}
             </span>
             {item.raw.changeOrderRelated && (
               <Pill tone="orange">Change order</Pill>
@@ -2008,6 +2067,7 @@ function LineItemRow({
               color={s.color}
               finish={s.finish}
               derived={s.derived ?? null}
+              skipped={s.skipped ?? false}
             />
           ))}
         </div>
@@ -2212,6 +2272,7 @@ function ColorChip({
   color,
   finish,
   derived = null,
+  skipped = false,
 }: {
   surface: string;
   color: SnapshotPaintColor | null;
@@ -2219,6 +2280,9 @@ function ColorChip({
   /** Recovered from Color Notes rather than a Salesforce colour lookup —
    *  name and code only, no hex, no catalog record behind it. */
   derived?: { name: string; code: string | null } | null;
+  /** Customer chose "Don't paint this surface" (R4.10). Distinct from "no
+   *  colour picked yet" — this is an answer, and the crew needs to see it. */
+  skipped?: boolean;
 }) {
   // Strict hex validation — only #RGB, #RRGGBB, #RRGGBBAA shapes render.
   // PPP's HexValue__c is mostly null on production data so most chips hit
@@ -2226,7 +2290,14 @@ function ColorChip({
   const validHex =
     color?.hexValue && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color.hexValue);
   const displayName = color?.name ?? derived?.name ?? null;
-  const displayCode = color?.code ?? derived?.code ?? null;
+  // R4.24: PPP's colour names usually already carry the code ("1421 Bistro
+  // Blue"), and sometimes ARE the code ("Super White"). Kate asked for the
+  // de-duplication on the page render as well as the email.
+  const rawCode = color?.code ?? derived?.code ?? null;
+  const displayCode =
+    rawCode && displayName && formatColorLabel(displayName, rawCode) === displayName
+      ? null
+      : rawCode;
   return (
     <div className="flex items-center gap-2 text-[11px] rounded-lg border border-ppp-charcoal-100 bg-[var(--color-surface-muted)] px-2.5 py-1.5">
       <div
@@ -2244,8 +2315,8 @@ function ColorChip({
         <div className="font-condensed text-[10px] uppercase tracking-wider text-ppp-charcoal-500">
           {surface}
         </div>
-        <div className="font-medium text-ppp-charcoal truncate">
-          {displayName ?? "—"}
+        <div className={`font-medium truncate ${skipped ? "text-ppp-charcoal-500 italic" : "text-ppp-charcoal"}`}>
+          {skipped ? "Not painting — skipped" : displayName ?? "—"}
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-ppp-charcoal-500 mt-0.5">
           {/* Fallback for missing hex: show the SKU code as a mono badge so
@@ -2938,7 +3009,9 @@ function SendColorFormButton({
                   </p>
                 </div>
                 <div className="text-[11px] text-ppp-charcoal-500 italic">
-                  Link expires 24 hours before the job&apos;s scheduled start (up to 30 days out). Customer can&apos;t see it&apos;s from PPP staff.
+                  The link stays live until the end of the &ldquo;Colors needed by&rdquo; date. With no
+                  date set, it expires 24 hours before the job&apos;s scheduled start &mdash; or 30 days
+                  from now if the job has no start date yet.
                 </div>
               </div>
             )}
