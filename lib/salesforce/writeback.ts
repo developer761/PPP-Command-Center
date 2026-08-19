@@ -59,6 +59,9 @@ export async function writeSf(
     triggeredByToken?: string | null;
     /** Optional snapshot of pre-write values for the audit row. */
     priorValues?: Record<string, unknown> | null;
+    /** Set by writeSfBatch: skip the per-record cache invalidation and do it
+     *  once for the whole batch instead. See writeSfBatch. */
+    deferCacheInvalidation?: boolean;
   }
 ): Promise<SfWriteResult> {
   const t0 = Date.now();
@@ -133,7 +136,7 @@ export async function writeSf(
           retryCount: attempts - 1,
           durationMs: Date.now() - t0,
         });
-        await clearSalesforceCache();
+        if (!ctx.deferCacheInvalidation) await clearSalesforceCache();
         return { ok: true, recordId: attempt.recordId, attempts };
       }
       // SF returned a non-success — extract error info, don't retry validation errors
@@ -187,17 +190,38 @@ export async function writeSf(
  * an array of results in input order so the caller can show per-record status.
  * Bails on the first FATAL (validation/permission) error to avoid cascading bad
  * data; transient errors are retried per writeSf() policy.
+ *
+ * The cache is invalidated ONCE at the end, not per record. clearSalesforceCache
+ * costs four Supabase round-trips (three snapshot deletes plus a generation
+ * bump), and a customer submitting a 12-room house writes 13 records — so the
+ * old per-record call meant ~52 sequential round-trips doing the identical
+ * thing, entirely on the customer's submit latency. Worse than slow: it dropped
+ * and re-dropped the shared snapshot mid-batch, so a concurrent reader could
+ * repopulate it from a half-written state and cache THAT.
  */
 export async function writeSfBatch(
   attempts: SfWriteAttempt[],
   ctx: Parameters<typeof writeSf>[1]
 ): Promise<SfWriteResult[]> {
   const results: SfWriteResult[] = [];
+  let wroteAnything = false;
   for (const a of attempts) {
-    const r = await writeSf(a, ctx);
+    const r = await writeSf(a, { ...ctx, deferCacheInvalidation: true });
     results.push(r);
+    if (r.ok) wroteAnything = true;
     if (!r.ok && r.errorCode && /VALIDATION|FIELD_INTEGRITY|MALFORMED|DUPLICATE|REQUIRED_FIELD_MISSING|CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY|INSUFFICIENT_ACCESS|ENTITY_IS_LOCKED|INVALID_CROSS_REFERENCE_KEY|INVALID_FIELD/.test(r.errorCode)) {
       break;
+    }
+  }
+  // Must run even on a partial batch — records that DID land are stale in the
+  // cache regardless of what failed after them. Non-fatal: the write already
+  // succeeded in Salesforce, and reporting a cache error as a write failure
+  // would be a lie the caller acts on.
+  if (wroteAnything) {
+    try {
+      await clearSalesforceCache();
+    } catch (err) {
+      console.error("[sf-writeback] batch cache invalidation failed:", err);
     }
   }
   return results;

@@ -21,7 +21,10 @@ export default async function MaterialsWorkOrderPage({
   const [{ woId }, sp] = await Promise.all([params, searchParams]);
   // Trim + strip stray quotes a pasted SF Id sometimes carries.
   const cleanWoId = decodeURIComponent(woId).trim().replace(/^['"]|['"]$/g, "");
-  const props = await loadMaterialsViewProps(sp);
+  // Pass the focused id INTO the loader, not just the view — otherwise the page
+  // does the whole board's server work (460 open WOs as of 2026-08-19) to
+  // render one.
+  const props = await loadMaterialsViewProps(sp, { focusWoId: cleanWoId });
 
   return <MaterialsView {...props} focusWoId={cleanWoId} />;
 }

@@ -8,6 +8,7 @@ import {
   type SerializedOpenWorkOrderForMaterials,
 } from "@/lib/salesforce/materials";
 import { getMaterialsPageAuxData } from "@/lib/materials-page-data";
+import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import type { CoverageConfig } from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
@@ -103,7 +104,9 @@ async function loadSqftOverrides(): Promise<Record<string, number>> {
 }
 
 export async function loadMaterialsViewProps(
-  sp: Record<string, string | string[] | undefined>
+  sp: Record<string, string | string[] | undefined>,
+  /** Set by /dashboard/materials/[woId]. See the narrowing note below. */
+  opts: { focusWoId?: string | null } = {}
 ): Promise<MaterialsViewProps> {
   const tStart = Date.now();
 
@@ -115,7 +118,27 @@ export async function loadMaterialsViewProps(
   });
 
   const bundle = await loadDashboardData(sp, { materials: true });
-  const openJobs = bundle.snapshot ? deriveOpenMaterialsWorkOrders(bundle.snapshot) : [];
+  const allOpenJobs = bundle.snapshot ? deriveOpenMaterialsWorkOrders(bundle.snapshot) : [];
+
+  // The single-WO page is the canonical deep-link target — the Salesforce "Open
+  // in Command Center" button, the mail timeline, the activity feed and global
+  // search all land here. It was doing the entire board's work to render one
+  // job: 460 open work orders (measured against production 2026-08-19) with all
+  // their line items serialized into the RSC payload, and the aux queries —
+  // form statuses and progress — run across all 460 ids.
+  //
+  // Safe to narrow because every aggregate the client computes from this list
+  // (the stat strip, needs-attention, the "waiting on line items" banner) is
+  // rendered inside `{!focusMode && …}`. Focus mode reads exactly one job.
+  // If the id doesn't resolve, fall through with an empty list — the client
+  // already has a "work order not found" state for that.
+  const openJobs = opts.focusWoId
+    ? (() => {
+        const id = resolveWorkOrderId(opts.focusWoId!, allOpenJobs);
+        const job = id ? allOpenJobs.find((j) => j.wo.id === id) : null;
+        return job ? [job] : [];
+      })()
+    : allOpenJobs;
 
   // Empty-scope fast path — nothing to populate; skip aux + coverage queries.
   if (openJobs.length === 0) {
@@ -141,7 +164,11 @@ export async function loadMaterialsViewProps(
       return { formStatusByWO: new Map(), progressByWO: new Map() };
     }),
     coverageConfigPromise,
-    loadSqftOverrides(),
+    // Narrowed alongside the job list: the WO page needs overrides for its own
+    // line items, not for every open job on the board.
+    opts.focusWoId
+      ? loadSqftOverridesFor(openJobs.flatMap((j) => j.lineItems.map((li) => li.raw.id)))
+      : loadSqftOverrides(),
     loadFollowupDates(),
   ]);
 
@@ -191,7 +218,8 @@ export async function loadMaterialsViewProps(
   const openJobsSerialized = serializeOpenJobs(jobsWithLocalFollowup);
 
   console.log(
-    `[materials] view props in ${Date.now() - tStart}ms (openWOs=${openJobs.length})`
+    `[materials] view props in ${Date.now() - tStart}ms (openWOs=${openJobs.length}` +
+      (opts.focusWoId ? ` of ${allOpenJobs.length}, focused)` : ")")
   );
 
   return {
