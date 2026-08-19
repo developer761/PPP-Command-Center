@@ -205,9 +205,18 @@ export type SpineState = "done" | "partial" | "todo";
 export type SpineStage = { key: string; label: string; state: SpineState; current: boolean; meta: string | null };
 
 /** A delivery tool's coarse state + short label, as the strip already carries. */
-export type SpineToolState = { status: "done" | "active" | "todo"; label: string } | null | undefined;
+export type SpineToolState =
+  | { status: "done" | "active" | "todo" | "na"; label: string }
+  | null
+  | undefined;
 
-/** A tool that's in flight reads as PARTIAL (amber), not done. */
+/** A tool that's in flight reads as PARTIAL (amber), not done.
+ *
+ *  `na` (doesn't apply to this job — e.g. AIA on an invoice-billed job) maps to
+ *  "todo" here deliberately: the spine has three states and adding a fourth
+ *  would break the one colour rule for a case the spine doesn't distinguish.
+ *  The delivery STRIP is where not-applicable is shown, because that's where it
+ *  was being miscounted as unstarted work. */
 function toolSpineState(t: SpineToolState): SpineState {
   return t?.status === "done" ? "done" : t?.status === "active" ? "partial" : "todo";
 }

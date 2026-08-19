@@ -1718,7 +1718,7 @@ export default async function OpportunityDetailPage({
   // they are only fetched then — two round-trips a bid would never use.
   const pathOnSite = opp.status === "in_progress";
   const pathIsClosedOut = opp.status === "post_sale_closed";
-  const [pathFin, pathChangeOrders, pathSubmittals, pathLabor, pathCloseouts, pathRetainageCents] = pathIsWon
+  const [pathFin, pathChangeOrders, pathSubmittals, pathLabor, pathCloseouts, pathRetainageCents, pathAiaRoll] = pathIsWon
     ? await Promise.all([
         getProjectFinancials(opp.id).catch(() => null),
         listChangeOrders(opp.id).catch(() => []),
@@ -1734,8 +1734,13 @@ export default async function OpportunityDetailPage({
         // third time this exact "didn't look, so reported a clean state"
         // mistake has come up in one strip.
         retainageHeldForOpportunity(opp.id).catch(() => 0),
+        // Whether this job bills through AIA AT ALL, and by how much. The
+        // delivery strip's AIA tile used to be fed the COMBINED billing figure,
+        // so it announced "Fully billed" on jobs with no AIA applications
+        // whatsoever. A tile has to read its own ledger.
+        aiaBillingRollupBulk([opp.id]).then((m) => m.get(opp.id) ?? null).catch(() => null),
       ])
-    : [null, [], [], [], [], 0];
+    : [null, [], [], [], [], 0, null];
 
   // Warranty runs from substantial completion. A job can carry more than one
   // package (a re-issue after a punch item); the LATEST completion date is the
@@ -1878,6 +1883,30 @@ export default async function OpportunityDetailPage({
   const pathContractBaseCents = contractToDate - pathApprovedCoCents;
   const invoicedCents = pathFin?.invoicedCents ?? 0;
   const collectedCents = pathFin?.collectedCents ?? 0;
+  // ── Split the ledgers ────────────────────────────────────────────────
+  // `pathFin` deliberately COMBINES invoices + AIA (that's what makes the
+  // rollups agree platform-wide). But the delivery strip has one tile per
+  // ledger, and feeding both tiles the combined figure made each one lie:
+  //  · "AIA Billing — Fully billed" on a job with ZERO AIA applications,
+  //    because invoice billing counted toward it.
+  //  · "$1.5k of $6.5k · $4.8k out" under a tile labelled Invoices, where the
+  //    $6.5k included AIA and the three numbers therefore didn't subtract.
+  // Each tile now reads only its own ledger.
+  const invoiceOnlyIssued = pathInvoices.filter(
+    (inv) => inv.status !== "draft" && inv.status !== "void"
+  );
+  const invoiceOnlyBilledCents = invoiceOnlyIssued.reduce(
+    (n, inv) => n + (Number(inv.total_cents) || 0),
+    0
+  );
+  const invoiceOnlyPaidCents = invoiceOnlyIssued.reduce(
+    (n, inv) => n + (Number(inv.paid_cents) || 0),
+    0
+  );
+  const invoiceOnlyOpenCents = invoiceOnlyIssued.reduce(
+    (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
+    0
+  );
   // "Still out" = billed-and-unpaid, the SAME rule as the dashboard AR tile and
   // the account rollup: BILLABLE (sent/viewed/partial/overdue) with a positive
   // balance. A local allow-list here had left out "viewed" — an invoice the GC
@@ -1973,18 +2002,29 @@ export default async function OpportunityDetailPage({
           // plus APPROVED change orders (pathFin.contractCents already is), so
           // an approved CO reopens a job that had been fully billed rather
           // than leaving it reading 100%.
-          state:
-            billedSoFar === 0
-              ? "Nothing billed"
-              : contractToDate > 0 && billedSoFar >= contractToDate
-              ? "Fully billed"
-              : `${formatCentsCompact(billedSoFar)} of ${formatCentsCompact(contractToDate)}`,
-          status:
-            billedSoFar === 0
-              ? "todo"
-              : contractToDate > 0 && billedSoFar >= contractToDate
-              ? "done"
-              : "active",
+          // Reads the AIA ledger ONLY. It used to be fed `billedSoFar`, which
+          // is invoices + AIA combined — so a job billed entirely by invoice,
+          // with zero G702 applications, proudly reported "Fully billed" under
+          // a tile called AIA Billing. Now a job that doesn't use AIA says so,
+          // and one that does is measured on its own certified amount.
+          state: !pathAiaRoll?.hasAia
+            ? "Not used on this job"
+            : contractToDate > 0 && pathAiaRoll.billedCents >= contractToDate
+            ? pathAiaRoll.dueNowCents > 0
+              ? `Fully billed · ${formatCentsCompact(pathAiaRoll.dueNowCents)} owed`
+              : pathAiaRoll.retainageHeldCents > 0
+              ? `Fully billed · ${formatCentsCompact(pathAiaRoll.retainageHeldCents)} retainage`
+              : "Fully billed & paid"
+            : `${formatCentsCompact(pathAiaRoll.billedCents)} certified${contractToDate > 0 ? ` of ${formatCentsCompact(contractToDate)}` : ""}`,
+          // Not "todo": a job that bills by invoice will never raise an
+          // application, so counting it as unstarted work nags forever.
+          status: !pathAiaRoll?.hasAia
+            ? "na"
+            : contractToDate > 0 &&
+              pathAiaRoll.billedCents >= contractToDate &&
+              pathAiaRoll.dueNowCents <= 0
+            ? "done"
+            : "active",
         },
         {
           // Karan 2026-08-13: "where is the invoicing and stuff." A delivery
@@ -2012,20 +2052,30 @@ export default async function OpportunityDetailPage({
           // to bill — so it stays IN PROGRESS (amber) with a "to bill" note rather
           // than reading as finished (audit 2026-08-15, same class as the spine's
           // "$50 paid in full" fix).
+          // INVOICE ledger only. This line used to mix invoice and AIA money —
+          // "$1.5k of $6.5k · $4.8k out", where $6.5k included AIA billing
+          // (gross of retainage) but "out" excluded it, so the three numbers on
+          // one line didn't subtract. Now they do: collected of billed, and the
+          // remainder outstanding, all from invoices.
           state:
             pathInvoices.length === 0
-              ? "None raised"
-              : openInvoiceCents > 0
-              ? `${formatCentsCompact(collectedCents)} of ${formatCentsCompact(invoicedCents)} · ${formatCentsCompact(openInvoiceCents)} out`
-              : pathRetainageCents > 0
-              ? `${formatCentsCompact(pathRetainageCents)} retainage held`
+              ? pathAiaRoll?.hasAia
+                // Not a gap — this job bills by application, and saying "None
+                // raised" here is what made Stephanie raise a duplicate.
+                ? "Billed through AIA"
+                : "None raised"
+              : invoiceOnlyOpenCents > 0
+              ? `${formatCentsCompact(invoiceOnlyPaidCents)} of ${formatCentsCompact(invoiceOnlyBilledCents)} · ${formatCentsCompact(invoiceOnlyOpenCents)} out`
               : contractToDate > 0 && billedSoFar < contractToDate
-              ? `${formatCentsCompact(invoicedCents)} paid · ${formatCentsCompact(contractToDate - billedSoFar)} to bill`
-              : `${formatCentsCompact(invoicedCents)} paid in full`,
+              ? `${formatCentsCompact(invoiceOnlyPaidCents)} paid · ${formatCentsCompact(contractToDate - billedSoFar)} to bill`
+              : `${formatCentsCompact(invoiceOnlyPaidCents)} paid in full`,
           status:
             pathInvoices.length === 0
-              ? "todo"
-              : openInvoiceCents > 0 || pathRetainageCents > 0 || (contractToDate > 0 && billedSoFar < contractToDate)
+              ? pathAiaRoll?.hasAia
+                // Billing IS happening, just on the other ledger.
+                ? "na"
+                : "todo"
+              : invoiceOnlyOpenCents > 0 || (contractToDate > 0 && billedSoFar < contractToDate)
               ? "active"
               : "done",
         },

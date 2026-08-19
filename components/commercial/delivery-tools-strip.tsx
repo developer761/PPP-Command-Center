@@ -24,8 +24,15 @@ export type DeliveryTool = {
   href: string;
   /** Short state — "Not written", "2 open", "3 sent". */
   state: string;
-  /** done = there and finished · active = in flight · todo = nothing yet. */
-  status: "done" | "active" | "todo";
+  /** done = there and finished · active = in flight · todo = nothing yet ·
+   *  na = doesn't apply to this job.
+   *
+   *  `na` exists because "not started" was being used for two different
+   *  things. A job that bills by invoice will never raise an AIA application,
+   *  and counting that as unstarted work both inflated the header count and
+   *  nagged about something that is never going to happen. Not-applicable is
+   *  not the same as not-yet-done. */
+  status: "done" | "active" | "todo" | "na";
   /** Which delivery phase this belongs to. Karan 2026-08-13: "none of these
    *  say what phase they are correlated with." Without it the strip is six
    *  tools in a row and nothing tells you which ones are this week's. */
@@ -39,6 +46,9 @@ const DOT: Record<DeliveryTool["status"], string> = {
   done: "bg-emerald-500",
   active: "bg-amber-400",
   todo: "bg-ppp-charcoal-300",
+  // Hollow, so it reads as "nothing to do here" rather than a fourth colour
+  // competing with green/amber/grey. The one colour rule stays three colours.
+  na: "bg-transparent border border-ppp-charcoal-200",
 };
 
 export function DeliveryToolsStrip({
@@ -97,7 +107,7 @@ export function DeliveryToolsStrip({
             </span>
             <span
               className={`block text-[11px] mt-0.5 whitespace-nowrap ${
-                t.status === "todo" ? "text-ppp-charcoal-400 italic" : "text-ppp-charcoal-600"
+                t.status === "todo" || t.status === "na" ? "text-ppp-charcoal-400 italic" : "text-ppp-charcoal-600"
               }`}
             >
               {t.state}
