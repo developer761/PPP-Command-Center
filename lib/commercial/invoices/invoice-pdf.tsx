@@ -43,6 +43,15 @@ const styles = StyleSheet.create({
   totalsBox: { width: "48%" },
   totLine: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
   totLabel: { color: "#4b5563" },
+  // ── Financial Summary (Brendan's format, 2026-08-19) ──
+  fsHead: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#172B4D", marginTop: 16, marginBottom: 5, paddingBottom: 3, borderBottomWidth: 0.75, borderBottomColor: "#d1d5db" },
+  fsRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3, borderBottomWidth: 0.5, borderBottomColor: "#f3f4f6" },
+  fsIndent: { paddingLeft: 12, color: "#4b5563", fontSize: 9 },
+  fsStrong: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4, borderTopWidth: 1, borderTopColor: "#111827", marginTop: 2 },
+  fsCredit: { color: "#b91c1c" },
+  fsNote: { fontSize: 7.5, color: "#9ca3af", marginTop: 5, lineHeight: 1.4 },
+  fsMeta: { flexDirection: "row", marginBottom: 2 },
+  fsMetaLabel: { width: 92, color: "#6b7280" },
   grandLine: { flexDirection: "row", justifyContent: "space-between", paddingTop: 7, marginTop: 4, borderTopWidth: 1.5, borderTopColor: "#111827" },
   balanceBox: { flexDirection: "row", justifyContent: "space-between", marginTop: 8, backgroundColor: "#172B4D", borderRadius: 4, paddingVertical: 8, paddingHorizontal: 10 },
   balanceLabel: { color: "#ffffff", fontFamily: "Helvetica-Bold", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 },
@@ -116,6 +125,36 @@ export type InvoicePdfInput = {
   logo?: Buffer | null;
   /** Voided invoices still render (as a record) but are stamped VOIDED. */
   isVoid?: boolean;
+  /**
+   * JOB-level contract position — the "Financial Summary" block in Brendan's
+   * format (Stephanie 2026-08-19). Null when the job has no contract figure to
+   * reconcile against, in which case the invoice renders as a plain line-item
+   * bill rather than printing a summary built on a zero.
+   *
+   * Deliberately job-level, not invoice-level: the sample reconciles the WHOLE
+   * job (original contract + change orders − everything paid so far), then
+   * states this invoice's amount against it. That's the number a GC's AP
+   * department checks, and it's what Stephanie meant by "a lot of details are
+   * missing on the existing".
+   */
+  contract?: {
+    originalCents: number;
+    /** APPROVED change orders only — see the note in the renderer. */
+    changeOrders: { number: number; title: string; amountCents: number }[];
+    changeOrderTotalCents: number;
+    totalChargesCents: number;
+    /** Every payment across the JOB, newest last. */
+    payments: { dateIso: string | null; amountCents: number }[];
+    paymentsTotalCents: number;
+    currentBalanceCents: number;
+    /** Approved COs raised but not yet on any invoice — money still to bill. */
+    pendingCoTotalCents: number;
+  } | null;
+  /** Job number for the Project Information block. */
+  jobNumber?: string | null;
+  /** Who the invoice goes to at the GC. */
+  billingContact?: string | null;
+  projectAddress?: string | null;
 };
 
 const fmt = (c: number): string =>
@@ -209,7 +248,91 @@ function InvoiceDoc(input: InvoicePdfInput) {
           </View>
         </View>
 
-        {/* Line items */}
+        {/* ── Financial Summary ────────────────────────────────────────────
+            Brendan's format (via Stephanie, 2026-08-19). Reconciles the WHOLE
+            job — original contract + approved change orders, less everything
+            paid — then the line items below state what THIS invoice bills.
+            Stephanie's note was that the Salesforce format was missing "a lot
+            of details"; this is the detail a GC's AP department checks. ── */}
+        {input.contract ? (
+          <View>
+            <Text style={styles.fsHead}>Project Information</Text>
+            <View style={{ marginBottom: 6 }}>
+              <View style={styles.fsMeta}>
+                <Text style={styles.fsMetaLabel}>Client:</Text>
+                <Text>{input.accountName}</Text>
+              </View>
+              {input.jobNumber ? (
+                <View style={styles.fsMeta}>
+                  <Text style={styles.fsMetaLabel}>Job #:</Text>
+                  <Text>{input.jobNumber}</Text>
+                </View>
+              ) : null}
+              {input.projectAddress ? (
+                <View style={styles.fsMeta}>
+                  <Text style={styles.fsMetaLabel}>Project Address:</Text>
+                  <Text>{input.projectAddress}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <Text style={styles.fsHead}>Financial Summary</Text>
+            <View style={styles.fsRow}>
+              <Text>Original Contract Total</Text>
+              <Text>{fmt(input.contract.originalCents)}</Text>
+            </View>
+            {input.contract.changeOrders.map((co) => (
+              <View key={co.number} style={styles.fsRow}>
+                <Text style={styles.fsIndent}>
+                  CO #{co.number} - {co.title.length > 58 ? `${co.title.slice(0, 58)}...` : co.title}
+                </Text>
+                <Text style={styles.fsIndent}>{fmt(co.amountCents)}</Text>
+              </View>
+            ))}
+            {input.contract.changeOrders.length > 0 ? (
+              <View style={styles.fsRow}>
+                <Text>Change Order Total</Text>
+                <Text>{fmt(input.contract.changeOrderTotalCents)}</Text>
+              </View>
+            ) : null}
+            <View style={styles.fsStrong}>
+              <Text style={styles.bold}>Total Customer Charges</Text>
+              <Text style={styles.bold}>{fmt(input.contract.totalChargesCents)}</Text>
+            </View>
+            {input.contract.payments.map((pm, i) => (
+              <View key={i} style={styles.fsRow}>
+                <Text style={[styles.fsIndent, styles.fsCredit]}>
+                  Payment{pm.dateIso ? ` - ${fmtDate(pm.dateIso)}` : ""}
+                </Text>
+                <Text style={[styles.fsIndent, styles.fsCredit]}>{fmt(-pm.amountCents)}</Text>
+              </View>
+            ))}
+            {input.contract.payments.length > 0 ? (
+              <View style={styles.fsRow}>
+                <Text style={styles.fsCredit}>Payments Received Total</Text>
+                <Text style={styles.fsCredit}>{fmt(-input.contract.paymentsTotalCents)}</Text>
+              </View>
+            ) : null}
+            <View style={styles.fsStrong}>
+              <Text style={styles.bold}>
+                {input.contract.currentBalanceCents < 0 ? "Credit Balance" : "Current Balance"}
+              </Text>
+              <Text style={styles.bold}>{fmt(input.contract.currentBalanceCents)}</Text>
+            </View>
+            {/* A pending CO is money the GC has NOT agreed to, so it is kept
+                out of Total Customer Charges — but leaving it unsaid makes the
+                contract look smaller than the job actually is. */}
+            {input.contract.pendingCoTotalCents !== 0 ? (
+              <Text style={styles.fsNote}>
+                Excludes {fmt(input.contract.pendingCoTotalCents)} of change orders awaiting your
+                approval. They are added to the contract once approved.
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Line items — what THIS invoice bills. */}
+        {input.contract ? <Text style={styles.fsHead}>This Invoice Includes</Text> : null}
         <View style={styles.tableHead} fixed>
           <Text style={[styles.th, styles.cDesc]}>Description</Text>
           <Text style={[styles.th, styles.cQty]}>Qty</Text>

@@ -7,6 +7,11 @@ import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/oppor
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { getBrandLogoBuffer } from "@/lib/commercial/operating-company/assets";
 import { resolveTaxExemption } from "@/lib/commercial/tax/exemption";
+import { listChangeOrders } from "@/lib/commercial/change-orders/db";
+import { listCommercialInvoices } from "./db";
+import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
+import { listInvoicePayments } from "./db";
+import { formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 import type { InvoicePdfInput, InvoicePdfRow } from "./invoice-pdf";
 
 /**
@@ -24,14 +29,19 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
   const inv = await getCommercialInvoice(invoiceId);
   if (!inv) return null;
 
-  const [lineItems, milestones, account, opp, company, logo] = await Promise.all([
-    listInvoiceLineItems(invoiceId),
-    listMilestonesForInvoice(invoiceId),
-    getCommercialAccount(inv.account_id),
-    getCommercialOpportunity(inv.opportunity_id),
-    getOperatingCompany(),
-    getBrandLogoBuffer().catch(() => null),
-  ]);
+  const [lineItems, milestones, account, opp, company, logo, jobChangeOrders, jobInvoices, contractBase] =
+    await Promise.all([
+      listInvoiceLineItems(invoiceId),
+      listMilestonesForInvoice(invoiceId),
+      getCommercialAccount(inv.account_id),
+      getCommercialOpportunity(inv.opportunity_id),
+      getOperatingCompany(),
+      getBrandLogoBuffer().catch(() => null),
+      // JOB-level, for the Financial Summary — see the `contract` field doc.
+      listChangeOrders(inv.opportunity_id).catch(() => []),
+      listCommercialInvoices({ opportunityId: inv.opportunity_id }).catch(() => []),
+      getEffectiveContractBaseCents(inv.opportunity_id).catch(() => 0),
+    ]);
 
   // The docblock above promised this and it was never implemented. Both loaders
   // hard-filter `deleted_at`, so a soft-deleted account or deal came back null
@@ -86,7 +96,69 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
       : account?.tax_exempt_cert_number ?? null
     : null;
 
+  // ── Financial Summary (Brendan's format) ───────────────────────────────
+  //
+  // Reconciles the WHOLE JOB: original contract + approved change orders, less
+  // everything paid so far. The invoice's own amount is then stated against it.
+  //
+  // APPROVED change orders only. A pending CO is money the GC has not agreed
+  // to, and putting it in "Total Customer Charges" would bill them for it. It
+  // is surfaced separately as still-to-bill. (Same trap the CO register has.)
+  const approvedCos = jobChangeOrders.filter((c) => c.status === "approved");
+  const changeOrderTotalCents = approvedCos.reduce((n, c) => n + c.amount_cents, 0);
+  const originalCents = contractBase > 0 ? contractBase : 0;
+  const totalChargesCents = originalCents + changeOrderTotalCents;
+
+  // Payments across every LIVE, non-void invoice on the job.
+  const billableJobInvoices = jobInvoices.filter(
+    (i) => i.status !== "void" && i.status !== "draft"
+  );
+  const paymentLists = await Promise.all(
+    billableJobInvoices.map((i) => listInvoicePayments(i.id).catch(() => []))
+  );
+  const payments = paymentLists
+    .flat()
+    .map((pm) => ({ dateIso: pm.paid_at ?? null, amountCents: pm.amount_cents }))
+    .sort((a, b) => String(a.dateIso ?? "").localeCompare(String(b.dateIso ?? "")));
+  const paymentsTotalCents = payments.reduce((n, pm) => n + pm.amountCents, 0);
+
+  // Change orders the GC hasn't answered yet — stated on the invoice as a note
+  // so the contract doesn't look smaller than the job actually is.
+  const pendingCoTotalCents = jobChangeOrders
+    .filter((c) => c.status === "pending")
+    .reduce((n, c) => n + c.amount_cents, 0);
+
+  // Only render the summary when there is a contract to reconcile against.
+  // Building it on a zero would print "Original Contract Total $0.00" above a
+  // real invoice, which reads as a data error rather than as "no bid on file".
+  const contract =
+    originalCents > 0
+      ? {
+          originalCents,
+          changeOrders: approvedCos.map((c) => ({
+            number: c.co_number,
+            title: c.title,
+            amountCents: c.amount_cents,
+          })),
+          changeOrderTotalCents,
+          totalChargesCents,
+          payments,
+          paymentsTotalCents,
+          currentBalanceCents: totalChargesCents - paymentsTotalCents,
+          pendingCoTotalCents,
+        }
+      : null;
+
+  const projectAddress =
+    [opp.property_street, [opp.property_city, opp.property_state].filter(Boolean).join(", ")]
+      .filter((s): s is string => !!s && s.trim().length > 0)
+      .join(", ") || null;
+
   return {
+    contract,
+    jobNumber: opp.deal_number ?? formatOpportunityNumber(opp.project_number) ?? null,
+    projectAddress,
+    billingContact: null,
     isVoid: inv.status === "void",
     invoiceNumber: inv.invoice_number,
     issuedAt: inv.issued_at ?? inv.created_at ?? null,
