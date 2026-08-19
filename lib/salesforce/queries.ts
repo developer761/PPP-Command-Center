@@ -1,3 +1,4 @@
+import { sfDate } from "@/lib/salesforce/record-field";
 import "server-only";
 
 import { gzipSync, gunzipSync } from "zlib";
@@ -2099,13 +2100,7 @@ export async function loadSalesforceSnapshot(
         })(),
         // Follow-up date (Kate #03) — SF stores a Date as "YYYY-MM-DD"; accept
         // either casing the org uses.
-        followupDate: (() => {
-          for (const name of ["FollowupDate__c", "FollowUpDate__c"]) {
-            const v = w[name];
-            if (typeof v === "string" && v) return v.slice(0, 10);
-          }
-          return null;
-        })(),
+        followupDate: sfDate(w, "FollowUpDate__c"),
         materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
         description: typeof w.Description === "string" ? (w.Description as string) : null,
         subject: typeof w.Subject === "string" ? (w.Subject as string) : null,

@@ -1,3 +1,4 @@
+import { sfDate } from "@/lib/salesforce/record-field";
 import { NextResponse } from "next/server";
 import { resolveUserNames } from "@/lib/wo-progress/attribution";
 import { resolveViewer } from "@/lib/auth/viewer-server";
@@ -84,22 +85,25 @@ async function resolveFollowupDates(
     // other — cheaper than a describe() on every Mail Hub load.
     const run = async (field: string) =>
       conn.query<Record<string, unknown>>(`SELECT Id, ${field} FROM WorkOrder WHERE Id IN (${ids.join(",")})`);
-    let field = "FollowupDate__c";
-    let res;
-    try {
-      res = await run(field);
-    } catch (e) {
-      if (/INVALID_FIELD|No such column/i.test(e instanceof Error ? e.message : String(e))) {
-        field = "FollowUpDate__c";
-        res = await run(field);
-      } else {
-        throw e;
-      }
-    }
+    // R4.34 — this is where the filter died, and the reason it died SILENTLY.
+    //
+    // The real field is `FollowUpDate__c` (capital U). The old code queried
+    // "FollowupDate__c" and expected an INVALID_FIELD error to trigger a retry
+    // with the other casing. That error never came: SOQL field names are
+    // case-INSENSITIVE, so the query succeeded — but jsforce keys the returned
+    // record by Salesforce's OWN casing, so `record["FollowupDate__c"]` was
+    // undefined on every row. Verified against the live org: querying the wrong
+    // casing returns `{ Id, FollowUpDate__c: "2026-08-14" }`.
+    //
+    // Every follow-up date came back null, so the filter matched nothing on any
+    // date — which reads as a broken filter rather than a missing field, and is
+    // exactly how Kate reported it twice.
+    //
+    // Fixed by not guessing: read whichever key actually comes back.
+    const res = await run("FollowUpDate__c");
     for (const r of res.records ?? []) {
-      const id = String(r.Id);
-      const v = r[field];
-      if (typeof v === "string" && v) out.set(id, v.slice(0, 10));
+      const v = sfDate(r, "FollowUpDate__c");
+      if (v) out.set(String(r.Id), v);
     }
   } catch (err) {
     console.warn("[sent] follow-up-date resolve failed:", err);
