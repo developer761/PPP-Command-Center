@@ -197,6 +197,27 @@ export async function ChangeOrdersPanel({
           <Link href={basePath} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
         </div>
       ) : null}
+      {/* The register — every CO with its status, plus the contract
+          reconciliation. Brendan's format (Stephanie 2026-08-19): "list all
+          change orders with the status as well as have the option to send out
+          a PDF with just one change order on it." The per-CO Document link on
+          each row below is that second option. */}
+      {items.length > 0 && (
+        <div className="flex justify-end mb-2">
+          <a
+            href={`/api/commercial/opportunities/${oppId}/change-orders/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px]"
+            title="One PDF listing every change order on this job with its status and the updated contract total"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" />
+            </svg>
+            All change orders (PDF)
+          </a>
+        </div>
+      )}
       {sendOk && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800 mb-2">
           Change order sent to <strong>{sendOk}</strong>. It stays <strong>pending</strong> until you record their answer.
