@@ -6,6 +6,8 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getReceivablesReport, setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
+import { fmtEtDate } from "@/lib/commercial/invoices/format";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,19 @@ async function saveNoteAction(formData: FormData) {
   redirect(`${BASE}?saved=1`);
 }
 
+/** Write a fresh brief. Its own action so a slow model call never delays the
+ *  report — the page renders from cache and this is an explicit click. */
+async function refreshBriefAction() {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const res = await generateBrief(await getReceivablesReport());
+  revalidatePath(BASE);
+  redirect(res.ok ? `${BASE}?brief=1` : `${BASE}?error=${encodeURIComponent(res.error)}`);
+}
+
 function pickFirst(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v ?? undefined;
 }
@@ -61,6 +76,8 @@ export default async function ReceivablesReportPage({
   const report = await getReceivablesReport();
   const error = pickFirst(sp.error);
   const saved = pickFirst(sp.saved) === "1";
+  const { brief, stale } = await getCachedBrief(report);
+  const canBrief = briefAvailable();
 
   return (
     <div className="max-w-[1400px] mx-auto px-3 sm:px-6 py-6 space-y-5">
@@ -91,6 +108,46 @@ export default async function ReceivablesReportPage({
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12.5px] text-rose-800">
           {error}
         </div>
+      )}
+
+      {/* ── The brief ────────────────────────────────────────────────────
+          One read on the whole book, for Alex. Cached and labelled rather than
+          regenerated per view: this page gets refreshed all day, and spending a
+          model call plus seconds of latency on every load to restate numbers
+          that are already on screen would be a poor trade. Stale-but-dated
+          beats slow. */}
+      {canBrief && (
+        <section className="bg-surface border border-ppp-charcoal-100 border-l-4 border-l-cc-brand-500 rounded-xl p-4">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1.5">
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">
+              The brief
+            </h2>
+            <form action={refreshBriefAction}>
+              <PendingSubmitButton
+                pendingLabel="Writing…"
+                className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] inline-flex items-center"
+              >
+                {brief ? "Rewrite" : "Write the brief"}
+              </PendingSubmitButton>
+            </form>
+          </div>
+          {brief ? (
+            <>
+              <p className="text-[13.5px] text-ppp-charcoal leading-relaxed">{brief.text}</p>
+              <p className="text-[10.5px] text-ppp-charcoal-400 mt-2">
+                {stale
+                  // Say so rather than quietly showing an old read of a book
+                  // that has since moved.
+                  ? "Written before the latest changes — rewrite for a current read."
+                  : `Written ${fmtEtDate(brief.generatedAt)}`}
+              </p>
+            </>
+          ) : (
+            <p className="text-[12.5px] text-ppp-charcoal-500">
+              A short read on where the money is and what to chase first.
+            </p>
+          )}
+        </section>
       )}
 
       {/* Total first — it's the number Alex opens this for. Mary's sheet ends
