@@ -3324,8 +3324,23 @@ async function OpportunityInvoicesPanel({
               ? "This deleted opportunity has no invoices on file. Nothing to manage here."
               : hasAiaBilling
               ? "This job bills through AIA above, so it doesn't need one. Only raise an invoice here for something outside the AIA schedule."
-              : "Bill this Won opportunity when you're ready to collect. Multiple invoices are allowed for progress billing."}
+              : "Bill this job in as many installments as you need — each invoice shows the whole contract position, so the GC always sees where things stand."}
           </p>
+          {/* THE DECISION MOMENT. A freshly-won job shows an empty Invoices tab
+              AND an empty AIA tab, and neither used to mention the other. So
+              you picked one blind — which is how Stephanie ended up entering an
+              invoice on top of a completed AIA. Say the choice out loud, once,
+              at the only point where it matters. */}
+          {!isDealDeleted && !hasAiaBilling && (
+            <p className="mt-2.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
+              Does this GC require <strong className="text-ppp-charcoal-700">AIA G702/G703</strong>{" "}
+              payment applications instead? Bill it on the{" "}
+              <Link href={`/commercial/opportunities/${oppId}?tab=aia`} className="text-cc-brand-700 font-semibold hover:underline">
+                AIA Billing
+              </Link>{" "}
+              tab and skip invoices entirely — a job uses one or the other, never both.
+            </p>
+          )}
           {!isDealDeleted && (
             <Link
               href={`/commercial/invoices/new?opp=${oppId}&from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}

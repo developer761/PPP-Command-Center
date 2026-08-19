@@ -20,7 +20,7 @@ import {
   getCommercialOpportunity,
   derivedOppName,
 } from "@/lib/commercial/opportunities/db";
-import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
+import { getEffectiveContractBaseCents, aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
 import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
@@ -345,10 +345,13 @@ export async function ChangeOrdersTool({
   // four surfaces show the same "contract to date" (was the bare bid midpoint).
   const base = await getEffectiveContractBaseCents(dealId);
   const baseContractCents = base > 0 ? base : null;
-  const [proposalRows, dealInvoices, coContacts] = await Promise.all([
+  const [proposalRows, dealInvoices, coContacts, coAiaRoll] = await Promise.all([
     listProposalsForOpp(dealId),
     listCommercialInvoices({ opportunityId: dealId }),
     listAccountContacts(id).catch(() => []),
+    // Does this job bill through AIA? Drives the "COs flow onto the next
+    // application" note, so nobody is invited to invoice one separately.
+    aiaBillingRollupBulk([dealId]).then((m) => m.get(dealId) ?? null).catch(() => null),
   ]);
   // Best guess at who signs a change order: a PM or project contact first, then
   // anyone with an email. Stephanie shouldn't retype the address every time.
@@ -400,6 +403,7 @@ export async function ChangeOrdersTool({
       deleteAction={deleteChangeOrderAction}
       sendAction={sendChangeOrderAction}
       sendToDefault={sendToDefault}
+      hasAiaBilling={!!coAiaRoll?.hasAia}
       sendOk={sp.co_sent ?? null}
       sendError={sp.co_send_error ?? null}
       okFlag={sp.co_ok ?? null}

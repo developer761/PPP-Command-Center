@@ -693,6 +693,15 @@ async function AiaApplicationList({
         {applications.length === 0 ? (
           <div className="text-[12px] text-ppp-charcoal-500 mb-3 space-y-1">
             <p>No applications yet. AIA billing runs one application per billing period.</p>
+            {/* The other half of the decision — see the matching note on the
+                Invoices tab. Whichever tab she lands on first, she learns the
+                choice exists. */}
+            <p>
+              <strong className="text-ppp-charcoal-700">Only if the GC requires it.</strong> AIA is
+              the G702/G703 certificate process, usually on larger jobs with retainage. If this GC
+              just wants a bill, use the Invoices tab instead — a job uses one or the other, never
+              both.
+            </p>
             <p>
               <strong className="text-ppp-charcoal-700">How it works:</strong> create the application
               for this period &rarr; enter the work completed &rarr; send the G702/G703 to the GC

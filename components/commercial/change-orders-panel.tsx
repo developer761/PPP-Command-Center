@@ -83,6 +83,7 @@ export async function ChangeOrdersPanel({
   deleteAction,
   sendAction,
   sendToDefault = "",
+  hasAiaBilling = false,
   sendOk = null,
   sendError = null,
   okFlag,
@@ -112,6 +113,10 @@ export async function ChangeOrdersPanel({
   sendAction?: (formData: FormData) => void | Promise<void>;
   /** Best-guess recipient — the GC's AP/billing contact. */
   sendToDefault?: string;
+  /** Does this job bill through AIA? Approved COs then flow onto the next
+   *  G702/G703 application, so pushing them onto a separate invoice is the
+   *  double-bill Stephanie already hit once. */
+  hasAiaBilling?: boolean;
   sendOk?: string | null;
   sendError?: string | null;
   /** The deal's base bid (midpoint) — the "original contract" the COs adjust.
@@ -592,6 +597,21 @@ export async function ChangeOrdersPanel({
                                 </form>
                                 <Link href={joinUrl(`edit_co=${co.id}`)} className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Edit</Link>
                               </>
+                            )}
+                            {/* On an AIA job an approved CO belongs on the NEXT
+                                application, not on a separate invoice — the
+                                G703 picks it up automatically. The data layer
+                                already refuses to double-count it, but the UI
+                                was still offering "Bill on invoice" with no
+                                hint, which is the path Stephanie took to a
+                                duplicate. Warn, don't block: a CO genuinely
+                                outside the AIA schedule is a real case. */}
+                            {co.status === "approved" && hasAiaBilling && !billedLive && (
+                              <p className="w-full text-[11.5px] text-ppp-charcoal-500 leading-snug mb-1">
+                                This job bills through <strong className="text-ppp-charcoal-700">AIA</strong> — approved
+                                change orders are picked up by the next application automatically.
+                                Only bill one here if it sits outside the AIA schedule.
+                              </p>
                             )}
                             {co.status === "approved" && (
                               <form action={billAction} className="flex items-center gap-2 flex-wrap">
