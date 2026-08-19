@@ -105,9 +105,22 @@ export default async function CommercialDashboardPage() {
 
   // ─── Production (post-contract) roll-up ───
   const production = summarizeProduction(projectRows);
-  const completedPctOfContract =
+  // "% billed", NOT "% complete".
+  //
+  // This used `completedToDateCents`, which is the latest AIA application's
+  // completed-and-stored figure — and is therefore ZERO on every job billed by
+  // invoice. Dividing an AIA-only numerator by the WHOLE portfolio's contract
+  // value meant a book that mostly bills by invoice reported a few percent
+  // complete while being most of the way through its work.
+  //
+  // `billedContractCents` counts both ledgers, pre-tax, against a pre-tax
+  // contract — the same basis as "Billed of contract" on Projects and Account
+  // 360, so the three now agree. Renamed too: outside AIA there is no
+  // completion measure, only billing, and claiming otherwise is what made the
+  // number look authoritative while being wrong.
+  const billedPctOfContract =
     production.contractValueCents > 0
-      ? Math.round((production.completedToDateCents / production.contractValueCents) * 100)
+      ? Math.min(100, Math.round((production.billedContractCents / production.contractValueCents) * 100))
       : null;
 
   // ─── AR ───
@@ -618,7 +631,7 @@ export default async function CommercialDashboardPage() {
               />
             </div>
             <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <DashStat label="Contract" value={formatCentsCompact(production.contractValueCents)} sub={completedPctOfContract !== null ? `${completedPctOfContract}% complete` : "incl. COs"} tone="navy" href="/commercial/opportunities?lane=under_contract" />
+              <DashStat label="Contract" value={formatCentsCompact(production.contractValueCents)} sub={billedPctOfContract !== null ? `${billedPctOfContract}% billed` : "incl. COs"} tone="navy" href="/commercial/opportunities?lane=under_contract" />
               <DashStat
                 label="Billed"
                 value={formatCentsCompact(production.billedContractCents)}
