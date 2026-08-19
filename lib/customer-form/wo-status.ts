@@ -18,12 +18,18 @@ import { createClient } from "@supabase/supabase-js";
  * the lifecycle (sent_at / opened_at / submitted_at / expires_at).
  */
 
+/** R4.5: the "Colors needed by" date the sender chose (YYYY-MM-DD), so the
+ *  work-order page can show what was set instead of leaving them to guess.
+ *  Null when the sender left it blank — which is the majority, since 68% of
+ *  work orders at Coordination/Scheduling have no start date to default from. */
+type WithDeadline = { colorDeadline?: string | null };
+
 export type FormStatus =
   | { status: "none"; woId: string }
-  | { status: "sent"; woId: string; token: string; sentAt: string | null; formUrl: string }
-  | { status: "opened"; woId: string; token: string; sentAt: string | null; openedAt: string; formUrl: string }
-  | { status: "submitted"; woId: string; token: string; sentAt: string | null; openedAt: string | null; submittedAt: string; formUrl: string }
-  | { status: "expired"; woId: string; token: string; sentAt: string | null; openedAt: string | null; expiredAt: string; formUrl: string };
+  | ({ status: "sent"; woId: string; token: string; sentAt: string | null; formUrl: string } & WithDeadline)
+  | ({ status: "opened"; woId: string; token: string; sentAt: string | null; openedAt: string; formUrl: string } & WithDeadline)
+  | ({ status: "submitted"; woId: string; token: string; sentAt: string | null; openedAt: string | null; submittedAt: string; formUrl: string } & WithDeadline)
+  | ({ status: "expired"; woId: string; token: string; sentAt: string | null; openedAt: string | null; expiredAt: string; formUrl: string } & WithDeadline);
 
 type TokenRow = {
   token: string;

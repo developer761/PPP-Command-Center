@@ -85,6 +85,7 @@ import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { parseMachineColorLines } from "@/lib/customer-form/notes";
 import { pickIsAnswered, type RetainedPick } from "@/lib/customer-form/retained-picks";
 import { formatColorLabel } from "@/lib/supplier-order/estimate-gallons";
+import ModalPortal from "@/components/modal-portal";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
@@ -1434,7 +1435,22 @@ function JobDetailImpl({
               <h3 className="text-lg font-bold text-ppp-navy">{job.wo.accountName ?? "(unknown account)"}</h3>
             )}
             <div className="text-xs text-ppp-charcoal-500 mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-              <span className="font-mono">{job.wo.workOrderNumber ?? job.wo.id.slice(-6)}</span>
+              {/* R4.6 — straight through to the same record in Salesforce.
+                  Built from the WO Id, not the number: the number is a display
+                  field and Lightning routes on the Id. Both the 15- and 18-char
+                  forms resolve, so whichever the snapshot carries works. */}
+              <a
+                href={`https://precisionplus.lightning.force.com/${job.wo.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open this work order in Salesforce"
+                className="font-mono text-ppp-blue-700 hover:text-ppp-blue-800 hover:underline underline-offset-2 inline-flex items-center gap-1"
+              >
+                {job.wo.workOrderNumber ?? job.wo.id.slice(-6)}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="opacity-60">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" />
+                </svg>
+              </a>
               <span aria-hidden>·</span>
               <span>{job.wo.status ?? "Open"}</span>
               {job.wo.closeDate && (
@@ -1459,6 +1475,24 @@ function JobDetailImpl({
             {/* Schedule row — Start + Desired surfaced as a second labeled
                 line so the close date above doesn't fight for space with
                 the schedule dates. Karan 2026-06-13. */}
+            {/* R4.5 — the sender picks a "Colors needed by" date when sending
+                the form, and until now nobody could see afterwards what they'd
+                chosen. Shown on every state, not just live ones: checking the
+                date you set matters just as much after the customer submits.
+                Past dates read as elapsed rather than as a live deadline. */}
+            {formStatus && "colorDeadline" in formStatus && formStatus.colorDeadline && (() => {
+              const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+              const past = formStatus.colorDeadline < todayEt;
+              return (
+                <div className="text-[11px] mt-1">
+                  <span className="text-ppp-charcoal-400">Colors needed by:</span>{" "}
+                  <span className={`font-medium ${past ? "text-ppp-orange-700" : "text-ppp-charcoal-700"}`}>
+                    {fmtScheduleDate(formStatus.colorDeadline)}
+                    {past ? " · date has passed" : ""}
+                  </span>
+                </div>
+              );
+            })()}
             {(job.wo.startDate || job.wo.desiredStartDate) && (
               <div className="text-[11px] text-ppp-charcoal-500 mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
                 {job.wo.startDate && (
@@ -1736,22 +1770,9 @@ function JobDetailImpl({
                   ? "No rooms on this WO yet — add rooms/colors in Salesforce before ordering."
                   : "Step 1: pick a store and set what to buy. Step 2: fulfilment and the email. Nothing sends until you say so."}
               </p>
-              {canPlaceOrder && (
-                <>
-                  <Link
-                    href={`${orderHref}#preview`}
-                    className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
-                    </svg>
-                    Preview Materials Order
-                  </Link>
-                  <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                    Every room, color and surface on this job — on the order screen, above the buy list.
-                  </p>
-                </>
-              )}
+              {/* R4.7: "Preview Materials Order" removed — it linked to the
+                  #preview anchor on the very page Order Materials already opens,
+                  so it was a second button to the same destination. */}
               </>);
               })()}
             </div>
@@ -2913,7 +2934,16 @@ function SendColorFormButton({
         <PreviewColorFormButton workOrderId={workOrderId} />
       </div>
 
+      {/* R4.11 — portalled out of the page subtree. `.animate-fade-up` on the
+          page shell makes every ancestor a containing block for `position:
+          fixed` while its transform is live, which put this dialog at a PAGE
+          offset instead of a viewport one: opened below the fold, it rendered
+          off-screen. Round 3 ended the keyframes on `transform: none`, which
+          fixes the settled state but not the 320ms the animation runs — nor a
+          throttled tab, where the animation never advances at all (measured:
+          currentTime stays 0). See ModalPortal. */}
       {open && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div
             className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm animate-fade-in"
@@ -3130,6 +3160,7 @@ function SendColorFormButton({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

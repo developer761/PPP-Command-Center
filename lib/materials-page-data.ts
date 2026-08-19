@@ -37,6 +37,8 @@ type TokenRow = {
   kind?: string | null;
   /** Kate round-3 #02/#03 — the staffer behind an internal entry. */
   created_by_user_id?: string | null;
+  /** R4.5 — the "Colors needed by" date the sender chose (migration 147). */
+  color_deadline?: string | null;
 };
 
 type OrderRow = {
@@ -159,7 +161,7 @@ export async function getMaterialsPageAuxData(
       // attribution logic but only to the other loader, which is why the page
       // Kate tests kept reading "Customer Submitted".
       .select(
-        "token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind, created_by_user_id" +
+        "token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind, created_by_user_id, color_deadline" +
           (opts.includeRetainedPicks ? ", submitted_payload" : "")
       )
       .in("work_order_id", workOrderIds)
@@ -248,6 +250,10 @@ export async function getMaterialsPageAuxData(
 
       // Form status — same shape getFormStatusByWO produced
       const formUrl = `${baseUrl}/select/${row.token}`;
+      // R4.5 — carried on every state, not just the live ones: a sender wants to
+      // check the date they set just as much after the customer submitted.
+      // Sliced because the column may come back as a timestamp on some drivers.
+      const colorDeadline = row.color_deadline ? String(row.color_deadline).slice(0, 10) : null;
       if (row.submitted_at) {
         formStatusByWO.set(row.work_order_id, {
           status: "submitted",
@@ -257,6 +263,7 @@ export async function getMaterialsPageAuxData(
           openedAt: row.opened_at,
           submittedAt: row.submitted_at,
           formUrl,
+          colorDeadline,
         });
         continue;
       }
@@ -270,6 +277,7 @@ export async function getMaterialsPageAuxData(
           openedAt: row.opened_at,
           expiredAt: row.expires_at,
           formUrl,
+          colorDeadline,
         });
         continue;
       }
@@ -281,6 +289,7 @@ export async function getMaterialsPageAuxData(
           sentAt: row.sent_at,
           openedAt: row.opened_at,
           formUrl,
+          colorDeadline,
         });
         continue;
       }
@@ -290,6 +299,7 @@ export async function getMaterialsPageAuxData(
         token: row.token,
         sentAt: row.sent_at,
         formUrl,
+        colorDeadline,
       });
     }
   } else if (tokensResult.status === "rejected") {

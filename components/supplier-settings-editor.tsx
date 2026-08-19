@@ -1,5 +1,7 @@
 "use client";
 
+import ModalPortal from "@/components/modal-portal";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -205,6 +207,9 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
   };
 
   return (
+    // R4.11 (same class as the Send Color Form dialog): portalled so no page
+    // ancestor's transform can turn `fixed` into a page offset. See ModalPortal.
+    <ModalPortal>
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
       <div className="relative z-10 w-full sm:max-w-md max-h-[92vh] sm:max-h-[85vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col">
@@ -283,6 +288,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 
