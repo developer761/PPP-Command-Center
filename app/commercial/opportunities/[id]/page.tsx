@@ -70,7 +70,12 @@ import { daysFromTodayEt } from "@/lib/date-et";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
-import { getEffectiveContractBaseCents, retainageHeldForOpportunity } from "@/lib/commercial/aia/db";
+import {
+  getEffectiveContractBaseCents,
+  retainageHeldForOpportunity,
+  listAiaApplications,
+  aiaBillingRollupBulk,
+} from "@/lib/commercial/aia/db";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { BILLABLE_INVOICE_STATUSES, deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
@@ -3019,7 +3024,7 @@ async function OpportunityInvoicesPanel({
   editInvoiceId?: string | null;
   detailsSavedInvoiceId?: string | null;
 }) {
-  const [invoices, taxJurisdictions, contractBaseCents, netCoCents] = await Promise.all([
+  const [invoices, taxJurisdictions, contractBaseCents, netCoCents, aiaApps, aiaRoll] = await Promise.all([
     listCommercialInvoices({ opportunityId: oppId }),
     listTaxJurisdictions({ activeOnly: true }),
     // 2026-07-29 re-audit fix: "% of contract" must use the SAME contract-to-
@@ -3028,8 +3033,24 @@ async function OpportunityInvoicesPanel({
     // tile showed e.g. "110% over" while every other screen showed 85%.
     getEffectiveContractBaseCents(oppId),
     netApprovedChangeOrderCents(oppId),
+    // Stephanie 2026-08-18: "I need to enter an invoice on top of completing an
+    // AIA? It doesn't just pull from the generated AIA's when I move to the
+    // invoices tab?" — no, it should not need one, and now it doesn't pretend
+    // otherwise. A G702/G703 application IS the bill for an AIA job; it writes
+    // no `commercial_invoices` row, so this tab used to show "No invoices yet.
+    // Bill this Won opportunity when you're ready to collect" on a job that had
+    // already billed six figures. That prompt is what made her raise a second,
+    // duplicate invoice.
+    listAiaApplications(oppId).catch(() => []),
+    aiaBillingRollupBulk([oppId]).then((m) => m.get(oppId) ?? null).catch(() => null),
   ]);
   const contractToDateCents = contractBaseCents + netCoCents;
+  // Issued applications only — a draft application is not a bill, exactly as a
+  // draft invoice isn't.
+  const issuedAiaApps = aiaApps
+    .filter((a) => a.status === "submitted" || a.status === "paid")
+    .sort((a, b) => b.application_number - a.application_number);
+  const hasAiaBilling = issuedAiaApps.length > 0;
   // Sales tax by ZIP: resolve this project's ZIP → jurisdiction once for the
   // whole panel. Null when no ZIP / no match; the edit sheet shows a hint on
   // draft invoices whose tax is still blank (never auto-overrides a set rate).
@@ -3175,12 +3196,84 @@ async function OpportunityInvoicesPanel({
         )}
       </div>
 
+      {/* ── AIA billing, shown right here ────────────────────────────────
+          An AIA job bills through payment applications, not invoices. They
+          live on their own ledger, so this tab used to look empty on a job
+          that had already billed six figures — and told her to raise an
+          invoice, which is how a duplicate gets created. Read-only rows: the
+          application IS the bill, and it's edited on the AIA tool. ── */}
+      {hasAiaBilling && (
+        <div className="mb-4">
+          <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2">
+            <h3 className="text-[12px] font-bold text-ppp-charcoal">Billed through AIA</h3>
+            <Link
+              href={`/commercial/opportunities/${oppId}?tab=aia`}
+              className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[32px] inline-flex items-center"
+            >
+              Open AIA billing →
+            </Link>
+          </div>
+          <p className="text-[11.5px] text-ppp-charcoal-500 mb-2 leading-snug">
+            This job bills by payment application. You don&rsquo;t need to raise an
+            invoice on top &mdash; these <em>are</em> the bills.
+          </p>
+          <ul className="space-y-1.5">
+            {issuedAiaApps.map((a) => (
+              <li key={a.id}>
+                <Link
+                  href={`/commercial/opportunities/${oppId}?tab=aia&app=${a.id}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-ppp-charcoal-100 px-3.5 py-2.5 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
+                >
+                  <span className="min-w-0">
+                    <span className="text-[13px] font-semibold text-ppp-charcoal">
+                      Application No. {a.application_number}
+                    </span>
+                    <span className="block text-[11px] text-ppp-charcoal-500">
+                      {a.period_to ? `Period to ${fmtEtDate(a.period_to)}` : "No period set"}
+                    </span>
+                  </span>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold shrink-0 ${
+                      a.status === "paid"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
+                    }`}
+                  >
+                    {a.status === "paid" ? "Paid" : "Submitted"}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {aiaRoll && (
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11.5px]">
+              <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
+                <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Billed</span>
+                <span className="tabular-nums font-semibold text-ppp-charcoal">{formatCentsCompact(aiaRoll.billedCents)}</span>
+              </div>
+              <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
+                <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Owed now</span>
+                <span className={`tabular-nums font-semibold ${aiaRoll.dueNowCents > 0 ? "text-rose-700" : "text-ppp-charcoal"}`}>{formatCentsCompact(aiaRoll.dueNowCents)}</span>
+              </div>
+              <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
+                <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Retainage</span>
+                <span className="tabular-nums font-semibold text-ppp-charcoal">{formatCentsCompact(aiaRoll.retainageHeldCents)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {invoices.length === 0 ? (
         <div className="border border-dashed border-ppp-charcoal-200 rounded-lg px-4 py-6 text-center">
-          <div className="text-[13px] font-semibold text-ppp-charcoal">No invoices yet</div>
+          <div className="text-[13px] font-semibold text-ppp-charcoal">
+            {hasAiaBilling ? "No separate invoices" : "No invoices yet"}
+          </div>
           <p className="mt-1 text-[12px] text-ppp-charcoal-500">
             {isDealDeleted
               ? "This deleted opportunity has no invoices on file. Nothing to manage here."
+              : hasAiaBilling
+              ? "This job bills through AIA above, so it doesn't need one. Only raise an invoice here for something outside the AIA schedule."
               : "Bill this Won opportunity when you're ready to collect. Multiple invoices are allowed for progress billing."}
           </p>
           {!isDealDeleted && (
