@@ -221,6 +221,15 @@ export async function POST(
   // prior submission before the cutoff (Katie 2026-05-29). "submitted" now
   // means submitted AND past the cutoff → locked.
   const status = await validateToken(tokenFromUrl);
+  if (status.kind === "unavailable") {
+    // The token lookup failed — the link may be fine. 503 so the form says
+    // "try again" instead of telling the customer their link is dead and
+    // losing everything they just entered.
+    return NextResponse.json(
+      { error: "unavailable", message: "We couldn't reach our system just now. Please try submitting again in a moment — nothing was lost." },
+      { status: 503 }
+    );
+  }
   if (status.kind === "not_found") {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }

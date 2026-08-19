@@ -8,6 +8,8 @@ type ManagedUser = {
   user_id: string;
   email: string;
   full_name: string | null;
+  /** Contact number shown on supplier orders this person places (#29). */
+  phone: string | null;
   role: UserRole;
   auth_provider: "google" | "password";
   is_active: boolean;
@@ -341,6 +343,12 @@ function UserRow({
   const [showPw, setShowPw] = useState(false);
 
   const label = user.full_name || user.email.split("@")[0];
+  // Kate round-3 #29: phone was write-once on the CREATE form, which made it
+  // unreachable for every existing account — and for every Google-SSO account,
+  // which never passes through that form at all. Katie was told to "add one in
+  // Settings → Access", where no such field existed.
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneDraft, setPhoneDraft] = useState(user.phone ?? "");
   const initial = (label[0] ?? "?").toUpperCase();
 
   const patch = async (body: Record<string, unknown>, okMsg: string) => {
@@ -367,6 +375,16 @@ function UserRow({
   const changeRole = async (role: UserRole) => {
     if (role === user.role) return;
     await patch({ action: "role", role }, `${label} is now ${roleLabel(role)}.`);
+  };
+
+  const savePhone = async () => {
+    const next = phoneDraft.trim();
+    if (next === (user.phone ?? "")) { setEditingPhone(false); return; }
+    const ok = await patch(
+      { action: "phone", phone: next || null },
+      next ? `${label}'s phone saved — it'll fill in on their supplier orders.` : `${label}'s phone cleared.`
+    );
+    if (ok) setEditingPhone(false);
   };
 
   const toggleActive = async () => {
@@ -424,6 +442,54 @@ function UserRow({
               {user.auth_provider === "password" ? "Password" : "Google"}
               <span className="mx-1.5 text-ppp-charcoal-200">·</span>
               {formatLastLogin(user.last_login_at)}
+            </div>
+            {/* Contact number for supplier orders (#29). Inline, next to the
+                identity, because it's a property of the person — not an action
+                taken on them like a role change or a password reset. */}
+            <div className="mt-1.5 text-xs">
+              {editingPhone ? (
+                <span className="inline-flex items-center gap-1.5 flex-wrap">
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoFocus
+                    value={phoneDraft}
+                    onChange={(e) => setPhoneDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); void savePhone(); }
+                      if (e.key === "Escape") { setPhoneDraft(user.phone ?? ""); setEditingPhone(false); }
+                    }}
+                    placeholder="(631) 555-0134"
+                    aria-label={`Contact phone for ${label}`}
+                    className="w-44 rounded border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-xs min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void savePhone()}
+                    disabled={busy}
+                    className="rounded bg-ppp-blue-700 px-2.5 py-1 text-xs font-semibold text-white min-h-[44px] sm:min-h-0 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPhoneDraft(user.phone ?? ""); setEditingPhone(false); }}
+                    className="px-2 py-1 text-xs text-ppp-charcoal-500 min-h-[44px] sm:min-h-0"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingPhone(true)}
+                  className="inline-flex items-center gap-1.5 text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 touch-manipulation"
+                >
+                  {user.phone
+                    ? <>☎ {user.phone}</>
+                    : <>☎ Add a phone <span className="text-ppp-charcoal-400 font-normal">— goes on supplier orders they place</span></>}
+                </button>
+              )}
             </div>
           </div>
         </div>

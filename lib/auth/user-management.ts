@@ -29,6 +29,9 @@ export type ManagedUser = {
   user_id: string;
   email: string;
   full_name: string | null;
+  /** Contact number used as the default "who to call" on supplier orders this
+   *  person places (Kate round-3 #29). */
+  phone: string | null;
   role: UserRole;
   auth_provider: "google" | "password";
   is_active: boolean;
@@ -68,6 +71,7 @@ function mapRow(row: Record<string, unknown>): ManagedUser {
     user_id: String(row.user_id),
     email: String(row.email ?? ""),
     full_name: (row.full_name as string | null) ?? (row.sf_user_name as string | null) ?? null,
+    phone: (row.phone as string | null) ?? null,
     role: normalizeRole((row.role as string | null) ?? null, row.is_admin === true),
     auth_provider: provider,
     is_active: row.is_active !== false,
@@ -86,7 +90,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "user_id,email,full_name,sf_user_name,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
+      "user_id,email,full_name,sf_user_name,phone,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
     )
     .order("created_at", { ascending: false });
   if (error) {
@@ -118,7 +122,7 @@ async function getRow(userId: string): Promise<ManagedUser | null> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "user_id,email,full_name,sf_user_name,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
+      "user_id,email,full_name,sf_user_name,phone,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -440,6 +444,53 @@ export async function setUserActive(input: {
     target_user_id: input.user_id,
     target_email: current.email,
     detail: { is_active: input.is_active },
+  });
+  return { ok: true };
+}
+
+
+/**
+ * Set a user's contact phone (Kate round-3 #29).
+ *
+ * This existed only as a field on the CREATE form, which made it unreachable
+ * for two whole populations: everyone provisioned before the column existed,
+ * and every Google-SSO account — which never passes through createPasswordUser.
+ * Katie is in the second group, so the fulfilment page told her "add one in
+ * Settings → Access" and Settings → Access offered no way to do it. She
+ * retyped her number on every order, and any order she forgot went to the
+ * vendor with no contact block at all.
+ *
+ * Deliberately NOT self-service-only: an admin sets it, the same way roles and
+ * passwords work here, because the number is operational (it goes on purchase
+ * orders) rather than personal preference.
+ */
+export async function updateUserPhone(input: {
+  user_id: string;
+  phone: string | null;
+  actor: ActorMeta;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const phone = input.phone?.trim() || null;
+  // Loose on format on purpose — PPP writes numbers as "(631) 555-0134",
+  // "631-555-0134 x12" and worse. It's a human-readable string on an email,
+  // not something we dial. Just bound the length.
+  if (phone && phone.length > 40) {
+    return { ok: false, error: "That phone number is too long." };
+  }
+  const sb = adminClient();
+  const { error } = await sb.from("profiles").update({ phone }).eq("user_id", input.user_id);
+  if (error) {
+    if (/column .*phone.* does not exist/i.test(error.message) || (error as { code?: string }).code === "42703") {
+      return { ok: false, error: "Phone storage isn't set up yet — migration 145 hasn't been applied." };
+    }
+    return { ok: false, error: error.message };
+  }
+  invalidateProfileCache(input.user_id);
+  await audit({
+    actor: input.actor,
+    action: "update_phone",
+    target_user_id: input.user_id,
+    target_email: null,
+    detail: { phone_set: !!phone },
   });
   return { ok: true };
 }

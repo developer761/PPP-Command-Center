@@ -27,6 +27,16 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
   if (status.kind === "not_found") {
     return <ErrorState heading="Link not found" body="This form link doesn't exist or was removed. If you got it from PPP, please reach out so they can send you a new one." />;
   }
+  if (status.kind === "unavailable") {
+    // The lookup failed, not the link. Telling a customer their link is dead
+    // when it isn't makes them phone PPP or give up on the form entirely.
+    return (
+      <ErrorState
+        heading="We couldn't load your form just now"
+        body="This is on our side, not your link — please refresh the page in a moment. If it keeps happening, reply to the PPP email and we'll sort it out."
+      />
+    );
+  }
   if (status.kind === "expired") {
     return <ErrorState heading="This link has expired" body="For your security, this color-form link has expired. Reply to the PPP email you got and we'll send a fresh link." />;
   }

@@ -233,10 +233,19 @@ export async function GET(request: Request) {
     // missing column — retry with a narrower one so the UI still works.
     let tokenRows: unknown[] = [];
     if (tokensRes.error) {
-      const retry = await sb
+      // The retry MUST carry the same filters as the primary query. It didn't:
+      // it dropped the work-order filter, the viewer's ownership scope AND the
+      // preview exclusion, so any transient error (not just a missing column)
+      // turned a scoped request into a company-wide dump — including live
+      // /select/<token> URLs for other reps' customers.
+      let retryQ = sb
         .from("customer_form_tokens")
         .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, expires_at, created_by_user_id")
         .not("sent_at", "is", null)
+        .or("kind.is.null,kind.neq.preview");
+      if (workOrderId) retryQ = retryQ.eq("work_order_id", workOrderId);
+      else if (scopedWoIds) retryQ = retryQ.in("work_order_id", scopedWoIds);
+      const retry = await retryQ
         .order("sent_at", { ascending: false })
         .limit(limit);
       if (retry.error) {
@@ -291,11 +300,15 @@ export async function GET(request: Request) {
     // on a fresh deploy that hasn't run the migration.
     let orderRows: unknown[] = [];
     if (ordersRes.error) {
-      const retry = await sb
+      // Same rule as the token retry above: keep the scope.
+      let retryQ = sb
         .from("supplier_orders")
         .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at")
         .eq("status", "sent")
-        .not("sent_at", "is", null)
+        .not("sent_at", "is", null);
+      if (workOrderId) retryQ = retryQ.eq("work_order_id", workOrderId);
+      else if (scopedWoIds) retryQ = retryQ.in("work_order_id", scopedWoIds);
+      const retry = await retryQ
         .order("sent_at", { ascending: false })
         .limit(limit);
       if (retry.error) {

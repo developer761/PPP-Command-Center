@@ -164,8 +164,13 @@ export async function getToken(token: string): Promise<CustomerFormToken | null>
     .eq("token", token)
     .maybeSingle();
   if (error) {
+    // Do NOT collapse this into "not found". A transient Supabase failure used
+    // to render the customer a definitive "Link not found — this form link
+    // doesn't exist or was removed" for a link that is perfectly fine, and they
+    // either phone PPP or give up. The submit route already distinguishes the
+    // two (503 "try again" vs 410 "removed"); the render path now can too.
     console.error("[customer-form] getToken failed:", error.message);
-    return null;
+    throw new Error(`token_lookup_failed: ${error.message}`);
   }
   return (data as CustomerFormToken) ?? null;
 }
@@ -184,10 +189,19 @@ export type TokenStatus =
   | { kind: "editable"; token: CustomerFormToken }      // submitted but before cutoff → re-editable (Katie 2026-05-29)
   | { kind: "expired" }                                 // never submitted, past cutoff
   | { kind: "submitted"; token: CustomerFormToken }     // submitted AND past cutoff → locked thank-you
-  | { kind: "not_found" };
+  | { kind: "not_found" }
+  /** The lookup itself failed — the token may be perfectly valid. Distinct from
+   *  not_found so the customer is asked to try again rather than told their
+   *  link is dead. */
+  | { kind: "unavailable" };
 
 export async function validateToken(token: string): Promise<TokenStatus> {
-  const row = await getToken(token);
+  let row: CustomerFormToken | null;
+  try {
+    row = await getToken(token);
+  } catch {
+    return { kind: "unavailable" };
+  }
   if (!row) return { kind: "not_found" };
   const expired = new Date(row.expires_at) < new Date();
   if (row.submitted_at) {
