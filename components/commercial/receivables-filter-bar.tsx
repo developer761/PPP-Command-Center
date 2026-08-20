@@ -1,15 +1,32 @@
 import Link from "next/link";
 import { ACTIVITY_PRESETS } from "@/lib/commercial/reports/presets";
 import { receivableQueryString, type ReceivableQuery } from "@/lib/commercial/reports/receivables-filters";
+import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import type { ReceivableKind } from "@/lib/commercial/reports/receivables";
 
 /**
  * Filters for the receivables book — Karan, 2026-08-19: *"can we have filters
  * like by day, week, monthly, year"*.
  *
- * Link-based, not a client form: each control is a URL, so a filtered view is
- * shareable, survives a refresh, works with the browser Back button, and needs
- * no JavaScript. Mary can send Alex the link to "everything overdue on this GC".
+ * ONE LINE. This was four labelled rows of chips — twenty-odd buttons, a block
+ * taller than the table beneath it (Karan, same day: *"its all like spread out
+ * and cumbersome"*). Four filter dimensions is too many for chips: they can
+ * only show one dimension per row, so the bar grows with every dimension while
+ * saying less, because "what is the current Type?" means scanning a row for
+ * whichever pill is coloured in.
+ *
+ * As labelled dropdowns each dimension states its own current value in place,
+ * the whole bar is one wrapping row, and adding a fifth dimension costs no
+ * vertical space at all.
+ *
+ * Every option is still a URL — the dropdowns navigate to hrefs built here, on
+ * the server, by the same helper the rest of the page uses. A filtered view
+ * stays shareable, refreshable and Back-able: Mary can still send Alex the link
+ * to "everything overdue on this GC".
+ *
+ * "Overdue only" stays a chip on purpose. It is binary, it is the highest
+ * traffic control on a chase list, and a two-option dropdown to toggle one flag
+ * is a worse trade than one tap.
  *
  * The period filters on WHEN IT WAS BILLED, not when it comes due — "what did
  * we bill in July that's still out" is the question people actually ask. It
@@ -24,6 +41,13 @@ const KINDS: { key: ReceivableKind | "all"; label: string }[] = [
   { key: "retainage", label: "Retention" },
 ];
 
+const SORTS: { key: ReceivableQuery["sort"]; label: string }[] = [
+  // Not a filter — nothing is hidden, only reordered. "Most overdue" is how you
+  // clear the tail of a book; "Biggest" is how you protect the month.
+  { key: "amount", label: "Biggest first" },
+  { key: "oldest", label: "Most overdue first" },
+];
+
 export function ReceivablesFilterBar({
   q,
   basePath,
@@ -31,11 +55,8 @@ export function ReceivablesFilterBar({
   extraParams = {},
 }: {
   q: ReceivableQuery;
-  /** The page these links point at. MUST be a bare path with no query string:
-   *  an HTML GET form DISCARDS the query in `action` and replaces it with the
-   *  form data set, so a `?view=receivables` baked in here would be dropped by
-   *  the GC picker and bounce the user to a different view. Anything that has
-   *  to survive goes in `extraParams`, which is rendered as hidden inputs. */
+  /** The page these links point at. A bare path with no query string — the
+   *  query is built here, per control, from `q` + `extraParams`. */
   basePath: string;
   /** GCs present in the UNFILTERED book, so the picker never offers a name
    *  that yields nothing, and never hides one because it's filtered out. */
@@ -46,116 +67,61 @@ export function ReceivablesFilterBar({
   const to = (patch: Partial<ReceivableQuery>) =>
     `${basePath}${receivableQueryString({ ...q, ...patch }, extraParams)}`;
 
-  return (
-    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-2.5">
-      <FilterRow label="Billed">
-        {ACTIVITY_PRESETS.map((p) => (
-          <Chip key={p.key} href={to({ period: p.key })} active={q.period === p.key}>
-            {p.label}
-          </Chip>
-        ))}
-      </FilterRow>
+  const periodChoices: NavChoice[] = ACTIVITY_PRESETS.map((p) => ({
+    value: p.key,
+    label: p.label,
+    href: to({ period: p.key }),
+  }));
+  const kindChoices: NavChoice[] = KINDS.map((k) => ({
+    value: k.key,
+    label: k.label,
+    href: to({ kind: k.key }),
+  }));
+  const sortChoices: NavChoice[] = SORTS.map((s) => ({
+    value: s.key,
+    label: s.label,
+    href: to({ sort: s.key }),
+  }));
+  // "" is the every-GC option. `accountId: null` is what the query parser
+  // produces for it, so the two round-trip.
+  const gcChoices: NavChoice[] = [
+    { value: "", label: "Every GC", href: to({ accountId: null }) },
+    ...gcOptions.map((g) => ({ value: g.id, label: g.name, href: to({ accountId: g.id }) })),
+  ];
 
-      <FilterRow label="Type">
-        {KINDS.map((k) => (
-          <Chip key={k.key} href={to({ kind: k.key })} active={q.kind === k.key}>
-            {k.label}
-          </Chip>
-        ))}
-        <span className="w-px self-stretch bg-ppp-charcoal-100 mx-1 hidden sm:block" aria-hidden />
-        <Chip href={to({ overdueOnly: !q.overdueOnly })} active={q.overdueOnly} tone="rose">
-          Overdue only
-        </Chip>
-      </FilterRow>
+  const isFiltered =
+    q.period !== "all" || q.kind !== "all" || q.overdueOnly || !!q.accountId || q.sort !== "amount";
+  const clearParams = new URLSearchParams(extraParams).toString();
 
-      <FilterRow label="Sort">
-        {/* Not a filter — nothing is hidden, only reordered. "Oldest" is how
-            you actually clear the tail of a book; "Biggest" is how you protect
-            the month. */}
-        <Chip href={to({ sort: "amount" })} active={q.sort === "amount"}>Biggest first</Chip>
-        <Chip href={to({ sort: "oldest" })} active={q.sort === "oldest"}>Most overdue first</Chip>
-      </FilterRow>
-
-      {gcOptions.length > 1 && (
-        <FilterRow label="GC">
-          {/* A GET form, so this works without JS like every other control here.
-              Hidden inputs carry the other filters — otherwise picking a GC
-              would silently reset the period you had chosen. */}
-          <form action={basePath} method="GET" className="flex items-center gap-1.5 flex-wrap">
-            {Object.entries(extraParams).map(([k, v]) => (
-              <input key={k} type="hidden" name={k} value={v} />
-            ))}
-            {q.period !== "all" && <input type="hidden" name="period" value={q.period} />}
-            {q.kind !== "all" && <input type="hidden" name="kind" value={q.kind} />}
-            {q.overdueOnly && <input type="hidden" name="overdue" value="1" />}
-            {q.sort !== "amount" && <input type="hidden" name="sort" value={q.sort} />}
-            <select
-              name="gc"
-              defaultValue={q.accountId ?? ""}
-              aria-label="Filter by GC"
-              className="px-2.5 py-1.5 text-base sm:text-[12.5px] bg-surface border border-ppp-charcoal-200 rounded-lg min-h-[40px] max-w-[240px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600"
-            >
-              <option value="">Every GC</option>
-              {gcOptions.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              className="inline-flex items-center px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[40px]"
-            >
-              Apply
-            </button>
-          </form>
-        </FilterRow>
-      )}
-
-      {(q.period !== "all" || q.kind !== "all" || q.overdueOnly || q.accountId || q.sort !== "amount") && (
-        <div className="pt-0.5">
-          <Link
-            href={`${basePath}${new URLSearchParams(extraParams).toString() ? `?${new URLSearchParams(extraParams).toString()}` : ""}`}
-            className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[32px]"
-          >
-            Clear filters
-          </Link>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-400 w-[42px] shrink-0">
-        {label}
-      </span>
-      {children}
+      <NavSelect label="Billed" value={q.period} choices={periodChoices} ariaLabel="Filter by billing period" />
+      <NavSelect label="Type" value={q.kind} choices={kindChoices} ariaLabel="Filter by receivable type" />
+      {/* Only offered when there is a choice to make. One GC in the book means
+          the picker can only ever restate what's already on screen. */}
+      {gcOptions.length > 1 && (
+        <NavSelect label="GC" value={q.accountId ?? ""} choices={gcChoices} ariaLabel="Filter by GC" />
+      )}
+      <Link
+        href={to({ overdueOnly: !q.overdueOnly })}
+        aria-pressed={q.overdueOnly}
+        className={`inline-flex items-center px-3 rounded-lg text-[12.5px] font-semibold border transition-colors min-h-[38px] touch-manipulation ${
+          q.overdueOnly
+            ? "bg-rose-600 text-white border-rose-700"
+            : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+        }`}
+      >
+        Overdue only
+      </Link>
+      <NavSelect label="Sort" value={q.sort} choices={sortChoices} ariaLabel="Sort the list" />
+      {isFiltered && (
+        <Link
+          href={`${basePath}${clearParams ? `?${clearParams}` : ""}`}
+          className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[38px] px-1"
+        >
+          Clear
+        </Link>
+      )}
     </div>
-  );
-}
-
-function Chip({
-  href, active, children, tone = "brand",
-}: {
-  href: string;
-  active: boolean;
-  children: React.ReactNode;
-  tone?: "brand" | "rose";
-}) {
-  const on =
-    tone === "rose"
-      ? "bg-rose-600 text-white border-rose-700"
-      : "bg-cc-brand-600 text-white border-cc-brand-600";
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "true" : undefined}
-      className={`inline-flex items-center px-2.5 rounded-lg text-[12px] font-semibold border transition-colors min-h-[36px] touch-manipulation ${
-        active ? on : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
-      }`}
-    >
-      {children}
-    </Link>
   );
 }

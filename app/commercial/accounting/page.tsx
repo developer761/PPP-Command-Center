@@ -99,9 +99,20 @@ async function requireFinanceViewer() {
   return user;
 }
 
+/** Only ever return to this page. A `back` posted from a form is user input;
+ *  without this, a crafted one would make either button an open redirect. */
+function safeBack(raw: unknown): string {
+  const v = String(raw ?? "");
+  return v === BASE || v.startsWith(`${BASE}?`) ? v : BASE;
+}
+
 /** Rewrite the brief. Its own action so a slow model call never delays the page.
- *  Shared cache with the receivables report — write it here, it shows there. */
-async function refreshBriefAction() {
+ *  Shared cache with the receivables report — write it here, it shows there.
+ *
+ *  Returns to the VIEW you pressed it from. It used to land on `?brief=1`,
+ *  which dropped you out of Receivables (or AR aging, or Job costs) back to
+ *  Overview — the exact navigate-away this page was restructured to remove. */
+async function refreshBriefAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -110,7 +121,9 @@ async function refreshBriefAction() {
   const res = await generateBrief(await getReceivablesReport());
   revalidatePath(BASE);
   revalidatePath("/commercial/reports/receivables");
-  redirect(res.ok ? `${BASE}?brief=1` : `${BASE}?error=${encodeURIComponent(res.error)}`);
+  const back = safeBack(formData.get("back"));
+  const sep = back.includes("?") ? "&" : "?";
+  redirect(res.ok ? `${back}${sep}brief=1` : `${back}${sep}error=${encodeURIComponent(res.error)}`);
 }
 
 /** Save a chase note without leaving Accounting. Revalidates BOTH surfaces —
@@ -137,8 +150,10 @@ async function saveNoteAction(formData: FormData) {
   );
 }
 
-/** Email the sheet to Alex. Explicit click only — no auto-send from here. */
-async function sendToAlexAction() {
+/** Email the sheet to Alex. Explicit click only — no auto-send from here.
+ *  Stays on the view you sent it from; it used to force `?view=receivables`,
+ *  so pressing Send from Overview silently switched tabs underneath you. */
+async function sendToAlexAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -146,10 +161,12 @@ async function sendToAlexAction() {
   await assertCommercialAccess(user.id);
   const res = await sendReceivablesToAlex();
   revalidatePath(BASE);
+  const back = safeBack(formData.get("back"));
+  const sep = back.includes("?") ? "&" : "?";
   redirect(
     res.ok
-      ? `${BASE}?view=receivables&sent=${encodeURIComponent(res.to.join(", "))}`
-      : `${BASE}?view=receivables&error=${encodeURIComponent(res.error)}`
+      ? `${back}${sep}sent=${encodeURIComponent(res.to.join(", "))}`
+      : `${back}${sep}error=${encodeURIComponent(res.error)}`
   );
 }
 
@@ -299,6 +316,7 @@ export default async function AccountingPage({
           />
           {receivables.rows.length > 0 && (
             <form action={sendToAlexAction} className="flex flex-col items-end gap-0.5">
+              <input type="hidden" name="back" value={href(view)} />
               <PendingSubmitButton
                 pendingLabel="Sending…"
                 className="inline-flex items-center min-h-[44px] px-3.5 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 transition-colors"
@@ -337,6 +355,7 @@ export default async function AccountingPage({
           <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1.5">
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">The brief</h2>
             <form action={refreshBriefAction}>
+              <input type="hidden" name="back" value={href(view)} />
               <PendingSubmitButton
                 pendingLabel="Writing…"
                 className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] inline-flex items-center"
@@ -672,13 +691,18 @@ export default async function AccountingPage({
             hint="What's owed by how far past due — invoices and AIA applications. Retention is excluded: it's held, not late."
           />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Tile label="Total AR" value={formatCentsFull(aging.totals.total)} tone="brand" sub={`${aging.invoiceCount} open item${aging.invoiceCount === 1 ? "" : "s"}`} />
+            {/* Same wording as the AR-aging report itself. Both counts are
+                open ITEMS — invoices and AIA applications — since AIA landed
+                in this report on 2026-08-17. */}
+            <Tile label="Total AR" value={formatCentsFull(aging.totals.total)} tone="brand" sub={`${aging.customerCount} GC${aging.customerCount === 1 ? "" : "s"} · ${aging.invoiceCount} open item${aging.invoiceCount === 1 ? "" : "s"}`} />
             <Tile label="Current" value={formatCentsFull(aging.totals.current)} tone="emerald" sub="not yet due" />
             <Tile
               label="Overdue"
               value={formatCentsFull(aging.totals.total - aging.totals.current)}
               tone={aging.totals.total - aging.totals.current > 0 ? "rose" : "neutral"}
-              sub={`${aging.customerCount} GC${aging.customerCount === 1 ? "" : "s"}`}
+              // Was the GC count, which read as "this many GCs are overdue" —
+              // it is every GC with any AR at all, overdue or not.
+              sub="past the due date"
             />
             <Tile
               label="Avg age"
@@ -690,7 +714,7 @@ export default async function AccountingPage({
           {aging.rows.length === 0 ? (
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
               <p className="px-4 py-10 text-center text-[13px] text-ppp-charcoal-500">
-                No open invoices. Nothing is aging.
+                No open receivables. Nothing is aging.
               </p>
             </div>
           ) : (
@@ -716,7 +740,9 @@ export default async function AccountingPage({
                             {r.accountName}
                           </Link>
                           <span className="block text-[10.5px] text-ppp-charcoal-400">
-                            {r.invoiceCount} invoice{r.invoiceCount === 1 ? "" : "s"}
+                            {/* "invoices" undercounted: the row includes this
+                                GC's AIA applications too. */}
+                            {r.invoiceCount} open · oldest {Math.max(0, r.oldestDays)}d
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ppp-charcoal-500">{formatCentsCompact(r.current)}</td>
