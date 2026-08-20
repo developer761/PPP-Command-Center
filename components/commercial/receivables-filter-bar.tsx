@@ -84,9 +84,19 @@ export function ReceivablesFilterBar({
   }));
   // "" is the every-GC option. `accountId: null` is what the query parser
   // produces for it, so the two round-trip.
+  //
+  // A GC in the URL that is no longer in the book — a shared link, or a
+  // bookmark from before they paid — has no option to select, so the control
+  // would read "Every GC" while the list beneath it showed nothing. Carry it as
+  // its own option instead: the filter that is emptying the list has to be the
+  // one the bar is showing.
+  const selectedGcMissing = !!q.accountId && !gcOptions.some((g) => g.id === q.accountId);
   const gcChoices: NavChoice[] = [
     { value: "", label: "Every GC", href: to({ accountId: null }) },
     ...gcOptions.map((g) => ({ value: g.id, label: g.name, href: to({ accountId: g.id }) })),
+    ...(selectedGcMissing
+      ? [{ value: q.accountId!, label: "This GC — nothing open", href: to({ accountId: q.accountId }) }]
+      : []),
   ];
 
   const isFiltered =
@@ -99,7 +109,7 @@ export function ReceivablesFilterBar({
       <NavSelect label="Type" value={q.kind} choices={kindChoices} ariaLabel="Filter by receivable type" />
       {/* Only offered when there is a choice to make. One GC in the book means
           the picker can only ever restate what's already on screen. */}
-      {gcOptions.length > 1 && (
+      {(gcOptions.length > 1 || selectedGcMissing) && (
         <NavSelect label="GC" value={q.accountId ?? ""} choices={gcChoices} ariaLabel="Filter by GC" />
       )}
       <Link
