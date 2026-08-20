@@ -971,7 +971,7 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
               </span>
             )}
             {message.deliveryStatus === "bounced" && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-ppp-orange-700 text-white border-ppp-orange-700">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-ppp-orange-700 text-ppp-orange-50 border-ppp-orange-700">
                 ⚠ Bounced
               </span>
             )}

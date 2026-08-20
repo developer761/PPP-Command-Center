@@ -102,7 +102,7 @@ export default function ChangePasswordForm() {
       <button
         type="submit"
         disabled={pending || !pw || !confirm}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-ppp-blue px-5 text-sm font-semibold text-ppp-navy hover:bg-ppp-blue-400 active:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+        className="inline-flex items-center justify-center gap-2 rounded-lg bg-ppp-blue px-5 text-sm font-semibold text-ppp-navy hover:bg-ppp-blue-300 active:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
       >
         {pending ? "Updating…" : "Update password"}
       </button>

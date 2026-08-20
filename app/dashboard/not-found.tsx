@@ -20,7 +20,7 @@ export default function DashboardNotFound() {
         <div className="mt-6">
           <Link
             href="/dashboard"
-            className="inline-flex px-4 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-medium hover:bg-ppp-blue-400 transition-colors"
+            className="inline-flex px-4 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-medium hover:bg-ppp-blue-300 transition-colors"
           >
             Back to dashboard
           </Link>

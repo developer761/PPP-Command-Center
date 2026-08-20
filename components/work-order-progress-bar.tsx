@@ -151,7 +151,7 @@ const STATE_CLASSES: Record<StageState, { dot: string; line: string; label: stri
     time: "text-ppp-blue-700",
   },
   stuck: {
-    dot: "bg-ppp-orange-700 text-white border-ppp-orange-700 ring-2 ring-ppp-orange/30",
+    dot: "bg-ppp-orange-700 text-ppp-orange-50 border-ppp-orange-700 ring-2 ring-ppp-orange/30",
     line: "bg-ppp-charcoal-100",
     label: "text-ppp-orange-700 font-semibold",
     time: "text-ppp-orange-700",

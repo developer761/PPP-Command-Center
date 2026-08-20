@@ -122,7 +122,7 @@ export default function SupplierSettingsEditor() {
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-xs font-semibold hover:bg-ppp-blue-400 active:bg-ppp-blue-300 transition-colors shadow-sm"
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-xs font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue-300 transition-colors shadow-sm"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
@@ -281,7 +281,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
             type="button"
             onClick={submit}
             disabled={!valid || saving}
-            className="px-4 py-2 text-xs font-semibold rounded-lg bg-ppp-blue text-ppp-navy hover:bg-ppp-blue-400 disabled:bg-ppp-charcoal-200 disabled:text-ppp-charcoal-500 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-ppp-blue text-ppp-navy hover:bg-ppp-blue-300 disabled:bg-ppp-charcoal-200 disabled:text-ppp-charcoal-500 disabled:cursor-not-allowed transition-colors"
           >
             {saving ? "Saving…" : "Add supplier"}
           </button>
@@ -547,7 +547,7 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
               type="button"
               onClick={handleSave}
               disabled={!isDirty || saving}
-              className="px-4 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? "Saving…" : "Save"}
             </button>

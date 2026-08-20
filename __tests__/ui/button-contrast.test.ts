@@ -26,11 +26,33 @@ import { join } from "node:path";
 
 const ROOT = process.cwd();
 const css = readFileSync(join(ROOT, "app/globals.css"), "utf8");
-const light = css.slice(0, css.indexOf('[data-theme="dark"] {'));
-const TOKENS: Record<string, string> = {};
-for (const [, k, v] of light.matchAll(/(--color-ppp-[a-z]+(?:-\d+)?)\s*:\s*(#[0-9a-fA-F]{6})\s*;/g)) {
-  TOKENS[k] = v;
+const SPLIT = css.indexOf('[data-theme="dark"] {');
+
+function parse(src: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [, k, v] of src.matchAll(/(--color-ppp-[a-z]+(?:-\d+)?)\s*:\s*(#[0-9a-fA-F]{6})\s*;/g)) out[k] = v;
+  return out;
 }
+const LIGHT = parse(css.slice(0, SPLIT));
+const DARK_OVERRIDES = parse(css.slice(SPLIT));
+
+/**
+ * Dark REDEFINES the ramp, and in the 600-800 range it inverts the meaning:
+ * a dark fill in light becomes a light FOREGROUND in dark. So any class that
+ * hardcodes one text colour against those tokens is theme-dependent by
+ * construction, and a check that reads only the light block cannot see it.
+ *
+ * That gap shipped two defects. `hover:bg-ppp-blue-400` measured 5.93 in light
+ * and 3.60 in dark; `bg-ppp-orange-700 text-white` measured 6.20 in light and
+ * 2.09 in dark — WORSE than the 3.19 the change set out to fix. Both are
+ * invisible to a light-only parse, which is why every assertion below runs
+ * against both palettes.
+ */
+const THEMES: Array<[string, Record<string, string>]> = [
+  ["light", LIGHT],
+  ["dark", { ...LIGHT, ...DARK_OVERRIDES }],
+];
+const TOKENS = LIGHT;
 
 function luminance(hex: string): number {
   const h = hex.replace("#", "");
@@ -90,11 +112,77 @@ describe("the hover ramp stays out of the dead zone", () => {
     expect(contrast(mid, TOKENS["--color-ppp-navy"])).toBeLessThan(4.5);
   });
 
-  it("navy clears AA at every state a brand-blue button passes through", () => {
-    const navy = TOKENS["--color-ppp-navy"];
-    for (const shade of ["--color-ppp-blue", "--color-ppp-blue-400", "--color-ppp-blue-300"]) {
-      expect(contrast(TOKENS[shade], navy), `${shade} vs navy`).toBeGreaterThanOrEqual(4.5);
+  it.each(THEMES)("navy clears AA at every brand-blue button state (%s)", (_theme, T) => {
+    const navy = T["--color-ppp-navy"];
+    // blue-400 is deliberately NOT in this list — dark redefines it to #3F88B0
+    // where navy is 3.60. blue-300 is never overridden, so it holds in both.
+    for (const shade of ["--color-ppp-blue", "--color-ppp-blue-300"]) {
+      expect(contrast(T[shade], navy), `${shade} vs navy`).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it.each(THEMES)("every fill that carries text still carries it in %s", (_theme, T) => {
+    // The pairings this codebase actually ships, checked against BOTH palettes.
+    const pairs: Array<[string, string]> = [
+      ["--color-ppp-blue", "--color-ppp-navy"],
+      ["--color-ppp-blue-300", "--color-ppp-navy"],
+      ["--color-ppp-green", "--color-ppp-navy"],
+      ["--color-ppp-orange-700", "--color-ppp-orange-50"],
+    ];
+    for (const [fill, text] of pairs) {
+      expect(contrast(T[fill], T[text]), `${fill} + ${text}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  /**
+   * Pre-existing pairings, from before this rule existed. They are INERT, not
+   * fine: `data-theme="dark"` is set only on the Commercial layout wrapper, and
+   * none of these files is imported by Commercial, so their dark values are
+   * unreachable today. Churning working light-mode buttons for a theme that
+   * cannot render them would be motion, not a fix.
+   *
+   * This list must only ever SHRINK. Anything new fails the assertion below.
+   * If residential ever gains a theme toggle, every entry here becomes live and
+   * has to be repaired first — that is the moment to spend the churn.
+   */
+  const INERT_PREEXISTING = new Set([
+    "components/customer-form-view.tsx :: bg-ppp-blue-700",
+    "components/customer-form-view.tsx :: bg-ppp-blue-800",
+    "components/email-password-sign-in.tsx :: bg-ppp-navy-600",
+    "components/email-password-sign-in.tsx :: bg-ppp-navy-700",
+    "components/materials-view.tsx :: bg-ppp-blue-600",
+    "components/materials-view.tsx :: bg-ppp-blue-700",
+    "components/materials-view.tsx :: bg-ppp-green-600",
+    "components/materials-view.tsx :: bg-ppp-green-700",
+    "components/order-builder-view.tsx :: bg-ppp-blue-600",
+    "components/order-builder-view.tsx :: bg-ppp-green-600",
+    "components/order-builder-view.tsx :: bg-ppp-green-700",
+    "components/settings/access-manager.tsx :: bg-ppp-blue-700",
+  ]);
+
+  it("no NEW class pairs a fill with white where dark inverts that fill", () => {
+    // The orange-700 regression in one rule: a token dark turns into a
+    // foreground must never be a fill under hardcoded white.
+    const inverting = Object.keys(DARK_OVERRIDES).filter((k) => /-([6-9]00)$/.test(k));
+    expect(inverting.length).toBeGreaterThan(0);
+    const bad: string[] = [];
+    for (const f of FILES) {
+      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+        if (!/(?<![-\w:])text-white(?![-\w])/.test(cls)) continue;
+        for (const tok of inverting) {
+          const cn = "bg-" + tok.replace("--color-", "");
+          if (new RegExp(String.raw`(?<![-\w])${cn}(?![-\w])`).test(cls)) {
+            bad.push(`${f.replace(ROOT + "/", "")} :: ${cn}`);
+          }
+        }
+      }
+    }
+    const fresh = bad.filter((b) => !INERT_PREEXISTING.has(b));
+    expect(fresh, "dark turns these fills into foregrounds — white becomes unreadable").toEqual([]);
+    // The allowlist must only shrink: a stale entry means someone fixed one and
+    // left the exemption behind, which quietly re-opens the door.
+    const stale = [...INERT_PREEXISTING].filter((e) => !bad.includes(e));
+    expect(stale, "fixed — remove from INERT_PREEXISTING").toEqual([]);
   });
 
   it("no brand-blue button darkens on hover into the dead zone", () => {

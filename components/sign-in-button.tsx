@@ -46,7 +46,7 @@ export default function SignInButton({ redirectTo = "/choose-platform" }: Props)
       type="button"
       onClick={onClick}
       disabled={pending}
-      className="w-full inline-flex items-center justify-center gap-3 bg-ppp-blue text-ppp-navy font-medium py-3 px-4 rounded-lg hover:bg-ppp-blue-400 active:bg-ppp-blue-300 transition-colors shadow-sm shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed"
+      className="w-full inline-flex items-center justify-center gap-3 bg-ppp-blue text-ppp-navy font-medium py-3 px-4 rounded-lg hover:bg-ppp-blue-300 active:bg-ppp-blue-300 transition-colors shadow-sm shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {pending ? (
         <>

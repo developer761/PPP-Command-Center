@@ -71,7 +71,7 @@ export default function ImpersonationBanner({ reps = [] }: Props) {
   };
 
   return (
-    <div className="bg-ppp-orange-700 text-white px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3 text-[12px] sm:text-[13px]">
+    <div className="bg-ppp-orange-700 text-ppp-orange-50 px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3 text-[12px] sm:text-[13px]">
       <div className="flex items-center gap-2 min-w-0">
         <span className="h-2 w-2 rounded-full bg-white animate-pulse shrink-0" aria-hidden />
         <span className="truncate">
