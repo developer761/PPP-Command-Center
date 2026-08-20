@@ -88,6 +88,7 @@ import { formatColorLabel } from "@/lib/supplier-order/estimate-gallons";
 import ModalPortal from "@/components/modal-portal";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
+import { FILTER_SEL, FILTER_GROUP_SENDER, FILTER_GROUP_STATUS, FILTER_GROUP_DATE } from "@/lib/ui/filter-chrome";
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
 // worker has actively clicked a WO. The initial materials-list paint never
 // needs it — defer its JS so the page hydrates faster. First-WO-click pays
@@ -356,6 +357,67 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   ];
   const [sortMode, setSortMode] = useState<SortMode>("close-desc");
 
+  /* ── R4.4 — Mail Hub's filter set, on the work-order list ─────────────────
+   * Kate: "Mail Hub can filter on sender, status and the date fields. The
+   * Materials Ordering page can't filter on any of it. Duplicate the same
+   * filter set onto the work-order list so a WO can be found the same way a
+   * message can."
+   *
+   * Same three groups and the same colour separation, but the vocabulary is the
+   * work order's rather than the message's — the statuses here are pipeline
+   * stages ("ready to order"), not delivery states, because that's what someone
+   * is actually looking for on this page.
+   */
+  type WoFilterStatus =
+    | "all" | "needs_form" | "awaiting_customer" | "ready_to_order"
+    | "ordered" | "delivered" | "no_line_items";
+  type WoDateDim = "form_sent" | "form_opened" | "form_submitted" | "order_sent" | "followup" | "close" | "start";
+  type WoDatePreset = "any" | "today" | "yesterday" | "last7" | "month" | "custom";
+  const [filterSender, setFilterSender] = useState("");
+  const [filterStatus, setFilterStatus] = useState<WoFilterStatus>("all");
+  const [dateDim, setDateDim] = useState<WoDateDim>("form_sent");
+  const [datePreset, setDatePreset] = useState<WoDatePreset>("any");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  // ET "today" so today/yesterday bucket the way the rest of Materials does.
+  const todayEtStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const shiftDay = (iso: string, n: number) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + n);
+    return dt.toISOString().slice(0, 10);
+  };
+  const dateBounds = useMemo<[string, string] | null>(() => {
+    switch (datePreset) {
+      case "any": return null;
+      case "today": return [todayEtStr, todayEtStr];
+      case "yesterday": { const y = shiftDay(todayEtStr, -1); return [y, y]; }
+      case "last7": return [shiftDay(todayEtStr, -6), todayEtStr];
+      case "month": return [`${todayEtStr.slice(0, 7)}-01`, todayEtStr];
+      case "custom": return [dateFrom || "0000-01-01", dateTo || "9999-12-31"];
+      default: return null;
+    }
+  }, [datePreset, dateFrom, dateTo, todayEtStr]);
+
+  const senderOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of progressByWO.values()) {
+      if (p.sentByName) names.add(p.sentByName);
+    }
+    return [...names].sort();
+  }, [progressByWO]);
+
+  const filtersActive =
+    !!filterSender || filterStatus !== "all" || datePreset !== "any";
+  const clearFilters = () => {
+    setFilterSender("");
+    setFilterStatus("all");
+    setDatePreset("any");
+    setDateFrom("");
+    setDateTo("");
+  };
+
   const visibleJobs = useMemo<OpenWorkOrderForMaterials[]>(() => {
     // Search filter first — typically narrows to a handful of WOs.
     const q = searchQuery.trim().toLowerCase();
@@ -374,6 +436,55 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           }
           return false;
         });
+
+    // R4.4 — sender / status / date, applied after the text search.
+    const matchesSender = (j: OpenWorkOrderForMaterials) =>
+      !filterSender || (progressByWO.get(j.wo.id)?.sentByName ?? "") === filterSender;
+
+    const matchesStatus = (j: OpenWorkOrderForMaterials) => {
+      if (filterStatus === "all") return true;
+      if (filterStatus === "no_line_items") return j.lineItems.length === 0;
+      const p = progressByWO.get(j.wo.id);
+      const sent = !!p?.formSentAt;
+      const submitted = !!p?.formSubmittedAt;
+      const ordered = !!p?.supplierSentAt;
+      switch (filterStatus) {
+        // Mutually exclusive on purpose: a WO sits at exactly one pipeline
+        // stage, so picking a status narrows rather than overlapping.
+        case "needs_form": return !sent;
+        case "awaiting_customer": return sent && !submitted;
+        case "ready_to_order": return submitted && !ordered;
+        case "ordered": return ordered && !p?.materialsDeliveredAt;
+        case "delivered": return !!p?.materialsDeliveredAt;
+        default: return true;
+      }
+    };
+
+    const dimDate = (j: OpenWorkOrderForMaterials): string | null => {
+      const p = progressByWO.get(j.wo.id);
+      switch (dateDim) {
+        case "form_sent": return p?.formSentAt ?? null;
+        case "form_opened": return p?.formOpenedAt ?? null;
+        case "form_submitted": return p?.formSubmittedAt ?? null;
+        case "order_sent": return p?.supplierSentAt ?? null;
+        case "followup": return j.wo.followupDate ?? null;
+        case "close": return j.wo.closeDate ?? null;
+        case "start": return j.wo.startDate ?? j.wo.desiredStartDate ?? null;
+        default: return null;
+      }
+    };
+
+    const withFilters = filtered.filter((j) => {
+      if (!matchesSender(j) || !matchesStatus(j)) return false;
+      if (!dateBounds) return true;
+      const d = dimDate(j);
+      // A WO with no date on the chosen dimension drops out when a date filter
+      // is active — same rule as Mail Hub, so "opened last week" doesn't return
+      // every work order nobody ever opened.
+      if (!d) return false;
+      const day = d.slice(0, 10);
+      return day >= dateBounds[0] && day <= dateBounds[1];
+    });
 
     // Re-sort based on the worker's choice. WOs without a relevant date go
     // to the end so the meaningful entries always lead the list.
@@ -421,8 +532,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
       if (!bc) return -1;
       return sortMode === "created-desc" ? bc.localeCompare(ac) : ac.localeCompare(bc);
     };
-    return filtered.sort(sorter);
-  }, [openJobs, searchQuery, sortMode]);
+    return withFilters.sort(sorter);
+  }, [openJobs, searchQuery, sortMode, filterSender, filterStatus, dateDim, dateBounds, progressByWO]);
 
   // Focus mode (Kate #1): resolve the /materials/[woId] route param to an open
   // job, tolerating 15- vs 18-char Salesforce Ids (#8 — SF's classic 15-char
@@ -939,13 +1050,107 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   </button>
                 )}
               </div>
+              {/* R4.4 — the same filter set as Mail Hub, grouped and colour-
+                  separated the same way (Kate's round-3 #11 layout): sender,
+                  then status, then the date controls as one set. The vocabulary
+                  is the work order's rather than the message's, because the
+                  thing someone hunts for here is a pipeline stage. */}
+              <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                <span className={FILTER_GROUP_SENDER}>
+                  <span className="font-medium">Sender</span>
+                  <select
+                    value={filterSender}
+                    onChange={(e) => setFilterSender(e.target.value)}
+                    aria-label="Filter by who sent the color form"
+                    className={FILTER_SEL}
+                  >
+                    <option value="">Anyone</option>
+                    {senderOptions.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </span>
+
+                <span className={FILTER_GROUP_STATUS}>
+                  <span className="font-medium">Status</span>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+                    aria-label="Filter by work order stage"
+                    className={FILTER_SEL}
+                  >
+                    <option value="all">Any status</option>
+                    <optgroup label="Color form">
+                      <option value="needs_form">Needs form sent</option>
+                      <option value="awaiting_customer">Awaiting customer</option>
+                      <option value="ready_to_order">Ready to order</option>
+                    </optgroup>
+                    <optgroup label="Materials">
+                      <option value="ordered">Ordered</option>
+                      <option value="delivered">Materials delivered</option>
+                    </optgroup>
+                    <optgroup label="Data">
+                      <option value="no_line_items">No line items yet</option>
+                    </optgroup>
+                  </select>
+                </span>
+
+                <span className={FILTER_GROUP_DATE}>
+                  <span className="font-medium">Date</span>
+                  <select
+                    value={dateDim}
+                    onChange={(e) => setDateDim(e.target.value as typeof dateDim)}
+                    aria-label="Date field to filter on"
+                    className={FILTER_SEL}
+                  >
+                    <option value="form_sent">Form sent</option>
+                    <option value="form_opened">Form opened</option>
+                    <option value="form_submitted">Colors submitted</option>
+                    <option value="order_sent">Order sent</option>
+                    <option value="followup">Follow-up date</option>
+                    <option value="close">Close date</option>
+                    <option value="start">Start date</option>
+                  </select>
+                  <select
+                    value={datePreset}
+                    onChange={(e) => setDatePreset(e.target.value as typeof datePreset)}
+                    aria-label="Date range"
+                    className={FILTER_SEL}
+                  >
+                    <option value="any">Any time</option>
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="last7">Last 7 days</option>
+                    <option value="month">This month</option>
+                    <option value="custom">Custom range…</option>
+                  </select>
+                  {datePreset === "custom" && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="From date" className={FILTER_SEL} />
+                      <span className="text-ppp-charcoal-400">→</span>
+                      <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="To date" className={FILTER_SEL} />
+                    </span>
+                  )}
+                </span>
+
+                {filtersActive && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px]"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+
               {/* Count + sort row — secondary controls under the prominent
                   search bar. Title chip + sort selector inline. */}
               <div className="flex items-center justify-between gap-3 flex-wrap text-[11px]">
                 <div className="flex items-baseline gap-1.5">
                   <span className="font-semibold text-ppp-charcoal">Open work orders</span>
                   <span className="text-ppp-charcoal-500 font-mono">
-                    {visibleJobs.length}{searchQuery ? `/${openJobs.length}` : ""}
+                    {visibleJobs.length}{searchQuery || filtersActive ? `/${openJobs.length}` : ""}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">

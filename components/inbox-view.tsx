@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtMonthDay } from "@/lib/format";
+import { FILTER_SEL, FILTER_GROUP_DATE } from "@/lib/ui/filter-chrome";
 
 /**
  * Inbox list + thread viewer. Filters by kind (All / Customer / Supplier /
@@ -530,7 +531,7 @@ export default function InboxView() {
               query ("submitted yesterday", "expired 7/20–7/28", "follow-up =
               today", …). */}
           {(() => {
-            const SEL = "rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-base sm:text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[44px] sm:min-h-[36px]";
+            const SEL = FILTER_SEL;
             const active = !!(sentSender || sentStatus !== "all" || datePreset !== "any" || sentSort !== "newest");
             const clearAll = () => { setSentSender(""); setSentStatus("all"); setDateDim("sent"); setDatePreset("any"); setDateFrom(""); setDateTo(""); setSentSort("newest"); };
             return (
@@ -574,7 +575,7 @@ export default function InboxView() {
                   </label>
 
                   {/* The three date-and-order picklists, as one set. */}
-                  <div className="inline-flex items-center gap-1.5 flex-wrap rounded-lg bg-ppp-orange-50/60 border border-ppp-orange-100 pl-2.5 pr-1.5 py-1 text-ppp-charcoal-600">
+                  <div className={FILTER_GROUP_DATE}>
                     <span className="font-medium">Date</span>
                     <select value={dateDim} onChange={(e) => setDateDim(e.target.value as DateDim)} className={SEL} aria-label="Date dimension">
                       <option value="sent">Sent</option>
