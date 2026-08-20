@@ -1,6 +1,12 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import {
+  DUNNING_PAST_DUE_DAYS,
+  DUNNING_REDUN_DAYS,
+  DUNNING_STALE_AFTER_DAYS,
+  shouldEmailCustomerAboutOverdue,
+} from "./dunning-policy";
 import { daysAgoEt } from "@/lib/date-et";
 import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
 import { aiaDueAtFrom } from "@/lib/commercial/aia/constants";
@@ -39,27 +45,15 @@ import {
 
 type Result = { ok: boolean; found: number; sent: number; skipped: number; errors: string[] };
 
-export const AIA_PAST_DUE_DAYS = 15; // same threshold as invoice dunning
-export const AIA_REDUN_DAYS = 7; // re-send at most weekly
+// The policy is shared with invoice dunning — see `dunning-policy.ts`. Both
+// ledgers must be chased on one clock; a GC billed by invoice on one job and by
+// application on another would otherwise get two different escalations.
+export const AIA_PAST_DUE_DAYS = DUNNING_PAST_DUE_DAYS;
+export const AIA_REDUN_DAYS = DUNNING_REDUN_DAYS;
+export const AIA_STALE_AFTER_DAYS = DUNNING_STALE_AFTER_DAYS;
 const DUNNING_MAX_PER_RUN = 100;
 
-/**
- * Past this, a person gets told instead of the GC.
- *
- * An application four months past a thirty-day due date is almost never a GC
- * who forgot. It is a job that closed out and nobody marked the last
- * application paid, or a dispute somebody is already handling by phone. Mailing
- * a demand built on that is embarrassing, and it lands on the customer.
- *
- * It also matters on day one specifically: `last_dunning_at` is NULL on every
- * application that already exists, so without a ceiling the first run of this
- * cron would chase the entire back catalogue at once — exactly the kind of
- * automated surprise Katie would (rightly) never forgive.
- *
- * The money is not forgotten. The internal bell still fires, saying a person
- * needs to look — which is the correct instrument at this age anyway.
- */
-export const AIA_STALE_AFTER_DAYS = 120;
+
 
 /**
  * Should this application be chased today?
@@ -99,17 +93,8 @@ export function shouldChaseAiaApplication(
   return Number.isNaN(last) || last < nowMs - AIA_REDUN_DAYS * 86_400_000;
 }
 
-/**
- * Whether the GC should be EMAILED, as opposed to a person being told.
- *
- * Separate from `shouldChaseAiaApplication` on purpose: the two questions have
- * different answers on an old application, and collapsing them would mean
- * either mailing a demand nobody stands behind or quietly dropping real money
- * off the chase list.
- */
-export function shouldEmailGcAboutAia(daysPastDue: number): boolean {
-  return daysPastDue <= AIA_STALE_AFTER_DAYS;
-}
+/** Whether the GC should be EMAILED, as opposed to a person being told. */
+export const shouldEmailGcAboutAia = shouldEmailCustomerAboutOverdue;
 
 /** Mask an email for the internal bell: "jane@gc.com" → "j***@gc.com". */
 function maskEmail(email: string): string {

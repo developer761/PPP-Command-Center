@@ -971,6 +971,8 @@ export async function insertCommercialInvoiceDunningMarker(input: {
   sentToClient: boolean;
   /** True when a contact email EXISTS but the send failed (vs. no contact). */
   emailFailed?: boolean;
+  /** Too far past due to auto-mail a demand about — a person should look. */
+  stale?: boolean;
   clientEmailMasked: string | null;
 }): Promise<void> {
   const relativeLink = `/commercial/invoices/${input.invoiceId}`;
@@ -979,11 +981,15 @@ export async function insertCommercialInvoiceDunningMarker(input: {
   // Three distinct states so the team isn't told "no contact" on a send failure.
   const title = input.sentToClient
     ? `Past-due reminder sent · ${input.invoiceNumber}`
+    : input.stale
+    ? `Very old unpaid invoice — needs a look · ${input.invoiceNumber}`
     : input.emailFailed
     ? `Past-due reminder FAILED to send · ${input.invoiceNumber}`
     : `Past-due invoice needs a contact · ${input.invoiceNumber}`;
   const body = input.sentToClient
     ? `Emailed the client${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} — ${money}, ${input.daysPastDue}d past due.`
+    : input.stale
+    ? `${input.invoiceNumber} shows ${money} outstanding and is ${input.daysPastDue}d past due — too old to send an automatic reminder about. Usually a payment that was never recorded, or a write-off nobody voided. Check before chasing.`
     : input.emailFailed
     ? `Couldn't email the client${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} for ${input.invoiceNumber} (${money}, ${input.daysPastDue}d past due) — the email failed; follow up manually.`
     : `${input.invoiceNumber} is ${input.daysPastDue}d past due but the account has no contact email — follow up manually.`;

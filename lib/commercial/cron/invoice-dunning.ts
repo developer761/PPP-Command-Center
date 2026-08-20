@@ -1,6 +1,11 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import {
+  DUNNING_PAST_DUE_DAYS,
+  DUNNING_REDUN_DAYS,
+  shouldEmailCustomerAboutOverdue,
+} from "./dunning-policy";
 import { daysAgoEt } from "@/lib/date-et";
 import {
   sendClientInvoiceDunningEmail,
@@ -20,8 +25,11 @@ import {
 
 type Result = { ok: boolean; found: number; sent: number; skipped: number; errors: string[] };
 
-const PAST_DUE_DAYS = 15; // client reminder starts 15 days past due
-const REDUN_DAYS = 7; // re-send at most weekly
+// One policy across both ledgers — see `dunning-policy.ts`. These were local
+// literals; the AIA reminder has to match them exactly, and two copies of "15"
+// is how a GC ends up chased on two different clocks.
+const PAST_DUE_DAYS = DUNNING_PAST_DUE_DAYS;
+const REDUN_DAYS = DUNNING_REDUN_DAYS;
 // Per-run cap (re-audit 2026-07-28): each row is an email send (up to a few
 // hundred ms) + 2-3 DB writes, under the route's 60s maxDuration. Cap well
 // below a count that could time out; the last_dunning_at gate drains any
@@ -150,8 +158,13 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
           continue;
         }
 
+        // Past the staleness ceiling a PERSON is told instead of the client.
+        // Without it this loop mails a demand every week, forever, on an
+        // invoice whose likeliest explanation is our own record — a payment
+        // never recorded, or a write-off nobody voided.
+        const emailable = shouldEmailCustomerAboutOverdue(daysPastDue);
         let sentToClient = false;
-        if (clientEmail) {
+        if (clientEmail && emailable) {
           const res = await sendClientInvoiceDunningEmail({
             to: clientEmail,
             invoiceNumber: r.invoice_number,
@@ -175,7 +188,8 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
             daysPastDue,
             balanceCents: r.balance_cents,
             sentToClient,
-            emailFailed: !!clientEmail && !sentToClient,
+            emailFailed: !!clientEmail && emailable && !sentToClient,
+            stale: !emailable,
             clientEmailMasked: clientEmail ? maskEmail(clientEmail) : null,
           });
         }
