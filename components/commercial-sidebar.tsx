@@ -99,16 +99,26 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    // ── One group, no heading ──────────────────────────────────────────────
+    // ── Company ─────────────────────────────────────────────────────────────
     //
     // These were four separate sections — "Field Ops" containing Field Ops,
     // "Accounting" containing Accounting, "Reports" containing Reports, "Admin"
     // containing Settings. Four headings that named their only child, which
     // made a ten-item sidebar read as seven sections and gave the eye four
-    // dividers with nothing on either side of them.
+    // dividers with nothing on either side of them. Merging them into one
+    // group was right; shipping that group with NO heading was not.
     //
-    // A heading earns its place by grouping things. These group nothing, so
-    // the rows stand on their own under one rule.
+    // Karan, 2026-08-20: read the sidebar back and these four came out under
+    // LIBRARIES. The gap above them is `mt-4`, the same gap every section
+    // gets — but every other gap is followed by a label, so a gap WITHOUT one
+    // reads as "keep reading", not as "new group". A lone unlabelled tail can
+    // only inherit the heading above it.
+    //
+    // "Company" and not "Operations": the first child is Field Ops, and a
+    // heading that repeats its own child's name is noise.
+    //
+    // What they share is scope — these are the whole-company surfaces, where
+    // Work is the per-job ones and Libraries is the reference data behind both.
     //
     // R10 Field Ops: crew scheduling, clock in/out, payroll — a hub, one entry
     // to a card grid.
@@ -120,6 +130,7 @@ const navSections: NavSection[] = [
     // answers "where do we stand" without picking a report first.
     //
     // Settings (RUX-7): one hub, not six flat rows.
+    heading: "Company",
     items: [
       { label: "Field Ops", href: "/commercial/field-ops", icon: <IconHardHat />, adminOnly: true },
       { label: "Accounting", href: "/commercial/accounting", icon: <IconLedger />, financeOnly: true },
@@ -199,7 +210,11 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
           ? entry.items.length > 0
           : (!entry.adminOnly || isAdmin) && (!entry.financeOnly || canSeeFinance)
       ),
-  }));
+  }))
+    // Every section carries a heading now, so a section that role-gating has
+    // emptied would render a label with nothing under it — the mirror of the
+    // bug above (a row with no label). Neither can happen.
+    .filter((s) => s.items.length > 0);
 
   // 2026-07-29: a post-sale tool detail lives UNDER the account
   // (/commercial/accounts/<id>/<tool>/<dealId>) but should light up its OWN
