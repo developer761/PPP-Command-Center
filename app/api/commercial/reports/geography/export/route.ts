@@ -5,6 +5,7 @@ import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getGeographyReport, type GeoRow } from "@/lib/commercial/reports/geography";
 import { etTodayIso } from "@/lib/date-et";
 import { csvEscape as csv } from "@/lib/commercial/csv";
+import { csvResponse } from "@/lib/commercial/reports/export-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,12 +37,6 @@ export async function GET() {
   ];
   const body = [header.map(csv).join(","), ...lines].join("\r\n") + "\r\n";
   const today = etTodayIso();
-  return new NextResponse(body, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="Geography_${today}.csv"`,
-      "Cache-Control": "no-store",
-    },
-  });
+  // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
+  return csvResponse(body, `Geography_${today}.csv`);
 }

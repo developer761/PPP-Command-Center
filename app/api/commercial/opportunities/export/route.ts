@@ -30,6 +30,7 @@ import {
 } from "@/lib/commercial/opportunities/kanban-columns";
 import { isUnderContract } from "@/lib/commercial/opportunities/attention";
 import { MS_PER_DAY } from "@/lib/commercial/accounts/constants";
+import { csvResponse } from "@/lib/commercial/reports/export-guard";
 
 /**
  * GET /api/commercial/opportunities/export?q=&status=&sources=&stale=&hot=
@@ -207,12 +208,6 @@ export async function GET(request: Request) {
   const csv = await exportOpportunitiesCsv(opps);
   const filename = exportOpportunitiesFilename(filters, opps.length);
 
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store, max-age=0",
-    },
-  });
+  // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
+  return csvResponse(csv, filename);
 }

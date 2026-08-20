@@ -48,9 +48,25 @@ export async function guardExport(
   return { ok: true, userId: auth.user.id };
 }
 
-/** A CSV download response with consistent headers. */
+/**
+ * A byte-order mark.
+ *
+ * Excel on Windows opens a .csv in the system ANSI codepage unless the file
+ * starts with one — so every `·`, `—`, `≥` and accented name in our exports
+ * arrives as mojibake ("Â·", "â€""). Our job names, references and reason
+ * labels are full of exactly those characters, which means every export the
+ * platform has ever produced has looked broken on the machine most likely to
+ * open it. Three bytes fixes all of them.
+ *
+ * Harmless everywhere else: Sheets, Numbers, LibreOffice and every CSV parser
+ * worth using strip it.
+ */
+export const CSV_BOM = "\uFEFF";
+
+/** A CSV download response with consistent headers, and a BOM so Excel reads
+ *  it as UTF-8. Use this rather than building the response by hand. */
 export function csvResponse(body: string, filename: string): NextResponse {
-  return new NextResponse(body, {
+  return new NextResponse(body.startsWith(CSV_BOM) ? body : CSV_BOM + body, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

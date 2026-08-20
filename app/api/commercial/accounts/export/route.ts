@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { type AccountsListFilters } from "@/lib/commercial/accounts/db";
 import { exportAccountsCsv, exportAccountsFilename } from "@/lib/commercial/accounts/export";
+import { csvResponse } from "@/lib/commercial/reports/export-guard";
 
 /**
  * GET /api/commercial/accounts/export?q=&rating=&compliance=&industry=
@@ -65,14 +66,6 @@ export async function GET(request: Request) {
   const { csv, count } = await exportAccountsCsv(filters, quick);
   const filename = exportAccountsFilename(filters, count);
 
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      // No cache — the list changes frequently and a stale CSV is
-      // worse than a fresh round-trip.
-      "Cache-Control": "no-store, max-age=0",
-    },
-  });
+  // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
+  return csvResponse(csv, filename);
 }

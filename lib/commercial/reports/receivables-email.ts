@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/email/resend";
 import { getReceivablesReport, type ReceivableRow } from "./receivables";
 import { getCachedBrief } from "./receivables-brief";
 import { receivablesCsv, receivablesFilename } from "./receivables-export";
+import { CSV_BOM } from "./export-guard";
 import { etTodayIso } from "@/lib/date-et";
 
 /**
@@ -176,7 +177,10 @@ ${rowsHtml}
     attachments: [
       {
         filename: receivablesFilename(),
-        content: Buffer.from(receivablesCsv(report), "utf-8"),
+        // BOM, same as every download: this attachment is opened in Excel
+        // more often than anything else the platform produces, and without it
+        // the "·" separators and em-dashes in job names arrive as mojibake.
+        content: Buffer.from(CSV_BOM + receivablesCsv(report), "utf-8"),
       },
     ],
   });

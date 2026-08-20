@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 import { exportPayroll, redownloadPayroll } from "@/lib/commercial/field-ops/payroll";
+import { csvResponse } from "@/lib/commercial/reports/export-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,11 +44,6 @@ export async function GET(request: Request) {
   const csv = redownload
     ? await redownloadPayroll(from, to)
     : await exportPayroll(from, to, data.user.id);
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="Payroll_${from}_to_${to}.csv"`,
-    },
-  });
+  // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
+  return csvResponse(csv, `Payroll_${from}_to_${to}.csv`);
 }
