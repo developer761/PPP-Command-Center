@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
 import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
-import { filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
+import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { extractMachineColorLines } from "@/lib/customer-form/notes";
 import { denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
@@ -204,6 +204,8 @@ export type CustomerSubmittedPayload = {
    *  vendor knows which BM / SW line to mix. Null when customer didn't pick
    *  AND admin hadn't pre-set MaterialType__c on the WO. */
   materialType?: string | null;
+  /** R4.3: the exterior paint line on a job that has both scopes. */
+  materialTypeExterior?: string | null;
   /** Customer-confirmed/corrected delivery address from the form's last step. */
   deliveryAddress?: {
     name?: string;
@@ -391,13 +393,25 @@ const SURFACE_FIELD_TO_LABEL: Record<string, string> = {
  *  otherwise have to guess whether the customer forgot or chose not to. */
 function resolveLineItems(
   input: BuildSupplierOrderInput
-): { lineItems: SupplierOrderLineItem[]; rooms: RoomTakeoff[]; skippedSurfaces: Array<{ roomLabel: string; surface: string }> } {
+): {
+  lineItems: SupplierOrderLineItem[];
+  rooms: RoomTakeoff[];
+  skippedSurfaces: Array<{ roomLabel: string; surface: string }>;
+  /** `${colorId}::${finish}` → the scope(s) that colour is painted on. */
+  scopesByColorKey: Map<string, Set<"interior" | "exterior">>;
+} {
   const out: SupplierOrderLineItem[] = [];
   // Per-room geometry + painted surfaces for the gallon estimator — only the
   // surfaces that made it onto THIS supplier's order (same filter as `out`),
   // so the rollup counts only colors actually being ordered here.
   const rooms: RoomTakeoff[] = [];
   const skipped: Array<{ roomLabel: string; surface: string }> = [];
+  // R4.3 — which scope(s) each colour is used on, so an exterior colour can
+  // default to the EXTERIOR paint line. Kate tied this to the round-2 ask that
+  // the line default to the AM's Internal Entry pick: with two picks, sending
+  // only the interior one would put exterior colours on an interior product —
+  // the exact thing splitting the picker was meant to prevent.
+  const scopesByColorKey = new Map<string, Set<"interior" | "exterior">>();
   const customerByLineId = new Map<string, CustomerSubmittedPayload["lineItems"][number]>();
   if (input.customerSubmittedPayload) {
     for (const li of input.customerSubmittedPayload.lineItems) {
@@ -407,6 +421,23 @@ function resolveLineItems(
 
   for (const woli of input.woliRows) {
     const roomLabel = roomLabelFrom(woli.areaLabel, woli.productName);
+    // The line item's own product name is the scope signal ("Exterior
+    // Painting: Siding"). Fall back to the work order's type when it's silent.
+    const woliScope: "interior" | "exterior" | null = isExteriorWorkOrder({
+      workTypeName: null,
+      lineItemProductNames: [woli.productName],
+    })
+      ? "exterior"
+      : isInteriorWorkOrder({ workTypeName: null, lineItemProductNames: [woli.productName] })
+        ? "interior"
+        : null;
+    const noteScope = (colorId: string, finish: string | null) => {
+      if (!woliScope) return;
+      const k = `${colorId}::${finish ?? ""}`;
+      const set = scopesByColorKey.get(k) ?? new Set<"interior" | "exterior">();
+      set.add(woliScope);
+      scopesByColorKey.set(k, set);
+    };
     const sqft = woli.sqFootage > 0 ? woli.sqFootage : woli.wallSurfaceArea;
     const coats = woli.numCoats > 0 ? woli.numCoats : 2;
     // Each surface slot on a WOLI is either a customer-picked color (from
@@ -523,13 +554,15 @@ function resolveLineItems(
       // Feed the gallon estimator — classify the surface into a paint bucket
       // (ceiling/walls/trim/floor/unsized). The estimator derives wall area,
       // trim linear feet, deductions, buffer + packaging from the room geometry.
+      const resolvedFinish = customerPick?.finish ?? denormalizeFinishFromSf(slot.existingFinish);
+      noteScope(colorId, resolvedFinish);
       roomSurfaces.push({
         kind: classifySurface(slot.surfaceLabel),
         surfaceLabel: slot.surfaceLabel,
         colorId,
         colorName: color.name,
         colorCode: color.code,
-        finish: customerPick?.finish ?? denormalizeFinishFromSf(slot.existingFinish),
+        finish: resolvedFinish,
       });
     }
 
@@ -566,6 +599,7 @@ function resolveLineItems(
           sourceWoliId: woli.id,
           roomLabel,
         });
+        noteScope(cs.colorId, cs.finish ?? null);
         roomSurfaces.push({
           kind: "unsized",
           surfaceLabel: cs.surface,
@@ -606,7 +640,7 @@ function resolveLineItems(
     }
   }
 
-  return { lineItems: out, rooms, skippedSurfaces: skipped };
+  return { lineItems: out, rooms, skippedSurfaces: skipped, scopesByColorKey };
 }
 
 /** Resolve the delivery address with the fallback chain:
@@ -997,7 +1031,7 @@ export async function buildSupplierOrderDraft(
   // paint colors entirely — none of the WO's PaintColors match the synthetic
   // manufacturer id so resolveLineItems returns empty, which is the right
   // shape (extras-only order).
-  const { lineItems, rooms, skippedSurfaces } = resolveLineItems(input);
+  const { lineItems, rooms, skippedSurfaces, scopesByColorKey } = resolveLineItems(input);
   // Tunable coverage config (Settings → Coverage); falls back to code defaults.
   const rawEstimates = estimateOrderGallons(rooms, await loadCoverageConfig());
   // Kate round-3 #22/#23/#26: fold the worker's COMMITTED quantities in here,
@@ -1033,13 +1067,46 @@ export async function buildSupplierOrderDraft(
       input.workOrder.materialType ||
       ""
     ) || null;
+
+  // R4.3 — the AM's EXTERIOR pick, applied to the colours that are actually
+  // exterior. Kate tied the split picker to the round-2 ask that the line
+  // default to the AM's Internal Entry pick; with two picks, carrying only the
+  // interior one would put exterior colours on an interior product, which is
+  // the exact failure splitting the picker was meant to prevent.
+  //
+  // Written as per-colour overrides rather than a second job-level default,
+  // because that's the shape the rest of the order already speaks: the builder
+  // renders them per line and the vendor email groups by line (R4.30), so an
+  // interior/exterior job arrives as two clearly separated groups.
+  //
+  // An explicit override from the estimator always wins — this only fills gaps.
+  const exteriorLine = paintLineFromValue(
+    (input.customerSubmittedPayload?.materialTypeExterior ?? "").trim()
+  );
+  const derivedMaterialTypeOverrides = new Map<string, string>(
+    input.materialTypeOverrides ? Object.entries(input.materialTypeOverrides) : []
+  );
+  if (exteriorLine) {
+    for (const e of gallonEstimates) {
+      const key = `${e.colorId}::${e.finish ?? ""}`;
+      if (derivedMaterialTypeOverrides.has(key)) continue;
+      const scopes = scopesByColorKey.get(key);
+      // Only a colour used EXCLUSIVELY on exterior work. One used on both is
+      // ambiguous, and guessing there would be worse than leaving the job
+      // default in place for the estimator to correct.
+      if (scopes && scopes.size === 1 && scopes.has("exterior")) {
+        derivedMaterialTypeOverrides.set(key, exteriorLine);
+      }
+    }
+  }
   // Per-color Material Type overrides (Katie 2026-06-05). Convert the
   // serialization-friendly Record<> into a Map for O(1) lookups inside the
   // formatter. Empty record / undefined → no overrides → formatter falls
   // through to job-level for every line.
-  const materialTypeOverridesMap = input.materialTypeOverrides
-    ? new Map(Object.entries(input.materialTypeOverrides))
-    : undefined;
+  // The derived map already carries the estimator's explicit overrides plus
+  // the exterior defaults filled in above, so it is the one everything reads.
+  const materialTypeOverridesMap =
+    derivedMaterialTypeOverrides.size > 0 ? derivedMaterialTypeOverrides : undefined;
   const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates, materialType, materialTypeOverridesMap, customColorItems);
   const placementBlock = formatPlacementBlock(lineItems);
   const deliveryAddress = resolveDeliveryAddress(input);

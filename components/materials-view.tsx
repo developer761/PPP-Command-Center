@@ -1680,21 +1680,45 @@ function JobDetailImpl({
             {/* Schedule row — Start + Desired surfaced as a second labeled
                 line so the close date above doesn't fight for space with
                 the schedule dates. Karan 2026-06-13. */}
-            {/* R4.5 — the sender picks a "Colors needed by" date when sending
-                the form, and until now nobody could see afterwards what they'd
-                chosen. Shown on every state, not just live ones: checking the
-                date you set matters just as much after the customer submits.
+            {/* R4.5 — "nobody can see afterwards what date they set."
+                Two dates, because they answer different questions and the
+                sender usually only has one of them:
+                  · "Colors needed by" — what they chose, when they chose one.
+                  · Link expires      — when the customer actually loses access,
+                    which exists on EVERY sent form. Showing only the deadline
+                    would have answered her question with a blank on most jobs,
+                    since 68% of work orders at Coordination/Scheduling have no
+                    start date to default the deadline from (her own figure).
                 Past dates read as elapsed rather than as a live deadline. */}
-            {formStatus && "colorDeadline" in formStatus && formStatus.colorDeadline && (() => {
+            {formStatus && formStatus.status !== "none" && (() => {
               const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-              const past = formStatus.colorDeadline < todayEt;
+              const deadline = "colorDeadline" in formStatus ? formStatus.colorDeadline : null;
+              const expires = "expiresAt" in formStatus ? formStatus.expiresAt : null;
+              const expiresDay = expires ? expires.slice(0, 10) : null;
+              if (!deadline && !expiresDay) return null;
+              const submitted = formStatus.status === "submitted";
               return (
-                <div className="text-[11px] mt-1">
-                  <span className="text-ppp-charcoal-400">Colors needed by:</span>{" "}
-                  <span className={`font-medium ${past ? "text-ppp-orange-700" : "text-ppp-charcoal-700"}`}>
-                    {fmtScheduleDate(formStatus.colorDeadline)}
-                    {past ? " · date has passed" : ""}
-                  </span>
+                <div className="text-[11px] mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                  {deadline && (
+                    <span title={`Colors needed by ${deadline}`}>
+                      <span className="text-ppp-charcoal-400">Colors needed by:</span>{" "}
+                      <span className={`font-medium ${!submitted && deadline < todayEt ? "text-ppp-orange-700" : "text-ppp-charcoal-700"}`}>
+                        {fmtScheduleDate(deadline)}
+                        {!submitted && deadline < todayEt ? " · passed" : ""}
+                      </span>
+                    </span>
+                  )}
+                  {deadline && expiresDay && <span aria-hidden>·</span>}
+                  {expiresDay && (
+                    <span title={`The customer's link stops working after ${expiresDay}`}>
+                      <span className="text-ppp-charcoal-400">
+                        {expiresDay < todayEt ? "Link expired:" : "Link expires:"}
+                      </span>{" "}
+                      <span className={`font-medium ${expiresDay < todayEt && !submitted ? "text-ppp-orange-700" : "text-ppp-charcoal-700"}`}>
+                        {fmtScheduleDate(expiresDay)}
+                      </span>
+                    </span>
+                  )}
                 </div>
               );
             })()}

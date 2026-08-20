@@ -254,6 +254,7 @@ export async function getMaterialsPageAuxData(
       // check the date they set just as much after the customer submitted.
       // Sliced because the column may come back as a timestamp on some drivers.
       const colorDeadline = row.color_deadline ? String(row.color_deadline).slice(0, 10) : null;
+      const expiresAt = row.expires_at ?? null;
       if (row.submitted_at) {
         formStatusByWO.set(row.work_order_id, {
           status: "submitted",
@@ -264,6 +265,7 @@ export async function getMaterialsPageAuxData(
           submittedAt: row.submitted_at,
           formUrl,
           colorDeadline,
+          expiresAt,
         });
         continue;
       }
@@ -278,6 +280,7 @@ export async function getMaterialsPageAuxData(
           expiredAt: row.expires_at,
           formUrl,
           colorDeadline,
+          expiresAt,
         });
         continue;
       }
@@ -290,6 +293,7 @@ export async function getMaterialsPageAuxData(
           openedAt: row.opened_at,
           formUrl,
           colorDeadline,
+          expiresAt,
         });
         continue;
       }
@@ -300,6 +304,7 @@ export async function getMaterialsPageAuxData(
         sentAt: row.sent_at,
         formUrl,
         colorDeadline,
+        expiresAt,
       });
     }
   } else if (tokensResult.status === "rejected") {

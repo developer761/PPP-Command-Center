@@ -22,7 +22,15 @@ import { createClient } from "@supabase/supabase-js";
  *  work-order page can show what was set instead of leaving them to guess.
  *  Null when the sender left it blank — which is the majority, since 68% of
  *  work orders at Coordination/Scheduling have no start date to default from. */
-type WithDeadline = { colorDeadline?: string | null };
+type WithDeadline = {
+  colorDeadline?: string | null;
+  /** R4.5: when the LINK actually stops working. Distinct from the deadline —
+   *  the sender leaves "Colors needed by" blank on most sends (68% of work
+   *  orders at Coordination/Scheduling have no start date to default from), and
+   *  the link still expires. Showing only the deadline would have answered
+   *  "what date did I set?" with nothing on the majority of jobs. */
+  expiresAt?: string | null;
+};
 
 export type FormStatus =
   | { status: "none"; woId: string }
