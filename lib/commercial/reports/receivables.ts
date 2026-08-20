@@ -72,6 +72,9 @@ export type ReceivableFilters = {
   overdueOnly?: boolean;
   /** One GC. */
   accountId?: string;
+  /** `amount` (default) works the book biggest-first; `oldest` works it in
+   *  chase order, which is how you actually clear the tail. */
+  sort?: "amount" | "oldest";
 };
 
 export type ReceivablesReport = {
@@ -97,6 +100,10 @@ export type ReceivablesReport = {
   /** Every GC in the UNFILTERED book, for the picker — so it never offers a
    *  name that yields nothing, and never hides one because it's filtered out. */
   gcOptions: { id: string; name: string }[];
+  /** The GC holding the largest share of what's outstanding, and that share.
+   *  Concentration is the risk a total hides: $500k owed is a different
+   *  business depending on whether it's forty GCs or one. */
+  topGc: { id: string; name: string; cents: number; sharePct: number } | null;
 };
 
 function fmtRefDate(iso: string | null): string {
@@ -272,7 +279,7 @@ export function summarizeReceivables(
   filters: ReceivableFilters = {},
   nowMs = Date.now()
 ): ReceivablesReport {
-  const { fromYmd, toYmd, kind, overdueOnly, accountId } = filters;
+  const { fromYmd, toYmd, kind, overdueOnly, accountId, sort = "amount" } = filters;
   const hasPeriod = !!(fromYmd || toYmd);
   const filtered = hasPeriod || !!kind || !!overdueOnly || !!accountId;
 
@@ -298,6 +305,16 @@ export function summarizeReceivables(
     return true;
   });
 
+  // Sorted here rather than at the caller, so the page, the export and the
+  // email can never present the same filtered book in a different order.
+  rows.sort((a, b) =>
+    sort === "oldest"
+      // Most overdue first. Retention and undated rows have no age, so they
+      // sink to the bottom instead of pretending to be the oldest debt.
+      ? (b.daysOut ?? -Infinity) - (a.daysOut ?? -Infinity) || b.openCents - a.openCents
+      : b.openCents - a.openCents || a.jobName.localeCompare(b.jobName)
+  );
+
   const retainageCents = rows
     .filter((r) => r.kind === "retainage")
     .reduce((n, r) => n + r.openCents, 0);
@@ -310,9 +327,29 @@ export function summarizeReceivables(
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // Concentration, over the rows actually shown.
+  const byGc = new Map<string, { name: string; cents: number }>();
+  for (const r of rows) {
+    const cur = byGc.get(r.accountId) ?? { name: r.accountName, cents: 0 };
+    cur.cents += r.openCents;
+    byGc.set(r.accountId, cur);
+  }
+  let topGc: ReceivablesReport["topGc"] = null;
+  for (const [id, v] of byGc) {
+    if (!topGc || v.cents > topGc.cents) {
+      topGc = {
+        id,
+        name: v.name,
+        cents: v.cents,
+        sharePct: totalOpenCents > 0 ? Math.round((v.cents / totalOpenCents) * 100) : 0,
+      };
+    }
+  }
+
   return {
     rows,
     gcOptions,
+    topGc,
     unfilteredCount: allRows.length,
     undatedExcluded,
     filtered,

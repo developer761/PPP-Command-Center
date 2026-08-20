@@ -33,6 +33,7 @@ function report(rows: ReceivableRow[]): ReceivablesReport {
     overdueCents: rows.filter((r) => (r.daysOut ?? 0) > 0).reduce((n, r) => n + r.openCents, 0),
     generatedAt: "2026-08-19T12:00:00.000Z",
     gcOptions: [],
+    topGc: null,
     unfilteredCount: rows.length,
     undatedExcluded: 0,
     filtered: false,

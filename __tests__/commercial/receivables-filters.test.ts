@@ -113,7 +113,7 @@ describe("query parsing", () => {
     expect(parsed.accountId).toBeNull();
     expect(filtersFor(parsed)).toEqual({
       fromYmd: undefined, toYmd: undefined, kind: undefined,
-      overdueOnly: undefined, accountId: undefined,
+      overdueOnly: undefined, accountId: undefined, sort: "amount",
     });
   });
 
@@ -176,5 +176,59 @@ describe("activity periods", () => {
     const tw = laborRange("this_week");
     to.setUTCDate(to.getUTCDate() + 1);
     expect(to.toISOString().slice(0, 10)).toBe(tw.fromYmd);
+  });
+});
+
+describe("sort + concentration", () => {
+  const rows = [
+    row({ key: "big",  accountId: "a1", accountName: "Zeta",  openCents: 800_00, daysOut: 3 }),
+    row({ key: "old",  accountId: "a2", accountName: "Alpha", openCents: 100_00, daysOut: 120 }),
+    row({ key: "ret",  accountId: "a2", accountName: "Alpha", openCents: 100_00, daysOut: null, kind: "retainage" }),
+  ];
+
+  it("defaults to biggest first", () => {
+    expect(summarizeReceivables(rows).rows.map((r) => r.key)).toEqual(["big", "old", "ret"]);
+  });
+
+  it("'oldest' puts the most overdue first and sinks ageless rows", () => {
+    // Retention has no age; it must not float to the top of a chase list as if
+    // it were the oldest debt.
+    const out = summarizeReceivables(rows, { sort: "oldest" }).rows.map((r) => r.key);
+    expect(out[0]).toBe("old");
+    expect(out[out.length - 1]).toBe("ret");
+  });
+
+  it("sorting reorders but never hides", () => {
+    const a = summarizeReceivables(rows, { sort: "amount" });
+    const b = summarizeReceivables(rows, { sort: "oldest" });
+    expect(a.rows).toHaveLength(b.rows.length);
+    expect(a.totalOpenCents).toBe(b.totalOpenCents);
+  });
+
+  it("reports the GC holding the largest share", () => {
+    const r = summarizeReceivables(rows);
+    expect(r.topGc?.name).toBe("Zeta");
+    expect(r.topGc?.cents).toBe(800_00);
+    expect(r.topGc?.sharePct).toBe(80);
+  });
+
+  it("computes the share over the FILTERED rows, not the whole book", () => {
+    const r = summarizeReceivables(rows, { accountId: "a2" });
+    expect(r.topGc?.name).toBe("Alpha");
+    expect(r.topGc?.sharePct).toBe(100);
+  });
+
+  it("never divides by zero on an empty book", () => {
+    const r = summarizeReceivables([]);
+    expect(r.topGc).toBeNull();
+    expect(r.totalOpenCents).toBe(0);
+  });
+
+  it("sort is not described as a filter — it hides nothing", () => {
+    const parsed = parseReceivableQuery((k) => ({ sort: "oldest" } as Record<string, string>)[k]);
+    expect(parsed.sort).toBe("oldest");
+    expect(describeReceivableQuery(parsed)).toBeNull();
+    // …but it still round-trips in the URL.
+    expect(receivableQueryString(parsed)).toContain("sort=oldest");
   });
 });

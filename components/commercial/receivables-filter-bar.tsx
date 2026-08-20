@@ -68,6 +68,14 @@ export function ReceivablesFilterBar({
         </Chip>
       </FilterRow>
 
+      <FilterRow label="Sort">
+        {/* Not a filter — nothing is hidden, only reordered. "Oldest" is how
+            you actually clear the tail of a book; "Biggest" is how you protect
+            the month. */}
+        <Chip href={to({ sort: "amount" })} active={q.sort === "amount"}>Biggest first</Chip>
+        <Chip href={to({ sort: "oldest" })} active={q.sort === "oldest"}>Most overdue first</Chip>
+      </FilterRow>
+
       {gcOptions.length > 1 && (
         <FilterRow label="GC">
           {/* A GET form, so this works without JS like every other control here.
@@ -80,6 +88,7 @@ export function ReceivablesFilterBar({
             {q.period !== "all" && <input type="hidden" name="period" value={q.period} />}
             {q.kind !== "all" && <input type="hidden" name="kind" value={q.kind} />}
             {q.overdueOnly && <input type="hidden" name="overdue" value="1" />}
+            {q.sort !== "amount" && <input type="hidden" name="sort" value={q.sort} />}
             <select
               name="gc"
               defaultValue={q.accountId ?? ""}
@@ -101,7 +110,7 @@ export function ReceivablesFilterBar({
         </FilterRow>
       )}
 
-      {(q.period !== "all" || q.kind !== "all" || q.overdueOnly || q.accountId) && (
+      {(q.period !== "all" || q.kind !== "all" || q.overdueOnly || q.accountId || q.sort !== "amount") && (
         <div className="pt-0.5">
           <Link
             href={`${basePath}${new URLSearchParams(extraParams).toString() ? `?${new URLSearchParams(extraParams).toString()}` : ""}`}

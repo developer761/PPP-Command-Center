@@ -408,6 +408,19 @@ export default async function AccountingPage({
 
       {view === "overview" && (
       <>
+      {/* Concentration — the risk a total hides. $500k owed is a different
+          business depending on whether it's forty GCs or one, and it's the
+          first thing a CEO asks after "how much". Only shown when it actually
+          concentrates; below a third it's just the largest customer. */}
+      {receivables.topGc && receivables.topGc.sharePct >= 34 && receivables.gcOptions.length > 1 && (
+        <p className="text-[12px] rounded-lg border px-3 py-2 border-amber-200 bg-amber-50 text-amber-900">
+          <strong>{receivables.topGc.sharePct}%</strong> of what&rsquo;s outstanding sits with{" "}
+          <strong>{receivables.topGc.name}</strong> ({formatCentsFull(receivables.topGc.cents)}).{" "}
+          <Link href={`${BASE}?view=receivables&gc=${receivables.topGc.id}`} className="font-semibold underline">
+            See just them
+          </Link>
+        </p>
+      )}
 
       {/* ── 3 · What came in ──────────────────────────────────────────── */}
       <section className="space-y-2">

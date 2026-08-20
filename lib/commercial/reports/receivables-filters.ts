@@ -15,6 +15,7 @@ export type ReceivableQuery = {
   kind: ReceivableKind | "all";
   overdueOnly: boolean;
   accountId: string | null;
+  sort: "amount" | "oldest";
 };
 
 const KINDS: ReceivableKind[] = ["invoice", "aia", "retainage"];
@@ -33,6 +34,7 @@ export function parseReceivableQuery(
     kind: KINDS.includes(rawKind as ReceivableKind) ? (rawKind as ReceivableKind) : "all",
     overdueOnly: one("overdue") === "1",
     accountId: one("gc")?.trim() || null,
+    sort: one("sort") === "oldest" ? "oldest" : "amount",
   };
 }
 
@@ -45,6 +47,7 @@ export function filtersFor(q: ReceivableQuery): ReceivableFilters {
     kind: q.kind === "all" ? undefined : q.kind,
     overdueOnly: q.overdueOnly || undefined,
     accountId: q.accountId ?? undefined,
+    sort: q.sort,
   };
 }
 
@@ -56,6 +59,7 @@ export function receivableQueryParams(q: ReceivableQuery): Record<string, string
   if (q.kind !== "all") out.kind = q.kind;
   if (q.overdueOnly) out.overdue = "1";
   if (q.accountId) out.gc = q.accountId;
+  if (q.sort !== "amount") out.sort = q.sort;
   return out;
 }
 
@@ -79,5 +83,7 @@ export function describeReceivableQuery(q: ReceivableQuery): string | null {
     bits.push(q.kind === "aia" ? "AIA only" : q.kind === "retainage" ? "retention only" : "invoices only");
   }
   if (q.overdueOnly) bits.push("overdue only");
+  // Sort is not a filter — it changes order, not membership — so it is
+  // deliberately absent from the "showing X of Y" description.
   return bits.length ? bits.join(" · ") : null;
 }
