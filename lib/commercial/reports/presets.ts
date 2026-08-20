@@ -94,9 +94,13 @@ export function cashFlowRange(preset: CashFlowPreset): RangeResult {
 
 // ─────────────────────────── Labour ───────────────────────────
 
-export type LaborPreset = "this_month" | "last_month" | "last_90" | "this_year";
+export type LaborPreset = "this_week" | "last_week" | "this_month" | "last_month" | "last_90" | "this_year";
 
 export const LABOR_PRESETS: { key: LaborPreset; label: string }[] = [
+  // Payroll runs weekly, so the week is a first-class window here — it was the
+  // one period a payroll clerk actually needs and the only one missing.
+  { key: "this_week", label: "This week" },
+  { key: "last_week", label: "Last week" },
   { key: "this_month", label: "This month" },
   { key: "last_month", label: "Last month" },
   { key: "last_90", label: "Last 90 days" },
@@ -110,6 +114,18 @@ export function laborRange(preset: LaborPreset): RangeResult {
   const y = Number(today.slice(0, 4));
   const m = Number(today.slice(5, 7));
   switch (preset) {
+    case "this_week":
+      // Monday–today, not Monday–Sunday: a week in progress shouldn't claim
+      // hours that haven't been worked yet.
+      return { fromYmd: weekStartOf(today), toYmd: today, label: "This week" };
+    case "last_week": {
+      const thisMon = weekStartOf(today);
+      const d = new Date(`${thisMon}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - 7);
+      const from = d.toISOString().slice(0, 10);
+      d.setUTCDate(d.getUTCDate() + 6);
+      return { fromYmd: from, toYmd: d.toISOString().slice(0, 10), label: "Last week" };
+    }
     case "last_month":
       return lastMonthRange();
     case "last_90":
@@ -201,5 +217,73 @@ export function changeOrderRange(preset: ChangeOrderPreset): RangeResult {
     case "last_90":
     default:
       return { fromYmd: daysBack(89), toYmd: today, label: "last 90 days" };
+  }
+}
+
+// ───────────────── Activity period (day / week / month / year) ─────────────────
+//
+// Karan, 2026-08-19: *"can we have filters like by day, week, monthly, year"*.
+//
+// Used where the question is "what happened IN a period" — as opposed to the
+// report-level presets above, which pick a reporting window.
+//
+// `all` is a first-class option and, on a chase list, the DEFAULT. Filtering
+// receivables to "this month" would hide every old debt, which is the exact
+// opposite of what an ageing book is for: the oldest item is the one that most
+// needs looking at. A period filter there is for narrowing on purpose, never
+// the state you land in.
+
+export type ActivityPreset =
+  | "all" | "today" | "this_week" | "this_month" | "this_quarter" | "this_year" | "last_year";
+
+export const ACTIVITY_PRESETS: { key: ActivityPreset; label: string }[] = [
+  { key: "all", label: "All time" },
+  { key: "today", label: "Today" },
+  { key: "this_week", label: "This week" },
+  { key: "this_month", label: "This month" },
+  { key: "this_quarter", label: "This quarter" },
+  { key: "this_year", label: "This year" },
+  { key: "last_year", label: "Last year" },
+];
+
+export const ACTIVITY_DEFAULT: ActivityPreset = "all";
+
+/** Monday of the ET week containing a YYYY-MM-DD. Matches the payroll week
+ *  already used by the labour report — two different "weeks" in one platform
+ *  would make a Sunday shift land in different weeks on different screens. */
+export function weekStartOf(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  // getUTCDay: 0 = Sunday, so shift Sunday back 6 days, not forward 1.
+  dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Null for `all` — an unbounded window, which callers must treat as "no
+ *  filter" rather than inventing a sentinel date that silently clips history. */
+export function activityRange(preset: ActivityPreset): RangeResult | null {
+  const today = etTodayIso();
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  switch (preset) {
+    case "today":
+      return { fromYmd: today, toYmd: today, label: "Today" };
+    case "this_week": {
+      const start = weekStartOf(today);
+      return { fromYmd: start, toYmd: today, label: "This week" };
+    }
+    case "this_month":
+      return { fromYmd: `${y}-${pad(m)}-01`, toYmd: today, label: "This month" };
+    case "this_quarter": {
+      const qStart = Math.floor((m - 1) / 3) * 3 + 1;
+      return { fromYmd: `${y}-${pad(qStart)}-01`, toYmd: today, label: "This quarter" };
+    }
+    case "this_year":
+      return { fromYmd: `${y}-01-01`, toYmd: today, label: "This year" };
+    case "last_year":
+      return { fromYmd: `${y - 1}-01-01`, toYmd: `${y - 1}-12-31`, label: `${y - 1}` };
+    case "all":
+    default:
+      return null;
   }
 }

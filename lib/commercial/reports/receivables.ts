@@ -6,6 +6,7 @@ import { deriveInvoiceStatus, DEFAULT_DUE_DAYS } from "@/lib/commercial/invoices
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
 import { daysPastDue } from "./ar-aging";
+import { etDateOf } from "@/lib/date-et";
 
 /**
  * The RECEIVABLES report — Alex's ask, 2026-08-19, modelled on the sheet Mary
@@ -60,6 +61,19 @@ export type ReceivableRow = {
   billingHref: string | null;
 };
 
+export type ReceivableFilters = {
+  /** Billed/issued on or after this ET date. */
+  fromYmd?: string;
+  /** Billed/issued on or before this ET date. */
+  toYmd?: string;
+  /** Only invoices, only AIA, only retention. */
+  kind?: ReceivableKind;
+  /** Only what is actually late. Retention is never late, so it drops out. */
+  overdueOnly?: boolean;
+  /** One GC. */
+  accountId?: string;
+};
+
 export type ReceivablesReport = {
   rows: ReceivableRow[];
   /** Everything outstanding, retention included — matches Mary's total. */
@@ -70,6 +84,19 @@ export type ReceivablesReport = {
   dueNowCents: number;
   overdueCents: number;
   generatedAt: string;
+  /** Rows before filtering — so the page can say "12 of 48" rather than
+   *  looking empty for reasons the reader can't see. */
+  unfilteredCount: number;
+  /** Open items the period filter could not place, because nothing recorded
+   *  when they were billed. Surfaced, never silently dropped: a receivable
+   *  that vanishes when you pick a date range is the worst kind of bug on a
+   *  chase list — you stop chasing money you no longer know exists. */
+  undatedExcluded: number;
+  /** Whether any filter is actually narrowing the list. */
+  filtered: boolean;
+  /** Every GC in the UNFILTERED book, for the picker — so it never offers a
+   *  name that yields nothing, and never hides one because it's filtered out. */
+  gcOptions: { id: string; name: string }[];
 };
 
 function fmtRefDate(iso: string | null): string {
@@ -84,7 +111,10 @@ function fmtRefDate(iso: string | null): string {
   });
 }
 
-export async function getReceivablesReport(nowMs = Date.now()): Promise<ReceivablesReport> {
+export async function getReceivablesReport(
+  nowMs = Date.now(),
+  filters: ReceivableFilters = {}
+): Promise<ReceivablesReport> {
   const [invoices, opps] = await Promise.all([
     listCommercialInvoices({}),
     // includeArchived: archiving a deal is a tidy-up, not a write-off — the
@@ -226,6 +256,48 @@ export async function getReceivablesReport(nowMs = Date.now()): Promise<Receivab
   // Biggest first — the way you actually work a chase list.
   rows.sort((a, b) => b.openCents - a.openCents);
 
+  return summarizeReceivables(rows, filters, nowMs);
+}
+
+/**
+ * Apply the filters and total what survives. Pure, so the filter rules are
+ * testable without a database.
+ *
+ * The totals are computed over the FILTERED rows on purpose: if you narrow to
+ * one GC, "total outstanding" must be that GC's total, or the tiles contradict
+ * the list directly beneath them.
+ */
+export function summarizeReceivables(
+  allRows: ReceivableRow[],
+  filters: ReceivableFilters = {},
+  nowMs = Date.now()
+): ReceivablesReport {
+  const { fromYmd, toYmd, kind, overdueOnly, accountId } = filters;
+  const hasPeriod = !!(fromYmd || toYmd);
+  const filtered = hasPeriod || !!kind || !!overdueOnly || !!accountId;
+
+  let undatedExcluded = 0;
+  const rows = allRows.filter((r) => {
+    if (kind && r.kind !== kind) return false;
+    if (accountId && r.accountId !== accountId) return false;
+    // Retention has no due date and is never late, so it correctly drops out
+    // of an overdue-only view rather than being counted as current.
+    if (overdueOnly && (r.daysOut ?? 0) <= 0) return false;
+    if (hasPeriod) {
+      // The ET calendar date it was billed. Compared as YYYY-MM-DD strings,
+      // which sorts correctly and can't be shifted by a timezone.
+      const ymd = r.issuedIso ? etDateOf(r.issuedIso) : null;
+      if (!ymd) {
+        // Counted and reported, never silently dropped.
+        undatedExcluded += 1;
+        return false;
+      }
+      if (fromYmd && ymd < fromYmd) return false;
+      if (toYmd && ymd > toYmd) return false;
+    }
+    return true;
+  });
+
   const retainageCents = rows
     .filter((r) => r.kind === "retainage")
     .reduce((n, r) => n + r.openCents, 0);
@@ -234,8 +306,16 @@ export async function getReceivablesReport(nowMs = Date.now()): Promise<Receivab
     .filter((r) => (r.daysOut ?? 0) > 0)
     .reduce((n, r) => n + r.openCents, 0);
 
+  const gcOptions = [...new Map(allRows.map((r) => [r.accountId, r.accountName])).entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return {
     rows,
+    gcOptions,
+    unfilteredCount: allRows.length,
+    undatedExcluded,
+    filtered,
     totalOpenCents,
     retainageCents,
     dueNowCents: totalOpenCents - retainageCents,

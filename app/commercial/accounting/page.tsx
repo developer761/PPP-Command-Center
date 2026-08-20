@@ -14,6 +14,11 @@ import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db"
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
+import { ReceivablesFilterBar } from "@/components/commercial/receivables-filter-bar";
+import {
+  parseReceivableQuery, filtersFor, receivableQueryParams, receivableQueryString,
+  describeReceivableQuery,
+} from "@/lib/commercial/reports/receivables-filters";
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
@@ -117,14 +122,18 @@ async function saveNoteAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const rowKey = String(formData.get("row_key") ?? "");
-  if (!rowKey) redirect(`${BASE}?view=receivables`);
+  // Carry the filters back, so saving a note doesn't drop you out of the view
+  // you were working through row by row.
+  const qs = String(formData.get("qs") ?? "?view=receivables");
+  const sep = qs.includes("?") ? "&" : "?";
+  if (!rowKey) redirect(`${BASE}${qs}`);
   const res = await setReceivableNote(rowKey, String(formData.get("note") ?? ""), user.id);
   revalidatePath(BASE);
   revalidatePath("/commercial/reports/receivables");
   redirect(
     res.ok
-      ? `${BASE}?view=receivables&saved=1`
-      : `${BASE}?view=receivables&error=${encodeURIComponent(res.error)}`
+      ? `${BASE}${qs}${sep}saved=1`
+      : `${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`
   );
 }
 
@@ -186,7 +195,17 @@ export default async function AccountingPage({
   const rawView = pickFirst(sp.view);
   const view: View = (VIEWS.some((v) => v.key === rawView) ? rawView : "overview") as View;
   const recipients = receivablesRecipients();
-  const href = (v: View) => (v === "overview" ? BASE : `${BASE}?view=${v}`);
+  const q = parseReceivableQuery((k) => sp[k]);
+  const activeFilter = describeReceivableQuery(q);
+  // Filters live on the Receivables VIEW only. The headline band above the
+  // switcher, and every overview figure, stay whole-book: those are "where does
+  // the company stand", and silently narrowing them to a filter set on another
+  // tab would make the money desk quietly wrong.
+  const viewQs = (v: View) => (v === "receivables" ? receivableQueryString(q) : "");
+  const href = (v: View) => {
+    const qs = viewQs(v);
+    return v === "overview" ? BASE : `${BASE}?view=${v}${qs ? `&${qs.slice(1)}` : ""}`;
+  };
 
   // Both windows come from the reports' own preset functions, so a figure here
   // and the same figure on its report are computed over an identical period.
@@ -205,6 +224,10 @@ export default async function AccountingPage({
   // Only fetched for the view that renders it — the money band above doesn't
   // use aging, so paying for it on every page load would be waste.
   const aging = view === "aging" ? await getArAging() : null;
+  // A second, filtered read for the Receivables view. Cheap relative to a wrong
+  // number: reusing the unfiltered `receivables` would ignore the filter bar.
+  const receivablesView =
+    view === "receivables" ? await getReceivablesReport(Date.now(), filtersFor(q)) : null;
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
@@ -267,7 +290,13 @@ export default async function AccountingPage({
         {/* Export + Send live in the page header, not buried at the bottom:
             they are the two things this page exists to let somebody DO. */}
         <div className="flex items-center gap-2 flex-wrap">
-          <ExportCsvLink href="/api/commercial/reports/receivables/export" disabled={receivables.rows.length === 0} disabledHint="Nothing outstanding to export" label="Export receivables" />
+          <ExportCsvLink
+            href="/api/commercial/reports/receivables/export"
+            params={view === "receivables" ? receivableQueryParams(q) : undefined}
+            disabled={(view === "receivables" ? receivablesView?.rows.length ?? 0 : receivables.rows.length) === 0}
+            disabledHint="Nothing to export in this view"
+            label="Export receivables"
+          />
           {receivables.rows.length > 0 && (
             <form action={sendToAlexAction} className="flex flex-col items-end gap-0.5">
               <PendingSubmitButton
@@ -276,7 +305,9 @@ export default async function AccountingPage({
               >
                 Send to Alex
               </PendingSubmitButton>
-              <span className="text-[10px] text-ppp-charcoal-400">{recipients.join(", ")}</span>
+              <span className="text-[10px] text-ppp-charcoal-400">
+                {receivablesView?.filtered ? "sends the whole book" : recipients.join(", ")}
+              </span>
             </form>
           )}
         </div>
@@ -580,16 +611,42 @@ export default async function AccountingPage({
       )}
 
       {/* ── Receivables, in place ──────────────────────────────────────── */}
-      {view === "receivables" && (
-        <section className="space-y-2">
+      {view === "receivables" && receivablesView && (
+        <section className="space-y-2.5">
           <SectionHead
             title="Every open item"
             hint="Biggest first. Write a note after a chase and it stays with the job."
           />
+          <ReceivablesFilterBar q={q} basePath={BASE} extraParams={{ view: "receivables" }} gcOptions={receivablesView.gcOptions} />
+          {receivablesView.filtered && (
+            <div className="flex items-center justify-between gap-3 flex-wrap text-[11.5px]">
+              <span className="text-ppp-charcoal-500">
+                Showing <strong className="text-ppp-charcoal">{receivablesView.rows.length}</strong> of{" "}
+                {receivablesView.unfilteredCount} open item{receivablesView.unfilteredCount === 1 ? "" : "s"}
+                {activeFilter ? ` · ${activeFilter}` : ""} ·{" "}
+                <strong className="text-ppp-charcoal">{formatCentsFull(receivablesView.totalOpenCents)}</strong>
+                {" "}in this view
+                {/* Said explicitly, because the four tiles above the switcher
+                    are the WHOLE book and would otherwise look contradictory. */}
+                <span className="text-ppp-charcoal-400"> (tiles above are the whole book)</span>
+              </span>
+              {receivablesView.undatedExcluded > 0 && (
+                <span className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+                  {receivablesView.undatedExcluded} hidden — no billing date recorded
+                </span>
+              )}
+            </div>
+          )}
           <ReceivablesTable
-            rows={receivables.rows}
-            totalOpenCents={receivables.totalOpenCents}
+            rows={receivablesView.rows}
+            totalOpenCents={receivablesView.totalOpenCents}
             saveNoteAction={saveNoteAction}
+            queryString={receivableQueryString(q, { view: "receivables" })}
+            emptyMessage={
+              receivablesView.filtered
+                ? `Nothing matches this filter${activeFilter ? ` (${activeFilter})` : ""}. The book isn't empty — clear the filters to see all ${receivablesView.unfilteredCount}.`
+                : undefined
+            }
           />
         </section>
       )}

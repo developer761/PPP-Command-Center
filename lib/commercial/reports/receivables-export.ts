@@ -31,7 +31,7 @@ function ageLabel(r: ReceivableRow): string {
   return "Not yet due";
 }
 
-export function receivablesCsv(report: ReceivablesReport): string {
+export function receivablesCsv(report: ReceivablesReport, filterLabel?: string | null): string {
   const header = ["Job", "GC", "Type", "Reference", "Billed / open", "Status", "Notes"];
   const line = (r: ReceivableRow) =>
     [r.jobName, r.accountName, KIND_LABEL[r.kind], r.reference, money(r.openCents), ageLabel(r), r.note ?? ""]
@@ -49,11 +49,18 @@ export function receivablesCsv(report: ReceivablesReport): string {
     ["Retention held", "", "", "", money(report.retainageCents), "released at close-out", ""],
   ].map((row) => row.map(csv).join(","));
 
+  // A filtered sheet says so on its first line. Without it, a slice of the
+  // book is indistinguishable from the whole book once it's in someone's inbox.
+  const banner = filterLabel
+    ? [["Filtered:", filterLabel, "", "", "", "", ""].map(csv).join(","), blank]
+    : [];
+
   return (
-    [header.map(csv).join(","), ...report.rows.map(line), blank, ...totals].join("\r\n") + "\r\n"
+    [...banner, header.map(csv).join(","), ...report.rows.map(line), blank, ...totals].join("\r\n") + "\r\n"
   );
 }
 
-export function receivablesFilename(): string {
-  return `Receivables_${etTodayIso()}.csv`;
+export function receivablesFilename(period?: string): string {
+  const scope = period && period !== "all" ? `_${period}` : "";
+  return `Receivables${scope}_${etTodayIso()}.csv`;
 }

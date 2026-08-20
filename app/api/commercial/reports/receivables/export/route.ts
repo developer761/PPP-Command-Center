@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
 import { receivablesCsv, receivablesFilename } from "@/lib/commercial/reports/receivables-export";
+import { parseReceivableQuery, filtersFor, describeReceivableQuery } from "@/lib/commercial/reports/receivables-filters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +20,7 @@ export const dynamic = "force-dynamic";
  * The body is built by a shared helper rather than inline, so the file she
  * downloads and the file attached to Alex's email are byte-identical.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -32,12 +34,14 @@ export async function GET() {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const report = await getReceivablesReport();
-  return new NextResponse(receivablesCsv(report), {
+  // Same parser the page uses, so the file is exactly the slice on screen.
+  const q = parseReceivableQuery((k) => req.nextUrl.searchParams.get(k));
+  const report = await getReceivablesReport(Date.now(), filtersFor(q));
+  return new NextResponse(receivablesCsv(report, describeReceivableQuery(q)), {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${receivablesFilename()}"`,
+      "Content-Disposition": `attachment; filename="${receivablesFilename(q.period)}"`,
       "Cache-Control": "no-store",
     },
   });

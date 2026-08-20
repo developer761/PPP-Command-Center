@@ -28,16 +28,24 @@ export function ReceivablesTable({
   rows,
   totalOpenCents,
   saveNoteAction,
+  queryString = "",
+  emptyMessage,
 }: {
   rows: ReceivableRow[];
   totalOpenCents: number;
   saveNoteAction: (formData: FormData) => Promise<void>;
+  /** Current filters, posted with each note so saving one doesn't drop you
+   *  back to the unfiltered book mid-way through working a list. */
+  queryString?: string;
+  /** Shown instead of the default when the list is empty BECAUSE of a filter —
+   *  "nothing outstanding" would be a lie, and an alarming one. */
+  emptyMessage?: string;
 }) {
   if (rows.length === 0) {
     return (
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
-        <p className="px-4 py-10 text-center text-[13px] text-ppp-charcoal-500">
-          Nothing outstanding. Every invoice is paid and no retention is being held.
+        <p className="px-4 py-10 text-center text-[13px] text-ppp-charcoal-500 max-w-md mx-auto">
+          {emptyMessage ?? "Nothing outstanding. Every invoice is paid and no retention is being held."}
         </p>
       </div>
     );
@@ -75,7 +83,7 @@ export function ReceivablesTable({
                 <span className="text-[11px] font-semibold text-rose-700">{r.daysOut}d late</span>
               )}
             </div>
-            <NoteForm rowKey={r.key} note={r.note} action={saveNoteAction} />
+            <NoteForm rowKey={r.key} note={r.note} action={saveNoteAction} queryString={queryString} />
           </li>
         ))}
       </ul>
@@ -133,7 +141,7 @@ export function ReceivablesTable({
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  <NoteForm rowKey={r.key} note={r.note} action={saveNoteAction} />
+                  <NoteForm rowKey={r.key} note={r.note} action={saveNoteAction} queryString={queryString} />
                 </td>
               </tr>
             ))}
@@ -157,14 +165,17 @@ function NoteForm({
   rowKey,
   note,
   action,
+  queryString,
 }: {
   rowKey: string;
   note: string | null;
   action: (formData: FormData) => Promise<void>;
+  queryString: string;
 }) {
   return (
     <form action={action} className="flex items-center gap-1.5 mt-1.5 sm:mt-0">
       <input type="hidden" name="row_key" value={rowKey} />
+      <input type="hidden" name="qs" value={queryString} />
       <input
         name="note"
         defaultValue={note ?? ""}

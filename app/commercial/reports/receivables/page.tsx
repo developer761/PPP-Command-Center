@@ -7,6 +7,12 @@ import { getReceivablesReport, setReceivableNote } from "@/lib/commercial/report
 import { formatCentsFull } from "@/lib/commercial/invoices/format";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
+import { ReceivablesFilterBar } from "@/components/commercial/receivables-filter-bar";
+import { ExportCsvLink } from "@/components/commercial/export-csv-link";
+import {
+  parseReceivableQuery, filtersFor, receivableQueryParams, receivableQueryString,
+  describeReceivableQuery,
+} from "@/lib/commercial/reports/receivables-filters";
 import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
@@ -37,11 +43,16 @@ async function saveNoteAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const rowKey = String(formData.get("row_key") ?? "");
-  if (!rowKey) redirect(BASE);
+  if (!rowKey) redirect(`${BASE}${String(formData.get("qs") ?? "")}`);
   const res = await setReceivableNote(rowKey, String(formData.get("note") ?? ""), user.id);
   revalidatePath(BASE);
-  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error)}`);
-  redirect(`${BASE}?saved=1`);
+  revalidatePath("/commercial/accounting");
+  // Carry the filters back. Saving a note used to drop you to the unfiltered
+  // book, losing the view you were working through row by row.
+  const qs = String(formData.get("qs") ?? "");
+  const sep = qs ? "&" : "?";
+  if (!res.ok) redirect(`${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`);
+  redirect(`${BASE}${qs}${sep}saved=1`);
 }
 
 /** Write a fresh brief. Its own action so a slow model call never delays the
@@ -86,7 +97,9 @@ export default async function ReceivablesReportPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const report = await getReceivablesReport();
+  const q = parseReceivableQuery((k) => sp[k]);
+  const report = await getReceivablesReport(Date.now(), filtersFor(q));
+  const activeFilter = describeReceivableQuery(q);
   const error = pickFirst(sp.error);
   const saved = pickFirst(sp.saved) === "1";
   const sentTo = pickFirst(sp.sent);
@@ -115,12 +128,14 @@ export default async function ReceivablesReportPage({
           </Link>
           {/* A plain link, not a fetch — the browser downloads it and the file
               is byte-identical to the one attached to Alex's email. */}
-          <a
+          {/* Exports exactly what the filters are showing. */}
+          <ExportCsvLink
             href="/api/commercial/reports/receivables/export"
-            className="inline-flex items-center min-h-[40px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
-          >
-            Export sheet
-          </a>
+            params={receivableQueryParams(q)}
+            label="Export sheet"
+            disabled={report.rows.length === 0}
+            disabledHint="Nothing to export in this view"
+          />
           {report.rows.length > 0 && (
             <form action={sendToAlexAction} className="flex flex-col items-end gap-0.5">
               <PendingSubmitButton
@@ -131,7 +146,13 @@ export default async function ReceivablesReportPage({
               </PendingSubmitButton>
               {/* Name the recipient. A send button whose destination you have
                   to guess is one nobody presses. */}
-              <span className="text-[10px] text-ppp-charcoal-400">{recipients.join(", ")}</span>
+              {/* Deliberately the WHOLE book: this is Alex's standing report,
+                  and a CEO receiving a silently-filtered slice labelled
+                  "Receivables" is worse than receiving nothing. Said out loud
+                  whenever a filter is on. */}
+              <span className="text-[10px] text-ppp-charcoal-400">
+                {report.filtered ? "sends the whole book" : recipients.join(", ")}
+              </span>
             </form>
           )}
         </div>
@@ -193,8 +214,11 @@ export default async function ReceivablesReportPage({
         </section>
       )}
 
+      <ReceivablesFilterBar q={q} basePath={BASE} gcOptions={report.gcOptions} />
+
       {/* Total first — it's the number Alex opens this for. Mary's sheet ends
-          with it; on a screen it belongs at the top. */}
+          with it; on a screen it belongs at the top. Totals are of the FILTERED
+          set, or the tiles would contradict the list right beneath them. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Tile label="Total outstanding" value={formatCentsFull(report.totalOpenCents)} tone="brand" sub={`${report.rows.length} open item${report.rows.length === 1 ? "" : "s"}`} />
         <Tile label="Collectible now" value={formatCentsFull(report.dueNowCents)} tone="navy" sub="excludes retention" />
@@ -202,10 +226,34 @@ export default async function ReceivablesReportPage({
         <Tile label="Retention held" value={formatCentsFull(report.retainageCents)} tone="neutral" sub="released at close-out" />
       </div>
 
+      {report.filtered && (
+        <div className="flex items-center justify-between gap-3 flex-wrap text-[11.5px]">
+          <span className="text-ppp-charcoal-500">
+            Showing <strong className="text-ppp-charcoal">{report.rows.length}</strong> of{" "}
+            {report.unfilteredCount} open item{report.unfilteredCount === 1 ? "" : "s"}
+            {activeFilter ? ` · ${activeFilter}` : ""}
+          </span>
+          {report.undatedExcluded > 0 && (
+            // Never silently dropped: a receivable that disappears when you pick
+            // a date range is the worst bug this page could have — you stop
+            // chasing money you no longer know exists.
+            <span className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+              {report.undatedExcluded} item{report.undatedExcluded === 1 ? "" : "s"} hidden — no billing date recorded
+            </span>
+          )}
+        </div>
+      )}
+
       <ReceivablesTable
         rows={report.rows}
         totalOpenCents={report.totalOpenCents}
         saveNoteAction={saveNoteAction}
+        queryString={receivableQueryString(q)}
+        emptyMessage={
+          report.filtered
+            ? `Nothing matches this filter${activeFilter ? ` (${activeFilter})` : ""}. The book isn't empty — clear the filters to see all ${report.unfilteredCount}.`
+            : undefined
+        }
       />
 
     </div>
