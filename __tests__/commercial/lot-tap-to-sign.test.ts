@@ -40,7 +40,9 @@ function input(over: Record<string, unknown> = {}) {
     accountName: "ARCADIS",
     fromCompany: "Tomco Painting",
     ...over,
-  } as Parameters<typeof renderLetterOfTransmittalPdf>[0];
+    // The fixture carries only the fields the PDF reads; the row type has a
+    // dozen more that the document never touches.
+  } as unknown as Parameters<typeof renderLetterOfTransmittalPdf>[0];
 }
 
 const isPdf = (b: Buffer) => b.subarray(0, 5).toString("latin1") === "%PDF-";
@@ -67,7 +69,7 @@ describe("Letter of Transmittal — tap-to-sign", () => {
 
   it("renders with no remarks — the block sits after them either way", async () => {
     const out = await renderLetterOfTransmittalPdf(
-      input({ submittal: { ...input().submittal, remarks: null }, signature: PNG })
+      input({ submittal: { ...input().submittal, remarks: null }, signature: PNG } as Record<string, unknown>)
     );
     expect(isPdf(out)).toBe(true);
   });
