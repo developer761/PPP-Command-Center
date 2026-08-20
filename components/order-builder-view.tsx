@@ -677,7 +677,7 @@ export default function OrderBuilderView({
                             aria-pressed={unit === u}
                             className={`px-3 py-1 text-[11px] font-medium min-h-[44px] sm:min-h-[32px] touch-manipulation transition-colors ${
                               unit === u
-                                ? "bg-ppp-blue-600 text-white"
+                                ? "bg-ppp-blue text-ppp-navy"
                                 : "bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
                             }`}
                           >
@@ -1007,7 +1007,7 @@ export default function OrderBuilderView({
               type="button"
               onClick={handleAdvance}
               disabled={advancing}
-              className="px-4 py-2 min-h-[44px] rounded-lg bg-ppp-green-600 text-white text-sm font-semibold hover:bg-ppp-green-700 transition-colors disabled:opacity-60 shadow-sm shadow-ppp-green/30 touch-manipulation"
+              className="px-4 py-2 min-h-[44px] rounded-lg bg-ppp-green text-ppp-navy text-sm font-semibold hover:bg-ppp-green-600 transition-colors disabled:opacity-60 shadow-sm shadow-ppp-green/30 touch-manipulation"
             >
               {advancing ? "Saving…" : "Continue to fulfilment →"}
             </button>

@@ -150,13 +150,6 @@ describe("the hover ramp stays out of the dead zone", () => {
     "components/customer-form-view.tsx :: bg-ppp-blue-800",
     "components/email-password-sign-in.tsx :: bg-ppp-navy-600",
     "components/email-password-sign-in.tsx :: bg-ppp-navy-700",
-    "components/materials-view.tsx :: bg-ppp-blue-600",
-    "components/materials-view.tsx :: bg-ppp-blue-700",
-    "components/materials-view.tsx :: bg-ppp-green-600",
-    "components/materials-view.tsx :: bg-ppp-green-700",
-    "components/order-builder-view.tsx :: bg-ppp-blue-600",
-    "components/order-builder-view.tsx :: bg-ppp-green-600",
-    "components/order-builder-view.tsx :: bg-ppp-green-700",
     "components/settings/access-manager.tsx :: bg-ppp-blue-700",
   ]);
 
@@ -181,6 +174,29 @@ describe("the hover ramp stays out of the dead zone", () => {
       }
     }
     expect(bad, "pressing these gives no visual feedback").toEqual([]);
+  });
+
+  it("no fill carrying white text fails in LIGHT, whatever dark does to it", () => {
+    // I filed twelve sites as "inert — only broken in dark". Four of them were
+    // failing in LIGHT as well: bg-ppp-blue-600 at 3.66 and bg-ppp-green-600 at
+    // 3.12, both as RESTING fills on buttons residential shows every day. The
+    // dark-inversion rule looked past them because it only asked what dark did.
+    // Two independent questions, two assertions.
+    const bad: string[] = [];
+    for (const f of FILES) {
+      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+        if (!/(?<![-\w:])text-white(?![-\w])/.test(cls)) continue;
+        for (const [tok, hex] of Object.entries(LIGHT)) {
+          const cn = "bg-" + tok.replace("--color-", "");
+          // Resting fills only — a hover/active shade is a separate question.
+          if (!new RegExp(String.raw`(?<![-\w:])${cn}(?![-\w])`).test(cls)) continue;
+          if (contrast(hex, "#ffffff") < 4.5) {
+            bad.push(`${f.replace(ROOT + "/", "")} :: ${cn} (${contrast(hex, "#ffffff").toFixed(2)}:1)`);
+          }
+        }
+      }
+    }
+    expect(bad, "white on these resting fills fails AA in the light theme").toEqual([]);
   });
 
   it("no NEW class pairs a fill with white where dark inverts that fill", () => {

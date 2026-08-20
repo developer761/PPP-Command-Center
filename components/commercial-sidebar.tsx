@@ -304,17 +304,18 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
       <nav className="flex-1 px-3 py-3 lg:py-4 overflow-y-auto">
         {sections.map((section, sectionIdx) => (
           <div
-            key={section.heading ?? `section-${sectionIdx}`}
+            key={section.heading}
             className={sectionIdx > 0 ? "mt-4 lg:mt-6" : ""}
           >
-            {/* An unheaded section still gets its own space above — the gap is
-                the grouping. Rendering an empty label would leave a blank line
-                where a heading should be, which reads as a bug. */}
-            {section.heading && (
-              <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-ppp-navy-600 uppercase">
-                {section.heading}
-              </div>
-            )}
+            {/* Every section is labelled, and the type enforces it. The gap
+                alone cannot carry the grouping: it is the same `mt-4` between
+                every pair of sections, so an unlabelled one reads as a
+                continuation of the section above rather than a new one — which
+                is exactly how Field Ops / Accounting / Reports / Settings ended
+                up appearing to sit under LIBRARIES. */}
+            <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-ppp-navy-600 uppercase">
+              {section.heading}
+            </div>
             <ul className="space-y-0.5">
               {section.items.map((entry) => renderLeaf(entry))}
             </ul>

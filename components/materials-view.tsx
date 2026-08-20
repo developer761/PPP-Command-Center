@@ -1965,7 +1965,7 @@ function JobDetailImpl({
               {canPlaceOrder ? (
                 <Link
                   href={orderHref}
-                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors touch-manipulation bg-ppp-green-600 text-white hover:bg-ppp-green-700 active:bg-ppp-green-700 shadow-sm shadow-ppp-green/30"
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors touch-manipulation bg-ppp-green text-ppp-navy hover:bg-ppp-green-600 active:bg-ppp-green shadow-sm shadow-ppp-green/30"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
@@ -2121,7 +2121,7 @@ function JobDetailImpl({
         >
           <Link
             href={`/dashboard/materials/${encodeURIComponent(job.wo.id)}/order`}
-            className="w-full h-12 rounded-lg bg-ppp-green-600 text-white font-semibold text-sm hover:bg-ppp-green-700 active:bg-ppp-green-700 transition-colors touch-manipulation flex items-center justify-center gap-2 shadow-md shadow-ppp-green/30"
+            className="w-full h-12 rounded-lg bg-ppp-green text-ppp-navy font-semibold text-sm hover:bg-ppp-green-600 active:bg-ppp-green transition-colors touch-manipulation flex items-center justify-center gap-2 shadow-md shadow-ppp-green/30"
             aria-label="Start a material order for this work order"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -3006,7 +3006,7 @@ function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; init
           type="button"
           onClick={save}
           disabled={saving || !dirty}
-          className="inline-flex items-center px-3 py-1.5 min-h-[40px] rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-3 py-1.5 min-h-[40px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? "Saving…" : "Save"}
         </button>
