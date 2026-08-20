@@ -114,7 +114,8 @@ describe("saved views stay in step with the stage ladder", () => {
     const { KANBAN_COLUMNS } = await import("@/lib/commercial/opportunities/kanban-columns");
     const real = new Set(KANBAN_COLUMNS.map((c) => c.key));
     for (const v of SAVED_VIEWS) {
-      const st = v.params.status;
+      // params is a literal union now, so index through a widened view.
+      const st = (v.params as Record<string, string | undefined>).status;
       if (!st) continue;
       expect(real.has(st), `view "${v.key}" filters on status="${st}", which is not a stage`).toBe(true);
     }
@@ -125,7 +126,9 @@ describe("saved views stay in step with the stage ladder", () => {
     // Not every stage needs a view, but the ones the office lives in do —
     // Pending Approval especially: it is the approval queue that replaced the
     // retired sidebar "Proposals" entry.
-    const filtered = new Set(SAVED_VIEWS.map((v) => v.params.status).filter(Boolean));
+    const filtered = new Set(
+      SAVED_VIEWS.map((v) => (v.params as Record<string, string | undefined>).status).filter(Boolean)
+    );
     for (const key of ["estimating", "pending_approval", "sent"]) {
       expect(filtered.has(key), `no saved view opens "${key}"`).toBe(true);
       expect(PRE_CONTRACT_COLUMNS.some((c) => c.key === key), key).toBe(true);

@@ -45,7 +45,11 @@ export const VIEW_OWNED_PARAMS = [
   "sort",
 ] as const;
 
-export const SAVED_VIEWS: SavedView[] = [
+// `as const satisfies` and not `: SavedView[]` — the annotation widened every
+// key to `string`, so savedViewHref's parameter type accepted anything and the
+// "unknown key is caught at build time" guarantee was only ever a runtime
+// throw. This keeps the literal keys AND still type-checks each entry.
+export const SAVED_VIEWS = [
   {
     key: "all",
     label: "All open",
@@ -153,7 +157,10 @@ export const SAVED_VIEWS: SavedView[] = [
     params: { coldrfp: "1", sort: "oldest" },
     group: "attention",
   },
-];
+] as const satisfies readonly SavedView[];
+
+/** The key of a view that actually exists. */
+export type SavedViewKey = (typeof SAVED_VIEWS)[number]["key"];
 
 export function savedView(key: string | undefined | null): SavedView | undefined {
   return SAVED_VIEWS.find((v) => v.key === key);
@@ -176,7 +183,7 @@ export function savedView(key: string | undefined | null): SavedView | undefined
  * So links in code go through here and get the real params. Passing a key that
  * doesn't exist is a build-time error, not a silently unfiltered page.
  */
-export function savedViewHref(key: (typeof SAVED_VIEWS)[number]["key"]): string {
+export function savedViewHref(key: SavedViewKey): string {
   const view = savedView(key);
   if (!view) throw new Error(`Unknown saved view: ${key}`);
   return viewHref(view, {});
