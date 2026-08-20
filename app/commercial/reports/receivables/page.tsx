@@ -256,6 +256,18 @@ export default async function ReceivablesReportPage({
         <Tile label="Retention held" value={formatCentsFull(report.retainageCents)} tone="neutral" sub="released at close-out" />
       </div>
 
+      {report.noDueDateCount > 0 && (
+        // "Past due $0.00 · nothing late" is a TRUE sentence that means
+        // something else: an item with no due date can never age into overdue,
+        // AR aging files it as Current, and the dunning reminder skips it.
+        // Three surfaces quietly agreeing it's fine.
+        <p className="text-[12px] rounded-lg border px-3 py-2 border-amber-200 bg-amber-50 text-amber-900">
+          <strong>{formatCentsFull(report.noDueDateCents)}</strong> across {report.noDueDateCount} open item
+          {report.noDueDateCount === 1 ? " has" : "s have"} no due date, so {report.noDueDateCount === 1 ? "it" : "they"}{" "}
+          can never show as past due and nothing will chase {report.noDueDateCount === 1 ? "it" : "them"}. Set one on the
+          invoice to bring {report.noDueDateCount === 1 ? "it" : "them"} into the ageing.
+        </p>
+      )}
       {report.filtered && (
         <div className="flex items-center justify-between gap-3 flex-wrap text-[11.5px]">
           <span className="text-ppp-charcoal-500">

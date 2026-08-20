@@ -50,6 +50,10 @@ export type ReceivableRow = {
   reference: string;
   /** The human column. Null until somebody writes one. */
   note: string | null;
+  /** A DRAFTED note, shown only where `note` is null. Never merged into it and
+   *  never pre-filled into the input box — a draft in a text field becomes a
+   *  human note the moment somebody hits Save. See `receivables-row-notes`. */
+  aiNote?: string | null;
   issuedIso: string | null;
   /** Days past due. Null when there's no due date (retainage never ages). */
   daysOut: number | null;
@@ -96,6 +100,16 @@ export type ReceivablesReport = {
    *  that vanishes when you pick a date range is the worst kind of bug on a
    *  chase list — you stop chasing money you no longer know exists. */
   undatedExcluded: number;
+  /** Open items that can NEVER be called late, because nothing recorded when
+   *  they were due. Retention is excluded — it legitimately has no due date.
+   *
+   *  Without this, "Past due $0.00 · nothing late" is a true sentence that
+   *  means something different from what it says: an invoice with no due date
+   *  is invisible to this figure, sits in AR aging's Current bucket, and is
+   *  skipped by the dunning reminder. Three surfaces quietly agreeing it's
+   *  fine. */
+  noDueDateCount: number;
+  noDueDateCents: number;
   /** Whether any filter is actually narrowing the list. */
   filtered: boolean;
   /** Every GC in the UNFILTERED book, for the picker — so it never offers a
@@ -275,7 +289,20 @@ export async function getReceivablesReport(
   // Biggest first — the way you actually work a chase list.
   rows.sort((a, b) => b.openCents - a.openCents);
 
-  return summarizeReceivables(rows, filters, nowMs);
+  const report = summarizeReceivables(rows, filters, nowMs);
+
+  // Drafted notes for the rows nobody has written one for. Merged HERE, once,
+  // so the page, the CSV, the email and the digest can't disagree about which
+  // rows have a note — and so no caller has to remember to do it. A human note
+  // always wins; `withDraftedNotes` enforces that. Best-effort: a cache read
+  // that fails costs the drafts, never the report.
+  try {
+    const { getCachedRowNotes, withDraftedNotes } = await import("./receivables-row-notes");
+    const { notes } = await getCachedRowNotes(report);
+    return Object.keys(notes).length > 0 ? withDraftedNotes(report, notes) : report;
+  } catch {
+    return report;
+  }
 }
 
 /**
@@ -334,6 +361,9 @@ export function summarizeReceivables(
   const overdueCents = rows
     .filter((r) => (r.daysOut ?? 0) > 0)
     .reduce((n, r) => n + r.openCents, 0);
+  // Retention has no due date BY DESIGN — it's held to close-out. Anything
+  // else with no due date is a gap in the record, not a fact about the money.
+  const undated = rows.filter((r) => r.kind !== "retainage" && r.daysOut === null);
 
   const gcOptions = [...new Map(allRows.map((r) => [r.accountId, r.accountName])).entries()]
     .map(([id, name]) => ({ id, name }))
@@ -377,6 +407,8 @@ export function summarizeReceivables(
     retainageCents,
     dueNowCents: totalOpenCents - retainageCents,
     overdueCents,
+    noDueDateCount: undated.length,
+    noDueDateCents: undated.reduce((n, r) => n + r.openCents, 0),
     generatedAt: new Date(nowMs).toISOString(),
   };
 }

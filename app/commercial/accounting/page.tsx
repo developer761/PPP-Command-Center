@@ -210,6 +210,28 @@ async function settleReimbursementAction(formData: FormData) {
 }
 
 /**
+ * Draft a note for every open item nobody has written one for.
+ *
+ * Its own action, and its own button, for the same reason the brief has one: a
+ * model call belongs behind a deliberate click, not on a page load somebody
+ * refreshes all day. A human note is never touched.
+ */
+async function draftNotesAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const { generateRowNotes } = await import("@/lib/commercial/reports/receivables-row-notes");
+  const res = await generateRowNotes(await getReceivablesReport());
+  revalidatePath(BASE);
+  revalidatePath("/commercial/reports/receivables");
+  const back = safeBack(formData.get("back"));
+  const sep = back.includes("?") ? "&" : "?";
+  redirect(res.ok ? `${back}${sep}notes=1` : `${back}${sep}error=${encodeURIComponent(res.error)}`);
+}
+
+/**
  * Turn a recurring report to Alex on or off.
  *
  * Every cadence ships OFF. Karan: *"we need to get everything 100 percent
@@ -414,6 +436,10 @@ export default async function AccountingPage({
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
   const digest = await getDigestSettings();
+  const { rowsNeedingNotes, rowNotesAvailable } = await import("@/lib/commercial/reports/receivables-row-notes");
+  // How many rows are still silent. Only offered when there's something to do.
+  const silentRows = rowsNeedingNotes(receivables).filter((r) => !r.aiNote).length;
+  const canDraftNotes = rowNotesAvailable();
   const previewedTo = pickFirst(sp.preview);
 
   // Cash actually collected, per month. Deliberately COLLECTED rather than
@@ -519,6 +545,12 @@ export default async function AccountingPage({
           Note saved.
         </div>
       )}
+      {pickFirst(sp.notes) === "1" && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
+          Drafted the empty notes. They&rsquo;re marked with a{" "}
+          <span className="text-cc-brand-600 font-bold">✦</span> — write over any of them.
+        </div>
+      )}
       {previewedTo && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
           Preview sent to <strong>{previewedTo}</strong> — the exact email Alex would get. Nothing was sent to him.
@@ -537,15 +569,32 @@ export default async function AccountingPage({
         <section className="bg-surface border border-ppp-charcoal-100 border-l-4 border-l-cc-brand-500 rounded-xl p-4">
           <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1.5">
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">The brief</h2>
-            <form action={refreshBriefAction}>
-              <input type="hidden" name="back" value={href(view)} />
-              <PendingSubmitButton
-                pendingLabel="Writing…"
-                className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] inline-flex items-center"
-              >
-                {brief ? "Rewrite" : "Write the brief"}
-              </PendingSubmitButton>
-            </form>
+            <div className="flex items-center gap-3">
+              {/* Drafts a note for every row that hasn't got one. Sits with the
+                  brief because it's the same trade — a model call behind a
+                  deliberate click — and because they're read together. */}
+              {canDraftNotes && silentRows > 0 && (
+                <form action={draftNotesAction}>
+                  <input type="hidden" name="back" value={href(view)} />
+                  <PendingSubmitButton
+                    pendingLabel="Drafting…"
+                    title="Drafts a note for each open item that hasn't got one, from its dates and figures. Never touches a note somebody wrote."
+                    className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] inline-flex items-center"
+                  >
+                    Draft {silentRows} empty note{silentRows === 1 ? "" : "s"}
+                  </PendingSubmitButton>
+                </form>
+              )}
+              <form action={refreshBriefAction}>
+                <input type="hidden" name="back" value={href(view)} />
+                <PendingSubmitButton
+                  pendingLabel="Writing…"
+                  className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] inline-flex items-center"
+                >
+                  {brief ? "Rewrite" : "Write the brief"}
+                </PendingSubmitButton>
+              </form>
+            </div>
           </div>
           {brief ? (
             <>
@@ -836,6 +885,18 @@ export default async function AccountingPage({
             hint="Biggest first. Write a note after a chase and it stays with the job."
           />
           <ReceivablesFilterBar q={q} basePath={BASE} extraParams={{ view: "receivables" }} gcOptions={receivablesView.gcOptions} />
+      {receivablesView.noDueDateCount > 0 && (
+        // "Past due $0.00 · nothing late" is a TRUE sentence that means
+        // something else: an item with no due date can never age into overdue,
+        // AR aging files it as Current, and the dunning reminder skips it.
+        // Three surfaces quietly agreeing it's fine.
+        <p className="text-[12px] rounded-lg border px-3 py-2 border-amber-200 bg-amber-50 text-amber-900">
+          <strong>{formatCentsFull(receivablesView.noDueDateCents)}</strong> across {receivablesView.noDueDateCount} open item
+          {receivablesView.noDueDateCount === 1 ? " has" : "s have"} no due date, so {receivablesView.noDueDateCount === 1 ? "it" : "they"}{" "}
+          can never show as past due and nothing will chase {receivablesView.noDueDateCount === 1 ? "it" : "them"}. Set one on the
+          invoice to bring {receivablesView.noDueDateCount === 1 ? "it" : "them"} into the ageing.
+        </p>
+      )}
           {receivablesView.filtered && (
             <div className="flex items-center justify-between gap-3 flex-wrap text-[11.5px]">
               <span className="text-ppp-charcoal-500">
@@ -1291,14 +1352,26 @@ export default async function AccountingPage({
             />
           </div>
 
-          {salesTax.uncertifiedCount > 0 && (
+          {salesTax.unmarkedCount > 0 && (
+            // The worse of the two, so it gets its own line above the other.
+            // In NY everything is taxable unless an exemption is CLAIMED — so
+            // an invoice that charged no tax on a job nobody marked exempt is
+            // most likely under-billed, not missing a document.
+            <p className="text-[12px] rounded-lg border px-3 py-2 border-rose-300 bg-rose-100 text-rose-900">
+              <strong>{salesTax.unmarkedCount}</strong> invoice
+              {salesTax.unmarkedCount === 1 ? "" : "s"} charged no tax on a job that was never marked
+              exempt — {formatCentsFull(salesTax.unmarkedBaseCents)} of work. That is usually tax
+              that should have been billed, not a certificate that&rsquo;s missing.
+            </p>
+          )}
+          {salesTax.noCertCount > 0 && (
             // The whole reason to build this rather than just total the tax
             // column: an exemption you can't produce a certificate for is an
             // assessment waiting to happen.
             <p className="text-[12px] rounded-lg border px-3 py-2 border-rose-200 bg-rose-50 text-rose-900">
-              <strong>{salesTax.uncertifiedCount}</strong> exempt invoice
-              {salesTax.uncertifiedCount === 1 ? "" : "s"} — {formatCentsFull(salesTax.uncertifiedBaseCents)} —
-              have no exemption certificate on file. NY capital-improvement exemptions are
+              <strong>{salesTax.noCertCount}</strong> invoice
+              {salesTax.noCertCount === 1 ? " is" : "s are"} marked exempt with no certificate on file —{" "}
+              {formatCentsFull(salesTax.noCertBaseCents)} of work. NY capital-improvement exemptions are
               per-project, so the certificate belongs on the job that claimed it.{" "}
               <Link href={`${BASE}?view=tax&nocert=1${txPeriod !== ACTIVITY_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="font-semibold underline">
                 Show just those
@@ -1391,6 +1464,13 @@ export default async function AccountingPage({
                               Cert #{r.certNumber}
                               <span className="block text-[10px] text-ppp-charcoal-400">
                                 {r.exemptSource === "opportunity" ? "on the job" : "on the account"}
+                              </span>
+                            </span>
+                          ) : r.exemptKind === "unmarked" ? (
+                            <span className="text-rose-700 font-semibold">
+                              Never marked exempt
+                              <span className="block text-[10px] font-normal text-rose-600">
+                                no tax charged
                               </span>
                             </span>
                           ) : (

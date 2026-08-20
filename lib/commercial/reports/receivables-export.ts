@@ -1,6 +1,7 @@
 import { csvEscape as csv } from "@/lib/commercial/csv";
 import { etTodayIso } from "@/lib/date-et";
 import type { ReceivablesReport, ReceivableRow } from "./receivables";
+import { AI_NOTE_MARK } from "./receivables-row-notes";
 
 /**
  * The receivables sheet as a file — ONE builder, used by both the download
@@ -31,10 +32,17 @@ function ageLabel(r: ReceivableRow): string {
   return "Not yet due";
 }
 
+/** A human note, or the drafted one marked so the two never blur together in
+ *  a spreadsheet — where italics and colour don't survive. */
+function noteCell(r: ReceivableRow): string {
+  if (r.note?.trim()) return r.note;
+  return r.aiNote ? `${AI_NOTE_MARK} ${r.aiNote}` : "";
+}
+
 export function receivablesCsv(report: ReceivablesReport, filterLabel?: string | null): string {
   const header = ["Job", "GC", "Type", "Reference", "Billed / open", "Status", "Notes"];
   const line = (r: ReceivableRow) =>
-    [r.jobName, r.accountName, KIND_LABEL[r.kind], r.reference, money(r.openCents), ageLabel(r), r.note ?? ""]
+    [r.jobName, r.accountName, KIND_LABEL[r.kind], r.reference, money(r.openCents), ageLabel(r), noteCell(r)]
       .map(csv)
       .join(",");
 
@@ -49,6 +57,17 @@ export function receivablesCsv(report: ReceivablesReport, filterLabel?: string |
     ["Retention held", "", "", "", money(report.retainageCents), "released at close-out", ""],
   ].map((row) => row.map(csv).join(","));
 
+  // A legend, only when there is something to explain. Without it a "✦" in a
+  // spreadsheet is a stray character.
+  const legend = report.rows.some((r) => !r.note?.trim() && r.aiNote)
+    ? [
+        blank,
+        [`${AI_NOTE_MARK} Drafted automatically from the item's dates and figures — not written by anyone.`, "", "", "", "", "", ""]
+          .map(csv)
+          .join(","),
+      ]
+    : [];
+
   // The filter used to be announced here. It now rides in the file's title
   // block (`csvTitleBlock`), which every export carries — two banners saying
   // overlapping things at the top of one sheet is worse than one saying it
@@ -59,7 +78,7 @@ export function receivablesCsv(report: ReceivablesReport, filterLabel?: string |
     : [];
 
   return (
-    [...banner, header.map(csv).join(","), ...report.rows.map(line), blank, ...totals].join("\r\n") + "\r\n"
+    [...banner, header.map(csv).join(","), ...report.rows.map(line), blank, ...totals, ...legend].join("\r\n") + "\r\n"
   );
 }
 

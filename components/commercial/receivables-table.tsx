@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import type { ReceivableRow } from "@/lib/commercial/reports/receivables";
+import { AI_NOTE_MARK } from "@/lib/commercial/reports/receivables-row-notes";
 
 /**
  * The receivables list — Mary's chase table.
@@ -97,7 +98,7 @@ export function ReceivablesTable({
                 <span className="text-[11px] font-semibold text-rose-700">{r.daysOut}d late</span>
               )}
             </div>
-            <NoteForm rowKey={r.key} note={r.note} action={saveNoteAction} queryString={queryString} />
+            <NoteForm rowKey={r.key} note={r.note} aiNote={r.aiNote} action={saveNoteAction} queryString={queryString} />
           </li>
         ))}
       </ul>
@@ -155,7 +156,7 @@ export function ReceivablesTable({
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  <NoteForm rowKey={r.key} note={r.note} action={saveNoteAction} queryString={queryString} />
+                  <NoteForm rowKey={r.key} note={r.note} aiNote={r.aiNote} action={saveNoteAction} queryString={queryString} />
                 </td>
               </tr>
             ))}
@@ -178,15 +179,33 @@ export function ReceivablesTable({
 function NoteForm({
   rowKey,
   note,
+  aiNote,
   action,
   queryString,
 }: {
   rowKey: string;
   note: string | null;
+  /** A drafted note. Shown ABOVE the empty box, never inside it — a draft in a
+   *  text field becomes a human note the moment somebody hits Save, and then
+   *  nobody can tell which is which. */
+  aiNote?: string | null;
   action: (formData: FormData) => Promise<void>;
   queryString: string;
 }) {
   return (
+    <>
+    {!note && aiNote && (
+      // Marked, quietly. Alex has to be able to tell what Mary knows from what
+      // was worked out from the dates — one is a phone call, the other is
+      // arithmetic — without the row shouting about it.
+      <p
+        className="text-[11px] text-ppp-charcoal-400 italic leading-snug mb-1"
+        title="Drafted automatically from this item's dates and figures. Write over it any time."
+      >
+        <span aria-hidden className="not-italic text-cc-brand-500 mr-0.5">{AI_NOTE_MARK}</span>
+        {aiNote}
+      </p>
+    )}
     <form action={action} className="flex items-center gap-1.5 mt-1.5 sm:mt-0">
       <input type="hidden" name="row_key" value={rowKey} />
       <input type="hidden" name="qs" value={queryString} />
@@ -194,7 +213,7 @@ function NoteForm({
         name="note"
         defaultValue={note ?? ""}
         maxLength={500}
-        placeholder="e.g. 8/19 asked for update"
+        placeholder={aiNote ? "Write what you know" : "e.g. 8/19 asked for update"}
         aria-label="Collection note"
         className="flex-1 min-w-0 px-2 py-1.5 text-base sm:text-[12px] bg-surface border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px] sm:min-h-[32px]"
       />
@@ -205,5 +224,6 @@ function NoteForm({
         Save
       </PendingSubmitButton>
     </form>
+    </>
   );
 }

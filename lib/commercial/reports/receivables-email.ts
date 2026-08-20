@@ -3,6 +3,7 @@ import "server-only";
 import { sendEmail } from "@/lib/email/resend";
 import { getReceivablesReport, type ReceivableRow } from "./receivables";
 import { getCachedBrief } from "./receivables-brief";
+import { AI_NOTE_MARK } from "./receivables-row-notes";
 import { receivablesCsv, receivablesFilename } from "./receivables-export";
 import { CSV_BOM } from "./export-guard";
 import { etTodayIso } from "@/lib/date-et";
@@ -68,9 +69,29 @@ function ageCell(r: ReceivableRow): string {
 export async function sendReceivablesToAlex(): Promise<
   { ok: true; to: string[]; rowCount: number } | { ok: false; error: string }
 > {
-  const report = await getReceivablesReport();
+  let report = await getReceivablesReport();
   if (report.rows.length === 0) {
     return { ok: false, error: "Nothing is outstanding — there's no sheet to send." };
+  }
+  // Draft the silent rows before this goes out. "$3,135.00 · no note" tells
+  // Alex nothing he can act on, and the facts that would are already on the
+  // row. Best-effort and time-boxed: a slow or failed model call costs the
+  // drafts, never the send.
+  try {
+    const { rowsNeedingNotes, generateRowNotes, withDraftedNotes } = await import(
+      "./receivables-row-notes"
+    );
+    if (rowsNeedingNotes(report).some((r) => !r.aiNote)) {
+      const drafted = await Promise.race([
+        generateRowNotes(report),
+        new Promise<{ ok: false; error: string }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, error: "timeout" }), 20_000)
+        ),
+      ]);
+      if (drafted.ok) report = withDraftedNotes(report, drafted.notes);
+    }
+  } catch {
+    // Notes are a nicety; the sheet is the point.
   }
   const { brief, stale } = await getCachedBrief(report);
   const to = receivablesRecipients();
@@ -83,7 +104,15 @@ export async function sendReceivablesToAlex(): Promise<
   <td style="padding:8px 10px;border-bottom:1px solid #eee;">
     <div style="font-weight:600;color:#172B4D;">${escape(r.jobName)}</div>
     <div style="font-size:11px;color:#6b7280;">${escape(r.accountName)} · ${escape(KIND_LABEL[r.kind])} · ${escape(r.reference)}</div>
-    ${r.note ? `<div style="font-size:11px;color:#6b7280;font-style:italic;margin-top:2px;">${escape(r.note)}</div>` : ""}
+    ${
+      r.note
+        ? `<div style="font-size:11px;color:#6b7280;font-style:italic;margin-top:2px;">${escape(r.note)}</div>`
+        : r.aiNote
+          // Marked, quietly. Alex has to be able to tell what Mary knows from
+          // what was worked out from the dates without the row shouting.
+          ? `<div style="font-size:11px;color:#9ca3af;font-style:italic;margin-top:2px;"><span style="color:#EE662E;font-style:normal;">${AI_NOTE_MARK}</span> ${escape(r.aiNote)}</div>`
+          : ""
+    }
   </td>
   <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;font-weight:700;color:#172B4D;">${money(r.openCents)}</td>
   <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;font-size:11px;">${ageCell(r)}</td>
@@ -142,6 +171,13 @@ ${rowsHtml}
 
   <p style="margin:20px 0;"><a href="${link}" style="display:inline-block;padding:10px 18px;background:#EE662E;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the live report →</a></p>
   <p style="font-size:11px;color:#6b7280;">The same sheet is attached as a spreadsheet.</p>
+  ${
+    // A legend, only when there is something to explain — otherwise it's a
+    // disclaimer on an email that doesn't need one.
+    report.rows.some((r) => !r.note && r.aiNote)
+      ? `<p style="font-size:11px;color:#9ca3af;margin-top:20px;"><span style="color:#EE662E;">${AI_NOTE_MARK}</span> Notes marked this way were drafted from the item's dates and figures — not written by anyone. Anything unmarked is a person's note.</p>`
+      : ""
+  }
   <p style="font-size:12px;color:#666;margin-top:28px;">— PPP Commercial Command Center</p>
 </div>`;
 

@@ -36,6 +36,10 @@ function report(rows: ReceivableRow[]): ReceivablesReport {
     topGc: null,
     unfilteredCount: rows.length,
     undatedExcluded: 0,
+    noDueDateCount: rows.filter((r) => r.kind !== "retainage" && r.daysOut === null).length,
+    noDueDateCents: rows
+      .filter((r) => r.kind !== "retainage" && r.daysOut === null)
+      .reduce((n, r) => n + r.openCents, 0),
     filtered: false,
     bookFingerprint: rows.map((r) => r.key).sort().join("|"),
   };

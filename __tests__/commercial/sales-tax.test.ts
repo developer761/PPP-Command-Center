@@ -23,6 +23,7 @@ function row(over: Partial<SalesTaxRow> = {}): SalesTaxRow {
     taxPct: 8.625,
     exempt: false,
     exemptSource: null,
+    exemptKind: null,
     certNumber: null,
     href: "/x",
     ...over,
@@ -30,7 +31,13 @@ function row(over: Partial<SalesTaxRow> = {}): SalesTaxRow {
 }
 
 const exempt = (over: Partial<SalesTaxRow> = {}) =>
-  row({ taxCents: 0, exempt: true, taxPct: 0, ...over });
+  row({
+    taxCents: 0,
+    exempt: true,
+    taxPct: 0,
+    exemptKind: over.certNumber ? "certified" : over.exemptSource ? "no_cert" : "unmarked",
+    ...over,
+  });
 
 describe("summarizeSalesTax", () => {
   it("totals the taxable base and the tax collected", () => {
@@ -109,5 +116,32 @@ describe("summarizeSalesTax", () => {
     expect(r.taxCollectedCents).toBe(0);
     expect(r.byRate).toEqual([]);
     expect(r.uncertifiedCount).toBe(0);
+  });
+
+  // Three different situations, and a filing preparer treats them differently.
+  describe("why no tax was charged", () => {
+    it("separates a missing certificate from a missing decision", () => {
+      const r = summarizeSalesTax([
+        exempt({ invoiceId: "ok", subtotalCents: 10_000_00, certNumber: "EX-1", exemptSource: "opportunity" }),
+        exempt({ invoiceId: "paperwork", subtotalCents: 20_000_00, exemptSource: "account" }),
+        exempt({ invoiceId: "nobody-decided", subtotalCents: 30_000_00 }),
+      ]);
+      expect(r.noCertCount).toBe(1);
+      expect(r.noCertBaseCents).toBe(20_000_00);
+      // The worse one: in NY everything is taxable unless an exemption is
+      // claimed, so this is likely under-billed tax, not an unfiled document.
+      expect(r.unmarkedCount).toBe(1);
+      expect(r.unmarkedBaseCents).toBe(30_000_00);
+      // Both are still exposure, so the headline counts them together.
+      expect(r.uncertifiedCount).toBe(2);
+      expect(r.uncertifiedBaseCents).toBe(50_000_00);
+    });
+
+    it("a certified exemption is in neither bucket", () => {
+      const r = summarizeSalesTax([exempt({ certNumber: "EX-1", exemptSource: "opportunity" })]);
+      expect(r.uncertifiedCount).toBe(0);
+      expect(r.noCertCount).toBe(0);
+      expect(r.unmarkedCount).toBe(0);
+    });
   });
 });

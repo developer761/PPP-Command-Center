@@ -49,6 +49,19 @@ export type SalesTaxRow = {
   exempt: boolean;
   /** Where the exemption came from — the job, the account, or nowhere. */
   exemptSource: "opportunity" | "account" | null;
+  /**
+   * WHY no tax was charged, which is three different situations a filing
+   * preparer has to treat differently:
+   *
+   *  · `certified`   — marked exempt, certificate on file. Defensible.
+   *  · `no_cert`     — marked exempt, no certificate. Get the paperwork.
+   *  · `unmarked`    — nobody ever marked it exempt and no tax was charged.
+   *                    The worst of the three: not a missing document, a
+   *                    missing DECISION. In NY everything is taxable unless
+   *                    an exemption is claimed, so this is likely under-billed
+   *                    tax rather than an unfiled certificate.
+   */
+  exemptKind: "certified" | "no_cert" | "unmarked" | null;
   /** The certificate on file. Null on an exempt invoice = the compliance risk. */
   certNumber: string | null;
   href: string;
@@ -65,8 +78,16 @@ export type SalesTaxReport = {
   exemptBaseCents: number;
   exemptCount: number;
   /** Exempt invoices with NO certificate number anywhere. The audit exposure. */
+  /** Exempt with no certificate — `no_cert` and `unmarked` together, since
+   *  both are exposure. Broken out below. */
   uncertifiedCount: number;
   uncertifiedBaseCents: number;
+  /** Marked exempt, paperwork missing. */
+  noCertCount: number;
+  noCertBaseCents: number;
+  /** Never marked exempt at all, and billed no tax. */
+  unmarkedCount: number;
+  unmarkedBaseCents: number;
   byRate: SalesTaxByRate[];
   /** Every GC in the unfiltered set, for the picker. */
   gcOptions: { id: string; name: string }[];
@@ -106,6 +127,8 @@ export function summarizeSalesTax(
   const taxed = rows.filter((r) => !r.exempt);
   const exempt = rows.filter((r) => r.exempt);
   const uncertified = exempt.filter((r) => !r.certNumber);
+  const noCert = exempt.filter((r) => r.exemptKind === "no_cert");
+  const unmarked = exempt.filter((r) => r.exemptKind === "unmarked");
 
   const rateMap = new Map<number, SalesTaxByRate>();
   for (const r of taxed) {
@@ -126,6 +149,10 @@ export function summarizeSalesTax(
     exemptCount: exempt.length,
     uncertifiedCount: uncertified.length,
     uncertifiedBaseCents: uncertified.reduce((n, r) => n + r.subtotalCents, 0),
+    noCertCount: noCert.length,
+    noCertBaseCents: noCert.reduce((n, r) => n + r.subtotalCents, 0),
+    unmarkedCount: unmarked.length,
+    unmarkedBaseCents: unmarked.reduce((n, r) => n + r.subtotalCents, 0),
     byRate: [...rateMap.values()].sort((a, b) => b.taxCents - a.taxCents),
     gcOptions: [...new Map(allRows.map((r) => [r.accountId, r.accountName])).entries()]
       .map(([id, name]) => ({ id, name }))
@@ -230,6 +257,16 @@ export async function getSalesTaxReport(
       taxPct: Number(inv.tax_pct) || 0,
       exempt,
       exemptSource,
+      exemptKind: !exempt
+        ? null
+        : certNumber?.trim()
+          ? "certified"
+          // Marked exempt somewhere but no certificate, versus never marked at
+          // all — the second is a decision nobody made, not a document nobody
+          // filed.
+          : resolved.exempt
+            ? "no_cert"
+            : "unmarked",
       certNumber: certNumber?.trim() || null,
       href: `/commercial/invoices/${inv.id}`,
     });
