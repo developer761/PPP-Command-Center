@@ -3,7 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import PlatformSwitcher from "@/components/platform-switcher";
 
 /**
@@ -36,23 +35,10 @@ type NavItem = {
   icon: React.ReactNode;
 };
 
-/** A collapsible parent that nests leaf items (e.g. "Delivery Tools" wraps the
- *  six post-contract production tools so Post-Contract reads as 3 rows, not 9). */
-type NavGroup = {
-  group: string;
-  icon: React.ReactNode;
-  items: NavItem[];
-};
-
-type NavEntry = NavItem | NavGroup;
-
-function isGroup(e: NavEntry): e is NavGroup {
-  return (e as NavGroup).group !== undefined;
-}
-
-/** A heading is optional: it earns its place by grouping things. A section
- *  whose heading would just name its only child gets none. */
-type NavSection = { heading?: string; items: NavEntry[] };
+/** Every section carries a heading. An unlabelled one inherits the label above
+ *  it — see the Company section below, which shipped without one and came out
+ *  reading as part of Libraries. */
+type NavSection = { heading: string; items: NavItem[] };
 
 // Shared row geometry for every nav row (leaf, group header, disabled). min-h
 // clears the 44px mobile tap-target floor; desktop keeps its tighter rhythm.
@@ -158,21 +144,8 @@ type Props = {
 
 export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSeeFinance = false, crewOnly = false, onNavigate }: Props) {
   const pathname = usePathname();
-  // Manual expand/collapse overrides for the collapsible groups, keyed by group
-  // label. Undefined = follow the auto rule (open when a child is active).
-  const [groupOverride, setGroupOverride] = useState<Record<string, boolean>>({});
-  // Reset manual overrides on navigation so an explicit nav to a child always
-  // wins over a stale collapse — a manual collapse only lasts for the current
-  // page (edge-audit MED: a sticky collapse could otherwise hide the active
-  // tool after cross-navigation).
-  useEffect(() => {
-    setGroupOverride((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-  }, [pathname]);
-
   // Drop admin-only rows (Access) for non-admins so a Commercial tester never
   // sees a link that would just bounce them. The page redirects too (defense).
-  // Recurse into collapsible groups so an admin-only leaf inside a group is
-  // filtered the same way as a top-level one.
   const sections = crewOnly
     ? // A crew login can reach exactly the crew surfaces. Every other item in
       // navSections — Accounts, Opportunities, Proposals, Invoices, Reports,
@@ -194,22 +167,9 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
       ]
     : navSections.map((s) => ({
     ...s,
-    items: s.items
-      .map((entry) =>
-        isGroup(entry)
-          ? {
-              ...entry,
-              items: entry.items.filter(
-                (it) => (!it.adminOnly || isAdmin) && (!it.financeOnly || canSeeFinance)
-              ),
-            }
-          : entry
-      )
-      .filter((entry) =>
-        isGroup(entry)
-          ? entry.items.length > 0
-          : (!entry.adminOnly || isAdmin) && (!entry.financeOnly || canSeeFinance)
-      ),
+    items: s.items.filter(
+      (entry) => (!entry.adminOnly || isAdmin) && (!entry.financeOnly || canSeeFinance)
+    ),
   }))
     // Every section carries a heading now, so a section that role-gating has
     // emptied would render a label with nothing under it — the mirror of the
@@ -253,10 +213,7 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
   // returns to the nav, the override starts working again on its own.
   const renderedHrefs = new Set<string>();
   for (const s of sections) {
-    for (const entry of s.items) {
-      if (isGroup(entry)) for (const i of entry.items) renderedHrefs.add(i.href);
-      else renderedHrefs.add(entry.href);
-    }
+    for (const entry of s.items) renderedHrefs.add(entry.href);
   }
   const activeOverride =
     wantedOverride && renderedHrefs.has(wantedOverride) ? wantedOverride : null;
@@ -359,47 +316,7 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
               </div>
             )}
             <ul className="space-y-0.5">
-              {section.items.map((entry) => {
-                if (isGroup(entry)) {
-                  const childActive = entry.items.some((it) => isActive(it.href));
-                  const open = groupOverride[entry.group] ?? childActive;
-                  return (
-                    <li key={entry.group}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setGroupOverride((prev) => ({ ...prev, [entry.group]: !open }))
-                        }
-                        aria-expanded={open}
-                        className={[
-                          NAV_ROW,
-                          "w-full",
-                          childActive && !open
-                            ? "text-cc-brand-700"
-                            : "text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-50",
-                        ].join(" ")}
-                      >
-                        <span className={childActive && !open ? "text-cc-brand-700" : "text-ppp-charcoal-500"}>
-                          {entry.icon}
-                        </span>
-                        <span className="flex-1 text-left">{entry.group}</span>
-                        <span
-                          aria-hidden
-                          className={`shrink-0 text-ppp-charcoal-400 transition-transform ${open ? "rotate-180" : ""}`}
-                        >
-                          <IconChevronDown />
-                        </span>
-                      </button>
-                      {open && (
-                        <ul className="mt-0.5 ml-3 pl-3 border-l border-ppp-charcoal-100 space-y-0.5">
-                          {entry.items.map((it) => renderLeaf(it))}
-                        </ul>
-                      )}
-                    </li>
-                  );
-                }
-                return renderLeaf(entry);
-              })}
+              {section.items.map((entry) => renderLeaf(entry))}
             </ul>
           </div>
         ))}
@@ -505,13 +422,6 @@ function IconChart() {
 
 
 
-function IconChevronDown() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
 function IconGear() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
