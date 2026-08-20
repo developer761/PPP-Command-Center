@@ -1,6 +1,5 @@
-import "server-only";
-
-import { createClient } from "@supabase/supabase-js";
+// Types + a pure roll-up only — no data access left in this file since the
+// duplicate loader was removed (see the note below).
 
 /**
  * Connects the customer-form pipeline back into the dashboard. For a given
@@ -39,120 +38,24 @@ export type FormStatus =
   | ({ status: "submitted"; woId: string; token: string; sentAt: string | null; openedAt: string | null; submittedAt: string; formUrl: string } & WithDeadline)
   | ({ status: "expired"; woId: string; token: string; sentAt: string | null; openedAt: string | null; expiredAt: string; formUrl: string } & WithDeadline);
 
-type TokenRow = {
-  token: string;
-  work_order_id: string;
-  sent_at: string | null;
-  opened_at: string | null;
-  submitted_at: string | null;
-  expires_at: string;
-  created_at: string;
-};
 
-function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
-}
 
-/**
- * Look up form status for many WOs in a single query. Returns a Map keyed by
- * work_order_id so callers can do constant-time lookups while rendering.
+/*
+ * `getFormStatusByWO` used to live here — a SECOND loader producing FormStatus,
+ * alongside the one in lib/materials-page-data.ts. It had no callers left; it
+ * was removed rather than left sitting because a duplicate loader is not inert.
  *
- * If no token exists for a WO, the entry IS added (with status: "none") so
- * UI loops can render a consistent default badge without an existence check.
+ * Round 3 #02/#03 was exactly this: attribution was added to one of the two
+ * progress loaders and not the other, so the page Kate actually tested kept
+ * reading "Customer Submitted" while the code looked correct. This file would
+ * have been the next instance — it built FormStatus WITHOUT `colorDeadline` or
+ * `expiresAt` (R4.5), so reinstating it would silently blank both dates on the
+ * work-order page with nothing to grep for.
+ *
+ * lib/materials-page-data.ts#getMaterialsPageAuxData is the single loader. If a
+ * second one is ever genuinely needed, add a parity test alongside
+ * __tests__/wo-progress/loader-parity.test.ts first.
  */
-export async function getFormStatusByWO(workOrderIds: string[]): Promise<Map<string, FormStatus>> {
-  const out = new Map<string, FormStatus>();
-  if (workOrderIds.length === 0) return out;
-
-  // Seed all-none defaults; any matched WO overrides.
-  for (const id of workOrderIds) {
-    out.set(id, { status: "none", woId: id });
-  }
-
-  const sb = adminClient();
-  // Pull all tokens for these WOs, sorted newest-first so we can pick the
-  // first hit per WO as the "current" token. PPP shouldn't have many tokens
-  // per WO (1-2 typically; admin only re-sends on bounce or expiry).
-  //
-  // CRITICAL: include kind so we can skip kind='preview' rows below — admin
-  // Preview clicks must NOT show up as customer activity. Audit 2026-06-07.
-  const { data, error } = await sb
-    .from("customer_form_tokens")
-    .select("token, work_order_id, sent_at, opened_at, submitted_at, expires_at, created_at, kind")
-    .in("work_order_id", workOrderIds)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("[customer-form] getFormStatusByWO failed:", error.message);
-    return out;
-  }
-
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
-  const seen = new Set<string>();
-  const now = Date.now();
-
-  for (const row of (data as (TokenRow & { kind?: string | null })[]) ?? []) {
-    // Skip preview tokens — they're admin-generated test links, not real
-    // customer sends. Without this filter, a Preview click would override
-    // the real send token's status (most-recent-by-created_at wins below).
-    if (row.kind === "preview") continue;
-    if (seen.has(row.work_order_id)) continue; // only keep the most recent per WO
-    seen.add(row.work_order_id);
-    const formUrl = `${baseUrl}/select/${row.token}`;
-
-    if (row.submitted_at) {
-      out.set(row.work_order_id, {
-        status: "submitted",
-        woId: row.work_order_id,
-        token: row.token,
-        sentAt: row.sent_at,
-        openedAt: row.opened_at,
-        submittedAt: row.submitted_at,
-        formUrl,
-      });
-      continue;
-    }
-    // Expired check — only the most recent token. If admin re-sends after
-    // expiry, the newer row supersedes via `seen` dedupe above.
-    const expiresMs = new Date(row.expires_at).getTime();
-    if (!isNaN(expiresMs) && expiresMs < now) {
-      out.set(row.work_order_id, {
-        status: "expired",
-        woId: row.work_order_id,
-        token: row.token,
-        sentAt: row.sent_at,
-        openedAt: row.opened_at,
-        expiredAt: row.expires_at,
-        formUrl,
-      });
-      continue;
-    }
-    if (row.opened_at) {
-      out.set(row.work_order_id, {
-        status: "opened",
-        woId: row.work_order_id,
-        token: row.token,
-        sentAt: row.sent_at,
-        openedAt: row.opened_at,
-        formUrl,
-      });
-      continue;
-    }
-    out.set(row.work_order_id, {
-      status: "sent",
-      woId: row.work_order_id,
-      token: row.token,
-      sentAt: row.sent_at,
-      formUrl,
-    });
-  }
-
-  return out;
-}
 
 /** Roll-up counts across all WOs — used for the page-level summary chip. */
 export function summarizeStatuses(statuses: Iterable<FormStatus>): {
