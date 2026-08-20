@@ -13,6 +13,8 @@ import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orde
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getTransactionsReport, setPaymentDeposited, type TxnFilters, type TxnDirection } from "@/lib/commercial/reports/transactions";
+import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
+import { getReimbursementsReport, setReimbursementSettled } from "@/lib/commercial/reports/reimbursements";
 import { TransactionsLedger } from "@/components/commercial/transactions-ledger";
 import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type ActivityPreset } from "@/lib/commercial/reports/presets";
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
@@ -147,11 +149,13 @@ async function saveNoteAction(formData: FormData) {
   const res = await setReceivableNote(rowKey, String(formData.get("note") ?? ""), user.id);
   revalidatePath(BASE);
   revalidatePath("/commercial/reports/receivables");
-  redirect(
-    res.ok
-      ? `${BASE}${qs}${sep}saved=1`
-      : `${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`
-  );
+  // Same rule as the deposit tick: a successful save keeps you exactly where
+  // you were, mid-list, rather than navigating (and scrolling) to the top. The
+  // saved note re-renders in place, which is its own confirmation — a banner
+  // you have to scroll back up to read is not.
+  if (!res.ok) {
+    redirect(`${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`);
+  }
 }
 
 /**
@@ -168,12 +172,40 @@ async function depositAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const paymentId = String(formData.get("payment_id") ?? "");
-  const qs = String(formData.get("qs") ?? "?view=transactions");
-  const sep = qs.includes("?") ? "&" : "?";
-  if (!paymentId) redirect(`${BASE}${qs}`);
+  if (!paymentId) return;
   const res = await setPaymentDeposited(paymentId, String(formData.get("deposited")) === "1");
+  // NO redirect on success — Karan: "make sure it doesnt redirect me to a
+  // different page but just keeps me there". Even a redirect to this same URL
+  // is a navigation, and a navigation scrolls you back to the top. Ticking off
+  // a bank statement is thirty of these in a row; being thrown to the top of
+  // the page after each one makes the feature unusable. `revalidatePath` alone
+  // re-renders the row in place and leaves the scroll position alone.
   revalidatePath(BASE);
-  redirect(res.ok ? `${BASE}${qs}` : `${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`);
+  if (!res.ok) {
+    const qs = String(formData.get("qs") ?? "?view=transactions");
+    const sep = qs.includes("?") ? "&" : "?";
+    redirect(`${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`);
+  }
+}
+
+/**
+ * Mark a reimbursement paid back (or un-mark it). Same rule as the deposit
+ * tick: no navigation on success, so paying out a list of them doesn't throw
+ * you to the top of the page after every one.
+ */
+async function settleReimbursementAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const purchaseId = String(formData.get("purchase_id") ?? "");
+  if (!purchaseId) return;
+  const res = await setReimbursementSettled(purchaseId, String(formData.get("settled")) === "1");
+  revalidatePath(BASE);
+  if (!res.ok) {
+    redirect(`${BASE}?view=reimbursements&error=${encodeURIComponent(res.error)}`);
+  }
 }
 
 /** Email the sheet to Alex. Explicit click only — no auto-send from here.
@@ -221,6 +253,9 @@ const VIEWS = [
   { key: "aging", label: "AR aging" },
   { key: "cash", label: "Cash flow" },
   { key: "costs", label: "Job costs" },
+  // The last two of Alex's reports the platform didn't carry.
+  { key: "tax", label: "Sales tax" },
+  { key: "reimbursements", label: "Reimbursements" },
 ] as const;
 type View = (typeof VIEWS)[number]["key"];
 
@@ -284,6 +319,13 @@ export default async function AccountingPage({
     // The ledger carries its own filters back, so leaving it and returning
     // doesn't silently reset the month you were reconciling.
     if (v === "transactions") return `${BASE}${txQuery()}`;
+    // Carry the period across — these three read the same window, and losing
+    // it on a tab switch means re-picking the month every time.
+    if (v === "tax" || v === "reimbursements") {
+      const p = new URLSearchParams({ view: v });
+      if (txPeriod !== ACTIVITY_DEFAULT) p.set("tp", txPeriod);
+      return `${BASE}?${p.toString()}`;
+    }
     const qs = viewQs(v);
     return `${BASE}?view=${v}${qs ? `&${qs.slice(1)}` : ""}`;
   };
@@ -311,6 +353,20 @@ export default async function AccountingPage({
     view === "receivables" ? await getReceivablesReport(Date.now(), filtersFor(q)) : null;
   // Same rule as aging: only paid for on the view that renders it.
   const transactions = view === "transactions" ? await getTransactionsReport(txFilters) : null;
+  // Both windowed by the same shared activity preset the ledger uses, so a
+  // period means the same thing on every view of this page.
+  const salesTax =
+    view === "tax"
+      ? await getSalesTaxReport({
+          fromYmd: txRange?.fromYmd,
+          toYmd: txRange?.toYmd,
+          uncertifiedOnly: pickFirst(sp.nocert) === "1" || undefined,
+        })
+      : null;
+  const reimbursements =
+    view === "reimbursements"
+      ? await getReimbursementsReport({ fromYmd: txRange?.fromYmd, toYmd: txRange?.toYmd })
+      : null;
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
@@ -1112,6 +1168,225 @@ export default async function AccountingPage({
         </section>
       )}
 
+      {/* ── Sales tax, in place ────────────────────────────────────────
+             A filing needs the collected total; the number that COSTS money is
+             the exempt one with no certificate behind it. ── */}
+      {view === "tax" && salesTax && (
+        <section className="space-y-2.5">
+          <SectionHead
+            title="Sales tax"
+            hint="What was charged, and what wasn't — with the paperwork behind each exemption."
+          />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Tile label="Tax collected" value={formatCentsFull(salesTax.taxCollectedCents)} tone="brand" sub={`on ${formatCentsCompact(salesTax.taxableBaseCents)} taxable`} />
+            <Tile label="Taxable base" value={formatCentsFull(salesTax.taxableBaseCents)} tone="navy" sub="pre-tax, invoices that carried tax" />
+            <Tile label="Billed exempt" value={formatCentsFull(salesTax.exemptBaseCents)} tone="neutral" sub={`${salesTax.exemptCount} invoice${salesTax.exemptCount === 1 ? "" : "s"}`} />
+            <Tile
+              label="No certificate"
+              value={formatCentsFull(salesTax.uncertifiedBaseCents)}
+              tone={salesTax.uncertifiedCount > 0 ? "rose" : "emerald"}
+              sub={salesTax.uncertifiedCount > 0 ? `${salesTax.uncertifiedCount} exempt invoice${salesTax.uncertifiedCount === 1 ? "" : "s"}` : "every exemption documented"}
+            />
+          </div>
+
+          {salesTax.uncertifiedCount > 0 && (
+            // The whole reason to build this rather than just total the tax
+            // column: an exemption you can't produce a certificate for is an
+            // assessment waiting to happen.
+            <p className="text-[12px] rounded-lg border px-3 py-2 border-rose-200 bg-rose-50 text-rose-900">
+              <strong>{salesTax.uncertifiedCount}</strong> exempt invoice
+              {salesTax.uncertifiedCount === 1 ? "" : "s"} — {formatCentsFull(salesTax.uncertifiedBaseCents)} —
+              have no exemption certificate on file. NY capital-improvement exemptions are
+              per-project, so the certificate belongs on the job that claimed it.{" "}
+              <Link href={`${BASE}?view=tax&nocert=1${txPeriod !== ACTIVITY_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="font-semibold underline">
+                Show just those
+              </Link>
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <NavSelect
+              label="Issued"
+              value={txPeriod}
+              ariaLabel="Filter sales tax by period"
+              choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
+                value: p.key,
+                label: p.label,
+                href: `${BASE}?view=tax${p.key === ACTIVITY_DEFAULT ? "" : `&tp=${p.key}`}${pickFirst(sp.nocert) === "1" ? "&nocert=1" : ""}`,
+              }))}
+            />
+            {pickFirst(sp.nocert) === "1" && (
+              <Link href={`${BASE}?view=tax${txPeriod !== ACTIVITY_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] sm:min-h-[38px] px-1">
+                Show all invoices
+              </Link>
+            )}
+            <ExportCsvLink
+              href="/api/commercial/reports/sales-tax/export"
+              params={{
+                ...(txPeriod !== ACTIVITY_DEFAULT ? { tp: txPeriod } : {}),
+                ...(pickFirst(sp.nocert) === "1" ? { nocert: "1" } : {}),
+              }}
+              label="Export for filing"
+              disabled={salesTax.rows.length === 0}
+              disabledHint="Nothing to export in this view"
+            />
+          </div>
+
+          {salesTax.byRate.length > 1 && (
+            <MiniTable
+              title="By rate"
+              head={["Rate", "Taxable base", "Tax"]}
+              rows={salesTax.byRate.map((r) => [
+                `${r.taxPct.toFixed(3).replace(/\.?0+$/, "")}%`,
+                formatCentsFull(r.baseCents),
+                formatCentsFull(r.taxCents),
+              ])}
+              empty="No tax charged in this window."
+            />
+          )}
+
+          {salesTax.rows.length === 0 ? (
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
+              <p className="px-4 py-10 text-center text-[13px] text-ppp-charcoal-500">
+                No issued invoices in this window.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12.5px] min-w-[760px]">
+                  <thead>
+                    <tr className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 bg-ppp-charcoal-50/60 text-left">
+                      <th className="px-3 py-2.5">Invoice</th>
+                      <th className="px-3 py-2.5">Job</th>
+                      <th className="px-3 py-2.5 text-right">Taxable base</th>
+                      <th className="px-3 py-2.5 text-right">Rate</th>
+                      <th className="px-3 py-2.5 text-right">Tax</th>
+                      <th className="px-3 py-2.5">Exemption</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ppp-charcoal-100">
+                    {salesTax.rows.map((r) => (
+                      <tr key={r.invoiceId} className="hover:bg-cc-brand-50/30">
+                        <td className="px-3 py-2.5">
+                          <Link href={r.href} className="font-semibold text-ppp-charcoal hover:text-cc-brand-700 hover:underline">{r.invoiceNumber}</Link>
+                          <span className="block text-[10.5px] text-ppp-charcoal-400 tabular-nums">{r.issuedYmd}</span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="text-ppp-charcoal">{r.jobName}</span>
+                          <span className="block text-[10.5px] text-ppp-charcoal-400">{r.accountName}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsFull(r.subtotalCents)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-ppp-charcoal-500">
+                          {r.exempt ? "—" : `${r.taxPct.toFixed(3).replace(/\.?0+$/, "")}%`}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{r.exempt ? "—" : formatCentsFull(r.taxCents)}</td>
+                        <td className="px-3 py-2.5">
+                          {!r.exempt ? (
+                            <span className="text-ppp-charcoal-400">Taxed</span>
+                          ) : r.certNumber ? (
+                            <span className="text-emerald-700">
+                              Cert #{r.certNumber}
+                              <span className="block text-[10px] text-ppp-charcoal-400">
+                                {r.exemptSource === "opportunity" ? "on the job" : "on the account"}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-rose-700 font-semibold">No certificate</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-ppp-charcoal-200 bg-ppp-charcoal-50/60 font-bold">
+                      <td className="px-3 py-2.5" colSpan={2}>Total</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsFull(salesTax.taxableBaseCents + salesTax.exemptBaseCents)}</td>
+                      <td />
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsFull(salesTax.taxCollectedCents)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Reimbursements, in place ───────────────────────────────────
+             His report lists what was PAID. What's still OWED is the half
+             nobody has: nobody chases the company for $40 of caulk. ── */}
+      {view === "reimbursements" && reimbursements && (
+        <section className="space-y-2.5">
+          <SectionHead
+            title="Reimbursements"
+            hint="Money someone fronted for a job. Outstanding first — nobody chases the company for it."
+          />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Tile
+              label="Owed out"
+              value={formatCentsFull(reimbursements.owedCents)}
+              tone={reimbursements.owedCents > 0 ? "amber" : "emerald"}
+              sub={reimbursements.owed.length > 0 ? `${reimbursements.owed.length} item${reimbursements.owed.length === 1 ? "" : "s"}` : "everyone's square"}
+            />
+            <Tile label="People owed" value={String(reimbursements.byPerson.length)} tone="navy" sub={reimbursements.byPerson[0] ? `longest ${reimbursements.byPerson[0].oldestDays}d` : "none"} />
+            <Tile label="Paid back" value={formatCentsFull(reimbursements.settledCents)} tone="emerald" sub={`${reimbursements.settled.length} in this window`} />
+            <Tile
+              label="No receipt"
+              value={String(reimbursements.noReceiptCount)}
+              tone={reimbursements.noReceiptCount > 0 ? "amber" : "neutral"}
+              sub={reimbursements.noReceiptCount > 0 ? "attach before paying" : "all documented"}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <NavSelect
+              label="Paid back"
+              value={txPeriod}
+              ariaLabel="Filter settled reimbursements by period"
+              choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
+                value: p.key,
+                label: p.label,
+                href: `${BASE}?view=reimbursements${p.key === ACTIVITY_DEFAULT ? "" : `&tp=${p.key}`}`,
+              }))}
+            />
+            <span className="text-[11px] text-ppp-charcoal-400">
+              {/* Said out loud: the period narrows the settled list only. */}
+              Narrows what was paid back — everything still owed always shows.
+            </span>
+          </div>
+
+          {reimbursements.byPerson.length > 0 && (
+            <MiniTable
+              title="Owed, by person"
+              head={["Person", "Owed", "Waiting"]}
+              rows={reimbursements.byPerson.map((p) => [
+                p.person,
+                formatCentsFull(p.owedCents),
+                `${p.oldestDays}d`,
+              ])}
+              empty="Nobody is owed anything."
+            />
+          )}
+
+          <ReimbursementList
+            title="Still owed"
+            rows={reimbursements.owed}
+            settleAction={settleReimbursementAction}
+            empty="Nothing outstanding — everyone has been paid back."
+            settled={false}
+          />
+          <ReimbursementList
+            title="Paid back"
+            rows={reimbursements.settled}
+            settleAction={settleReimbursementAction}
+            empty="Nothing was paid back in this window."
+            settled
+          />
+        </section>
+      )}
+
       {/* Invoices is the one destination still a link: it's a workspace where
           records are created and edited, not a read-only view. */}
       <section className="border-t border-ppp-charcoal-100 pt-4 flex flex-wrap items-center gap-2">
@@ -1129,6 +1404,87 @@ export default async function AccountingPage({
           All reports →
         </Link>
       </section>
+    </div>
+  );
+}
+
+/**
+ * One reimbursement list — owed or paid back, same shape.
+ *
+ * The settle control is a single click with no navigation, like the deposit
+ * tick: paying out a list of these is several in a row, and a page that jumps
+ * to the top after each one doesn't get used.
+ */
+function ReimbursementList({
+  title,
+  rows,
+  settleAction,
+  empty,
+  settled,
+}: {
+  title: string;
+  rows: Awaited<ReturnType<typeof getReimbursementsReport>>["owed"];
+  settleAction: (formData: FormData) => Promise<void>;
+  empty: string;
+  settled: boolean;
+}) {
+  return (
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <h3 className="text-[13px] font-bold text-ppp-charcoal px-3.5 py-2.5 border-b border-ppp-charcoal-100 flex items-baseline gap-2">
+        {title}
+        <span className="text-[11px] font-normal text-ppp-charcoal-500">
+          {rows.length} item{rows.length === 1 ? "" : "s"}
+        </span>
+      </h3>
+      {rows.length === 0 ? (
+        <p className="px-3.5 py-8 text-center text-[12.5px] text-ppp-charcoal-500">{empty}</p>
+      ) : (
+        <ul className="divide-y divide-ppp-charcoal-100">
+          {rows.map((r) => (
+            <li key={r.purchaseId} className="px-3.5 py-2.5 flex items-start justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-ppp-charcoal">
+                  {r.person}
+                  <span className="ml-2 font-normal text-ppp-charcoal-500">{r.description ?? r.category}</span>
+                </div>
+                <div className="text-[11px] text-ppp-charcoal-400">
+                  {r.purchasedYmd}
+                  {r.jobName ? ` · ${r.jobName}` : " · no job"}
+                  {settled
+                    ? r.settledYmd
+                      ? ` · paid ${r.settledYmd}`
+                      : ""
+                    : ` · ${r.ageDays}d waiting`}
+                  {/* Flagged on the row it affects: paying without a receipt
+                      is the one that gets argued about later. */}
+                  {!r.hasReceipt && !settled && (
+                    <span className="text-amber-700 font-semibold"> · no receipt</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-condensed text-[15px] font-black tabular-nums">
+                  {formatCentsFull(r.amountCents)}
+                </span>
+                <form action={settleAction}>
+                  <input type="hidden" name="purchase_id" value={r.purchaseId} />
+                  <input type="hidden" name="settled" value={settled ? "0" : "1"} />
+                  <PendingSubmitButton
+                    pendingLabel="…"
+                    className={`inline-flex items-center px-2.5 rounded-md border text-[11.5px] font-semibold min-h-[44px] sm:min-h-[32px] ${
+                      settled
+                        ? "border-ppp-charcoal-200 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50"
+                        : "border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100"
+                    }`}
+                  >
+                    {settled ? "Undo" : "Mark paid"}
+                  </PendingSubmitButton>
+                </form>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

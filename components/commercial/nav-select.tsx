@@ -61,7 +61,10 @@ export function NavSelect({
           const next = choices.find((c) => c.value === e.target.value);
           // Unknown value can't happen from the UI, but never navigate to
           // undefined if it ever does.
-          if (next) startTransition(() => router.push(next.href));
+          // `scroll: false` — the bar sits below the figures it filters, and a
+          // filter change that jumps you to the top of the page loses the
+          // control you just used. The list re-renders under the bar instead.
+          if (next) startTransition(() => router.push(next.href, { scroll: false }));
         }}
         className={`${FILTER_SELECT_CLS} ${pending ? "opacity-60" : ""}`}
       >
