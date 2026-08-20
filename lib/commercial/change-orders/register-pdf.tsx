@@ -32,6 +32,13 @@ import { formatChangeOrderNumber } from "./constants";
  *  2. A deduct (credit) change order prints as a negative rather than being
  *     bucketed as if it were added scope, so the totals still reconcile on a
  *     job that has one.
+ *
+ *  3. REJECTED change orders are the same trap as pending, and get the same
+ *     sentence. "Total Change Orders" is the register's own total — every CO
+ *     ever raised, which is what makes the list of cards reconcile with it —
+ *     so on a job with a rejection it does not match the updated contract, and
+ *     the note has to say why. Naming only the pending money left a job with a
+ *     rejection and nothing pending printing an unexplained discrepancy.
  */
 
 const NAVY = "#172B4D";
@@ -208,19 +215,59 @@ function SummaryRow({ label, value, tone }: { label: string; value: string; tone
   );
 }
 
-function ChangeOrderRegisterDocument(input: ChangeOrderRegisterInput) {
-  const approved = input.rows.filter((r) => r.status === "approved");
-  const pending = input.rows.filter((r) => r.status === "pending");
-  const declined = input.rows.filter((r) => r.status === "declined");
-  const sum = (rs: ChangeOrderRegisterRow[]) => rs.reduce((n, r) => n + r.amountCents, 0);
-  const approvedTotal = sum(approved);
-  const pendingTotal = sum(pending);
-  const declinedTotal = sum(declined);
-  // Every raised CO, whatever its answer — the sample's "Total Change Orders".
+export type ChangeOrderRegisterSummary = {
+  approvedTotal: number;
+  pendingTotal: number;
+  declinedTotal: number;
+  /** Every CO ever raised — the sample's "Total Change Orders". */
+  allTotal: number;
+  /** Original + APPROVED only. Null when no contract figure is on file. */
+  updatedContract: number | null;
+  /**
+   * The sentence reconciling the two, or null when they already agree.
+   *
+   * Pure, and tested, because this sentence IS the fix: "Total Change Orders"
+   * is the register's own total, so on any job with pending OR rejected scope
+   * it does not equal the contract movement directly beneath it, and a GC's AP
+   * department is left to guess. The first cut named only the pending money —
+   * so a job with a rejection and nothing pending printed the discrepancy with
+   * nothing to explain it.
+   */
+  note: string | null;
+};
+
+/** The summary block's arithmetic and its reconciling sentence. */
+export function summarizeChangeOrderRegister(
+  rows: ChangeOrderRegisterRow[],
+  originalContractCents: number | null,
+  money: (cents: number) => string
+): ChangeOrderRegisterSummary {
+  const sum = (status: ChangeOrderRegisterRow["status"]) =>
+    rows.filter((r) => r.status === status).reduce((n, r) => n + r.amountCents, 0);
+  const approvedTotal = sum("approved");
+  const pendingTotal = sum("pending");
+  const declinedTotal = sum("declined");
   const allTotal = approvedTotal + pendingTotal + declinedTotal;
-  // ONLY approved money moves the contract. See the note at the top.
   const updatedContract =
-    input.originalContractCents != null ? input.originalContractCents + approvedTotal : null;
+    originalContractCents != null ? originalContractCents + approvedTotal : null;
+
+  let note: string | null = null;
+  if (updatedContract != null && (pendingTotal !== 0 || declinedTotal !== 0)) {
+    note =
+      "Updated Contract Total includes APPROVED change orders only." +
+      (pendingTotal !== 0
+        ? ` The ${money(pendingTotal)} pending above is not part of the contract until approved.`
+        : "") +
+      (declinedTotal !== 0
+        ? ` The ${money(declinedTotal)} rejected is listed for the record only and is not part of the contract.`
+        : "");
+  }
+  return { approvedTotal, pendingTotal, declinedTotal, allTotal, updatedContract, note };
+}
+
+function ChangeOrderRegisterDocument(input: ChangeOrderRegisterInput) {
+  const { approvedTotal, pendingTotal, declinedTotal, allTotal, updatedContract, note } =
+    summarizeChangeOrderRegister(input.rows, input.originalContractCents ?? null, money);
 
   return (
     <Document title={`Change Orders — ${input.projectName}`}>
@@ -296,14 +343,18 @@ function ChangeOrderRegisterDocument(input: ChangeOrderRegisterInput) {
                   <Text style={styles.bold}>{money(updatedContract ?? 0)}</Text>
                 </View>
                 {/* Without this, "Total Change Orders" sitting directly above
-                    "Updated Contract Total" invites a GC to read pending money
-                    as committed. It isn't until they sign. */}
-                {pendingTotal !== 0 ? (
-                  <Text style={styles.note}>
-                    Updated Contract Total includes APPROVED change orders only. The{" "}
-                    {money(pendingTotal)} pending above is not part of the contract until approved.
-                  </Text>
-                ) : null}
+                    "Updated Contract Total" invites a GC to read money that
+                    isn't in the contract as though it were.
+                    
+                    It has to cover REJECTED as well as pending. "Total Change
+                    Orders" is the register's own total — every CO ever raised,
+                    which is what makes the list reconcile — so a job with a
+                    rejected CO shows a change-order total the updated contract
+                    doesn't match, and the GC's AP department cannot tell why.
+                    The first cut named only the pending money, so a job with a
+                    rejection and nothing pending printed the discrepancy with
+                    no explanation at all. */}
+                {note ? <Text style={styles.note}>{note}</Text> : null}
               </View>
             ) : null}
           </View>
