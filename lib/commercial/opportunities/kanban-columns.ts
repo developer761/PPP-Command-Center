@@ -25,7 +25,8 @@
  *
  * Both directions live HERE, together, on purpose: they used to be
  * duplicated across page.tsx (bucketer + quick-flip action), the
- * accounts page, and components/commercial-kanban-dnd.tsx, which is how
+ * accounts page, and the opportunity board (components/commercial-kanban-dnd.tsx,
+ * deleted 2026-08-20 with the board itself), which is how
  * the two Proposal columns drifted apart in the first place. Any future
  * column change is a one-file edit.
  *

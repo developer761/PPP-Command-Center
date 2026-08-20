@@ -14,7 +14,9 @@
  *     Mark Lost button behavior)
  *   - optimistic hide on the source card so the drop reads as instant
  *     even before router.refresh() paints the new column (same pattern
- *     as commercial-kanban-dnd.tsx after the 2026-07-15 drag-lag fix)
+ *     as commercial-kanban-dnd.tsx after the 2026-07-15 drag-lag fix; that
+ *     file went with the opportunity board on 2026-08-20 — this proposals
+ *     board is the only drag surface left)
  *
  * The parent server page rebuilds the layout from DB state, so we don't
  * need to re-slot cards client-side — just hide the source card and let
