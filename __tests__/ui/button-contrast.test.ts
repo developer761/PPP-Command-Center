@@ -160,6 +160,29 @@ describe("the hover ramp stays out of the dead zone", () => {
     "components/settings/access-manager.tsx :: bg-ppp-blue-700",
   ]);
 
+  it("a pressed button still looks different from a hovered one", () => {
+    // Only blue / blue-300 / blue-900 survive both themes, and navy fails on
+    // blue-900 (1.21), so there are exactly two usable fills for three states.
+    // Collapsing hover and active onto the same one is an easy accident — the
+    // contrast assertions all still pass, and the button silently stops
+    // acknowledging a press. Rest → hover lightens → press settles back.
+    const bad: string[] = [];
+    for (const f of FILES) {
+      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+        // Capture the opacity modifier too. `hover:bg-ppp-blue-50/40` and
+        // `active:bg-ppp-blue-50` share a token but differ visibly — 40% vs
+        // 100% — so stripping the `/40` reports a false positive on list rows
+        // that are behaving correctly.
+        const hover = cls.match(/hover:bg-(ppp-blue(?:-\d+)?(?:\/\d+)?)(?![-\w])/)?.[1];
+        const active = cls.match(/active:bg-(ppp-blue(?:-\d+)?(?:\/\d+)?)(?![-\w])/)?.[1];
+        if (hover && active && hover === active) {
+          bad.push(`${f.replace(ROOT + "/", "")} :: hover and active both ${hover}`);
+        }
+      }
+    }
+    expect(bad, "pressing these gives no visual feedback").toEqual([]);
+  });
+
   it("no NEW class pairs a fill with white where dark inverts that fill", () => {
     // The orange-700 regression in one rule: a token dark turns into a
     // foreground must never be a fill under hardcoded white.

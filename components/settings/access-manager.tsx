@@ -315,7 +315,7 @@ function AddUserForm({
         <button
           type="submit"
           disabled={pending || !email || password.length < 8}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-ppp-blue px-5 text-sm font-semibold text-ppp-navy hover:bg-ppp-blue-300 active:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-ppp-blue px-5 text-sm font-semibold text-ppp-navy hover:bg-ppp-blue-300 active:bg-ppp-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
         >
           {pending ? <><IconSpinner /> Adding…</> : <>Add user</>}
         </button>

@@ -122,7 +122,7 @@ export default function SupplierSettingsEditor() {
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-xs font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue-300 transition-colors shadow-sm"
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-xs font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue transition-colors shadow-sm"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
