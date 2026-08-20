@@ -20,6 +20,7 @@ const base: ProjectAttentionInput = {
   billedPreTaxCents: 100_00,
   openInvoiceCents: 0,
   overdueInvoice: null,
+  overdueAia: null,
   retainageCents: 0,
   pendingCoCount: 0,
   pendingCoCents: 0,
@@ -91,5 +92,34 @@ describe("deriveProjectAttention", () => {
   it("flags close-out only once the job is fully billed", () => {
     expect(keys({ ...base, closeoutNotStarted: true, billedPreTaxCents: 100_00 })).toContain("closeout");
     expect(keys({ ...base, closeoutNotStarted: true, billedPreTaxCents: 50_00 })).not.toContain("closeout");
+  });
+});
+
+describe("a late payment application", () => {
+  // An AIA-billed job raises no invoice. Before this it could only ever reach
+  // the low-severity "outstanding" line, so the deal page stayed calm about
+  // money the AR-aging report already had in the 61-90 bucket.
+  it("is flagged high, like a late invoice", () => {
+    const items = deriveProjectAttention(
+      { ...base, openInvoiceCents: 40_000_00, overdueAia: { balanceCents: 40_000_00, daysLate: 61 } },
+      money
+    );
+    const flagged = items.find((i) => i.key === "overdue-aia");
+    expect(flagged?.severity).toBe("high");
+    expect(flagged?.detail).toContain("61 days late");
+  });
+
+  it("does not also repeat the same money as a low-severity line", () => {
+    const items = deriveProjectAttention(
+      { ...base, openInvoiceCents: 40_000_00, overdueAia: { balanceCents: 40_000_00, daysLate: 61 } },
+      money
+    );
+    expect(items.find((i) => i.key === "outstanding")).toBeUndefined();
+  });
+
+  it("current AIA money still reads as plain outstanding", () => {
+    const items = deriveProjectAttention({ ...base, openInvoiceCents: 40_000_00, overdueAia: null }, money);
+    expect(items.find((i) => i.key === "overdue-aia")).toBeUndefined();
+    expect(items.find((i) => i.key === "outstanding")).toBeDefined();
   });
 });

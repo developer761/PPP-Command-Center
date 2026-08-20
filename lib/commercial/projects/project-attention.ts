@@ -34,6 +34,11 @@ export type ProjectAttentionInput = {
   openInvoiceCents: number;
   /** The single most-overdue issued invoice with a balance, if any. */
   overdueInvoice: { number: string; balanceCents: number; daysLate: number } | null;
+  /** A LATE AIA payment application. An AIA-billed job raises no invoice, so
+   *  without this it could only ever reach the low-severity "outstanding"
+   *  line — the deal page stayed calm about money the AR-aging report had in
+   *  the 61-90 bucket. */
+  overdueAia: { balanceCents: number; daysLate: number } | null;
   retainageCents: number;
   pendingCoCount: number;
   pendingCoCents: number;
@@ -103,6 +108,17 @@ export function deriveProjectAttention(
     });
   }
 
+  // 🔴 Same, for a job billed by payment application rather than invoice.
+  if (i.overdueAia) {
+    out.push({
+      key: "overdue-aia",
+      severity: "high",
+      title: "Payment application overdue",
+      detail: `${money(i.overdueAia.balanceCents)} out · ${i.overdueAia.daysLate} day${i.overdueAia.daysLate === 1 ? "" : "s"} late`,
+      href: i.hrefs.aia,
+    });
+  }
+
   // 🟡 Scope the GC hasn't answered on — the crew may already be doing the work.
   if (i.pendingCoCount > 0) {
     out.push({
@@ -161,8 +177,10 @@ export function deriveProjectAttention(
     });
   }
 
-  // ⚪ Billed but not collected (and not already flagged overdue above).
-  if (!i.overdueInvoice && i.openInvoiceCents > 0) {
+  // ⚪ Billed but not collected (and not already flagged overdue above, by
+  //    either ledger — repeating the same money as a low-severity line under a
+  //    red one reads as two separate problems).
+  if (!i.overdueInvoice && !i.overdueAia && i.openInvoiceCents > 0) {
     out.push({
       key: "outstanding",
       severity: "low",

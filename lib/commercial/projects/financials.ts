@@ -41,6 +41,13 @@ export type ProjectFinancials = {
    *  payable until close-out — but it is real money, so it is carried here for
    *  surfaces that want to show "owed now, plus X at close-out". */
   retainageHeldCents: number;
+  /** The AIA slice of `openBalanceCents`, and when it fell due. Carried so a
+   *  caller can tell a LATE payment application from a current one: without
+   *  the date, a job billed only through G702/G703 could be flagged for the
+   *  amount it owes but never for being overdue. Both null/0 on a job with no
+   *  AIA billing. */
+  aiaDueNowCents: number;
+  aiaDueAt: string | null;
   /** Purchases only (materials, subs, equipment, permits, subcontract labor…). */
   costs: CostBreakdown;
   /** Option A — burdened cost of in-house crew hours (approved time-entries ×
@@ -138,6 +145,8 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     openBalanceCents,
     creditCents,
     retainageHeldCents: aiaRetainageHeldCents,
+    aiaDueNowCents: aia.hasAia ? aia.dueNowCents : 0,
+    aiaDueAt: aia.hasAia ? aia.dueAt : null,
     costs,
     fieldOpsLaborCents,
     laborUnratedHours: labor.unratedHours,

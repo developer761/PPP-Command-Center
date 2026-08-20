@@ -19,8 +19,10 @@ import {
   type AiaG702,
   type AiaApplicationStatus,
   contractProposalCents,
+  aiaDueAtFrom,
   type ContractProposalRow,
 } from "./constants";
+import { DEFAULT_DUE_DAYS } from "@/lib/commercial/invoices/constants";
 
 export type AiaApplication = {
   id: string;
@@ -941,6 +943,11 @@ export async function aiaBillingRollup(
   dueNowCents: number;
   /** Held back until close-out. Real money, just not yet due. */
   retainageHeldCents: number;
+  /** When `dueNowCents` fell due — the latest issued application's issue date
+   *  plus the standard terms. Null when nothing is issued, or when nothing
+   *  recorded when it went out. Without this a caller can show the AMOUNT an
+   *  AIA job owes but can never say it is LATE. */
+  dueAt: string | null;
   hasAia: boolean;
 }> {
   const apps = await listAiaApplications(opportunityId); // ordered by application_number asc
@@ -951,6 +958,7 @@ export async function aiaBillingRollup(
       collectedCents: 0,
       dueNowCents: 0,
       retainageHeldCents: 0,
+      dueAt: null,
       hasAia: false,
     };
 
@@ -974,7 +982,16 @@ export async function aiaBillingRollup(
     latestIssued: latestIssuedG702,
     latestPaid: latestPaidResolved,
   });
-  return { billedCents, collectedCents, dueNowCents, retainageHeldCents, hasAia: true };
+  return {
+    billedCents,
+    collectedCents,
+    dueNowCents,
+    retainageHeldCents,
+    // ONE ladder — the same one the AR-aging report, the receivables list and
+    // the dashboard use.
+    dueAt: aiaDueAtFrom(latestIssued.frozen_at, latestIssued.period_to, DEFAULT_DUE_DAYS),
+    hasAia: true,
+  };
 }
 
 /**

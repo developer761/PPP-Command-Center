@@ -185,6 +185,7 @@ import { getProjectForOpportunity } from "@/lib/commercial/projects/ensure";
 import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
 import { normalizeToolOrigin } from "@/lib/commercial/tool-origin";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
+import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
 
 export const dynamic = "force-dynamic";
 
@@ -2173,6 +2174,19 @@ export default async function OpportunityDetailPage({
     crewHours: Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)),
     onSite: pathOnSite,
   };
+  // A payment application past its due date with money still on it. An AIA job
+  // raises no invoice, so without this the deal page could only ever show the
+  // AMOUNT as a low-severity "outstanding" line while the AR-aging report had
+  // the same money in the 61-90 bucket.
+  const aiaDaysLate =
+    pathFin?.aiaDueAt && (pathFin.aiaDueNowCents ?? 0) > 0
+      ? daysPastDue(pathFin.aiaDueAt, Date.now())
+      : 0;
+  const overdueAiaForAttention =
+    aiaDaysLate > 0 && pathFin
+      ? { balanceCents: pathFin.aiaDueNowCents, daysLate: aiaDaysLate }
+      : null;
+
   // The single most-overdue issued invoice with a balance still on it.
   const overdueInvoiceForAttention =
     pathInvoices
@@ -2193,6 +2207,7 @@ export default async function OpportunityDetailPage({
           billedPreTaxCents: pathFin?.billedPreTaxCents ?? 0,
           openInvoiceCents,
           overdueInvoice: overdueInvoiceForAttention,
+          overdueAia: overdueAiaForAttention,
           retainageCents: pathRetainageCents,
           pendingCoCount,
           pendingCoCents: pathChangeOrders
