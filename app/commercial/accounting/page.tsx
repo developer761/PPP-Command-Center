@@ -20,7 +20,9 @@ import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
-import { etTodayIso } from "@/lib/date-et";
+import {
+  cashFlowRange, CASH_FLOW_DEFAULT, changeOrderRange, CHANGE_ORDER_DEFAULT,
+} from "@/lib/commercial/reports/presets";
 import TrendChart from "@/components/trend-chart";
 
 export const dynamic = "force-dynamic";
@@ -186,21 +188,18 @@ export default async function AccountingPage({
   const recipients = receivablesRecipients();
   const href = (v: View) => (v === "overview" ? BASE : `${BASE}?view=${v}`);
 
-  const today = etTodayIso();
-  const year = today.slice(0, 4);
-  // Six months back, matching the cash-flow report's own default so the figure
-  // here and the figure there are the same window.
-  const fromTotal = Number(year) * 12 + (Number(today.slice(5, 7)) - 1) - 5;
-  const cashRange = {
-    fromYmd: `${Math.floor(fromTotal / 12)}-${String((fromTotal % 12) + 1).padStart(2, "0")}-01`,
-    toYmd: today,
-  };
+  // Both windows come from the reports' own preset functions, so a figure here
+  // and the same figure on its report are computed over an identical period.
+  // Hand-rolling them here is how the Reports index ended up showing a calendar
+  // year where the estimator report used a fiscal one.
+  const cashRange = cashFlowRange(CASH_FLOW_DEFAULT);
+  const coRange = changeOrderRange(CHANGE_ORDER_DEFAULT);
 
   const [receivables, cash, jobCosts, coVendor, projects] = await Promise.all([
     getReceivablesReport(),
     getCashFlowReport(cashRange),
     getJobCostsReport(),
-    getChangeOrderVendorReport({ fromYmd: `${year}-01-01`, toYmd: today }),
+    getChangeOrderVendorReport(coRange),
     listProjects(),
   ]);
   // Only fetched for the view that renders it — the money band above doesn't
@@ -542,7 +541,7 @@ export default async function AccountingPage({
               sub={`across ${jobCosts.totals.dealCount} job${jobCosts.totals.dealCount === 1 ? "" : "s"}`}
             />
             <Tile
-              label="Vendor spend · YTD"
+              label={`Vendor spend · ${coRange.label}`}
               value={formatCentsFull(coVendor.vendorTotalCents)}
               tone="neutral"
               sub="materials and subs paid out"
@@ -600,10 +599,10 @@ export default async function AccountingPage({
         <section className="space-y-2">
           <SectionHead
             title="Who is late"
-            hint="Open invoice balances by how far past due. Invoices only — retention isn't late."
+            hint="What's owed by how far past due — invoices and AIA applications. Retention is excluded: it's held, not late."
           />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Tile label="Total AR" value={formatCentsFull(aging.totals.total)} tone="brand" sub={`${aging.invoiceCount} invoice${aging.invoiceCount === 1 ? "" : "s"}`} />
+            <Tile label="Total AR" value={formatCentsFull(aging.totals.total)} tone="brand" sub={`${aging.invoiceCount} open item${aging.invoiceCount === 1 ? "" : "s"}`} />
             <Tile label="Current" value={formatCentsFull(aging.totals.current)} tone="emerald" sub="not yet due" />
             <Tile
               label="Overdue"

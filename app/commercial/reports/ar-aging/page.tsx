@@ -35,7 +35,7 @@ export default async function ArAgingReportPage() {
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-bold text-ppp-charcoal">AR aging</h2>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">Open invoice balances by how far past due, per GC. The composition bar shows how much of what you&rsquo;re owed is current vs slipping.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">What&rsquo;s owed by how far past due, per GC &mdash; open invoices <em>and</em> AIA payment applications. Retention is excluded: it&rsquo;s held to close-out, not late. The composition bar shows how much of what you&rsquo;re owed is current vs slipping.</p>
           {/* The other half of this book. Aging is the snapshot; cash flow is
               the trend of the same money, so each links to the other rather
               than making someone remember which page holds which half. */}
@@ -60,7 +60,7 @@ export default async function ArAgingReportPage() {
       {aging.invoiceCount === 0 ? (
         <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No open receivables</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Every issued invoice is paid or there&rsquo;s nothing billed yet. Aging shows up here the moment a customer owes money.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Everything billed is paid, or nothing is billed yet. Aging shows up here the moment a GC owes money &mdash; on an invoice or an AIA application.</p>
           <Link href="/commercial/invoices" className="inline-flex items-center gap-1.5 mt-4 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12.5px] font-semibold text-cc-brand-700 hover:bg-ppp-charcoal-50 min-h-[44px]">
             View all invoices
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
@@ -69,7 +69,7 @@ export default async function ArAgingReportPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Tile label="Total AR" value={formatCentsCompact(aging.totals.total)} tone="brand" sub={`${aging.customerCount} customer${aging.customerCount === 1 ? "" : "s"} · ${aging.invoiceCount} inv`} />
+            <Tile label="Total AR" value={formatCentsCompact(aging.totals.total)} tone="brand" sub={`${aging.customerCount} GC${aging.customerCount === 1 ? "" : "s"} · ${aging.invoiceCount} open item${aging.invoiceCount === 1 ? "" : "s"}`} />
             <Tile label="Overdue" value={formatCentsCompact(overdue)} tone={overdue > 0 ? "amber" : "neutral"} sub={aging.totals.total > 0 ? `${overduePct}% of AR` : undefined} />
             <Tile label="90+ days" value={formatCentsCompact(aging.totals.d90_plus)} tone={aging.totals.d90_plus > 0 ? "rose" : "neutral"} sub={aging.totals.d90_plus > 0 ? "chase first" : "none"} />
             <Tile label="Avg age" value={`${aging.weightedAvgAgeDays}d`} tone={aging.weightedAvgAgeDays > 45 ? "rose" : aging.weightedAvgAgeDays > 20 ? "amber" : "emerald"} sub="past due, $-weighted" />

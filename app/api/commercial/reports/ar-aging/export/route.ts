@@ -24,13 +24,13 @@ export async function GET() {
   if ((await apiAccessDenied(auth?.user?.id, prof))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const aging = await getArAging();
-  const header = ["Customer", "Current", "1-30", "31-60", "61-90", "90+", "Total", "Open invoices", "Oldest days"];
+  const header = ["GC", "Current", "1-30", "31-60", "61-90", "90+", "Total", "Open items", "Oldest days"];
   const line = (r: ArAgingRow) =>
     [r.accountName, money(r.current), money(r.d1_30), money(r.d31_60), money(r.d61_90), money(r.d90_plus), money(r.total), r.invoiceCount, Math.max(0, r.oldestDays)]
       .map(csv)
       .join(",");
   const totals = [
-    "All customers",
+    "All GCs",
     money(aging.totals.current),
     money(aging.totals.d1_30),
     money(aging.totals.d31_60),

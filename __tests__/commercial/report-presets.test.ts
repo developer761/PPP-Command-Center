@@ -38,7 +38,7 @@ describe("resolvePreset", () => {
 });
 
 describe("every preset yields a valid, ordered window", () => {
-  const cases: [string, () => { fromYmd: string; toYmd: string; label: string }][] = [
+  const cases: readonly (readonly [string, () => { fromYmd: string; toYmd: string; label: string }])[] = [
     ...CASH_FLOW_PRESETS.map((p) => [`cashFlow:${p.key}`, () => cashFlowRange(p.key)] as const),
     ...LABOR_PRESETS.map((p) => [`labor:${p.key}`, () => laborRange(p.key)] as const),
     ...CHANGE_ORDER_PRESETS.map((p) => [`changeOrder:${p.key}`, () => changeOrderRange(p.key)] as const),

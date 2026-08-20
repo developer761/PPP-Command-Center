@@ -19,6 +19,12 @@ import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
 import { COST_BUCKET_COLUMNS, type CostBuckets } from "@/lib/commercial/reports/job-costs";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import TrendChart from "@/components/trend-chart";
+import {
+  laborRange, LABOR_DEFAULT,
+  estimatorRange, ESTIMATOR_DEFAULT, fiscalYearStartMonth,
+  cashFlowRange, CASH_FLOW_DEFAULT,
+  changeOrderRange, CHANGE_ORDER_DEFAULT,
+} from "@/lib/commercial/reports/presets";
 
 export const dynamic = "force-dynamic";
 
@@ -54,17 +60,17 @@ export default async function ReportsOverviewPage() {
   // The labour card summarises the CURRENT MONTH, matching the report page's
   // own default, so the number on the card is the number you land on.
   const labourToday = etTodayIso();
-  const labourRange = { fromYmd: `${labourToday.slice(0, 7)}-01`, toYmd: labourToday };
-  // The estimator card summarises the YEAR, matching that report's default —
-  // a month of bids is too few to read a win rate from.
-  const estYearLabel = labourToday.slice(0, 4);
-  const estimatorRange = { fromYmd: `${estYearLabel}-01-01`, toYmd: labourToday };
-  // Six months on the card, matching that report's own default.
-  const cashFromTotal = Number(labourToday.slice(0, 4)) * 12 + (Number(labourToday.slice(5, 7)) - 1) - 5;
-  const cashRange = {
-    fromYmd: `${Math.floor(cashFromTotal / 12)}-${String((cashFromTotal % 12) + 1).padStart(2, "0")}-01`,
-    toYmd: labourToday,
-  };
+  // Each card summarises the window its report OPENS on, resolved through the
+  // report's own preset function — so the number on the card is the number you
+  // land on. These were hand-rolled here, and the estimator one was a CALENDAR
+  // year while the estimator report defaults to the FISCAL year: with a
+  // non-January FY start the card's win rate and the page's disagreed, with
+  // nothing on screen to explain why.
+  const labourRange = laborRange(LABOR_DEFAULT);
+  const estimatorFy = await fiscalYearStartMonth();
+  const estRange = estimatorRange(ESTIMATOR_DEFAULT, estimatorFy);
+  const estYearLabel = estRange.label;
+  const cashRange = cashFlowRange(CASH_FLOW_DEFAULT);
   const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor, receivables] = await Promise.all([
     getPipelineReport(),
     getJobCostsReport(),
@@ -72,10 +78,10 @@ export default async function ReportsOverviewPage() {
     getWinLossSummary(quarter),
     getGeographyReport(),
     getLaborReport(labourRange),
-    getEstimatorReport(estimatorRange),
+    getEstimatorReport(estRange),
     getCashFlowReport(cashRange),
     // Year to date, matching that report's own default preset.
-    getChangeOrderVendorReport({ fromYmd: `${estYearLabel}-01-01`, toYmd: labourToday }),
+    getChangeOrderVendorReport(changeOrderRange(CHANGE_ORDER_DEFAULT)),
     getReceivablesReport(),
   ]);
   const topTown = geo.byCity[0] ?? null;
@@ -172,7 +178,7 @@ export default async function ReportsOverviewPage() {
     {
       href: "/commercial/reports/ar-aging",
       title: "AR aging",
-      blurb: "Open invoice balances by how far past due, per customer.",
+      blurb: "What's owed by how far past due, per GC — invoices and AIA.",
       icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
       primary: { label: "Total AR", value: formatCentsCompact(aging.totals.total), tone: "brand" },
       secondary: { label: "Overdue", value: formatCentsCompact(overdue), tone: overdue > 0 ? "amber" : "neutral" },
