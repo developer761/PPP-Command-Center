@@ -22,6 +22,7 @@ import { fyLabel, resolveScorecardPeriod } from "@/lib/fiscal-year";
 import ScorecardPeriodPicker from "@/components/scorecard-period-picker";
 import type { SnapshotAccount } from "@/lib/salesforce/queries";
 import { fmtMoneyK } from "@/lib/format";
+import { requireAnalyticsAccess } from "@/lib/auth/require-analytics";
 
 export function generateStaticParams() {
   // Pre-build mock rep routes; SF rep routes render on-demand.
@@ -76,6 +77,9 @@ export default async function RepDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // R4.1 — an account manager has no analytics access. Guarded here, not
+  // just hidden in the nav, so a typed URL or an old bookmark can't reach it.
+  await requireAnalyticsAccess();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
 
   // Pull the full snapshot bundle so we can derive everything from one fetch.

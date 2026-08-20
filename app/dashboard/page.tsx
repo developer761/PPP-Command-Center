@@ -2,6 +2,7 @@ import DashboardView from "@/components/dashboard-view";
 import { loadDashboardData } from "@/lib/data-source";
 import { deriveOpenMaterialsWorkOrders } from "@/lib/salesforce/materials";
 import { getMaterialsPageAuxData } from "@/lib/materials-page-data";
+import { requireAnalyticsAccess } from "@/lib/auth/require-analytics";
 
 // Force dynamic rendering so SF data refreshes per page load (subject to the
 // 5-min server-side snapshot cache inside lib/salesforce/queries.ts).
@@ -14,6 +15,9 @@ export default async function DashboardPage({
 }: {
   searchParams: SP;
 }) {
+  // R4.1 — an account manager has no analytics access. Guarded here, not
+  // just hidden in the nav, so a typed URL or an old bookmark can't reach it.
+  await requireAnalyticsAccess();
   const sp = await searchParams;
   const bundle = await loadDashboardData(sp);
 

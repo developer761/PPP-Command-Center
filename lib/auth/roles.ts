@@ -6,9 +6,10 @@
  * should derive from `capabilitiesFor(role)` rather than re-deriving booleans.
  *
  *   admin            — everything, including Settings + user management.
- *   account_manager  — sees ALL work orders, enters colors (Internal Entry +
- *                      Send Color Form), sees all analytics. CANNOT order
- *                      materials (greyed) and CANNOT open Settings.
+ *   account_manager  — sees ALL work orders and enters colors (Internal Entry +
+ *                      Send Color Form). Operations Tools ONLY: no analytics
+ *                      or finance surfaces (R4.1), cannot order materials
+ *                      (greyed), cannot open Settings.
  *   rep              — sees only their OWN work orders + their own numbers.
  *
  * `is_admin` (the legacy boolean on profiles) is mirrored to `role='admin'`
@@ -34,7 +35,7 @@ export const USER_ROLES: { value: UserRole; label: string; blurb: string }[] = [
     value: "account_manager",
     label: "Account Manager",
     blurb:
-      "Sees every work order and enters colors (Internal Entry + Send Color Form). Cannot order materials or open Settings.",
+      "Operations only — sees every work order and enters colors (Internal Entry + Send Color Form). No analytics, no materials ordering, no Settings.",
   },
   {
     value: "rep",
@@ -72,7 +73,25 @@ export type Capabilities = {
   canEnterColors: boolean;
   /** Open the Settings hub + provision users. Admin only. */
   canManageSettings: boolean;
+  /**
+   * See the Sales Analytics and Finance & Ops sections (R4.1).
+   *
+   * NOT the account manager. Kate: "the only tabs an account manager should
+   * see are the tabs under Operations Tools." An AM is an operations role —
+   * they run colour forms and materials for every job — and the revenue,
+   * margin and rep-performance surfaces aren't theirs.
+   *
+   * A REP keeps them: their whole reason for logging in is their own numbers,
+   * and those pages are already scoped to just their work orders.
+   */
+  canSeeAnalytics: boolean;
 };
+
+/** Where a role should land when it opens the app or clicks the logo. An AM
+ *  has no analytics, so the default Overview page would be an instant bounce. */
+export function homeHrefFor(role: UserRole): string {
+  return role === "account_manager" ? "/dashboard/materials" : "/dashboard";
+}
 
 /** Derive the capability set from a role. Single source of truth. */
 export function capabilitiesFor(role: UserRole): Capabilities {
@@ -85,5 +104,6 @@ export function capabilitiesFor(role: UserRole): Capabilities {
     canOrderMaterials: isAdmin,
     canEnterColors: isAdmin || isAccountManager,
     canManageSettings: isAdmin,
+    canSeeAnalytics: !isAccountManager,
   };
 }

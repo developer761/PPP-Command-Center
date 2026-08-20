@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { APP_META } from "@/lib/brand";
 import { useViewer } from "@/lib/auth/viewer-context";
+import { capabilitiesFor, normalizeRole, homeHrefFor } from "@/lib/auth/roles";
 import PlatformSwitcher from "@/components/platform-switcher";
 
 type NavItem = {
@@ -20,11 +21,14 @@ type NavSection = {
   heading: string;
   items: NavItem[];
   adminOnly?: boolean;
+  /** R4.1 — hidden from account managers, who get Operations Tools only. */
+  analyticsOnly?: boolean;
 };
 
 const navSections: NavSection[] = [
   {
     heading: "Sales Analytics",
+    analyticsOnly: true,
     items: [
       { label: "Overview", href: "/dashboard", icon: <IconSparkle /> },
       { label: "Rep Profiles", href: "/dashboard/rep", icon: <IconUser /> },
@@ -33,6 +37,7 @@ const navSections: NavSection[] = [
   },
   {
     heading: "Finance & Ops",
+    analyticsOnly: true,
     items: [
       { label: "Financials", href: "/dashboard/financials", icon: <IconDollar /> },
       { label: "Operations", href: "/dashboard/operations", icon: <IconGears /> },
@@ -84,6 +89,13 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
   const params = useSearchParams();
   const viewer = useViewer();
   const isAdmin = viewer?.isAdmin ?? false;
+  // R4.1: "the only tabs an account manager should see are the tabs under
+  // Operations Tools." Derived from the shared capability rather than a local
+  // `role === "account_manager"` check, so the nav and the route guards can't
+  // drift apart. Reps keep analytics — those pages are already scoped to their
+  // own work orders, and their own numbers are the reason they log in.
+  const caps = capabilitiesFor(normalizeRole(viewer?.role, isAdmin));
+  const homeHref = homeHrefFor(normalizeRole(viewer?.role, isAdmin));
 
   // Inbox unread badge — refreshes every 60s while sidebar is mounted, plus
   // immediately on first paint. Mail is visible to admins AND account managers
@@ -118,13 +130,14 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
   // enforce access, but stripping the link removes the confusing 404 path.
   const visibleSections = navSections
     .filter((s) => !s.adminOnly || isAdmin)
+    .filter((s) => !s.analyticsOnly || caps.canSeeAnalytics)
     .map((s) => ({ ...s, items: s.items.filter((i) => !i.adminOnly || isAdmin) }))
     .filter((s) => s.items.length > 0);
 
   return (
     <aside className="w-64 lg:w-64 h-full bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
       <div className="px-6 py-5 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
-        <Link href={withView("/dashboard")} className="block" onClick={onNavigate}>
+        <Link href={withView(homeHref)} className="block" onClick={onNavigate}>
           <Image
             src="/brand/logo.svg"
             alt="Precision Painting Plus"
