@@ -532,7 +532,18 @@ async function autoFileSubmittalTransmittal(accountId: string, opportunityId: st
       items,
       opp,
       accountName: account?.company_name ?? null,
-      fromCompany: (await getOperatingCompany()).name,
+      ...(await (async () => {
+        // Tap-to-sign: the stored signature + who it belongs to, so the LoT
+        // goes out signed like every other document that leaves the building.
+        const oc = await getOperatingCompany();
+        const { getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
+        return {
+          fromCompany: oc.name,
+          signature: await getBrandSignatureBuffer().catch(() => null),
+          signatureName: oc.signature_name,
+          signatureTitle: oc.signature_title,
+        };
+      })()),
       logo: await getBrandLogoBuffer(),
     });
     const subLabel = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${submittal.revision_number > 0 ? `_Rev${submittal.revision_number}` : ""}`;

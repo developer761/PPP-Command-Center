@@ -240,6 +240,17 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   remarksBody: { fontSize: 10, lineHeight: 1.5 },
+  // Tap-to-sign block. Sits after Remarks, before "Thank you." — where the
+  // paper form puts it.
+  signBlock: { flexDirection: "row", gap: 24, marginTop: 26 },
+  signCol: { flex: 1 },
+  signColNarrow: { width: 110 },
+  signLabel: { fontSize: 8, textTransform: "uppercase", letterSpacing: 0.5, color: colors.muted, marginBottom: 4 },
+  signImage: { height: 34, objectFit: "contain", alignSelf: "flex-start", marginBottom: 2 },
+  signRule: { borderBottomWidth: 1, borderBottomColor: colors.charcoal, height: 30 },
+  signName: { fontSize: 9, color: colors.charcoal, borderTopWidth: 0.5, borderTopColor: colors.border, paddingTop: 3 },
+  signDate: { fontSize: 10, color: colors.charcoal, borderBottomWidth: 1, borderBottomColor: colors.charcoal, paddingBottom: 3 },
+  thanks: { fontSize: 10, marginTop: 20 },
   footer: {
     position: "absolute",
     bottom: 20,
@@ -308,6 +319,22 @@ type SubmittalPdfInput = {
   accountName?: string | null;
   fromCompany: string; // operating-company name (Tomco) — from getOperatingCompany()
   logo?: Buffer | null; // operating-company logo; falls back to the text brand
+  /** TAP-TO-SIGN.
+   *
+   *  Karan, 2026-07-31, replacing Katie's blocked S-Sign integration: "Store a
+   *  signature image on file … wherever a doc needs a signature, Tap to sign
+   *  autofills the stored signature + date. Covers warranty, LoT, contracts…"
+   *
+   *  The close-out transmittal, the warranty, the work order and the change
+   *  order all had it; the Letter of Transmittal — the document that actually
+   *  goes to the architect — was the one left without. The restructure doc says
+   *  so out loud: "LoT is the one document still missing it."
+   *
+   *  Null renders a blank rule to sign by hand, which is what the paper form
+   *  does and is never worse than no block at all. */
+  signature?: Buffer | null;
+  signatureName?: string | null;
+  signatureTitle?: string | null;
 };
 
 // Source-of-truth arrays come from submittal-constants.ts. Don't
@@ -330,7 +357,7 @@ function safeDateLabel(value: string | null | undefined, fmt: Intl.DateTimeForma
   return d.toLocaleDateString("en-US", { timeZone: "America/New_York", ...fmt });
 }
 
-function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromCompany, logo }: SubmittalPdfInput) {
+function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromCompany, logo, signature, signatureName, signatureTitle }: SubmittalPdfInput) {
   const issueDate = submittal.sent_at ?? submittal.created_at;
   const dateLabel = safeDateLabel(issueDate, { year: "numeric", month: "long", day: "numeric" });
   const submittalNumber = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${
@@ -515,6 +542,30 @@ function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromC
             <Text style={styles.remarksBody}>{submittal.remarks}</Text>
           </View>
         )}
+
+        {/* ── Signed ────────────────────────────────────────────────────
+            A transmittal is a document someone stands behind — the architect
+            files it and comes back to it. An unsigned one is a list. */}
+        <View style={styles.signBlock} wrap={false}>
+          <View style={styles.signCol}>
+            <Text style={styles.signLabel}>Transmitted by</Text>
+            {signature ? (
+              <Image src={signature} style={styles.signImage} />
+            ) : (
+              <View style={styles.signRule} />
+            )}
+            <Text style={styles.signName}>
+              {signatureName ?? fromCompany}
+              {signatureName && signatureTitle ? `, ${signatureTitle}` : ""}
+            </Text>
+          </View>
+          <View style={styles.signColNarrow}>
+            <Text style={styles.signLabel}>Date</Text>
+            <Text style={styles.signDate}>{dateLabel}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.thanks}>Thank you.</Text>
 
         {/* Footer */}
         <View style={styles.footer} fixed>

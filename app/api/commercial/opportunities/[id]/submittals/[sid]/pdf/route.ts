@@ -112,7 +112,18 @@ export async function GET(
       opp,
       accountName,
       // Operating-company identity (Tomco) — single source via getOperatingCompany().
-      fromCompany: (await getOperatingCompany()).name,
+      ...(await (async () => {
+        // Tap-to-sign: the stored signature + who it belongs to, so the LoT
+        // goes out signed like every other document that leaves the building.
+        const oc = await getOperatingCompany();
+        const { getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
+        return {
+          fromCompany: oc.name,
+          signature: await getBrandSignatureBuffer().catch(() => null),
+          signatureName: oc.signature_name,
+          signatureTitle: oc.signature_title,
+        };
+      })()),
       logo: await getBrandLogoBuffer(),
     });
   } catch (err) {
