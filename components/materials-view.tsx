@@ -3183,7 +3183,7 @@ function SendColorFormButton({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30 flex-1 sm:flex-none"
+          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-medium hover:bg-ppp-blue-400 transition-colors shadow-sm shadow-ppp-blue/30 flex-1 sm:flex-none"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
@@ -3398,7 +3398,7 @@ function SendColorFormButton({
                 <button
                   type="button"
                   onClick={() => setResult(null)}
-                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors inline-flex items-center gap-1.5"
+                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 transition-colors inline-flex items-center gap-1.5"
                 >
                   Try again
                 </button>
@@ -3408,7 +3408,7 @@ function SendColorFormButton({
                   type="button"
                   onClick={send}
                   disabled={sending || !customerEmail.trim()}
-                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 >
                   {sending && (
                     <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>

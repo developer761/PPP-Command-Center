@@ -1430,10 +1430,28 @@ export async function InvoiceDetailView({
                 <textarea id="inv-msg" name="message" required rows={5} defaultValue={`Hello,\n\nPlease find attached invoice ${invoice.invoice_number}${opp ? ` for ${derivedOppName(opp, account?.company_name ?? null)}` : ""}. The total is ${formatCentsFull(invoice.total_cents)}${invoice.balance_cents > 0 ? `, with a balance due of ${formatCentsFull(invoice.balance_cents)}` : ""}${invoice.due_at ? ` by ${fmtEtDate(invoice.due_at)}` : ""}.\n\nPayment details are on the invoice. Please reply with any questions.\n\nThank you.`} className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600" />
               </div>
               {attachments.length > 0 && (
-                <label className="flex items-center gap-2 text-[12.5px] text-ppp-charcoal-700 select-none">
-                  <input type="checkbox" name="include_attachments" value="1" className="h-4 w-4 rounded border-ppp-charcoal-300 accent-ppp-blue-600" />
-                  Also attach the {attachments.length} file{attachments.length === 1 ? "" : "s"} on this invoice
-                </label>
+                // NAME them. This said "the 3 files on this invoice" and left
+                // the sender to guess which three — on the one control that
+                // puts a document in a GC's inbox, where the files on an
+                // invoice are typically signed lien waivers. §4.6 of the
+                // restructure asks for "attachments as named links you can see
+                // before sending", and this was the surface it meant.
+                <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/40 px-3 py-2.5">
+                  <label className="flex items-center gap-2 text-[12.5px] font-medium text-ppp-charcoal-700 select-none">
+                    <input type="checkbox" name="include_attachments" value="1" className="h-4 w-4 rounded border-ppp-charcoal-300 accent-ppp-blue-600" />
+                    Also attach {attachments.length === 1 ? "this file" : `these ${attachments.length} files`}
+                  </label>
+                  <ul className="mt-1.5 space-y-1 pl-6">
+                    {attachments.map((d) => (
+                      <li key={d.id} className="flex items-center gap-1.5 min-w-0">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+                        </svg>
+                        <span className="text-[11.5px] text-ppp-charcoal-600 truncate">{d.file_name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
               <div className="flex items-center gap-2 pt-1">
                 <SubmitButton className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30">

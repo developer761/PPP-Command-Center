@@ -47,7 +47,7 @@ export default function DashboardError({
           <button
             type="button"
             onClick={() => reset()}
-            className="min-h-[44px] px-5 py-2.5 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors"
+            className="min-h-[44px] px-5 py-2.5 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-medium hover:bg-ppp-blue-400 transition-colors"
           >
             Try again
           </button>

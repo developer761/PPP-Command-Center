@@ -34,7 +34,7 @@ export default async function OrderBuilderPage({
         </p>
         <Link
           href="/dashboard/materials"
-          className="mt-6 inline-flex items-center px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors"
+          className="mt-6 inline-flex items-center px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 transition-colors"
         >
           Back to materials
         </Link>
@@ -51,7 +51,7 @@ export default async function OrderBuilderPage({
         </p>
         <Link
           href={`/dashboard/materials/${encodeURIComponent(data.workOrderId)}`}
-          className="mt-6 inline-flex items-center px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors"
+          className="mt-6 inline-flex items-center px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 transition-colors"
         >
           Back to work order
         </Link>

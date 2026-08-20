@@ -129,21 +129,29 @@ function formatStepTime(iso: string | null): string {
   return `${dateStr} ${timeStr}`;
 }
 
+// Each dot's text colour is decided by what actually clears WCAG AA on its own
+// fill, not by picking one for consistency:
+//   green  #8DC442 + navy  = 6.79:1   (white would be 2.08 — the worst pairing
+//                                      in the palette)
+//   blue   #2BAAE1 + navy  = 5.33:1   (white 2.64)
+//   orange #EE662E clears with NEITHER (white 3.19, navy 4.42), so the stuck
+//          dot uses orange-700 + white at 6.2:1 — the brand orange stays
+//          untouched everywhere it doesn't carry text.
 const STATE_CLASSES: Record<StageState, { dot: string; line: string; label: string; time: string }> = {
   done: {
-    dot: "bg-ppp-green text-white border-ppp-green",
+    dot: "bg-ppp-green text-ppp-navy border-ppp-green",
     line: "bg-ppp-green",
     label: "text-ppp-charcoal font-semibold",
     time: "text-ppp-charcoal-500",
   },
   active: {
-    dot: "bg-ppp-blue text-white border-ppp-blue ring-2 ring-ppp-blue/30",
+    dot: "bg-ppp-blue text-ppp-navy border-ppp-blue ring-2 ring-ppp-blue/30",
     line: "bg-ppp-charcoal-100",
     label: "text-ppp-blue-700 font-semibold",
     time: "text-ppp-blue-700",
   },
   stuck: {
-    dot: "bg-ppp-orange text-white border-ppp-orange ring-2 ring-ppp-orange/30",
+    dot: "bg-ppp-orange-700 text-white border-ppp-orange-700 ring-2 ring-ppp-orange/30",
     line: "bg-ppp-charcoal-100",
     label: "text-ppp-orange-700 font-semibold",
     time: "text-ppp-orange-700",

@@ -155,7 +155,7 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
             className={[
               "px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors",
               viewer.scope === "all"
-                ? "bg-ppp-blue text-white shadow-sm"
+                ? "bg-ppp-blue text-ppp-navy shadow-sm"
                 : "text-ppp-charcoal-500 hover:text-ppp-charcoal",
             ].join(" ")}
             aria-pressed={viewer.scope === "all"}
@@ -169,7 +169,7 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
             className={[
               "px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors",
               viewer.scope === "my"
-                ? "bg-ppp-blue text-white shadow-sm"
+                ? "bg-ppp-blue text-ppp-navy shadow-sm"
                 : "text-ppp-charcoal-500 hover:text-ppp-charcoal",
               !viewer.sfUserId ? "opacity-40 cursor-not-allowed" : "",
             ].join(" ")}

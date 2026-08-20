@@ -244,7 +244,7 @@ function DaysIdle({ days }: { days: number }) {
   // long-idle deals first. 14-30d = orange (recently stuck), 30+ = red
   // (deeply stuck, customer might have gone cold or already chose a competitor).
   const tone =
-    days >= 60 ? "bg-ppp-orange text-white border-ppp-orange"
+    days >= 60 ? "bg-ppp-orange-700 text-white border-ppp-orange-700"
     : days >= 30 ? "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100"
     : "bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100";
   return (

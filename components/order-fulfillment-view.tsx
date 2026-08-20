@@ -351,7 +351,7 @@ export default function OrderFulfillmentView({
         </p>
         <Link
           href={`/dashboard/materials/${encodeURIComponent(workOrderId)}`}
-          className="mt-6 inline-flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors"
+          className="mt-6 inline-flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 transition-colors"
         >
           Back to work order
         </Link>
@@ -669,7 +669,7 @@ export default function OrderFulfillmentView({
               {draft.phoneNumber ? (
                 <a
                   href={`tel:${draft.phoneNumber.replace(/[^0-9+]/g, "")}`}
-                  className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-700 transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 transition-colors"
                 >
                   Call {draft.phoneNumber}
                 </a>
@@ -698,7 +698,7 @@ export default function OrderFulfillmentView({
                       ? "Add a delivery address before sending (or switch to Pickup)"
                       : ""
                 }
-                className="px-4 py-2 min-h-[44px] max-w-full inline-flex items-center justify-center rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 min-h-[44px] max-w-full inline-flex items-center justify-center rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="truncate">
                   {sending ? "Sending…"

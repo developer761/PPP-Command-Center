@@ -1114,7 +1114,7 @@ function CustomColorItems({
             type="button"
             onClick={add}
             disabled={!label.trim()}
-            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
           >
             Add
           </button>
@@ -1181,7 +1181,7 @@ function CustomSundryItem({ onAdd }: { onAdd: (name: string, qty: number, unit: 
             type="button"
             onClick={add}
             disabled={!name.trim()}
-            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
           >
             Add
           </button>

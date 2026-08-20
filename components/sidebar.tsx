@@ -197,7 +197,7 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
                       <span className="flex-1">{item.label}</span>
                       {badgeCount > 0 && (
                         <span
-                          className="shrink-0 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-ppp-orange text-white"
+                          className="shrink-0 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-ppp-orange-700 text-white"
                           aria-label={`${badgeCount} unread`}
                         >
                           {badgeCount > 99 ? "99+" : badgeCount}

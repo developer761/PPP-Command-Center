@@ -171,7 +171,7 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
                   className={[
                     "px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors inline-flex items-center gap-1",
                     active
-                      ? "bg-ppp-blue text-white"
+                      ? "bg-ppp-blue text-ppp-navy"
                       : "bg-white border border-ppp-charcoal-100 text-ppp-charcoal hover:border-ppp-blue-200",
                   ].join(" ")}
                 >

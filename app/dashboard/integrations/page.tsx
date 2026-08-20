@@ -171,7 +171,7 @@ export default async function IntegrationsPage({
             ) : (
               <Link
                 href="/api/auth/salesforce/login"
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-ppp-blue text-white hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-ppp-blue text-ppp-navy hover:bg-ppp-blue-400 transition-colors shadow-sm shadow-ppp-blue/30"
               >
                 Connect Salesforce
               </Link>

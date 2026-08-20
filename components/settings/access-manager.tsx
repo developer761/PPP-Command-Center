@@ -315,7 +315,7 @@ function AddUserForm({
         <button
           type="submit"
           disabled={pending || !email || password.length < 8}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-ppp-blue px-5 text-sm font-semibold text-white hover:bg-ppp-blue-600 active:bg-ppp-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-ppp-blue px-5 text-sm font-semibold text-ppp-navy hover:bg-ppp-blue-400 active:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
         >
           {pending ? <><IconSpinner /> Adding…</> : <>Add user</>}
         </button>
@@ -579,7 +579,7 @@ function UserRow({
               type="button"
               onClick={() => void saveReset()}
               disabled={busy || newPw.length < 8}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-ppp-blue px-4 text-sm font-semibold text-white hover:bg-ppp-blue-600 disabled:opacity-50 min-h-[44px]"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ppp-blue px-4 text-sm font-semibold text-ppp-navy hover:bg-ppp-blue-400 disabled:opacity-50 min-h-[44px]"
             >
               {busy ? <IconSpinner /> : null} Save
             </button>
