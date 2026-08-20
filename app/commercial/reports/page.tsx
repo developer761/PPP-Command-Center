@@ -85,9 +85,19 @@ export default async function ReportsOverviewPage() {
   const invoices = await listCommercialInvoices({});
   const billingTrend = monthlyBilledSeries(invoices, { months: 6, oppIds: allOppIds, nowIso: new Date().toISOString() });
   const hasTrend = billingTrend.some((p) => p.value > 0);
+  // monthlyBilledSeries returns $K (cents / 100_000) so it can feed
+  // TrendChart's currency-k axis — convert back before formatting as money.
+  const trendTotalCents = Math.round(billingTrend.reduce((n, p) => n + p.value, 0) * 100_000);
   const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
     .filter((c) => jobCosts.totals.buckets[c.key] > 0)
     .map((c) => ({ label: c.label, value: jobCosts.totals.buckets[c.key], tone: BUCKET_TONE[c.key], valueLabel: formatCentsCompact(jobCosts.totals.buckets[c.key]) }));
+
+  // Span the row when the other snapshot card is absent. A lg:col-span-2
+  // trend with no cost mix next to it left a third of the row empty and read
+  // as a broken layout (Karan, 2026-08-19: "looks off").
+  const hasMix = costSegments.length > 0;
+  const trendSpan = hasMix ? "lg:col-span-2" : "lg:col-span-3";
+  const mixSpan = hasTrend ? "lg:col-span-1" : "lg:col-span-3";
 
   const overdue = aging.totals.total - aging.totals.current;
   const marginTone: Tone =
@@ -226,16 +236,23 @@ export default async function ReportsOverviewPage() {
       {(hasTrend || costSegments.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {hasTrend && (
-            <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+            <div className={`${trendSpan} bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5`}>
               <div className="flex items-baseline justify-between gap-2 mb-2">
-                <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed / month</h3>
-                <span className="text-[11px] text-ppp-charcoal-400">last 6 months</span>
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed / month</h3>
+                  {/* The total, so the card carries a figure and not just a
+                      shape — a flat line with no number reads as an error. */}
+                  <span className="font-condensed text-[15px] font-black tabular-nums text-cc-brand-700">
+                    {formatCentsCompact(trendTotalCents)}
+                  </span>
+                </div>
+                <span className="text-[11px] text-ppp-charcoal-400 shrink-0">last 6 months</span>
               </div>
               <TrendChart data={billingTrend} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px]" />
             </div>
           )}
           {costSegments.length > 0 && (
-            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+            <div className={`${mixSpan} bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5`}>
               <h3 className="text-[13px] font-bold text-ppp-charcoal mb-2">Cost mix</h3>
               <DonutChart size={132} segments={costSegments} centerValue={formatCentsCompact(jobCosts.totals.totalCostCents)} centerLabel="total cost" legend={false} />
             </div>

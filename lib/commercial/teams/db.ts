@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { ASSIGNMENT_ROLES, type AssignmentRole } from "@/lib/commercial/accounts/assignment-roles";
+import { personName } from "@/lib/commercial/person-name";
 
 /**
  * Teams — reusable named groups of staff (Karan meeting 2026-08). A team has a
@@ -24,7 +25,7 @@ export type TeamSummary = { id: string; name: string; member_count: number; admi
 export type TeamWithMembers = { id: string; name: string; members: TeamMember[] };
 
 function displayName(email: string | null, sf: string | null): string {
-  return (sf ?? "").trim() || (email ?? "").trim() || "(user)";
+  return personName(sf, email, "(user)");
 }
 function isRole(r: string): r is AssignmentRole {
   return (ASSIGNMENT_ROLES as readonly string[]).includes(r);

@@ -7,6 +7,7 @@ import {
   insertCommercialNoteMentionNotifications,
 } from "@/lib/notifications/commercial-events";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { personName } from "@/lib/commercial/person-name";
 
 /**
  * Per-opportunity notes — free-form timeline entries with edit + delete.
@@ -207,7 +208,7 @@ export async function listLastNoteByOpp(
     const a = Array.isArray(raw.author) ? raw.author[0] ?? null : raw.author;
     out.set(raw.opportunity_id, {
       created_at: raw.created_at,
-      author_label: a?.sf_user_name ?? a?.email ?? null,
+      author_label: a ? personName(a.sf_user_name, a.email, "") || null : null,
     });
   }
   return out;
@@ -289,7 +290,7 @@ export async function addOpportunityNote(
           .eq("user_id", input.author_user_id)
           .maybeSingle();
         const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
-        actorName = a?.sf_user_name || a?.email || "PPP admin";
+        actorName = personName(a?.sf_user_name, a?.email, "PPP admin");
       }
       const preview = body.length > 240 ? `${body.slice(0, 240).trimEnd()}…` : body;
 
@@ -452,7 +453,7 @@ export async function editOpportunityNote(
             .eq("user_id", acting_user_id)
             .maybeSingle();
           const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
-          actorName = a?.sf_user_name || a?.email || "PPP admin";
+          actorName = personName(a?.sf_user_name, a?.email, "PPP admin");
         }
         const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240).trimEnd()}…` : trimmed;
         const displayName = derivedOppName(

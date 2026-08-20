@@ -28,6 +28,11 @@ type NavItem = {
   disabled?: boolean;
   /** Only render for platform admins (e.g. Access — user provisioning). */
   adminOnly?: boolean;
+  /** Admin OR account manager — the money surfaces (margin, cost, AR).
+   *  Separate from adminOnly because Mary keeps the receivables book and is
+   *  not a platform admin; gating Accounting to adminOnly would lock out the
+   *  one person who uses it most. */
+  financeOnly?: boolean;
   icon: React.ReactNode;
 };
 
@@ -100,6 +105,20 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    // Karan, 2026-08-19: "maybe have a separate Accounting Page with this plus
+    // other important things that Alex would need to see."
+    //
+    // Deliberately NOT another Reports tab. Reports is per-topic analysis you
+    // open to answer a question. Accounting is the money desk — one page that
+    // answers "where do we stand" without picking a report first. It is the
+    // page Alex opens on his phone in the morning and Mary works from during
+    // the day, and it links out to the reports for the detail.
+    heading: "Accounting",
+    items: [
+      { label: "Accounting", href: "/commercial/accounting", icon: <IconLedger />, financeOnly: true },
+    ],
+  },
+  {
     heading: "Reports",
     items: [
       // R4: a Reports framework — one entry, a tab bar inside switches reports
@@ -125,13 +144,17 @@ type Props = {
   showSwitcher: boolean;
   /** Platform admin — gates adminOnly nav items (e.g. Access provisioning). */
   isAdmin?: boolean;
+  /** Admin or account manager — gates financeOnly nav items (Accounting). Same
+   *  predicate the page itself enforces, so a rep never sees a link that
+   *  bounces them (the D12 rule). */
+  canSeeFinance?: boolean;
   /** Crew-only login — the allowlist denies every normal nav target, so
    *  rendering them is ~17 links that each bounce back to /commercial/crew. */
   crewOnly?: boolean;
   onNavigate?: () => void;
 };
 
-export default function CommercialSidebar({ showSwitcher, isAdmin = false, crewOnly = false, onNavigate }: Props) {
+export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSeeFinance = false, crewOnly = false, onNavigate }: Props) {
   const pathname = usePathname();
   // Manual expand/collapse overrides for the collapsible groups, keyed by group
   // label. Undefined = follow the auto rule (open when a child is active).
@@ -172,11 +195,18 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, crewO
     items: s.items
       .map((entry) =>
         isGroup(entry)
-          ? { ...entry, items: entry.items.filter((it) => !it.adminOnly || isAdmin) }
+          ? {
+              ...entry,
+              items: entry.items.filter(
+                (it) => (!it.adminOnly || isAdmin) && (!it.financeOnly || canSeeFinance)
+              ),
+            }
           : entry
       )
       .filter((entry) =>
-        isGroup(entry) ? entry.items.length > 0 : !entry.adminOnly || isAdmin
+        isGroup(entry)
+          ? entry.items.length > 0
+          : (!entry.adminOnly || isAdmin) && (!entry.financeOnly || canSeeFinance)
       ),
   }));
 
@@ -440,6 +470,17 @@ function IconDollar() {
     </svg>
   );
 }
+/** A ledger — ruled book with a column line. The money desk, not another chart. */
+function IconLedger() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 18.5Z" />
+      <path d="M8 3v17" />
+      <path d="M11.5 8h5 M11.5 12h5 M11.5 16h3" />
+    </svg>
+  );
+}
+
 function IconChart() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

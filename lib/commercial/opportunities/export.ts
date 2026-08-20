@@ -18,6 +18,7 @@ import { listAttachmentCountByOpp } from "./attachments";
 import { commercialDb } from "@/lib/commercial/db";
 import { probabilityFor } from "./constants";
 import { csvEscape } from "@/lib/commercial/csv";
+import { personName } from "@/lib/commercial/person-name";
 
 /**
  * CSV export of the global Opportunities pipeline.
@@ -144,7 +145,7 @@ export async function exportOpportunitiesCsv(
     sf_user_name: string | null;
     email: string | null;
   }[]) {
-    estimatorNameById.set(r.user_id, r.sf_user_name || r.email || "");
+    estimatorNameById.set(r.user_id, personName(r.sf_user_name, r.email, ""));
   }
 
   const rows: string[] = [];

@@ -38,6 +38,8 @@ export type ReceivableRow = {
   sourceId: string;
   accountId: string;
   accountName: string;
+  /** The deal this money sits on. Null only for an account-level invoice. */
+  opportunityId: string | null;
   /** Mary's "Job" column. */
   jobName: string;
   /** Mary's "Billed/Open". */
@@ -49,7 +51,13 @@ export type ReceivableRow = {
   issuedIso: string | null;
   /** Days past due. Null when there's no due date (retainage never ages). */
   daysOut: number | null;
+  /** The specific document — this invoice, this AIA application. */
   href: string;
+  /** The JOB's billing, not the document. Mary's actual question on a chase
+   *  call is "what has this job been billed and what's been paid", which the
+   *  single document can't answer — so the job name and the reference go to
+   *  two different places on purpose. Null when there's no deal to open. */
+  billingHref: string | null;
 };
 
 export type ReceivablesReport = {
@@ -125,6 +133,7 @@ export async function getReceivablesReport(nowMs = Date.now()): Promise<Receivab
       sourceId: inv.id,
       accountId,
       accountName: account,
+      opportunityId: inv.opportunity_id ?? null,
       jobName: job,
       openCents: open,
       reference: [inv.invoice_number, issued ? `sent ${fmtRefDate(issued)}` : null]
@@ -134,6 +143,9 @@ export async function getReceivablesReport(nowMs = Date.now()): Promise<Receivab
       issuedIso: issued,
       daysOut: inv.due_at ? daysPastDue(inv.due_at, nowMs) : null,
       href: `/commercial/invoices/${inv.id}`,
+      billingHref: inv.opportunity_id
+        ? `/commercial/opportunities/${inv.opportunity_id}?tab=invoices`
+        : null,
     });
   }
 
@@ -157,6 +169,7 @@ export async function getReceivablesReport(nowMs = Date.now()): Promise<Receivab
         sourceId: roll.latestIssuedId,
         accountId,
         accountName: account,
+        opportunityId: oppId,
         jobName: job,
         openCents: roll.dueNowCents,
         // Mary writes this by hand as "AIA#3-7/22/26". Same thing, generated.
@@ -165,6 +178,7 @@ export async function getReceivablesReport(nowMs = Date.now()): Promise<Receivab
         issuedIso,
         daysOut: dueAt ? daysPastDue(dueAt, nowMs) : null,
         href: `/commercial/opportunities/${oppId}?tab=aia&app=${roll.latestIssuedId}`,
+        billingHref: `/commercial/opportunities/${oppId}?tab=aia`,
       });
     }
 
@@ -177,6 +191,7 @@ export async function getReceivablesReport(nowMs = Date.now()): Promise<Receivab
         sourceId: oppId,
         accountId,
         accountName: account,
+        opportunityId: oppId,
         jobName: job,
         openCents: roll.retainageHeldCents,
         reference: `Retention · AIA #${roll.latestIssuedNumber}`,
@@ -184,6 +199,7 @@ export async function getReceivablesReport(nowMs = Date.now()): Promise<Receivab
         issuedIso,
         daysOut: null,
         href: `/commercial/opportunities/${oppId}?tab=aia`,
+        billingHref: `/commercial/opportunities/${oppId}?tab=aia`,
       });
     }
   }

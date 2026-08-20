@@ -7,6 +7,7 @@ import { getReceivablesReport, setReceivableNote } from "@/lib/commercial/report
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
+import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,24 @@ async function refreshBriefAction() {
   redirect(res.ok ? `${BASE}?brief=1` : `${BASE}?error=${encodeURIComponent(res.error)}`);
 }
 
+/** Email the sheet. Mary's last step — the one she does by hand today.
+ *  A send is deliberate and explicit: no auto-send, no scheduled surprise from
+ *  this button. The daily cron, when it lands, calls the same helper. */
+async function sendToAlexAction() {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const res = await sendReceivablesToAlex();
+  revalidatePath(BASE);
+  redirect(
+    res.ok
+      ? `${BASE}?sent=${encodeURIComponent(res.to.join(", "))}`
+      : `${BASE}?error=${encodeURIComponent(res.error)}`
+  );
+}
+
 function pickFirst(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v ?? undefined;
 }
@@ -76,6 +95,8 @@ export default async function ReceivablesReportPage({
   const report = await getReceivablesReport();
   const error = pickFirst(sp.error);
   const saved = pickFirst(sp.saved) === "1";
+  const sentTo = pickFirst(sp.sent);
+  const recipients = receivablesRecipients();
   const { brief, stale } = await getCachedBrief(report);
   const canBrief = briefAvailable();
 
@@ -91,17 +112,45 @@ export default async function ReceivablesReportPage({
             Add a note after a chase and it stays with the job.
           </p>
         </div>
-        <Link
-          href="/commercial/reports/ar-aging"
-          className="text-[12px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center"
-        >
-          AR aging (by days late) →
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href="/commercial/reports/ar-aging"
+            className="text-[12px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center mr-1"
+          >
+            AR aging →
+          </Link>
+          {/* A plain link, not a fetch — the browser downloads it and the file
+              is byte-identical to the one attached to Alex's email. */}
+          <a
+            href="/api/commercial/reports/receivables/export"
+            className="inline-flex items-center min-h-[40px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
+          >
+            Export sheet
+          </a>
+          {report.rows.length > 0 && (
+            <form action={sendToAlexAction} className="flex flex-col items-end gap-0.5">
+              <PendingSubmitButton
+                pendingLabel="Sending…"
+                className="inline-flex items-center min-h-[40px] px-3 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 transition-colors"
+              >
+                Send to Alex
+              </PendingSubmitButton>
+              {/* Name the recipient. A send button whose destination you have
+                  to guess is one nobody presses. */}
+              <span className="text-[10px] text-ppp-charcoal-400">{recipients.join(", ")}</span>
+            </form>
+          )}
+        </div>
       </div>
 
       {saved && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
           Note saved.
+        </div>
+      )}
+      {sentTo && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
+          Sent to {sentTo} — the figures, the notes, and the sheet attached.
         </div>
       )}
       {error && (
@@ -172,7 +221,7 @@ export default async function ReceivablesReportPage({
               {report.rows.map((r) => (
                 <li key={r.key} className="px-3.5 py-3">
                   <div className="flex items-start justify-between gap-2">
-                    <Link href={r.href} className="text-[13.5px] font-semibold text-ppp-charcoal leading-snug min-w-0 hover:text-cc-brand-700">
+                    <Link href={r.billingHref ?? r.href} className="text-[13.5px] font-semibold text-ppp-charcoal leading-snug min-w-0 hover:text-cc-brand-700">
                       {r.jobName}
                     </Link>
                     <span className="text-[14px] font-bold tabular-nums shrink-0">{formatCentsCompact(r.openCents)}</span>
@@ -181,7 +230,9 @@ export default async function ReceivablesReportPage({
                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${KIND_META[r.kind].cls}`}>
                       {KIND_META[r.kind].label}
                     </span>
-                    <span className="text-[11px] text-ppp-charcoal-500">{r.reference}</span>
+                    <Link href={r.href} className="text-[11px] text-ppp-charcoal-500 hover:text-cc-brand-700 underline decoration-dotted underline-offset-2">
+                      {r.reference}
+                    </Link>
                     {r.daysOut !== null && r.daysOut > 0 && (
                       <span className="text-[11px] font-semibold text-rose-700">{r.daysOut}d late</span>
                     )}
@@ -205,17 +256,32 @@ export default async function ReceivablesReportPage({
                 <tbody className="divide-y divide-ppp-charcoal-100">
                   {report.rows.map((r) => (
                     <tr key={r.key} className="hover:bg-cc-brand-50/30 align-top">
+                      {/* Two destinations on purpose. On a chase call the
+                          question is "what has this JOB been billed and what's
+                          been paid" — which the single document can't answer —
+                          so the job name opens the job's billing and the
+                          reference opens the document itself. */}
                       <td className="px-3 py-2.5">
-                        <Link href={r.href} className="font-semibold text-ppp-charcoal hover:text-cc-brand-700 hover:underline">
+                        <Link
+                          href={r.billingHref ?? r.href}
+                          className="font-semibold text-ppp-charcoal hover:text-cc-brand-700 hover:underline"
+                        >
                           {r.jobName}
                         </Link>
-                        <span className="block text-[10.5px] text-ppp-charcoal-400">{r.accountName}</span>
+                        <Link
+                          href={`/commercial/accounts/${r.accountId}`}
+                          className="block text-[10.5px] text-ppp-charcoal-400 hover:text-cc-brand-700 hover:underline w-fit"
+                        >
+                          {r.accountName}
+                        </Link>
                       </td>
                       <td className="px-3 py-2.5">
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[9.5px] font-bold uppercase tracking-wide mr-1.5 ${KIND_META[r.kind].cls}`}>
                           {KIND_META[r.kind].label}
                         </span>
-                        <span className="text-ppp-charcoal-600">{r.reference}</span>
+                        <Link href={r.href} className="text-ppp-charcoal-600 hover:text-cc-brand-700 hover:underline">
+                          {r.reference}
+                        </Link>
                       </td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-ppp-charcoal">
                         {formatCentsFull(r.openCents)}

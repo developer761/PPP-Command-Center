@@ -22,6 +22,7 @@ import {
   foldAutoAdvanceTargets,
   type AutoAdvanceTargetKey,
 } from "@/lib/commercial/opportunities/auto-advance-targets";
+import { personName } from "@/lib/commercial/person-name";
 
 // ────────────── types ──────────────
 
@@ -1358,7 +1359,7 @@ async function resolveActorName(userId: string): Promise<string> {
     .eq("user_id", userId)
     .maybeSingle();
   const p = prof as { sf_user_name?: string | null; email?: string | null } | null;
-  return p?.sf_user_name || p?.email || "A teammate";
+  return personName(p?.sf_user_name, p?.email, "A teammate");
 }
 
 /** Small patch helper — writes approval-tracking columns directly (the
@@ -2371,7 +2372,7 @@ export async function sendProposal(input: {
       .eq("user_id", input.actor_user_id)
       .maybeSingle();
     const p = prof as { sf_user_name?: string | null; email?: string | null } | null;
-    actorName = p?.sf_user_name || p?.email || "PPP admin";
+    actorName = personName(p?.sf_user_name, p?.email, "PPP admin");
   }
 
   // Freshly re-read the proposal + do all the pre-flight checks here so

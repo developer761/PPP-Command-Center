@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { insertCommercialTaskAssignedNotification } from "@/lib/notifications/commercial-events";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { personName } from "@/lib/commercial/person-name";
 
 /**
  * Per-opportunity tasks — to-dos with assignee + due_at + completion
@@ -180,7 +181,7 @@ export async function createOpportunityTask(
             .eq("user_id", input.created_by_user_id)
             .maybeSingle();
           const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
-          assignerName = a?.sf_user_name || a?.email || "PPP admin";
+          assignerName = personName(a?.sf_user_name, a?.email, "PPP admin");
         }
         // Phase B: derived opp name so the bell + email body reads
         // {account} - {client} - {location} when the CEO structural

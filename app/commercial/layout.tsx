@@ -10,6 +10,7 @@ import { CommandPalette } from "@/components/commercial/command-palette";
 import { KeyboardShortcuts } from "@/components/commercial/keyboard-shortcuts";
 import { OnboardingWalkthrough } from "@/components/commercial/onboarding-walkthrough";
 import { Suspense } from "react";
+import { normalizeRole } from "@/lib/auth/roles";
 
 /**
  * /commercial — New Platform layout.
@@ -85,6 +86,11 @@ export default async function CommercialDashboardLayout({
   // Platform admin — gates the admin-only "Access" nav item. The Access page
   // itself re-checks via normalizeRole (authoritative); this just hides the link.
   const isAdmin = profile?.is_admin === true || isAdminEmail(user.email);
+  // The money desk (/commercial/accounting) is admin + account manager. Mary
+  // keeps the receivables book and isn't a platform admin, so this can't be
+  // isAdmin alone. Same predicate the page enforces server-side.
+  const viewerRole = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  const canSeeFinance = viewerRole === "admin" || viewerRole === "account_manager";
 
   // Phase I — dark mode. Read the persisted theme so the server renders the
   // right one (no flash on navigation). Scoped to this wrapper, so the
@@ -97,6 +103,7 @@ export default async function CommercialDashboardLayout({
       user={{ email, fullName, firstName, initial }}
       showSwitcher={access.hasBoth}
       isAdmin={isAdmin}
+      canSeeFinance={canSeeFinance}
       crewOnly={crewOnly}
     >
       {children}

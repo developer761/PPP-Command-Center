@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { personName } from "@/lib/commercial/person-name";
 
 /**
  * Eligible-estimators lookup for the New Opportunity + Edit forms.
@@ -53,7 +54,7 @@ export async function listEligibleEstimators(accountId: string): Promise<Eligibl
   for (const raw of (data ?? []) as unknown as Row[]) {
     const user = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
     if (!user) continue;
-    const name = user.sf_user_name || user.email || "(unknown)";
+    const name = personName(user.sf_user_name, user.email, "(unknown)");
     const existing = byUser.get(user.user_id);
     if (existing) {
       // Prefer showing an estimator-flagged role if the user has one,
@@ -90,5 +91,5 @@ export async function getEstimatorDisplayName(
     .eq("user_id", userId)
     .maybeSingle();
   const row = data as { sf_user_name: string | null; email: string | null } | null;
-  return row?.sf_user_name || row?.email || null;
+  return row ? personName(row.sf_user_name, row.email, "") || null : null;
 }

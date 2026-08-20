@@ -5,6 +5,7 @@ import { paginateAll } from "@/lib/commercial/paginate";
 import { etDateOf } from "@/lib/date-et";
 import { columnKeyForOpp } from "@/lib/commercial/opportunities/kanban-columns";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { personName } from "@/lib/commercial/person-name";
 
 /**
  * Estimator / proposal performance — "how is Kim doing".
@@ -171,7 +172,7 @@ export async function getEstimatorReport(range: {
       .select("user_id, full_name, sf_user_name, email")
       .in("user_id", userIds);
     for (const p of (data ?? []) as { user_id: string; full_name: string | null; sf_user_name: string | null; email: string | null }[]) {
-      nameById.set(p.user_id, (p.full_name || p.sf_user_name || p.email || "Unknown").trim());
+      nameById.set(p.user_id, (p.full_name || "").trim() || personName(p.sf_user_name, p.email, "Unknown"));
     }
   }
 

@@ -16,6 +16,12 @@ const REPORTS: { href: string; label: string; exact?: boolean; adminOnly?: boole
   { href: "/commercial/reports/pipeline", label: "Pipeline" },
   { href: "/commercial/reports/job-costs", label: "Job costs" },
   { href: "/commercial/reports/geography", label: "Geography" },
+  // Receivables sits before AR Aging, matching the index card order: it
+  // answers "what is out and what is happening with it" (Alex's question),
+  // where aging answers "who is late". Shipped 2026-08-19 with a route and an
+  // index card but NO tab — so the only way in was scrolling the index, which
+  // is exactly how Karan failed to find it.
+  { href: "/commercial/reports/receivables", label: "Receivables" },
   { href: "/commercial/reports/ar-aging", label: "AR Aging" },
   { href: "/commercial/reports/win-loss", label: "Win / Loss" },
   // These exist as routes and are linked from the Reports index, but were

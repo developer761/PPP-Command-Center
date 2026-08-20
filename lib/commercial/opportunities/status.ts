@@ -25,6 +25,7 @@ import {
   opportunityStatusLabel,
   derivedOppName,
 } from "./db";
+import { personName } from "@/lib/commercial/person-name";
 
 /**
  * Status-transition orchestration for commercial_opportunities.
@@ -757,7 +758,7 @@ export async function changeOpportunityStatus(
           .eq("user_id", input.acting_user_id)
           .maybeSingle();
         const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
-        actorName = a?.sf_user_name || a?.email || "PPP admin";
+        actorName = personName(a?.sf_user_name, a?.email, "PPP admin");
       }
       // Phase B: compute the derived opp name (account - client - location)
       // for the bell + email body so users see the CEO's standardized

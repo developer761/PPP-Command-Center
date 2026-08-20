@@ -25,6 +25,7 @@ import {
   insertCommercialInvoicePaymentRecordedNotifications,
   insertCommercialInvoicePaidNotifications,
 } from "@/lib/notifications/commercial-events";
+import { personName } from "@/lib/commercial/person-name";
 
 /** Resolve the actor's display name from profiles.sf_user_name (falls
  *  back to email → "PPP admin"). Every invoicing notification uses this
@@ -39,7 +40,7 @@ async function resolveActorName(user_id: string | null | undefined): Promise<str
     .eq("user_id", user_id)
     .maybeSingle();
   const a = data as { sf_user_name?: string | null; email?: string | null } | null;
-  return a?.sf_user_name || a?.email || "PPP admin";
+  return personName(a?.sf_user_name, a?.email, "PPP admin");
 }
 
 /** Fetch the parent opp's display name (CEO {account}-{client}-{location}
