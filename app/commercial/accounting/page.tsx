@@ -12,6 +12,10 @@ import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets } from "@/lib/
 import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orders-vendors";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
+import { getTransactionsReport, setPaymentDeposited, type TxnFilters, type TxnDirection } from "@/lib/commercial/reports/transactions";
+import { TransactionsLedger } from "@/components/commercial/transactions-ledger";
+import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type ActivityPreset } from "@/lib/commercial/reports/presets";
+import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
 import { ReceivablesFilterBar } from "@/components/commercial/receivables-filter-bar";
@@ -150,6 +154,28 @@ async function saveNoteAction(formData: FormData) {
   );
 }
 
+/**
+ * Tick a payment as deposited (or untick it).
+ *
+ * Its own action so it stays a single click. Reconciling a bank statement is
+ * thirty of these in a row; anything heavier doesn't get done, and the column
+ * stops meaning anything the moment it's half-filled.
+ */
+async function depositAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const paymentId = String(formData.get("payment_id") ?? "");
+  const qs = String(formData.get("qs") ?? "?view=transactions");
+  const sep = qs.includes("?") ? "&" : "?";
+  if (!paymentId) redirect(`${BASE}${qs}`);
+  const res = await setPaymentDeposited(paymentId, String(formData.get("deposited")) === "1");
+  revalidatePath(BASE);
+  redirect(res.ok ? `${BASE}${qs}` : `${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`);
+}
+
 /** Email the sheet to Alex. Explicit click only — no auto-send from here.
  *  Stays on the view you sent it from; it used to force `?view=receivables`,
  *  so pressing Send from Overview silently switched tabs underneath you. */
@@ -189,6 +215,9 @@ async function sendToAlexAction(formData: FormData) {
 const VIEWS = [
   { key: "overview", label: "Overview" },
   { key: "receivables", label: "Receivables" },
+  // Alex's ledger. Sits next to Receivables on purpose: one answers "what is
+  // owed", the other "what actually moved", and he reads them together.
+  { key: "transactions", label: "Transactions" },
   { key: "aging", label: "AR aging" },
   { key: "cash", label: "Cash flow" },
   { key: "costs", label: "Job costs" },
@@ -214,14 +243,49 @@ export default async function AccountingPage({
   const recipients = receivablesRecipients();
   const q = parseReceivableQuery((k) => sp[k]);
   const activeFilter = describeReceivableQuery(q);
+
+  // ── The ledger's own filters ──────────────────────────────────────────
+  // Its own query keys (`tp`/`td`/`tparty`/`tundep`) so switching between the
+  // Receivables view and this one never carries a filter across and quietly
+  // narrows a different list.
+  const txPeriod = resolvePreset(pickFirst(sp.tp), ACTIVITY_PRESETS, ACTIVITY_DEFAULT);
+  const rawDir = pickFirst(sp.td);
+  const txDirection: TxnDirection | "all" = rawDir === "in" || rawDir === "out" ? rawDir : "all";
+  const txParty = pickFirst(sp.tparty)?.trim() || null;
+  const txUndeposited = pickFirst(sp.tundep) === "1";
+  const txRange = activityRange(txPeriod);
+  const txFilters: TxnFilters = {
+    fromYmd: txRange?.fromYmd,
+    toYmd: txRange?.toYmd,
+    direction: txDirection === "all" ? undefined : txDirection,
+    party: txParty ?? undefined,
+    undepositedOnly: txUndeposited || undefined,
+  };
+  const txQuery = (patch: Record<string, string | null> = {}) => {
+    const p = new URLSearchParams({ view: "transactions" });
+    const set = (k: string, v: string | null) => {
+      if (v) p.set(k, v);
+      else p.delete(k);
+    };
+    set("tp", txPeriod === ACTIVITY_DEFAULT ? null : txPeriod);
+    set("td", txDirection === "all" ? null : txDirection);
+    set("tparty", txParty);
+    set("tundep", txUndeposited ? "1" : null);
+    for (const [k, v] of Object.entries(patch)) set(k, v);
+    return `?${p.toString()}`;
+  };
   // Filters live on the Receivables VIEW only. The headline band above the
   // switcher, and every overview figure, stay whole-book: those are "where does
   // the company stand", and silently narrowing them to a filter set on another
   // tab would make the money desk quietly wrong.
   const viewQs = (v: View) => (v === "receivables" ? receivableQueryString(q) : "");
   const href = (v: View) => {
+    if (v === "overview") return BASE;
+    // The ledger carries its own filters back, so leaving it and returning
+    // doesn't silently reset the month you were reconciling.
+    if (v === "transactions") return `${BASE}${txQuery()}`;
     const qs = viewQs(v);
-    return v === "overview" ? BASE : `${BASE}?view=${v}${qs ? `&${qs.slice(1)}` : ""}`;
+    return `${BASE}?view=${v}${qs ? `&${qs.slice(1)}` : ""}`;
   };
 
   // Both windows come from the reports' own preset functions, so a figure here
@@ -245,6 +309,8 @@ export default async function AccountingPage({
   // number: reusing the unfiltered `receivables` would ignore the filter bar.
   const receivablesView =
     view === "receivables" ? await getReceivablesReport(Date.now(), filtersFor(q)) : null;
+  // Same rule as aging: only paid for on the view that renders it.
+  const transactions = view === "transactions" ? await getTransactionsReport(txFilters) : null;
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
@@ -677,6 +743,133 @@ export default async function AccountingPage({
             emptyMessage={
               receivablesView.filtered
                 ? `Nothing matches this filter${activeFilter ? ` (${activeFilter})` : ""}. The book isn't empty — clear the filters to see all ${receivablesView.unfilteredCount}.`
+                : undefined
+            }
+          />
+        </section>
+      )}
+
+      {/* ── Transactions, in place ─────────────────────────────────────
+             Alex's "Payments In by Month", natively — plus money out, so each
+             month can show a net. ── */}
+      {view === "transactions" && transactions && (
+        <section className="space-y-2.5">
+          <SectionHead
+            title="Every transaction"
+            hint="Money in and out, by the month it moved. Tick a payment once it clears the bank."
+          />
+
+          {/* His report's headline pair — Total Records and Total Amount —
+              in his position, above the list. */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Tile label="Records" value={transactions.rowCount.toLocaleString()} tone="neutral" sub={`${transactions.months.length} month${transactions.months.length === 1 ? "" : "s"}`} />
+            <Tile label="Money in" value={formatCentsFull(transactions.inCents)} tone="emerald" sub="payments received" />
+            <Tile label="Money out" value={formatCentsFull(transactions.outCents)} tone="amber" sub="purchases logged" />
+            <Tile
+              label="Net"
+              value={formatCentsFull(transactions.netCents)}
+              tone={transactions.netCents < 0 ? "rose" : "navy"}
+              sub={transactions.netCents < 0 ? "more went out than came in" : "in − out"}
+            />
+          </div>
+
+          {/* Undeposited — the money sitting in the office. This is the whole
+              reason his report carries a Deposited column, and no other
+              surface here can produce it. */}
+          {transactions.undepositedCents > 0 && (
+            <p className="text-[12px] rounded-lg border px-3 py-2 border-amber-200 bg-amber-50 text-amber-900">
+              <strong>{formatCentsFull(transactions.undepositedCents)}</strong> received but not marked
+              deposited, across {transactions.undepositedCount} payment
+              {transactions.undepositedCount === 1 ? "" : "s"}.{" "}
+              <Link href={`${BASE}${txQuery({ tundep: "1", td: "in" })}`} className="font-semibold underline">
+                Show just those
+              </Link>
+            </p>
+          )}
+
+          {/* Filters — same one-line shape as the receivables bar. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <NavSelect
+              label="Period"
+              value={txPeriod}
+              ariaLabel="Filter transactions by period"
+              choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
+                value: p.key,
+                label: p.label,
+                href: `${BASE}${txQuery({ tp: p.key === ACTIVITY_DEFAULT ? null : p.key })}`,
+              }))}
+            />
+            <NavSelect
+              label="Type"
+              value={txDirection}
+              ariaLabel="Filter by money in or out"
+              choices={[
+                { value: "all", label: "In and out", href: `${BASE}${txQuery({ td: null })}` },
+                { value: "in", label: "Payments in", href: `${BASE}${txQuery({ td: "in" })}` },
+                { value: "out", label: "Purchases out", href: `${BASE}${txQuery({ td: "out" })}` },
+              ]}
+            />
+            {transactions.partyOptions.length > 1 && (
+              <NavSelect
+                label="Who"
+                value={txParty ?? ""}
+                ariaLabel="Filter by GC or vendor"
+                choices={[
+                  { value: "", label: "Everyone", href: `${BASE}${txQuery({ tparty: null })}` },
+                  ...transactions.partyOptions.map((o): NavChoice => ({
+                    value: o.id,
+                    label: o.name,
+                    href: `${BASE}${txQuery({ tparty: o.id })}`,
+                  })),
+                ]}
+              />
+            )}
+            <Link
+              href={`${BASE}${txQuery({ tundep: txUndeposited ? null : "1" })}`}
+              aria-pressed={txUndeposited}
+              className={`inline-flex items-center px-3 rounded-lg text-[12.5px] font-semibold border transition-colors min-h-[44px] sm:min-h-[38px] touch-manipulation ${
+                txUndeposited
+                  ? "bg-amber-600 text-white border-amber-700"
+                  : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+              }`}
+            >
+              Not deposited
+            </Link>
+            {transactions.filtered && (
+              <Link href={`${BASE}?view=transactions`} className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] sm:min-h-[38px] px-1">
+                Clear
+              </Link>
+            )}
+            <ExportCsvLink
+              href="/api/commercial/reports/transactions/export"
+              params={{
+                ...(txPeriod !== ACTIVITY_DEFAULT ? { tp: txPeriod } : {}),
+                ...(txDirection !== "all" ? { td: txDirection } : {}),
+                ...(txParty ? { tparty: txParty } : {}),
+                ...(txUndeposited ? { tundep: "1" } : {}),
+              }}
+              label="Export ledger"
+              disabled={transactions.rowCount === 0}
+              disabledHint="Nothing to export in this view"
+            />
+          </div>
+
+          {/* Crew labour is a COST, not a transaction — no payment row exists
+              for it — so it is absent here rather than invented. Said once,
+              where somebody would otherwise go looking for it. */}
+          <p className="text-[11px] text-ppp-charcoal-400">
+            Crew labour isn&rsquo;t listed: it&rsquo;s costed from approved hours, not paid as a
+            recorded transaction. It&rsquo;s in{" "}
+            <Link href={href("costs")} className="font-semibold text-cc-brand-700 hover:underline">Job costs</Link>.
+          </p>
+
+          <TransactionsLedger
+            report={transactions}
+            depositAction={depositAction}
+            queryString={txQuery()}
+            emptyMessage={
+              transactions.filtered
+                ? "Nothing moved in this view. Clear the filters to see the whole ledger."
                 : undefined
             }
           />
