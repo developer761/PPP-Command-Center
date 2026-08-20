@@ -19,6 +19,7 @@ import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   listCloseoutPackages,
   getCloseoutPackage,
+  markWarrantyIssued,
   listCloseoutItems,
   createCloseoutPackage,
   updateCloseoutPackage,
@@ -161,14 +162,23 @@ async function changeStatusAction(formData: FormData) {
   if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
   const res = await changeCloseoutStatus(pkgId, to, userId);
   if (!res.ok) redirect(`${base(id, dealId, origin, from)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
-  // Auto-file the transmittal (+ warranty) when the package is sent to the GC.
+  // File the TRANSMITTAL when the package goes to the GC. The warranty is not
+  // filed here — Katie: "Warranty sent ONLY as requested". It has its own
+  // action, below.
   if (to === "sent") await autoFileCloseoutPackage(id, dealId, pkgId, userId);
   revalidateCloseout(id, dealId);
   redirect(`${base(id, dealId, origin, from)}&pkg=${pkgId}${backQ(back)}`);
 }
 
-/** Render + file the closeout transmittal and (when a warranty term is set) the
- *  warranty letter as deal documents (category closeout). Best-effort. */
+/** Render + file the closeout transmittal as a deal document (category
+ *  closeout). Best-effort.
+ *
+ *  It used to file the WARRANTY here too, whenever `warranty_years > 0` — which
+ *  defaults to 1, so every close-out issued one. Katie's rule is the opposite
+ *  ("Warranty sent ONLY as requested"), and the letter carries Brendan's
+ *  signature over a twelve-month guarantee to repair or replace at Tomco's own
+ *  expense. A warranty nobody asked for is an obligation nobody had to give.
+ *  Issuing it is now `issueWarrantyAction`. */
 async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId: string, userId: string) {
   try {
     const pkg = await getCloseoutPackage(pkgId);
@@ -187,18 +197,12 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
       website: oc.website,
       signature_name: oc.signature_name,
       signature_title: oc.signature_title,
-      // Tomco's Form of Warranty signs off with Company / Address / Telephone.
-      legal_name: oc.legal_name,
-      address_line1: oc.address_line1,
-      address_line2: oc.address_line2,
-      city: oc.city,
-      state: oc.state,
-      zip: oc.zip,
     };
-    const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
+    // The signature buffer and the warranty renderer are deliberately NOT
+    // pulled in here any more — nothing on this path may issue a warranty.
+    const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
     const logo = await getBrandLogoBuffer();
-    const signature = await getBrandSignatureBuffer();
-    const { renderCloseoutTransmittalPdf, renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
+    const { renderCloseoutTransmittalPdf } = await import("@/lib/commercial/closeout/pdf");
     const transmittal = await renderCloseoutTransmittalPdf({ pkg, items, dealName, company, logo });
     await autoFileOpportunityDocument({
       opportunityId: dealId,
@@ -209,21 +213,88 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
       notes: sentStampNote("Closeout transmittal sent"),
       actorUserId: userId,
     });
-    if (pkg.warranty_years && pkg.warranty_years > 0) {
-      const warranty = await renderWarrantyLetterPdf({ pkg, dealName, company, logo, signature });
-      await autoFileOpportunityDocument({
-        opportunityId: dealId,
-        category: "closeout",
-        fileName: safeDocName("Warranty", dealName, `${pkg.warranty_years}yr`) + ".pdf",
-        mimeType: "application/pdf",
-        data: new Uint8Array(warranty),
-        notes: sentStampNote(`${pkg.warranty_years}-year warranty letter sent`),
-        actorUserId: userId,
-      });
-    }
   } catch (err) {
     console.warn("[auto-file closeout] failed:", err);
   }
+}
+
+/**
+ * Issue the warranty letter to the GC — on request, and only on request.
+ *
+ * A deliberate action rather than a step in the send, for two reasons that are
+ * really one: Katie's rule, and the fact that the letter is a signed
+ * twelve-month guarantee. It is also available AFTER the package has gone out,
+ * because that is when GCs actually ask.
+ *
+ * Renders the same PDF the preview link shows, files it against the deal, and
+ * stamps the package so the record says when a warranty was given and on which
+ * job — which is the question you need answered two years later.
+ */
+async function issueWarrantyAction(formData: FormData) {
+  "use server";
+  const userId = await requireUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
+  const pkgId = String(formData.get("pkg_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
+  if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
+  const dest = `${base(id, dealId, origin, from)}&pkg=${pkgId}`;
+
+  const pkg = await getCloseoutPackage(pkgId);
+  if (!pkg) redirect(`${dest}${backQ(back)}`);
+  const [opp, account] = await Promise.all([
+    getCommercialOpportunity(dealId),
+    getCommercialAccount(id),
+  ]);
+  if (!opp || !account) {
+    redirect(`${dest}&error=${encodeURIComponent("Couldn't load the job for this warranty.")}${backQ(back)}`);
+  }
+  const dealName = derivedOppName(opp, account.company_name);
+  const oc = await getOperatingCompany();
+  const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
+  const { renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
+  try {
+    const warranty = await renderWarrantyLetterPdf({
+      pkg,
+      dealName,
+      accountName: account.company_name,
+      company: {
+        name: oc.name,
+        phone: oc.phone,
+        website: oc.website,
+        signature_name: oc.signature_name,
+        signature_title: oc.signature_title,
+        legal_name: oc.legal_name,
+        address_line1: oc.address_line1,
+        address_line2: oc.address_line2,
+        city: oc.city,
+        state: oc.state,
+        zip: oc.zip,
+      },
+      logo: await getBrandLogoBuffer(),
+      signature: await getBrandSignatureBuffer(),
+    });
+    await autoFileOpportunityDocument({
+      opportunityId: dealId,
+      category: "closeout",
+      fileName: safeDocName("Warranty", dealName, `${pkg.warranty_years}yr`) + ".pdf",
+      mimeType: "application/pdf",
+      data: new Uint8Array(warranty),
+      notes: sentStampNote(`${pkg.warranty_years}-year warranty letter issued on request`),
+      actorUserId: userId,
+    });
+  } catch (err) {
+    console.warn("[issue warranty] render/file failed:", err);
+    redirect(`${dest}&error=${encodeURIComponent("Couldn't build the warranty letter. Nothing was issued.")}${backQ(back)}`);
+  }
+  // Stamped only after the document exists, so the record can never claim a
+  // warranty was issued when no letter was filed.
+  const res = await markWarrantyIssued(pkgId, userId);
+  revalidateCloseout(id, dealId);
+  redirect(res.ok ? `${dest}&warranty=1${backQ(back)}` : `${dest}&error=${encodeURIComponent(res.error)}${backQ(back)}`);
 }
 
 async function upsertItemAction(formData: FormData) {
@@ -331,7 +402,7 @@ async function deletePackageAction(formData: FormData) {
 }
 
 // ── Tool body (shared by the standalone route + the deal Project sub-tab) ──
-export type CloseoutSP = { pkg?: string; error?: string; ok?: string; back?: string; from?: string };
+export type CloseoutSP = { pkg?: string; error?: string; ok?: string; warranty?: string; back?: string; from?: string };
 export async function CloseoutTool({
   id,
   dealId,
@@ -346,7 +417,13 @@ export async function CloseoutTool({
   await requireUser();
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId)) notFound();
 
-  const [account, opp] = await Promise.all([getCommercialAccount(id), getCommercialOpportunity(dealId)]);
+  const [account, opp, operatingCompany] = await Promise.all([
+    getCommercialAccount(id),
+    getCommercialOpportunity(dealId),
+    // Named in the issue-warranty confirmation: "it carries Brendan Dwyer's
+    // signature" is the sentence that makes somebody stop and think.
+    getOperatingCompany(),
+  ]);
   if (!account || !opp) notFound();
   if (opp.account_id !== id) notFound();
   // No Won-gate: closeout is available on every deal (Karan 2026-08 — nothing
@@ -394,6 +471,11 @@ export async function CloseoutTool({
 
       {sp.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{flashMessage(sp.error)}</div>}
       {sp.ok && <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Saved.</div>}
+      {sp.warranty === "1" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">
+          Warranty letter issued and filed on the deal, under Documents.
+        </div>
+      )}
 
       {/* Package list + create */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -481,6 +563,46 @@ export async function CloseoutTool({
               <div><div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Substantial completion</div><div className="text-ppp-charcoal-800 tabular-nums mt-0.5">{activePkg.substantial_completion_date ? fmtEtDate(`${activePkg.substantial_completion_date}T12:00:00Z`) : "—"}</div></div>
               <div><div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Term</div><div className="text-ppp-charcoal-800 mt-0.5">{activePkg.warranty_years} year{activePkg.warranty_years === 1 ? "" : "s"}</div></div>
               <div><div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Warranty through</div><div className="font-semibold text-emerald-700 tabular-nums mt-0.5">{warrantyEnd ? fmtEtDate(`${warrantyEnd}T12:00:00Z`) : "—"}</div></div>
+            </div>
+
+            {/* ── Issuing the letter ───────────────────────────────────────
+                Katie: "Warranty sent ONLY as requested." This used to happen
+                automatically on every send. It is a deliberate act now, and it
+                stays available after the package has gone out — which is when
+                GCs actually ask.
+
+                The TERM above is unaffected either way: the warranty period is
+                a fact about the job, whether or not a letter was requested. */}
+            <div className="mt-3 pt-3 border-t border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-ppp-charcoal">
+                  {activePkg.warranty_issued_at
+                    ? `Letter issued ${fmtEtDate(activePkg.warranty_issued_at)}`
+                    : "No warranty letter issued"}
+                </div>
+                <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 max-w-md">
+                  {activePkg.warranty_issued_at
+                    ? "Filed on the deal under Documents. Issue again only if the GC needs another copy."
+                    : "Send it when the GC asks for one — it's a signed guarantee, so it isn't issued automatically. The term above applies to the job either way."}
+                </p>
+              </div>
+              {activePkg.status !== "voided" && (
+                <form action={issueWarrantyAction}>
+                  <Ctx />
+                  <input type="hidden" name="pkg_id" value={activePkg.id} />
+                  <ConfirmSubmitButton
+                    className={`inline-flex items-center px-3.5 py-2 rounded-lg text-[12.5px] font-semibold min-h-[44px] shrink-0 ${
+                      activePkg.warranty_issued_at
+                        ? "border border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                        : "bg-cc-brand-600 text-white hover:bg-cc-brand-700"
+                    }`}
+                    message={`Issue the ${activePkg.warranty_years}-year warranty letter for this job? It carries ${operatingCompany.signature_name ?? "the company"}'s signature and guarantees the work for ${activePkg.warranty_years * 12} months.`}
+                    pendingLabel="Issuing…"
+                  >
+                    {activePkg.warranty_issued_at ? "Issue again" : "Issue warranty letter"}
+                  </ConfirmSubmitButton>
+                </form>
+              )}
             </div>
           </div>
 

@@ -28,6 +28,11 @@ export type CloseoutPackage = {
   remarks: string | null;
   substantial_completion_date: string | null;
   warranty_years: number;
+  /** When the warranty letter was ISSUED to the GC — on request only (Katie:
+   *  "Warranty sent ONLY as requested"). Null = never issued. Deliberately
+   *  separate from `warranty_years`: the TERM applies to the job whether or not
+   *  a letter was ever asked for. */
+  warranty_issued_at: string | null;
   sent_at: string | null;
   acknowledged_at: string | null;
   completed_at: string | null;
@@ -51,7 +56,7 @@ export type CloseoutItem = {
 };
 
 const PKG_COLS =
-  "id, opportunity_id, account_id, status, to_company, to_attention, to_address_lines, re_subject, transmitted_as, remarks, substantial_completion_date, warranty_years, sent_at, acknowledged_at, completed_at, snapshot_document_id, voided_at, created_at, updated_at";
+  "id, opportunity_id, account_id, status, to_company, to_attention, to_address_lines, re_subject, transmitted_as, remarks, substantial_completion_date, warranty_years, warranty_issued_at, sent_at, acknowledged_at, completed_at, snapshot_document_id, voided_at, created_at, updated_at";
 
 /** Load a deal's opp context (account + suggested completion date) or null. No
  *  Won-gate (Karan 2026-08: closeout is available on every deal — a bid just
@@ -413,4 +418,37 @@ export async function deleteCloseoutPackage(id: string, actorUserId: string): Pr
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_closeout_packages", id, before, actorUserId);
   return { ok: true, value: true };
+}
+
+/**
+ * Stamp the warranty letter as issued.
+ *
+ * Its own function, and its own timestamp, because issuing the warranty is a
+ * decision rather than a step: Katie's rule is that it goes out only when the
+ * GC asks, and the letter carries Brendan's signature over a twelve-month
+ * guarantee. Re-issuing (a second copy, a corrected term) is allowed and simply
+ * moves the date — the document trail on the deal keeps every copy.
+ */
+export async function markWarrantyIssued(
+  id: string,
+  actorUserId: string
+): Promise<Result<CloseoutPackage>> {
+  const sb = commercialDb();
+  const before = await getCloseoutPackage(id);
+  if (!before) return { ok: false, error: "not_found" };
+  if (before.status === "voided") {
+    return { ok: false, error: "This package is voided — nothing can be issued from it." };
+  }
+  const now = new Date().toISOString();
+  const { data, error } = await sb
+    .from("commercial_closeout_packages")
+    .update({ warranty_issued_at: now, updated_at: now, updated_by_user_id: actorUserId })
+    .eq("id", id)
+    .select(PKG_COLS)
+    .maybeSingle();
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Couldn't record the warranty as issued." };
+  }
+  await logUpdate("commercial_closeout_packages", id, before, data as CloseoutPackage, actorUserId);
+  return { ok: true, value: data as CloseoutPackage };
 }
