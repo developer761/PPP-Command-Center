@@ -142,12 +142,18 @@ export type InvoicePdfInput = {
     /** APPROVED change orders only — see the note in the renderer. */
     changeOrders: { number: number; title: string; amountCents: number }[];
     changeOrderTotalCents: number;
+    /** Original contract + approved COs. Pre-tax, as Brendan's sample shows. */
     totalChargesCents: number;
+    /** Sales tax invoiced on this job so far. Zero on an exempt job — which is
+     *  why an exempt job prints exactly like the sample. */
+    taxBilledToDateCents: number;
     /** Every payment across the JOB, newest last. */
     payments: { dateIso: string | null; amountCents: number }[];
     paymentsTotalCents: number;
     currentBalanceCents: number;
-    /** Approved COs raised but not yet on any invoice — money still to bill. */
+    /** Change orders the GC has NOT yet answered. Deliberately outside Total
+     *  Customer Charges — stated as a note so the contract doesn't read as
+     *  smaller than the job actually is. */
     pendingCoTotalCents: number;
   } | null;
   /** Job number for the Project Information block. */
@@ -299,6 +305,19 @@ function InvoiceDoc(input: InvoicePdfInput) {
               <Text style={styles.bold}>Total Customer Charges</Text>
               <Text style={styles.bold}>{fmt(input.contract.totalChargesCents)}</Text>
             </View>
+            {/* Brendan's sample shows no tax line, because that job is
+                capital-improvement exempt. Charges are pre-tax while a PAYMENT
+                arrives tax-inclusive, so on a TAXABLE job the balance below
+                would understate what's owed by every dollar of tax already
+                collected. Stated as its own line and folded into the balance;
+                an exempt job bills no tax, so it still prints exactly like the
+                sample. */}
+            {input.contract.taxBilledToDateCents > 0 ? (
+              <View style={styles.fsRow}>
+                <Text>Sales Tax Billed to Date</Text>
+                <Text>{fmt(input.contract.taxBilledToDateCents)}</Text>
+              </View>
+            ) : null}
             {input.contract.payments.map((pm, i) => (
               <View key={i} style={styles.fsRow}>
                 <Text style={[styles.fsIndent, styles.fsCredit]}>

@@ -8,6 +8,7 @@ import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { getBrandLogoBuffer } from "@/lib/commercial/operating-company/assets";
 import { resolveTaxExemption } from "@/lib/commercial/tax/exemption";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
+import { buildContractSummary } from "./contract-summary";
 import { listCommercialInvoices } from "./db";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
 import { listInvoicePayments } from "./db";
@@ -98,56 +99,36 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
 
   // ── Financial Summary (Brendan's format) ───────────────────────────────
   //
-  // Reconciles the WHOLE JOB: original contract + approved change orders, less
-  // everything paid so far. The invoice's own amount is then stated against it.
+  // Reconciles the WHOLE JOB: original contract + approved change orders (plus
+  // any tax invoiced), less everything paid so far. The invoice's own amount is
+  // then stated against it. The arithmetic lives in `contract-summary.ts` — a
+  // pure module — because this is the figure a GC's AP department reconciles
+  // against and it belongs somewhere tests can reach.
   //
-  // APPROVED change orders only. A pending CO is money the GC has not agreed
-  // to, and putting it in "Total Customer Charges" would bill them for it. It
-  // is surfaced separately as still-to-bill. (Same trap the CO register has.)
-  const approvedCos = jobChangeOrders.filter((c) => c.status === "approved");
-  const changeOrderTotalCents = approvedCos.reduce((n, c) => n + c.amount_cents, 0);
-  const originalCents = contractBase > 0 ? contractBase : 0;
-  const totalChargesCents = originalCents + changeOrderTotalCents;
-
-  // Payments across every LIVE, non-void invoice on the job.
+  // Payments come from every LIVE invoice on the job. Draft bills nothing and
+  // void bills nothing, so neither charges tax nor holds payments.
   const billableJobInvoices = jobInvoices.filter(
     (i) => i.status !== "void" && i.status !== "draft"
   );
   const paymentLists = await Promise.all(
     billableJobInvoices.map((i) => listInvoicePayments(i.id).catch(() => []))
   );
-  const payments = paymentLists
-    .flat()
-    .map((pm) => ({ dateIso: pm.paid_at ?? null, amountCents: pm.amount_cents }))
-    .sort((a, b) => String(a.dateIso ?? "").localeCompare(String(b.dateIso ?? "")));
-  const paymentsTotalCents = payments.reduce((n, pm) => n + pm.amountCents, 0);
-
-  // Change orders the GC hasn't answered yet — stated on the invoice as a note
-  // so the contract doesn't look smaller than the job actually is.
-  const pendingCoTotalCents = jobChangeOrders
-    .filter((c) => c.status === "pending")
-    .reduce((n, c) => n + c.amount_cents, 0);
-
-  // Only render the summary when there is a contract to reconcile against.
-  // Building it on a zero would print "Original Contract Total $0.00" above a
-  // real invoice, which reads as a data error rather than as "no bid on file".
-  const contract =
-    originalCents > 0
-      ? {
-          originalCents,
-          changeOrders: approvedCos.map((c) => ({
-            number: c.co_number,
-            title: c.title,
-            amountCents: c.amount_cents,
-          })),
-          changeOrderTotalCents,
-          totalChargesCents,
-          payments,
-          paymentsTotalCents,
-          currentBalanceCents: totalChargesCents - paymentsTotalCents,
-          pendingCoTotalCents,
-        }
-      : null;
+  const contract = buildContractSummary({
+    originalContractCents: contractBase,
+    changeOrders: jobChangeOrders.map((c) => ({
+      number: c.co_number,
+      title: c.title,
+      amountCents: c.amount_cents,
+      status: c.status,
+    })),
+    invoices: billableJobInvoices.map((i) => ({
+      subtotalCents: i.subtotal_cents,
+      totalCents: i.total_cents,
+    })),
+    payments: paymentLists
+      .flat()
+      .map((pm) => ({ dateIso: pm.paid_at ?? null, amountCents: pm.amount_cents })),
+  });
 
   const projectAddress =
     [opp.property_street, [opp.property_city, opp.property_state].filter(Boolean).join(", ")]
