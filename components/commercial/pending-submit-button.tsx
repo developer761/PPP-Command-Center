@@ -24,11 +24,15 @@ export function PendingSubmitButton({
   children,
   pendingLabel,
   ariaLabel,
+  title,
 }: {
   className: string;
   children: ReactNode;
   pendingLabel: string;
   ariaLabel?: string;
+  /** Hover text. Where a short button label needs to say more without a
+   *  second line of grey copy underneath it. */
+  title?: string;
 }) {
   const { pending } = useFormStatus();
   return (
@@ -36,6 +40,7 @@ export function PendingSubmitButton({
       type="submit"
       disabled={pending}
       aria-label={ariaLabel}
+      title={title}
       className={`${className} ${pending ? "opacity-70 cursor-wait" : ""}`}
     >
       {pending ? (

@@ -421,6 +421,12 @@ export default async function AccountingPage({
   // page exists to answer is what arrived in the bank.
   const cashSeries = cash.months.map((m) => ({ label: m.label, value: m.collectedCents / 100_000 }));
   const hasCash = cash.months.some((m) => m.collectedCents > 0);
+  // Sparse-data guards. Early on, every ratio on this view is computed from one
+  // or two payments, and a number that precise about a sample that small is
+  // misleading rather than informative.
+  const monthsWithCash = cash.months.filter((m) => m.collectedCents > 0).length;
+  const cashSingleMonthLabel = cash.months.find((m) => m.collectedCents > 0)?.label ?? null;
+  const thinSample = cash.totals.paymentCount > 0 && cash.totals.paymentCount < 3;
 
   // Contract signed but never invoiced.
   //
@@ -471,28 +477,35 @@ export default async function AccountingPage({
             and what the work cost. Open any block for the full report.
           </p>
         </div>
-        {/* Export + Send live in the page header, not buried at the bottom:
-            they are the two things this page exists to let somebody DO. */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Two actions, one row, aligned to each other.
+            
+            This was a button with two email addresses spelled out underneath
+            it, on a second line, in grey — which is why it read as broken
+            rather than as a control. The destination still has to be knowable
+            (a send button whose target you have to guess is one nobody
+            presses), so it moved into the hover title and the confirmation,
+            where it is available without being shouted. */}
+        <div className="flex items-center gap-2 shrink-0">
           <ExportCsvLink
             href="/api/commercial/reports/receivables/export"
             params={view === "receivables" ? receivableQueryParams(q) : undefined}
             disabled={(view === "receivables" ? receivablesView?.rows.length ?? 0 : receivables.rows.length) === 0}
             disabledHint="Nothing to export in this view"
-            label="Export receivables"
+            label="Export"
           />
           {receivables.rows.length > 0 && (
-            <form action={sendToAlexAction} className="flex flex-col items-end gap-0.5">
+            <form action={sendToAlexAction}>
               <input type="hidden" name="back" value={href(view)} />
               <PendingSubmitButton
                 pendingLabel="Sending…"
-                className="inline-flex items-center min-h-[44px] px-3.5 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 transition-colors"
+                title={`Emails the receivables sheet to ${recipients.join(", ")}${receivablesView?.filtered ? " — the whole book, not this filter" : ""}`}
+                className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 transition-colors"
               >
-                Send to Alex
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
+                </svg>
+                Send
               </PendingSubmitButton>
-              <span className="text-[10px] text-ppp-charcoal-400">
-                {receivablesView?.filtered ? "sends the whole book" : recipients.join(", ")}
-              </span>
             </form>
           )}
         </div>
@@ -515,7 +528,7 @@ export default async function AccountingPage({
       )}
       {sentTo && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
-          Sent to {sentTo} — the figures, the notes, and the sheet attached.
+          Receivables sheet sent to <strong>{sentTo}</strong> — the figures, the notes, and the CSV attached.
         </div>
       )}
 
@@ -642,19 +655,22 @@ export default async function AccountingPage({
             )}
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+            {/* Same sparse-data honesty as the Cash flow view — these are the
+                same two figures, so they must not read differently here. */}
             <Tile
               label="Days to pay"
               value={cash.totals.avgDaysToPay === null ? "—" : `${cash.totals.avgDaysToPay}d`}
-              tone={cash.totals.avgDaysToPay !== null && cash.totals.avgDaysToPay > 60 ? "amber" : "navy"}
-              sub="amount-weighted average"
+              tone={!thinSample && cash.totals.avgDaysToPay !== null && cash.totals.avgDaysToPay > 60 ? "amber" : "navy"}
+              sub={thinSample ? `from ${cash.totals.paymentCount} payment${cash.totals.paymentCount === 1 ? "" : "s"}` : "amount-weighted average"}
             />
             <Tile
               label="Collection rate"
               value={cash.totals.collectionRatePct === null ? "—" : `${cash.totals.collectionRatePct}%`}
               tone="neutral"
               // Above 100% is normal, not a bug — older invoices landing inside
-              // the window. Saying so stops it being reported as one.
-              sub="collected ÷ billed · over 100% means older invoices landed"
+              // the window. Saying so stops it being reported as one. Below a
+              // handful of payments it's an anecdote, and says that instead.
+              sub={thinSample ? "early days — too few payments to read" : "collected ÷ billed · over 100% means older invoices landed"}
             />
           </div>
         </div>
@@ -1080,25 +1096,58 @@ export default async function AccountingPage({
             hint="Money by the month it landed — a March invoice paid in July is July's cash."
           />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Tile label="Collected · 6 mo" value={formatCentsFull(cash.totals.collectedCents)} tone="emerald" sub={`${cash.totals.paymentCount} payment${cash.totals.paymentCount === 1 ? "" : "s"}`} />
-            <Tile label="Billed · 6 mo" value={formatCentsFull(cash.totals.billedCents)} tone="navy" />
+            {/* Both figures are INVOICES only — this report reads the payment
+                ledger, and an AIA job bills through G702/G703 with no invoice
+                row. Said on the tiles, because the four tiles at the top of
+                this page DO include AIA and the two would otherwise look like
+                a contradiction. */}
+            <Tile label="Collected · 6 mo" value={formatCentsFull(cash.totals.collectedCents)} tone="emerald" sub={`${cash.totals.paymentCount} payment${cash.totals.paymentCount === 1 ? "" : "s"} · invoices only`} />
+            <Tile label="Billed · 6 mo" value={formatCentsFull(cash.totals.billedCents)} tone="navy" sub="invoices only, excludes AIA" />
             <Tile
               label="Days to pay"
               value={cash.totals.avgDaysToPay === null ? "—" : `${cash.totals.avgDaysToPay}d`}
-              tone={cash.totals.avgDaysToPay !== null && cash.totals.avgDaysToPay > 60 ? "amber" : "neutral"}
-              sub="weighted by amount"
+              // A lag computed from one or two payments is an anecdote. Tone it
+              // neutral until there's enough to mean anything, and say what it
+              // came from either way.
+              tone={thinSample ? "neutral" : cash.totals.avgDaysToPay !== null && cash.totals.avgDaysToPay > 60 ? "amber" : "neutral"}
+              sub={
+                cash.totals.paymentCount === 0
+                  ? "no payments yet"
+                  : thinSample
+                    ? `from ${cash.totals.paymentCount} payment${cash.totals.paymentCount === 1 ? "" : "s"} — too few to read`
+                    : "weighted by amount"
+              }
             />
             <Tile
               label="Collection rate"
               value={cash.totals.collectionRatePct === null ? "—" : `${cash.totals.collectionRatePct}%`}
               tone="neutral"
-              sub="over 100% = older invoices landed"
+              // "3%" under a red-looking tile reads as a crisis when it's
+              // really one payment against a month of billing. Explain which
+              // one it is instead of leaving a number to be misread.
+              sub={
+                cash.totals.collectionRatePct === null
+                  ? "nothing billed in this window"
+                  : thinSample
+                    ? `${formatCentsCompact(cash.totals.collectedCents)} in against ${formatCentsCompact(cash.totals.billedCents)} billed — early days`
+                    : "collected ÷ billed · over 100% means older invoices landed"
+              }
             />
           </div>
+          {/* A line chart of ONE month is a dot floating in an empty box. Show
+              the figure plainly until there is a shape to draw. */}
           {hasCash && (
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
               <h3 className="text-[13px] font-bold text-ppp-charcoal mb-2">Collected / month</h3>
-              <TrendChart data={cashSeries} yFormat="currency-k" colorToken="emerald-500" area heightClassName="h-[160px]" />
+              {monthsWithCash >= 2 ? (
+                <TrendChart data={cashSeries} yFormat="currency-k" colorToken="emerald-500" area heightClassName="h-[160px]" />
+              ) : (
+                <p className="py-6 text-[12.5px] text-ppp-charcoal-500">
+                  {formatCentsFull(cash.totals.collectedCents)} collected, all in{" "}
+                  <strong className="text-ppp-charcoal">{cashSingleMonthLabel ?? "one month"}</strong>. A
+                  trend needs a second month to compare against.
+                </p>
+              )}
             </div>
           )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -1108,15 +1157,25 @@ export default async function AccountingPage({
               rows={cash.byMethod.map((m) => [m.label, formatCentsFull(m.collectedCents), String(m.count)])}
               empty="No payments recorded in this window."
             />
+            {/* A "slowest" list with one name in it isn't a ranking, it's a
+                customer. Needs at least two to compare. */}
             <MiniTable
               title="Slowest to pay"
               head={["GC", "Avg days", "Still open"]}
-              rows={cash.slowest.map((sp) => [
-                sp.accountName,
-                sp.avgDaysToPay === null ? "—" : `${sp.avgDaysToPay}d`,
-                formatCentsFull(sp.openCents),
-              ])}
-              empty="Not enough paid invoices to rank anyone yet."
+              rows={
+                cash.slowest.length >= 2
+                  ? cash.slowest.map((sp) => [
+                      sp.accountName,
+                      sp.avgDaysToPay === null ? "—" : `${sp.avgDaysToPay}d`,
+                      formatCentsFull(sp.openCents),
+                    ])
+                  : []
+              }
+              empty={
+                cash.slowest.length === 1
+                  ? `Only ${cash.slowest[0].accountName} has paid in this window — nothing to rank them against yet.`
+                  : "Not enough paid invoices to rank anyone yet."
+              }
             />
           </div>
           {(cash.untimedPayments > 0 || cash.paidBeforeIssued > 0) && (

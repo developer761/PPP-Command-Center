@@ -41,6 +41,9 @@ export default async function CashFlowReportPage({
   const range = cashFlowRange(preset);
   const r = await getCashFlowReport(range);
   const t = r.totals;
+  // Sparse-data guard: early on every ratio here comes from one or two
+  // payments, and a precise number about a sample that small misleads.
+  const thinSample = t.paymentCount > 0 && t.paymentCount < 3;
 
   const peak = Math.max(1, ...r.months.map((m) => Math.max(m.collectedCents, m.billedCents)));
 
@@ -100,13 +103,19 @@ export default async function CashFlowReportPage({
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Kpi label="Collected" value={formatCentsFull(t.collectedCents)} sub={`${t.paymentCount} payment${t.paymentCount === 1 ? "" : "s"}`} tone="good" />
-            <Kpi label="Billed (pre-tax)" value={formatCentsFull(t.billedCents)} sub="issued in this window" />
+            {/* Both read the payment ledger, so both are INVOICES only — an
+                AIA job bills through G702/G703 and raises no invoice row.
+                Named here because the same words appear on Accounting beside
+                tiles that DO include AIA. */}
+            <Kpi label="Collected" value={formatCentsFull(t.collectedCents)} sub={`${t.paymentCount} payment${t.paymentCount === 1 ? "" : "s"} · invoices only`} tone="good" />
+            <Kpi label="Billed (pre-tax)" value={formatCentsFull(t.billedCents)} sub="issued in this window · excludes AIA" />
             <Kpi
               label="Avg days to pay"
               value={t.avgDaysToPay === null ? "—" : `${t.avgDaysToPay}d`}
-              sub="weighted by amount"
-              tone={t.avgDaysToPay === null ? undefined : t.avgDaysToPay > 60 ? "bad" : t.avgDaysToPay <= 30 ? "good" : undefined}
+              // A lag from one or two payments is an anecdote — don't paint it
+              // red or green as though it were a trend.
+              sub={thinSample ? `from ${t.paymentCount} payment${t.paymentCount === 1 ? "" : "s"} — too few to read` : "weighted by amount"}
+              tone={thinSample || t.avgDaysToPay === null ? undefined : t.avgDaysToPay > 60 ? "bad" : t.avgDaysToPay <= 30 ? "good" : undefined}
             />
             <Kpi label="Still owed" value={formatCentsFull(t.openCents)} sub="right now, all invoices" tone={t.openCents > 0 ? "warn" : undefined} />
           </div>
