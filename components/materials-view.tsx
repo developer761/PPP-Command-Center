@@ -2182,11 +2182,44 @@ function LineItemRow({
   const sfSlot = (label: string, surface: string, color: SnapshotPaintColor | null, finish: string | null): Slot =>
     ({ label, surface, color, finish });
 
+  /**
+   * Does the retained payload OVERRIDE Salesforce for this surface, or only
+   * fill a gap Salesforce couldn't hold?
+   *
+   * This distinction matters more than it looks. Preferring the payload
+   * everywhere would fix Kate's two symptoms and quietly break a case that
+   * works today: a rep correcting a colour directly in Salesforce AFTER the
+   * customer submitted. Their edit would stop showing, with no error and no
+   * clue why — a worse bug than the one being fixed, on a more common path.
+   *
+   * So the payload only wins where Salesforce is genuinely incapable:
+   *   - the customer SKIPPED the surface — Salesforce has no way to record
+   *     "don't paint this", so a blank field is indistinguishable from
+   *     "nobody has picked yet";
+   *   - the room has 2+ orphan surfaces — one shared ColorOther__c cannot
+   *     hold two colours, so whatever is in it is at best half the answer.
+   *
+   * Everything else — all four standard surfaces, and a lone orphan whose
+   * colour fits in ColorOther__c — keeps reading Salesforce, which is lossless
+   * for them and lets a later correction through.
+   */
+  const salesforceCanHold = (surface: string): boolean => {
+    if (STANDARD_SURFACES.includes(surface)) return true;
+    // A single orphan owns the shared slot outright.
+    return orphanSurfaces.length <= 1;
+  };
+
   const buildSlot = (label: string, surface: string, sfColor: SnapshotPaintColor | null, sfFinish: string | null): Slot => {
     const key = surface.toLowerCase();
     const own = retainedBySurface.get(key);
+    // A skip is never recoverable from Salesforce, whatever the surface.
+    if (own?.skipped) return { label, surface, color: null, finish: null, skipped: true };
+    // Salesforce can represent this one and has a value — let it win, so a
+    // rep's later correction isn't masked by the customer's original pick.
+    if (salesforceCanHold(surface) && sfColor) {
+      return sfSlot(label, surface, sfColor, sfFinish);
+    }
     if (own) {
-      if (own.skipped) return { label, surface, color: null, finish: null, skipped: true };
       // Prefer the catalog record (it carries the hex for the swatch) but fall
       // back to the name/code the customer's submission recorded, which is all
       // we have for a colour that has since left the catalog.
