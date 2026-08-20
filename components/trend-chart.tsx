@@ -111,6 +111,34 @@ export default function TrendChart({
     );
   }
 
+  // ONE point is not a line.
+  //
+  // Plotted, it lands as a single dot floating in the middle of an empty box
+  // with one axis label — which reads as a chart that failed to load, not as a
+  // company with one month of history. Karan, 2026-08-19: *"the cash in last 6
+  // months thing is blank … it might be cause dont have enough data"*. It was
+  // exactly that, and it happens on every chart on the platform in its first
+  // weeks, which is precisely when somebody is deciding whether to trust the
+  // numbers.
+  //
+  // So the fix lives HERE rather than at the call sites: state the one figure
+  // plainly, name its period, and say what's missing. Same height, so nothing
+  // jumps when the second period arrives and the real chart takes over.
+  if (data.length === 1) {
+    const only = data[0];
+    return (
+      <div className={`flex flex-col items-center justify-center gap-1 text-center px-4 ${heightClassName}`}>
+        <div className="font-condensed text-[26px] font-black tabular-nums leading-none text-ppp-charcoal">
+          {formatValue(only.value, yFormat)}
+        </div>
+        <div className="text-[12px] font-semibold text-ppp-charcoal-600">{only.label}</div>
+        <div className="text-[11.5px] text-ppp-charcoal-400 max-w-[280px]">
+          One period so far — a trend needs a second one to compare against.
+        </div>
+      </div>
+    );
+  }
+
   const values = data.map((d) => d.value);
   const { yMax, yMin, yRange } = chartDomain(values);
 

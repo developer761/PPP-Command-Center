@@ -424,8 +424,6 @@ export default async function AccountingPage({
   // Sparse-data guards. Early on, every ratio on this view is computed from one
   // or two payments, and a number that precise about a sample that small is
   // misleading rather than informative.
-  const monthsWithCash = cash.months.filter((m) => m.collectedCents > 0).length;
-  const cashSingleMonthLabel = cash.months.find((m) => m.collectedCents > 0)?.label ?? null;
   const thinSample = cash.totals.paymentCount > 0 && cash.totals.paymentCount < 3;
 
   // Contract signed but never invoiced.
@@ -862,6 +860,7 @@ export default async function AccountingPage({
             totalOpenCents={receivablesView.totalOpenCents}
             saveNoteAction={saveNoteAction}
             queryString={receivableQueryString(q, { view: "receivables" })}
+            backHref={`${BASE}${receivableQueryString(q, { view: "receivables" })}`}
             emptyMessage={
               receivablesView.filtered
                 ? `Nothing matches this filter${activeFilter ? ` (${activeFilter})` : ""}. The book isn't empty — clear the filters to see all ${receivablesView.unfilteredCount}.`
@@ -989,6 +988,7 @@ export default async function AccountingPage({
             report={transactions}
             depositAction={depositAction}
             queryString={txQuery()}
+            backHref={`${BASE}${txQuery()}`}
             emptyMessage={
               transactions.filtered
                 ? "Nothing moved in this view. Clear the filters to see the whole ledger."
@@ -1134,20 +1134,13 @@ export default async function AccountingPage({
               }
             />
           </div>
-          {/* A line chart of ONE month is a dot floating in an empty box. Show
-              the figure plainly until there is a shape to draw. */}
+          {/* A one-month series is handled inside TrendChart itself — it says
+              so plainly rather than drawing a lone dot. One definition, so
+              every chart on the platform behaves the same. */}
           {hasCash && (
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
               <h3 className="text-[13px] font-bold text-ppp-charcoal mb-2">Collected / month</h3>
-              {monthsWithCash >= 2 ? (
-                <TrendChart data={cashSeries} yFormat="currency-k" colorToken="emerald-500" area heightClassName="h-[160px]" />
-              ) : (
-                <p className="py-6 text-[12.5px] text-ppp-charcoal-500">
-                  {formatCentsFull(cash.totals.collectedCents)} collected, all in{" "}
-                  <strong className="text-ppp-charcoal">{cashSingleMonthLabel ?? "one month"}</strong>. A
-                  trend needs a second month to compare against.
-                </p>
-              )}
+              <TrendChart data={cashSeries} yFormat="currency-k" colorToken="emerald-500" area heightClassName="h-[160px]" />
             </div>
           )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -1569,23 +1562,19 @@ export default async function AccountingPage({
         </section>
       )}
 
-      {/* Invoices is the one destination still a link: it's a workspace where
-          records are created and edited, not a read-only view. */}
-      <section className="border-t border-ppp-charcoal-100 pt-4 flex flex-wrap items-center gap-2">
-        <span className="text-[11.5px] text-ppp-charcoal-500">Create or edit invoices:</span>
-        <Link
-          href="/commercial/invoices"
-          className="inline-flex items-center min-h-[38px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
-        >
-          Invoices →
-        </Link>
-        <Link
-          href="/commercial/reports"
-          className="inline-flex items-center min-h-[38px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
-        >
-          All reports →
-        </Link>
-      </section>
+      {/* The footer of links is gone.
+          
+          It offered "Invoices →" and "All reports →". Reports is already one
+          item down the sidebar, so that was a second door to the same room.
+          And `/commercial/invoices` has NO sidebar entry — this page was the
+          only thing sending you there, which meant landing on a surface with
+          no nav highlight and no way back except the browser button. Karan,
+          2026-08-19: *"it brings me to pages i cant normally acess … we coi;d
+          porlly take these buttons out"*.
+          
+          Nothing is lost: an invoice is reached from the receivable or from
+          its deal's Invoices tab, which is where Katie's restructure put
+          invoice work in the first place. */}
     </div>
   );
 }

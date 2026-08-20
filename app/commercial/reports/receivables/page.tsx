@@ -279,6 +279,7 @@ export default async function ReceivablesReportPage({
         totalOpenCents={report.totalOpenCents}
         saveNoteAction={saveNoteAction}
         queryString={receivableQueryString(q)}
+        backHref={`${BASE}${receivableQueryString(q)}`}
         emptyMessage={
           report.filtered
             ? `Nothing matches this filter${activeFilter ? ` (${activeFilter})` : ""}. The book isn't empty — clear the filters to see all ${report.unfilteredCount}.`

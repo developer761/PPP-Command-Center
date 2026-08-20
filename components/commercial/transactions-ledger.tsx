@@ -26,12 +26,16 @@ export function TransactionsLedger({
   depositAction,
   queryString = "",
   emptyMessage,
+  backHref,
 }: {
   report: TransactionsReport;
   /** Tick/untick deposited. Passed in so each host revalidates its own path. */
   depositAction: (formData: FormData) => Promise<void>;
   queryString?: string;
   emptyMessage?: string;
+  /** Where the invoice page's Back button should return to — see the same
+   *  prop on ReceivablesTable. `/commercial/invoices` has no sidebar entry. */
+  backHref?: string;
 }) {
   if (report.months.length === 0) {
     return (
@@ -73,7 +77,7 @@ export function TransactionsLedger({
             {m.rows.map((r) => (
               <li key={r.id} className="px-3.5 py-3">
                 <div className="flex items-start justify-between gap-2">
-                  <NameCell r={r} />
+                  <NameCell r={r} backHref={backHref} />
                   <span className={`text-[14px] font-bold tabular-nums shrink-0 ${r.direction === "in" ? "text-emerald-700" : "text-amber-700"}`}>
                     {r.direction === "in" ? "+" : "−"}
                     {formatCentsFull(r.amountCents)}
@@ -109,7 +113,7 @@ export function TransactionsLedger({
                 {m.rows.map((r) => (
                   <tr key={r.id} className="hover:bg-cc-brand-50/30 align-top">
                     <td className="px-3 py-2.5 tabular-nums text-ppp-charcoal-600">{fmtDay(r.dateYmd)}</td>
-                    <td className="px-3 py-2.5"><NameCell r={r} /></td>
+                    <td className="px-3 py-2.5"><NameCell r={r} backHref={backHref} /></td>
                     <td className="px-3 py-2.5"><TypePill r={r} /></td>
                     <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${r.direction === "in" ? "text-emerald-700" : "text-amber-700"}`}>
                       {r.direction === "in" ? "+" : "−"}
@@ -152,7 +156,11 @@ function fmtDay(ymd: string): string {
   return `${m}/${d}`;
 }
 
-function NameCell({ r }: { r: TxnRow }) {
+function NameCell({ r, backHref }: { r: TxnRow; backHref?: string }) {
+  const href =
+    r.href && backHref && r.href.startsWith("/commercial/invoices/")
+      ? `${r.href}?from=${encodeURIComponent(backHref)}`
+      : r.href;
   const inner = (
     <>
       <span className="text-[13px] font-semibold text-ppp-charcoal leading-snug">{r.name}</span>
@@ -161,9 +169,9 @@ function NameCell({ r }: { r: TxnRow }) {
       )}
     </>
   );
-  // Never a dead end: every figure opens the record behind it.
-  return r.href ? (
-    <Link href={r.href} className="min-w-0 hover:text-cc-brand-700 block">
+  // Never a dead end: every figure opens the record behind it, and comes back.
+  return href ? (
+    <Link href={href} className="min-w-0 hover:text-cc-brand-700 block">
       {inner}
     </Link>
   ) : (

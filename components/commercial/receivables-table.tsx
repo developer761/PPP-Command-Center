@@ -30,6 +30,7 @@ export function ReceivablesTable({
   saveNoteAction,
   queryString = "",
   emptyMessage,
+  backHref,
 }: {
   rows: ReceivableRow[];
   totalOpenCents: number;
@@ -40,7 +41,20 @@ export function ReceivablesTable({
   /** Shown instead of the default when the list is empty BECAUSE of a filter —
    *  "nothing outstanding" would be a lie, and an alarming one. */
   emptyMessage?: string;
+  /** Where the invoice page's Back button should return to.
+   *
+   *  `/commercial/invoices` has no sidebar entry, so an invoice opened from
+   *  here used to strand you: no nav highlight, and Back went to a list that
+   *  isn't in the navigation either. The invoice page honours `?from=`, so
+   *  hand it the view you actually came from. */
+  backHref?: string;
 }) {
+  // Only invoice links need it — an AIA row opens the deal, which has its own
+  // navigation and breadcrumb.
+  const withBack = (href: string) =>
+    backHref && href.startsWith("/commercial/invoices/")
+      ? `${href}?from=${encodeURIComponent(backHref)}`
+      : href;
   if (rows.length === 0) {
     return (
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
@@ -60,7 +74,7 @@ export function ReceivablesTable({
           <li key={r.key} className="px-3.5 py-3">
             <div className="flex items-start justify-between gap-2">
               <Link
-                href={r.billingHref ?? r.href}
+                href={withBack(r.billingHref ?? r.href)}
                 className="text-[13.5px] font-semibold text-ppp-charcoal leading-snug min-w-0 hover:text-cc-brand-700"
               >
                 {r.jobName}
@@ -74,7 +88,7 @@ export function ReceivablesTable({
                 {KIND_META[r.kind].label}
               </span>
               <Link
-                href={r.href}
+                href={withBack(r.href)}
                 className="text-[11px] text-ppp-charcoal-500 hover:text-cc-brand-700 underline decoration-dotted underline-offset-2"
               >
                 {r.reference}
@@ -108,7 +122,7 @@ export function ReceivablesTable({
                     job's billing and the reference opens the document. */}
                 <td className="px-3 py-2.5">
                   <Link
-                    href={r.billingHref ?? r.href}
+                    href={withBack(r.billingHref ?? r.href)}
                     className="font-semibold text-ppp-charcoal hover:text-cc-brand-700 hover:underline"
                   >
                     {r.jobName}
@@ -124,7 +138,7 @@ export function ReceivablesTable({
                   <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[9.5px] font-bold uppercase tracking-wide mr-1.5 ${KIND_META[r.kind].cls}`}>
                     {KIND_META[r.kind].label}
                   </span>
-                  <Link href={r.href} className="text-ppp-charcoal-600 hover:text-cc-brand-700 hover:underline">
+                  <Link href={withBack(r.href)} className="text-ppp-charcoal-600 hover:text-cc-brand-700 hover:underline">
                     {r.reference}
                   </Link>
                 </td>
