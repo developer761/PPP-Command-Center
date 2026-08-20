@@ -6,10 +6,10 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { normalizeRole } from "@/lib/auth/roles";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
-import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
-import { getCashFlowReport } from "@/lib/commercial/reports/cash-flow";
-import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets } from "@/lib/commercial/reports/job-costs";
-import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orders-vendors";
+import { getReceivablesReport, summarizeReceivables } from "@/lib/commercial/reports/receivables";
+import { getCashFlowReport, EMPTY as EMPTY_CASH } from "@/lib/commercial/reports/cash-flow";
+import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets, EMPTY_JOB_COSTS } from "@/lib/commercial/reports/job-costs";
+import { getChangeOrderVendorReport, EMPTY as EMPTY_CO } from "@/lib/commercial/reports/change-orders-vendors";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getTransactionsReport, setPaymentDeposited, type TxnFilters, type TxnDirection } from "@/lib/commercial/reports/transactions";
@@ -402,12 +402,25 @@ export default async function AccountingPage({
   const cashRange = cashFlowRange(CASH_FLOW_DEFAULT);
   const coRange = changeOrderRange(CHANGE_ORDER_DEFAULT);
 
+  // `Promise.all` rejects on the first failure, so one report throwing took the
+  // whole money desk down — including the four headline tiles that had nothing
+  // to do with it. One failure costs one block now, and says so.
+  const failed: string[] = [];
+  const settle = async <T,>(label: string, p: Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await p;
+    } catch (err) {
+      console.error(`[accounting] ${label} failed:`, err);
+      failed.push(label);
+      return fallback;
+    }
+  };
   const [receivables, cash, jobCosts, coVendor, projects] = await Promise.all([
-    getReceivablesReport(),
-    getCashFlowReport(cashRange),
-    getJobCostsReport(),
-    getChangeOrderVendorReport(coRange),
-    listProjects(),
+    settle("Receivables", getReceivablesReport(), summarizeReceivables([])),
+    settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH),
+    settle("Job costs", getJobCostsReport(), EMPTY_JOB_COSTS),
+    settle("Change orders", getChangeOrderVendorReport(coRange), EMPTY_CO),
+    settle("Projects", listProjects(), []),
   ]);
   // Only fetched for the view that renders it — the money band above doesn't
   // use aging, so paying for it on every page load would be waste.
@@ -537,6 +550,13 @@ export default async function AccountingPage({
         </div>
       </div>
 
+      {failed.length > 0 && (
+        // A tile reading $0 because its report threw is a lie. Name it.
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
+          Couldn&rsquo;t load {failed.join(", ")} just now — {failed.length === 1 ? "that block is" : "those blocks are"}{" "}
+          showing nothing rather than a number. The rest of this page is current.
+        </div>
+      )}
       {error && (
         // `break-words` because a model/API failure now names its own reason,
         // and some of those are a long unbroken string.

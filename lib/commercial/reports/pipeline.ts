@@ -119,3 +119,10 @@ export async function getPipelineReport(): Promise<PipelineReport> {
     },
   };
 }
+
+/** What this report returns when there is nothing to report. Exported so a page
+ *  can degrade one card instead of failing whole. */
+export const EMPTY_PIPELINE: PipelineReport = {
+  rows: [],
+  totals: { count: 0, bidCents: 0, weightedCents: 0, avgDealCents: 0, probabilityPct: null },
+};

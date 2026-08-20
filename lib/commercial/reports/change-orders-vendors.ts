@@ -95,7 +95,9 @@ export type ChangeOrderVendorReport = {
 
 const EMPTY_BUCKET: CoBucket = { count: 0, cents: 0 };
 
-const EMPTY: ChangeOrderVendorReport = {
+/** The shape this report returns when there is nothing to report. Exported
+ *  so a page can degrade one card instead of failing whole. */
+export const EMPTY: ChangeOrderVendorReport = {
   co: {
     raised: 0,
     approved: { ...EMPTY_BUCKET },

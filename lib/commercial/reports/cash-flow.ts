@@ -78,7 +78,9 @@ export type CashFlowReport = {
   paidBeforeIssued: number;
 };
 
-const EMPTY: CashFlowReport = {
+/** The shape this report returns when there is nothing to report. Exported
+ *  so a page can degrade one card instead of failing whole. */
+export const EMPTY: CashFlowReport = {
   months: [],
   byMethod: [],
   slowest: [],

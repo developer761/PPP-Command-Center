@@ -118,3 +118,20 @@ export async function getGeographyReport(): Promise<GeographyReport> {
     },
   };
 }
+
+/** What this report returns when there is nothing to report. Exported so a page
+ *  can degrade one card instead of failing whole. */
+export const EMPTY_GEO: GeographyReport = {
+  byCity: [],
+  byZip: [],
+  byState: [],
+  totals: {
+    dealCount: 0,
+    locatedCount: 0,
+    unspecifiedCount: 0,
+    cityCount: 0,
+    zipCount: 0,
+    stateCount: 0,
+    contractCents: 0,
+  },
+};

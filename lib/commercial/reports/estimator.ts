@@ -77,7 +77,9 @@ export type EstimatorReport = {
   sentBeforeRfp: number;
 };
 
-const EMPTY: EstimatorReport = {
+/** The shape this report returns when there is nothing to report. Exported
+ *  so a page can degrade one card instead of failing whole. */
+export const EMPTY: EstimatorReport = {
   rows: [],
   totals: { bidsSent: 0, bidValueCents: 0, won: 0, lost: 0, open: 0, wonValueCents: 0, winRatePct: null, avgTurnaroundDays: null, turnaroundSample: 0 },
   missingRfpDate: 0,

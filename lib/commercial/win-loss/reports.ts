@@ -422,3 +422,15 @@ export async function getWinsAwaitingDebrief(limit = 50): Promise<AwaitingDebrie
     };
   });
 }
+
+/** What this summary returns when nothing has closed. Exported so a page can
+ *  degrade one card instead of failing whole. */
+export const EMPTY_WIN_LOSS: WinLossSummary = {
+  totalClosed: 0,
+  wonCount: 0,
+  lostCount: 0,
+  noBidCount: 0,
+  wonValueCents: 0,
+  lostValueCents: 0,
+  winRatePct: 0,
+};

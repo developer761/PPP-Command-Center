@@ -74,7 +74,9 @@ export type LaborReport = {
   weeks: LaborWeek[];
 };
 
-const EMPTY: LaborReport = {
+/** The shape this report returns when there is nothing to report. Exported
+ *  so a page can degrade one card instead of failing whole. */
+export const EMPTY: LaborReport = {
   totalHours: 0,
   totalCostCents: 0,
   unratedHours: 0,

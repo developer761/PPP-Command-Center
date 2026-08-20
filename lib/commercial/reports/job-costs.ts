@@ -209,3 +209,20 @@ export const COST_BUCKET_COLUMNS: { key: keyof CostBuckets; label: string }[] = 
   { key: "permit", label: "Permit" },
   { key: "other", label: "Other" },
 ];
+
+/** What this report returns when there is nothing to report. Exported so a page
+ *  can degrade one card instead of failing whole. */
+export const EMPTY_JOB_COSTS: JobCostsReport = {
+  groups: [],
+  totals: {
+    dealCount: 0,
+    accountCount: 0,
+    contractCents: 0,
+    billedCents: 0,
+    buckets: emptyBuckets(),
+    totalCostCents: 0,
+    marginCents: 0,
+    marginPct: null,
+    laborUnratedHours: 0,
+  },
+};

@@ -2,17 +2,17 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
-import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
-import { getJobCostsReport } from "@/lib/commercial/reports/job-costs";
-import { getArAging } from "@/lib/commercial/reports/ar-aging";
-import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
-import { getLaborReport } from "@/lib/commercial/reports/labor";
-import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
-import { getCashFlowReport } from "@/lib/commercial/reports/cash-flow";
-import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orders-vendors";
+import { getPipelineReport, EMPTY_PIPELINE } from "@/lib/commercial/reports/pipeline";
+import { getJobCostsReport, EMPTY_JOB_COSTS } from "@/lib/commercial/reports/job-costs";
+import { getArAging, EMPTY_AGING } from "@/lib/commercial/reports/ar-aging";
+import { getReceivablesReport, summarizeReceivables } from "@/lib/commercial/reports/receivables";
+import { getLaborReport, EMPTY as EMPTY_LABOR } from "@/lib/commercial/reports/labor";
+import { getEstimatorReport, EMPTY as EMPTY_ESTIMATOR } from "@/lib/commercial/reports/estimator";
+import { getCashFlowReport, EMPTY as EMPTY_CASH } from "@/lib/commercial/reports/cash-flow";
+import { getChangeOrderVendorReport, EMPTY as EMPTY_CO } from "@/lib/commercial/reports/change-orders-vendors";
 import { etTodayIso } from "@/lib/date-et";
-import { getGeographyReport } from "@/lib/commercial/reports/geography";
-import { getWinLossSummary, currentQuarterRange } from "@/lib/commercial/win-loss/reports";
+import { getGeographyReport, EMPTY_GEO } from "@/lib/commercial/reports/geography";
+import { getWinLossSummary, currentQuarterRange, EMPTY_WIN_LOSS } from "@/lib/commercial/win-loss/reports";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
@@ -71,19 +71,39 @@ export default async function ReportsOverviewPage() {
   const estRange = estimatorRange(ESTIMATOR_DEFAULT, estimatorFy);
   const estYearLabel = estRange.label;
   const cashRange = cashFlowRange(CASH_FLOW_DEFAULT);
-  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor, receivables] = await Promise.all([
-    getPipelineReport(),
-    getJobCostsReport(),
-    getArAging(),
-    getWinLossSummary(quarter),
-    getGeographyReport(),
-    getLaborReport(labourRange),
-    getEstimatorReport(estRange),
-    getCashFlowReport(cashRange),
-    // Year to date, matching that report's own default preset.
-    getChangeOrderVendorReport(changeOrderRange(CHANGE_ORDER_DEFAULT)),
-    getReceivablesReport(),
-  ]);
+  // TEN reports on one page, and `Promise.all` rejects on the first failure —
+  // so a single bad row, a transient timeout, or one report throwing took down
+  // the page that says "the whole company at a glance", including the nine
+  // reports that were fine. The daily cron has run on `allSettled` for exactly
+  // this reason since it was written; the pages never got the same treatment.
+  //
+  // Now one report failing costs one card. `failed` names them out loud rather
+  // than letting a card quietly read $0 — a zero that is really an error is
+  // worse than an error.
+  const failed: string[] = [];
+  const settle = async <T,>(label: string, p: Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await p;
+    } catch (err) {
+      console.error(`[reports] ${label} failed:`, err);
+      failed.push(label);
+      return fallback;
+    }
+  };
+  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor, receivables] =
+    await Promise.all([
+      settle("Pipeline", getPipelineReport(), EMPTY_PIPELINE),
+      settle("Job costs", getJobCostsReport(), EMPTY_JOB_COSTS),
+      settle("AR aging", getArAging(), EMPTY_AGING),
+      settle("Win/loss", getWinLossSummary(quarter), EMPTY_WIN_LOSS),
+      settle("Geography", getGeographyReport(), EMPTY_GEO),
+      settle("Labour", getLaborReport(labourRange), EMPTY_LABOR),
+      settle("Estimator", getEstimatorReport(estRange), EMPTY_ESTIMATOR),
+      settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH),
+      // Year to date, matching that report's own default preset.
+      settle("Change orders", getChangeOrderVendorReport(changeOrderRange(CHANGE_ORDER_DEFAULT)), EMPTY_CO),
+      settle("Receivables", getReceivablesReport(), summarizeReceivables([])),
+    ]);
   const topTown = geo.byCity[0] ?? null;
 
   // Snapshot visuals for the landing: company billing trend (line) + cost mix (pie).
@@ -237,6 +257,17 @@ export default async function ReportsOverviewPage() {
         <h2 className="text-lg font-bold text-ppp-charcoal">Reports</h2>
         <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">The whole company at a glance — sales pipeline, job profitability, receivables, and win/loss. Open any report to drill in and export.</p>
       </div>
+
+      {failed.length > 0 && (
+        // Named, not swallowed. A card reading $0 because its report threw is a
+        // lie; this is the difference between "nothing happened" and "we
+        // couldn't find out". The other cards are unaffected — that's the whole
+        // point of letting one fail alone.
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
+          Couldn&rsquo;t load {failed.join(", ")} just now, so {failed.length === 1 ? "that card is" : "those cards are"}{" "}
+          showing nothing rather than a number. Everything else on this page is current — refresh to try again.
+        </div>
+      )}
 
       {/* Snapshot visuals — billing trend (line) + cost mix (pie). */}
       {(hasTrend || costSegments.length > 0) && (

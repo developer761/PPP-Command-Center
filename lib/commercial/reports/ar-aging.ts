@@ -208,3 +208,13 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
     weightedAvgAgeDays: totals.total > 0 ? Math.round(ageWeightSum / totals.total) : 0,
   };
 }
+
+/** What this report returns when there is nothing to report. Exported so a page
+ *  can degrade one card instead of failing whole. */
+export const EMPTY_AGING: ArAging = {
+  rows: [],
+  totals: emptyBuckets(),
+  invoiceCount: 0,
+  customerCount: 0,
+  weightedAvgAgeDays: 0,
+};
