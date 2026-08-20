@@ -33,6 +33,27 @@ import type { ReceivablesReport } from "./receivables";
 const CACHE_KEY = "commercial_receivables_brief";
 const MODEL = "claude-opus-5";
 
+/**
+ * Say what actually went wrong.
+ *
+ * Both model-backed features used to fail with "Couldn't … just now", which is
+ * polite and useless: a bad key, no credit, no access to the model and a
+ * network blip all read identically, so the only way to tell them apart was to
+ * open Vercel's logs. The reason comes from the SDK's own error and is short
+ * enough to sit in a banner. No key material is ever in it.
+ */
+export function modelErrorReason(err: unknown): string {
+  const e = err as { status?: number; message?: string; error?: { error?: { message?: string } } };
+  const detail = e?.error?.error?.message || e?.message || String(err);
+  const short = detail.length > 160 ? `${detail.slice(0, 160)}…` : detail;
+  if (e?.status === 401) return `the API key was rejected (401) — ${short}`;
+  if (e?.status === 403) return `this key can't use ${MODEL} (403) — ${short}`;
+  if (e?.status === 404) return `${MODEL} wasn't found for this key (404) — ${short}`;
+  if (e?.status === 429) return `rate-limited or out of credit (429) — ${short}`;
+  if (e?.status && e.status >= 500) return `Anthropic returned ${e.status} — ${short}`;
+  return short;
+}
+
 export type ReceivablesBrief = {
   text: string;
   /** Hash of the figures this was written from — drives staleness. */
@@ -142,7 +163,7 @@ Rules:
     console.error("[receivables-brief] generate failed:", err);
     return {
       ok: false,
-      error: "Couldn't write the brief just now. The report below is unaffected.",
+      error: `Couldn't write the brief: ${modelErrorReason(err)}`,
     };
   }
 }

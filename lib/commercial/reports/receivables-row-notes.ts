@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
 import { getCommercialSetting, setCommercialSetting } from "@/lib/commercial/settings";
 import type { ReceivablesReport, ReceivableRow } from "./receivables";
+import { modelErrorReason } from "./receivables-brief";
 
 /**
  * A drafted note for the rows nobody has written one for.
@@ -182,7 +183,9 @@ Rules — these matter more than being interesting:
     return { ok: true, notes };
   } catch (err) {
     console.error("[receivable-row-notes] generate failed:", err);
-    return { ok: false, error: "Couldn't draft the notes just now. The sheet is unaffected." };
+    // Name the reason. "Couldn't draft the notes just now" made a rejected key,
+    // no credit and a network blip look like the same thing.
+    return { ok: false, error: `Couldn't draft the notes: ${modelErrorReason(err)}` };
   }
 }
 

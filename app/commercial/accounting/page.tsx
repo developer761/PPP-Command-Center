@@ -536,7 +536,9 @@ export default async function AccountingPage({
       </div>
 
       {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12.5px] text-rose-800">
+        // `break-words` because a model/API failure now names its own reason,
+        // and some of those are a long unbroken string.
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12.5px] text-rose-800 break-words">
           {error}
         </div>
       )}
@@ -569,32 +571,15 @@ export default async function AccountingPage({
         <section className="bg-surface border border-ppp-charcoal-100 border-l-4 border-l-cc-brand-500 rounded-xl p-4">
           <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1.5">
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">The brief</h2>
-            <div className="flex items-center gap-3">
-              {/* Drafts a note for every row that hasn't got one. Sits with the
-                  brief because it's the same trade — a model call behind a
-                  deliberate click — and because they're read together. */}
-              {canDraftNotes && silentRows > 0 && (
-                <form action={draftNotesAction}>
-                  <input type="hidden" name="back" value={href(view)} />
-                  <PendingSubmitButton
-                    pendingLabel="Drafting…"
-                    title="Drafts a note for each open item that hasn't got one, from its dates and figures. Never touches a note somebody wrote."
-                    className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] inline-flex items-center"
-                  >
-                    Draft {silentRows} empty note{silentRows === 1 ? "" : "s"}
-                  </PendingSubmitButton>
-                </form>
-              )}
-              <form action={refreshBriefAction}>
-                <input type="hidden" name="back" value={href(view)} />
-                <PendingSubmitButton
-                  pendingLabel="Writing…"
-                  className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] inline-flex items-center"
-                >
-                  {brief ? "Rewrite" : "Write the brief"}
-                </PendingSubmitButton>
-              </form>
-            </div>
+            <form action={refreshBriefAction}>
+              <input type="hidden" name="back" value={href(view)} />
+              <PendingSubmitButton
+                pendingLabel="Writing…"
+                className="inline-flex items-center min-h-[32px] px-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[11.5px] font-semibold text-ppp-charcoal-600 hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
+              >
+                {brief ? "Rewrite" : "Write the brief"}
+              </PendingSubmitButton>
+            </form>
           </div>
           {brief ? (
             <>
@@ -884,7 +869,26 @@ export default async function AccountingPage({
             title="Every open item"
             hint="Biggest first. Write a note after a chase and it stays with the job."
           />
-          <ReceivablesFilterBar q={q} basePath={BASE} extraParams={{ view: "receivables" }} gcOptions={receivablesView.gcOptions} />
+          {/* Drafting sits WITH the list it writes into, next to the filters —
+              Karan: "the button should be near … maybe next to the biggest
+              first button filter". Up in the brief block it was both far from
+              the rows it affects and easy to read as a label. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <ReceivablesFilterBar q={q} basePath={BASE} extraParams={{ view: "receivables" }} gcOptions={receivablesView.gcOptions} />
+            {canDraftNotes && silentRows > 0 && (
+              <form action={draftNotesAction}>
+                <input type="hidden" name="back" value={href(view)} />
+                <PendingSubmitButton
+                  pendingLabel="Drafting…"
+                  title="Drafts a note for each open item that hasn't got one, from its dates and figures. Never touches a note somebody wrote."
+                  className="inline-flex items-center gap-1.5 px-3 rounded-lg border border-cc-brand-200 bg-cc-brand-50 text-[12.5px] font-semibold text-cc-brand-800 hover:bg-cc-brand-100 transition-colors min-h-[44px] sm:min-h-[38px]"
+                >
+                  <span aria-hidden className="text-cc-brand-600">✦</span>
+                  Draft {silentRows} empty note{silentRows === 1 ? "" : "s"}
+                </PendingSubmitButton>
+              </form>
+            )}
+          </div>
       {receivablesView.noDueDateCount > 0 && (
         // "Past due $0.00 · nothing late" is a TRUE sentence that means
         // something else: an item with no due date can never age into overdue,
