@@ -32,9 +32,14 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const ROOT = process.cwd();
 // Commercial is a separate platform with its own session and conventions.
-const files = [...walk(join(ROOT, "components")), ...walk(join(ROOT, "app"))].filter(
-  (f) => !f.includes("/commercial/") && !f.includes("commercial-")
-);
+// Match on the REPO-RELATIVE path. Matching the absolute one means any
+// checkout living under a directory whose name contains "commercial-" (a git
+// worktree named `commercial-sweep`, say) filters out every file, and the
+// guard below is the only thing that notices.
+const files = [...walk(join(ROOT, "components")), ...walk(join(ROOT, "app"))].filter((f) => {
+  const rel = f.slice(ROOT.length + 1);
+  return !rel.includes("/commercial/") && !rel.includes("commercial-");
+});
 
 /** Full-viewport overlays — the ones that break. A `fixed` element that isn't
  *  pinned to all four edges is usually a sticky bar, which is unaffected. */

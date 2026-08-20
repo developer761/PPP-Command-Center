@@ -60,7 +60,12 @@ export function receivablesCsv(report: ReceivablesReport, filterLabel?: string |
   );
 }
 
-export function receivablesFilename(period?: string): string {
+export function receivablesFilename(period?: string, accountLabel?: string | null): string {
   const scope = period && period !== "all" ? `_${period}` : "";
-  return `Receivables${scope}_${etTodayIso()}.csv`;
+  // A one-GC export used to be named exactly like the whole book. Slugged so
+  // the filename survives Windows/macOS and does not smuggle path separators.
+  const gc = accountLabel
+    ? "_" + accountLabel.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)
+    : "";
+  return `Receivables${scope}${gc}_${etTodayIso()}.csv`;
 }

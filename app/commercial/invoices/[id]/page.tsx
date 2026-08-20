@@ -970,13 +970,15 @@ export async function InvoiceDetailView({
               <span aria-hidden>·</span>
               {/* 2026-07-21 audit fix (#7): was ?tab=info, which the deal
                   page bounces to the account — a dead trap. Route straight
-                  to the deal's real home: the account drill-in sheet.
-                  Re-audit (Finding C): invoices outlive archival, so carry
-                  ?archived=1 for archived deals — otherwise the ?edit=
-                  sheet never opens (archived deals are excluded from the
-                  account tab's list) and the user lands on a bare page. */}
+                  to the deal itself.
+                  NO `&archived=1`: there is no `?` in this URL, so appending it
+                  made the [id] segment `<uuid>&archived=1`, which fails the
+                  route's UUID check and 404s — every archived deal's only two
+                  links back to the job, dead. The param is read by the ACCOUNT
+                  page (`?tab=opportunities&archived=1`), not by this route, so
+                  it was inert here even when the URL was well-formed. */}
               <Link
-                href={`/commercial/opportunities/${opp.id}${opp.archived_at ? "&archived=1" : ""}`}
+                href={`/commercial/opportunities/${opp.id}`}
                 className="text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2"
               >
                 {derivedOppName(opp, account?.company_name ?? null)}
@@ -1145,7 +1147,7 @@ export async function InvoiceDetailView({
                   {/* Route to the opportunity's real home (account drill-in
                       sheet), archived-safe — /opportunities/[id] bounces. */}
                   <Link
-                    href={`/commercial/opportunities/${opp.id}${opp.archived_at ? "&archived=1" : ""}`}
+                    href={`/commercial/opportunities/${opp.id}`}
                     className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2"
                   >
                     {derivedOppName(opp, account?.company_name ?? null)}
@@ -1953,10 +1955,17 @@ export async function InvoiceDetailView({
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="milestone_id" value={m.id} />
-                          <SubmitButton
+                          {/* Removing a milestone deletes its line item and
+                              drops the invoice total — money off a document the
+                              GC may already have seen. Removing a PAYMENT twenty
+                              lines up confirms, and so does voiding a CO-bearing
+                              invoice; this was the one destructive path here
+                              with neither a confirm nor an undo. */}
+                          <ConfirmSubmitButton
+                            message="Remove this milestone? Its charge comes off the invoice and the total drops. This can't be undone."
                             className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[32px] px-1.5"
-                            title="Remove this milestone (also removes its charge from the invoice)"
-                          >Remove</SubmitButton>
+                            pendingLabel="Removing…"
+                          >Remove</ConfirmSubmitButton>
                         </form>
                       </div>
                     )}

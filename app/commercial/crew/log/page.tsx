@@ -61,7 +61,16 @@ async function confirmHoursAction(formData: FormData) {
     hours,
     actorUserId: user.id,
   });
-  redirect(res.ok ? "/commercial/crew/log?saved=1" : `/commercial/crew/log?error=${encodeURIComponent(res.error)}`);
+  // Carry the day back. Without `?d=`, a painter who tapped "Yesterday" and
+  // filed 6h landed on TODAY's blank, unconfirmed form — so the natural read is
+  // "it didn't save", and re-submitting files today's scheduled hours as worked.
+  // The error path was worse still: yesterday's red banner over today's form.
+  const back = workDate ? `&d=${encodeURIComponent(workDate)}` : "";
+  redirect(
+    res.ok
+      ? `/commercial/crew/log?saved=1${back}`
+      : `/commercial/crew/log?error=${encodeURIComponent(res.error)}${back}`
+  );
 }
 
 async function absenceAction(formData: FormData) {
@@ -77,14 +86,24 @@ async function absenceAction(formData: FormData) {
   const employee = await getEmployeeForUser(user.id);
   if (!employee) redirect("/commercial/crew");
 
+  const workDate = String(formData.get("work_date") ?? "");
   const res = await submitDailyAbsence({
     employeeId: employee.id,
-    workDate: String(formData.get("work_date") ?? ""),
+    workDate,
     type: String(formData.get("type") ?? ""),
     actorUserId: user.id,
   });
   revalidatePath("/commercial/crew/log");
-  redirect(res.ok ? "/commercial/crew/log?saved=1" : `/commercial/crew/log?error=${encodeURIComponent(res.error)}`);
+  // Carry the day back. Without `?d=`, a painter who tapped "Yesterday" and
+  // filed 6h landed on TODAY's blank, unconfirmed form — so the natural read is
+  // "it didn't save", and re-submitting files today's scheduled hours as worked.
+  // The error path was worse still: yesterday's red banner over today's form.
+  const back = workDate ? `&d=${encodeURIComponent(workDate)}` : "";
+  redirect(
+    res.ok
+      ? `/commercial/crew/log?saved=1${back}`
+      : `/commercial/crew/log?error=${encodeURIComponent(res.error)}${back}`
+  );
 }
 
 export default async function CrewDailyLogPage({

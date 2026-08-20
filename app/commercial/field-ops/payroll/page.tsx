@@ -49,13 +49,19 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
         <div><span className={LABEL_CLS}>To</span><DateField name="to" defaultValue={to} /></div>
         <button type="submit" className="inline-flex items-center px-4 rounded-lg border border-ppp-charcoal-200 text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px]">Update</button>
         <div className="flex-1" />
-        <Link
-          href={`/api/commercial/field-ops/payroll/export?from=${from}&to=${to}`}
-          prefetch={false}
-          className={`inline-flex items-center px-4 rounded-lg text-[13px] font-semibold min-h-[44px] ${rows.length > 0 ? "bg-cc-brand-600 text-white hover:bg-cc-brand-700" : "bg-ppp-charcoal-100 text-ppp-charcoal-400 pointer-events-none"}`}
+        {/* POST, not a link. This locks the pay period irreversibly, and a
+            plain href meant a session restore or a link preview could fire it.
+            `formMethod`/`formAction` override the enclosing method="get" form,
+            so the control moves to POST without nesting a second <form>. */}
+        <button
+          type="submit"
+          formMethod="post"
+          formAction={`/api/commercial/field-ops/payroll/export?from=${from}&to=${to}`}
+          disabled={rows.length === 0}
+          className={`inline-flex items-center px-4 rounded-lg text-[13px] font-semibold min-h-[44px] ${rows.length > 0 ? "bg-cc-brand-600 text-white hover:bg-cc-brand-700" : "bg-ppp-charcoal-100 text-ppp-charcoal-400 cursor-not-allowed"}`}
         >
           Export CSV
-        </Link>
+        </button>
         {/* The export is one-shot by design: it locks approved hours so nothing
             can be paid twice. That leaves no way back if the download is
             interrupted, so this re-issues the same file for hours already

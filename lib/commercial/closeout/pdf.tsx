@@ -97,7 +97,13 @@ function LogoBlock({ company, logo }: { company: CompanyContact; logo?: Buffer |
 function TransmittalDoc({ pkg, items, dealName, accountName, company, logo }: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null }) {
   const fromCompany = company.name;
   const included = items.filter((i) => i.included);
-  const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
+  // NOT pre-sliced. `sent_at`/`created_at` are TIMESTAMPTZ, and fmtDate exists
+  // to convert them to the ET calendar day; slicing first hands it a bare
+  // YYYY-MM-DD, which etDateOf returns untouched by design. So the guard was
+  // bypassed from the outside and a document produced after ~8pm ET carried
+  // TOMORROW's date - on the warranty letter the GC files, and one day off from
+  // the transmittal email and the date shown on screen.
+  const dateStr = fmtDate(pkg.sent_at ?? pkg.created_at);
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
@@ -165,7 +171,13 @@ function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature }: {
   const fromCompany = company.name;
   const start = pkg.substantial_completion_date;
   const end = computeWarrantyEndDate(start, pkg.warranty_years);
-  const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
+  // NOT pre-sliced. `sent_at`/`created_at` are TIMESTAMPTZ, and fmtDate exists
+  // to convert them to the ET calendar day; slicing first hands it a bare
+  // YYYY-MM-DD, which etDateOf returns untouched by design. So the guard was
+  // bypassed from the outside and a document produced after ~8pm ET carried
+  // TOMORROW's date - on the warranty letter the GC files, and one day off from
+  // the transmittal email and the date shown on screen.
+  const dateStr = fmtDate(pkg.sent_at ?? pkg.created_at);
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>

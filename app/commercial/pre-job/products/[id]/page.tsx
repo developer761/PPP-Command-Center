@@ -25,6 +25,7 @@ import {
 } from "@/lib/commercial/products/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { DateField } from "@/components/commercial/date-field";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
@@ -694,12 +695,20 @@ export default async function ProductDetailPage({
                     <form action={removePriceAction}>
                       <input type="hidden" name="product_id" value={product.id} />
                       <input type="hidden" name="price_id" value={row.id} />
-                      <PendingSubmitButton
+                      {/* HARD delete of a negotiated rate — no soft-delete, no
+                          undo. Mis-tap it on a GC's contract price and the next
+                          invoice line silently resolves to the higher catalogue
+                          price. Every comparable control on the platform
+                          confirms (exclusions, tax, notifications, teams); this
+                          one did not. Archive below stays unconfirmed on
+                          purpose: it is reversible and says so. */}
+                      <ConfirmSubmitButton
+                        message={`Remove this customer price permanently? It can't be undone, and new invoice lines will fall back to the catalogue price.`}
                         className="inline-flex items-center px-3 py-2 rounded-md border border-rose-200 text-rose-800 text-xs font-medium hover:bg-rose-50 min-h-[44px]"
                         pendingLabel="Removing…"
                       >
                         Remove
-                      </PendingSubmitButton>
+                      </ConfirmSubmitButton>
                     </form>
                   )}
                 </li>

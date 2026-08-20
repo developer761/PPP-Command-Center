@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
+import { isAdminEmail } from "@/lib/auth/admin";
 import { exportPayroll, redownloadPayroll } from "@/lib/commercial/field-ops/payroll";
 
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  * GET /api/commercial/field-ops/payroll/export?from=YYYY-MM-DD&to=YYYY-MM-DD
  * Streams the approved-time payroll CSV (W-2 only, reg/OT split). Admin-gated.
  */
-export async function GET(request: Request) {
+async function handle(request: Request, mutating: boolean) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -22,7 +23,12 @@ export async function GET(request: Request) {
     .eq("user_id", data.user.id)
     .maybeSingle();
   if ((await apiAccessDenied(data?.user?.id, profile))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  if (!(profile as { is_admin?: boolean } | null)?.is_admin) {
+  // Resolve admin EXACTLY as the payroll page does — `is_admin ?? isAdminEmail`.
+  // The page falls back to the env allowlist; this route used to check the
+  // column alone, so an allowlisted admin whose `profiles.is_admin` is still
+  // NULL could open the page, see both Export buttons, and get a raw JSON 403
+  // on click. Same shape as the labour-export gate mismatch fixed earlier.
+  if (!((profile as { is_admin?: boolean | null } | null)?.is_admin ?? isAdminEmail(data.user.email))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -39,7 +45,19 @@ export async function GET(request: Request) {
   // `?mode=redownload` re-issues an already-exported period without changing a
   // single status. The one-shot lock stays exactly as it was; this only stops
   // an interrupted download from losing the file for good.
+  //
+  // The LOCK is POST-only. It is a one-shot, irreversible state change with no
+  // unlock path, and it used to sit behind a plain <a href>: a browser session
+  // restore, a history revisit, or any link scanner following a URL pasted into
+  // a chat would silently close a pay period. Every other mutation in this tree
+  // is a POST; this one now matches.
   const redownload = searchParams.get("mode") === "redownload";
+  if (!redownload && !mutating) {
+    return NextResponse.json(
+      { error: "use_post", detail: "Locking the pay period is a POST." },
+      { status: 405, headers: { Allow: "POST" } }
+    );
+  }
   const csv = redownload
     ? await redownloadPayroll(from, to)
     : await exportPayroll(from, to, data.user.id);
@@ -50,4 +68,15 @@ export async function GET(request: Request) {
       "Content-Disposition": `attachment; filename="Payroll_${from}_to_${to}.csv"`,
     },
   });
+}
+
+/** Read-only: re-issues an already-exported period (`?mode=redownload`).
+ *  A GET without that mode is refused — see the note in `handle`. */
+export async function GET(request: Request) {
+  return handle(request, false);
+}
+
+/** The locking export. Mutates: approved → exported, one shot. */
+export async function POST(request: Request) {
+  return handle(request, true);
 }

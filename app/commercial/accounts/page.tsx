@@ -368,10 +368,20 @@ export default async function CommercialAccountsPage({
   const sortChanged = sort !== "created_desc";
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Newest first";
 
+  // Every filter the list is currently narrowed by, so the CSV is the rows on
+  // screen and not the whole book. The route has read `tag`/`stale`/`expiring`/
+  // `issue` since the D10 fix and applies them in `exportAccountsCsv`; this half
+  // never sent them, so a filtered view silently exported everything — and the
+  // filename agreed with the wrong number, so nothing looked amiss.
+  // Mirrors the page's own link builder above; keep the two in step.
   const exportParams = new URLSearchParams();
   if (search) exportParams.set("q", search);
   if (rating) exportParams.set("rating", rating);
   if (compliance) exportParams.set("compliance", compliance);
+  if (tagFilter) exportParams.set("tag", tagFilter);
+  if (filterStale) exportParams.set("stale", "1");
+  if (filterExpiring) exportParams.set("expiring", "1");
+  if (filterIssue) exportParams.set("issue", "1");
   const exportQs = exportParams.toString();
 
   return (

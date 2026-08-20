@@ -29,12 +29,40 @@ export async function GET() {
     [grouping, r.label, r.sub ?? "", r.dealCount, money(r.contractCents), money(r.totalCostCents), money(r.marginCents), r.marginPct === null ? "" : String(r.marginPct)]
       .map(csv)
       .join(",");
+  // The three groupings are the SAME deals counted three ways - the page keeps
+  // them in three separate tables, and stacking them into one sheet means an
+  // AutoSum down the Contract column returns roughly 3x the real figure. So the
+  // file leads with the true portfolio totals, and every detail row is labelled
+  // with its grouping, before any of them appear.
+  //
+  // `unspecifiedCount` comes with it: the page warns that deals with no site
+  // address are counted in the totals but can't be placed. Without that line the
+  // located-only rows below can't be reconciled against the Contract value, and
+  // the gap reads as missing money instead of missing addresses.
+  const t = geo.totals;
+  const summary = [
+    ["Geography", `${t.dealCount} opportunities`].map(csv).join(","),
+    ["Contract value (all opportunities)", money(t.contractCents)].map(csv).join(","),
+    ["Located opportunities", String(t.locatedCount)].map(csv).join(","),
+    [
+      "No site address",
+      String(t.unspecifiedCount),
+      t.unspecifiedCount > 0 ? "counted in the total above, absent from the rows below" : "",
+    ]
+      .map(csv)
+      .join(","),
+    "",
+    ["NOTE", "City / Zip / State are three views of the same opportunities - do not sum across groupings"]
+      .map(csv)
+      .join(","),
+    "",
+  ];
   const lines = [
     ...geo.byCity.map((r) => line("City", r)),
     ...geo.byZip.map((r) => line("Zip", r)),
     ...geo.byState.map((r) => line("State", r)),
   ];
-  const body = [header.map(csv).join(","), ...lines].join("\r\n") + "\r\n";
+  const body = [...summary, header.map(csv).join(","), ...lines].join("\r\n") + "\r\n";
   const today = etTodayIso();
   return new NextResponse(body, {
     status: 200,

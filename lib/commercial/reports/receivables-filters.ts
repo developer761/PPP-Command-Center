@@ -75,7 +75,15 @@ export function receivableQueryString(
 
 /** Plain-English description of what is being shown, for the empty state and
  *  the export filename — so a filtered view never looks like an empty book. */
-export function describeReceivableQuery(q: ReceivableQuery): string | null {
+export function describeReceivableQuery(
+  q: ReceivableQuery,
+  /** The filtered GC's display name. Without it a book narrowed to one GC
+   *  exported a CSV with NO "Filtered:" banner and no scope in the filename -
+   *  the exact "a slice looks like the whole book once it is in an inbox"
+   *  failure the banner exists to prevent. The id alone is not printable, so
+   *  the caller (which already holds the report) supplies the name. */
+  accountLabel?: string | null
+): string | null {
   const bits: string[] = [];
   const range = activityRange(q.period);
   if (range) bits.push(range.label.toLowerCase());
@@ -83,7 +91,19 @@ export function describeReceivableQuery(q: ReceivableQuery): string | null {
     bits.push(q.kind === "aia" ? "AIA only" : q.kind === "retainage" ? "retention only" : "invoices only");
   }
   if (q.overdueOnly) bits.push("overdue only");
+  if (q.accountId) bits.push(accountLabel ? "GC: " + accountLabel : "one GC only");
   // Sort is not a filter — it changes order, not membership — so it is
   // deliberately absent from the "showing X of Y" description.
   return bits.length ? bits.join(" · ") : null;
+}
+
+
+/** The filtered GC's display name, read off the report the caller already has.
+ *  Returns null when the book is not narrowed to a single GC. */
+export function receivableAccountLabel(
+  q: ReceivableQuery,
+  rows: { accountId: string; accountName: string }[]
+): string | null {
+  if (!q.accountId) return null;
+  return rows.find((r) => r.accountId === q.accountId)?.accountName ?? null;
 }

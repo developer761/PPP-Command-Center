@@ -1,4 +1,5 @@
 import "server-only";
+import { paginateAll } from "@/lib/commercial/paginate";
 
 import { commercialDb } from "@/lib/commercial/db";
 
@@ -160,21 +161,29 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   // that had not been started yet, while the dashboard tile counts them at any
   // stage, so tapping "5 wins · 62%" landed on a report showing 1. Losses only
   // ever sit in pre_sale_closed, so they need no equivalent.
-  const { data } = await sb
-    .from("commercial_opportunities")
-    .select("id, status, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at, closed_out_at, accepted_contract_cents")
-    .in("status", [
-      "pre_sale_closed",
-      "pre_construction",
-      "in_progress",
-      "billing",
-      "post_sale_closed",
-    ])
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .not("decided_at", "is", null)
-    .gte("decided_at", range.fromIso.slice(0, 10))
-    .lt("decided_at", range.toIso.slice(0, 10));
+  // paginateAll, not a bare select: PostgREST caps an unbounded select at 1000
+  // rows, so on "This year" with more than 1000 decided deals the won/lost
+  // dollars, the win rate and the Reports-index card were all computed over
+  // whatever the first page happened to contain - with nothing on screen
+  // saying so. Every other reports lib already pages; this one did not.
+  const data = await paginateAll<Row>(() =>
+    sb
+      .from("commercial_opportunities")
+      .select("id, status, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at, closed_out_at, accepted_contract_cents")
+      .in("status", [
+        "pre_sale_closed",
+        "pre_construction",
+        "in_progress",
+        "billing",
+        "post_sale_closed",
+      ])
+      .is("deleted_at", null)
+      .is("archived_at", null)
+      .not("decided_at", "is", null)
+      .gte("decided_at", range.fromIso.slice(0, 10))
+      .lt("decided_at", range.toIso.slice(0, 10))
+      .order("id", { ascending: true })
+  );
 
   type Row = {
     id: string;
@@ -258,15 +267,18 @@ export async function getCompetitorBreakdown(
   limit = 10
 ): Promise<CompetitorBreakdown[]> {
   const sb = commercialDb();
-  const { data } = await sb
-    .from("commercial_win_loss_debrief")
-    .select(`
-      outcome,
-      competitor_id,
-      competitor:commercial_competitors!commercial_win_loss_debrief_competitor_id_fkey(name)
-    `)
-    .gte("debriefed_at", range.fromIso)
-    .lt("debriefed_at", range.toIso);
+  const data = await paginateAll<Row>(() =>
+    sb
+      .from("commercial_win_loss_debrief")
+      .select(`
+        outcome,
+        competitor_id,
+        competitor:commercial_competitors!commercial_win_loss_debrief_competitor_id_fkey(name)
+      `)
+      .gte("debriefed_at", range.fromIso)
+      .lt("debriefed_at", range.toIso)
+      .order("id", { ascending: true })
+  );
 
   type Row = {
     outcome: "won" | "lost" | "no_bid";
@@ -300,12 +312,15 @@ export async function getDecidingFactorBreakdown(
   range: DateRange
 ): Promise<DecidingFactorBreakdown[]> {
   const sb = commercialDb();
-  const { data } = await sb
-    .from("commercial_win_loss_debrief")
-    .select("deciding_factor, outcome")
-    .gte("debriefed_at", range.fromIso)
-    .lt("debriefed_at", range.toIso)
-    .in("outcome", ["lost", "no_bid"]);
+  const data = await paginateAll<Row>(() =>
+    sb
+      .from("commercial_win_loss_debrief")
+      .select("deciding_factor, outcome")
+      .gte("debriefed_at", range.fromIso)
+      .lt("debriefed_at", range.toIso)
+      .in("outcome", ["lost", "no_bid"])
+      .order("id", { ascending: true })
+  );
 
   type Row = { deciding_factor: string | null };
 

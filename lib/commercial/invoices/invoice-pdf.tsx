@@ -142,6 +142,9 @@ export type InvoicePdfInput = {
     /** APPROVED change orders only — see the note in the renderer. */
     changeOrders: { number: number; title: string; amountCents: number }[];
     changeOrderTotalCents: number;
+    /** Sales tax billed across the job's issued invoices. The charge side has
+     *  to carry it because the payments below settle tax-inclusive totals. */
+    salesTaxBilledCents: number;
     totalChargesCents: number;
     /** Every payment across the JOB, newest last. */
     payments: { dateIso: string | null; amountCents: number }[];
@@ -293,6 +296,12 @@ function InvoiceDoc(input: InvoicePdfInput) {
               <View style={styles.fsRow}>
                 <Text>Change Order Total</Text>
                 <Text>{fmt(input.contract.changeOrderTotalCents)}</Text>
+              </View>
+            ) : null}
+            {input.contract.salesTaxBilledCents !== 0 ? (
+              <View style={styles.fsRow}>
+                <Text>Sales Tax Billed</Text>
+                <Text>{fmt(input.contract.salesTaxBilledCents)}</Text>
               </View>
             ) : null}
             <View style={styles.fsStrong}>

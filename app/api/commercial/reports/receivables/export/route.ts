@@ -5,7 +5,12 @@ import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
 import { receivablesCsv, receivablesFilename } from "@/lib/commercial/reports/receivables-export";
-import { parseReceivableQuery, filtersFor, describeReceivableQuery } from "@/lib/commercial/reports/receivables-filters";
+import {
+  parseReceivableQuery,
+  filtersFor,
+  describeReceivableQuery,
+  receivableAccountLabel,
+} from "@/lib/commercial/reports/receivables-filters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,11 +42,12 @@ export async function GET(req: NextRequest) {
   // Same parser the page uses, so the file is exactly the slice on screen.
   const q = parseReceivableQuery((k) => req.nextUrl.searchParams.get(k));
   const report = await getReceivablesReport(Date.now(), filtersFor(q));
-  return new NextResponse(receivablesCsv(report, describeReceivableQuery(q)), {
+  const gcLabel = receivableAccountLabel(q, report.rows);
+  return new NextResponse(receivablesCsv(report, describeReceivableQuery(q, gcLabel)), {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${receivablesFilename(q.period)}"`,
+      "Content-Disposition": `attachment; filename="${receivablesFilename(q.period, gcLabel)}"`,
       "Cache-Control": "no-store",
     },
   });

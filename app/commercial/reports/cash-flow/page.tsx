@@ -101,7 +101,11 @@ export default async function CashFlowReportPage({
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Kpi label="Collected" value={formatCentsFull(t.collectedCents)} sub={`${t.paymentCount} payment${t.paymentCount === 1 ? "" : "s"}`} tone="good" />
-            <Kpi label="Billed (pre-tax)" value={formatCentsFull(t.billedCents)} sub="issued in this window" />
+            {/* WITH tax, deliberately: this is a collections report, so billed and
+                collected share a basis (cash-flow.ts:221-240). The label said
+                "pre-tax", which is the one thing it is not - it read ~8% high
+                against every genuinely pre-tax figure on the platform. */}
+            <Kpi label="Billed" value={formatCentsFull(t.billedCents)} sub="issued in this window · incl. tax" />
             <Kpi
               label="Avg days to pay"
               value={t.avgDaysToPay === null ? "—" : `${t.avgDaysToPay}d`}

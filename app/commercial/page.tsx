@@ -154,7 +154,26 @@ export default async function CommercialDashboardPage() {
   // progress-billed $400k through G702/G703 contributed nothing here (2026-08-17).
   // Net of retainage — retainage is owed at close-out, not now, and folding it
   // in would put every AIA job permanently in the overdue column.
-  const aiaDueNowCents = projectRows.reduce((acc, r) => acc + (r.aiaDueNowCents ?? 0), 0);
+  //
+  // Scoped to `realOppIds` - the SAME live+archived universe the invoice half
+  // above uses, and the same one the AR-aging report this tile links to uses
+  // (`listCommercialOpportunities({ includeArchived: true })`). It used to sum
+  // `projectRows`, which is `listProjects({})`: archived deals filtered out and
+  // completed (`post_sale_closed`) jobs dropped. So a GC progress-billed $250k
+  // whose deal was archived in a tidy-up, or simply marked complete while the
+  // last application was still outstanding, vanished from "Owed to us" - while
+  // the report one tap away still showed the money. The invoice leg was given
+  // exactly this treatment in 2026-08; the AIA leg never was.
+  const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
+  const aiaRollups = await aiaBillingRollupBulk([...realOppIds]);
+  let aiaDueNowCents = 0;
+  let aiaArchivedDueNowCents = 0;
+  for (const [oppId, roll] of aiaRollups) {
+    const due = Math.max(0, roll.dueNowCents);
+    if (due <= 0) continue;
+    aiaDueNowCents += due;
+    if (archivedOppIds.has(oppId)) aiaArchivedDueNowCents += due;
+  }
   const arOutstandingCents =
     billableInvoices
       // Clamp per invoice so a credit/overpaid invoice can't net down the AR —
@@ -162,9 +181,10 @@ export default async function CommercialDashboardPage() {
       .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0) + aiaDueNowCents;
   // The slice of that owed on deals someone has archived — real money, but it
   // won't appear in Gross, so the tile says why the two don't tie out.
-  const arArchivedCents = billableInvoices
-    .filter((i) => i.opportunity_id != null && archivedOppIds.has(i.opportunity_id))
-    .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
+  const arArchivedCents =
+    billableInvoices
+      .filter((i) => i.opportunity_id != null && archivedOppIds.has(i.opportunity_id))
+      .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0) + aiaArchivedDueNowCents;
   const overdueInvoices = billableInvoices.filter((i) => deriveInvoiceStatus(i) === "overdue");
   const arOverdueCount = overdueInvoices.length;
   // The DOLLARS overdue (per-invoice clamped) — the number a CEO actually fears,
@@ -415,12 +435,21 @@ export default async function CommercialDashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="after job costs" />
           <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : revMarginPct < 0 ? "losing money" : revMarginPct < 15 ? "thin" : "healthy"} />
-          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
+          {/* NO sparkline. `grossRevenueCents` includes AIA progress billing;
+              `revenueMonthly` is `monthlyBilledSeries`, which sums
+              commercial_invoices only (AIA writes no invoice row). A spark
+              under a number reads as that number over time, so an AIA-heavy
+              month showed a big value above a flat line. The invoice-ledger
+              trend still renders below, where it is labelled for what it is. */}
+          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date · incl. AIA" />
           <StatCard label="Job costs" value={formatCentsCompact(totalCostCents)} tone="amber" sub={totalCostCents === 0 ? "none logged" : crewLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
         </div>
         <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
           <div className="flex items-baseline justify-between gap-2 mb-2 flex-wrap">
-            <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed</h3>
+            <h3 className="text-[13px] font-bold text-ppp-charcoal">
+              Invoiced per month
+              <span className="ml-1.5 font-medium text-ppp-charcoal-500">· excludes AIA</span>
+            </h3>
             <div className="flex items-baseline gap-2 text-[11.5px] tabular-nums">
               <span className="text-ppp-charcoal-500">This month <span className="font-bold text-ppp-charcoal">{formatCentsCompact(thisMonthBilledCents)}</span></span>
               {momBilledDeltaPct !== null && momBilledDeltaPct !== 0 && (

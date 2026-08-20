@@ -197,7 +197,7 @@ function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPd
           </View>
           <View style={{ width: "35%", textAlign: "right" }}>
             <Text style={styles.label}>Date</Text>
-            <Text style={styles.bold}>{fmtDate(header.dateIso.slice(0, 10))}</Text>
+            <Text style={styles.bold}>{fmtDate(header.dateIso)}</Text>
             {header.assignedTo ? (
               <>
                 <Text style={[styles.label, { marginTop: 8 }]}>Crew</Text>

@@ -12,6 +12,7 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import {
   parseReceivableQuery, filtersFor, receivableQueryParams, receivableQueryString,
   describeReceivableQuery,
+  receivableAccountLabel,
 } from "@/lib/commercial/reports/receivables-filters";
 import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
@@ -99,7 +100,7 @@ export default async function ReceivablesReportPage({
   const sp = await searchParams;
   const q = parseReceivableQuery((k) => sp[k]);
   const report = await getReceivablesReport(Date.now(), filtersFor(q));
-  const activeFilter = describeReceivableQuery(q);
+  const activeFilter = describeReceivableQuery(q, receivableAccountLabel(q, report.rows));
   const error = pickFirst(sp.error);
   const saved = pickFirst(sp.saved) === "1";
   const sentTo = pickFirst(sp.sent);

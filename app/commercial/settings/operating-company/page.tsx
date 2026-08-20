@@ -23,6 +23,9 @@ import { SignaturePad } from "@/components/commercial/signature-pad";
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/settings/operating-company";
+// The identity form's id, so the two signature fields - which live outside it,
+// in the Branding section - can post with it via `form=`.
+const IDENTITY_FORM_ID = "operating-company-identity";
 
 async function requireCommercialUser() {
   // Roles are open for now (Karan 2026-07-31) — any commercial user can manage
@@ -37,9 +40,19 @@ async function requireCommercialUser() {
 async function saveAction(formData: FormData) {
   "use server";
   const user = await requireCommercialUser();
+  // ABSENT and EMPTY are not the same thing. `updateOperatingCompany` treats
+  // any key that is not `undefined` as "set this column", so returning "" for a
+  // field the form never submitted writes NULL over whatever was there.
+  // That is exactly what happened to signature_name / signature_title: they
+  // render outside this form (the Branding section holds self-submitting
+  // uploaders, so they cannot be nested), were never posted, and every save of
+  // the phone number silently wiped "Brendan Dwyer / VP" - taking the signer
+  // off the warranty letter, the work order and the change-order PDF, with no
+  // way to put it back through the UI. They now carry `form=`, and this returns
+  // undefined for anything genuinely absent so the same trap cannot reopen.
   const get = (k: string) => {
     const v = formData.get(k);
-    return typeof v === "string" ? v : "";
+    return typeof v === "string" ? v : undefined;
   };
   const res = await updateOperatingCompany(
     {
@@ -73,10 +86,12 @@ export default async function OperatingCompanyPage({
   const sp = await searchParams;
   const c = await getOperatingCompany();
 
-  const Field = ({ id, label, value, placeholder, type = "text", full = false }: { id: string; label: string; value: string | null; placeholder?: string; type?: string; full?: boolean }) => (
+  // `form` lets an input that lives OUTSIDE the <form> still post with it - the
+  // standard escape hatch for a control that cannot be a descendant of it.
+  const Field = ({ id, label, value, placeholder, type = "text", full = false, form }: { id: string; label: string; value: string | null; placeholder?: string; type?: string; full?: boolean; form?: string }) => (
     <div className={full ? "sm:col-span-2" : ""}>
       <label htmlFor={id} className={LABEL_CLS}>{label}</label>
-      <input id={id} name={id} type={type} defaultValue={value ?? ""} placeholder={placeholder} className={INPUT_CLS} />
+      <input id={id} name={id} form={form} type={type} defaultValue={value ?? ""} placeholder={placeholder} className={INPUT_CLS} />
     </div>
   );
 
@@ -98,7 +113,7 @@ export default async function OperatingCompanyPage({
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{sp.error}</div>
       )}
 
-      <form action={saveAction} className="space-y-5">
+      <form id={IDENTITY_FORM_ID} action={saveAction} className="space-y-5">
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
           <h2 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
             <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" /> Identity
@@ -168,8 +183,8 @@ export default async function OperatingCompanyPage({
                 behind a twelve-month guarantee. Both optional: left blank, the
                 block keeps reading "Authorized signature". */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              <Field id="signature_name" label="Signs as (name)" value={c.signature_name} placeholder="Brendan Dwyer" />
-              <Field id="signature_title" label="Title" value={c.signature_title} placeholder="VP" />
+              <Field id="signature_name" label="Signs as (name)" value={c.signature_name} placeholder="Brendan Dwyer" form={IDENTITY_FORM_ID} />
+              <Field id="signature_title" label="Title" value={c.signature_title} placeholder="VP" form={IDENTITY_FORM_ID} />
             </div>
             <SignaturePad hasSignature={!!c.signature_asset_key} />
             <details className="mt-3">

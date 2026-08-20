@@ -127,13 +127,27 @@ async function mergeAction(formData: FormData) {
   redirect("/commercial/settings/competitors?ok=merged");
 }
 
-function parseDollarsToCents(raw: string | null): number | null {
-  if (raw === null) return null;
+/**
+ * Three outcomes, not two.
+ *
+ * This used to fold "blank" and "unparseable" into the same `null`, and `null`
+ * means CLEAR THE COLUMN. So typing "10k" or "aprox 40,000." in a bid field
+ * silently erased the figure that was already stored, and the page returned a
+ * green "Saved" - the one combination where the user has no way to tell.
+ *
+ * Blank still clears (that is a real instruction). Unparseable now leaves the
+ * stored value exactly where it is and says so, in keeping with the house rule:
+ * warn, do not reject - the rest of the form still saves.
+ */
+type MoneyInput = { kind: "clear" } | { kind: "cents"; cents: number } | { kind: "invalid" };
+
+function parseDollarsToCents(raw: string | null): MoneyInput {
+  if (raw === null) return { kind: "clear" };
   const trimmed = raw.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return { kind: "clear" };
   const num = Number(trimmed.replace(/[$,]/g, ""));
-  if (!Number.isFinite(num) || num < 0) return null;
-  return Math.round(num * 100);
+  if (!Number.isFinite(num) || num < 0) return { kind: "invalid" };
+  return { kind: "cents", cents: Math.round(num * 100) };
 }
 
 async function updateIntelAction(formData: FormData) {
@@ -147,20 +161,30 @@ async function updateIntelAction(formData: FormData) {
   if (!isAdmin) redirect("/commercial");
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/commercial/settings/competitors?error=invalid");
-  const bidLow = parseDollarsToCents(formData.get("bid_low")?.toString() ?? null);
-  const bidHigh = parseDollarsToCents(formData.get("bid_high")?.toString() ?? null);
+  const bidLowIn = parseDollarsToCents(formData.get("bid_low")?.toString() ?? null);
+  const bidHighIn = parseDollarsToCents(formData.get("bid_high")?.toString() ?? null);
+  const bidLow = bidLowIn.kind === "cents" ? bidLowIn.cents : null;
+  const bidHigh = bidHighIn.kind === "cents" ? bidHighIn.cents : null;
   // Reject a backwards range (Karan 2026-07-27 audit) — low > high rendered as
   // an inverted "$X–$Y" bid band.
   if (bidLow !== null && bidHigh !== null && bidLow > bidHigh) {
     redirect(`/commercial/settings/competitors?error=${encodeURIComponent("Typical bid low can't be higher than bid high.")}`);
   }
+  // An unreadable figure is omitted from the patch entirely — `updateCompetitorIntel`
+  // keys off `"field" in patch`, so a missing key leaves the column untouched.
+  const bidPatch: { typical_bid_low_cents?: number | null; typical_bid_high_cents?: number | null } = {};
+  if (bidLowIn.kind !== "invalid") bidPatch.typical_bid_low_cents = bidLow;
+  if (bidHighIn.kind !== "invalid") bidPatch.typical_bid_high_cents = bidHigh;
+  const unreadable = [
+    bidLowIn.kind === "invalid" ? "typical bid low" : null,
+    bidHighIn.kind === "invalid" ? "typical bid high" : null,
+  ].filter(Boolean);
   const result = await updateCompetitorIntel(
     id,
     {
       website: String(formData.get("website") ?? "").trim() || null,
       home_base: String(formData.get("home_base") ?? "").trim() || null,
-      typical_bid_low_cents: bidLow,
-      typical_bid_high_cents: bidHigh,
+      ...bidPatch,
       strengths: String(formData.get("strengths") ?? "").trim() || null,
       weaknesses: String(formData.get("weaknesses") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "").trim() || null,
@@ -170,13 +194,19 @@ async function updateIntelAction(formData: FormData) {
   if (!result.ok) {
     redirect("/commercial/settings/competitors?error=" + encodeURIComponent(result.error));
   }
+  if (unreadable.length > 0) {
+    redirect(
+      "/commercial/settings/competitors?ok=intel_saved&kept=" +
+        encodeURIComponent(unreadable.join(" and "))
+    );
+  }
   redirect("/commercial/settings/competitors?ok=intel_saved");
 }
 
 export default async function CompetitorsAdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; error?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string; kept?: string }>;
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -244,6 +274,15 @@ export default async function CompetitorsAdminPage({
           {sp.ok === "updated" && "Competitor status updated."}
           {sp.ok === "merged" && "Competitors merged."}
           {sp.ok === "intel_saved" && "Intel updated."}
+          {/* Small heads-up, not a rejection: everything else saved, and the
+              figure we could not read was left exactly as it was rather than
+              being wiped to blank. */}
+          {sp.kept && (
+            <span className="block mt-1 text-amber-800">
+              Couldn&rsquo;t read the {sp.kept} you typed, so the saved figure was kept. Enter a
+              plain number (e.g. 40000) to change it.
+            </span>
+          )}
         </div>
       )}
       {sp.error && (

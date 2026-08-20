@@ -20,15 +20,18 @@ import {
   HOT_DEAL_BID_CENTS,
   HOT_DEAL_DECISION_DAYS,
   HOT_DEAL_ACTIVE_STATUSES,
+  isOverdueProposal,
+  isColdRfp,
+  isFollowUpDue,
 } from "@/lib/commercial/opportunities/constants";
 import {
   KANBAN_COLUMNS,
   PRE_CONTRACT_COLUMNS,
   columnKeyForOpp,
   columnDbStatusHint,
-  kanbanColumnLabel,
 } from "@/lib/commercial/opportunities/kanban-columns";
 import { isUnderContract } from "@/lib/commercial/opportunities/attention";
+import { daysFromTodayEt, etDateOf } from "@/lib/date-et";
 import { MS_PER_DAY } from "@/lib/commercial/accounts/constants";
 
 /**
@@ -126,11 +129,28 @@ export async function GET(request: Request) {
     ? oppsRaw.filter((o) => columnKeyForOpp(o.status, o.sub_status) === validColumn)
     : oppsRaw;
 
+  // The SAME predicates and the SAME clock the pipeline page uses. These five
+  // were hand-rolled here and had drifted on both counts the shared helpers
+  // exist to settle (constants.ts:575-590):
+  //
+  //   1. Status set - all five gated on OPEN_OPP_STATUSES, which includes
+  //      pre_construction / in_progress / billing. `stillSelling` (inside the
+  //      shared predicates) gates on PRE_SALE_OPEN_STATUSES, because a job
+  //      already on site is not "an overdue proposal".
+  //   2. Clock - `proposal_due_at` is a DATE column, so `new Date(...)` yields
+  //      midnight UTC, which is already in the past for anyone in ET. A
+  //      proposal due TODAY exported as overdue from 20:00 ET the night before,
+  //      and a hot deal due today fell out of the CSV entirely once
+  //      `ceil(-1.04)` went negative - while both still showed on the board.
+  //
+  // One ET calendar day for the whole request, so no filter can straddle a day
+  // boundary mid-export.
+  const todayEtIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   if (stale) {
     opps = opps.filter((o) => {
       if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
-      const days = Math.floor((Date.now() - new Date(o.updated_at).getTime()) / MS_PER_DAY);
-      return Number.isFinite(days) && days >= STALE_OPP_DAYS;
+      const d = etDateOf(o.updated_at);
+      return d !== null && -daysFromTodayEt(d) >= STALE_OPP_DAYS;
     });
   }
   if (hot) {
@@ -138,39 +158,13 @@ export async function GET(request: Request) {
       if (!(HOT_DEAL_ACTIVE_STATUSES as readonly string[]).includes(o.status)) return false;
       if (!o.bid_value_high_cents || o.bid_value_high_cents < HOT_DEAL_BID_CENTS) return false;
       if (!o.proposal_due_at) return false;
-      const days = Math.ceil((new Date(o.proposal_due_at).getTime() - Date.now()) / MS_PER_DAY);
-      return Number.isFinite(days) && days >= 0 && days <= HOT_DEAL_DECISION_DAYS;
+      const daysUntilDue = daysFromTodayEt(o.proposal_due_at);
+      return daysUntilDue >= 0 && daysUntilDue <= HOT_DEAL_DECISION_DAYS;
     });
   }
-  if (overdue) {
-    const nowMs = Date.now();
-    opps = opps.filter(
-      (o) =>
-        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
-        o.proposal_due_at != null &&
-        new Date(o.proposal_due_at).getTime() < nowMs
-    );
-  }
-  if (coldRfp) {
-    const nowMs = Date.now();
-    opps = opps.filter((o) => {
-      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
-      if (!o.rfp_received_at) return false;
-      const days = Math.floor((nowMs - new Date(o.rfp_received_at).getTime()) / MS_PER_DAY);
-      return Number.isFinite(days) && days > 7;
-    });
-  }
-  if (followup) {
-    const todayEtIso = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
-    ).toISOString();
-    opps = opps.filter(
-      (o) =>
-        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
-        o.follow_up_at != null &&
-        o.follow_up_at <= todayEtIso
-    );
-  }
+  if (overdue) opps = opps.filter((o) => isOverdueProposal(o, todayEtIso));
+  if (coldRfp) opps = opps.filter((o) => isColdRfp(o, todayEtIso));
+  if (followup) opps = opps.filter((o) => isFollowUpDue(o, todayEtIso));
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => !!o.source && sourceSet.has(o.source));
   }
@@ -179,7 +173,7 @@ export async function GET(request: Request) {
   if (mine) opps = opps.filter((o) => o.estimator_user_id === auth.user.id);
   if (estimatorId) opps = opps.filter((o) => o.estimator_user_id === estimatorId);
   if (newDays) {
-    const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const todayEt = todayEtIso;
     const cutoff = new Date(Date.UTC(+todayEt.slice(0, 4), +todayEt.slice(5, 7) - 1, +todayEt.slice(8, 10)) - newDays * MS_PER_DAY)
       .toISOString()
       .slice(0, 10);

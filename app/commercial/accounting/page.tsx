@@ -18,6 +18,7 @@ import { ReceivablesFilterBar } from "@/components/commercial/receivables-filter
 import {
   parseReceivableQuery, filtersFor, receivableQueryParams, receivableQueryString,
   describeReceivableQuery,
+  receivableAccountLabel,
 } from "@/lib/commercial/reports/receivables-filters";
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
@@ -196,7 +197,6 @@ export default async function AccountingPage({
   const view: View = (VIEWS.some((v) => v.key === rawView) ? rawView : "overview") as View;
   const recipients = receivablesRecipients();
   const q = parseReceivableQuery((k) => sp[k]);
-  const activeFilter = describeReceivableQuery(q);
   // Filters live on the Receivables VIEW only. The headline band above the
   // switcher, and every overview figure, stay whole-book: those are "where does
   // the company stand", and silently narrowing them to a filter set on another
@@ -228,6 +228,12 @@ export default async function AccountingPage({
   // number: reusing the unfiltered `receivables` would ignore the filter bar.
   const receivablesView =
     view === "receivables" ? await getReceivablesReport(Date.now(), filtersFor(q)) : null;
+  // Below the fetch: the GC's printable name is read off the rows, so this can
+  // only be computed once they exist.
+  const activeFilter = describeReceivableQuery(
+    q,
+    receivableAccountLabel(q, receivablesView?.rows ?? [])
+  );
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
@@ -252,7 +258,19 @@ export default async function AccountingPage({
   // `invoice pre-tax + AIA billed` — so an AIA job doesn't read as unbilled.
   const unbilledContractCents = production.leftToBillCents;
   const unbilledCoCents = coVendor.co.unbilledCents;
-  const readyToBillCents = unbilledContractCents + unbilledCoCents;
+  // NOT `unbilledContract + unbilledCo` — that counted the same dollars twice.
+  // leftToBill is `max(0, contractToDate - billedPreTax)` and contractToDate is
+  // `base + netApprovedChangeOrders` (projects/db.ts:392,428), so an approved CO
+  // with no invoice against it is ALREADY inside the contract figure. Adding the
+  // CO total on top inflated the headline by exactly the unbilled COs, and the
+  // two tiles beside it read as the breakdown that explains the sum, so the
+  // overlap was invisible.
+  //
+  // The CO number stays on screen as an "of which" detail. It is deliberately a
+  // wider scope than the contract figure - all deals, all time, including closed
+  // and archived ones - so a CO stranded on a finished job still gets seen; that
+  // is also why it cannot simply be added to a figure covering active projects.
+  const readyToBillCents = unbilledContractCents;
 
   const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
     .filter((c) => jobCosts.totals.buckets[c.key] > 0)
@@ -535,7 +553,7 @@ export default async function AccountingPage({
             label="Ready to bill"
             value={formatCentsFull(readyToBillCents)}
             tone={readyToBillCents > 0 ? "amber" : "neutral"}
-            sub={readyToBillCents > 0 ? "contract + approved change orders" : "everything signed has been invoiced"}
+            sub={readyToBillCents > 0 ? "signed work with no invoice against it" : "everything signed has been invoiced"}
           />
           <Tile
             label="Contract left to bill"
@@ -547,7 +565,7 @@ export default async function AccountingPage({
             label="Approved COs unbilled"
             value={formatCentsFull(unbilledCoCents)}
             tone={unbilledCoCents > 0 ? "amber" : "neutral"}
-            sub={unbilledCoCents > 0 ? "approved scope, never invoiced" : "all approved COs billed"}
+            sub={unbilledCoCents > 0 ? "included above - all jobs, all time" : "all approved COs billed"}
           />
         </div>
         {production.overBilledProjects > 0 && (

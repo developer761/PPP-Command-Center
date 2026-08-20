@@ -38,8 +38,13 @@ export async function GET(req: NextRequest) {
   row("Approval rate %", r.co.approvalRatePct ?? "");
   row("Avg days to decide", r.co.avgDaysToDecide ?? "", `over ${r.co.decidedSample} decided`);
   // Money agreed and never asked for — the line worth acting on.
-  row("Approved, not yet billed", r.co.unbilledCount, money(r.co.unbilledCents));
-  row("Approved credits not billed back", r.co.unbilledCreditCount, money(r.co.unbilledCreditCents));
+  // These two are a STOCK, not a flow - deliberately computed over EVERY change
+  // order regardless of the window (change-orders-vendors.ts:234-242). The page
+  // says so out loud; the CSV sat them under a "Last 90 days" banner with no
+  // qualifier, so an all-time figure got quoted as a 90-day one in a finance
+  // review. The label carries the caveat into the file.
+  row("Approved, not yet billed (all time)", r.co.unbilledCount, money(r.co.unbilledCents));
+  row("Approved credits not billed back (all time)", r.co.unbilledCreditCount, money(r.co.unbilledCreditCents));
   row("");
 
   row("BY GC");
@@ -50,9 +55,12 @@ export async function GET(req: NextRequest) {
   row("");
 
   row("VENDOR SPEND");
-  row("Total", money(r.vendorTotalCents));
   row("Vendor", "Spend", "Purchases", "Top category", "Name variants merged");
   for (const v of r.vendors) row(v.name, money(v.cents), v.count, v.topCategory, v.variants);
+  // Below the rows it totals, in the Spend column. It used to sit between the
+  // section title and the header, so the figure landed in column B under no
+  // heading at all and read as the first vendor's name.
+  row("Total", money(r.vendorTotalCents));
   row("");
 
   row("BY CATEGORY");

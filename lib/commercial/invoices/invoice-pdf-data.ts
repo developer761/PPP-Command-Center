@@ -107,7 +107,6 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
   const approvedCos = jobChangeOrders.filter((c) => c.status === "approved");
   const changeOrderTotalCents = approvedCos.reduce((n, c) => n + c.amount_cents, 0);
   const originalCents = contractBase > 0 ? contractBase : 0;
-  const totalChargesCents = originalCents + changeOrderTotalCents;
 
   // Payments across every LIVE, non-void invoice on the job.
   const billableJobInvoices = jobInvoices.filter(
@@ -121,6 +120,34 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
     .map((pm) => ({ dateIso: pm.paid_at ?? null, amountCents: pm.amount_cents }))
     .sort((a, b) => String(a.dateIso ?? "").localeCompare(String(b.dateIso ?? "")));
   const paymentsTotalCents = payments.reduce((n, pm) => n + pm.amountCents, 0);
+
+  // Sales tax actually BILLED on this job so far.
+  //
+  // Without this the summary reconciles two different bases against each other:
+  // the charge side is the contract sum and its change orders, which are
+  // pre-tax, while the credit side is payments, which settle
+  // `total_cents = subtotal + ROUND(subtotal * tax_pct / 100)`
+  // (migration 042) and therefore carry tax. On a taxable job every payment
+  // wrote off more than it should have, so Current Balance came out light by
+  // exactly the tax collected — and once the job was fully billed and paid the
+  // figure went negative and the PDF printed "Credit Balance" at the GC's AP
+  // department on an invoice that was settled to the cent.
+  //
+  // Tax is only owed as work is billed, so this is the tax on invoices actually
+  // issued — not a rate applied to the whole contract. Fully billed and fully
+  // paid then lands exactly on zero; a tax-exempt job contributes nothing and
+  // the summary reads as it always did.
+  const salesTaxBilledCents = billableJobInvoices.reduce(
+    (n, i) => n + (Number(i.total_cents) - Number(i.subtotal_cents)),
+    0
+  );
+
+  const { totalChargesCents, currentBalanceCents } = reconcileJobCharges({
+    originalCents,
+    changeOrderTotalCents,
+    salesTaxBilledCents,
+    paymentsTotalCents,
+  });
 
   // Change orders the GC hasn't answered yet — stated on the invoice as a note
   // so the contract doesn't look smaller than the job actually is.
@@ -141,10 +168,11 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
             amountCents: c.amount_cents,
           })),
           changeOrderTotalCents,
+          salesTaxBilledCents,
           totalChargesCents,
           payments,
           paymentsTotalCents,
-          currentBalanceCents: totalChargesCents - paymentsTotalCents,
+          currentBalanceCents,
           pendingCoTotalCents,
         }
       : null;
@@ -192,4 +220,25 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
     },
     logo,
   };
+}
+
+/**
+ * The Financial Summary's arithmetic, as a pure function so the invariant that
+ * matters can actually be asserted: a job that is fully billed and fully paid
+ * reconciles to exactly zero.
+ *
+ * Both sides must be on the same basis. Charges are the pre-tax contract plus
+ * approved change orders plus the tax billed to date; payments settle
+ * tax-inclusive invoice totals. Mixing the two understates the balance by the
+ * tax collected and eventually prints a phantom "Credit Balance".
+ */
+export function reconcileJobCharges(input: {
+  originalCents: number;
+  changeOrderTotalCents: number;
+  salesTaxBilledCents: number;
+  paymentsTotalCents: number;
+}): { totalChargesCents: number; currentBalanceCents: number } {
+  const totalChargesCents =
+    input.originalCents + input.changeOrderTotalCents + input.salesTaxBilledCents;
+  return { totalChargesCents, currentBalanceCents: totalChargesCents - input.paymentsTotalCents };
 }

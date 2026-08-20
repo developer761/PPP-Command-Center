@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
+import { isAdminEmail } from "@/lib/auth/admin";
 import { copyWeekForward } from "@/lib/commercial/field-ops/schedule";
 
 export const runtime = "nodejs";
@@ -24,7 +25,11 @@ export async function POST(request: Request) {
     .eq("user_id", data.user.id)
     .maybeSingle();
   if ((await apiAccessDenied(data?.user?.id, profile))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  if (!(profile as { is_admin?: boolean } | null)?.is_admin) {
+  // `is_admin ?? isAdminEmail` — the same resolution the field-ops pages use.
+  // Checking the column alone 403s an env-allowlisted admin whose
+  // `profiles.is_admin` is still NULL, even though the calendar rendered for
+  // them, so every scheduling action failed with no visible reason.
+  if (!((profile as { is_admin?: boolean | null } | null)?.is_admin ?? isAdminEmail(data.user.email))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
