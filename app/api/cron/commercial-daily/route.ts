@@ -6,6 +6,7 @@ import { runHotDealsCoolingReminder } from "@/lib/commercial/cron/hot-deals-cool
 import { runCustomNotificationRules } from "@/lib/commercial/cron/custom-notification-rules";
 import { runDebriefOverdueReminder } from "@/lib/commercial/cron/debrief-overdue";
 import { runInvoiceDunningReminder } from "@/lib/commercial/cron/invoice-dunning";
+import { runAiaDunningReminder } from "@/lib/commercial/cron/aia-dunning";
 import { reportError, reportWarn } from "@/lib/observability";
 
 /**
@@ -56,14 +57,18 @@ export async function GET(request: Request) {
   }
 
   const startedAt = Date.now();
-  const [tasksRes, docsRes, hotRes, rulesRes, debriefRes, dunningRes] = await Promise.allSettled([
-    runOverdueTasksReminder(),
-    runExpiringDocumentsReminder(),
-    runHotDealsCoolingReminder(),
-    runCustomNotificationRules(),
-    runDebriefOverdueReminder(),
-    runInvoiceDunningReminder(),
-  ]);
+  const [tasksRes, docsRes, hotRes, rulesRes, debriefRes, dunningRes, aiaDunningRes] =
+    await Promise.allSettled([
+      runOverdueTasksReminder(),
+      runExpiringDocumentsReminder(),
+      runHotDealsCoolingReminder(),
+      runCustomNotificationRules(),
+      runDebriefOverdueReminder(),
+      runInvoiceDunningReminder(),
+      // The same reminder for the ledger that raises no invoice. Shares this
+      // slot rather than asking for a cron of its own — Hobby allows one.
+      runAiaDunningReminder(),
+    ]);
 
   // Settled-shape unwrap. allSettled → fulfilled.value | rejected.reason.
   // Each job's result already has its own ok flag + errors; rejection
@@ -94,6 +99,10 @@ export async function GET(request: Request) {
     dunningRes.status === "fulfilled"
       ? dunningRes.value
       : { ok: false, found: 0, sent: 0, skipped: 0, errors: [String(dunningRes.reason)] };
+  const aiaDunning =
+    aiaDunningRes.status === "fulfilled"
+      ? aiaDunningRes.value
+      : { ok: false, found: 0, sent: 0, skipped: 0, errors: [String(aiaDunningRes.reason)] };
 
   // R10.7: crew schedule emails - day-of + clock-in nudges (Resend-scheduled) +
   // Sunday week-ahead + office digest. Isolated from the wipe-out detection above
@@ -120,18 +129,18 @@ export async function GET(request: Request) {
   }
 
   const durationMs = Date.now() - startedAt;
-  const totalSent = tasks.sent + docs.sent + hot.sent + rules.sent + debrief.sent + dunning.sent;
-  const totalFound = tasks.found + docs.found + hot.found + rules.found + debrief.found + dunning.found;
-  const totalSkipped = tasks.skipped + docs.skipped + hot.skipped + rules.skipped + debrief.skipped + dunning.skipped;
+  const totalSent = tasks.sent + docs.sent + hot.sent + rules.sent + debrief.sent + dunning.sent + aiaDunning.sent;
+  const totalFound = tasks.found + docs.found + hot.found + rules.found + debrief.found + dunning.found + aiaDunning.found;
+  const totalSkipped = tasks.skipped + docs.skipped + hot.skipped + rules.skipped + debrief.skipped + dunning.skipped + aiaDunning.skipped;
   const totalErrors =
-    tasks.errors.length + docs.errors.length + hot.errors.length + rules.errors.length + debrief.errors.length + dunning.errors.length;
+    tasks.errors.length + docs.errors.length + hot.errors.length + rules.errors.length + debrief.errors.length + dunning.errors.length + aiaDunning.errors.length;
 
   console.log(
-    `[cron/commercial-daily] ${durationMs}ms — found ${totalFound} (tasks=${tasks.found} docs=${docs.found} hot=${hot.found} rules=${rules.found} debrief=${debrief.found} dunning=${dunning.found}) · sent ${totalSent} · skipped ${totalSkipped} · errors ${totalErrors}`
+    `[cron/commercial-daily] ${durationMs}ms — found ${totalFound} (tasks=${tasks.found} docs=${docs.found} hot=${hot.found} rules=${rules.found} debrief=${debrief.found} dunning=${dunning.found} aiaDunning=${aiaDunning.found}) · sent ${totalSent} · skipped ${totalSkipped} · errors ${totalErrors}`
   );
   if (totalErrors > 0) {
     console.warn(
-      `[cron/commercial-daily] errors: tasks=${JSON.stringify(tasks.errors)} docs=${JSON.stringify(docs.errors)} hot=${JSON.stringify(hot.errors)} rules=${JSON.stringify(rules.errors)} debrief=${JSON.stringify(debrief.errors)} dunning=${JSON.stringify(dunning.errors)}`
+      `[cron/commercial-daily] errors: tasks=${JSON.stringify(tasks.errors)} docs=${JSON.stringify(docs.errors)} hot=${JSON.stringify(hot.errors)} rules=${JSON.stringify(rules.errors)} debrief=${JSON.stringify(debrief.errors)} dunning=${JSON.stringify(dunning.errors)} aiaDunning=${JSON.stringify(aiaDunning.errors)}`
     );
   }
 
@@ -143,9 +152,9 @@ export async function GET(request: Request) {
   // one query doesn't trigger noisy retries that would re-attempt the
   // already-successful jobs.
   const totalWipeout =
-    !tasks.ok && !docs.ok && !hot.ok && !rules.ok && !debrief.ok && !dunning.ok && totalSent === 0;
+    !tasks.ok && !docs.ok && !hot.ok && !rules.ok && !debrief.ok && !dunning.ok && !aiaDunning.ok && totalSent === 0;
   const partialFailure =
-    !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok || !rules.ok || !debrief.ok || !dunning.ok);
+    !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok || !rules.ok || !debrief.ok || !dunning.ok || !aiaDunning.ok);
   const status = totalWipeout ? 500 : 200;
 
   // Stage 3.5: page Slack on real failures. Total wipe-out is critical
@@ -165,6 +174,7 @@ export async function GET(request: Request) {
         rules_errs: rules.errors.length,
         debrief_errs: debrief.errors.length,
         dunning_errs: dunning.errors.length,
+        aia_dunning_errs: aiaDunning.errors.length,
         duration_ms: durationMs,
       },
     });
@@ -182,6 +192,7 @@ export async function GET(request: Request) {
         rules_ok: rules.ok,
         debrief_ok: debrief.ok,
         dunning_ok: dunning.ok,
+        aia_dunning_ok: aiaDunning.ok,
       },
     });
   }
@@ -190,7 +201,7 @@ export async function GET(request: Request) {
     {
       ok: !totalWipeout,
       degraded:
-        !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok || !rules.ok || !debrief.ok || !dunning.ok),
+        !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok || !rules.ok || !debrief.ok || !dunning.ok || !aiaDunning.ok),
       durationMs,
       summary: {
         found: totalFound,
@@ -204,6 +215,7 @@ export async function GET(request: Request) {
       customRules: rules,
       debriefOverdue: debrief,
       invoiceDunning: dunning,
+      aiaDunning,
       scheduleEmails,
     },
     { status }

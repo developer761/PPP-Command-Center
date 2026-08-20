@@ -94,3 +94,47 @@ describe("upload size limits stay in sync with their servers", () => {
     expect(client).toBe(server);
   });
 });
+
+/**
+ * The custom-alert triggers live in TypeScript AND in a Postgres CHECK. They
+ * are a mirror by necessity — the DB has to reject a bad value even if the app
+ * is bypassed — but drift here is silent in the worst direction: the picker
+ * offers a trigger, the user configures it, and the INSERT is rejected by a
+ * constraint they will never see the text of.
+ *
+ * Found while adding `aia_overdue`, which had to be added in both places.
+ */
+describe("notification-rule triggers match their CHECK constraint", () => {
+  it("every trigger the UI offers is one the database accepts", () => {
+    const ts = read("lib/commercial/notification-rules/constants.ts");
+    const tsTriggers = (ts.match(/export const RULE_TRIGGERS = \[([\s\S]*?)\] as const;/)?.[1] ?? "")
+      .match(/"([a-z_]+)"/g)
+      ?.map((q) => q.replace(/"/g, "")) ?? [];
+    expect(tsTriggers.length).toBeGreaterThan(5);
+
+    // The LAST migration to redefine the constraint wins.
+    const sqlFiles = ["supabase/migrations/075_commercial_notification_rules.sql",
+                      "supabase/migrations/157_aia_application_dunning.sql"];
+    const latest = sqlFiles
+      .map(read)
+      .filter((sql) => /trigger IN \(/.test(sql))
+      .pop()!;
+    const sqlTriggers = (latest.match(/trigger IN \(([\s\S]*?)\)/)?.[1] ?? "")
+      .match(/'([a-z_]+)'/g)
+      ?.map((q) => q.replace(/'/g, "")) ?? [];
+
+    expect([...tsTriggers].sort()).toEqual([...sqlTriggers].sort());
+  });
+
+  it("every trigger has picker copy, so none renders blank", () => {
+    const ts = read("lib/commercial/notification-rules/constants.ts");
+    const tsTriggers = (ts.match(/export const RULE_TRIGGERS = \[([\s\S]*?)\] as const;/)?.[1] ?? "")
+      .match(/"([a-z_]+)"/g)
+      ?.map((q) => q.replace(/"/g, "")) ?? [];
+    const meta = ts.slice(ts.indexOf("TRIGGER_META"));
+    for (const t of tsTriggers) expect(meta).toContain(`${t}: {`);
+    // …and each is reachable from a group, or the picker never shows it.
+    const groups = ts.slice(ts.indexOf("TRIGGER_GROUPS"), ts.indexOf("RULE_CHANNELS"));
+    for (const t of tsTriggers) expect(groups).toContain(`"${t}"`);
+  });
+});

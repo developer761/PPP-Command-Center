@@ -5,6 +5,9 @@
 
 export const RULE_TRIGGERS = [
   "invoice_overdue",
+  // An AIA-billed job raises no invoice, so `invoice_overdue` could never see
+  // it — a rule meant to catch late money covered only half the ledger.
+  "aia_overdue",
   "invoice_due_soon",
   "invoice_paid",
   "proposal_idle",
@@ -17,7 +20,7 @@ export type RuleTrigger = (typeof RULE_TRIGGERS)[number];
 
 /** Group triggers for the picker UI. */
 export const TRIGGER_GROUPS: { heading: string; triggers: RuleTrigger[] }[] = [
-  { heading: "Invoices", triggers: ["invoice_overdue", "invoice_due_soon", "invoice_paid"] },
+  { heading: "Billing", triggers: ["invoice_overdue", "aia_overdue", "invoice_due_soon", "invoice_paid"] },
   { heading: "Proposals & deals", triggers: ["proposal_idle", "followup_due", "opp_no_activity", "deal_won", "deal_lost"] },
 ];
 
@@ -40,6 +43,13 @@ export const TRIGGER_META: Record<RuleTrigger, TriggerMeta> = {
   invoice_overdue: {
     label: "Invoice past due",
     blurb: "When an invoice is a set number of days past its due date.",
+    usesThreshold: true,
+    defaultDays: 15,
+    thresholdNoun: "days past due",
+  },
+  aia_overdue: {
+    label: "Payment application past due",
+    blurb: "When an AIA payment application is a set number of days past due. Retainage is excluded — it is held to close-out, not late.",
     usesThreshold: true,
     defaultDays: 15,
     thresholdNoun: "days past due",

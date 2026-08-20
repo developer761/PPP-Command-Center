@@ -200,6 +200,45 @@ async function evaluateRule(
         link: `/commercial/invoices/${i.id}`,
       }));
     }
+    case "aia_overdue": {
+      // Not a query. An AIA application's due date is DERIVED (issue date +
+      // terms) and what it owes is the G702 ladder, so this goes through the
+      // same helpers as the AR-aging report and the receivables list — a
+      // custom alert that disagreed with the report the reader opens next
+      // would be worse than no alert.
+      const [{ listCommercialOpportunities, derivedOppName }, { aiaBillingRollupBulk }, { aiaDueAtFrom }, { DEFAULT_DUE_DAYS }] =
+        await Promise.all([
+          import("@/lib/commercial/opportunities/db"),
+          import("@/lib/commercial/aia/db"),
+          import("@/lib/commercial/aia/constants"),
+          import("@/lib/commercial/invoices/constants"),
+        ]);
+      // includeArchived: archiving is a tidy-up, not a write-off.
+      const opps = await listCommercialOpportunities({ includeArchived: true });
+      if (opps.length === 0) return [];
+      const rollups = await aiaBillingRollupBulk(opps.map((o) => o.id));
+      const oppById = new Map(opps.map((o) => [o.id, o] as const));
+      const matches: Match[] = [];
+      for (const [oppId, roll] of rollups) {
+        if (roll.dueNowCents <= 0) continue;
+        const opp = oppById.get(oppId);
+        if (!opp || deletedAccountIds.has(opp.account_id)) continue;
+        const dueAt = aiaDueAtFrom(roll.latestIssuedFrozenAt, roll.latestIssuedPeriodTo, DEFAULT_DUE_DAYS);
+        // Undated → we cannot say it is late.
+        if (!dueAt || dueAt >= cutoffIso) continue;
+        matches.push({
+          // The APPLICATION, not the deal: the fire-log dedups per entity, and
+          // keying on the deal would silence application #4 because #3 already
+          // fired.
+          entityId: roll.latestIssuedId,
+          title: `Application No. ${roll.latestIssuedNumber} is ${rule.threshold_days}+ days past due`,
+          body: `${formatCents(roll.dueNowCents)} on ${derivedOppName(opp, null)} — due ${fmtDate(dueAt)}. Excludes retainage held to close-out.`,
+          link: `/commercial/opportunities/${oppId}?tab=aia&app=${roll.latestIssuedId}`,
+        });
+      }
+      // Most overdue first, so a capped run reports the worst debt.
+      return matches.sort((a, b) => a.title.localeCompare(b.title)).slice(0, 500);
+    }
     case "proposal_idle": {
       const { data, error } = await sb
         .from("commercial_proposals")

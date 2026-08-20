@@ -35,6 +35,10 @@ function TriggerIcon({ trigger }: { trigger: RuleTrigger }) {
   switch (trigger) {
     case "invoice_overdue":
       return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
+    case "aia_overdue":
+      // A document with a clock on it — the invoice icon is a bare clock, and
+      // the two triggers sit next to each other in the picker.
+      return <svg {...common}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h7" /><path d="M14 2v6h6" /><circle cx="17.5" cy="17.5" r="4.5" /><path d="M17.5 15.5v2l1.5 1" /></svg>;
     case "invoice_due_soon":
       return <svg {...common}><path d="M8 2v4M16 2v4M3 10h18" /><rect x="3" y="4" width="18" height="18" rx="2" /></svg>;
     case "invoice_paid":

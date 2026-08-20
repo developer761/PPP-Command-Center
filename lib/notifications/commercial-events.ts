@@ -86,6 +86,7 @@ export type CommercialNotificationKind =
   // Karan 2026-07-27: internal marker + bell when the 15-day past-due client
   // reminder email is sent (or couldn't be, for lack of a contact email).
   | "commercial_invoice_dunning"
+  | "commercial_aia_dunning"
   // R6 (Karan 2026-08): a GC submitted a bid through the public online bid form.
   // Fans out to the whole commercial team so nobody misses a fresh lead.
   | "commercial_bid_submitted";
@@ -1000,6 +1001,115 @@ export async function insertCommercialInvoiceDunningMarker(input: {
     recipientUserId: input.recipientUserId,
     actingUserId: null,
     sourceId: input.invoiceId,
+    title,
+    body,
+    link: relativeLink,
+    email: { subject, text, html },
+  });
+}
+
+/**
+ * The same reminder, for a job billed by AIA payment application.
+ *
+ * NOT a reuse of the invoice email with a different number substituted. A GC's
+ * AP department matches a payment against a certified application — "Invoice
+ * AIA #3" is not a document they hold, and quoting an invoice number that does
+ * not exist is how a reminder gets ignored or disputed. So this names the
+ * application and its project, and says what it is.
+ *
+ * Retainage is deliberately never in the figure: `dueNowCents` is G702 line 6
+ * less what has been certified paid. Chasing a GC for money their contract lets
+ * them hold to close-out is the fastest way to lose the relationship this email
+ * is meant to protect.
+ */
+export async function sendClientAiaDunningEmail(input: {
+  to: string;
+  applicationNumber: number;
+  projectName: string;
+  balanceCents: number;
+  dueDateIso: string | null;
+  daysPastDue: number;
+}): Promise<{ ok: boolean }> {
+  const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
+  const company = await getOperatingCompany();
+  const money = formatMoneyCents(input.balanceCents);
+  const dueStr = input.dueDateIso
+    ? new Date(input.dueDateIso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" })
+    : null;
+  const appLabel = `Application No. ${input.applicationNumber}`;
+  const subject = `Payment reminder — ${appLabel}, ${input.projectName} (${money} past due)`;
+  const text = [
+    `Hello,`,
+    ``,
+    `This is a friendly reminder that ${appLabel} for ${input.projectName} has an outstanding balance of ${money}${dueStr ? `, due ${dueStr}` : ""} — now ${input.daysPastDue} days past due.`,
+    ``,
+    `This is the amount certified as earned less retainage; retainage held under the contract is not included.`,
+    ``,
+    `If payment is already on its way, thank you and please disregard this notice. Otherwise, we'd appreciate settling the balance at your earliest convenience. Reply to this email with any questions.`,
+    ``,
+    `Thank you,`,
+    company.name,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hello,</p>
+  <p>This is a friendly reminder that <strong>${escape(appLabel)}</strong> for <strong>${escape(input.projectName)}</strong> has an outstanding balance of <strong>${escape(money)}</strong>${dueStr ? `, due ${escape(dueStr)}` : ""} — now <strong>${input.daysPastDue} days past due</strong>.</p>
+  <p style="color:#555;">This is the amount certified as earned less retainage; retainage held under the contract is not included.</p>
+  <p>If payment is already on its way, thank you and please disregard this notice. Otherwise, we&rsquo;d appreciate settling the balance at your earliest convenience. Reply to this email with any questions.</p>
+  <p style="margin-top:24px;">Thank you,<br/>${company.name}</p>
+</div>`;
+  const res = await sendEmail({
+    to: input.to,
+    subject,
+    text,
+    html,
+    channel: "commercial",
+    tags: [{ name: "kind", value: "commercial_aia_dunning" }],
+  });
+  return { ok: res.ok };
+}
+
+/** Internal bell for the AIA reminder — same three states as the invoice one
+ *  (sent / failed / no contact on file), linking to the application itself. */
+export async function insertCommercialAiaDunningMarker(input: {
+  opportunityId: string;
+  applicationId: string;
+  applicationNumber: number;
+  projectName: string;
+  recipientUserId: string;
+  daysPastDue: number;
+  balanceCents: number;
+  sentToClient: boolean;
+  emailFailed?: boolean;
+  clientEmailMasked: string | null;
+}): Promise<void> {
+  const relativeLink = `/commercial/opportunities/${input.opportunityId}?tab=aia&app=${input.applicationId}`;
+  const emailLink = appendBase(relativeLink);
+  const money = formatMoneyCents(input.balanceCents);
+  const ref = `Application No. ${input.applicationNumber} · ${input.projectName}`;
+  const title = input.sentToClient
+    ? `Past-due reminder sent · ${ref}`
+    : input.emailFailed
+    ? `Past-due reminder FAILED to send · ${ref}`
+    : `Past-due application needs a contact · ${ref}`;
+  const body = input.sentToClient
+    ? `Emailed the GC${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} — ${money}, ${input.daysPastDue}d past due.`
+    : input.emailFailed
+    ? `Couldn't email the GC${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} for ${ref} (${money}, ${input.daysPastDue}d past due) — the email failed; follow up manually.`
+    : `${ref} is ${input.daysPastDue}d past due but the account has no contact email — follow up manually.`;
+
+  const subject = title;
+  const text = [body, ``, `Open the application: ${emailLink}`, ``, `— PPP Commercial Command Center`].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>${escape(body)}</p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the application &rarr;</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  await dispatchCommercialNotification({
+    kind: "commercial_aia_dunning",
+    recipientUserId: input.recipientUserId,
+    actingUserId: null,
+    sourceId: input.applicationId,
     title,
     body,
     link: relativeLink,

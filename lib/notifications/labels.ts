@@ -31,6 +31,9 @@ const KIND_META: Record<string, KindMeta> = {
   commercial_invoice_payment_recorded: { label: "Payment recorded", category: "success" },
   commercial_invoice_paid_full: { label: "Paid in full", category: "success" },
   commercial_invoice_dunning: { label: "Past-due reminder", category: "warning" },
+  // AIA jobs raise no invoice, so their reminder is its own kind — otherwise
+  // the bell filter cannot separate the two ledgers.
+  commercial_aia_dunning: { label: "Past-due application", category: "warning" },
   // Commercial — proposals
   commercial_proposal_sent: { label: "Proposal sent", category: "info" },
   commercial_proposal_approval_requested: { label: "Approval requested", category: "warning" },
