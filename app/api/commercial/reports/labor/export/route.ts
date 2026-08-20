@@ -52,5 +52,5 @@ export async function GET(req: NextRequest) {
   row("Week starting", "Hours", "Cost");
   for (const w of r.weeks) row(w.weekStart, hrs(w.hours), money(w.costCents));
 
-  return csvResponse(L.join("\r\n") + "\r\n", `Labour_${range.fromYmd}_to_${range.toYmd}.csv`);
+  return csvResponse(L.join("\r\n") + "\r\n", `Labour_${range.fromYmd}_to_${range.toYmd}.csv`, "Labour — hours and cost", range.label);
 }

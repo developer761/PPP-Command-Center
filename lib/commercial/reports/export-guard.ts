@@ -63,10 +63,39 @@ export async function guardExport(
  */
 export const CSV_BOM = "\uFEFF";
 
+/**
+ * One title line for a downloaded report.
+ *
+ * A spreadsheet in somebody's downloads folder is anonymous: "export (3).csv"
+ * with no window and no date is a file you re-download rather than trust. One
+ * row saying what it is, what window it covers and when it was produced makes
+ * it a document — and it is the row somebody pastes into an email when they
+ * forward it.
+ *
+ * Deliberately ONE line plus a blank, matching the filtered-view banner the
+ * receivables sheet already used, so the column headers are always row 3.
+ */
+export function csvTitleBlock(title: string, window?: string | null): string {
+  const stamp = new Date().toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const cells = [title, window ? `Window: ${window}` : "", `Generated ${stamp} ET`]
+    .filter(Boolean)
+    .map((c) => `"${c.replace(/"/g, '""')}"`)
+    .join(",");
+  return `${cells}\r\n\r\n`;
+}
+
 /** A CSV download response with consistent headers, and a BOM so Excel reads
- *  it as UTF-8. Use this rather than building the response by hand. */
-export function csvResponse(body: string, filename: string): NextResponse {
-  return new NextResponse(body.startsWith(CSV_BOM) ? body : CSV_BOM + body, {
+ *  it as UTF-8. Use this rather than building the response by hand.
+ *
+ *  Pass `title` to stamp the file with what it is and when — see
+ *  `csvTitleBlock`. */
+export function csvResponse(body: string, filename: string, title?: string, window?: string | null): NextResponse {
+  const withTitle = title ? csvTitleBlock(title, window) + body : body;
+  return new NextResponse(withTitle.startsWith(CSV_BOM) ? withTitle : CSV_BOM + withTitle, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

@@ -48,5 +48,5 @@ export async function GET(req: NextRequest) {
     if (r.sentBeforeRfp > 0) row("Bids sent before the RFP arrived (data-entry error, excluded)", r.sentBeforeRfp);
   }
 
-  return csvResponse(L.join("\r\n") + "\r\n", `Estimator_${range.fromYmd}_to_${range.toYmd}.csv`);
+  return csvResponse(L.join("\r\n") + "\r\n", `Estimator_${range.fromYmd}_to_${range.toYmd}.csv`, "Estimator performance", range.label);
 }

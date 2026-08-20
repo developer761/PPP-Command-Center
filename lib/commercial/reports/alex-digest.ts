@@ -10,6 +10,9 @@ import { getReimbursementsReport } from "./reimbursements";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { getChangeOrderVendorReport } from "./change-orders-vendors";
 import { receivablesRecipients } from "./receivables-email";
+import { receivablesCsv } from "./receivables-export";
+import { transactionsCsv } from "./transactions-export";
+import { CSV_BOM, csvTitleBlock } from "./export-guard";
 import { activityRange, changeOrderRange, weekStartOf } from "./presets";
 import { etTodayIso } from "@/lib/date-et";
 
@@ -281,12 +284,49 @@ export async function sendDigest(
   try {
     const data = await buildDigest(cadence);
     const { subject, text, html } = renderDigestEmail(data);
+
+    // Two sheets ride along: what's owed, and what moved in the window. The
+    // email answers "where do we stand" on a phone; the attachments are for
+    // the times he wants to sort or forward one. Same builders as the
+    // downloads — a figure he checks against the app has to match it — and
+    // BOM-prefixed, because these are opened in Excel.
+    const [receivables, txns] = await Promise.all([
+      getReceivablesReport(),
+      getTransactionsReport({ fromYmd: data.fromYmd, toYmd: data.toYmd }),
+    ]);
+    const stamp = data.toYmd;
+    const attachments = [
+      {
+        filename: `Receivables_${stamp}.csv`,
+        content: Buffer.from(
+          CSV_BOM + csvTitleBlock("Receivables — every job with money out") + receivablesCsv(receivables),
+          "utf-8"
+        ),
+      },
+      // Only when there is something in it. An empty ledger attached to every
+      // daily email is an attachment people stop opening.
+      ...(txns.rowCount > 0
+        ? [
+            {
+              filename: `Transactions_${stamp}.csv`,
+              content: Buffer.from(
+                CSV_BOM +
+                  csvTitleBlock("Transactions — money in and out, by month", data.windowLabel) +
+                  transactionsCsv(txns),
+                "utf-8"
+              ),
+            },
+          ]
+        : []),
+    ];
+
     const res = await sendEmail({
       to,
       subject,
       text,
       html,
       channel: "commercial",
+      attachments,
       tags: [{ name: "kind", value: `commercial_digest_${cadence}` }],
     });
     return res.ok ? { ok: true, to } : { ok: false, error: "The email didn't send. Try again." };

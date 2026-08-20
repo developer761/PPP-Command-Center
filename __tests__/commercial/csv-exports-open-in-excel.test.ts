@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { csvResponse, CSV_BOM } from "@/lib/commercial/reports/export-guard";
+import { csvResponse, CSV_BOM, csvTitleBlock } from "@/lib/commercial/reports/export-guard";
 import { csvEscape } from "@/lib/commercial/csv";
 
 /**
@@ -93,5 +93,37 @@ describe("csvEscape stays hardened", () => {
     // These are the reason the BOM matters — they must pass through intact.
     expect(csvEscape("AIA #3 · sent 8/18/26")).toBe(`"AIA #3 · sent 8/18/26"`);
     expect(csvEscape("Panera — Holbrook")).toBe(`"Panera — Holbrook"`);
+  });
+
+});
+
+describe("csvTitleBlock", () => {
+  // A spreadsheet in a downloads folder with no title is one you re-download
+  // rather than trust.
+  it("names the report and stamps when it was produced", () => {
+    const block = csvTitleBlock("Receivables — every job with money out");
+    expect(block).toContain("Receivables");
+    expect(block).toContain("Generated");
+    expect(block).toContain("ET");
+  });
+
+  it("states the window when there is one", () => {
+    expect(csvTitleBlock("Sales tax", "This quarter")).toContain("Window: This quarter");
+  });
+
+  it("omits the window rather than printing an empty cell", () => {
+    expect(csvTitleBlock("Pipeline", null)).not.toContain("Window:");
+  });
+
+  it("leaves the column headers on row 3, every time", () => {
+    // One title line, one blank. Anything variable here and a person writing a
+    // formula against the file has to look first.
+    const lines = csvTitleBlock("X", "Y").split("\r\n");
+    expect(lines[0]).toContain("X");
+    expect(lines[1]).toBe("");
+  });
+
+  it("escapes a quote in the title rather than breaking the row", () => {
+    expect(csvTitleBlock('The "big" report')).toContain('The ""big"" report');
   });
 });

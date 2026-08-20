@@ -31,5 +31,5 @@ export async function GET() {
   const body = [header.map(csv).join(","), ...lines, totals].join("\r\n") + "\r\n";
   const today = etTodayIso();
   // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
-  return csvResponse(body, `Pipeline_${today}.csv`);
+  return csvResponse(body, `Pipeline_${today}.csv`, "Pipeline — open opportunities by stage");
 }

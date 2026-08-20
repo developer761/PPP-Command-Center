@@ -59,5 +59,5 @@ export async function GET(req: NextRequest) {
     if (r.paidBeforeIssued > 0) row("Payments received before the invoice was issued (counted same-day)", r.paidBeforeIssued);
   }
 
-  return csvResponse(L.join("\r\n") + "\r\n", `Cash_Flow_${range.fromYmd}_to_${range.toYmd}.csv`);
+  return csvResponse(L.join("\r\n") + "\r\n", `Cash_Flow_${range.fromYmd}_to_${range.toYmd}.csv`, "Cash flow — money received, and how long it took", range.label);
 }

@@ -62,5 +62,5 @@ export async function GET(req: NextRequest) {
     row(l.opportunity_title, l.outcome, l.competitor_name ?? "", l.deciding_factor ?? "", l.lessons_learned);
   }
 
-  return csvResponse(L.join("\r\n") + "\r\n", `Win_Loss_${range.fromYmd}_to_${range.toYmd}.csv`);
+  return csvResponse(L.join("\r\n") + "\r\n", `Win_Loss_${range.fromYmd}_to_${range.toYmd}.csv`, "Win / loss", range.label);
 }

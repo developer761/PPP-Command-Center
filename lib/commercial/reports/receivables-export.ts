@@ -49,8 +49,11 @@ export function receivablesCsv(report: ReceivablesReport, filterLabel?: string |
     ["Retention held", "", "", "", money(report.retainageCents), "released at close-out", ""],
   ].map((row) => row.map(csv).join(","));
 
-  // A filtered sheet says so on its first line. Without it, a slice of the
-  // book is indistinguishable from the whole book once it's in someone's inbox.
+  // The filter used to be announced here. It now rides in the file's title
+  // block (`csvTitleBlock`), which every export carries — two banners saying
+  // overlapping things at the top of one sheet is worse than one saying it
+  // properly. The parameter stays so the email, which builds the body without
+  // a title row, can still say it.
   const banner = filterLabel
     ? [["Filtered:", filterLabel, "", "", "", "", ""].map(csv).join(","), blank]
     : [];

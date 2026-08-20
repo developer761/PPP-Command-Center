@@ -39,5 +39,12 @@ export async function GET(req: NextRequest) {
   const q = parseReceivableQuery((k) => req.nextUrl.searchParams.get(k));
   const report = await getReceivablesReport(Date.now(), filtersFor(q));
   // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
-  return csvResponse(receivablesCsv(report, describeReceivableQuery(q)), receivablesFilename(q.period));
+  // The window/filter is stated ONCE, in the title block — so the body is
+  // built without its own banner here.
+  return csvResponse(
+    receivablesCsv(report),
+    receivablesFilename(q.period),
+    "Receivables — every job with money out",
+    describeReceivableQuery(q) ?? "all time"
+  );
 }

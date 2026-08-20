@@ -209,5 +209,5 @@ export async function GET(request: Request) {
   const filename = exportOpportunitiesFilename(filters, opps.length);
 
   // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
-  return csvResponse(csv, filename);
+  return csvResponse(csv, filename, "Opportunities");
 }

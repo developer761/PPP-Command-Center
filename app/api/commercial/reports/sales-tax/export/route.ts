@@ -79,5 +79,5 @@ export async function GET(req: NextRequest) {
   ];
 
   const scope = period !== "all" ? `_${period}` : "";
-  return csvResponse(lines.join("\r\n") + "\r\n", `SalesTax${scope}_${etTodayIso()}.csv`);
+  return csvResponse(lines.join("\r\n") + "\r\n", `SalesTax${scope}_${etTodayIso()}.csv`, "Sales tax — collected, and exemptions on file", range?.label ?? "all time");
 }

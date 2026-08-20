@@ -65,5 +65,5 @@ export async function GET(req: NextRequest) {
     row("Purchases with no vendor recorded (not in the vendor table above)", r.unattributedCount, money(r.unattributedCents));
   }
 
-  return csvResponse(L.join("\r\n") + "\r\n", `Change_Orders_Vendors_${range.fromYmd}_to_${range.toYmd}.csv`);
+  return csvResponse(L.join("\r\n") + "\r\n", `Change_Orders_Vendors_${range.fromYmd}_to_${range.toYmd}.csv`, "Change orders and vendor spend", range.label);
 }

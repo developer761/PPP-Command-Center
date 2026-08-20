@@ -45,5 +45,5 @@ export async function GET(request: Request) {
     ? await redownloadPayroll(from, to)
     : await exportPayroll(from, to, data.user.id);
   // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
-  return csvResponse(csv, `Payroll_${from}_to_${to}.csv`);
+  return csvResponse(csv, `Payroll_${from}_to_${to}.csv`, "Payroll", `${from} to ${to}`);
 }

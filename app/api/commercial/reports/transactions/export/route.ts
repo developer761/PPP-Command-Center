@@ -37,5 +37,5 @@ export async function GET(req: NextRequest) {
   };
 
   const report = await getTransactionsReport(filters);
-  return csvResponse(transactionsCsv(report), transactionsFilename(period));
+  return csvResponse(transactionsCsv(report), transactionsFilename(period), "Transactions — money in and out, by month", range?.label ?? "all time");
 }
