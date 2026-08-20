@@ -11,7 +11,7 @@ import { join } from "node:path";
  * picker was meant to prevent. So the exterior pick is applied to the colours
  * that are actually exterior, as per-colour overrides: that's the shape the
  * rest of the order already speaks (the builder renders them per line and the
- * vendor email groups by line, R4.30), so a mixed job arrives as two clearly
+ * vendor email groups by line, R4.32), so a mixed job arrives as two clearly
  * separated groups.
  */
 const src = readFileSync(join(process.cwd(), "lib/supplier-order/builder.ts"), "utf8");

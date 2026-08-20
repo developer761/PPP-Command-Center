@@ -3,13 +3,13 @@ import { formatOrderSummaryBlock } from "@/lib/supplier-order/builder";
 import { type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 
 /**
- * R4.30 — group the order lines under their paint line instead of prefixing
+ * R4.32 — group the order lines under their paint line instead of prefixing
  * each row "[Regal Select] ". Colors with no line and no order default collect
  * under [NOT SET], because a row with no product line used to be visually
  * identical to a row the header covered — silently unaccounted for.
  *
- * Also asserts R4.23 (no rooms/surfaces), R4.24 (no doubled code), R4.25 (TBD)
- * and R4.28 (no TOTAL), since they all render through this one function and
+ * Also asserts R4.25 (no rooms/surfaces), R4.24 (no doubled code), R4.27 (TBD)
+ * and R4.30 (no TOTAL), since they all render through this one function and
  * the whole point is what a vendor actually reads.
  */
 function est(over: Partial<GallonEstimate> = {}): GallonEstimate {
@@ -47,7 +47,7 @@ describe("vendor order block", () => {
     expect(lines[lines.indexOf("REGAL SELECT") + 1]).toContain("1421 Bistro Blue");
     expect(lines[lines.indexOf("AURA") + 1]).toContain("HC-14 Princeton Gold");
     expect(lines[lines.indexOf("[NOT SET]") + 1]).toContain("Super White");
-    // R4.30 replaced the per-row prefix.
+    // R4.32 replaced the per-row prefix.
     expect(block).not.toContain("[Regal Select]");
   });
 
@@ -68,7 +68,7 @@ describe("vendor order block", () => {
     expect(block).not.toContain("Super White Super White");
   });
 
-  it("keeps the finish but drops room and surface (R4.23)", () => {
+  it("keeps the finish but drops room and surface (R4.25)", () => {
     const block = formatOrderSummaryBlock([est({ rooms: ["Living Room", "Bathroom"], surfaces: ["Walls"] })], null);
     expect(block).not.toContain("Living Room");
     expect(block).not.toContain("Bathroom");
@@ -78,7 +78,7 @@ describe("vendor order block", () => {
     expect(block).toContain("Eggshell");
   });
 
-  it("has no TOTAL line (R4.28)", () => {
+  it("has no TOTAL line (R4.30)", () => {
     const block = formatOrderSummaryBlock([est()], null);
     expect(block).not.toContain("TOTAL");
     expect(block).not.toContain("─────");

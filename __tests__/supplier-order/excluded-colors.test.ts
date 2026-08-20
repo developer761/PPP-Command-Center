@@ -113,7 +113,7 @@ describe("vendor email paint block", () => {
   it("still shows the placeholder for a colour nobody has sized", () => {
     const block = formatOrderSummaryBlock([estimate({ buckets: 0, cans: 0, gallons: 0, manualOnly: true })], null);
     expect(block).toContain("White Dove");
-    // R4.25: "___ (PPP to confirm quantity)" → "TBD". Kate flagged that the
+    // R4.27: "___ (PPP to confirm quantity)" → "TBD". Kate flagged that the
     // underscores were easy to miss on a printed order.
     expect(block).toContain("TBD");
     expect(block).not.toContain("___");
@@ -129,7 +129,7 @@ describe("vendor email paint block", () => {
     expect(block).toContain("no paint on this order");
   });
 
-  it("does not group under an excluded line's product (R4.30)", () => {
+  it("does not group under an excluded line's product (R4.32)", () => {
     const overrides = new Map([[key, { buckets: 0, cans: 0, unit: "gal" as const }]]);
     const lines = applyQuantityOverrides([estimate(), stardust], overrides);
     const block = formatOrderSummaryBlock(lines, null, new Map([

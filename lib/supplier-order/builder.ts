@@ -773,7 +773,7 @@ export function formatOrderSummaryBlock(
   // every remaining line shares one.
   const orderedEffective = effective.filter((_, i) => !estimates[i].excluded);
 
-  // R4.30: group the lines under their paint line instead of prefixing every
+  // R4.32: group the lines under their paint line instead of prefixing every
   // row with "[Regal Select] ". Colors with no line — and no default set for
   // the order — collect under [NOT SET], because Kate's requirement is that
   // nothing is silently unaccounted for: a row with no product line used to be
@@ -811,12 +811,12 @@ export function formatOrderSummaryBlock(
     // Finish stays. Kate's R4.30 mock-up omits it, but the estimator buckets on
     // `colorId::finish` precisely because two sheens of one colour are two
     // different SKUs — dropping it would have a vendor mix one sheen for a
-    // two-sheen job. R4.23 asked only for room and surface to come off.
+    // two-sheen job. R4.25 asked only for room and surface to come off.
     const finish = e.finish ? ` · ${e.finish}` : "";
-    // R4.23: room and surface removed. The vendor doesn't stock by room; the
+    // R4.25: room and surface removed. The vendor doesn't stock by room; the
     // placement detail is for PPP and stays on the order screen.
     const manualPlaceholder = e.manualOnly || (e.buckets === 0 && e.cans === 0);
-    // R4.25: "___ (PPP to confirm quantity)" → "TBD". Kate flagged that "___"
+    // R4.27: "___ (PPP to confirm quantity)" → "TBD". Kate flagged that "___"
     // is easy to miss, and the parenthetical restated it at length.
     const qty = manualPlaceholder ? "TBD" : formatOrderQuantity(e);
     pushGrouped(mt || NOT_SET, `  ${qty} — ${label}${finish}`);
@@ -824,7 +824,7 @@ export function formatOrderSummaryBlock(
   // Kate round-3 #28: worker-typed colour lines (stain, plaster, colour
   // matches) are real order lines, not a note the vendor has to interpret.
   // They carry no product line, so they belong under [NOT SET] — which is
-  // exactly where Kate's R4.30 example puts "Behr 56 Semigloss".
+  // exactly where Kate's R4.32 example puts "Behr 56 Semigloss".
   for (const c of customColorItems) {
     const label = c.label.trim();
     if (!label) continue;
@@ -848,11 +848,11 @@ export function formatOrderSummaryBlock(
   }
   // Job total line — a quick cross-check for purchasing ("grab this many total").
   // Custom colour lines count toward the total — they're real order lines.
-  // R4.28: the job TOTAL line was removed. It restated the arithmetic the
+  // R4.30: the job TOTAL line was removed. It restated the arithmetic the
   // vendor does anyway, and every time the per-line rules changed (excluded
   // colors, quarts, custom items) it was another place that could disagree
   // with the lines directly above it.
-  // Only warn when NO product line is set anywhere. With R4.30 grouping in
+  // Only warn when NO product line is set anywhere. With R4.32 grouping in
   // place a partially-set order already says so structurally — the unset rows
   // sit under [NOT SET] — so the warning is reserved for the case where the
   // grouping is suppressed entirely and the vendor has nothing to go on.

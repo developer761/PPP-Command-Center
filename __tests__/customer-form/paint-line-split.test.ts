@@ -87,7 +87,7 @@ describe("salesforceLineFor", () => {
  * draft's allowedMaterialTypeValues), which returns the UNION on a mixed job —
  * correct there, because the order screen expresses a mix through per-colour
  * overrides rather than two defaults, and the vendor email now groups the lines
- * (R4.30). Asserted so the two surfaces can't drift into disagreeing about
+ * (R4.32). Asserted so the two surfaces can't drift into disagreeing about
  * which lines exist on a job.
  */
 import { filterMaterialTypesForWorkOrder } from "@/lib/customer-form/material-types";

@@ -5,7 +5,7 @@ import type { GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 /**
  * Why the finish stays on vendor order lines.
  *
- * Kate's R4.30 mock-up shows lines WITHOUT it:
+ * Kate's R4.32 mock-up shows lines WITHOUT it:
  *
  *     REGAL SELECT
  *     1 bucket (×5 gal) — 1421 Bistro Blue
@@ -14,7 +14,7 @@ import type { GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
  * is here so the next person to compare the code against that mock-up sees the
  * reason before "fixing" it.
  *
- * R4.23 asked only for ROOM and SURFACE to come off the lines. Sheen is not
+ * R4.25 asked only for ROOM and SURFACE to come off the lines. Sheen is not
  * placement detail — it's part of the SKU. Two sheens of one colour are two
  * different products, which is exactly why the estimator buckets on
  * `colorId::finish`. So on a job with Bistro Blue eggshell on the walls and
@@ -51,7 +51,7 @@ describe("order lines keep the finish", () => {
     expect(lines.join("\n")).toContain("Semi-Gloss");
   });
 
-  it("still drops room and surface, which is what R4.23 asked for", () => {
+  it("still drops room and surface, which is what R4.25 asked for", () => {
     const block = formatOrderSummaryBlock(
       [est({ rooms: ["Living Room", "Bathroom"], surfaces: ["Walls"] })],
       "Regal Select"

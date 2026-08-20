@@ -124,7 +124,7 @@ export async function GET() {
     });
   }
 
-  // R4.32 / Kate: "confirm it's set in production, and to which addresses."
+  // R3.30 (round-4 item 32) / Kate: "confirm it's set in production, and to which addresses."
   // Vercel encrypts sensitive env values one-way, so nobody — including us —
   // can read the value back from the dashboard or the CLI. Reporting the parsed
   // recipients here makes the answer self-serve and, more importantly, proves
