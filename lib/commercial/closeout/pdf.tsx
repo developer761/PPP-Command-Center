@@ -36,6 +36,13 @@ const styles = StyleSheet.create({
   footer: { position: "absolute", bottom: 30, left: 54, right: 54, fontSize: 7.5, color: "#9ca3af", textAlign: "center", borderTopWidth: 0.5, borderTopColor: "#e5e7eb", paddingTop: 6 },
   para: { marginBottom: 10 },
   sig: { marginTop: 40, borderTopWidth: 1, borderTopColor: "#111827", width: 220, paddingTop: 4 },
+  // Form of Warranty — the signature block is a labelled list on Tomco's form
+  // ("By / Title / Company / Address / Telephone"), not a rule with a name
+  // under it.
+  fwLine: { flexDirection: "row", marginBottom: 3 },
+  fwLabel: { width: 74, fontFamily: "Helvetica-Bold" },
+  fwNote: { fontSize: 8, color: "#6b7280", fontFamily: "Helvetica-Oblique", marginTop: -6, marginBottom: 10 },
+  fwRule: { borderBottomWidth: 1, borderBottomColor: "#111827", width: 220, height: 22 },
 });
 
 type PkgInput = {
@@ -70,6 +77,15 @@ export type CompanyContact = {
   name: string;
   phone?: string | null;
   website?: string | null;
+  /** The postal block Tomco's Form of Warranty signs off with — "Company /
+   *  Address / Telephone". Optional so the transmittal, which doesn't print
+   *  it, can keep passing what it always did. */
+  legal_name?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
   /** Who signs, and as what. Tomco's Form of Warranty names the signer
    *  ("Brendan Dwyer, VP"); "Authorized signature" over a company name does
    *  not say who stood behind a twelve-month guarantee. Null keeps the old
@@ -161,18 +177,46 @@ function TransmittalDoc({ pkg, items, dealName, accountName, company, logo }: { 
   );
 }
 
+/**
+ * The Tomco FORM OF WARRANTY — Katie's captured `Warranty Letter - Tomco.docx`,
+ * which is the document Brendan actually signs and GCs actually accept.
+ *
+ * This used to be a paraphrase written here: "Warranty", a good-and-workmanlike
+ * paragraph, and a carve-out for structural movement and water intrusion. It
+ * read well and it was the wrong document. A close-out warranty is a form the
+ * specification names; a GC's close-out clerk checks that the undertaking and
+ * the term are the ones the contract called for, and a rewritten one invites
+ * exactly the query the package exists to avoid.
+ *
+ * Two things carried over from the paraphrase because they are ours, not the
+ * form's: the letterhead, and the tap-to-sign signature image.
+ *
+ * NOTE the term is stated in MONTHS. Tomco's form says "a period of 12 months
+ * from the date hereof", and `warranty_years` of 1 is that same twelve months —
+ * saying it the form's way costs nothing and matches what the GC is looking for.
+ */
 function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature }: { pkg: PkgInput; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }) {
-  const fromCompany = company.name;
+  const fromCompany = company.legal_name || company.name;
   const start = pkg.substantial_completion_date;
   const end = computeWarrantyEndDate(start, pkg.warranty_years);
   const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
+  const months = Math.round(pkg.warranty_years * 12);
+  const contractor = pkg.to_company || accountName || "—";
+  const job = pkg.re_subject || dealName;
+  const cityLine = [[company.city, company.state].filter(Boolean).join(", "), company.zip]
+    .filter(Boolean)
+    .join(" ");
+  const addressLines = [company.address_line1, company.address_line2, cityLine].filter(
+    (l): l is string => !!l && l.trim().length > 0
+  );
+
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
         <LogoBlock company={company} logo={logo} />
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
-            <Text style={styles.bold}>{pkg.to_company || accountName || "—"}</Text>
+            <Text style={styles.bold}>{contractor}</Text>
             {pkg.to_attention ? <Text>Attn: {pkg.to_attention}</Text> : null}
             {(pkg.to_address_lines ?? []).map((l, i) => <Text key={i}>{l}</Text>)}
           </View>
@@ -181,42 +225,86 @@ function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature }: {
           </View>
         </View>
 
-        <Text style={styles.h1}>Warranty</Text>
-        <Text style={styles.para}>Re: <Text style={styles.bold}>{pkg.re_subject || dealName}</Text></Text>
+        <Text style={styles.h1}>Form of Warranty</Text>
+
+        {/* The form states when the clock starts, and says what the default is
+            when nobody has written a date on it. Printing a blank rule rather
+            than a guess is what the paper form does. */}
+        <Text style={styles.para}>
+          <Text style={styles.bold}>The warranty period begins: </Text>
+          {start ? fmtDate(start) : "____________________"}
+          {start && end ? <Text> (through {fmtDate(end)})</Text> : null}
+        </Text>
+        <Text style={styles.fwNote}>
+          Shall be the Date of Owner Acceptance or issuance of the certificate of occupancy,
+          unless otherwise noted in the specifications.
+        </Text>
 
         <Text style={styles.para}>
-          {fromCompany} warrants that all painting and coating work performed on the above-referenced project has been
-          completed in a good and workmanlike manner, in accordance with the contract documents and manufacturer
-          specifications.
+          The undersigned, having heretofore entered into a contract with{" "}
+          <Text style={styles.bold}>{contractor}</Text> for:{" "}
+          <Text style={styles.bold}>{job}</Text>, according to certain plans and
+          specifications, do hereby guarantee that all labor and materials furnished and work
+          performed thereunder are in conformity with such plans and specifications and are free
+          from imperfect workmanship.
         </Text>
         <Text style={styles.para}>
-          This warranty covers defects in workmanship and materials for a period of{" "}
-          <Text style={styles.bold}>{pkg.warranty_years} year{pkg.warranty_years === 1 ? "" : "s"}</Text> from the date
-          of substantial completion, <Text style={styles.bold}>{fmtDate(start)}</Text>, and remains in effect through{" "}
-          <Text style={styles.bold}>{fmtDate(end)}</Text>.
+          We agree to repair and/or replace at our own expense all of the work covered under the
+          contract and change orders which may prove to be defective for a period of{" "}
+          <Text style={styles.bold}>{months} months</Text> from the date hereof, or for such period
+          as may be specifically called for in the contract or specifications for individual work
+          items.
         </Text>
         <Text style={styles.para}>
-          During the warranty period, {fromCompany} will, upon written notice, repair or re-coat any covered defect at no
-          cost to the owner. This warranty excludes damage from causes beyond normal wear — including but not limited to
-          structural movement, water intrusion, abuse, or alteration by others.
+          Furthermore, we agree to repair and/or replace at our sole cost any work which we may
+          affect or disturb in making the repairs described above.
         </Text>
 
-        <View style={styles.sig}>
-          {signature ? <Image src={signature} style={styles.sigImage} /> : null}
-          <View style={{ borderTopWidth: signature ? 0 : 1, borderTopColor: "#9ca3af", width: 200, paddingTop: 2 }}>
-            <Text style={styles.bold}>{fromCompany}</Text>
-            {company.signature_name ? (
-              <Text style={{ fontSize: 8, color: "#6b7280" }}>
-                {company.signature_name}
-                {company.signature_title ? `, ${company.signature_title}` : ""}
-              </Text>
-            ) : (
-              <Text style={{ fontSize: 8, color: "#6b7280" }}>Authorized signature</Text>
-            )}
+        <View style={{ marginTop: 28 }}>
+          {signature ? (
+            <View style={styles.fwLine}>
+              <Text style={styles.fwLabel}>By:</Text>
+              <Image src={signature} style={styles.sigImage} />
+            </View>
+          ) : (
+            <View style={styles.fwLine}>
+              <Text style={styles.fwLabel}>By:</Text>
+              <View style={styles.fwRule} />
+            </View>
+          )}
+          {company.signature_name ? (
+            <View style={styles.fwLine}>
+              <Text style={styles.fwLabel}>Name:</Text>
+              <Text>{company.signature_name}</Text>
+            </View>
+          ) : null}
+          {company.signature_title ? (
+            <View style={styles.fwLine}>
+              <Text style={styles.fwLabel}>Title:</Text>
+              <Text>{company.signature_title}</Text>
+            </View>
+          ) : null}
+          <View style={styles.fwLine}>
+            <Text style={styles.fwLabel}>Company:</Text>
+            <Text>{fromCompany}</Text>
           </View>
+          {addressLines.length > 0 ? (
+            <View style={styles.fwLine}>
+              <Text style={styles.fwLabel}>Address:</Text>
+              <View>
+                {addressLines.map((l, i) => <Text key={i}>{l}</Text>)}
+              </View>
+            </View>
+          ) : null}
+          {company.phone ? (
+            <View style={styles.fwLine}>
+              <Text style={styles.fwLabel}>Telephone:</Text>
+              <Text>{company.phone}</Text>
+            </View>
+          ) : null}
         </View>
 
-        <Text style={styles.footer}>{fromCompany} · Project Warranty</Text>
+        <Text style={styles.footer}>{fromCompany} · Form of Warranty</Text>
       </Page>
     </Document>
   );

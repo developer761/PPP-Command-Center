@@ -187,6 +187,13 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
       website: oc.website,
       signature_name: oc.signature_name,
       signature_title: oc.signature_title,
+      // Tomco's Form of Warranty signs off with Company / Address / Telephone.
+      legal_name: oc.legal_name,
+      address_line1: oc.address_line1,
+      address_line2: oc.address_line2,
+      city: oc.city,
+      state: oc.state,
+      zip: oc.zip,
     };
     const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
     const logo = await getBrandLogoBuffer();
