@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isNycAddress } from "@/lib/supplier-order/nyc-zips";
 import type { OrderBuildPayload } from "@/lib/supplier-order/build-state";
+import { type FulfillmentState, fulfillmentIsEmpty } from "@/lib/supplier-order/fulfillment-state";
 
 /**
  * FULFILMENT — stage two of the Order Materials split (Kate round-3 #18).
@@ -66,6 +67,7 @@ export default function OrderFulfillmentView({
   viewerName,
   viewerPhone,
   viewerEmail,
+  savedFulfillment,
 }: {
   workOrderId: string;
   workOrderNumber: string | null;
@@ -87,6 +89,9 @@ export default function OrderFulfillmentView({
    *  personal mailbox — see loadViewerContact. Goes in the email's questions
    *  block, and the send route CCs the same address. */
   viewerEmail: string | null;
+  /** R4.33: what was typed here last time, restored on the round trip back
+   *  from the order builder. Its own slice — never part of the order payload. */
+  savedFulfillment: FulfillmentState;
 }) {
   const woLabel = workOrderNumber ?? workOrderId.slice(-6);
   const today = todayEtISO();
@@ -95,16 +100,22 @@ export default function OrderFulfillmentView({
   const [loadingDraft, setLoadingDraft] = useState(true);
   const [draftError, setDraftError] = useState<string | null>(null);
 
-  const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
-  const adminTouchedFulfillment = useRef(false);
-  const [pickupLocation, setPickupLocation] = useState("");
-  const [deliveryAddr, setDeliveryAddr] = useState({ street: "", city: "", state: "", postalCode: "" });
-  const [useCustomAddress, setUseCustomAddress] = useState(false);
-  const [instructions, setInstructions] = useState("");
-  const [requiredBy, setRequiredBy] = useState("");
+  // R4.33 — every field seeds from the saved fulfilment slice so going back to
+  // the order and returning doesn't lose what was typed here. Falls back to the
+  // old defaults when there's nothing saved (first visit, or migration pending).
+  const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">(savedFulfillment.method);
+  // Treat a restored non-default method as an explicit choice, or the auto-pick
+  // logic would immediately overwrite what the admin had already selected.
+  const adminTouchedFulfillment = useRef(savedFulfillment.method === "pickup");
+  const [pickupLocation, setPickupLocation] = useState(savedFulfillment.pickupLocation);
+  const [deliveryAddr, setDeliveryAddr] = useState(savedFulfillment.deliveryAddr);
+  const [useCustomAddress, setUseCustomAddress] = useState(savedFulfillment.useCustomAddress);
+  const [instructions, setInstructions] = useState(savedFulfillment.instructions);
+  const [requiredBy, setRequiredBy] = useState(savedFulfillment.requiredBy);
   // Kate round-3 #29: defaults to the signed-in user's stored number, editable
-  // per order, never written back to their profile.
-  const [contactPhone, setContactPhone] = useState(viewerPhone ?? "");
+  // per order, never written back to their profile. A saved per-order number
+  // wins — it was typed deliberately for this order.
+  const [contactPhone, setContactPhone] = useState(savedFulfillment.contactPhone || (viewerPhone ?? ""));
   const [editedBody, setEditedBody] = useState<string | null>(null);
 
   const [sending, setSending] = useState(false);
@@ -122,6 +133,50 @@ export default function OrderFulfillmentView({
     if (!raw) return "";
     return raw < today ? today : raw;
   }, [requiredBy, draft, today]);
+
+  /* ── R4.33: persist the fulfilment entries ────────────────────────────────
+   * Its own endpoint writing its own column. This can't touch the order payload
+   * — that separation is the whole reason the round-3 reset bugs stayed fixed.
+   *
+   * Saves the CLAMPED required-by, not the raw state: the same lesson as the
+   * draft request. Persisting the raw value meant a typed 01/01/2020 showed
+   * today in the box (clamped) while the stored value was 2020, so the two
+   * disagreed the moment anyone came back to the page.
+   */
+  const fulfillmentDirty = useRef(false);
+  const currentFulfillment = useMemo<FulfillmentState>(() => ({
+    method: fulfillment,
+    pickupLocation,
+    deliveryAddr,
+    useCustomAddress,
+    instructions,
+    requiredBy: requiredByValue,
+    contactPhone,
+  }), [fulfillment, pickupLocation, deliveryAddr, useCustomAddress, instructions, requiredByValue, contactPhone]);
+
+  const fulfillmentJson = JSON.stringify(currentFulfillment);
+  useEffect(() => {
+    // Skip the first pass: mounting with restored (or empty) state is not an
+    // edit, and writing on mount would touch every row anyone merely opened.
+    if (!fulfillmentDirty.current) {
+      fulfillmentDirty.current = true;
+      return;
+    }
+    const parsed = JSON.parse(fulfillmentJson) as FulfillmentState;
+    if (fulfillmentIsEmpty(parsed)) return;
+    const t = setTimeout(() => {
+      void fetch("/api/admin/supplier-order/fulfillment", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderId, supplierAccountId, fulfillment: parsed }),
+      }).catch(() => {
+        // Convenience, not correctness — the order still sends from what's on
+        // screen. Failing loudly here would interrupt an admin mid-order over
+        // something they can't act on.
+      });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [fulfillmentJson, workOrderId, supplierAccountId]);
 
   /* ── Draft ─────────────────────────────────────────────────────────────
    * Rebuilt when a FULFILMENT input changes. The order half of the request is

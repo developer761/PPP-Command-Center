@@ -137,6 +137,7 @@ export default async function OrderFulfillmentPage({
       build={build.payload}
       committed={build.committed}
       persistenceAvailable={build.available}
+      savedFulfillment={build.fulfillment}
       viewerName={contact.name}
       viewerPhone={contact.phone}
       viewerEmail={contact.email}

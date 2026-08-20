@@ -6,6 +6,7 @@ import { deriveOpenMaterialsWorkOrders, type OpenWorkOrderForMaterials } from "@
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
+import { normalizeFulfillmentState, emptyFulfillmentState, type FulfillmentState } from "@/lib/supplier-order/fulfillment-state";
 import type { SourceLine } from "@/components/order-builder-view";
 
 /**
@@ -74,7 +75,7 @@ export async function loadOrderPageData(
 export async function loadBuildPayload(
   workOrderId: string,
   supplierAccountId: string
-): Promise<{ payload: OrderBuildPayload; committed: boolean; available: boolean }> {
+): Promise<{ payload: OrderBuildPayload; committed: boolean; available: boolean; fulfillment: FulfillmentState }> {
   try {
     const sb = createSupabaseAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,7 +84,9 @@ export async function loadBuildPayload(
     );
     const { data, error } = await sb
       .from("supplier_order_builds")
-      .select("payload, committed_at")
+      // R4.33: the fulfilment slice rides along on the row we were fetching
+      // anyway, so restoring it costs no extra round-trip.
+      .select("payload, committed_at, fulfillment")
       .eq("work_order_id", workOrderId)
       .eq("supplier_account_id", supplierAccountId)
       .maybeSingle();
@@ -92,10 +95,35 @@ export async function loadBuildPayload(
       payload: data ? normalizeBuildPayload(data.payload) : emptyBuildPayload(),
       committed: !!data?.committed_at,
       available: true,
+      fulfillment: normalizeFulfillmentState(data?.fulfillment),
     };
   } catch (err) {
-    console.warn("[order-page-data] build load unavailable:", err);
-    return { payload: emptyBuildPayload(), committed: false, available: false };
+    // Also the path when migration 155 is pending: selecting a column that
+    // doesn't exist errors the whole query, so the build payload would be lost
+    // too. Retry without it rather than degrade a working feature.
+    try {
+      const sb = createSupabaseAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SECRET_KEY!,
+        { auth: { persistSession: false, autoRefreshToken: false } }
+      );
+      const { data, error } = await sb
+        .from("supplier_order_builds")
+        .select("payload, committed_at")
+        .eq("work_order_id", workOrderId)
+        .eq("supplier_account_id", supplierAccountId)
+        .maybeSingle();
+      if (error) throw error;
+      return {
+        payload: data ? normalizeBuildPayload(data.payload) : emptyBuildPayload(),
+        committed: !!data?.committed_at,
+        available: true,
+        fulfillment: emptyFulfillmentState(),
+      };
+    } catch {
+      console.warn("[order-page-data] build load unavailable:", err);
+      return { payload: emptyBuildPayload(), committed: false, available: false, fulfillment: emptyFulfillmentState() };
+    }
   }
 }
 
