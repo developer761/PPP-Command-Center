@@ -44,6 +44,24 @@ export const AIA_REDUN_DAYS = 7; // re-send at most weekly
 const DUNNING_MAX_PER_RUN = 100;
 
 /**
+ * Past this, a person gets told instead of the GC.
+ *
+ * An application four months past a thirty-day due date is almost never a GC
+ * who forgot. It is a job that closed out and nobody marked the last
+ * application paid, or a dispute somebody is already handling by phone. Mailing
+ * a demand built on that is embarrassing, and it lands on the customer.
+ *
+ * It also matters on day one specifically: `last_dunning_at` is NULL on every
+ * application that already exists, so without a ceiling the first run of this
+ * cron would chase the entire back catalogue at once — exactly the kind of
+ * automated surprise Katie would (rightly) never forgive.
+ *
+ * The money is not forgotten. The internal bell still fires, saying a person
+ * needs to look — which is the correct instrument at this age anyway.
+ */
+export const AIA_STALE_AFTER_DAYS = 120;
+
+/**
  * Should this application be chased today?
  *
  * Pure, and exported, because every clause is a way to email a GC wrongly:
@@ -72,10 +90,25 @@ export function shouldChaseAiaApplication(
   // is one the GC will dispute.
   if (!app.dueAtIso) return false;
   if (daysPastDue < AIA_PAST_DUE_DAYS) return false;
+  // NOTE: deliberately NOT excluded here. A stale application still needs the
+  // weekly internal nudge; `chaseByEmail` is what decides whether the GC hears
+  // about it. Dropping it here would hide the money instead of escalating it.
   if (!app.lastDunningAt) return true;
   const last = new Date(app.lastDunningAt).getTime();
   // An unparseable marker must not silence the chase forever.
   return Number.isNaN(last) || last < nowMs - AIA_REDUN_DAYS * 86_400_000;
+}
+
+/**
+ * Whether the GC should be EMAILED, as opposed to a person being told.
+ *
+ * Separate from `shouldChaseAiaApplication` on purpose: the two questions have
+ * different answers on an old application, and collapsing them would mean
+ * either mailing a demand nobody stands behind or quietly dropping real money
+ * off the chase list.
+ */
+export function shouldEmailGcAboutAia(daysPastDue: number): boolean {
+  return daysPastDue <= AIA_STALE_AFTER_DAYS;
 }
 
 /** Mask an email for the internal bell: "jane@gc.com" → "j***@gc.com". */
@@ -268,8 +301,10 @@ export async function runAiaDunningReminder(): Promise<Result> {
           continue;
         }
 
+        // Too old to mail a demand about — the bell below still fires.
+        const emailable = shouldEmailGcAboutAia(c.daysPastDue);
         let sentToClient = false;
-        if (clientEmail) {
+        if (clientEmail && emailable) {
           const res = await sendClientAiaDunningEmail({
             to: clientEmail,
             applicationNumber: c.appNumber,
@@ -292,7 +327,8 @@ export async function runAiaDunningReminder(): Promise<Result> {
             daysPastDue: c.daysPastDue,
             balanceCents: c.balanceCents,
             sentToClient,
-            emailFailed: !!clientEmail && !sentToClient,
+            emailFailed: !!clientEmail && emailable && !sentToClient,
+            stale: !emailable,
             clientEmailMasked: clientEmail ? maskEmail(clientEmail) : null,
           });
         }

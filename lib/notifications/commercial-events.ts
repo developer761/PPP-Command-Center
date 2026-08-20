@@ -1080,6 +1080,8 @@ export async function insertCommercialAiaDunningMarker(input: {
   balanceCents: number;
   sentToClient: boolean;
   emailFailed?: boolean;
+  /** Too far past due to auto-mail a demand about — a person should look. */
+  stale?: boolean;
   clientEmailMasked: string | null;
 }): Promise<void> {
   const relativeLink = `/commercial/opportunities/${input.opportunityId}?tab=aia&app=${input.applicationId}`;
@@ -1088,11 +1090,17 @@ export async function insertCommercialAiaDunningMarker(input: {
   const ref = `Application No. ${input.applicationNumber} · ${input.projectName}`;
   const title = input.sentToClient
     ? `Past-due reminder sent · ${ref}`
+    : input.stale
+    // Named as what it is. At this age the likeliest explanation is our own
+    // record, not the GC's cheque.
+    ? `Very old unpaid application — needs a look · ${ref}`
     : input.emailFailed
     ? `Past-due reminder FAILED to send · ${ref}`
     : `Past-due application needs a contact · ${ref}`;
   const body = input.sentToClient
     ? `Emailed the GC${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} — ${money}, ${input.daysPastDue}d past due.`
+    : input.stale
+    ? `${ref} shows ${money} outstanding and is ${input.daysPastDue}d past due — too old to send an automatic reminder about. Usually the application was paid and never marked, or it's already being handled. Check before chasing.`
     : input.emailFailed
     ? `Couldn't email the GC${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} for ${ref} (${money}, ${input.daysPastDue}d past due) — the email failed; follow up manually.`
     : `${ref} is ${input.daysPastDue}d past due but the account has no contact email — follow up manually.`;

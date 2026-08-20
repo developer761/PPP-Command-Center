@@ -24,8 +24,15 @@ const row = (
   status: ChangeOrderRegisterRow["status"],
   amountCents: number,
   n = 1
-): ChangeOrderRegisterRow =>
-  ({ coNumber: n, title: `CO ${n}`, description: null, amountCents, status, dateIso: null }) as ChangeOrderRegisterRow;
+): ChangeOrderRegisterRow => ({
+  coNumber: n,
+  title: `CO ${n}`,
+  description: null,
+  amountCents,
+  status,
+  raisedIso: "2026-07-01",
+  decidedIso: status === "pending" ? null : "2026-07-15",
+});
 
 const ORIGINAL = 200_000_00;
 

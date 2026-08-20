@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   shouldChaseAiaApplication,
+  shouldEmailGcAboutAia,
   AIA_PAST_DUE_DAYS,
   AIA_REDUN_DAYS,
+  AIA_STALE_AFTER_DAYS,
 } from "@/lib/commercial/cron/aia-dunning";
 
 /**
@@ -85,5 +87,33 @@ describe("shouldChaseAiaApplication", () => {
     // being billed both ways on different jobs.
     expect(AIA_PAST_DUE_DAYS).toBe(15);
     expect(AIA_REDUN_DAYS).toBe(7);
+  });
+
+  // ── The staleness ceiling ───────────────────────────────────────────────
+  //
+  // An application four months past a thirty-day due date is almost never a GC
+  // who forgot — it is a job that closed out with the last application never
+  // marked paid, or a dispute somebody is already handling by phone. Mailing a
+  // demand built on that lands on the customer.
+  //
+  // It matters most on day one: `last_dunning_at` is NULL on every application
+  // that already exists, so without a ceiling the FIRST run of this cron would
+  // chase the entire back catalogue in one go.
+  describe("very old applications", () => {
+    it("still reach the chase list — the money isn't forgotten", () => {
+      expect(shouldChaseAiaApplication(app(), AIA_STALE_AFTER_DAYS + 200, NOW)).toBe(true);
+    });
+
+    it("but a person is told instead of the GC", () => {
+      expect(shouldEmailGcAboutAia(AIA_STALE_AFTER_DAYS + 1)).toBe(false);
+      expect(shouldEmailGcAboutAia(AIA_STALE_AFTER_DAYS)).toBe(true);
+      expect(shouldEmailGcAboutAia(AIA_PAST_DUE_DAYS)).toBe(true);
+    });
+
+    it("the ceiling leaves room for how commercial GCs actually pay", () => {
+      // 120 days past a 30-day due date is ~5 months from issue. Slow, but
+      // ordinary on commercial work — the ceiling must not catch normal jobs.
+      expect(AIA_STALE_AFTER_DAYS).toBeGreaterThanOrEqual(90);
+    });
   });
 });
