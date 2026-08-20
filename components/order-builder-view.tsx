@@ -612,9 +612,14 @@ export default function OrderBuilderView({
                             "Walls — Kitchen, Bathroom · Ceiling — Kitchen". */}
                         <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                           {e.placements && e.placements.length > 0 ? (
-                            <span className="flex flex-wrap gap-x-2 gap-y-0.5">
-                              {e.placements.map((pl) => (
+                            <span className="flex flex-wrap gap-x-1.5 gap-y-0.5">
+                              {e.placements.map((pl, i) => (
                                 <span key={pl.surface}>
+                                  {/* The divider Kate's spec shows. Without it,
+                                      "Walls — Kitchen Ceiling — Kitchen" runs
+                                      together and the second surface reads as
+                                      another room. */}
+                                  {i > 0 && <span aria-hidden className="text-ppp-charcoal-300 mr-1.5">|</span>}
                                   <span className="text-ppp-charcoal-600 font-medium">{pl.surface}</span>
                                   <span className="text-ppp-charcoal-400"> — {pl.rooms.join(", ")}</span>
                                 </span>
