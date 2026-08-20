@@ -11,6 +11,11 @@ import { getCashFlowReport } from "@/lib/commercial/reports/cash-flow";
 import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets } from "@/lib/commercial/reports/job-costs";
 import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orders-vendors";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
+import { getArAging } from "@/lib/commercial/reports/ar-aging";
+import { setReceivableNote } from "@/lib/commercial/reports/receivables";
+import { ReceivablesTable } from "@/components/commercial/receivables-table";
+import { ExportCsvLink } from "@/components/commercial/export-csv-link";
+import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
@@ -101,6 +106,67 @@ async function refreshBriefAction() {
   redirect(res.ok ? `${BASE}?brief=1` : `${BASE}?error=${encodeURIComponent(res.error)}`);
 }
 
+/** Save a chase note without leaving Accounting. Revalidates BOTH surfaces —
+ *  the note is one record and it must not appear on one page and not the other. */
+async function saveNoteAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const rowKey = String(formData.get("row_key") ?? "");
+  if (!rowKey) redirect(`${BASE}?view=receivables`);
+  const res = await setReceivableNote(rowKey, String(formData.get("note") ?? ""), user.id);
+  revalidatePath(BASE);
+  revalidatePath("/commercial/reports/receivables");
+  redirect(
+    res.ok
+      ? `${BASE}?view=receivables&saved=1`
+      : `${BASE}?view=receivables&error=${encodeURIComponent(res.error)}`
+  );
+}
+
+/** Email the sheet to Alex. Explicit click only — no auto-send from here. */
+async function sendToAlexAction() {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const res = await sendReceivablesToAlex();
+  revalidatePath(BASE);
+  redirect(
+    res.ok
+      ? `${BASE}?view=receivables&sent=${encodeURIComponent(res.to.join(", "))}`
+      : `${BASE}?view=receivables&error=${encodeURIComponent(res.error)}`
+  );
+}
+
+/**
+ * The in-page views.
+ *
+ * Karan, 2026-08-19: *"I don't want it to bring me to the reports page but just
+ * keep me on the same page."* The old bottom "Go deeper" row navigated away, so
+ * the money desk was really a launcher — you left it to do anything. These
+ * render inline instead: the URL stays /commercial/accounting, the headline
+ * figures stay on screen above the switcher, and nothing is lost on a switch.
+ *
+ * Receivables is deliberately FIRST after Overview and carries the actions
+ * (export, send) — it's the one Alex asked for by name.
+ *
+ * Invoices is the one thing still a real link: it is a workspace where records
+ * get created and edited, not a read-only view, and embedding it would mean two
+ * places that can create an invoice.
+ */
+const VIEWS = [
+  { key: "overview", label: "Overview" },
+  { key: "receivables", label: "Receivables" },
+  { key: "aging", label: "AR aging" },
+  { key: "cash", label: "Cash flow" },
+  { key: "costs", label: "Job costs" },
+] as const;
+type View = (typeof VIEWS)[number]["key"];
+
 function pickFirst(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v ?? undefined;
 }
@@ -113,6 +179,12 @@ export default async function AccountingPage({
   await requireFinanceViewer();
   const sp = await searchParams;
   const error = pickFirst(sp.error);
+  const saved = pickFirst(sp.saved) === "1";
+  const sentTo = pickFirst(sp.sent);
+  const rawView = pickFirst(sp.view);
+  const view: View = (VIEWS.some((v) => v.key === rawView) ? rawView : "overview") as View;
+  const recipients = receivablesRecipients();
+  const href = (v: View) => (v === "overview" ? BASE : `${BASE}?view=${v}`);
 
   const today = etTodayIso();
   const year = today.slice(0, 4);
@@ -131,6 +203,9 @@ export default async function AccountingPage({
     getChangeOrderVendorReport({ fromYmd: `${year}-01-01`, toYmd: today }),
     listProjects(),
   ]);
+  // Only fetched for the view that renders it — the money band above doesn't
+  // use aging, so paying for it on every page load would be waste.
+  const aging = view === "aging" ? await getArAging() : null;
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
@@ -190,17 +265,37 @@ export default async function AccountingPage({
             and what the work cost. Open any block for the full report.
           </p>
         </div>
-        <Link
-          href="/commercial/reports"
-          className="text-[12px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center"
-        >
-          All reports →
-        </Link>
+        {/* Export + Send live in the page header, not buried at the bottom:
+            they are the two things this page exists to let somebody DO. */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportCsvLink href="/api/commercial/reports/receivables/export" disabled={receivables.rows.length === 0} disabledHint="Nothing outstanding to export" label="Export receivables" />
+          {receivables.rows.length > 0 && (
+            <form action={sendToAlexAction} className="flex flex-col items-end gap-0.5">
+              <PendingSubmitButton
+                pendingLabel="Sending…"
+                className="inline-flex items-center min-h-[44px] px-3.5 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 transition-colors"
+              >
+                Send to Alex
+              </PendingSubmitButton>
+              <span className="text-[10px] text-ppp-charcoal-400">{recipients.join(", ")}</span>
+            </form>
+          )}
+        </div>
       </div>
 
       {error && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12.5px] text-rose-800">
           {error}
+        </div>
+      )}
+      {saved && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
+          Note saved.
+        </div>
+      )}
+      {sentTo && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
+          Sent to {sentTo} — the figures, the notes, and the sheet attached.
         </div>
       )}
 
@@ -237,13 +332,9 @@ export default async function AccountingPage({
         </section>
       )}
 
-      {/* ── 2 · What's owed to us ─────────────────────────────────────── */}
+      {/* ── The money band — ALWAYS on screen, above the switcher. Changing view
+             must never cost you the four numbers the page is opened for. ── */}
       <section className="space-y-2">
-        <SectionHead
-          title="Owed to us"
-          href="/commercial/reports/receivables"
-          hint="Invoices and AIA applications together."
-        />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile
             label="Total outstanding"
@@ -262,11 +353,37 @@ export default async function AccountingPage({
         </div>
       </section>
 
+      {/* ── The switcher. Prominent and high, because these are the surfaces
+             people came for — not a footer of links. Renders in place: the URL
+             stays on /commercial/accounting. ── */}
+      <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {VIEWS.map((v) => {
+          const active = v.key === view;
+          return (
+            <Link
+              key={v.key}
+              href={href(v.key)}
+              aria-current={active ? "page" : undefined}
+              className={`shrink-0 px-3.5 py-2 text-[13.5px] font-bold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${
+                active
+                  ? "border-cc-brand-600 text-ppp-charcoal"
+                  : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"
+              }`}
+            >
+              {v.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {view === "overview" && (
+      <>
+
       {/* ── 3 · What came in ──────────────────────────────────────────── */}
       <section className="space-y-2">
         <SectionHead
           title="Cash in · last 6 months"
-          href="/commercial/reports/cash-flow"
+          href={href("cash")}
           hint="Payments received, not invoices raised."
         />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -313,7 +430,7 @@ export default async function AccountingPage({
       <section className="space-y-2">
         <SectionHead
           title="Biggest outstanding"
-          href="/commercial/reports/receivables"
+          href={href("receivables")}
           hint="Top items. Chase notes live on the full report."
         />
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -351,10 +468,10 @@ export default async function AccountingPage({
           )}
           {restCount > 0 && (
             <Link
-              href="/commercial/reports/receivables"
+              href={href("receivables")}
               className="flex items-center px-3.5 py-2.5 text-[12px] font-semibold text-cc-brand-700 hover:bg-ppp-charcoal-50/60 border-t border-ppp-charcoal-100 min-h-[44px]"
             >
-              {restCount} more open item{restCount === 1 ? "" : "s"} — see the full report →
+              {restCount} more open item{restCount === 1 ? "" : "s"} — see them all →
             </Link>
           )}
         </div>
@@ -367,7 +484,7 @@ export default async function AccountingPage({
       <section className="space-y-2">
         <SectionHead
           title="Earned, not yet billed"
-          href="/commercial/reports/job-costs"
+          href={href("costs")}
           hint="Signed work with no invoice against it — the fastest cash there is."
         />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -398,7 +515,7 @@ export default async function AccountingPage({
             {production.overBilledProjects} job{production.overBilledProjects === 1 ? " is" : "s are"} billed
             past contract by {formatCentsCompact(production.overBilledCents)} — usually a change order
             invoiced before it was logged.{" "}
-            <Link href="/commercial/reports/job-costs" className="font-semibold underline">Check the jobs</Link>
+            <Link href={href("costs")} className="font-semibold underline">Check the jobs</Link>
           </p>
         )}
       </section>
@@ -407,7 +524,7 @@ export default async function AccountingPage({
       <section className="space-y-2">
         <SectionHead
           title="What the work cost"
-          href="/commercial/reports/job-costs"
+          href={href("costs")}
           hint="Real cost against what was billed."
         />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -460,42 +577,326 @@ export default async function AccountingPage({
         </div>
       </section>
 
-      {/* ── Go deeper ─────────────────────────────────────────────────── */}
-      <section className="border-t border-ppp-charcoal-100 pt-4">
-        <h2 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-2">Go deeper</h2>
-        <div className="flex flex-wrap gap-2">
-          {[
-            { href: "/commercial/reports/receivables", label: "Receivables" },
-            { href: "/commercial/reports/ar-aging", label: "AR aging" },
-            { href: "/commercial/reports/cash-flow", label: "Cash flow" },
-            { href: "/commercial/invoices", label: "Invoices" },
-            { href: "/commercial/reports/job-costs", label: "Job costs & profit" },
-            { href: "/commercial/reports/change-orders", label: "Change orders & vendors" },
-          ].map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="inline-flex items-center min-h-[38px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
-            >
-              {l.label}
-            </Link>
-          ))}
-        </div>
+      </>
+      )}
+
+      {/* ── Receivables, in place ──────────────────────────────────────── */}
+      {view === "receivables" && (
+        <section className="space-y-2">
+          <SectionHead
+            title="Every open item"
+            hint="Biggest first. Write a note after a chase and it stays with the job."
+          />
+          <ReceivablesTable
+            rows={receivables.rows}
+            totalOpenCents={receivables.totalOpenCents}
+            saveNoteAction={saveNoteAction}
+          />
+        </section>
+      )}
+
+      {/* ── AR aging, in place ─────────────────────────────────────────── */}
+      {view === "aging" && aging && (
+        <section className="space-y-2">
+          <SectionHead
+            title="Who is late"
+            hint="Open invoice balances by how far past due. Invoices only — retention isn't late."
+          />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Tile label="Total AR" value={formatCentsFull(aging.totals.total)} tone="brand" sub={`${aging.invoiceCount} invoice${aging.invoiceCount === 1 ? "" : "s"}`} />
+            <Tile label="Current" value={formatCentsFull(aging.totals.current)} tone="emerald" sub="not yet due" />
+            <Tile
+              label="Overdue"
+              value={formatCentsFull(aging.totals.total - aging.totals.current)}
+              tone={aging.totals.total - aging.totals.current > 0 ? "rose" : "neutral"}
+              sub={`${aging.customerCount} GC${aging.customerCount === 1 ? "" : "s"}`}
+            />
+            <Tile
+              label="Avg age"
+              value={`${aging.weightedAvgAgeDays}d`}
+              tone={aging.weightedAvgAgeDays > 45 ? "amber" : "neutral"}
+              sub="weighted by balance"
+            />
+          </div>
+          {aging.rows.length === 0 ? (
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
+              <p className="px-4 py-10 text-center text-[13px] text-ppp-charcoal-500">
+                No open invoices. Nothing is aging.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12.5px] min-w-[720px]">
+                  <thead>
+                    <tr className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 bg-ppp-charcoal-50/60 text-left">
+                      <th className="px-3 py-2.5">GC</th>
+                      <th className="px-3 py-2.5 text-right">Current</th>
+                      <th className="px-3 py-2.5 text-right">1&ndash;30</th>
+                      <th className="px-3 py-2.5 text-right">31&ndash;60</th>
+                      <th className="px-3 py-2.5 text-right">61&ndash;90</th>
+                      <th className="px-3 py-2.5 text-right">90+</th>
+                      <th className="px-3 py-2.5 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ppp-charcoal-100">
+                    {aging.rows.map((r) => (
+                      <tr key={r.accountId} className="hover:bg-cc-brand-50/30">
+                        <td className="px-3 py-2.5">
+                          <Link href={`/commercial/accounts/${r.accountId}`} className="font-semibold text-ppp-charcoal hover:text-cc-brand-700 hover:underline">
+                            {r.accountName}
+                          </Link>
+                          <span className="block text-[10.5px] text-ppp-charcoal-400">
+                            {r.invoiceCount} invoice{r.invoiceCount === 1 ? "" : "s"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-ppp-charcoal-500">{formatCentsCompact(r.current)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsCompact(r.d1_30)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">{formatCentsCompact(r.d31_60)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-amber-800">{formatCentsCompact(r.d61_90)}</td>
+                        {/* Only 90+ is red. If four buckets shout, none do. */}
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-rose-700">{formatCentsCompact(r.d90_plus)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-bold">{formatCentsFull(r.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-ppp-charcoal-200 bg-ppp-charcoal-50/60 font-bold">
+                      <td className="px-3 py-2.5">All GCs</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsCompact(aging.totals.current)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsCompact(aging.totals.d1_30)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsCompact(aging.totals.d31_60)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsCompact(aging.totals.d61_90)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsCompact(aging.totals.d90_plus)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsFull(aging.totals.total)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Cash flow, in place ────────────────────────────────────────── */}
+      {view === "cash" && (
+        <section className="space-y-3">
+          <SectionHead
+            title="What actually arrived"
+            hint="Money by the month it landed — a March invoice paid in July is July's cash."
+          />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Tile label="Collected · 6 mo" value={formatCentsFull(cash.totals.collectedCents)} tone="emerald" sub={`${cash.totals.paymentCount} payment${cash.totals.paymentCount === 1 ? "" : "s"}`} />
+            <Tile label="Billed · 6 mo" value={formatCentsFull(cash.totals.billedCents)} tone="navy" />
+            <Tile
+              label="Days to pay"
+              value={cash.totals.avgDaysToPay === null ? "—" : `${cash.totals.avgDaysToPay}d`}
+              tone={cash.totals.avgDaysToPay !== null && cash.totals.avgDaysToPay > 60 ? "amber" : "neutral"}
+              sub="weighted by amount"
+            />
+            <Tile
+              label="Collection rate"
+              value={cash.totals.collectionRatePct === null ? "—" : `${cash.totals.collectionRatePct}%`}
+              tone="neutral"
+              sub="over 100% = older invoices landed"
+            />
+          </div>
+          {hasCash && (
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal mb-2">Collected / month</h3>
+              <TrendChart data={cashSeries} yFormat="currency-k" colorToken="emerald-500" area heightClassName="h-[160px]" />
+            </div>
+          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <MiniTable
+              title="How they pay"
+              head={["Method", "Collected", "Payments"]}
+              rows={cash.byMethod.map((m) => [m.label, formatCentsFull(m.collectedCents), String(m.count)])}
+              empty="No payments recorded in this window."
+            />
+            <MiniTable
+              title="Slowest to pay"
+              head={["GC", "Avg days", "Still open"]}
+              rows={cash.slowest.map((sp) => [
+                sp.accountName,
+                sp.avgDaysToPay === null ? "—" : `${sp.avgDaysToPay}d`,
+                formatCentsFull(sp.openCents),
+              ])}
+              empty="Not enough paid invoices to rank anyone yet."
+            />
+          </div>
+          {(cash.untimedPayments > 0 || cash.paidBeforeIssued > 0) && (
+            // Said out loud rather than quietly excluded — otherwise days-to-pay
+            // reads as more precise than the underlying data supports.
+            <p className="text-[11.5px] text-ppp-charcoal-500 bg-ppp-charcoal-50 border border-ppp-charcoal-100 rounded-lg px-3 py-2">
+              {cash.untimedPayments > 0 && `${cash.untimedPayments} payment${cash.untimedPayments === 1 ? "" : "s"} had no invoice issue date, so they're excluded from days-to-pay. `}
+              {cash.paidBeforeIssued > 0 && `${cash.paidBeforeIssued} arrived before the invoice was issued (deposits) and count as same-day.`}
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ── Job costs, in place ────────────────────────────────────────── */}
+      {view === "costs" && (
+        <section className="space-y-3">
+          <SectionHead
+            title="Cost against contract"
+            hint="Every job with a contract or a cost, grouped by GC."
+          />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Tile label="Contract" value={formatCentsFull(jobCosts.totals.contractCents)} tone="navy" sub={`${jobCosts.totals.dealCount} job${jobCosts.totals.dealCount === 1 ? "" : "s"}`} />
+            <Tile label="Billed" value={formatCentsFull(jobCosts.totals.billedCents)} tone="brand" />
+            <Tile label="Cost" value={formatCentsFull(jobCosts.totals.totalCostCents)} tone="amber" />
+            <Tile
+              label="Margin"
+              value={jobCosts.totals.marginPct === null ? "—" : `${jobCosts.totals.marginPct}%`}
+              tone={marginTone}
+              sub={formatCentsCompact(jobCosts.totals.marginCents)}
+            />
+          </div>
+          {jobCosts.groups.length === 0 ? (
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
+              <p className="px-4 py-10 text-center text-[13px] text-ppp-charcoal-500">
+                No jobs with a contract or a logged cost yet.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {jobCosts.groups.map((g) => (
+                <div key={g.accountId} className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+                  <div className="flex items-baseline justify-between gap-2 px-3.5 py-2.5 bg-ppp-charcoal-50/60 border-b border-ppp-charcoal-100 flex-wrap">
+                    <Link href={`/commercial/accounts/${g.accountId}`} className="text-[13px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline">
+                      {g.accountName}
+                    </Link>
+                    <span className="text-[11.5px] text-ppp-charcoal-500 tabular-nums">
+                      {formatCentsCompact(g.billedCents)} billed · {formatCentsCompact(g.totalCostCents)} cost ·{" "}
+                      <strong className={g.marginPct !== null && g.marginPct < 15 ? "text-amber-700" : "text-emerald-700"}>
+                        {g.marginPct === null ? "—" : `${g.marginPct}%`}
+                      </strong>
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[12.5px] min-w-[620px]">
+                      <thead>
+                        <tr className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 text-left">
+                          <th className="px-3 py-2">Job</th>
+                          <th className="px-3 py-2 text-right">Contract</th>
+                          <th className="px-3 py-2 text-right">Billed</th>
+                          <th className="px-3 py-2 text-right">Cost</th>
+                          <th className="px-3 py-2 text-right">Margin</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-ppp-charcoal-100">
+                        {g.deals.map((d) => (
+                          <tr key={d.oppId} className="hover:bg-cc-brand-50/30">
+                            <td className="px-3 py-2">
+                              <Link href={`/commercial/opportunities/${d.oppId}`} className="font-semibold text-ppp-charcoal hover:text-cc-brand-700 hover:underline">
+                                {d.dealName}
+                              </Link>
+                              {d.laborUnratedHours > 0 && (
+                                // Unpriced hours understate cost, which overstates
+                                // this row's margin. Flagged on the row it distorts.
+                                <span className="block text-[10.5px] text-amber-700">
+                                  {d.laborUnratedHours.toLocaleString("en-US", { maximumFractionDigits: 0 })}h unpriced — margin reads high
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatCentsCompact(d.contractCents)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{formatCentsCompact(d.billedCents)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-amber-700">{formatCentsCompact(d.totalCostCents)}</td>
+                            <td className={`px-3 py-2 text-right tabular-nums font-semibold ${
+                              d.marginPct === null ? "text-ppp-charcoal-300"
+                              : d.marginPct < 0 ? "text-rose-700"
+                              : d.marginPct < 15 ? "text-amber-700"
+                              : "text-emerald-700"
+                            }`}>
+                              {d.marginPct === null ? "—" : `${d.marginPct}%`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Invoices is the one destination still a link: it's a workspace where
+          records are created and edited, not a read-only view. */}
+      <section className="border-t border-ppp-charcoal-100 pt-4 flex flex-wrap items-center gap-2">
+        <span className="text-[11.5px] text-ppp-charcoal-500">Create or edit invoices:</span>
+        <Link
+          href="/commercial/invoices"
+          className="inline-flex items-center min-h-[38px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
+        >
+          Invoices →
+        </Link>
+        <Link
+          href="/commercial/reports"
+          className="inline-flex items-center min-h-[38px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
+        >
+          All reports →
+        </Link>
       </section>
     </div>
   );
 }
 
-function SectionHead({ title, href, hint }: { title: string; href: string; hint: string }) {
+/** A small two/three-column table with a title and an honest empty state. */
+function MiniTable({
+  title, head, rows, empty,
+}: { title: string; head: string[]; rows: string[][]; empty: string }) {
+  return (
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <h3 className="text-[13px] font-bold text-ppp-charcoal px-3.5 py-2.5 border-b border-ppp-charcoal-100">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="px-3.5 py-8 text-center text-[12.5px] text-ppp-charcoal-500">{empty}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12.5px]">
+            <thead>
+              <tr className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 text-left">
+                {head.map((h, i) => (
+                  <th key={h} className={`px-3 py-2 ${i > 0 ? "text-right" : ""}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ppp-charcoal-100">
+              {rows.map((r, ri) => (
+                <tr key={ri}>
+                  {r.map((c, ci) => (
+                    <td key={ci} className={`px-3 py-2 ${ci > 0 ? "text-right tabular-nums" : "font-semibold text-ppp-charcoal"}`}>{c}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** `href` is optional: on a view that already shows everything there is
+ *  nothing to link to, and a "Full report →" that leaves the page is exactly
+ *  what this restructure removed. */
+function SectionHead({
+  title, hint, href, linkLabel = "See all",
+}: { title: string; hint: string; href?: string; linkLabel?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3 flex-wrap">
       <div className="flex items-baseline gap-2 flex-wrap min-w-0">
         <h2 className="text-[14px] font-bold text-ppp-charcoal">{title}</h2>
         <span className="text-[11.5px] text-ppp-charcoal-500">{hint}</span>
       </div>
-      <Link href={href} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline shrink-0">
-        Full report →
-      </Link>
+      {href && (
+        <Link href={href} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline shrink-0">
+          {linkLabel} →
+        </Link>
+      )}
     </div>
   );
 }

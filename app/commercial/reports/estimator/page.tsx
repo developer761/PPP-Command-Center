@@ -6,7 +6,8 @@ import { normalizeRole } from "@/lib/auth/roles";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
-import { etTodayIso } from "@/lib/date-et";
+import { ESTIMATOR_PRESETS, ESTIMATOR_DEFAULT, estimatorRange, resolvePreset, fiscalYearStartMonth, type EstimatorPreset } from "@/lib/commercial/reports/presets";
+import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 
 /**
  * Estimator / proposal performance — "how is Kim doing".
@@ -22,15 +23,9 @@ import { etTodayIso } from "@/lib/date-et";
 
 export const dynamic = "force-dynamic";
 
-type Preset = "this_month" | "last_month" | "last_90" | "this_year" | "last_year";
+type Preset = EstimatorPreset;
 
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: "this_month", label: "This month" },
-  { key: "last_month", label: "Last month" },
-  { key: "last_90", label: "Last 90 days" },
-  { key: "this_year", label: "This year" },
-  { key: "last_year", label: "Last year" },
-];
+const PRESETS = ESTIMATOR_PRESETS;
 
 /**
  * Plain ET calendar strings throughout — the dates being compared are DATE
@@ -41,40 +36,6 @@ const PRESETS: { key: Preset; label: string }[] = [
  * January. If that ever changes, `fiscal_year_start_month` in
  * `commercial_settings` is where it belongs — and it is wired below.
  */
-function rangeFor(preset: Preset, fyStartMonth: number): { fromYmd: string; toYmd: string; label: string } {
-  const today = etTodayIso();
-  const y = Number(today.slice(0, 4));
-  const m = Number(today.slice(5, 7));
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const lastDay = (yy: number, mm: number) => new Date(Date.UTC(yy, mm, 0)).getUTCDate();
-  /** The year label a date belongs to under the configured FY start. */
-  const fyStart = (yy: number) => `${yy}-${pad(fyStartMonth)}-01`;
-  const currentFyYear = m >= fyStartMonth ? y : y - 1;
-
-  switch (preset) {
-    case "last_month": {
-      const ly = m === 1 ? y - 1 : y;
-      const lm = m === 1 ? 12 : m - 1;
-      return { fromYmd: `${ly}-${pad(lm)}-01`, toYmd: `${ly}-${pad(lm)}-${pad(lastDay(ly, lm))}`, label: "Last month" };
-    }
-    case "last_90": {
-      const d = new Date(Date.UTC(y, m - 1, Number(today.slice(8, 10))));
-      d.setUTCDate(d.getUTCDate() - 89);
-      return { fromYmd: d.toISOString().slice(0, 10), toYmd: today, label: "Last 90 days" };
-    }
-    case "this_year":
-      return { fromYmd: fyStart(currentFyYear), toYmd: today, label: fyStartMonth === 1 ? `${currentFyYear}` : `FY${currentFyYear}` };
-    case "last_year": {
-      const py = currentFyYear - 1;
-      const end = new Date(Date.UTC(currentFyYear, fyStartMonth - 1, 1));
-      end.setUTCDate(end.getUTCDate() - 1);
-      return { fromYmd: fyStart(py), toYmd: end.toISOString().slice(0, 10), label: fyStartMonth === 1 ? `${py}` : `FY${py}` };
-    }
-    case "this_month":
-    default:
-      return { fromYmd: `${y}-${pad(m)}-01`, toYmd: today, label: "This month" };
-  }
-}
 
 export default async function EstimatorReportPage({
   searchParams,
@@ -91,21 +52,13 @@ export default async function EstimatorReportPage({
   if (role !== "admin" && role !== "account_manager") redirect("/commercial/reports");
 
   const sp = await searchParams;
-  const raw = Array.isArray(sp.preset) ? sp.preset[0] : sp.preset;
-  const preset: Preset = PRESETS.some((p) => p.key === raw) ? (raw as Preset) : "this_year";
+  const preset = resolvePreset(sp.preset, PRESETS, ESTIMATOR_DEFAULT);
 
-  // `fiscal_year_start_month` was seeded in commercial_settings and read by
-  // NOTHING — a knob that looked live and did nothing, the same shape as
-  // project_id. Wired here so setting it actually moves the year boundaries.
-  const { getCommercialSetting } = await import("@/lib/commercial/settings");
-  const fyRaw = await getCommercialSetting<number>("fiscal_year_start_month", 1);
-  // Clamped, because a bad value here silently shifts every year boundary on
-  // the report rather than erroring.
-  const fyStartMonth = Number.isFinite(Number(fyRaw))
-    ? Math.min(12, Math.max(1, Math.round(Number(fyRaw))))
-    : 1;
+  // Shared with the export route so a downloaded sheet uses the same year
+  // boundaries as the screen it came from.
+  const fyStartMonth = await fiscalYearStartMonth();
 
-  const range = rangeFor(preset, fyStartMonth);
+  const range = estimatorRange(preset, fyStartMonth);
   const report = await getEstimatorReport(range);
   const t = report.totals;
 
@@ -135,6 +88,12 @@ export default async function EstimatorReportPage({
             {p.label}
           </Link>
         ))}
+        {/* Export sits WITH the range control, not in the header: what you
+            download is the window you have selected, and pairing them makes
+            that obvious. */}
+        <span className="ml-auto">
+          <ExportCsvLink href="/api/commercial/reports/estimator/export" preset={preset} disabled={report.rows.length === 0} />
+        </span>
       </div>
 
       {t.bidsSent === 0 ? (

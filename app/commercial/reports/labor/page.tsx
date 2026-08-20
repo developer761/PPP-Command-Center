@@ -6,7 +6,8 @@ import { normalizeRole } from "@/lib/auth/roles";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getLaborReport } from "@/lib/commercial/reports/labor";
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
-import { etTodayIso } from "@/lib/date-et";
+import { LABOR_PRESETS, LABOR_DEFAULT, laborRange, resolvePreset, type LaborPreset } from "@/lib/commercial/reports/presets";
+import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 
 /**
  * Labour & payroll — the first report with a PERSON in it.
@@ -21,41 +22,12 @@ import { etTodayIso } from "@/lib/date-et";
 
 export const dynamic = "force-dynamic";
 
-type Preset = "this_month" | "last_month" | "last_90" | "this_year";
+type Preset = LaborPreset;
 
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: "this_month", label: "This month" },
-  { key: "last_month", label: "Last month" },
-  { key: "last_90", label: "Last 90 days" },
-  { key: "this_year", label: "This year" },
-];
+const PRESETS = LABOR_PRESETS;
 
 /** Ranges as plain ET calendar strings — `work_date` is a DATE column, and
  *  every timezone bug on this platform started by treating one as an instant. */
-function rangeFor(preset: Preset): { fromYmd: string; toYmd: string; label: string } {
-  const today = etTodayIso();
-  const [y, m] = today.split("-").map(Number);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const lastDay = (yy: number, mm: number) => new Date(Date.UTC(yy, mm, 0)).getUTCDate();
-
-  switch (preset) {
-    case "last_month": {
-      const ly = m === 1 ? y - 1 : y;
-      const lm = m === 1 ? 12 : m - 1;
-      return { fromYmd: `${ly}-${pad(lm)}-01`, toYmd: `${ly}-${pad(lm)}-${pad(lastDay(ly, lm))}`, label: "Last month" };
-    }
-    case "last_90": {
-      const d = new Date(Date.UTC(y, m - 1, Number(today.slice(8, 10))));
-      d.setUTCDate(d.getUTCDate() - 89);
-      return { fromYmd: d.toISOString().slice(0, 10), toYmd: today, label: "Last 90 days" };
-    }
-    case "this_year":
-      return { fromYmd: `${y}-01-01`, toYmd: today, label: `${y}` };
-    case "this_month":
-    default:
-      return { fromYmd: `${y}-${pad(m)}-01`, toYmd: today, label: "This month" };
-  }
-}
 
 const hrs = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 1 })}h`;
 
@@ -74,9 +46,8 @@ export default async function LaborReportPage({
   const canSeePeople = role === "admin" || role === "account_manager";
 
   const sp = await searchParams;
-  const raw = Array.isArray(sp.preset) ? sp.preset[0] : sp.preset;
-  const preset: Preset = PRESETS.some((p) => p.key === raw) ? (raw as Preset) : "this_month";
-  const range = rangeFor(preset);
+  const preset = resolvePreset(sp.preset, PRESETS, LABOR_DEFAULT);
+  const range = laborRange(preset);
   const report = await getLaborReport(range);
 
   const peakWeekHours = Math.max(1, ...report.weeks.map((w) => w.hours));
@@ -109,6 +80,21 @@ export default async function LaborReportPage({
             {p.label}
           </Link>
         ))}
+        {/* Export sits WITH the range control, not in the header: what you
+            download is the window you have selected, and pairing them makes
+            that obvious. */}
+        <span className="ml-auto">
+          {/* The labour CSV is per-person pay, so the route gates it to admin /
+              account manager. This page does NOT redirect a rep (it just hides
+              names), so without matching the gate here a rep would click Export
+              and get a raw JSON 403. Disabled with a reason instead. */}
+          <ExportCsvLink
+            href="/api/commercial/reports/labor/export"
+            preset={preset}
+            disabled={!canSeePeople || (report.people.length === 0 && report.jobs.length === 0)}
+            disabledHint={!canSeePeople ? "The labour export includes per-person pay — admins and account managers only" : "Nothing to export yet"}
+          />
+        </span>
       </div>
 
       {report.totalHours === 0 ? (

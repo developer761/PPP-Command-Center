@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getCashFlowReport } from "@/lib/commercial/reports/cash-flow";
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
-import { etTodayIso } from "@/lib/date-et";
+import { CASH_FLOW_PRESETS, CASH_FLOW_DEFAULT, cashFlowRange, resolvePreset, type CashFlowPreset } from "@/lib/commercial/reports/presets";
+import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 
 /**
  * Cash flow & collections.
@@ -19,36 +20,10 @@ import { etTodayIso } from "@/lib/date-et";
 
 export const dynamic = "force-dynamic";
 
-type Preset = "last_6m" | "last_12m" | "this_year" | "last_year";
+type Preset = CashFlowPreset;
 
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: "last_6m", label: "Last 6 months" },
-  { key: "last_12m", label: "Last 12 months" },
-  { key: "this_year", label: "This year" },
-  { key: "last_year", label: "Last year" },
-];
+const PRESETS = CASH_FLOW_PRESETS;
 
-function rangeFor(preset: Preset): { fromYmd: string; toYmd: string; label: string } {
-  const today = etTodayIso();
-  const y = Number(today.slice(0, 4));
-  const m = Number(today.slice(5, 7));
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const backMonths = (n: number) => {
-    const total = (y * 12 + (m - 1)) - n;
-    return `${Math.floor(total / 12)}-${pad((total % 12) + 1)}-01`;
-  };
-  switch (preset) {
-    case "last_12m":
-      return { fromYmd: backMonths(11), toYmd: today, label: "Last 12 months" };
-    case "this_year":
-      return { fromYmd: `${y}-01-01`, toYmd: today, label: `${y}` };
-    case "last_year":
-      return { fromYmd: `${y - 1}-01-01`, toYmd: `${y - 1}-12-31`, label: `${y - 1}` };
-    case "last_6m":
-    default:
-      return { fromYmd: backMonths(5), toYmd: today, label: "Last 6 months" };
-  }
-}
 
 export default async function CashFlowReportPage({
   searchParams,
@@ -62,9 +37,8 @@ export default async function CashFlowReportPage({
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
 
   const sp = await searchParams;
-  const raw = Array.isArray(sp.preset) ? sp.preset[0] : sp.preset;
-  const preset: Preset = PRESETS.some((p) => p.key === raw) ? (raw as Preset) : "last_6m";
-  const range = rangeFor(preset);
+  const preset = resolvePreset(sp.preset, PRESETS, CASH_FLOW_DEFAULT);
+  const range = cashFlowRange(preset);
   const r = await getCashFlowReport(range);
   const t = r.totals;
 
@@ -104,6 +78,12 @@ export default async function CashFlowReportPage({
             {p.label}
           </Link>
         ))}
+        {/* Export sits WITH the range control, not in the header: what you
+            download is the window you have selected, and pairing them makes
+            that obvious. */}
+        <span className="ml-auto">
+          <ExportCsvLink href="/api/commercial/reports/cash-flow/export" preset={preset} disabled={r.totals.paymentCount === 0 && r.months.length === 0} />
+        </span>
       </div>
 
       {t.paymentCount === 0 ? (

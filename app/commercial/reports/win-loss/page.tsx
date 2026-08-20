@@ -14,20 +14,15 @@ import {
   getWinsAwaitingDebrief,
   etMidnightToUTC,
 } from "@/lib/commercial/win-loss/reports";
+import { parseRange, WIN_LOSS_PRESETS as PRESETS, type WinLossPreset as Preset } from "@/lib/commercial/win-loss/range";
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { DateField } from "@/components/commercial/date-field";
 import { KpiTile } from "@/components/commercial/kpi-tile";
 import { GaugeRing, DonutChart } from "@/components/commercial/charts";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 
-type Preset = "this_quarter" | "last_quarter" | "this_year" | "last_year";
-const PRESETS: ReadonlyArray<{ key: Preset; label: string }> = [
-  { key: "this_quarter", label: "This Quarter" },
-  { key: "last_quarter", label: "Last Quarter" },
-  { key: "this_year", label: "This Year" },
-  { key: "last_year", label: "Last Year" },
-];
 
 /**
  * Win/Loss Reports — Alex's quarterly review surface. Aggregates every
@@ -55,15 +50,6 @@ const formatCents = formatCentsCompact;
 /** Split bare "YYYY-MM-DD" into calendar parts for etMidnightToUTC.
  *  Returns null on any non-YYYY-MM-DD input to short-circuit invalid
  *  custom ranges. */
-function parseYmdParts(ymd: string): { year: number; monthIdx: number; day: number } | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
-  if (!m) return null;
-  const year = parseInt(m[1], 10);
-  const monthIdx = parseInt(m[2], 10) - 1;
-  const day = parseInt(m[3], 10);
-  if (year < 1970 || year > 2100 || monthIdx < 0 || monthIdx > 11 || day < 1 || day > 31) return null;
-  return { year, monthIdx, day };
-}
 
 /** Format a Date in America/New_York, "Jul 1, 2026" style. */
 function fmtEtDate(d: Date): string {
@@ -75,73 +61,6 @@ function fmtEtDate(d: Date): string {
   });
 }
 
-function parseRange(sp: { from?: string; to?: string; preset?: string }): {
-  fromIso: string;
-  toIso: string;
-  label: string;
-  /** What kind of range the user is viewing — drives chip highlight state. */
-  activeKey: Preset | "custom";
-  /** Echoed back into the custom-range form's date inputs so the picker
-   *  remembers what was last submitted (or shows today as a sane default). */
-  fromYmd: string;
-  toYmd: string;
-  /** True iff the user supplied from/to but we couldn't accept it. The page
-   *  renders an inline hint so the fallback isn't invisible. */
-  rejected: boolean;
-} {
-  // Custom range always wins if both dates are present + valid.
-  if (sp.from && sp.to) {
-    // Parse bare YYYY-MM-DD → { year, monthIdx, day } for etMidnightToUTC.
-    // Round 3 recheck audit 2026-07-01: an earlier attempt used
-    // `new Date(ymd + "T12:00:00Z")` which is 8am ET, silently excluding
-    // debriefs stamped between midnight and 8am ET on `sp.from` AND
-    // debriefs from 8am ET onward on `sp.to`. The presets (currentQuarter,
-    // etc.) already use etMidnightToUTC — the custom range must too.
-    const fromParts = parseYmdParts(sp.from);
-    const toParts = parseYmdParts(sp.to);
-    if (fromParts && toParts) {
-      const fromIso = etMidnightToUTC(fromParts.year, fromParts.monthIdx, fromParts.day).toISOString();
-      // Push toIso forward one day so the last day is INCLUSIVE (matches
-      // the .lt() DB filter — without this, picking "to=Jun 30" silently
-      // drops every Jun 30 debrief).
-      const toMidnight = etMidnightToUTC(toParts.year, toParts.monthIdx, toParts.day + 1);
-      const toIso = toMidnight.toISOString();
-      if (new Date(fromIso).getTime() <= new Date(toIso).getTime()) {
-        return {
-          fromIso,
-          toIso,
-          label: `${fmtEtDate(new Date(fromIso))} – ${fmtEtDate(new Date(toMidnight.getTime() - 86_400_000))}`,
-          activeKey: "custom",
-          fromYmd: sp.from,
-          toYmd: sp.to,
-          rejected: false,
-        };
-      }
-    }
-  }
-  const supplied = !!(sp.from || sp.to);
-  // Otherwise pick a preset (default: this quarter).
-  const preset = (sp.preset as Preset) ?? "this_quarter";
-  let r: ReturnType<typeof currentQuarterRange>;
-  let key: Preset;
-  switch (preset) {
-    case "last_quarter": r = previousQuarterRange(); key = "last_quarter"; break;
-    case "this_year": r = currentYearRange(); key = "this_year"; break;
-    case "last_year": r = previousYearRange(); key = "last_year"; break;
-    case "this_quarter":
-    default: r = currentQuarterRange(); key = "this_quarter"; break;
-  }
-  // For the custom-form defaults, pre-fill with the active preset's bounds.
-  return {
-    fromIso: r.fromIso,
-    toIso: r.toIso,
-    label: r.label,
-    activeKey: key,
-    fromYmd: r.fromIso.slice(0, 10),
-    toYmd: new Date(new Date(r.toIso).getTime() - 86_400_000).toISOString().slice(0, 10),
-    rejected: supplied,
-  };
-}
 
 export default async function WinLossReportsPage({ searchParams }: { searchParams: SP }) {
   const supabase = await createClient();
@@ -220,6 +139,17 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
               </Link>
             );
           })}
+          {/* Forwards the ACTIVE window — preset or custom — through the same
+              parser the page used, so the sheet covers exactly what's shown. */}
+          <span className="ml-auto order-last sm:order-none">
+            <ExportCsvLink
+              href="/api/commercial/reports/win-loss/export"
+              preset={range.activeKey === "custom" ? undefined : range.activeKey}
+              params={range.activeKey === "custom" ? { from: range.fromYmd, to: range.toYmd } : undefined}
+              disabled={summary.totalClosed === 0}
+              disabledHint="No decided deals in this window"
+            />
+          </span>
           <span className="text-[11px] text-ppp-charcoal-400 mx-1 hidden sm:inline" aria-hidden>
             or custom range:
           </span>

@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orders-vendors";
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
-import { etTodayIso } from "@/lib/date-et";
+import { CHANGE_ORDER_PRESETS, CHANGE_ORDER_DEFAULT, changeOrderRange, resolvePreset, type ChangeOrderPreset } from "@/lib/commercial/reports/presets";
+import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 
 /**
  * Change orders & vendor spend — one page, two sections, because they answer
@@ -18,33 +19,10 @@ import { etTodayIso } from "@/lib/date-et";
 
 export const dynamic = "force-dynamic";
 
-type Preset = "last_90" | "this_year" | "last_year" | "all";
+type Preset = ChangeOrderPreset;
 
-const PRESETS: { key: Preset; label: string }[] = [
-  { key: "last_90", label: "Last 90 days" },
-  { key: "this_year", label: "This year" },
-  { key: "last_year", label: "Last year" },
-  { key: "all", label: "All time" },
-];
+const PRESETS = CHANGE_ORDER_PRESETS;
 
-function rangeFor(preset: Preset): { fromYmd: string; toYmd: string; label: string } {
-  const today = etTodayIso();
-  const y = Number(today.slice(0, 4));
-  switch (preset) {
-    case "this_year":
-      return { fromYmd: `${y}-01-01`, toYmd: today, label: `${y}` };
-    case "last_year":
-      return { fromYmd: `${y - 1}-01-01`, toYmd: `${y - 1}-12-31`, label: `${y - 1}` };
-    case "all":
-      return { fromYmd: "2000-01-01", toYmd: today, label: "all time" };
-    case "last_90":
-    default: {
-      const d = new Date(Date.UTC(y, Number(today.slice(5, 7)) - 1, Number(today.slice(8, 10))));
-      d.setUTCDate(d.getUTCDate() - 89);
-      return { fromYmd: d.toISOString().slice(0, 10), toYmd: today, label: "last 90 days" };
-    }
-  }
-}
 
 export default async function ChangeOrdersReportPage({
   searchParams,
@@ -58,9 +36,8 @@ export default async function ChangeOrdersReportPage({
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
 
   const sp = await searchParams;
-  const raw = Array.isArray(sp.preset) ? sp.preset[0] : sp.preset;
-  const preset: Preset = PRESETS.some((p) => p.key === raw) ? (raw as Preset) : "this_year";
-  const range = rangeFor(preset);
+  const preset = resolvePreset(sp.preset, PRESETS, CHANGE_ORDER_DEFAULT);
+  const range = changeOrderRange(preset);
   const r = await getChangeOrderVendorReport(range);
   const co = r.co;
   const mergedVendors = r.vendors.filter((v) => v.variants > 1).length;
@@ -95,6 +72,12 @@ export default async function ChangeOrdersReportPage({
             {p.label}
           </Link>
         ))}
+        {/* Export sits WITH the range control, not in the header: what you
+            download is the window you have selected, and pairing them makes
+            that obvious. */}
+        <span className="ml-auto">
+          <ExportCsvLink href="/api/commercial/reports/change-orders/export" preset={preset} disabled={r.co.raised === 0 && r.vendors.length === 0} />
+        </span>
       </div>
 
       {/* The one number here that is money on the floor rather than history —
