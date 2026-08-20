@@ -50,7 +50,9 @@ function isGroup(e: NavEntry): e is NavGroup {
   return (e as NavGroup).group !== undefined;
 }
 
-type NavSection = { heading: string; items: NavEntry[] };
+/** A heading is optional: it earns its place by grouping things. A section
+ *  whose heading would just name its only child gets none. */
+type NavSection = { heading?: string; items: NavEntry[] };
 
 // Shared row geometry for every nav row (leaf, group header, disabled). min-h
 // clears the 44px mobile tap-target floor; desktop keeps its tighter rhythm.
@@ -97,42 +99,31 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    // R10: Field Ops - crew scheduling, clock in/out, payroll. Hub pattern
-    // (one entry -> card grid). Surfaces build out phase by phase.
-    heading: "Field Ops",
+    // ── One group, no heading ──────────────────────────────────────────────
+    //
+    // These were four separate sections — "Field Ops" containing Field Ops,
+    // "Accounting" containing Accounting, "Reports" containing Reports, "Admin"
+    // containing Settings. Four headings that named their only child, which
+    // made a ten-item sidebar read as seven sections and gave the eye four
+    // dividers with nothing on either side of them.
+    //
+    // A heading earns its place by grouping things. These group nothing, so
+    // the rows stand on their own under one rule.
+    //
+    // R10 Field Ops: crew scheduling, clock in/out, payroll — a hub, one entry
+    // to a card grid.
+    //
+    // Accounting (Karan, 2026-08-19): "maybe have a separate Accounting Page
+    // with this plus other important things that Alex would need to see."
+    // Deliberately NOT another Reports tab — Reports is per-topic analysis you
+    // open with a question already in mind; Accounting is the money desk that
+    // answers "where do we stand" without picking a report first.
+    //
+    // Settings (RUX-7): one hub, not six flat rows.
     items: [
       { label: "Field Ops", href: "/commercial/field-ops", icon: <IconHardHat />, adminOnly: true },
-    ],
-  },
-  {
-    // Karan, 2026-08-19: "maybe have a separate Accounting Page with this plus
-    // other important things that Alex would need to see."
-    //
-    // Deliberately NOT another Reports tab. Reports is per-topic analysis you
-    // open to answer a question. Accounting is the money desk — one page that
-    // answers "where do we stand" without picking a report first. It is the
-    // page Alex opens on his phone in the morning and Mary works from during
-    // the day, and it links out to the reports for the detail.
-    heading: "Accounting",
-    items: [
       { label: "Accounting", href: "/commercial/accounting", icon: <IconLedger />, financeOnly: true },
-    ],
-  },
-  {
-    heading: "Reports",
-    items: [
-      // R4: a Reports framework — one entry, a tab bar inside switches reports
-      // (AR Aging · Win/Loss · …). Highlights on every /commercial/reports/* page.
       { label: "Reports", href: "/commercial/reports", icon: <IconChart /> },
-    ],
-  },
-  {
-    // RUX-7 (2026-08): collapsed the six flat Settings rows (Operating Company,
-    // Setup Health, Competitors, Sales tax, Archived deals, Access) into ONE
-    // Settings hub — same pattern as the residential Command Center's
-    // /dashboard/settings. The cards live on /commercial/settings.
-    heading: "Admin",
-    items: [
       { label: "Settings", href: "/commercial/settings", icon: <IconGear /> },
     ],
   },
@@ -340,10 +331,18 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
 
       <nav className="flex-1 px-3 py-3 lg:py-4 overflow-y-auto">
         {sections.map((section, sectionIdx) => (
-          <div key={section.heading} className={sectionIdx > 0 ? "mt-4 lg:mt-6" : ""}>
-            <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-ppp-navy-600 uppercase">
-              {section.heading}
-            </div>
+          <div
+            key={section.heading ?? `section-${sectionIdx}`}
+            className={sectionIdx > 0 ? "mt-4 lg:mt-6" : ""}
+          >
+            {/* An unheaded section still gets its own space above — the gap is
+                the grouping. Rendering an empty label would leave a blank line
+                where a heading should be, which reads as a bug. */}
+            {section.heading && (
+              <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-ppp-navy-600 uppercase">
+                {section.heading}
+              </div>
+            )}
             <ul className="space-y-0.5">
               {section.items.map((entry) => {
                 if (isGroup(entry)) {

@@ -1,19 +1,20 @@
 /**
- * Work Orders — cross-project index (sidebar tab). Projects grouped by account
- * with each one's Work Order status (not created / draft / sent to Field Ops); tap to
- * open that project's Work Order. Consistent with the other Post-Contract tabs.
+ * Retired — Work Orders across every job.
+ *
+ * The 2026-08 restructure (§4.1) removed the six Post-Job entries from the
+ * sidebar and replaced them with SAVED VIEWS on the opportunities list: "one
+ * list, different saved filters". §4.2 required every retired route to redirect
+ * to its new home, and this one never did — so it kept rendering a full index
+ * that nothing in the navigation could reach, and that quietly disagreed with
+ * the list it was replaced by.
+ *
+ * Redirecting rather than deleting: these URLs are in bookmarks, bell
+ * notifications and sent email.
+ *
+ * → "active_projects" · Jobs in production, which is when a crew needs marching orders.
  */
 import { redirect } from "next/navigation";
-import { assertCommercialAccess } from "@/lib/commercial/auth";
-import { createClient } from "@/lib/supabase/server";
-import { WorkOrdersGroupedIndex } from "./index-grouped";
 
-export const dynamic = "force-dynamic";
-
-export default async function WorkOrdersIndexPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
-  return <WorkOrdersGroupedIndex />;
+export default async function RetiredPostJobWorkorders() {
+  redirect("/commercial/opportunities?view=active_projects");
 }

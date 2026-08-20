@@ -54,6 +54,11 @@ export default async function ReportsOverviewPage() {
   const { isAdminEmail } = await import("@/lib/auth/admin");
   const viewerRole = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
   const canSeePeople = viewerRole === "admin" || viewerRole === "account_manager";
+  // Accounting gates on exactly the same pair (Mary keeps the book and isn't a
+  // platform admin), so the "full detail on Accounting" link is only offered to
+  // someone who can actually open it — the same reason the estimator card is
+  // hidden rather than shown-and-bouncing.
+  const canSeeFinance = canSeePeople;
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
 
   const quarter = currentQuarterRange();
@@ -138,6 +143,9 @@ export default async function ReportsOverviewPage() {
 
   const cards: {
     href: string;
+    /** Which family this report belongs to. Ten cards in one flat grid is a
+     *  wall; three named groups is a menu. */
+    group: "sales" | "delivery" | "money";
     title: string;
     blurb: string;
     icon: React.ReactNode;
@@ -146,6 +154,7 @@ export default async function ReportsOverviewPage() {
   }[] = [
     {
       href: "/commercial/reports/pipeline",
+      group: "sales",
       title: "Pipeline",
       blurb: "Open opportunities by stage — bid vs weighted value.",
       icon: <path d="M3 3v18h18 M7 14l3-3 4 4 5-6" />,
@@ -154,6 +163,7 @@ export default async function ReportsOverviewPage() {
     },
     {
       href: "/commercial/reports/job-costs",
+      group: "delivery",
       title: "Job costs & profit",
       blurb: "Real cost vs contract per deal, GC, and company-wide.",
       icon: <path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />,
@@ -162,6 +172,7 @@ export default async function ReportsOverviewPage() {
     },
     {
       href: "/commercial/reports/geography",
+      group: "sales",
       title: "Where the work is",
       blurb: "Jobs by town, zip, and state — where the work concentrates.",
       icon: <><path d="M12 21s-6-5.686-6-10a6 6 0 1 1 12 0c0 4.314-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></>,
@@ -170,6 +181,7 @@ export default async function ReportsOverviewPage() {
     },
     {
       href: "/commercial/reports/cash-flow",
+      group: "money",
       title: "Cash flow & collections",
       blurb: "What actually arrived, and how long it took.",
       icon: <><path d="M3 6h18v12H3z" /><circle cx="12" cy="12" r="2.5" /><path d="M7 12h.01 M17 12h.01" /></>,
@@ -185,6 +197,7 @@ export default async function ReportsOverviewPage() {
       // AR aging because it answers the question he actually asks — what's out
       // and what's happening with it — where aging answers "who is late".
       href: "/commercial/reports/receivables",
+      group: "money",
       title: "Receivables",
       blurb: "Every job with money out, invoices and AIA together, with a chase note per item.",
       icon: <><path d="M3 6h18v12H3z" /><path d="M3 10h18" /><path d="M7 14h4" /></>,
@@ -197,6 +210,7 @@ export default async function ReportsOverviewPage() {
     },
     {
       href: "/commercial/reports/ar-aging",
+      group: "money",
       title: "AR aging",
       blurb: "What's owed by how far past due, per GC — invoices and AIA.",
       icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
@@ -205,6 +219,7 @@ export default async function ReportsOverviewPage() {
     },
     ...(canSeePeople ? [{
       href: "/commercial/reports/estimator",
+      group: "sales" as const,
       title: "Estimator performance",
       blurb: "Bids sent, win rate, and how fast they go out.",
       icon: <><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
@@ -217,6 +232,7 @@ export default async function ReportsOverviewPage() {
     }] : []),
     {
       href: "/commercial/reports/labor",
+      group: "delivery" as const,
       title: "Labour & payroll",
       blurb: "Approved crew hours and cost, by person and by job.",
       icon: <><path d="M9 21V9a3 3 0 0 1 6 0v12" /><path d="M3 21h18 M5 21V11l7-5 7 5v10" /></>,
@@ -231,6 +247,7 @@ export default async function ReportsOverviewPage() {
     },
     {
       href: "/commercial/reports/change-orders",
+      group: "delivery",
       title: "Change orders & vendor spend",
       blurb: "Scope beyond contract, and who got paid.",
       icon: <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
@@ -243,6 +260,7 @@ export default async function ReportsOverviewPage() {
     },
     {
       href: "/commercial/reports/win-loss",
+      group: "sales",
       title: "Win / loss",
       blurb: "What we win, what we lose, and why. Quarterly review fuel.",
       icon: <><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6 M18 9h1.5a2.5 2.5 0 0 0 0-5H18 M6 4h12v5a6 6 0 0 1-12 0V4z M9 20h6 M12 15v5" /></>,
@@ -297,8 +315,61 @@ export default async function ReportsOverviewPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {cards.map((c) => (
+      {/* ── Three families, not one wall of ten ──────────────────────────
+          Ten cards in a flat grid is a list you scan twice and still miss
+          something. Grouped, you stop reading as soon as you've found the
+          family your question belongs to.
+          
+          MONEY says out loud that Accounting owns the detail. Four of these
+          reports also exist as views there, and "which one is the real one?"
+          was a fair question with no answer on the page. The reports stay:
+          Accounting is admin + account-manager only, and the restructure put
+          AR aging under Reports deliberately — "who owes us across every job"
+          is a cross-job question a per-job page structurally cannot answer. ── */}
+      {([
+        { key: "sales" as const, label: "Sales", blurb: "What's coming in, and how well we win it." },
+        { key: "delivery" as const, label: "Delivery", blurb: "What the work costs once it's ours." },
+        { key: "money" as const, label: "Money", blurb: null },
+      ]).map((g) => {
+        const inGroup = cards.filter((c) => c.group === g.key);
+        if (inGroup.length === 0) return null;
+        return (
+          <div key={g.key} className="space-y-2">
+            <div className="flex items-baseline justify-between gap-3 flex-wrap">
+              <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+                <h3 className="font-condensed text-[13px] font-bold uppercase tracking-[0.14em] text-ppp-navy-700">
+                  {g.label}
+                </h3>
+                {g.blurb && <span className="text-[11.5px] text-ppp-charcoal-500">{g.blurb}</span>}
+              </div>
+              {g.key === "money" && canSeeFinance && (
+                <Link href="/commercial/accounting" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline shrink-0">
+                  Full detail on Accounting →
+                </Link>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {inGroup.map(renderCard)}
+            </div>
+          </div>
+        );
+      })}
+
+    </div>
+  );
+}
+
+/** One report card. Lifted out of the grid so the three groups render the same
+ *  card rather than three copies of it. */
+function renderCard(c: {
+  href: string;
+  title: string;
+  blurb: string;
+  icon: React.ReactNode;
+  primary: { label: string; value: string; tone: Tone };
+  secondary: { label: string; value: string; tone?: Tone };
+}) {
+  return (
           <Link
             key={c.href}
             href={c.href}
@@ -320,11 +391,7 @@ export default async function ReportsOverviewPage() {
               <Metric label={c.primary.label} value={c.primary.value} tone={c.primary.tone} />
               <Metric label={c.secondary.label} value={c.secondary.value} tone={c.secondary.tone ?? "neutral"} />
             </div>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
+          </Link>);
 }
 
 function Metric({ label, value, tone }: { label: string; value: string; tone: Tone }) {
