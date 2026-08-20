@@ -43,7 +43,8 @@ export function NavSelect({
 
   return (
     <label
-      className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 bg-surface border border-ppp-charcoal-200 rounded-lg min-h-[38px] focus-within:ring-2 focus-within:ring-cc-brand-600/30 focus-within:border-cc-brand-600 transition-colors ${
+      // 44px on a phone (the platform's touch minimum), tighter on a mouse.
+      className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 bg-surface border border-ppp-charcoal-200 rounded-lg min-h-[44px] sm:min-h-[38px] focus-within:ring-2 focus-within:ring-cc-brand-600/30 focus-within:border-cc-brand-600 transition-colors ${
         pending ? "opacity-60" : ""
       }`}
     >

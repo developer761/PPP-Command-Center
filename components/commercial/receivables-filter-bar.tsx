@@ -105,7 +105,7 @@ export function ReceivablesFilterBar({
       <Link
         href={to({ overdueOnly: !q.overdueOnly })}
         aria-pressed={q.overdueOnly}
-        className={`inline-flex items-center px-3 rounded-lg text-[12.5px] font-semibold border transition-colors min-h-[38px] touch-manipulation ${
+        className={`inline-flex items-center px-3 rounded-lg text-[12.5px] font-semibold border transition-colors min-h-[44px] sm:min-h-[38px] touch-manipulation ${
           q.overdueOnly
             ? "bg-rose-600 text-white border-rose-700"
             : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
@@ -117,7 +117,7 @@ export function ReceivablesFilterBar({
       {isFiltered && (
         <Link
           href={`${basePath}${clearParams ? `?${clearParams}` : ""}`}
-          className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[38px] px-1"
+          className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] sm:min-h-[38px] px-1"
         >
           Clear
         </Link>
