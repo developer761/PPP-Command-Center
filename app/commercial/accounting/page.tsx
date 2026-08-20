@@ -15,6 +15,7 @@ import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getTransactionsReport, setPaymentDeposited, type TxnFilters, type TxnDirection } from "@/lib/commercial/reports/transactions";
 import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
 import { getReimbursementsReport, setReimbursementSettled } from "@/lib/commercial/reports/reimbursements";
+import { getDigestSettings, setDigestSettings, sendDigest, type DigestCadence } from "@/lib/commercial/reports/alex-digest";
 import { TransactionsLedger } from "@/components/commercial/transactions-ledger";
 import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type ActivityPreset } from "@/lib/commercial/reports/presets";
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
@@ -208,6 +209,48 @@ async function settleReimbursementAction(formData: FormData) {
   }
 }
 
+/**
+ * Turn a recurring report to Alex on or off.
+ *
+ * Every cadence ships OFF. Karan: *"we need to get everything 100 percent
+ * perfect before we do so"* — so the switch exists, the schedule exists, and
+ * nothing reaches him until somebody deliberately flips it.
+ */
+async function toggleDigestAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const cadence = String(formData.get("cadence") ?? "") as DigestCadence;
+  if (!["daily", "weekly", "monthly"].includes(cadence)) return;
+  await setDigestSettings({ [cadence]: String(formData.get("on")) === "1" }, user.id);
+  revalidatePath(BASE);
+}
+
+/**
+ * Preview it — addressed to WHOEVER PRESSED THIS, never to Alex.
+ *
+ * The whole point of the hold: you read the exact email he would get, in your
+ * own inbox, before anything is switched on. A preview that went to him would
+ * defeat the thing it exists for.
+ */
+async function previewDigestAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) redirect("/");
+  await assertCommercialAccess(user.id);
+  const cadence = String(formData.get("cadence") ?? "daily") as DigestCadence;
+  const res = await sendDigest(["daily", "weekly", "monthly"].includes(cadence) ? cadence : "daily", [user.email]);
+  revalidatePath(BASE);
+  redirect(
+    res.ok
+      ? `${BASE}?preview=${encodeURIComponent(user.email)}`
+      : `${BASE}?error=${encodeURIComponent(res.error)}`
+  );
+}
+
 /** Email the sheet to Alex. Explicit click only — no auto-send from here.
  *  Stays on the view you sent it from; it used to force `?view=receivables`,
  *  so pressing Send from Overview silently switched tabs underneath you. */
@@ -370,6 +413,8 @@ export default async function AccountingPage({
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
+  const digest = await getDigestSettings();
+  const previewedTo = pickFirst(sp.preview);
 
   // Cash actually collected, per month. Deliberately COLLECTED rather than
   // billed: the reports index already charts billing, and the question this
@@ -461,6 +506,11 @@ export default async function AccountingPage({
       {saved && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
           Note saved.
+        </div>
+      )}
+      {previewedTo && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
+          Preview sent to <strong>{previewedTo}</strong> — the exact email Alex would get. Nothing was sent to him.
         </div>
       )}
       {sentTo && (
@@ -1384,6 +1434,79 @@ export default async function AccountingPage({
             empty="Nothing was paid back in this window."
             settled
           />
+        </section>
+      )}
+
+      {/* ── Recurring reports to Alex ─────────────────────────────────
+             Built, scheduled, and OFF. Karan: "we need to get everything 100
+             percent perfect before we do so" — so the hold is the feature.
+             Preview mails it to you; nothing reaches him until a switch here
+             is deliberately flipped. Overview only: it's a setting, not a
+             figure, and it shouldn't sit under a filtered list. ── */}
+      {view === "overview" && (
+        <section className="space-y-2">
+          <SectionHead
+            title="Recurring reports to Alex"
+            hint="Everything on this page, in his inbox, on a schedule."
+          />
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <p className="text-[12px] text-ppp-charcoal-500 max-w-lg">
+                Each one sends what you see here — owed, collected, still to bill, undeposited,
+                sales tax, reimbursements — plus the brief.{" "}
+                <strong className="text-ppp-charcoal">
+                  {digest.daily || digest.weekly || digest.monthly
+                    ? `Sending to ${recipients.join(", ")}.`
+                    : "Nothing is being sent."}
+                </strong>{" "}
+                Preview one first — it goes to you, not to him.
+              </p>
+              <form action={previewDigestAction} className="shrink-0">
+                <input type="hidden" name="cadence" value="daily" />
+                <PendingSubmitButton
+                  pendingLabel="Sending…"
+                  className="inline-flex items-center min-h-[40px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
+                >
+                  Preview it to me
+                </PendingSubmitButton>
+              </form>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {([
+                { key: "daily" as const, label: "Daily", when: "Every morning", on: digest.daily },
+                { key: "weekly" as const, label: "Weekly", when: "Monday mornings", on: digest.weekly },
+                { key: "monthly" as const, label: "Monthly", when: "The 1st", on: digest.monthly },
+              ]).map((c) => (
+                <form key={c.key} action={toggleDigestAction}>
+                  <input type="hidden" name="cadence" value={c.key} />
+                  <input type="hidden" name="on" value={c.on ? "0" : "1"} />
+                  <PendingSubmitButton
+                    pendingLabel="…"
+                    className={`w-full inline-flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg border text-left min-h-[56px] transition-colors ${
+                      c.on
+                        ? "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
+                        : "bg-surface border-ppp-charcoal-200 hover:border-cc-brand-300"
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className={`block text-[13px] font-bold ${c.on ? "text-emerald-800" : "text-ppp-charcoal"}`}>
+                        {c.label}
+                      </span>
+                      <span className="block text-[11px] text-ppp-charcoal-500">
+                        {c.on ? `On · ${c.when.toLowerCase()}` : c.when}
+                      </span>
+                    </span>
+                    <span
+                      aria-hidden
+                      className={`shrink-0 inline-flex items-center w-9 h-5 rounded-full px-0.5 ${c.on ? "bg-emerald-600 justify-end" : "bg-ppp-charcoal-200 justify-start"}`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-white" />
+                    </span>
+                  </PendingSubmitButton>
+                </form>
+              ))}
+            </div>
+          </div>
         </section>
       )}
 

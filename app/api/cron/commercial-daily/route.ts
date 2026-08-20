@@ -7,6 +7,7 @@ import { runCustomNotificationRules } from "@/lib/commercial/cron/custom-notific
 import { runDebriefOverdueReminder } from "@/lib/commercial/cron/debrief-overdue";
 import { runInvoiceDunningReminder } from "@/lib/commercial/cron/invoice-dunning";
 import { runAiaDunningReminder } from "@/lib/commercial/cron/aia-dunning";
+import { runAlexDigests } from "@/lib/commercial/reports/alex-digest";
 import { reportError, reportWarn } from "@/lib/observability";
 
 /**
@@ -115,6 +116,20 @@ export async function GET(request: Request) {
     console.warn("[cron/commercial-daily] schedule emails failed:", err);
   }
 
+  // Alex's recurring reports — daily / Monday / the 1st, all riding this one
+  // cron slot. Every cadence ships OFF, so this sends nothing until somebody
+  // deliberately turns one on. Isolated like the schedule emails: a Resend
+  // hiccup here must not 500 the reminder cron.
+  let digests = { ok: true, found: 0, sent: 0, skipped: 0, errors: [] as string[] };
+  try {
+    digests = await runAlexDigests();
+    if (digests.sent > 0) {
+      console.log(`[cron/commercial-daily] sent ${digests.sent} digest(s) to Alex`);
+    }
+  } catch (err) {
+    console.warn("[cron/commercial-daily] Alex digests failed:", err);
+  }
+
   // Force-close forgotten clock-outs (missed clock-out zeroes a worked day + blocks
   // next-day clock-in). Isolated so a failure here can't 500 the reminder cron.
   let stalePunches = { closed: 0 };
@@ -217,6 +232,7 @@ export async function GET(request: Request) {
       invoiceDunning: dunning,
       aiaDunning,
       scheduleEmails,
+      digests,
     },
     { status }
   );
