@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { FILTER_SELECT_CLS, SELECT_BG_STYLE_COMPACT } from "@/lib/commercial/form-classnames";
 
 /**
  * A filter control that IS a link — a labelled dropdown whose every option is
@@ -14,12 +15,19 @@ import { useRouter } from "next/navigation";
  * current value of every dimension is readable at a glance instead of being
  * inferred from which chip is coloured in.
  *
+ * The chrome comes from `FILTER_SELECT_CLS`, NOT from classes written here.
+ * That module exists because Karan has flagged the OS's grey dropdown four
+ * times; the first cut of this component wrapped a bare `<select>` in a border
+ * and got the grey bar back, because without `appearance-none` the browser
+ * paints its own control inside whatever box you draw around it.
+ *
+ * The label sits OUTSIDE the control rather than inside a box with it — one
+ * bordered element per dimension, not a box within a box.
+ *
  * The hrefs are built on the SERVER by whatever helper owns that page's query
  * string, so this component never learns the URL grammar and can't drift from
- * the page's own links. It only pushes the href it was handed.
- *
- * Still a real URL per option: the view stays shareable, refreshable, and
- * Back-button-able, exactly as the chips were.
+ * the page's own links. It only pushes the href it was handed. Still a real URL
+ * per option: the view stays shareable, refreshable, and Back-button-able.
  */
 
 export type NavChoice = { value: string; label: string; href: string };
@@ -29,25 +37,18 @@ export function NavSelect({
   value,
   choices,
   ariaLabel,
-  widthClassName = "",
 }: {
-  /** Small standing label inside the control ("Billed", "Type", "GC"). */
+  /** Small standing label beside the control ("Billed", "Type", "GC"). */
   label: string;
   value: string;
   choices: NavChoice[];
   ariaLabel?: string;
-  widthClassName?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   return (
-    <label
-      // 44px on a phone (the platform's touch minimum), tighter on a mouse.
-      className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 bg-surface border border-ppp-charcoal-200 rounded-lg min-h-[44px] sm:min-h-[38px] focus-within:ring-2 focus-within:ring-cc-brand-600/30 focus-within:border-cc-brand-600 transition-colors ${
-        pending ? "opacity-60" : ""
-      }`}
-    >
+    <label className="inline-flex items-center gap-1.5">
       <span className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-400 shrink-0">
         {label}
       </span>
@@ -55,13 +56,14 @@ export function NavSelect({
         value={value}
         aria-label={ariaLabel ?? label}
         disabled={pending}
+        style={SELECT_BG_STYLE_COMPACT}
         onChange={(e) => {
           const next = choices.find((c) => c.value === e.target.value);
           // Unknown value can't happen from the UI, but never navigate to
           // undefined if it ever does.
           if (next) startTransition(() => router.push(next.href));
         }}
-        className={`bg-transparent text-base sm:text-[12.5px] font-semibold text-ppp-charcoal py-1.5 pr-1 focus:outline-none cursor-pointer max-w-[190px] truncate ${widthClassName}`}
+        className={`${FILTER_SELECT_CLS} ${pending ? "opacity-60" : ""}`}
       >
         {choices.map((c) => (
           <option key={c.value} value={c.value}>

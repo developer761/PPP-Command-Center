@@ -15,6 +15,7 @@ import { createPortal } from "react-dom";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
+import { SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 /**
  * "Just mark as sent" was a bare submit with no pending state, so it looked
@@ -41,6 +42,10 @@ type Contact = { name: string; email: string };
 const LABEL = "block text-[12px] font-semibold text-ppp-charcoal-700 mb-1";
 const FIELD =
   "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[13.5px] text-ppp-charcoal focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
+// The "To" picker is a real <select>, and a bare one paints the OS's grey
+// dropdown inside the border above. `appearance-none` + the platform chevron,
+// same as every other select on the platform.
+const FIELD_SELECT = `${FIELD} appearance-none cursor-pointer pr-10 bg-no-repeat`;
 
 export function ProposalSendControl({
   proposalId,
@@ -250,7 +255,8 @@ export function ProposalSendControl({
                           if (e.target.value === "__custom__") setEmail("");
                           else setEmail(e.target.value);
                         }}
-                        className={FIELD}
+                        className={FIELD_SELECT}
+                        style={SELECT_BG_STYLE}
                       >
                         {contacts.map((c) => (
                           <option key={c.email} value={c.email}>

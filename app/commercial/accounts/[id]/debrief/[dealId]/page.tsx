@@ -36,6 +36,7 @@ import { writeDebrief, listDebriefsForOpp } from "@/lib/commercial/win-loss/debr
 import DebriefFields from "@/components/commercial/debrief-fields";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 type PP = Promise<{ id: string; dealId: string }>;
 type SP = Promise<{
@@ -312,7 +313,11 @@ export default async function AccountDebriefPage({
               name="loss_reason"
               required
               defaultValue=""
-              className="w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-sm text-ppp-charcoal min-h-[44px]"
+              // Platform select chrome — `appearance-none` plus our own
+              // chevron. A bare native select paints the OS's grey dropdown
+              // inside whatever border you draw around it.
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
             >
               <option value="" disabled>
                 Pick one…
