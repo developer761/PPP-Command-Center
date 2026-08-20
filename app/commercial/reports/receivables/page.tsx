@@ -56,8 +56,13 @@ async function saveNoteAction(formData: FormData) {
 }
 
 /** Write a fresh brief. Its own action so a slow model call never delays the
- *  report — the page renders from cache and this is an explicit click. */
-async function refreshBriefAction() {
+ *  report — the page renders from cache and this is an explicit click.
+ *
+ *  Always written from the WHOLE book (no filters), because the brief is one
+ *  read for Alex and a filtered one would be a slice labelled as the book.
+ *  The filters still travel with the redirect: writing a brief must not throw
+ *  away the view somebody was working through. */
+async function refreshBriefAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -65,13 +70,16 @@ async function refreshBriefAction() {
   await assertCommercialAccess(user.id);
   const res = await generateBrief(await getReceivablesReport());
   revalidatePath(BASE);
-  redirect(res.ok ? `${BASE}?brief=1` : `${BASE}?error=${encodeURIComponent(res.error)}`);
+  revalidatePath("/commercial/accounting");
+  const qs = String(formData.get("qs") ?? "");
+  const sep = qs ? "&" : "?";
+  redirect(res.ok ? `${BASE}${qs}${sep}brief=1` : `${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`);
 }
 
 /** Email the sheet. Mary's last step — the one she does by hand today.
  *  A send is deliberate and explicit: no auto-send, no scheduled surprise from
  *  this button. The daily cron, when it lands, calls the same helper. */
-async function sendToAlexAction() {
+async function sendToAlexAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -79,10 +87,12 @@ async function sendToAlexAction() {
   await assertCommercialAccess(user.id);
   const res = await sendReceivablesToAlex();
   revalidatePath(BASE);
+  const qs = String(formData.get("qs") ?? "");
+  const sep = qs ? "&" : "?";
   redirect(
     res.ok
-      ? `${BASE}?sent=${encodeURIComponent(res.to.join(", "))}`
-      : `${BASE}?error=${encodeURIComponent(res.error)}`
+      ? `${BASE}${qs}${sep}sent=${encodeURIComponent(res.to.join(", "))}`
+      : `${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`
   );
 }
 
@@ -138,6 +148,7 @@ export default async function ReceivablesReportPage({
           />
           {report.rows.length > 0 && (
             <form action={sendToAlexAction} className="flex flex-col items-end gap-0.5">
+              <input type="hidden" name="qs" value={receivableQueryString(q)} />
               <PendingSubmitButton
                 pendingLabel="Sending…"
                 className="inline-flex items-center min-h-[40px] px-3 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 transition-colors"
@@ -187,6 +198,7 @@ export default async function ReceivablesReportPage({
               The brief
             </h2>
             <form action={refreshBriefAction}>
+              <input type="hidden" name="qs" value={receivableQueryString(q)} />
               <PendingSubmitButton
                 pendingLabel="Writing…"
                 className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] inline-flex items-center"
@@ -201,9 +213,13 @@ export default async function ReceivablesReportPage({
               <p className="text-[10.5px] text-ppp-charcoal-400 mt-2">
                 {stale
                   // Say so rather than quietly showing an old read of a book
-                  // that has since moved.
+                  // that has since moved. Staleness is measured against the
+                  // WHOLE book, so a filter can never fake it.
                   ? "Written before the latest changes — rewrite for a current read."
                   : `Written ${fmtEtDate(brief.generatedAt)}`}
+                {/* The brief is always the whole book. On a filtered view that
+                    has to be said, or it reads as a summary of the slice. */}
+                {report.filtered ? " · covers the whole book, not this filter" : ""}
               </p>
             </>
           ) : (

@@ -37,6 +37,7 @@ function report(rows: ReceivableRow[]): ReceivablesReport {
     unfilteredCount: rows.length,
     undatedExcluded: 0,
     filtered: false,
+    bookFingerprint: rows.map((r) => r.key).sort().join("|"),
   };
 }
 

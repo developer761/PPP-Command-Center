@@ -104,6 +104,16 @@ export type ReceivablesReport = {
    *  Concentration is the risk a total hides: $500k owed is a different
    *  business depending on whether it's forty GCs or one. */
   topGc: { id: string; name: string; cents: number; sharePct: number } | null;
+  /** Fingerprint of the WHOLE book, BEFORE filtering — what the AI brief's
+   *  staleness is measured against.
+   *
+   *  It has to be filter-independent. The brief is always written from the
+   *  whole book (one read for Alex, never a slice), so hashing the rows a
+   *  particular page happens to be showing made every filtered view declare a
+   *  perfectly current brief "stale" — and clicking Rewrite couldn't clear it,
+   *  because the rewrite hashed the whole book again while the page compared
+   *  against its filtered slice. */
+  bookFingerprint: string;
 };
 
 function fmtRefDate(iso: string | null): string {
@@ -346,10 +356,18 @@ export function summarizeReceivables(
     }
   }
 
+  // Over allRows, and order-independent (the map is sorted), so the same book
+  // fingerprints identically no matter which slice is on screen.
+  const bookFingerprint = allRows
+    .map((r) => `${r.key}:${r.openCents}:${r.daysOut ?? ""}:${(r.note ?? "").slice(0, 80)}`)
+    .sort()
+    .join("|");
+
   return {
     rows,
     gcOptions,
     topGc,
+    bookFingerprint,
     unfilteredCount: allRows.length,
     undatedExcluded,
     filtered,

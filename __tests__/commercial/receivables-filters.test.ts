@@ -224,6 +224,26 @@ describe("sort + concentration", () => {
     expect(r.totalOpenCents).toBe(0);
   });
 
+  // The AI brief is written from the WHOLE book and cached against this
+  // fingerprint. If a filter changed it, every filtered view would report a
+  // current brief as stale, and "Rewrite" could never clear the warning — the
+  // rewrite hashes the whole book while the page compares its slice.
+  it("fingerprints the whole book, not the filtered slice", () => {
+    const whole = summarizeReceivables(rows).bookFingerprint;
+    expect(summarizeReceivables(rows, { accountId: "a2" }).bookFingerprint).toBe(whole);
+    expect(summarizeReceivables(rows, { kind: "retainage" }).bookFingerprint).toBe(whole);
+    expect(summarizeReceivables(rows, { sort: "oldest" }).bookFingerprint).toBe(whole);
+    expect(summarizeReceivables(rows, { overdueOnly: true }).bookFingerprint).toBe(whole);
+  });
+
+  it("fingerprint moves when the book actually moves", () => {
+    const before = summarizeReceivables(rows).bookFingerprint;
+    const paid = rows.filter((r) => r.key !== "ret");
+    expect(summarizeReceivables(paid).bookFingerprint).not.toBe(before);
+    const noted = rows.map((r) => (r.key === "ret" ? { ...r, note: "chased 8/19" } : r));
+    expect(summarizeReceivables(noted).bookFingerprint).not.toBe(before);
+  });
+
   it("sort is not described as a filter — it hides nothing", () => {
     const parsed = parseReceivableQuery((k) => ({ sort: "oldest" } as Record<string, string>)[k]);
     expect(parsed.sort).toBe("oldest");

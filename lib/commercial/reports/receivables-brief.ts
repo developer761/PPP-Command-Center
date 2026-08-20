@@ -40,13 +40,16 @@ export type ReceivablesBrief = {
   generatedAt: string;
 };
 
-/** What the brief was written from. Changing figures ⇒ new hash ⇒ stale. */
+/** What the brief was written from. Changing figures ⇒ new hash ⇒ stale.
+ *
+ *  Hashes `bookFingerprint` — the WHOLE book — never `report.rows`, which is
+ *  whatever slice the calling page is showing. A brief is always written from
+ *  the whole book, so comparing it against a filtered slice made every
+ *  filtered view claim a current brief was stale, and Rewrite could never
+ *  clear it: the rewrite re-hashed the whole book while the page kept
+ *  comparing against its slice. */
 function hashInput(report: ReceivablesReport): string {
-  const shape = report.rows
-    .map((r) => `${r.key}:${r.openCents}:${r.daysOut ?? ""}:${(r.note ?? "").slice(0, 80)}`)
-    .sort()
-    .join("|");
-  return createHash("sha256").update(shape).digest("hex").slice(0, 16);
+  return createHash("sha256").update(report.bookFingerprint).digest("hex").slice(0, 16);
 }
 
 export async function getCachedBrief(
