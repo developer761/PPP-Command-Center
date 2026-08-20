@@ -108,6 +108,7 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   {
     const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
     const { DEFAULT_DUE_DAYS } = await import("@/lib/commercial/invoices/constants");
+    const { aiaDueAtFrom } = await import("@/lib/commercial/aia/constants");
     const liveOpps = await listCommercialOpportunities({ includeArchived: true });
     const rollups = await aiaBillingRollupBulk(liveOpps.map((o) => o.id));
     const accountByOpp = new Map(liveOpps.map((o) => [o.id, o.account_id] as const));
@@ -115,12 +116,13 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
       if (roll.dueNowCents <= 0) continue;
       const accountId = accountByOpp.get(oppId);
       if (!accountId) continue;
-      const issuedAt =
-        roll.latestIssuedFrozenAt ??
-        (roll.latestIssuedPeriodTo ? `${roll.latestIssuedPeriodTo}T16:00:00Z` : null);
-      const dueAt = issuedAt
-        ? new Date(new Date(issuedAt).getTime() + DEFAULT_DUE_DAYS * 86_400_000).toISOString()
-        : null;
+      // ONE ladder, shared with the receivables list and the dashboard's
+      // project rows (`aiaDueAtFrom`).
+      const dueAt = aiaDueAtFrom(
+        roll.latestIssuedFrozenAt,
+        roll.latestIssuedPeriodTo,
+        DEFAULT_DUE_DAYS
+      );
       aiaRows.push({
         accountId,
         balance: roll.dueNowCents,

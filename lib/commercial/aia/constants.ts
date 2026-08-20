@@ -374,3 +374,42 @@ export function contractProposalCents(rows: ContractProposalRow[]): {
   }
   return { acceptedProposalCents, latestProposalCents, pendingProposalCents };
 }
+
+// ── When an AIA application falls due ────────────────────────────────────────
+
+/**
+ * The issue instant of an application, from whichever field recorded it.
+ *
+ * `frozen_at` is stamped when the certificate is issued and is the truth.
+ * Older applications only carry `period_to`, a bare DATE, which is anchored at
+ * 16:00Z — noon ET — so the day it lands on can't be flipped by a timezone.
+ * Null when neither is recorded: unknown, never "today".
+ */
+export function aiaIssuedAtFrom(
+  frozenAt: string | null | undefined,
+  periodTo: string | null | undefined
+): string | null {
+  if (frozenAt) return frozenAt;
+  return periodTo ? `${periodTo}T16:00:00Z` : null;
+}
+
+/**
+ * When the money on that application is payable — issue instant plus the
+ * standard terms.
+ *
+ * ONE definition. This ladder was written out three times — the AR-aging
+ * report, the receivables chase list, and the dashboard's project rows — which
+ * is three chances for a job to be late on one screen and current on another.
+ * `dueDays` is passed in rather than imported so this module stays client-safe.
+ */
+export function aiaDueAtFrom(
+  frozenAt: string | null | undefined,
+  periodTo: string | null | undefined,
+  dueDays: number
+): string | null {
+  const issued = aiaIssuedAtFrom(frozenAt, periodTo);
+  if (!issued) return null;
+  const ms = new Date(issued).getTime();
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms + dueDays * 86_400_000).toISOString();
+}

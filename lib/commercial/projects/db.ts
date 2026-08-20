@@ -9,10 +9,11 @@ import { commercialDb } from "@/lib/commercial/db";
 import { lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
-import { pickContractBaseCents, isAiaChangeOrderLine, contractProposalCents, type ContractProposalRow } from "@/lib/commercial/aia/constants";
+import { pickContractBaseCents, isAiaChangeOrderLine, contractProposalCents, aiaDueAtFrom, type ContractProposalRow } from "@/lib/commercial/aia/constants";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { costBreakdownByOpp, emptyCostBreakdown, type CostBreakdown } from "@/lib/commercial/purchases/db";
 import { fieldOpsLaborByOpp } from "@/lib/commercial/field-ops/labor-cost";
+import { DEFAULT_DUE_DAYS } from "@/lib/commercial/invoices/constants";
 import type { CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 
 export type ProjectRow = {
@@ -54,6 +55,8 @@ export type ProjectRow = {
   outstandingCents: number;
   /** AIA slice of outstandingCents (net of retainage). */
   aiaDueNowCents: number;
+  /** ISO due date of the latest issued AIA application, or null. */
+  aiaDueAt: string | null;
   /** Invoiced beyond the contract sum — flagged, never shown as negative. */
   overBilled: boolean;
   // ── Closeout (2026-07-30) — so the account/deal shows a "closed out" state ──
@@ -280,16 +283,19 @@ export async function listProjects(opts: {
   // ── Batch: latest AIA application per opp. We fetch ALL apps (paginated) and
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
-  const appData = await paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number }>(
+  const appData = await paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; frozen_at: string | null; period_to: string | null }>(
     () =>
       sb
         .from("commercial_aia_applications")
-        .select("id, opportunity_id, application_number, status, original_contract_cents, original_contract_is_manual, retainage_pct")
+        // frozen_at / period_to: WHEN the application was issued, which is the
+        // only thing that can say whether the money on it is late. Without them
+        // an AIA-billed job could only ever be counted as current.
+        .select("id, opportunity_id, application_number, status, original_contract_cents, original_contract_is_manual, retainage_pct, frozen_at, period_to")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
-  type AppRow = { id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number };
+  type AppRow = { id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; frozen_at: string | null; period_to: string | null };
   const latestAppByOpp = new Map<string, AppRow>();
   // Latest ISSUED (submitted/paid) app → AIA billed; latest PAID app → AIA
   // collected. Separate from `latestAppByOpp` (which drives the contract base and
@@ -418,6 +424,11 @@ export async function listProjects(opts: {
     const aiaEarnedLessRetainage = issuedApp
       ? Math.max(0, aiaBilled - (retainageByApp.get(issuedApp.id) ?? 0))
       : 0;
+    // ONE ladder, shared with the AR-aging report and the receivables chase
+    // list — a job must not be late on one screen and current on another.
+    const aiaDueAt = issuedApp
+      ? aiaDueAtFrom(issuedApp.frozen_at, issuedApp.period_to, DEFAULT_DUE_DAYS)
+      : null;
     const outstandingTotal =
       inv.openBalance + Math.max(0, aiaEarnedLessRetainage - aiaCollected);
     // Left to bill = contract − PRE-TAX billed (clamped). Over-billed when the
@@ -467,6 +478,13 @@ export async function listProjects(opts: {
        *  retainage. Broken out so the dashboard's invoice-only AR tile can add
        *  it without re-deriving the AIA ladder a third time. */
       aiaDueNowCents: Math.max(0, aiaEarnedLessRetainage - aiaCollected),
+      /** When that money fell due — issue date + the standard terms, derived
+       *  exactly as the AR-aging report derives it. Null when nothing has been
+       *  issued or nothing recorded when it was. Without this, the dashboard
+       *  could add AIA money to "Owed to us" but never to "overdue", so a job
+       *  the ageing report showed 60 days late read as calm on the tile above
+       *  it. */
+      aiaDueAt,
       overBilled,
       closeoutStatus: closeoutByOpp.get(o.id) ?? null,
       isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",

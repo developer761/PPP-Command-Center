@@ -45,6 +45,7 @@ import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
 import { marginFrom } from "@/lib/commercial/projects/financials";
 import TrendChart from "@/components/trend-chart";
 import { DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
+import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
@@ -166,10 +167,20 @@ export default async function CommercialDashboardPage() {
     .filter((i) => i.opportunity_id != null && archivedOppIds.has(i.opportunity_id))
     .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
   const overdueInvoices = billableInvoices.filter((i) => deriveInvoiceStatus(i) === "overdue");
-  const arOverdueCount = overdueInvoices.length;
+  // AIA applications age too. `arOutstandingCents` has folded them in since
+  // 2026-08-17, but "overdue" did not — so a job billed only through G702/G703
+  // and sixty days late read "unpaid invoices, none overdue" in calm blue on
+  // this tile, while the AR-aging report one click away showed it red in the
+  // 61-90 bucket. Same due-date ladder both sides (issue date + standard terms).
+  const overdueAia = projectRows.filter(
+    (r) => (r.aiaDueNowCents ?? 0) > 0 && r.aiaDueAt && daysPastDue(r.aiaDueAt, Date.now()) > 0
+  );
+  const arOverdueCount = overdueInvoices.length + overdueAia.length;
   // The DOLLARS overdue (per-invoice clamped) — the number a CEO actually fears,
   // shown on the tile instead of a bare count (2026-08 CEO/AR UX walk).
-  const arOverdueCents = overdueInvoices.reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
+  const arOverdueCents =
+    overdueInvoices.reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0) +
+    overdueAia.reduce((acc, r) => acc + r.aiaDueNowCents, 0);
 
   // ─── Opp buckets ───
   // "Open" = the PRE-SALE pipeline only (deals still being sold). Post-sale
@@ -486,14 +497,16 @@ export default async function CommercialDashboardPage() {
           value={formatCentsCompact(arOutstandingCents)}
           sub={
             arOutstandingCents === 0
-              ? "invoices all paid"
+              // Not "invoices all paid": this total includes AIA payment
+              // applications, and an AIA-billed job raises no invoice.
+              ? "nothing outstanding"
               : arOverdueCount > 0
               ? `${formatCentsCompact(arOverdueCents)} overdue`
               : arArchivedCents > 0
               ? // Why this can exceed Gross: archived deals keep their debt but
                 // leave the performance numbers.
                 `incl. ${formatCentsCompact(arArchivedCents)} on archived deals`
-              : "unpaid invoices, none overdue"
+              : "billed and unpaid, none overdue"
           }
           tone={arOverdueCount > 0 ? "rose" : "blue"}
           href="/commercial/reports/ar-aging"

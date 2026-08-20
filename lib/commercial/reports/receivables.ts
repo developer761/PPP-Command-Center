@@ -5,6 +5,7 @@ import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, DEFAULT_DUE_DAYS } from "@/lib/commercial/invoices/constants";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
+import { aiaDueAtFrom, aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
 import { daysPastDue } from "./ar-aging";
 import { etDateOf } from "@/lib/date-et";
 
@@ -202,14 +203,15 @@ export async function getReceivablesReport(
   const rollups = await aiaBillingRollupBulk(opps.map((o) => o.id));
   for (const [oppId, roll] of rollups) {
     const { job, accountId, account } = jobNameFor(oppId);
-    const issuedIso =
-      roll.latestIssuedFrozenAt ??
-      (roll.latestIssuedPeriodTo ? `${roll.latestIssuedPeriodTo}T16:00:00Z` : null);
+    // ONE ladder, shared with the AR-aging report and the dashboard.
+    const issuedIso = aiaIssuedAtFrom(roll.latestIssuedFrozenAt, roll.latestIssuedPeriodTo);
 
     if (roll.dueNowCents > 0) {
-      const dueAt = issuedIso
-        ? new Date(new Date(issuedIso).getTime() + DEFAULT_DUE_DAYS * 86_400_000).toISOString()
-        : null;
+      const dueAt = aiaDueAtFrom(
+        roll.latestIssuedFrozenAt,
+        roll.latestIssuedPeriodTo,
+        DEFAULT_DUE_DAYS
+      );
       rows.push({
         kind: "aia",
         key: `aia:${roll.latestIssuedId}`,
