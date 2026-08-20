@@ -8,7 +8,7 @@ import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
 import { insertCustomerFormSubmittedNotification } from "@/lib/notifications/insert";
-import { VALID_MATERIAL_TYPE_VALUES, toSalesforceMaterialType } from "@/lib/customer-form/material-types";
+import { VALID_MATERIAL_TYPE_VALUES, toSalesforceMaterialType, salesforceLineFor } from "@/lib/customer-form/material-types";
 import { alertSalesforceWriteFailure } from "@/lib/customer-form/sf-failure-alert";
 import {
   STANDARD_SURFACE_FIELDS,
@@ -64,6 +64,8 @@ type SubmitPayload = {
    *  customer didn't pick (we don't blank out admin's pre-set value). When
    *  set, the submit handler writes it back to WorkOrder.MaterialType__c. */
   materialType?: string | null;
+  /** R4.3 — the exterior paint line on a job that has both. */
+  materialTypeExterior?: string | null;
   renderFetchedAt: string;
   /** Customer-confirmed delivery address from the form's last step. The
    *  supplier-order builder reads this in preference to the stale SF
@@ -529,11 +531,24 @@ export async function POST(
   // don't blank out an admin-set value. Pushed as a WorkOrder-level attempt
   // alongside the WOLI batch so it benefits from the same audit + retry
   // logic in writeSfBatch.
-  const customerMaterialType = typeof body.materialType === "string" ? body.materialType.trim() : "";
+  const interiorLine = typeof body.materialType === "string" ? body.materialType.trim() : "";
+  const exteriorLine = typeof body.materialTypeExterior === "string" ? body.materialTypeExterior.trim() : "";
+  // R4.3 — Benjamin Moore's interior and exterior ranges are different products,
+  // so a job with both work types needs two answers. WorkOrder.MaterialType__c
+  // is ONE restricted picklist though (verified on the live org, and the
+  // WorkOrderLineItem field is a different, older grade vocabulary that isn't
+  // interchangeable), so only one can be recorded there. Interior wins; the
+  // form says so, and BOTH lines are kept in the submitted payload and reach
+  // the vendor order, which is where they're acted on.
+  const { chosen: customerMaterialType, dropped: exteriorNotStoredInSf } =
+    salesforceLineFor(interiorLine, exteriorLine);
   // Flag surfaced in the response so the form can show a "your paint line
   // wasn't saved" warning instead of a clean success thank-you. Without this
   // the customer thinks SF was updated when it wasn't. Audit 2026-06-07.
   let materialTypeDropped = false;
+  if (exteriorNotStoredInSf) {
+    console.log(`[customer-form] WO ${status.token.work_order_id.slice(0, 8)}…: both paint lines set; MaterialType__c holds "${customerMaterialType}", "${exteriorNotStoredInSf}" kept in the Command Center payload only.`);
+  }
   if (customerMaterialType) {
     if (!VALID_MATERIAL_TYPES.has(customerMaterialType)) {
       // Value isn't in our allowlist (~24 items as of Katie's 2026-06-10
@@ -644,7 +659,8 @@ export async function POST(
   const payloadRecord = {
     lineItems: sanitizedLineItems,
     globalNotes: sanitizeNotesField(body.globalNotes),
-    materialType: customerMaterialType || null,
+    materialType: interiorLine || null,
+    materialTypeExterior: exteriorLine || null,
     deliveryAddress: sanitizeDeliveryAddress(body.deliveryAddress),
     submittedAt: new Date().toISOString(),
   };

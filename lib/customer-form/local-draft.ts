@@ -46,6 +46,9 @@ export type LocalDraft = {
   state: Record<string, StoredLineItem>;
   globalNotes: string;
   materialType: string;
+  /** R4.3: the exterior paint line on a mixed job. Optional so drafts written
+   *  before the split still parse. */
+  materialTypeExterior?: string;
 };
 
 const VERSION = 1;
@@ -86,6 +89,8 @@ export function readLocalDraft(token: string, now: number = Date.now()): LocalDr
       state: parsed.state as Record<string, StoredLineItem>,
       globalNotes: typeof parsed.globalNotes === "string" ? parsed.globalNotes : "",
       materialType: typeof parsed.materialType === "string" ? parsed.materialType : "",
+      materialTypeExterior:
+        typeof parsed.materialTypeExterior === "string" ? parsed.materialTypeExterior : "",
     };
   } catch {
     // Corrupt entry — drop it rather than letting it fail every future load.
@@ -125,8 +130,8 @@ export function clearLocalDraft(token: string): void {
 
 /** True if the customer actually put something in — an untouched form
  *  autosaves its empty seed state and must not then claim to have restored it. */
-export function draftHasContent(draft: Pick<LocalDraft, "state" | "globalNotes" | "materialType">): boolean {
-  if (draft.globalNotes.trim() || draft.materialType.trim()) return true;
+export function draftHasContent(draft: Pick<LocalDraft, "state" | "globalNotes" | "materialType" | "materialTypeExterior">): boolean {
+  if (draft.globalNotes.trim() || draft.materialType.trim() || (draft.materialTypeExterior ?? "").trim()) return true;
   for (const li of Object.values(draft.state)) {
     if (li.notes?.trim()) return true;
     for (const p of Object.values(li.picks ?? {})) {

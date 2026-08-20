@@ -179,7 +179,7 @@ const FINISH_OPTIONS = [
 // surface override dropdown all stay in lockstep. Adding a product = one
 // entry in that file. Picker is filtered per-WO (interior-only WOs hide
 // exterior products and vice versa) — Katie 2026-06-05.
-import { filterMaterialTypesForWorkOrder, isInteriorWorkOrder, isExteriorWorkOrder } from "@/lib/customer-form/material-types";
+import { filterMaterialTypesForWorkOrder, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor, salesforceLineFor } from "@/lib/customer-form/material-types";
 import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
@@ -340,6 +340,22 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     [formData.workTypeName, formData.lineItems]
   );
 
+  // R4.3 — Benjamin Moore sells different lines interior vs exterior, so a job
+  // with both work types can't be covered by one answer. Two scoped lists;
+  // only the sides the work order actually has are rendered.
+  const paintLineLists = useMemo(
+    () => paintLineListsFor({
+      workTypeName: formData.workTypeName,
+      lineItemProductNames: formData.lineItems.map((li) => li.productName),
+    }),
+    [formData.workTypeName, formData.lineItems]
+  );
+  const setFor = (groups: Array<{ options: string[] }> | null) => {
+    const set = new Set<string>();
+    for (const g of groups ?? []) for (const v of g.options) set.add(v);
+    return set;
+  };
+
   // Interior/exterior detection for copy + layout decisions. Katie 2026-06-05:
   // exterior WOs rarely have a WOLI breakdown (workers put context only in
   // WO.Description), so we surface those notes prominently + ask the customer
@@ -429,6 +445,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // Katie 2026-06-03: this dictates which Benjamin Moore / Sherwin-Williams
   // product line we mix the customer's chosen colors in.
   const [materialType, setMaterialType] = useState<string>(formData.materialType ?? "");
+  // R4.3: the second line. Only meaningful when the job has exterior work —
+  // on an exterior-ONLY job `materialType` IS the exterior line, so this stays
+  // empty and the single picker below is labelled accordingly.
+  const [materialTypeExterior, setMaterialTypeExterior] = useState<string>("");
 
   const [submitting, setSubmitting] = useState(false);
   // Ref-based guard — React batches setState so two rapid clicks could
@@ -454,6 +474,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     setState(merged.state as typeof initialState);
     if (draft.globalNotes) setGlobalNotes(draft.globalNotes);
     if (draft.materialType) setMaterialType(draft.materialType);
+    if (draft.materialTypeExterior) setMaterialTypeExterior(draft.materialTypeExterior);
     setRestoredRooms(merged.restoredRooms);
     /* eslint-enable react-hooks/set-state-in-effect */
     // Deliberately mount-only: re-running on `initialState` identity would
@@ -467,10 +488,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   useEffect(() => {
     if (isPreview || submitted) return;
     const t = setTimeout(() => {
-      writeLocalDraft(token, { state, globalNotes, materialType });
+      writeLocalDraft(token, { state, globalNotes, materialType, materialTypeExterior });
     }, 600);
     return () => clearTimeout(t);
-  }, [token, state, globalNotes, materialType, isPreview, submitted]);
+  }, [token, state, globalNotes, materialType, materialTypeExterior, isPreview, submitted]);
   // Kate round-3 #30: Salesforce rejected the write. Surfaced to STAFF (an AM
   // doing Internal Entry) because they're the one who can act on it. A
   // homeowner is deliberately not shown this — their picks are saved in the
@@ -736,6 +757,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         // a customer could get for a legacy value they never saw/picked, and
         // the redundant same-value WO write on every customer submit.
         materialType: isStaffEntry ? (materialType.trim() || null) : null,
+        // R4.3: the exterior line rides alongside. The submit route writes the
+        // one Salesforce can hold and keeps both in the Command Center.
+        materialTypeExterior: isStaffEntry ? (materialTypeExterior.trim() || null) : null,
         renderFetchedAt: formData.fetchedAt,
         // Customer-confirmed delivery address. Persisted to
         // customer_form_tokens.submitted_payload.deliveryAddress; the
@@ -828,6 +852,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               setState(initialState);
               setGlobalNotes(priorSubmission?.globalNotes ?? "");
               setMaterialType(formData.materialType ?? "");
+              setMaterialTypeExterior("");
               setRestoredRooms(0);
               setDraftDismissed(true);
             }}
@@ -920,14 +945,60 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           <p className="text-xs text-ppp-charcoal-500 mt-1 leading-relaxed">
             Pick one product line for all the colors below. The same color (e.g. &ldquo;Stardust&rdquo;) can be mixed in different product lines &mdash; each has its own price point and finish quality. If you&apos;re not sure, ask your project manager.
           </p>
-          <div className="mt-3">
-            <MaterialTypePicker
-              id="paint-product-line"
-              value={materialType}
-              onChange={setMaterialType}
-              availableValues={materialTypeAvailableValues}
-              placeholder="— Select a product line —"
-            />
+          {/* R4.3 — one picker per scope the job actually has. A mixed job gets
+              two, because Benjamin Moore's interior and exterior lines are
+              different products and one answer can't cover both. */}
+          <div className="mt-3 space-y-3">
+            <div>
+              {paintLineLists.isSplit && (
+                <label htmlFor="paint-product-line" className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                  Interior
+                </label>
+              )}
+              <MaterialTypePicker
+                id="paint-product-line"
+                value={materialType}
+                onChange={setMaterialType}
+                availableValues={
+                  paintLineLists.interior
+                    ? setFor(paintLineLists.interior)
+                    : setFor(paintLineLists.exterior)
+                }
+                placeholder={
+                  paintLineLists.isSplit
+                    ? "— Select an interior line —"
+                    : paintLineLists.interior
+                      ? "— Select a product line —"
+                      : "— Select an exterior line —"
+                }
+              />
+            </div>
+            {paintLineLists.isSplit && (
+              <div>
+                <label htmlFor="paint-product-line-ext" className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                  Exterior
+                </label>
+                <MaterialTypePicker
+                  id="paint-product-line-ext"
+                  value={materialTypeExterior}
+                  onChange={setMaterialTypeExterior}
+                  availableValues={setFor(paintLineLists.exterior)}
+                  placeholder="— Select an exterior line —"
+                  allowClear
+                />
+              </div>
+            )}
+            {/* Salesforce's MaterialType__c is ONE restricted picklist per work
+                order, so it physically cannot hold both. Say so rather than
+                dropping the second choice silently — both are kept here and
+                both reach the vendor order, which is where they're acted on. */}
+            {paintLineLists.isSplit && materialType && materialTypeExterior && (
+              <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
+                Salesforce stores one paint line per work order, so{" "}
+                <strong className="text-ppp-charcoal">{salesforceLineFor(materialType, materialTypeExterior).chosen}</strong>{" "}
+                is what saves there. Both lines are kept in the Command Center and both go on the materials order.
+              </p>
+            )}
           </div>
           {materialType && formData.materialType && materialType !== formData.materialType && (
             <p className="text-[11px] text-ppp-orange-700 mt-2">

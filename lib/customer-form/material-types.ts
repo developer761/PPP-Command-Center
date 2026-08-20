@@ -282,3 +282,88 @@ export function toSalesforceMaterialType(
   // for a real job. Skip the write and let the caller say so.
   return null;
 }
+
+/* ─── Interior vs exterior product lines (R4.3) ─────────────────────────────
+ *
+ * Kate: "Benjamin Moore uses different product lines for interior and
+ * exterior. On a job with both interior and exterior work, one line can't
+ * cover it."
+ *
+ * `filterMaterialTypesForWorkOrder` already narrows by scope, but on a MIXED
+ * job it falls back to showing everything in ONE list — which is precisely the
+ * case Kate is describing, and the one where a single answer is wrong. So a
+ * mixed job gets two pickers, each scoped to its own side.
+ */
+
+export type PaintLineLists = {
+  /** Null when the job has no interior work — don't render the picker at all. */
+  interior: Array<{ label: string; options: string[] }> | null;
+  /** Null when the job has no exterior work. */
+  exterior: Array<{ label: string; options: string[] }> | null;
+  /** True when both are rendered — the caller shows two labelled pickers. */
+  isSplit: boolean;
+};
+
+function groupsFor(categories: ReadonlyArray<MaterialTypeCategory>): Array<{ label: string; options: string[] }> {
+  const groups: Array<{ label: string; options: string[] }> = [];
+  for (const m of PAINT_LINES) {
+    if (!categories.includes(m.category)) continue;
+    let bucket = groups.find((g) => g.label === m.group);
+    if (!bucket) {
+      bucket = { label: m.group, options: [] };
+      groups.push(bucket);
+    }
+    bucket.options.push(m.value);
+  }
+  return groups;
+}
+
+export function paintLineListsFor(context: {
+  workTypeName?: string | null;
+  lineItemProductNames?: ReadonlyArray<string | null>;
+}): PaintLineLists {
+  const hasInterior = isInteriorWorkOrder(context);
+  const hasExterior = isExteriorWorkOrder(context);
+
+  // "any" lines (Ultra Spec, Aura, the SW range, Other) belong on BOTH lists —
+  // they're sold in interior and exterior variants, and Salesforce carries the
+  // scope separately, so the scope is ours to derive rather than theirs to pick.
+  const interior = groupsFor(["interior", "any"]);
+  const exterior = groupsFor(["exterior", "any"]);
+
+  // No signal at all (no work type, no product names): show both rather than
+  // guessing. A wrong single list would hide the line the estimator needs.
+  if (!hasInterior && !hasExterior) {
+    return { interior, exterior, isSplit: true };
+  }
+  return {
+    interior: hasInterior ? interior : null,
+    exterior: hasExterior ? exterior : null,
+    isSplit: hasInterior && hasExterior,
+  };
+}
+
+/**
+ * Which of the two chosen lines goes to Salesforce.
+ *
+ * `WorkOrder.MaterialType__c` is a single restricted picklist — one value per
+ * work order — so a job with both an interior and an exterior line cannot be
+ * represented there. Verified against the live org: the field's whole
+ * vocabulary is line+scope, and WorkOrderLineItem.MaterialType__c is a
+ * different, older grade vocabulary ("Ben Moore Contractor", "Standard Grade")
+ * that isn't interchangeable.
+ *
+ * Rather than drop one silently, the rule is explicit and the UI says so:
+ * interior wins when both are set, because it's the bulk of PPP's work. BOTH
+ * lines are kept in the Command Center and BOTH reach the vendor order, which
+ * is where they actually matter.
+ */
+export function salesforceLineFor(
+  interiorLine: string | null | undefined,
+  exteriorLine: string | null | undefined
+): { chosen: string | null; dropped: string | null } {
+  const int = (interiorLine ?? "").trim();
+  const ext = (exteriorLine ?? "").trim();
+  if (int && ext) return { chosen: int, dropped: ext };
+  return { chosen: int || ext || null, dropped: null };
+}
