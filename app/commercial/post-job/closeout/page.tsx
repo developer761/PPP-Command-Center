@@ -14,7 +14,8 @@
  * → "billing" · Jobs at the billing stage, where close-out follows.
  */
 import { redirect } from "next/navigation";
+import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 
 export default async function RetiredPostJobCloseout() {
-  redirect("/commercial/opportunities?view=billing");
+  redirect(savedViewHref("billing"));
 }

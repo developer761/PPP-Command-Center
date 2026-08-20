@@ -14,7 +14,8 @@
  * → "under_contract" · Every job under contract — submittals are done between award and production.
  */
 import { redirect } from "next/navigation";
+import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 
 export default async function RetiredPostJobSubmittals() {
-  redirect("/commercial/opportunities?view=under_contract");
+  redirect(savedViewHref("under_contract"));
 }

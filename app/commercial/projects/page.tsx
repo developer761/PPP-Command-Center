@@ -10,7 +10,8 @@
  * Redirecting rather than deleting — the URL is in bookmarks and old links.
  */
 import { redirect } from "next/navigation";
+import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 
 export default async function RetiredProjectsIndex() {
-  redirect("/commercial/opportunities?view=active_projects");
+  redirect(savedViewHref("active_projects"));
 }

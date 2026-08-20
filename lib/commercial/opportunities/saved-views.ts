@@ -160,6 +160,29 @@ export function savedView(key: string | undefined | null): SavedView | undefined
 }
 
 /**
+ * The canonical URL for a saved view, by key — for links written in code.
+ *
+ * Karan 2026-08-20. The restructure retired six Post-Job pages and Projects
+ * with "they become saved list views", and I redirected all seven to
+ * `?view=billing` / `?view=under_contract` / `?view=active_projects`.
+ *
+ * There is no such param. A view is DERIVED (`activeViewKey` matches on the
+ * params actually applied), and `?view=` is the display toggle — list /
+ * customer / sheet. `billing` is none of those, so it fell through to the
+ * default and every one of those links landed on the WHOLE unfiltered
+ * pipeline. Nothing errored: an unfiltered list looks exactly like a filtered
+ * one until you count it.
+ *
+ * So links in code go through here and get the real params. Passing a key that
+ * doesn't exist is a build-time error, not a silently unfiltered page.
+ */
+export function savedViewHref(key: (typeof SAVED_VIEWS)[number]["key"]): string {
+  const view = savedView(key);
+  if (!view) throw new Error(`Unknown saved view: ${key}`);
+  return viewHref(view, {});
+}
+
+/**
  * Which view the current URL IS, derived rather than declared.
  *
  * A `?view_key=` param would go stale the moment someone removes a filter chip

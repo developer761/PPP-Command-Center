@@ -14,7 +14,8 @@
  * → "active_projects" · Jobs in production, which is when a crew needs marching orders.
  */
 import { redirect } from "next/navigation";
+import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 
 export default async function RetiredPostJobWorkorders() {
-  redirect("/commercial/opportunities?view=active_projects");
+  redirect(savedViewHref("active_projects"));
 }

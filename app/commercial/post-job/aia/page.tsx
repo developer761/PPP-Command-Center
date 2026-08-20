@@ -14,7 +14,8 @@
  * → "billing" · Jobs at the billing stage, which is what AIA applications are.
  */
 import { redirect } from "next/navigation";
+import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 
 export default async function RetiredPostJobAia() {
-  redirect("/commercial/opportunities?view=billing");
+  redirect(savedViewHref("billing"));
 }

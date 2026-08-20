@@ -1,4 +1,5 @@
 import { flashMessage } from "@/lib/commercial/flash";
+import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 import { resolveTaxExemption } from "@/lib/commercial/tax/exemption";
 import { getRatingLabels } from "@/lib/commercial/accounts/rating-labels";
 import { notFound, redirect } from "next/navigation";
@@ -5646,7 +5647,7 @@ async function AccountKpisTab({
               Under contract
               <span className="text-[11px] font-medium text-ppp-charcoal-500">— {production.activeProjects} active {production.activeProjects === 1 ? "project" : "projects"}</span>
             </h3>
-            <Link href="/commercial/opportunities?view=active_projects" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">In production →</Link>
+            <Link href={savedViewHref("active_projects")} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">In production →</Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <MiniFig label="Under contract" value={formatCentsCompact(production.contractValueCents)} tone="blue" sub={hasContract ? "incl. COs" : "not set"} />
