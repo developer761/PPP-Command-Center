@@ -32,6 +32,11 @@ export type CommercialProjectPurchase = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  /** Who fronted the money and is owed it back. Null on an ordinary company
+   *  purchase. */
+  reimburse_to: string | null;
+  /** When they were paid back. Null with `reimburse_to` set = still owed. */
+  reimbursed_at: string | null;
 };
 
 /** One worker's labor line on a project — powers the per-worker overview under
@@ -318,6 +323,11 @@ export type AddPurchaseInput = {
   purchased_at?: string | null;
   description?: string | null;
   receipt_document_id?: string | null;
+  /** Who paid for this out of their own pocket and is owed it back. Null = an
+   *  ordinary company purchase. PPP's field-team SOP treats a reimbursement as
+   *  a flag on the purchase, not a separate record — the purchase IS the
+   *  receipt, and splitting it would double-count the job's cost. */
+  reimburse_to?: string | null;
   created_by_user_id: string;
 };
 
@@ -352,6 +362,7 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
       purchased_at: input.purchased_at ?? nowIso,
       description: input.description?.trim().slice(0, 2000) || null,
       receipt_document_id: input.receipt_document_id ?? null,
+      reimburse_to: input.reimburse_to?.trim().slice(0, 120) || null,
       created_by_user_id: input.created_by_user_id,
       created_at: nowIso,
       updated_at: nowIso,
@@ -366,7 +377,7 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
 
 export async function updatePurchase(
   id: string,
-  patch: { category?: string; vendor?: string | null; amount_cents?: number; hours?: number | null; purchased_at?: string | null; description?: string | null },
+  patch: { category?: string; vendor?: string | null; amount_cents?: number; hours?: number | null; purchased_at?: string | null; description?: string | null; reimburse_to?: string | null },
   userId: string,
   /** Ownership guard (audit H1): the purchase must belong to this opportunity —
    *  rejects a forged purchase_id from another deal. */
@@ -389,6 +400,9 @@ export async function updatePurchase(
   }
   if (patch.purchased_at !== undefined) next.purchased_at = patch.purchased_at;
   if (patch.description !== undefined) next.description = patch.description?.trim().slice(0, 2000) || null;
+  // Clearing the name un-flags it as a reimbursement, which is the only way to
+  // undo one entered by mistake.
+  if (patch.reimburse_to !== undefined) next.reimburse_to = patch.reimburse_to?.trim().slice(0, 120) || null;
   // Hours track the EFFECTIVE category (post-patch): a purchase edited off the
   // labor category loses its hours; edited onto labor can gain them. This
   // prevents stale hours surviving a category flip.

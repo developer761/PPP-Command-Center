@@ -31,6 +31,7 @@ export type PurchaseFormPurchase = {
   purchased_at: string;
   description: string | null;
   receipt_document_id: string | null;
+  reimburse_to?: string | null;
 };
 
 type CoAction = (formData: FormData) => void | Promise<void>;
@@ -78,7 +79,7 @@ export default function PurchaseForm({
   submitLabel: string;
   purchase?: PurchaseFormPurchase;
   cancelHref?: string;
-  preserve?: { cat?: string; vendor?: string; amt?: string; hours?: string; date?: string; desc?: string };
+  preserve?: { cat?: string; vendor?: string; amt?: string; hours?: string; date?: string; desc?: string; reimburseTo?: string };
 }) {
   // `preserve` WINS over `purchase`. It is only ever populated by a rejected
   // submit, so it is what the user typed a moment ago; the DB row is the stale
@@ -210,6 +211,34 @@ export default function PurchaseForm({
           <datalist id="pu-worker-list">
             {recentWorkers.map((v) => (<option key={v} value={v} />))}
           </datalist>
+        </div>
+        {/* Who fronted the money.
+        
+            PPP's field-team SOP treats a reimbursement as a FLAG on the
+            purchase, not a separate record — the purchase is the receipt, and
+            splitting it in two would double-count the job's cost. Leave it
+            empty and this is an ordinary company purchase; put a name in and it
+            joins the Reimbursements list until somebody marks it paid back. */}
+        <div className="sm:col-span-2">
+          <label className={LABEL_CLS} htmlFor="pu-reimburse">
+            Paid out of pocket by <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+          </label>
+          <input
+            id="pu-reimburse"
+            name="reimburse_to"
+            list="pu-reimburse-list"
+            maxLength={120}
+            defaultValue={preserve?.reimburseTo ?? purchase?.reimburse_to ?? ""}
+            className={INPUT_CLS}
+            placeholder="Leave empty if the company paid"
+          />
+          <datalist id="pu-reimburse-list">
+            {recentWorkers.map((v) => (<option key={v} value={v} />))}
+          </datalist>
+          <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">
+            Name someone and the company owes them for it — it shows under Accounting &rarr;
+            Reimbursements until it&rsquo;s marked paid back.
+          </p>
         </div>
         {isLabor ? (
           <div>

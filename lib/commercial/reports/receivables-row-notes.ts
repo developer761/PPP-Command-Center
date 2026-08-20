@@ -65,17 +65,35 @@ function rowFacts(r: ReceivableRow, report: ReceivablesReport): string {
     `type: ${r.kind === "aia" ? "AIA payment application" : r.kind === "retainage" ? "retainage held" : "invoice"}`,
     `amount: ${money(r.openCents)}`,
     `reference: ${r.reference || "none"}`,
+    // AGE IN BANDS, not in days.
+    //
+    // The exact day count was in here, and it increments every morning — so
+    // every overdue row went stale every day, the whole book was rewritten on
+    // each cron run, and the "a row whose facts haven't moved keeps its exact
+    // words" promise was false the moment anything was overdue. Banded, a row
+    // is only reconsidered when it crosses into a genuinely different
+    // situation, and those are the same bands AR aging uses.
     r.kind === "retainage"
       ? "due: not payable until close-out"
       : r.daysOut === null
         ? "due: NO DUE DATE RECORDED"
-        : r.daysOut > 0
-          ? `due: ${r.daysOut} days past due`
-          : `due: not yet due (${Math.abs(r.daysOut)} days to go)`,
+        : r.daysOut <= 0
+          ? "due: not yet due"
+          : r.daysOut <= 30
+            ? "due: 1-30 days past due"
+            : r.daysOut <= 60
+              ? "due: 31-60 days past due"
+              : r.daysOut <= 90
+                ? "due: 61-90 days past due"
+                : "due: over 90 days past due",
     sameGc.length > 1
       ? `this gc: ${sameGc.length} open items totalling ${money(gcTotal)}`
       : "this gc: this is their only open item",
-    `share of the book: ${report.totalOpenCents > 0 ? Math.round((r.openCents / report.totalOpenCents) * 100) : 0}%`,
+    // Banded for the same reason: an exact percentage moves whenever ANY other
+    // row moves, so one invoice being paid restaled every read in the book.
+    report.totalOpenCents > 0 && r.openCents / report.totalOpenCents >= 0.25
+      ? "share of the book: a large part of it"
+      : "share of the book: not dominant",
     r.note?.trim() ? `note from the office: "${r.note.trim()}"` : "note from the office: none",
   ].join("; ");
 }
@@ -170,7 +188,8 @@ Rules — these matter more than being interesting:
 - Use ONLY the facts given. Never guess why a GC hasn't paid; never invent a conversation, a person, a promise or a date.
 - Retainage is NOT late. Never describe it as owed now or as something to chase — it is released at close-out.
 - NO DUE DATE RECORDED: say so plainly, and that setting one is what brings it into the ageing.
-- Mention a row being a large share of the book, or a GC's only open item, at most once across all rows.
+- Mention a row being a large part of the book, or a GC's only open item, at most once across all rows.
+- The age is given as a band. Say the band, never invent an exact day count.
 - Max 14 words. No trailing full stop. No quotes. Sentence case.
 - Every row key you were given must appear exactly once.`;
 

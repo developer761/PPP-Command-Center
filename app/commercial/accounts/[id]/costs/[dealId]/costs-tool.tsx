@@ -57,7 +57,7 @@ export type CostsSP = {
   pu_amt?: string;
   pu_hours?: string;
   pu_date?: string;
-  pu_desc?: string;
+  pu_desc?: string; pu_reimb?: string;
 };
 
 /** Parse a loose hours string ("40", "37.5") → number or null (server guard;
@@ -154,7 +154,8 @@ async function addPurchaseAction(formData: FormData) {
   const rawDate = String(formData.get("purchased_at") ?? "");
   const description = String(formData.get("description") ?? "");
   // Round-trip the typed values on a validation error (audit M3).
-  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000) };
+  const reimburseTo = String(formData.get("reimburse_to") ?? "").trim();
+  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000), pu_reimb: reimburseTo.slice(0, 120) };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
     costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", ...preserve }, back, origin, from);
@@ -165,6 +166,8 @@ async function addPurchaseAction(formData: FormData) {
     opportunity_id: opp_id,
     category,
     vendor: vendor || null,
+    // Empty = an ordinary company purchase; a name = the company owes them.
+    reimburse_to: reimburseTo || null,
     amount_cents: cents!,
     // Hours only stored for labor (db enforces the same rule).
     hours: category === "labor" ? parseHours(rawHours) : null,
@@ -205,7 +208,8 @@ async function updatePurchaseAction(formData: FormData) {
   // this the edit form reopened from the DB row — so a rejected correction
   // silently restored the OLD amount and presented it as what you had typed.
   // Worse than losing the input: you can hit Save again believing it's fixed.
-  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000) };
+  const reimburseTo = String(formData.get("reimburse_to") ?? "").trim();
+  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000), pu_reimb: reimburseTo.slice(0, 120) };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
     costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", edit_purchase: purchase_id, ...preserve }, back, origin, from);
@@ -215,6 +219,8 @@ async function updatePurchaseAction(formData: FormData) {
     {
       category,
       vendor: vendor || null,
+      // Empty = an ordinary company purchase; a name = the company owes them.
+      reimburse_to: reimburseTo || null,
       amount_cents: cents!,
       // Always send hours so the db can null it on a category flip away from labor.
       hours: category === "labor" ? parseHours(rawHours) : null,
@@ -529,7 +535,7 @@ export async function ProjectCostsTool({
             <span className="group-open:hidden">Log a transaction</span>
             <span className="hidden group-open:inline">Close</span>
           </summary>
-          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add transaction" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc }} />
+          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add transaction" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc, reimburseTo: sp.pu_reimb }} />
         </details>
 
         {purchases.length > 0 && (
@@ -548,7 +554,7 @@ export async function ProjectCostsTool({
               return (
                 <li key={pu.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-3.5">
                   {isEditing ? (
-                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Save" purchase={pu} preserve={editId === pu.id ? { cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc } : undefined} cancelHref={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} />
+                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Save" purchase={pu} preserve={editId === pu.id ? { cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc, reimburseTo: sp.pu_reimb } : undefined} cancelHref={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} />
                   ) : (
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0">

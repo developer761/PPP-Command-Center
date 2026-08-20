@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  digestDueToday,
   digestWindow,
   renderDigestEmail,
   DIGEST_DEFAULTS,
@@ -136,5 +137,57 @@ describe("renderDigestEmail", () => {
     const { html } = renderDigestEmail(data({ briefText: '<script>alert("x")</script>' }));
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
+  });
+
+});
+
+/**
+ * ONE email a day, whichever cadences fall due.
+ *
+ * With all three switched on the naive rule sent two every Monday, two on the
+ * 1st, and three on a Monday that was the 1st — a minute apart, all carrying
+ * identical outstanding / collectible / past-due / retention figures. That is
+ * how a recurring report stops being read.
+ */
+describe("digestDueToday", () => {
+  const all = { daily: true, weekly: true, monthly: true };
+  const WED = "2026-08-19";        // Wednesday
+  const MON = "2026-08-17";        // Monday
+  const FIRST = "2026-09-01";      // a 1st that isn't a Monday
+  const MON_FIRST = "2027-02-01";  // a Monday that IS the 1st
+
+  it("an ordinary day sends the daily", () => {
+    expect(digestDueToday(all, WED)).toBe("daily");
+  });
+
+  it("a Monday sends ONE email, not two", () => {
+    expect(digestDueToday(all, MON)).toBe("weekly");
+  });
+
+  it("the 1st sends ONE, not two", () => {
+    expect(digestDueToday(all, FIRST)).toBe("monthly");
+  });
+
+  it("a Monday that is the 1st sends ONE, not three", () => {
+    expect(digestDueToday(all, MON_FIRST)).toBe("monthly");
+  });
+
+  it("the longest window wins because it contains the shorter ones", () => {
+    // "this month" includes today, so nothing the daily would have said about
+    // cash is lost by sending the monthly instead.
+    const w = digestWindow("monthly", MON_FIRST);
+    expect(w.fromYmd <= MON_FIRST).toBe(true);
+    expect(w.toYmd).toBe(MON_FIRST);
+  });
+
+  it("each switch still stands on its own", () => {
+    expect(digestDueToday({ daily: false, weekly: true, monthly: false }, WED)).toBeNull();
+    expect(digestDueToday({ daily: false, weekly: true, monthly: false }, MON)).toBe("weekly");
+    expect(digestDueToday({ daily: true, weekly: false, monthly: false }, MON)).toBe("daily");
+    expect(digestDueToday({ daily: false, weekly: false, monthly: true }, FIRST)).toBe("monthly");
+  });
+
+  it("all off sends nothing, even on a day everything would be due", () => {
+    expect(digestDueToday({ daily: false, weekly: false, monthly: false }, MON_FIRST)).toBeNull();
   });
 });

@@ -46,9 +46,14 @@ export async function GET(req: NextRequest) {
         r.exempt ? "" : r.taxPct.toFixed(3),
         r.exempt ? "" : money(r.taxCents),
         r.exempt ? "Yes" : "No",
-        // An exempt row with no certificate says so in words rather than
-        // leaving a blank cell somebody reads as "not applicable".
-        r.exempt ? r.certNumber ?? "MISSING" : "",
+        // Three different situations, three different words. "MISSING" for both
+        // of the bad ones told the person doing the filing they had the same
+        // problem twice — one is an unfiled document, the other is tax that was
+        // probably never charged.
+        r.exempt
+          ? r.certNumber ??
+            (r.exemptKind === "unmarked" ? "NEVER MARKED EXEMPT" : "CERTIFICATE MISSING")
+          : "",
       ]
         .map(csv)
         .join(",")

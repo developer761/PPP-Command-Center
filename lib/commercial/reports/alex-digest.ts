@@ -64,6 +64,24 @@ export async function setDigestSettings(patch: Partial<DigestSettings>, userId: 
   await setCommercialSetting(SETTINGS_KEY, { ...current, ...patch }, userId);
 }
 
+/**
+ * Which single digest goes out on a given day.
+ *
+ * Pure and exported so the collision rule is testable — it is the difference
+ * between one email and three on a Monday the 1st.
+ */
+export function digestDueToday(
+  settings: DigestSettings,
+  todayYmd: string
+): DigestCadence | null {
+  const dow = new Date(`${todayYmd}T12:00:00Z`).getUTCDay(); // 1 = Monday
+  const dom = Number(todayYmd.slice(8, 10));
+  if (settings.monthly && dom === 1) return "monthly";
+  if (settings.weekly && dow === 1) return "weekly";
+  if (settings.daily) return "daily";
+  return null;
+}
+
 /** The window each cadence reports on, as ET calendar dates. */
 export function digestWindow(cadence: DigestCadence, todayYmd = etTodayIso()): { fromYmd: string; toYmd: string; label: string } {
   if (cadence === "daily") {
@@ -372,8 +390,44 @@ export async function runAlexDigests(todayYmd = etTodayIso()): Promise<{
     out.found = due.length;
     if (due.length === 0) return out;
 
+    // ONE email on a day where cadences collide.
+    //
+    // With all three switched on, Alex gets two every Monday, two on the 1st,
+    // and three on a Monday that is the 1st — a minute apart, all carrying
+    // identical outstanding / collectible / past-due / retention figures. That
+    // is how a report stops being read.
+    //
+    // The longest window wins, and nothing is lost by it: the position figures
+    // are the same in all three, and the longer window's cash figure CONTAINS
+    // the shorter one's (this month includes today; this week includes today).
+    // Per-day detail is in the ledger attached to whichever one goes out.
+    const send: DigestCadence[] = due.includes("monthly")
+      ? ["monthly"]
+      : due.includes("weekly")
+        ? ["weekly"]
+        : ["daily"];
+    out.skipped += due.length - send.length;
+
     const to = receivablesRecipients();
-    for (const cadence of due) {
+    for (const cadence of send) {
+      // Nothing owed, nothing moved, nothing to flag — don't send. A daily
+      // email that says "$0.00, nothing needs attention" every morning is one
+      // that gets filtered, and then the morning it matters is filtered too.
+      // The manual Send already refuses on an empty book; the automatic one
+      // had no such check. A WEEKLY or MONTHLY still goes out as a record even
+      // when quiet — that is what a period report is for.
+      if (cadence === "daily") {
+        const probe = await buildDigest("daily", todayYmd);
+        if (
+          probe.outstandingCents === 0 &&
+          probe.txnCount === 0 &&
+          probe.readyToBillCents === 0 &&
+          probe.reimbursementsOwedCount === 0
+        ) {
+          out.skipped += 1;
+          continue;
+        }
+      }
       const res = await sendDigest(cadence, to);
       if (res.ok) out.sent += 1;
       else {
