@@ -178,7 +178,14 @@ Rules — these matter more than being interesting:
     const client = new Anthropic({ apiKey });
     const res = await client.messages.create({
       model: MODEL,
-      max_tokens: 1500,
+      // Scaled to the book. A flat 1500 was fine for three rows and would have
+      // silently truncated a fifty-row one mid-list — the rows past the cut
+      // simply wouldn't get a read, with nothing to say why.
+      max_tokens: Math.min(16_000, 400 + need.length * 60),
+      // Low effort on purpose, and not for cost: each line is capped at
+      // fourteen words, and lower effort means terser output with no preamble —
+      // which is exactly the shape being asked for.
+      output_config: { effort: "low" },
       messages: [{ role: "user", content: prompt }],
     });
     const text = res.content
