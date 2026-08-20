@@ -77,22 +77,8 @@ export async function sendReceivablesToAlex(): Promise<
   // Alex nothing he can act on, and the facts that would are already on the
   // row. Best-effort and time-boxed: a slow or failed model call costs the
   // drafts, never the send.
-  try {
-    const { rowsNeedingNotes, generateRowNotes, withDraftedNotes } = await import(
-      "./receivables-row-notes"
-    );
-    if (rowsNeedingNotes(report).some((r) => !r.aiNote)) {
-      const drafted = await Promise.race([
-        generateRowNotes(report),
-        new Promise<{ ok: false; error: string }>((resolve) =>
-          setTimeout(() => resolve({ ok: false, error: "timeout" }), 20_000)
-        ),
-      ]);
-      if (drafted.ok) report = withDraftedNotes(report, drafted.notes);
-    }
-  } catch {
-    // Notes are a nicety; the sheet is the point.
-  }
+  const { ensureRowNotes } = await import("./receivables-row-notes");
+  report = await ensureRowNotes(report);
   const { brief, stale } = await getCachedBrief(report);
   const to = receivablesRecipients();
   const today = etTodayIso();
@@ -104,18 +90,11 @@ export async function sendReceivablesToAlex(): Promise<
   <td style="padding:8px 10px;border-bottom:1px solid #eee;">
     <div style="font-weight:600;color:#172B4D;">${escape(r.jobName)}</div>
     <div style="font-size:11px;color:#6b7280;">${escape(r.accountName)} · ${escape(KIND_LABEL[r.kind])} · ${escape(r.reference)}</div>
-    ${
-      r.note
-        ? `<div style="font-size:11px;color:#6b7280;font-style:italic;margin-top:2px;">${escape(r.note)}</div>`
-        : r.aiNote
-          // Marked, quietly. Alex has to be able to tell what Mary knows from
-          // what was worked out from the dates without the row shouting.
-          ? `<div style="font-size:11px;color:#9ca3af;font-style:italic;margin-top:2px;"><span style="color:#EE662E;font-style:normal;">${AI_NOTE_MARK}</span> ${escape(r.aiNote)}</div>`
-          : ""
-    }
+    ${r.note ? `<div style="font-size:11px;color:#6b7280;font-style:italic;margin-top:2px;">${escape(r.note)}</div>` : ""}
   </td>
   <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;font-weight:700;color:#172B4D;">${money(r.openCents)}</td>
   <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;font-size:11px;">${ageCell(r)}</td>
+  <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:11px;color:#9ca3af;font-style:italic;">${r.aiNote ? escape(r.aiNote) : ""}</td>
 </tr>`
     )
     .join("\n");
@@ -162,6 +141,9 @@ export async function sendReceivablesToAlex(): Promise<
         <th style="padding:6px 10px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;border-bottom:2px solid #e5e7eb;">Job</th>
         <th style="padding:6px 10px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;border-bottom:2px solid #e5e7eb;text-align:right;">Billed / open</th>
         <th style="padding:6px 10px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;border-bottom:2px solid #e5e7eb;text-align:right;">Status</th>
+        <!-- Its own column, never merged into the office's note. One is a
+             phone call, the other is arithmetic. -->
+        <th style="padding:6px 10px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;border-bottom:2px solid #e5e7eb;"><span style="color:#EE662E;">${AI_NOTE_MARK}</span> AI read</th>
       </tr>
     </thead>
     <tbody>
@@ -174,8 +156,8 @@ ${rowsHtml}
   ${
     // A legend, only when there is something to explain — otherwise it's a
     // disclaimer on an email that doesn't need one.
-    report.rows.some((r) => !r.note && r.aiNote)
-      ? `<p style="font-size:11px;color:#9ca3af;margin-top:20px;"><span style="color:#EE662E;">${AI_NOTE_MARK}</span> Notes marked this way were drafted from the item's dates and figures — not written by anyone. Anything unmarked is a person's note.</p>`
+    report.rows.some((r) => r.aiNote)
+      ? `<p style="font-size:11px;color:#9ca3af;margin-top:20px;"><span style="color:#EE662E;">${AI_NOTE_MARK}</span> The AI read column is written from each item's dates, figures and the office's own note — not by a person. The job's note beneath its name is the office's.</p>`
       : ""
   }
   <p style="font-size:12px;color:#666;margin-top:28px;">— PPP Commercial Command Center</p>

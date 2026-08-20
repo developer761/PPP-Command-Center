@@ -98,20 +98,34 @@ export function ReceivablesTable({
                 <span className="text-[11px] font-semibold text-rose-700">{r.daysOut}d late</span>
               )}
             </div>
-            <NoteForm rowKey={r.key} note={r.note} aiNote={r.aiNote} action={saveNoteAction} queryString={queryString} />
+            {r.aiNote && (
+              <p className="text-[11px] text-ppp-charcoal-500 italic leading-snug mt-1.5">
+                <span aria-hidden className="not-italic text-cc-brand-600 font-semibold mr-1">
+                  {AI_NOTE_MARK} AI read
+                </span>
+                {r.aiNote}
+              </p>
+            )}
+            <NoteForm rowKey={r.key} note={r.note} action={saveNoteAction} queryString={queryString} />
           </li>
         ))}
       </ul>
 
       <div className="hidden sm:block overflow-x-auto">
-        <table className="w-full text-[12.5px] min-w-[820px]">
+        <table className="w-full text-[12.5px] min-w-[980px]">
           <thead>
             <tr className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 bg-ppp-charcoal-50/60 text-left">
               <th className="px-3 py-2.5">Job</th>
               <th className="px-3 py-2.5">Reference</th>
               <th className="px-3 py-2.5 text-right">Billed / open</th>
               <th className="px-3 py-2.5 text-right">Age</th>
-              <th className="px-3 py-2.5 w-[34%]">Notes</th>
+              {/* Two columns, never one. One is a phone call, the other is
+                  arithmetic, and Alex has to tell them apart at a glance. */}
+              <th className="px-3 py-2.5 w-[24%]">Notes</th>
+              <th className="px-3 py-2.5 w-[22%]">
+                <span className="text-cc-brand-600 mr-0.5" aria-hidden>{AI_NOTE_MARK}</span>
+                AI read
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ppp-charcoal-100">
@@ -156,7 +170,10 @@ export function ReceivablesTable({
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  <NoteForm rowKey={r.key} note={r.note} aiNote={r.aiNote} action={saveNoteAction} queryString={queryString} />
+                  <NoteForm rowKey={r.key} note={r.note} action={saveNoteAction} queryString={queryString} />
+                </td>
+                <td className="px-3 py-2.5 text-[11.5px] text-ppp-charcoal-500 italic leading-snug">
+                  {r.aiNote ?? <span className="text-ppp-charcoal-300 not-italic">—</span>}
                 </td>
               </tr>
             ))}
@@ -165,7 +182,7 @@ export function ReceivablesTable({
             <tr className="border-t-2 border-ppp-charcoal-200 bg-ppp-charcoal-50/60 font-bold">
               <td className="px-3 py-2.5" colSpan={2}>Total outstanding</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{formatCentsFull(totalOpenCents)}</td>
-              <td colSpan={2} />
+              <td colSpan={3} />
             </tr>
           </tfoot>
         </table>
@@ -176,36 +193,21 @@ export function ReceivablesTable({
 
 /** Inline note — save-on-submit, no modal. A chase note is ten seconds of
  *  typing after a phone call; anything heavier and it doesn't get written. */
+/** The office's own note. Nothing drafted ever goes near this input: a draft
+ *  sitting in a text field becomes a person's note the moment somebody hits
+ *  Save, and then nobody can tell which is which. */
 function NoteForm({
   rowKey,
   note,
-  aiNote,
   action,
   queryString,
 }: {
   rowKey: string;
   note: string | null;
-  /** A drafted note. Shown ABOVE the empty box, never inside it — a draft in a
-   *  text field becomes a human note the moment somebody hits Save, and then
-   *  nobody can tell which is which. */
-  aiNote?: string | null;
   action: (formData: FormData) => Promise<void>;
   queryString: string;
 }) {
   return (
-    <>
-    {!note && aiNote && (
-      // Marked, quietly. Alex has to be able to tell what Mary knows from what
-      // was worked out from the dates — one is a phone call, the other is
-      // arithmetic — without the row shouting about it.
-      <p
-        className="text-[11px] text-ppp-charcoal-400 italic leading-snug mb-1"
-        title="Drafted automatically from this item's dates and figures. Write over it any time."
-      >
-        <span aria-hidden className="not-italic text-cc-brand-500 mr-0.5">{AI_NOTE_MARK}</span>
-        {aiNote}
-      </p>
-    )}
     <form action={action} className="flex items-center gap-1.5 mt-1.5 sm:mt-0">
       <input type="hidden" name="row_key" value={rowKey} />
       <input type="hidden" name="qs" value={queryString} />
@@ -213,7 +215,7 @@ function NoteForm({
         name="note"
         defaultValue={note ?? ""}
         maxLength={500}
-        placeholder={aiNote ? "Write what you know" : "e.g. 8/19 asked for update"}
+        placeholder="e.g. 8/19 asked for update"
         aria-label="Collection note"
         className="flex-1 min-w-0 px-2 py-1.5 text-base sm:text-[12px] bg-surface border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px] sm:min-h-[32px]"
       />
@@ -224,6 +226,5 @@ function NoteForm({
         Save
       </PendingSubmitButton>
     </form>
-    </>
   );
 }

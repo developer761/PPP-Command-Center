@@ -32,37 +32,42 @@ function ageLabel(r: ReceivableRow): string {
   return "Not yet due";
 }
 
-/** A human note, or the drafted one marked so the two never blur together in
- *  a spreadsheet — where italics and colour don't survive. */
-function noteCell(r: ReceivableRow): string {
-  if (r.note?.trim()) return r.note;
-  return r.aiNote ? `${AI_NOTE_MARK} ${r.aiNote}` : "";
-}
-
 export function receivablesCsv(report: ReceivablesReport, filterLabel?: string | null): string {
-  const header = ["Job", "GC", "Type", "Reference", "Billed / open", "Status", "Notes"];
+  // TWO note columns, not one merged cell. A spreadsheet has no italics and no
+  // colour, so the only way to keep the office's words distinguishable from the
+  // drafted read is to give each its own column and header.
+  const header = ["Job", "GC", "Type", "Reference", "Billed / open", "Status", "Notes", `${AI_NOTE_MARK} AI read`];
   const line = (r: ReceivableRow) =>
-    [r.jobName, r.accountName, KIND_LABEL[r.kind], r.reference, money(r.openCents), ageLabel(r), noteCell(r)]
+    [
+      r.jobName,
+      r.accountName,
+      KIND_LABEL[r.kind],
+      r.reference,
+      money(r.openCents),
+      ageLabel(r),
+      r.note ?? "",
+      r.aiNote ?? "",
+    ]
       .map(csv)
       .join(",");
 
   // Mary's sheet ends with the total. Retention is broken out beneath it
   // because her total includes it but it isn't collectible — the distinction
   // that makes the number mean something to Alex.
-  const blank = ["", "", "", "", "", "", ""].map(csv).join(",");
+  const blank = ["", "", "", "", "", "", "", ""].map(csv).join(",");
   const totals = [
-    ["TOTAL OUTSTANDING", "", "", "", money(report.totalOpenCents), "", ""],
-    ["Collectible now", "", "", "", money(report.dueNowCents), "excludes retention", ""],
-    ["Past due", "", "", "", money(report.overdueCents), "", ""],
-    ["Retention held", "", "", "", money(report.retainageCents), "released at close-out", ""],
+    ["TOTAL OUTSTANDING", "", "", "", money(report.totalOpenCents), "", "", ""],
+    ["Collectible now", "", "", "", money(report.dueNowCents), "excludes retention", "", ""],
+    ["Past due", "", "", "", money(report.overdueCents), "", "", ""],
+    ["Retention held", "", "", "", money(report.retainageCents), "released at close-out", "", ""],
   ].map((row) => row.map(csv).join(","));
 
   // A legend, only when there is something to explain. Without it a "✦" in a
   // spreadsheet is a stray character.
-  const legend = report.rows.some((r) => !r.note?.trim() && r.aiNote)
+  const legend = report.rows.some((r) => r.aiNote)
     ? [
         blank,
-        [`${AI_NOTE_MARK} Drafted automatically from the item's dates and figures — not written by anyone.`, "", "", "", "", "", ""]
+        [`${AI_NOTE_MARK} The AI read column is written from each item's dates and figures — not by anyone. The Notes column is the office's own.`, "", "", "", "", "", "", ""]
           .map(csv)
           .join(","),
       ]
@@ -74,7 +79,7 @@ export function receivablesCsv(report: ReceivablesReport, filterLabel?: string |
   // properly. The parameter stays so the email, which builds the body without
   // a title row, can still say it.
   const banner = filterLabel
-    ? [["Filtered:", filterLabel, "", "", "", "", ""].map(csv).join(","), blank]
+    ? [["Filtered:", filterLabel, "", "", "", "", "", ""].map(csv).join(","), blank]
     : [];
 
   return (

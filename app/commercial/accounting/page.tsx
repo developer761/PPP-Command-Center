@@ -436,9 +436,11 @@ export default async function AccountingPage({
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
   const digest = await getDigestSettings();
-  const { rowsNeedingNotes, rowNotesAvailable } = await import("@/lib/commercial/reports/receivables-row-notes");
-  // How many rows are still silent. Only offered when there's something to do.
-  const silentRows = rowsNeedingNotes(receivables).filter((r) => !r.aiNote).length;
+  const { getCachedRowNotes, rowNotesAvailable } = await import("@/lib/commercial/reports/receivables-row-notes");
+  // Rows whose read is missing OR written from facts that have since moved —
+  // including a note somebody typed after the last draft. Only offered when
+  // there is actually something to redraw.
+  const silentRows = (await getCachedRowNotes(receivables)).staleCount;
   const canDraftNotes = rowNotesAvailable();
   const previewedTo = pickFirst(sp.preview);
 
@@ -549,8 +551,8 @@ export default async function AccountingPage({
       )}
       {pickFirst(sp.notes) === "1" && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
-          Drafted the empty notes. They&rsquo;re marked with a{" "}
-          <span className="text-cc-brand-600 font-bold">✦</span> — write over any of them.
+          Reads updated. They sit in their own column, marked{" "}
+          <span className="text-cc-brand-600 font-bold">✦</span> — your notes column is untouched.
         </div>
       )}
       {previewedTo && (
@@ -884,7 +886,7 @@ export default async function AccountingPage({
                   className="inline-flex items-center gap-1.5 px-3 rounded-lg border border-cc-brand-200 bg-cc-brand-50 text-[12.5px] font-semibold text-cc-brand-800 hover:bg-cc-brand-100 transition-colors min-h-[44px] sm:min-h-[38px]"
                 >
                   <span aria-hidden className="text-cc-brand-600">✦</span>
-                  Draft {silentRows} empty note{silentRows === 1 ? "" : "s"}
+                  {silentRows === receivables.rows.length ? "Draft" : "Update"} {silentRows} read{silentRows === 1 ? "" : "s"}
                 </PendingSubmitButton>
               </form>
             )}

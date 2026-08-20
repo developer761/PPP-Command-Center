@@ -290,10 +290,16 @@ export async function sendDigest(
     // the times he wants to sort or forward one. Same builders as the
     // downloads — a figure he checks against the app has to match it — and
     // BOM-prefixed, because these are opened in Excel.
-    const [receivables, txns] = await Promise.all([
+    const [rawReceivables, txns] = await Promise.all([
       getReceivablesReport(),
       getTransactionsReport({ fromYmd: data.fromYmd, toYmd: data.toYmd }),
     ]);
+    // Bring the AI reads up to date before the sheet goes out. The SCHEDULED
+    // report is the one place they matter most and the one place nobody is
+    // sitting there to press a button — so it refreshes itself, time-boxed, and
+    // sends whatever is already cached if the model is slow or down.
+    const { ensureRowNotes } = await import("./receivables-row-notes");
+    const receivables = await ensureRowNotes(rawReceivables);
     const stamp = data.toYmd;
     const attachments = [
       {

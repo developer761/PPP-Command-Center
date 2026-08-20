@@ -49,7 +49,9 @@ describe("receivablesCsv", () => {
   it("writes Mary's columns in her order", () => {
     const csv = receivablesCsv(report([row({})]));
     expect(csv.split("\r\n")[0]).toBe(
-      '"Job","GC","Type","Reference","Billed / open","Status","Notes"'
+      // Mary's order, plus the AI read as its OWN column — never merged into
+      // hers, because a spreadsheet has no italics to tell them apart with.
+      '"Job","GC","Type","Reference","Billed / open","Status","Notes","✦ AI read"'
     );
   });
 
