@@ -237,14 +237,20 @@ function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPd
 
         {alternates.length > 0 ? (
           <View>
-            <Text style={styles.h2}>Alternates</Text>
+            {/* Tomco's own Work Order says "Add Alternate:", and so does our
+                proposal ("ADD ALTERNATE: $X"). This document is read beside
+                both — a crew shouldn't have to work out that "Alternates" is
+                the same section. */}
+            <Text style={styles.h2}>Add Alternate</Text>
             <ScopeList lines={alternates} />
           </View>
         ) : null}
 
         {exclusions.length > 0 ? (
           <View>
-            <Text style={styles.h2}>Exclusions</Text>
+            {/* Their format heads this "Exclusions & Qualifications" — the
+                qualifications are the half a foreman argues from on site. */}
+            <Text style={styles.h2}>Exclusions &amp; Qualifications</Text>
             {exclusions.map((e, i) => (
               <View key={i} style={styles.ex}>
                 <Text style={styles.exBullet}>•</Text>
