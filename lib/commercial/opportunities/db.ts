@@ -198,6 +198,10 @@ export type CommercialOpportunity = {
    *  never by reading this directly. */
   tax_exempt: boolean | null;
   tax_exempt_cert_number: string | null;
+  /** WHY it is exempt — 'certificate' (ST-119.1) or 'capital_improvement'
+   *  (ST-124). `tax_exempt` stays the authoritative "is it taxed"; this is the
+   *  basis, which drives the proposal's NY notice line. Migration 161. */
+  tax_exempt_reason: "certificate" | "capital_improvement" | null;
 };
 
 /**

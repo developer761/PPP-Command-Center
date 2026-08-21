@@ -2456,6 +2456,14 @@ export async function sendProposal(input: {
       lineItems,
       exclusions: exclusionTexts,
       mode: "customer",
+      // Same figure the download shows — one loader, both paths.
+      tax: await (async () => {
+        const { loadProposalTaxLine } = await import("./proposal-tax-load");
+        return loadProposalTaxLine({
+          opportunityId: proposal.opportunity_id,
+          priceCents: proposal.total_cents,
+        });
+      })(),
       // The letterhead footer reads these. Without it the proposal keeps the
       // old hard-coded contact details while every other document updates.
       company: await (async () => {

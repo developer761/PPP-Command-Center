@@ -17,6 +17,7 @@ import * as React from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { ProposalTaxLine } from "./proposal-tax";
 import {
   TOMCO_COMPANY_FOOTER,
   tomcoDefaultIntro,
@@ -402,6 +403,10 @@ const styles = StyleSheet.create({
   signHeading: {
     fontFamily: "Times-Bold",
     marginBottom: 14,
+  },
+  taxLine: {
+    fontSize: 11,
+    lineHeight: 1.5,
   },
   signContact: {
     marginTop: 18,
@@ -1280,6 +1285,29 @@ function InclusionsInternal({
   );
 }
 
+/**
+ * Price / NYS Sales Tax / TOTAL — Stephanie's exact three lines.
+ *
+ * The pre-tax figure is labelled "Price" and not "Subtotal": hers reads
+ * Price, and on a one-number bid "subtotal" implies a list of parts above it
+ * that a narrative proposal does not have. TOTAL keeps whatever variant the
+ * exclusions produced ("Labor Only TOTAL"), because that qualifier still
+ * describes what the money covers once tax is added.
+ */
+function TaxedTotalBlock({ label, tax }: { label: string; tax: ProposalTaxLine }) {
+  return (
+    <View style={styles.totalRow}>
+      <Text style={styles.taxLine}>Price: {formatDollars(tax.priceCents)}</Text>
+      <Text style={styles.taxLine}>
+        {tax.label}: {formatDollars(tax.taxCents)}
+      </Text>
+      <Text style={styles.totalText}>
+        {label}: {formatDollars(tax.totalCents)}
+      </Text>
+    </View>
+  );
+}
+
 function TotalRow({ label, cents }: { label: string; cents: number }) {
   return (
     <View style={styles.totalRow}>
@@ -1488,6 +1516,15 @@ export type RenderProposalArgs = {
    * renders; it falls back to the same literal that used to be there.
    */
   company?: OperatingCompany | null;
+  /**
+   * Sales tax for this job, or null when no line should print.
+   *
+   * Stephanie 2026-08-20: "Sales Tax isn't carrying over to proposal." It had
+   * no tax concept at all — tax first appeared at INVOICE, so a GC signed one
+   * number and was billed a bigger one. Computed by proposal-tax.ts from the
+   * same ZIP + jurisdictions the invoice uses, so the two cannot disagree.
+   */
+  tax?: ProposalTaxLine | null;
 };
 
 export function ProposalPdfDocument({
@@ -1504,6 +1541,7 @@ export function ProposalPdfDocument({
   // needs the sign line.
   showSignatureBlock = false,
   company = null,
+  tax = null,
 }: RenderProposalArgs) {
   // Migration 063 (2026-07-19): labor rows render in their own PDF
   // section between Inclusions and Alternates. Rolls into TOTAL like
@@ -1665,7 +1703,11 @@ export function ProposalPdfDocument({
 
             Flow is now: Scope of Work → TOTAL → Alternate → Exclusions →
             Qualifications → sign-off. */}
-        <TotalRow label={totalLabel} cents={proposal.total_cents} />
+        {tax ? (
+          <TaxedTotalBlock label={totalLabel} tax={tax} />
+        ) : (
+          <TotalRow label={totalLabel} cents={proposal.total_cents} />
+        )}
 
         {/* Katie 2026-08-13: "on the proposal PDF the Alternates should be
             below the final price so that it doesn't look like those items are

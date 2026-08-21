@@ -68,7 +68,16 @@ export async function hydrateProposalContext(
     project_address: projectAddress || undefined,
     // ET calendar date (not UTC) so an evening proposal doesn't stamp tomorrow.
     date_iso: new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }),
-    show_capital_improvement_notice: false,
+    // Stephanie 2026-08-17/20: "add Capital Improvement" to the job's sales-tax
+    // options, and "sales tax isn't carrying over to proposal".
+    //
+    // This was two disconnected controls for one decision: the job's tax
+    // setting decided whether tax was CHARGED, while a checkbox in the
+    // proposal editor decided whether the NY notice was PRINTED. Setting one
+    // never set the other, so a capital-improvement job either billed tax or
+    // went out without the line the State expects. The job now answers it, and
+    // the checkbox stays editable for the proposal that needs to differ.
+    show_capital_improvement_notice: opp.tax_exempt_reason === "capital_improvement",
     // Migration 065 (Phase G Q1): snapshot the deal number ("ALT-0125")
     // into header_json.proposal_number so the PDF LogoBlock renders
     // "No. ALT-0125" under the date — matches Tomco's letterhead

@@ -133,6 +133,15 @@ export async function GET(
       mode,
       showSignatureBlock,
       company: await getOperatingCompany(),
+      tax: await (async () => {
+        const { loadProposalTaxLine } = await import(
+          "@/lib/commercial/proposals/proposal-tax-load"
+        );
+        return loadProposalTaxLine({
+          opportunityId: proposal.opportunity_id,
+          priceCents: proposal.total_cents,
+        });
+      })(),
     });
   } catch (err) {
     // Post-audit fix: log the full error server-side but return an

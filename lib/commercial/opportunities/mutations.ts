@@ -240,6 +240,7 @@ export type UpdateOpportunityInput = Partial<Omit<CreateOpportunityInput, "accou
    *  reads via lib/commercial/tax/exemption.ts, never by hand. */
   tax_exempt?: boolean | null;
   tax_exempt_cert_number?: string | null;
+  tax_exempt_reason?: "certificate" | "capital_improvement" | null;
 };
 
 export async function updateCommercialOpportunity(
@@ -328,6 +329,7 @@ export async function updateCommercialOpportunity(
   // ("inherit"). Collapsing them would make an exempt customer's taxable job
   // impossible to record.
   if (input.tax_exempt !== undefined) patch.tax_exempt = input.tax_exempt;
+  if (input.tax_exempt_reason !== undefined) patch.tax_exempt_reason = input.tax_exempt_reason;
   if (input.tax_exempt_cert_number !== undefined) {
     patch.tax_exempt_cert_number = input.tax_exempt_cert_number?.trim() || null;
   }
