@@ -53,6 +53,24 @@ describe("every role the app offers is permitted by the database", () => {
     }
   });
 
+  // The table this test DIDN'T cover, and therefore the one that stayed broken.
+  //
+  // Migration 136 widened account + opportunity assignments and stopped there.
+  // Settings → Teams builds its dropdown from the same ASSIGNMENT_ROLES, and
+  // commercial_team_members still carried the original seven from migration
+  // 122 — so "Estimator" was refused by Postgres, and the table held zero rows.
+  // Stephanie reported it as "I can't add team members" (2026-08-20).
+  //
+  // Every table whose role column is fed by a picker belongs in this list. A
+  // test that covers two of three tables proves nothing about the third.
+  it("team members — the roster picker uses the same list", () => {
+    const allowed = latestCheckedRoles("commercial_team_members_role_check");
+    expect(allowed.length, "no CHECK constraint found — did the migration move?").toBeGreaterThan(0);
+    for (const role of ASSIGNMENT_ROLES) {
+      expect(allowed, `"${role}" is offered on Settings → Teams but rejected by Postgres`).toContain(role);
+    }
+  });
+
   it("retired roles stay permitted, so existing rows keep validating", () => {
     // Widening must never drop a value already stored — those rows were
     // written legitimately and nobody asked us to touch them.
