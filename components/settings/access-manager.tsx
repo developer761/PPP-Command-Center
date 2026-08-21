@@ -10,6 +10,8 @@ type ManagedUser = {
   full_name: string | null;
   /** Contact number shown on supplier orders this person places (#29). */
   phone: string | null;
+  /** Job title, printed under the name on the proposal sign-off. */
+  title: string | null;
   role: UserRole;
   auth_provider: "google" | "password";
   is_active: boolean;
@@ -349,6 +351,13 @@ function UserRow({
   // Settings → Access", where no such field existed.
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneDraft, setPhoneDraft] = useState(user.phone ?? "");
+  // Title had NO editor anywhere on the platform. Migration 151 added the
+  // column for the proposal sign-off and nothing could write to it, so every
+  // profile read null and the "Lead Estimator, Tomco Painting" line silently
+  // never printed. Same inline treatment as the phone — both are properties of
+  // the person, edited where you look them up, not behind a separate screen.
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(user.title ?? "");
   const initial = (label[0] ?? "?").toUpperCase();
 
   const patch = async (body: Record<string, unknown>, okMsg: string) => {
@@ -385,6 +394,16 @@ function UserRow({
       next ? `${label}'s phone saved — it'll fill in on their supplier orders.` : `${label}'s phone cleared.`
     );
     if (ok) setEditingPhone(false);
+  };
+
+  const saveTitle = async () => {
+    const next = titleDraft.trim();
+    if (next === (user.title ?? "")) { setEditingTitle(false); return; }
+    const ok = await patch(
+      { action: "title", title: next || null },
+      next ? `${label}'s title saved — it'll print on proposals they sign.` : `${label}'s title cleared.`
+    );
+    if (ok) setEditingTitle(false);
   };
 
   const toggleActive = async () => {
@@ -488,6 +507,51 @@ function UserRow({
                   {user.phone
                     ? <>☎ {user.phone}</>
                     : <>☎ Add a phone <span className="text-ppp-charcoal-400 font-normal">— goes on supplier orders they place</span></>}
+                </button>
+              )}
+            </div>
+            {/* Title — the line under the name on a proposal sign-off. */}
+            <div className="mt-1 text-xs">
+              {editingTitle ? (
+                <span className="inline-flex items-center gap-1.5 flex-wrap">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); void saveTitle(); }
+                      if (e.key === "Escape") { setTitleDraft(user.title ?? ""); setEditingTitle(false); }
+                    }}
+                    placeholder="Lead Estimator"
+                    aria-label={`Job title for ${label}`}
+                    className="w-52 rounded border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-xs min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveTitle()}
+                    disabled={busy}
+                    className="rounded bg-ppp-blue-700 px-2.5 py-1 text-xs font-semibold text-white min-h-[44px] sm:min-h-0 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTitleDraft(user.title ?? ""); setEditingTitle(false); }}
+                    className="px-2 py-1 text-xs text-ppp-charcoal-500 min-h-[44px] sm:min-h-0"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingTitle(true)}
+                  className="inline-flex items-center gap-1.5 text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 touch-manipulation"
+                >
+                  {user.title
+                    ? <>🏷 {user.title}</>
+                    : <>🏷 Add a title <span className="text-ppp-charcoal-400 font-normal">— prints under their name when they sign a proposal</span></>}
                 </button>
               )}
             </div>

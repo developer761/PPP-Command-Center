@@ -8,6 +8,7 @@ import {
   setUserActive,
   updateUserRole,
   updateUserPhone,
+  updateUserTitle,
   type ActorMeta,
 } from "@/lib/auth/user-management";
 
@@ -16,6 +17,7 @@ import {
  *   PATCH { action: "role", role }            → change role
  *   PATCH { action: "active", is_active }      → activate / deactivate
  *   PATCH { action: "phone", phone }           → set the contact number used on supplier orders
+ *   PATCH { action: "title", title }           → set the job title printed on the proposal sign-off
  *   PATCH { action: "reset_password", password } → admin-set new password
  *
  * Admin-only. Safety rails (last admin, self-lockout) live in the lib layer.
@@ -84,6 +86,17 @@ export async function PATCH(
     const r = await setUserActive({
       user_id: userId,
       is_active: body.is_active === true,
+      actor: gate.actor,
+    });
+    return r.ok
+      ? NextResponse.json({ ok: true })
+      : NextResponse.json({ error: r.error }, { status: 400 });
+  }
+
+  if (action === "title") {
+    const r = await updateUserTitle({
+      user_id: userId,
+      title: typeof body.title === "string" ? body.title : null,
       actor: gate.actor,
     });
     return r.ok

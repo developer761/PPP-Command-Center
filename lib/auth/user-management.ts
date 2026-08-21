@@ -32,6 +32,11 @@ export type ManagedUser = {
   /** Contact number used as the default "who to call" on supplier orders this
    *  person places (Kate round-3 #29). */
   phone: string | null;
+  /** Job title. Prints under the name on the proposal sign-off — Stephanie's
+   *  layout is "Brendan Dwyer / Lead Estimator, Tomco Painting". Migration 151
+   *  added the column for exactly this and nothing could ever set it, so every
+   *  profile carried null and the line silently never printed. */
+  title: string | null;
   role: UserRole;
   auth_provider: "google" | "password";
   is_active: boolean;
@@ -72,6 +77,7 @@ function mapRow(row: Record<string, unknown>): ManagedUser {
     email: String(row.email ?? ""),
     full_name: (row.full_name as string | null) ?? (row.sf_user_name as string | null) ?? null,
     phone: (row.phone as string | null) ?? null,
+    title: (row.title as string | null) ?? null,
     role: normalizeRole((row.role as string | null) ?? null, row.is_admin === true),
     auth_provider: provider,
     is_active: row.is_active !== false,
@@ -90,7 +96,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "user_id,email,full_name,sf_user_name,phone,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
+      "user_id,email,full_name,sf_user_name,phone,title,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
     )
     .order("created_at", { ascending: false });
   if (error) {
@@ -122,7 +128,7 @@ async function getRow(userId: string): Promise<ManagedUser | null> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "user_id,email,full_name,sf_user_name,phone,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
+      "user_id,email,full_name,sf_user_name,phone,title,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -464,6 +470,36 @@ export async function setUserActive(input: {
  * passwords work here, because the number is operational (it goes on purchase
  * orders) rather than personal preference.
  */
+export async function updateUserTitle(input: {
+  user_id: string;
+  title: string | null;
+  actor: ActorMeta;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const title = input.title?.trim() || null;
+  // Same reasoning as the phone: it is a human-readable string printed on a
+  // document, not something we parse. Just bound it.
+  if (title && title.length > 80) {
+    return { ok: false, error: "That title is too long." };
+  }
+  const sb = adminClient();
+  const { error } = await sb.from("profiles").update({ title }).eq("user_id", input.user_id);
+  if (error) {
+    if (/column .*title.* does not exist/i.test(error.message) || (error as { code?: string }).code === "42703") {
+      return { ok: false, error: "Title storage isn't set up yet — migration 151 hasn't been applied." };
+    }
+    return { ok: false, error: error.message };
+  }
+  invalidateProfileCache(input.user_id);
+  await audit({
+    actor: input.actor,
+    action: "update_title",
+    target_user_id: input.user_id,
+    target_email: null,
+    detail: { title_set: !!title },
+  });
+  return { ok: true };
+}
+
 export async function updateUserPhone(input: {
   user_id: string;
   phone: string | null;
