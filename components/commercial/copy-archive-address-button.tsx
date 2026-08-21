@@ -55,7 +55,17 @@ export default function CopyArchiveAddressButton({
         type="button"
         onClick={onCopy}
         aria-label={`Copy archive address ${address}`}
-        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue transition-colors touch-manipulation min-h-[44px] shrink-0"
+        /* Karan's notes, 2026-08-21: "Commercial's one blue site
+           (copy-archive-address-button.tsx:58) is genuinely still untouched and
+           needs routing."
+
+           It already had navy-on-brand-fill, but its STATES ran backwards:
+           5.33:1 at rest, 7.14:1 on hover, then back to 5.33:1 on press. The
+           pattern the rest of the platform settled on is contrast that IMPROVES
+           as you press, so the moment your finger is over the button is not the
+           moment it gets hardest to read. Active now continues up the same
+           ramp: 5.33 → 7.14 → 8.91. */
+        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue-200 transition-colors touch-manipulation min-h-[44px] shrink-0"
       >
         <svg
           width="16"
