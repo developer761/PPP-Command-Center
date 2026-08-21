@@ -35,7 +35,7 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       title={isDark ? "Light mode" : "Dark mode"}
-      className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 hover:text-cc-brand-700 hover:border-cc-brand-300 hover:bg-cc-brand-50 transition-colors touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+      className="inline-flex items-center justify-center h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 hover:text-cc-brand-700 hover:border-cc-brand-300 hover:bg-cc-brand-50 transition-colors touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
     >
       {isDark ? (
         // Sun

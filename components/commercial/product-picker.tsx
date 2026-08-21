@@ -379,7 +379,7 @@ export default function ProductPicker({
                 type="button"
                 onClick={clearPick}
                 aria-label="Clear picked product"
-                className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 inline-flex items-center justify-center rounded-md text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40"
+                className="absolute right-2 top-1/2 -translate-y-1/2 h-11 w-11 sm:h-8 sm:w-8 touch-manipulation inline-flex items-center justify-center rounded-md text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M6 6l12 12 M18 6l-12 12" />

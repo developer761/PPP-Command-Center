@@ -122,7 +122,7 @@ export function SavedViewPicker({
               <Link
                 href={c.removeHref}
                 aria-label={`Remove filter: ${c.label}`}
-                className="inline-flex items-center justify-center h-9 w-9 sm:h-6 sm:w-6 rounded-full hover:bg-cc-brand-100 text-cc-brand-700"
+                className="inline-flex items-center justify-center h-11 w-11 sm:h-6 sm:w-6 rounded-full hover:bg-cc-brand-100 text-cc-brand-700 touch-manipulation"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
                   <path d="M18 6 6 18M6 6l12 12" />

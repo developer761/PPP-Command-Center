@@ -461,7 +461,7 @@ export function ProposalDnDCard({
           (no hover to reveal it), fades in on hover for pointer users. */}
       <details className="absolute top-1 right-1 z-20 sm:opacity-0 sm:group-hover/card:opacity-100 sm:focus-within:opacity-100 transition-opacity">
         <summary
-          className="list-none cursor-pointer select-none inline-flex items-center justify-center h-7 min-w-[28px] px-1.5 rounded-md border border-ppp-charcoal-200 bg-surface/95 backdrop-blur text-[10px] font-bold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 shadow-sm"
+          className="list-none cursor-pointer select-none inline-flex items-center justify-center h-11 sm:h-7 min-w-[44px] sm:min-w-[28px] px-1.5 touch-manipulation rounded-md border border-ppp-charcoal-200 bg-surface/95 backdrop-blur text-[10px] font-bold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 shadow-sm"
           aria-label="Move this proposal to another column"
           title="Move to…"
         >

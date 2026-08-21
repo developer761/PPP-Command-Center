@@ -679,7 +679,7 @@ function ProposalCard({
             }
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center w-5 h-5 rounded text-ppp-charcoal-400 hover:text-cc-brand-700 hover:bg-cc-brand-50"
+            className="inline-flex items-center justify-center w-11 h-11 sm:w-5 sm:h-5 rounded text-ppp-charcoal-400 hover:text-cc-brand-700 hover:bg-cc-brand-50 touch-manipulation"
             title="Open the GC copy (PDF) in a new tab"
             aria-label={`Open PDF for revision ${row.revision_number}`}
           >
