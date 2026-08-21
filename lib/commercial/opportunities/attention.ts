@@ -548,6 +548,21 @@ export function sensibleNextStatuses(status: string, sub: string | null): string
       return ["billing"];
     case "billing":
       return ["post_sale_closed"];
+    case "post_sale_closed":
+      // Stephanie 2026-08-20: "I need to be able to change the status of the
+      // job after it has been marked as completed, there are many times when
+      // we think we are done and they call us back, sometimes months later,
+      // and we have to reopen the job."
+      //
+      // It was always possible — the DAG allows every move out of closed and
+      // the writer already nulls closed_out_at on the way out ("// reopened").
+      // But this returned [] for closed jobs, so the only route was the "show
+      // every status" disclosure, which exists for rare corrections and warns
+      // that the move is unusual. Being called back to a finished job is not
+      // unusual in painting; it is the punch-list, and it happens on a normal
+      // week. Back to In Progress: the crew is returning to site, and billing
+      // follows from there the same way it did the first time.
+      return ["in_progress"];
     default:
       return [];
   }

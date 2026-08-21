@@ -209,8 +209,86 @@ export function AiaLineRow({
 
   const moneyCls = (f: MoneyField) => `${invalid[f] ? CELL_BAD : CELL_OK} text-right tabular-nums`;
 
+  /**
+   * Arrow-key movement across the grid.
+   *
+   * Stephanie 2026-08-20: "Can you add the arrow keys to move between cells on
+   * the AIA instead of having to move my hand from the keyboard to get to the
+   * cell I want to change or tabbing through?"
+   *
+   * She is filling a column of numbers down a requisition. Tab walks ACROSS,
+   * so reaching the next value in the same column means six tabs or the mouse.
+   *
+   * Two rules make this feel like a spreadsheet rather than a trap:
+   *
+   *  - Up/Down move to the SAME COLUMN in the row above/below. Enter does the
+   *    same, which is what a decade of spreadsheets has trained into anyone
+   *    entering figures. The row saves on the way out because focus leaves it,
+   *    which the existing onBlurCapture already handles.
+   *  - Left/Right ONLY change cell when the caret is already at the end of the
+   *    text. Otherwise they move the caret, because a cell you cannot arrow
+   *    through to fix a typo is worse than one you have to tab out of.
+   */
+  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const el = e.target as HTMLElement;
+    if (el.tagName !== "INPUT") return;
+    const input = el as HTMLInputElement;
+    if (input.type === "hidden") return;
+
+    const row = rowRef.current;
+    if (!row) return;
+    const cells = Array.from(
+      row.querySelectorAll<HTMLInputElement>('input:not([type="hidden"])')
+    );
+    const col = cells.indexOf(input);
+    if (col === -1) return;
+
+    const horizontal = e.key === "ArrowLeft" || e.key === "ArrowRight";
+    if (horizontal) {
+      // A collapsed caret sitting at the edge of the value is the only time
+      // the keypress isn't already meaningful inside the field.
+      const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+      const end = input.value.length;
+      const atEnd = input.selectionStart === end && input.selectionEnd === end;
+      if (e.key === "ArrowLeft" && !atStart) return;
+      if (e.key === "ArrowRight" && !atEnd) return;
+      const next = cells[col + (e.key === "ArrowRight" ? 1 : -1)];
+      if (!next) return; // first/last cell — let the row boundary hold
+      e.preventDefault();
+      next.focus();
+      next.select();
+      return;
+    }
+
+    const down = e.key === "ArrowDown" || e.key === "Enter";
+    const up = e.key === "ArrowUp";
+    if (!down && !up) return;
+
+    // Sibling rows are separate component instances, so this walks the DOM
+    // rather than any shared state.
+    const grid = row.parentElement;
+    if (!grid) return;
+    const rows = Array.from(grid.querySelectorAll<HTMLElement>("[data-aia-row]"));
+    const here = rows.indexOf(row);
+    const target = rows[here + (down ? 1 : -1)];
+    if (!target) {
+      // Enter on the last row still commits, rather than submitting a form or
+      // doing nothing at all.
+      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      return;
+    }
+    const targetCells = Array.from(
+      target.querySelectorAll<HTMLInputElement>('input:not([type="hidden"])')
+    );
+    const dest = targetCells[col];
+    if (!dest) return;
+    e.preventDefault();
+    dest.focus();
+    dest.select();
+  }
+
   return (
-    <div ref={rowRef} onBlur={onBlurCapture} className={`${gridCls} relative`}>
+    <div ref={rowRef} data-aia-row onBlur={onBlurCapture} onKeyDown={onKeyDown} className={`${gridCls} relative`}>
       <input aria-label="Item number" value={vals.item_no} onChange={(e) => set("item_no", e.target.value)} className={CELL_OK} />
       <input aria-label="Description" value={vals.description} maxLength={500} onChange={(e) => set("description", e.target.value)} className={CELL_OK} />
       <input aria-label="Scheduled value" inputMode="decimal" value={vals.scheduled} onChange={(e) => set("scheduled", e.target.value)} className={moneyCls("scheduled")} aria-invalid={invalid.scheduled} />
