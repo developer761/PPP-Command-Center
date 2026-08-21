@@ -45,6 +45,10 @@ export type AiaApplication = {
   net_change_orders_frozen_cents: number | null;
   frozen_at: string | null;
   retainage_pct: number;
+  /** This is the Application for Final Payment — it releases held retainage.
+   *  retainage_pct is 0 on it, so G702 line 8 comes out as the retainage held.
+   *  Migration 162. */
+  is_retainage_release: boolean;
   status: AiaApplicationStatus;
   notes: string | null;
   created_by_user_id: string | null;
@@ -146,6 +150,9 @@ export type CreateAiaApplicationInput = {
   retainage_pct?: number;
   period_from?: string | null;
   period_to?: string | null;
+  /** Create the retainage-release (final payment) application. Forces
+   *  retainage_pct to 0 — that zero IS the release. */
+  is_retainage_release?: boolean;
   created_by_user_id: string;
 };
 
@@ -184,8 +191,14 @@ export async function createAiaApplication(
       : row.bid_value_low_cents ?? row.bid_value_high_cents ?? 0;
   const contractWasDefaulted = input.original_contract_cents == null;
   const original = Math.max(0, Math.round(input.original_contract_cents ?? bidMid));
-  const retainage =
-    typeof input.retainage_pct === "number" && input.retainage_pct >= 0 && input.retainage_pct <= 100
+  const isRelease = input.is_retainage_release === true;
+  // On the release application the zero is the whole point: line 5 drops to
+  // nothing, so line 6 becomes the full contract and line 8 comes out as
+  // exactly the retainage that was held. A caller-supplied percentage here
+  // would quietly hold some of it back again.
+  const retainage = isRelease
+    ? 0
+    : typeof input.retainage_pct === "number" && input.retainage_pct >= 0 && input.retainage_pct <= 100
       ? input.retainage_pct
       : DEFAULT_RETAINAGE_PCT;
 
@@ -206,6 +219,7 @@ export async function createAiaApplication(
         application_number,
         original_contract_cents: original,
         retainage_pct: retainage,
+        is_retainage_release: isRelease,
         period_from: input.period_from ?? null,
         period_to: input.period_to ?? null,
         status: "draft",
@@ -615,9 +629,8 @@ export async function updateAiaApplication(
   // Block a status DOWNGRADE when a later application carries this one forward:
   // reopening a certified period would over-bill the next application.
   if (patch.status !== undefined && STATUS_RANK[patch.status] < STATUS_RANK[before.status]) {
-    if (await laterApplicationExists(before.opportunity_id, before.application_number)) {
-      return { ok: false, error: "A later application depends on this one — delete the later drafts before reopening it." };
-    }
+    const later = await laterApplication(before.opportunity_id, before.application_number);
+    if (later) return { ok: false, error: blockedByLaterMessage(later) };
   }
   const next: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -722,17 +735,45 @@ const STATUS_RANK: Record<AiaApplicationStatus, number> = { draft: 0, submitted:
 
 /** True when a live application with a HIGHER number exists on the project —
  *  i.e. a later period may carry this one forward as a previous certificate. */
-async function laterApplicationExists(opportunityId: string, applicationNumber: number): Promise<boolean> {
+/**
+ * The next application that carries this one forward, if any.
+ *
+ * Returns the ROW, not a boolean, because the caller has to name it.
+ *
+ * Stephanie 2026-08-17: "Can we add an option to edit or delete an AIA after
+ * another AIA was sent?" Reopening the LATEST application has always worked —
+ * nothing carries forward from it. What she hit was an earlier one, where the
+ * refusal read "delete the later drafts before reopening it". If the later
+ * application is SUBMITTED rather than draft, that instruction is impossible:
+ * submitted applications cannot be deleted either. A message that tells you to
+ * do something you cannot do is a dead end, and it reads as the feature being
+ * missing rather than ordered.
+ */
+async function laterApplication(
+  opportunityId: string,
+  applicationNumber: number
+): Promise<{ application_number: number; status: AiaApplicationStatus } | null> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_aia_applications")
-    .select("id")
+    .select("application_number, status")
     .eq("opportunity_id", opportunityId)
     .gt("application_number", applicationNumber)
     .is("deleted_at", null)
+    // The one immediately after is the one that carries this forward, and the
+    // one she has to deal with first.
+    .order("application_number", { ascending: true })
     .limit(1)
-    .maybeSingle();
-  return !!data;
+    .maybeSingle<{ application_number: number; status: AiaApplicationStatus }>();
+  return data ?? null;
+}
+
+/** Why an application can't be reopened yet, in the order she has to work. */
+function blockedByLaterMessage(later: { application_number: number; status: AiaApplicationStatus }): string {
+  const no = `Application No. ${later.application_number}`;
+  return later.status === "draft"
+    ? `${no} comes after this one and carries it forward. Delete ${no} first, then reopen this one.`
+    : `${no} comes after this one and carries it forward. Reopen ${no} to Draft first, then work backwards — an application can only be changed once nothing later depends on it.`;
 }
 
 export async function deleteAiaApplication(id: string, userId: string): Promise<Result<true>> {
@@ -741,7 +782,15 @@ export async function deleteAiaApplication(id: string, userId: string): Promise<
   // Only a DRAFT can be deleted — an issued certificate has been sent to the GC
   // and (unless it's the last one) a later application carries it forward.
   if (before.status !== "draft") {
-    return { ok: false, error: "Issued applications can't be deleted. Reopen to Draft first (only possible if no later application depends on it)." };
+    // Say which of the two situations this is, rather than one message that
+    // covers both and answers neither.
+    const later = await laterApplication(before.opportunity_id, before.application_number);
+    return {
+      ok: false,
+      error: later
+        ? blockedByLaterMessage(later)
+        : "This application has been issued. Mark it Draft first, then delete it.",
+    };
   }
   const sb = commercialDb();
   const { error } = await sb

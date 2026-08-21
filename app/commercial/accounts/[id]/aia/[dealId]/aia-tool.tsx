@@ -117,6 +117,47 @@ async function createApplicationAction(formData: FormData) {
   redirect(`${base(id, dealId, origin, from)}&app=${result.value.id}${backQ(back)}`);
 }
 
+/**
+ * Bill the retainage — the Application for Final Payment.
+ *
+ * Stephanie 2026-08-17: "we need to bill for the retainage, they always pay it
+ * separately and months after the job is finished."
+ *
+ * It is an ordinary application with retainage at 0%, which is what a G702
+ * final payment IS: the schedule of values carries forward untouched, line 5
+ * drops to nothing, and line 8 comes out as exactly the retainage held. Same
+ * math, same carry-forward, no second money path to reconcile.
+ */
+async function billRetainageAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId))) redirect("/commercial/accounts");
+  const result = await createAiaApplication({
+    opportunity_id: dealId,
+    is_retainage_release: true,
+    // Retainage is released months later, so the period ends today rather than
+    // inheriting whenever the last requisition closed.
+    period_to: toEtNoon(new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })),
+    created_by_user_id: userId,
+  });
+  if (!result.ok) {
+    // The unique index is the backstop for a double-click or two people at
+    // once; say what happened rather than surfacing a Postgres error.
+    const msg = /one_retainage_release|duplicate key/i.test(result.error)
+      ? "The retainage has already been billed on this job."
+      : result.error;
+    redirect(`${base(id, dealId, origin, from)}&error=${encodeURIComponent(msg)}${backQ(back)}`);
+  }
+  revalidateAia(id, dealId);
+  redirect(`${base(id, dealId, origin, from)}&app=${result.value.id}${backQ(back)}`);
+}
+
 async function updateApplicationAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
@@ -572,6 +613,9 @@ async function AiaApplicationList({
   const awaitingPayment = applications.filter((a) => a.status === "submitted");
   const fullyBilled =
     contractToDateCents != null && contractToDateCents > 0 && completedToDateCents >= contractToDateCents;
+  // The retainage release (Application for Final Payment). One per job — see
+  // the unique index in migration 162.
+  const releaseApp = applications.find((a) => a.is_retainage_release) ?? null;
   const nextStep: { text: string; tone: "todo" | "active" | "done" } =
     applications.length === 0
       ? { text: "Start Application No. 1 for the first billing period.", tone: "todo" }
@@ -579,8 +623,12 @@ async function AiaApplicationList({
       ? { text: `Application No. ${draftApp.application_number} is still a draft — enter this period's work, then submit it to the GC.`, tone: "active" }
       : awaitingPayment.length > 0
       ? { text: `${awaitingPayment.length === 1 ? `Application No. ${awaitingPayment[0].application_number} is` : `${awaitingPayment.length} applications are`} with the GC. Record the payment when it arrives.`, tone: "active" }
+      : fullyBilled && !releaseApp
+      // This used to read "Retainage is released at close-out" — describing
+      // something the platform could not do. There is a button for it now.
+      ? { text: "Fully billed. The retainage is still held — bill it when the GC is ready to release it.", tone: "todo" }
       : fullyBilled
-      ? { text: "Fully billed. Retainage is released at close-out.", tone: "done" }
+      ? { text: "Fully billed and the retainage has been billed. Nothing further to requisition.", tone: "done" }
       : { text: "Everything so far is paid. Start the next application when the period closes.", tone: "todo" };
 
   const billedCents = billing?.billedCents ?? completedToDateCents;
@@ -721,6 +769,11 @@ async function AiaApplicationList({
                     <span className="min-w-0">
                       <span className="text-[13px] font-semibold text-ppp-charcoal">
                         Application No. {a.application_number}
+                        {a.is_retainage_release && (
+                          <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wide align-middle">
+                            Retainage
+                          </span>
+                        )}
                       </span>
                       <span className="block text-[11px] text-ppp-charcoal-500">
                         {a.period_to ? `Period to ${fmtEtDate(a.period_to)}` : "No period set"}
@@ -773,6 +826,40 @@ async function AiaApplicationList({
             </PendingSubmitButton>
           </form>
         </details>
+
+        {/* Bill the retainage — Stephanie 2026-08-17: "they always pay it
+            separately and months after the job is finished."
+
+            Only once there IS retainage held and it hasn't been released, so
+            this is absent on a job with no retainage and disappears the moment
+            it is billed. It is a separate control rather than a checkbox on
+            the form above because it takes no inputs: the period is today and
+            the percentage is necessarily zero. */}
+        {retainageHeldCents > 0 && !releaseApp && (
+          <form action={billRetainageAction} className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
+            <input type="hidden" name="account_id" value={id} />
+            <input type="hidden" name="opp_id" value={dealId} />
+            <input type="hidden" name="back" value={back} />
+            <input type="hidden" name="from" value={from} />
+            <input type="hidden" name="origin" value={origin} />
+            <div className="flex-1 min-w-0">
+              <div className="text-[12.5px] font-semibold text-ppp-charcoal">
+                Retainage held: {formatCentsFull(retainageHeldCents)}
+              </div>
+              <p className="text-[11.5px] text-ppp-charcoal-600 mt-0.5">
+                Bills it as the Application for Final Payment — the schedule of values carries
+                forward, retainage drops to 0%, and the payment due comes out as the amount held.
+              </p>
+            </div>
+            <ConfirmSubmitButton
+              message="Create the Application for Final Payment to bill the held retainage?"
+              pendingLabel="Creating…"
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-600 text-white text-[12px] font-semibold hover:bg-amber-700 min-h-[44px] shrink-0"
+            >
+              Bill the retainage
+            </ConfirmSubmitButton>
+          </form>
+        )}
       </section>
     </div>
   );

@@ -189,7 +189,13 @@ export function AiaApplicationDetail({
       {/* ── G702 summary ── */}
       <section className="bg-gradient-to-br from-cc-brand-50/40 to-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3 mb-2">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Application No. {application.application_number} — Certificate (G702)</h2>
+          <h2 className="text-sm font-bold text-ppp-charcoal">
+            Application No. {application.application_number} —{" "}
+            {/* The release is a different document in substance: retainage at
+                0%, payment due = the amount held. Calling it "Certificate
+                (G702)" like every other one hides that from whoever opens it. */}
+            {application.is_retainage_release ? "Final Payment · Retainage Release (G702)" : "Certificate (G702)"}
+          </h2>
           {pct != null && <span className="text-[11px] font-semibold text-ppp-charcoal-500">{pct}% complete</span>}
         </div>
         <div className="grid sm:grid-cols-2 sm:gap-x-8">
