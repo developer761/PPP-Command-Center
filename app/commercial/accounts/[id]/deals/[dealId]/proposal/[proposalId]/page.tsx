@@ -19,6 +19,7 @@
  */
 
 import { flashMessage } from "@/lib/commercial/flash";
+import { columnsToTaxChoice } from "@/lib/commercial/tax/exemption";
 import { makeCarries, FIELDS_INPUT_NAME, fieldsFor } from "@/lib/commercial/proposals/form-fields";
 import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";
@@ -400,6 +401,53 @@ async function saveProposalAction(formData: FormData) {
  *  possible write, it is already proven, and collapsing two working paths
  *  into one to save a few lines is how a rename starts touching fields it
  *  has no business touching. */
+/**
+ * Set the JOB's sales-tax treatment from inside the proposal editor.
+ *
+ * Stephanie 2026-08-20: "why am I only able to change sales tax options after
+ * the proposal has been created. Sales tax should be an option on the proposal
+ * not just on the opportunity overview."
+ *
+ * It writes the OPPORTUNITY, not the proposal — deliberately. Tax follows the
+ * job (her own earlier rule: "tax exemption follows opportunity not account"),
+ * and the invoice, the change orders and the AIA all read it from there. A
+ * proposal-local copy would let a proposal promise one treatment while the
+ * invoice charged another, which is the drift this whole area already suffers
+ * from. So this is the same setting, reachable from where she is working
+ * instead of two pages away.
+ */
+async function setJobTaxFromProposalAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  const { updateCommercialOpportunity } = await import(
+    "@/lib/commercial/opportunities/mutations"
+  );
+  const { taxChoiceToColumns } = await import("@/lib/commercial/tax/exemption");
+  const result = await updateCommercialOpportunity({
+    id: dealId,
+    ...taxChoiceToColumns(
+      String(formData.get("tax_exempt") ?? "inherit"),
+      String(formData.get("tax_exempt_cert_number") ?? "")
+    ),
+    updated_by_user_id: userId,
+  });
+  // The PDF's tax line and the yellow NY notice both read the job, so the
+  // proposal surfaces have to re-render, not just the opportunity.
+  revalidatePath(`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`);
+  revalidatePath(`/commercial/opportunities/${dealId}`);
+  redirect(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?${
+      result.ok ? "tax_ok=1" : `error=${encodeURIComponent("Couldn't save the tax setting.")}`
+    }`
+  );
+}
+
 async function renameProposalAction(formData: FormData) {
   "use server";
   const userId = await requireAuthed();
@@ -1888,11 +1936,50 @@ export default async function ProposalEditorPage({
               </div>
             </div>
 
-            {/* Capital-improvement banner toggle */}
+            {/* Capital-improvement banner toggle. Defaults from the job's tax
+                treatment now — picking "Capital improvement" below ticks it. */}
             <label className="flex items-center gap-2.5 rounded-lg border border-amber-200 bg-amber-50/50 px-3.5 py-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
               <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? false} className="w-4 h-4 accent-amber-600" />
               <span className="text-[12.5px] text-ppp-charcoal-700">Show yellow &ldquo;Capital Improvement / NY Sales Tax&rdquo; banner on the PDF</span>
             </label>
+          </div>
+        </EditorSection>
+
+        {/* Sales tax — Stephanie 2026-08-20: "Sales tax should be an option on
+            the proposal not just on the opportunity overview." Same setting as
+            the job's, edited here; a proposal-local copy would let the proposal
+            promise one treatment while the invoice charged another. */}
+        <EditorSection title="Sales tax" subtitle="Applies to this job everywhere — proposal, invoices, change orders.">
+          <div className="space-y-3">
+            <form action={setJobTaxFromProposalAction} className="space-y-2.5">
+              <input type="hidden" name="account_id" value={accountId} />
+              <input type="hidden" name="deal_id" value={dealId} />
+              <input type="hidden" name="proposal_id" value={proposal.id} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <label className="block">
+                  <span className={LABEL_CLS}>Treatment</span>
+                  <select name="tax_exempt" defaultValue={columnsToTaxChoice(opp)} className={INPUT_CLS}>
+                    <option value="inherit">Follow the customer{account?.tax_exempt ? " (exempt)" : " (taxable)"}</option>
+                    <option value="exempt">Exempt — certificate on file</option>
+                    <option value="capital_improvement">Capital improvement — no tax (ST-124)</option>
+                    <option value="taxable">Taxable — this job only</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className={LABEL_CLS}>Certificate no. <span className="font-normal text-ppp-charcoal-400">(certificate exemptions only)</span></span>
+                  <input type="text" name="tax_exempt_cert_number" maxLength={60} defaultValue={opp.tax_exempt_cert_number ?? ""} className={INPUT_CLS} />
+                </label>
+              </div>
+              <SubmitButton
+                pendingLabel="Saving…"
+                className="inline-flex items-center px-3 min-h-[40px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-navy-900"
+              >
+                Save tax setting
+              </SubmitButton>
+              <p className="text-[11px] text-ppp-charcoal-500">
+                When tax applies, the PDF prints Price, NYS Sales Tax and TOTAL. The rate comes from the job&rsquo;s site ZIP — the same one the invoice uses.
+              </p>
+            </form>
           </div>
         </EditorSection>
 

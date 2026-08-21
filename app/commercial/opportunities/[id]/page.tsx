@@ -70,6 +70,7 @@ import { daysFromTodayEt } from "@/lib/date-et";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
+import { taxChoiceToColumns, columnsToTaxChoice } from "@/lib/commercial/tax/exemption";
 import {
   getEffectiveContractBaseCents,
   retainageHeldForOpportunity,
@@ -589,37 +590,14 @@ async function setOppTaxExemptAction(formData: FormData) {
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
 
-  // Stephanie 2026-08-17: "add Capital Improvement". Four choices now, and the
-  // two exempt ones differ only in WHY — a certificate is the customer's
-  // status (ST-119.1), a capital improvement is the nature of the work
-  // (ST-124). Both charge no tax, so both write tax_exempt = true; the reason
-  // is what the proposal's NY notice reads.
-  const choice = String(formData.get("tax_exempt") ?? "inherit");
-  const tax_exempt =
-    choice === "exempt" || choice === "capital_improvement"
-      ? true
-      : choice === "taxable"
-        ? false
-        : null;
-  const tax_exempt_reason =
-    choice === "capital_improvement"
-      ? ("capital_improvement" as const)
-      : choice === "exempt"
-        ? ("certificate" as const)
-        : null;
+  // One mapping, shared with the proposal editor — see taxChoiceToColumns.
+  const taxCols = taxChoiceToColumns(
+    String(formData.get("tax_exempt") ?? "inherit"),
+    String(formData.get("tax_exempt_cert_number") ?? "")
+  );
   const result = await updateCommercialOpportunity({
     id: opp_id,
-    tax_exempt,
-    tax_exempt_reason,
-    // Clearing the override drops a certificate number that no longer applies
-    // to anything, rather than leaving it attached to an inherited setting.
-    // A capital improvement has no certificate number — it is evidenced by a
-    // signed ST-124 from the customer, not a number we hold. Keeping a stale
-    // one on the record would put it on an invoice that shouldn't cite one.
-    tax_exempt_cert_number:
-      tax_exempt_reason === "certificate"
-        ? String(formData.get("tax_exempt_cert_number") ?? "").trim() || null
-        : null,
+    ...taxCols,
     updated_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -4299,15 +4277,7 @@ async function InfoTab({
             </span>
             <select
               name="tax_exempt"
-              defaultValue={
-                opp.tax_exempt === true
-                  ? opp.tax_exempt_reason === "capital_improvement"
-                    ? "capital_improvement"
-                    : "exempt"
-                  : opp.tax_exempt === false
-                    ? "taxable"
-                    : "inherit"
-              }
+              defaultValue={columnsToTaxChoice(opp)}
               className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[13px] min-h-[44px]"
             >
               <option value="inherit">
