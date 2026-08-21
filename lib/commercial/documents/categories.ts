@@ -23,6 +23,16 @@ export const DOCUMENT_CATEGORIES = [
   // it lives alongside plans/permits/etc. Favorited on create so it
   // pins to the top of the Files tab.
   "proposal",
+  // Stephanie 2026-08-20: "How do I access the estimating report once the
+  // project has been converted after it is won? Please add to files under
+  // documents so we can see the price per item."
+  //
+  // The internal estimator view — per-line quantities, unit prices and bid
+  // notes. Its own category and NOT "proposal", because the two must never be
+  // confused: one is what the GC received, the other shows our pricing
+  // workings. Filed against the deal so it survives the conversion to a
+  // project, which is exactly what she could not reach.
+  "estimate_report",
   // Phase D (2026-08): per-tool document buckets so each delivery tool's docs
   // (uploaded +, later, auto-collected PDFs) group under it in the deal's
   // Project sub-tab AND roll up to the deal Documents tab.
@@ -67,6 +77,7 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "site_photo": return "Site Photo";
     case "correspondence": return "Correspondence";
     case "proposal": return "Proposal";
+    case "estimate_report": return "Estimating Report (internal)";
     case "change_order": return "Change Order";
     case "aia_billing": return "AIA Billing";
     case "submittal": return "Submittal";

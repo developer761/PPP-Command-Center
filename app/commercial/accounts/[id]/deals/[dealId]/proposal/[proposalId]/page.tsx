@@ -35,6 +35,7 @@ import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { listProposalEmailSends } from "@/lib/commercial/proposals/email";
 import { ProposalSendControl } from "@/components/commercial/proposal-send-control";
 import { fmtEtDate, formatCentsFull } from "@/lib/commercial/invoices/format";
+import { resolveProposalExclusionTexts } from "@/lib/commercial/proposals/exclusion-texts";
 import {
   getCommercialOpportunity,
   derivedOppName,
@@ -506,6 +507,78 @@ async function acceptAlternateAction(formData: FormData) {
     res.ok
       ? `/commercial/opportunities/${dealId}?tab=project&sub=change-orders&alt_accepted=1`
       : `${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent(res.error)}`
+  );
+}
+
+/**
+ * File the estimating report into the deal's Documents.
+ *
+ * Stephanie 2026-08-20: "How do I access the estimating report once the project
+ * has been converted after it is won? Please add to files under documents so we
+ * can see the price per item."
+ *
+ * The internal PDF has always been one click away IN THE PROPOSAL EDITOR — but
+ * once a deal is won the work moves to the Project tab, and nobody goes back
+ * into a proposal to find pricing workings. Filing it against the deal puts it
+ * where she looks, and it survives the conversion.
+ *
+ * Its own category, never "proposal": one of those documents is what the GC
+ * received and the other shows our quantities, unit prices and bid notes. They
+ * must not sit in the same bucket where someone could send the wrong one.
+ */
+async function fileEstimateReportAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) redirect("/commercial");
+  const existing = await getProposal(proposalId);
+  if (!existing || existing.opportunity_id !== dealId) notFound();
+
+  const [lineItems, exclusionTexts, company] = await Promise.all([
+    listLineItemsForProposal(proposalId),
+    resolveProposalExclusionTexts(existing),
+    (async () => {
+      const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
+      return getOperatingCompany();
+    })(),
+  ]);
+
+  let pdfBuffer: Buffer;
+  try {
+    const { renderProposalPdf } = await import("@/lib/commercial/proposals/pdf");
+    pdfBuffer = await renderProposalPdf({
+      proposal: existing,
+      lineItems,
+      exclusions: exclusionTexts,
+      // The estimator view — quantities, unit prices, bid notes, watermark.
+      mode: "internal",
+      company,
+    });
+  } catch (err) {
+    console.error("[fileEstimateReport] render failed:", err);
+    redirect(`${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent("Couldn't build the estimating report.")}`);
+  }
+
+  const { uploadDocument } = await import("@/lib/commercial/documents/db");
+  const project = (existing.header_json.project_name ?? "Estimate").replace(/[^A-Za-z0-9._-]+/g, "_");
+  const uploaded = await uploadDocument({
+    parent_type: "opportunity",
+    parent_id: dealId,
+    category: "estimate_report",
+    file_name: `Estimating_Report_${project}_R${existing.revision_number}.pdf`,
+    size_bytes: pdfBuffer.length,
+    mime_type: "application/pdf",
+    notes: `Internal estimating report — R${existing.revision_number}. Shows price per item; not the customer copy.`,
+    data: new Uint8Array(pdfBuffer),
+    uploaded_by_user_id: userId,
+  });
+  revalidatePath(`/commercial/opportunities/${dealId}`);
+  redirect(
+    uploaded.ok
+      ? `/commercial/opportunities/${dealId}?tab=docs&estimate_filed=1`
+      : `${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent(uploaded.error)}`
   );
 }
 
@@ -1417,19 +1490,40 @@ export default async function ProposalEditorPage({
                 </svg>
                 Customer PDF
               </a>
-              {(proposal.status === "draft" ||
-                proposal.status === "pending_approval" ||
-                proposal.status === "approved") && (
-                <a
-                  href={`/api/commercial/proposals/${proposalId}/pdf?mode=internal`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-navy-200 bg-ppp-navy-50 text-ppp-navy-700 text-[12px] font-semibold hover:bg-ppp-navy-100 min-h-[44px] sm:min-h-[36px]"
-                  title="Internal Plan Report — the same proposal PLUS the internal bid notes + per-line prices, for estimator + approver review. Never shown to the GC."
+              {/* Stephanie 2026-08-20: "How do I access the estimating report
+                  once the project has been converted after it is won?"
+
+                  Because this was gated to draft / pending approval / approved
+                  — so it vanished the moment the proposal was SENT, and stayed
+                  gone after the win. The one document showing price per item
+                  disappeared at exactly the point the job started and people
+                  needed to price extras against it.
+
+                  There is no risk in showing it later: it is a link a member of
+                  staff opens, watermarked "internal · not for customer", and
+                  the customer copy is a separate button. */}
+              <a
+                href={`/api/commercial/proposals/${proposalId}/pdf?mode=internal`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-navy-200 bg-ppp-navy-50 text-ppp-navy-700 text-[12px] font-semibold hover:bg-ppp-navy-100 min-h-[44px] sm:min-h-[36px]"
+                title="Internal Plan Report — the same proposal PLUS the internal bid notes + per-line prices, for estimator + approver review. Never shown to the GC."
+              >
+                Plan report
+              </a>
+              {/* …and file a copy against the DEAL, so it is reachable from the
+                  Project tab after conversion without coming back in here. */}
+              <form action={fileEstimateReportAction}>
+                <input type="hidden" name="account_id" value={accountId} />
+                <input type="hidden" name="deal_id" value={dealId} />
+                <input type="hidden" name="proposal_id" value={proposalId} />
+                <SubmitButton
+                  pendingLabel="Filing…"
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-navy-200 bg-surface text-ppp-navy-700 text-[12px] font-semibold hover:bg-ppp-navy-50 min-h-[44px] sm:min-h-[36px]"
                 >
-                  Plan report
-                </a>
-              )}
+                  File to Documents
+                </SubmitButton>
+              </form>
             </>
           )}
           {/* Karan 2026-07-15: "Bump revision" was dev jargon nobody

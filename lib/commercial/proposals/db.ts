@@ -2431,22 +2431,10 @@ export async function sendProposal(input: {
   }
 
   // ── 1. Render PDF + snapshot into Documents ─────────────────────
-  // Resolve exclusion texts in the order Alex saved them so the PDF
-  // matches what the customer PDF button rendered. Merges library
-  // exclusion_ids (ordered) with per-proposal custom_exclusions
-  // (this-proposal-only text, ordered as added).
-  const { listExclusions } = await import("@/lib/commercial/exclusions/db");
-  const allEx = await listExclusions({ activeOnly: false });
-  const byId = new Map(allEx.map((e) => [e.id, e.text] as const));
-  const libraryTexts = proposal.exclusion_ids
-    .map((id) => byId.get(id))
-    .filter((t): t is string => Boolean(t && t.trim()));
-  // Round-3 audit fix: cap custom exclusion text at 500 chars on the
-  // render path so a direct DB write can't blow the PDF layout.
-  const customTexts = (proposal.custom_exclusions ?? [])
-    .filter((t) => t && t.trim())
-    .map((t) => (t.length > 500 ? t.slice(0, 500) + "…" : t));
-  const exclusionTexts = [...libraryTexts, ...customTexts];
+  // One resolver, shared with the PDF download route and the estimating-report
+  // filing, so the archived snapshot can't differ from what the customer saw.
+  const { resolveProposalExclusionTexts } = await import("./exclusion-texts");
+  const exclusionTexts = await resolveProposalExclusionTexts(proposal);
 
   const { renderProposalPdf } = await import("./pdf");
   let pdfBuffer: Buffer;

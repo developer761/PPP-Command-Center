@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveProposalExclusionTexts } from "@/lib/commercial/proposals/exclusion-texts";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 
 import { createClient } from "@/lib/supabase/server";
@@ -93,32 +94,9 @@ export async function GET(
 
   const lineItems = await listLineItemsForProposal(proposalId);
 
-  // Resolve exclusion ids → ordered text list. Preserve the order Alex
-  // saved on the proposal (proposal.exclusion_ids drives the sequence).
-  // F.5: also merge per-proposal one-off `custom_exclusions` (text lines
-  // that don't live in the shared library). Custom lines render AFTER
-  // the library-resolved ones, in the order Alex added them.
-  let libraryTexts: string[] = [];
-  if (proposal.exclusion_ids.length > 0) {
-    const all = await listExclusions({ activeOnly: false });
-    const byId = new Map(all.map((e) => [e.id, e.text] as const));
-    libraryTexts = proposal.exclusion_ids
-      .map((id) => byId.get(id))
-      .filter((t): t is string => Boolean(t && t.trim()));
-    if (libraryTexts.length !== proposal.exclusion_ids.length) {
-      console.warn(
-        `[proposal-pdf] proposal ${proposalId} references ${proposal.exclusion_ids.length} exclusion ids but only ${libraryTexts.length} resolved — some may be soft-deleted.`
-      );
-    }
-  }
-  // Round-3 audit fix: enforce the same 500-char cap on the render
-  // path too — the save action already trims, but a direct DB write
-  // could bypass it. Belt-and-suspenders: cap at render time so a
-  // ~10KB blob can't blow the PDF layout.
-  const customTexts = (proposal.custom_exclusions ?? [])
-    .filter((t) => t && t.trim())
-    .map((t) => (t.length > 500 ? t.slice(0, 500) + "…" : t));
-  const exclusions = [...libraryTexts, ...customTexts];
+  // One resolver, shared with the send path and the estimating-report filing —
+  // see lib/commercial/proposals/exclusion-texts.
+  const exclusions = await resolveProposalExclusionTexts(proposal);
 
   let pdfBuffer: Buffer;
   try {
