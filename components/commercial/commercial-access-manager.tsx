@@ -614,10 +614,14 @@ function UserRow({
               onClick={() => setEditing(true)}
               className="mt-1 inline-flex items-center gap-1.5 text-[11.5px] text-cc-brand-700 hover:underline min-h-[44px] sm:min-h-0 touch-manipulation"
             >
+              {/* Name is in here too, and the label has to say so: Brendan's
+                  profile reads "Brendan" and needs to read "Brendan Dwyer" on
+                  a proposal. A label naming only title and phone gives nobody
+                  a reason to look for the name. */}
               {user.title || user.phone ? (
-                <>✎ {[user.title, user.phone].filter(Boolean).join(" · ")}</>
+                <>✎ {[user.full_name, user.title, user.phone].filter(Boolean).join(" · ")}</>
               ) : (
-                <>✎ Add title &amp; phone <span className="text-ppp-charcoal-400">— they print on proposal sign-offs</span></>
+                <>✎ Set name, title &amp; phone <span className="text-ppp-charcoal-400">— they print on proposal sign-offs</span></>
               )}
             </button>
           )}
