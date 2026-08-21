@@ -190,8 +190,14 @@ describe("sensibleNextStatuses — only the moves with no artifact behind them",
     }
   });
 
-  it("offers nothing once a job is closed out", () => {
-    expect(sensibleNextStatuses("post_sale_closed", "closed")).toEqual([]);
+  // SUPERSEDED 2026-08-21 (Stephanie): this pinned "a closed job is the end of
+  // the line", which was right about the pipeline and wrong about painting.
+  // "There are many times when we think we are done and they call us back,
+  // sometimes months later, and we have to reopen the job." Being called back
+  // is a punch-list, not a correction — so the one move a person actually
+  // makes from Closed is offered, and only that one.
+  it("offers the way back when a finished job gets called back", () => {
+    expect(sensibleNextStatuses("post_sale_closed", "closed")).toEqual(["in_progress"]);
   });
 });
 
