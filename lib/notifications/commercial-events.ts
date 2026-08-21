@@ -260,12 +260,26 @@ async function dispatchCommercialNotification(input: {
       ? null
       : (await getEnabledNotifyEmail(input.recipientUserId)) ?? (input.alwaysEmail ? p.email ?? null : null);
     if (notifyEmail) {
+      // List-Unsubscribe on every notification email. Stephanie 2026-08-17:
+      // "half of them end up in spam/junk." Gmail and Outlook read a
+      // one-click unsubscribe as a sign of a legitimate recurring sender, and
+      // its absence as the opposite — without it the only way to stop the mail
+      // is "report spam", which is precisely the reputation hit that puts the
+      // NEXT message in junk. The link is real: the notification settings page
+      // is where the enabled flag on this address is turned off.
+      const unsubscribeUrl = appendBase("/commercial/settings/notifications");
       const result = await sendEmail({
         to: notifyEmail,
         subject: input.email.subject,
         text: input.email.text,
         html: input.email.html,
         channel: "commercial",
+        headers: {
+          "List-Unsubscribe": `<${unsubscribeUrl}>`,
+          // Tells the mail client the URL is safe to POST to, which is what
+          // makes the native "Unsubscribe" button appear beside the sender.
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
         tags: [{ name: "kind", value: input.kind }],
       });
       if (!result.ok) {

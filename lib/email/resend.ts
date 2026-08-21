@@ -61,6 +61,21 @@ type ResendSendInput = {
    * reputation, and vice versa. Suppression lists stay separate.
    */
   channel?: "customer" | "commercial";
+  /**
+   * Extra SMTP headers. The one that matters is List-Unsubscribe.
+   *
+   * Stephanie 2026-08-17: "half of them end up in spam/junk." Gmail and
+   * Outlook both treat a one-click unsubscribe as a positive signal for
+   * recurring mail and penalise its absence — a sender who makes people hit
+   * "report spam" to stop the mail earns exactly that reputation. Notification
+   * mail sets it; a one-off invoice to a GC does not, because there is nothing
+   * to unsubscribe FROM.
+   *
+   * This is the code-side half only. The bigger half is DNS: the sending
+   * domain needs SPF, DKIM and DMARC published for Resend, or every message
+   * arrives unauthenticated no matter what headers it carries.
+   */
+  headers?: Record<string, string>;
 };
 
 type ResendSendResult =
@@ -143,6 +158,9 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
     // the send, so drop it and deliver immediately instead.
     ...(input.scheduledAt && Date.parse(input.scheduledAt) > Date.now()
       ? { scheduled_at: input.scheduledAt }
+      : {}),
+    ...(input.headers && Object.keys(input.headers).length > 0
+      ? { headers: input.headers }
       : {}),
     tags: finalTags,
   };
