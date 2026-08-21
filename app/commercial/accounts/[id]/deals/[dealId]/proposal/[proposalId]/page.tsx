@@ -268,6 +268,7 @@ async function saveProposalAction(formData: FormData) {
   const altNotes = text("alternate_notes");
   const bidNotes = text("bid_notes");
   const pdfShowPrices = formData.get("pdf_show_line_prices") === "on";
+  const pdfCompact = formData.get("pdf_compact") === "on";
   // R1c: Bid Set date (empty → null). R1b: final price override — blank field
   // means "clear back to the line-item sum" (null), NOT $0; a typed value
   // overrides the total (dollarsInputToCents clamps ≥0).
@@ -341,6 +342,7 @@ async function saveProposalAction(formData: FormData) {
     exclusion_ids: carries("exclusion_ids") ? exclusionIds : undefined,
     custom_exclusions: carries("custom_exclusions") ? customExclusions : undefined,
     pdf_show_line_prices: carries("pdf_show_line_prices") ? pdfShowPrices : undefined,
+    pdf_compact: carries("pdf_compact") ? pdfCompact : undefined,
     final_price_override_cents: finalPriceOverride,
     bid_set_date: bidSetDate,
     updated_by_user_id: userId,
@@ -606,6 +608,7 @@ async function renameProposalAction(formData: FormData) {
     alternate_notes: existing.alternate_notes,
     bid_notes: existing.bid_notes,
     pdf_show_line_prices: existing.pdf_show_line_prices,
+    pdf_compact: existing.pdf_compact,
     updated_by_user_id: userId,
   });
   if (!result.ok) {
@@ -2482,6 +2485,18 @@ export default async function ProposalEditorPage({
             <input type="checkbox" name="pdf_show_line_prices" defaultChecked={proposal.pdf_show_line_prices} className="w-4 h-4 accent-cc-brand-600" />
             <span className="text-[12.5px] text-ppp-charcoal-700">
               Show per-line prices on the customer PDF (Tomco default hides them — customer sees only the TOTAL)
+            </span>
+          </label>
+          {/* Stephanie 2026-08-17: "Can we find a way to put it all on one page
+              or an option to change the format if needed, ie, font size and
+              spacing." Per proposal, not global — most fit at the normal size,
+              and shrinking every document to fix the occasional long one makes
+              them all harder to read. */}
+          <label className="flex items-center gap-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
+            <input type="checkbox" name="pdf_compact" defaultChecked={proposal.pdf_compact} className="w-4 h-4 accent-cc-brand-600" />
+            <span className="text-[12.5px] text-ppp-charcoal-700">
+              Compact — tighter type and spacing to pull a slightly-long proposal back onto one page.
+              <span className="block text-[11.5px] text-ppp-charcoal-500">Nothing is dropped; if it still runs over, the pages are numbered.</span>
             </span>
           </label>
           {/* R1b: adjustable final price. Blank = the line-item sum; a value here

@@ -90,6 +90,9 @@ export type CommercialProposal = {
   /** R1c: Bid Set date shown on the client proposal (null = hidden). */
   bid_set_date: string | null;
   pdf_show_line_prices: boolean;
+  /** Tighter type + spacing so a slightly-long proposal fits fewer pages.
+   *  Typography only — never drops content. Migration 165. */
+  pdf_compact: boolean;
   estimator_snapshot_json: ProposalEstimatorSnapshot;
   status: ProposalStatus;
   sent_at: string | null;
@@ -193,6 +196,7 @@ export type CreateProposalInput = {
   exclusion_ids?: string[];
   custom_exclusions?: string[];
   pdf_show_line_prices?: boolean;
+  pdf_compact?: boolean;
   estimator_snapshot_json?: ProposalEstimatorSnapshot;
   parent_proposal_id?: string | null;
   created_by_user_id?: string | null;
@@ -424,6 +428,7 @@ export async function createProposal(
       exclusion_ids: input.exclusion_ids ?? [],
       custom_exclusions: input.custom_exclusions ?? [],
       pdf_show_line_prices: input.pdf_show_line_prices ?? false,
+      pdf_compact: input.pdf_compact ?? false,
       estimator_snapshot_json: input.estimator_snapshot_json ?? {},
       status: "draft",
       total_cents: 0,
@@ -469,6 +474,7 @@ export type UpdateProposalInput = {
   exclusion_ids?: string[];
   custom_exclusions?: string[];
   pdf_show_line_prices?: boolean;
+  pdf_compact?: boolean;
   /** R1b: null clears back to the line-item sum; a value (cents, ≥0) overrides. */
   final_price_override_cents?: number | null;
   /** R1c: Bid Set date (YYYY-MM-DD) or null. */
@@ -496,6 +502,7 @@ export async function updateProposal(
   if (input.custom_exclusions !== undefined) patch.custom_exclusions = input.custom_exclusions;
   if (input.pdf_show_line_prices !== undefined)
     patch.pdf_show_line_prices = input.pdf_show_line_prices;
+  if (input.pdf_compact !== undefined) patch.pdf_compact = input.pdf_compact;
   if (input.final_price_override_cents !== undefined) {
     const v = input.final_price_override_cents;
     if (v != null && (!Number.isFinite(v) || v < 0)) {

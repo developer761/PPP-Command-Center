@@ -1562,6 +1562,25 @@ export type RenderProposalArgs = {
   tax?: ProposalTaxLine | null;
 };
 
+/**
+ * Compact rendering — Stephanie 2026-08-17: "Can we find a way to put it all on
+ * one page or an option to change the format if needed, ie, font size and
+ * spacing."
+ *
+ * Typography only. It shrinks the body a point and tightens leading and the
+ * page's vertical padding, which is enough to pull most one-line overflows
+ * back. It deliberately does NOT drop sections, shorten bullets or hide the
+ * estimator block: a proposal that quietly omits an exclusion to fit one sheet
+ * is worse than a proposal on two sheets, and page numbers already print when
+ * it runs over.
+ */
+const COMPACT_PAGE = {
+  paddingTop: 64,
+  paddingBottom: 78,
+  fontSize: 10,
+  lineHeight: 1.2,
+} as const;
+
 export function ProposalPdfDocument({
   proposal,
   lineItems,
@@ -1579,6 +1598,7 @@ export function ProposalPdfDocument({
   tax = null,
   qualifications = [],
 }: RenderProposalArgs) {
+  const pageStyle = proposal.pdf_compact ? [styles.page, COMPACT_PAGE] : styles.page;
   // Migration 063 (2026-07-19): labor rows render in their own PDF
   // section between Inclusions and Alternates. Rolls into TOTAL like
   // inclusions (which is why we filter them out of the inclusions
@@ -1637,7 +1657,7 @@ export function ProposalPdfDocument({
       author="Tomco Painting"
       subject={proposal.header_json.project_name ?? "Proposal"}
     >
-      <Page size="LETTER" style={styles.page}>
+      <Page size="LETTER" style={pageStyle}>
         {/* Karan 2026-07-21: subtle NEUTRAL paper texture behind all
             content (first child = furthest back). Gray speckle only —
             never the warm cream that read as "too yellow" before. */}

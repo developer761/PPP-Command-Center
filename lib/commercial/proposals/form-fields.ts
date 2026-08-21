@@ -58,7 +58,7 @@ export const PROPOSAL_FIELD_GROUPS = {
   qualifications: ["alternate_notes"],
   exclusions: ["exclusion_ids", "custom_exclusions"],
   bidNotes: ["bid_notes"],
-  pdfOptions: ["pdf_show_line_prices", "final_price_override"],
+  pdfOptions: ["pdf_show_line_prices", "pdf_compact", "final_price_override"],
   estimator: ["est_name", "est_title", "est_phone", "est_email"],
 } as const;
 
