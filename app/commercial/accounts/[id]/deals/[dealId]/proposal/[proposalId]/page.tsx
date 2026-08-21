@@ -34,7 +34,7 @@ import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { listProposalEmailSends } from "@/lib/commercial/proposals/email";
 import { ProposalSendControl } from "@/components/commercial/proposal-send-control";
-import { fmtEtDate } from "@/lib/commercial/invoices/format";
+import { fmtEtDate, formatCentsFull } from "@/lib/commercial/invoices/format";
 import {
   getCommercialOpportunity,
   derivedOppName,
@@ -445,6 +445,67 @@ async function setJobTaxFromProposalAction(formData: FormData) {
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?${
       result.ok ? "tax_ok=1" : `error=${encodeURIComponent("Couldn't save the tax setting.")}`
     }`
+  );
+}
+
+/**
+ * The customer took an alternate — put it on the contract.
+ *
+ * Stephanie 2026-08-20: "How do I add alternates to the price when billing?
+ * They aren't carrying through or updating the price of the project even though
+ * they show up on the proposal and the work order."
+ *
+ * They deliberately don't roll into the proposal TOTAL — an alternate is an
+ * option the customer has NOT bought, and summing it into the price is exactly
+ * what Katie asked us to stop doing. But when they DO take one, nothing carried
+ * it anywhere, so the job billed at the base price forever.
+ *
+ * It becomes an approved CHANGE ORDER rather than editing the proposal or the
+ * contract ladder. Three reasons:
+ *  - The proposal is a document that was sent. Restating its TOTAL afterwards
+ *    changes what we told the GC we offered.
+ *  - Net approved change orders already flow into contract-to-date, AIA line 2,
+ *    the dashboards and the GC statement, all reconciled against each other.
+ *    A second path into the contract value is a second number to disagree with.
+ *  - It is auditable: the acceptance shows as a dated, titled line rather than
+ *    a total that silently grew.
+ */
+async function acceptAlternateAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  const lineId = String(formData.get("line_id") ?? "");
+  if (![accountId, dealId, proposalId, lineId].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  const existing = await getProposal(proposalId);
+  if (!existing || existing.opportunity_id !== dealId) notFound();
+  const lines = await listLineItemsForProposal(proposalId);
+  const line = lines.find((l) => l.id === lineId && l.is_alternate);
+  if (!line) {
+    redirect(`${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent("That alternate is no longer on this proposal.")}`);
+  }
+  const amount =
+    line.line_total_override_cents ?? Math.round(Number(line.quantity) * line.unit_price_cents);
+  const { createChangeOrder } = await import("@/lib/commercial/change-orders/db");
+  const res = await createChangeOrder({
+    opportunity_id: dealId,
+    title: line.product_name?.trim() || line.description?.trim()?.slice(0, 120) || "Accepted alternate",
+    description: `Alternate accepted from ${existing.header_json.project_name ?? "the proposal"}${
+      line.description ? ` — ${line.description}` : ""
+    }`,
+    amount_cents: amount,
+    proposal_id: proposalId,
+    created_by_user_id: userId,
+  });
+  revalidatePath(`/commercial/opportunities/${dealId}`);
+  revalidatePath(`/commercial/accounts/${accountId}`);
+  redirect(
+    res.ok
+      ? `/commercial/opportunities/${dealId}?tab=project&sub=change-orders&alt_accepted=1`
+      : `${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent(res.error)}`
   );
 }
 
@@ -2096,6 +2157,48 @@ export default async function ProposalEditorPage({
             />
           ) : (
             <ReadOnlyLineItems rows={alternates} />
+          )}
+
+          {/* Accepting an alternate — Stephanie 2026-08-20: "How do I add
+              alternates to the price when billing? They aren't carrying
+              through or updating the price of the project."
+
+              They stay out of the proposal TOTAL on purpose (an option the
+              customer hasn't bought). Taking one puts it on the contract as an
+              approved change order, which is the path already reconciled into
+              contract-to-date, AIA line 2, the dashboards and the GC
+              statement. The proposal itself is left exactly as it was sent. */}
+          {alternates.length > 0 && (
+            <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/50 p-3">
+              <p className="text-[12px] font-semibold text-ppp-charcoal mb-0.5">Customer took one of these?</p>
+              <p className="text-[11.5px] text-ppp-charcoal-600 mb-2.5">
+                Accepting adds it to the contract as a change order, so it bills and shows up in the
+                project total. The proposal stays exactly as it was sent.
+              </p>
+              <div className="space-y-1.5">
+                {alternates.map((alt) => {
+                  const cents = alt.line_total_override_cents ?? Math.round(Number(alt.quantity) * alt.unit_price_cents);
+                  return (
+                    <form action={acceptAlternateAction} key={alt.id} className="flex items-center gap-2 flex-wrap">
+                      <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="deal_id" value={dealId} />
+                      <input type="hidden" name="proposal_id" value={proposalId} />
+                      <input type="hidden" name="line_id" value={alt.id} />
+                      <span className="text-[12.5px] text-ppp-charcoal-700 flex-1 min-w-0 truncate">
+                        {alt.product_name || alt.description || "Alternate"}
+                        <span className="ml-1.5 font-semibold tabular-nums">{formatCentsFull(cents)}</span>
+                      </span>
+                      <SubmitButton
+                        pendingLabel="Adding…"
+                        className="shrink-0 inline-flex items-center px-3 min-h-[40px] rounded-lg border border-cc-brand-300 bg-surface text-cc-brand-700 text-[12px] font-semibold hover:bg-cc-brand-50"
+                      >
+                        Accept &rarr; change order
+                      </SubmitButton>
+                    </form>
+                  );
+                })}
+              </div>
+            </div>
           )}
           {canEditLines && (
             <AddLineItemForm
