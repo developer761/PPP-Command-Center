@@ -12,11 +12,13 @@
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
-import type { ExclusionCategory } from "./constants";
+import type { ExclusionCategory, ExclusionKind } from "./constants";
 
 export type CommercialExclusion = {
   id: string;
   text: string;
+  /** Which PDF section this prints under. Migration 164. */
+  kind: ExclusionKind;
   category: ExclusionCategory;
   is_active: boolean;
   use_count: number;
@@ -31,6 +33,7 @@ export type CommercialExclusion = {
 
 export type CreateExclusionInput = {
   text: string;
+  kind?: ExclusionKind;
   category?: ExclusionCategory;
   is_active?: boolean;
   created_by_user_id?: string | null;
@@ -52,6 +55,7 @@ export async function createExclusion(
     .from("commercial_exclusions")
     .insert({
       text,
+      kind: input.kind ?? "exclusion",
       category: input.category ?? "optional",
       is_active: input.is_active ?? true,
       created_by_user_id: input.created_by_user_id ?? null,
@@ -73,6 +77,7 @@ export async function createExclusion(
 export type UpdateExclusionInput = {
   id: string;
   text?: string;
+  kind?: ExclusionKind;
   category?: ExclusionCategory;
   is_active?: boolean;
   updated_by_user_id?: string | null;
@@ -95,6 +100,7 @@ export async function updateExclusion(
     }
     patch.text = trimmed;
   }
+  if (input.kind !== undefined) patch.kind = input.kind;
   if (input.category !== undefined) patch.category = input.category;
   if (input.is_active !== undefined) patch.is_active = input.is_active;
   const sb = commercialDb();

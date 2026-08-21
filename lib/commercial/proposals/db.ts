@@ -2433,8 +2433,10 @@ export async function sendProposal(input: {
   // ── 1. Render PDF + snapshot into Documents ─────────────────────
   // One resolver, shared with the PDF download route and the estimating-report
   // filing, so the archived snapshot can't differ from what the customer saw.
-  const { resolveProposalExclusionTexts } = await import("./exclusion-texts");
-  const exclusionTexts = await resolveProposalExclusionTexts(proposal);
+  const { resolveProposalExclusions } = await import("./exclusion-texts");
+  const resolvedExclusions = await resolveProposalExclusions(proposal);
+  const exclusionTexts = resolvedExclusions.filter((e) => e.kind === "exclusion").map((e) => e.text);
+  const qualificationTexts = resolvedExclusions.filter((e) => e.kind === "qualification").map((e) => e.text);
 
   const { renderProposalPdf } = await import("./pdf");
   let pdfBuffer: Buffer;
@@ -2443,6 +2445,7 @@ export async function sendProposal(input: {
       proposal,
       lineItems,
       exclusions: exclusionTexts,
+      qualifications: qualificationTexts,
       mode: "customer",
       // Same figure the download shows — one loader, both paths.
       tax: await (async () => {

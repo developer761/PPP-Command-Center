@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveProposalExclusionTexts } from "@/lib/commercial/proposals/exclusion-texts";
+import { resolveProposalExclusions } from "@/lib/commercial/proposals/exclusion-texts";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 
 import { createClient } from "@/lib/supabase/server";
@@ -96,7 +96,9 @@ export async function GET(
 
   // One resolver, shared with the send path and the estimating-report filing —
   // see lib/commercial/proposals/exclusion-texts.
-  const exclusions = await resolveProposalExclusionTexts(proposal);
+  const resolved = await resolveProposalExclusions(proposal);
+  const exclusions = resolved.filter((e) => e.kind === "exclusion").map((e) => e.text);
+  const qualifications = resolved.filter((e) => e.kind === "qualification").map((e) => e.text);
 
   let pdfBuffer: Buffer;
   try {
@@ -108,6 +110,7 @@ export async function GET(
       proposal,
       lineItems,
       exclusions,
+      qualifications,
       mode,
       showSignatureBlock,
       company: await getOperatingCompany(),

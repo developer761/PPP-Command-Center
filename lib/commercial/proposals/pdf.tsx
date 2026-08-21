@@ -1366,6 +1366,29 @@ function AlternateSectionInternal({
   );
 }
 
+/**
+ * Qualifications — its own heading, directly after Exclusions.
+ *
+ * Same bullet grammar as the exclusions above it so the page reads as one
+ * document, but a heading of its own: "Assumes one mobilisation" is a condition
+ * of the price, not something we are refusing to do, and printing it under
+ * "Exclusions:" told a GC the opposite of what was meant.
+ */
+function QualificationsBlock({ qualifications }: { qualifications: string[] }) {
+  if (qualifications.length === 0) return null;
+  return (
+    <View style={{ marginTop: 16 }}>
+      <Text style={styles.sectionUnderlineHeader}>Qualifications:</Text>
+      {qualifications.map((q, i) => (
+        <View key={i} style={styles.bulletRow}>
+          <View style={styles.bulletDot} />
+          <Text style={styles.bulletBody}>{q}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function ExclusionsBlock({ exclusions }: { exclusions: string[] }) {
   if (exclusions.length === 0) return null;
   // Karan 2026-07-19 (round 2 1:1): reference header is just
@@ -1504,6 +1527,18 @@ export type RenderProposalArgs = {
   proposal: CommercialProposal;
   lineItems: CommercialProposalLineItem[];
   exclusions: string[]; // resolved text list (already ordered per Alex)
+  /**
+   * Conditions the price depends on, printed as their own section AFTER
+   * Exclusions (Stephanie 2026-08-17: "Qualifications should be its own section
+   * after exclusions, not grouped in with alternates").
+   *
+   * Separate from `exclusions` rather than folded in, because the two say
+   * different things — one is work we are not doing, the other is what the
+   * price assumes — and because proposalTotalLabel reads the exclusions list to
+   * decide "Labor Only TOTAL". A qualification must not be able to relabel the
+   * total.
+   */
+  qualifications?: string[];
   mode?: ProposalPdfMode;
   showSignatureBlock?: boolean;
   /**
@@ -1542,6 +1577,7 @@ export function ProposalPdfDocument({
   showSignatureBlock = false,
   company = null,
   tax = null,
+  qualifications = [],
 }: RenderProposalArgs) {
   // Migration 063 (2026-07-19): labor rows render in their own PDF
   // section between Inclusions and Alternates. Rolls into TOTAL like
@@ -1732,6 +1768,8 @@ export function ProposalPdfDocument({
         )}
 
         <ExclusionsBlock exclusions={exclusions} />
+
+        <QualificationsBlock qualifications={qualifications} />
 
 
         {/* CIP notice: inline yellow-highlighted bold line above the

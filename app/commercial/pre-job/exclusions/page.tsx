@@ -28,6 +28,7 @@ import {
 import {
   EXCLUSION_CATEGORIES,
   exclusionCategoryLabel,
+  isExclusionKind,
   type ExclusionCategory,
 } from "@/lib/commercial/exclusions/constants";
 import {
@@ -63,8 +64,12 @@ async function createExclusionAction(formData: FormData) {
   }
   const text = String(formData.get("text") ?? "").trim();
   const category = String(formData.get("category") ?? "optional") as ExclusionCategory;
+  // Unknown values fall back to "exclusion" — the section every line printed
+  // under before migration 164, so a bad post can't relocate a line.
+  const kindRaw = String(formData.get("kind") ?? "exclusion");
   const result = await createExclusion({
     text,
+    kind: isExclusionKind(kindRaw) ? kindRaw : "exclusion",
     category,
     created_by_user_id: userId,
   });
@@ -85,9 +90,11 @@ async function updateExclusionAction(formData: FormData) {
   const text = String(formData.get("text") ?? "").trim();
   const category = String(formData.get("category") ?? "optional") as ExclusionCategory;
   const is_active = formData.get("is_active") === "on";
+  const kindRaw = String(formData.get("kind") ?? "exclusion");
   const result = await updateExclusion({
     id,
     text,
+    kind: isExclusionKind(kindRaw) ? kindRaw : "exclusion",
     category,
     is_active,
     updated_by_user_id: userId,
@@ -278,6 +285,22 @@ export default async function ExclusionsLibraryPage({
                 placeholder="e.g. Sales Tax, unless applicable."
                 className={INPUT_CLS}
               />
+            </label>
+            {/* Stephanie 2026-08-17: "Qualifications should be its own section
+                after exclusions." Which section a line prints under is a
+                property of the LINE, so it is set here where the line is
+                maintained rather than per proposal. */}
+            <label>
+              <span className={LABEL_CLS}>Prints under</span>
+              <select
+                name="kind"
+                defaultValue={editing?.kind ?? "exclusion"}
+                className={SELECT_CLS}
+                style={SELECT_BG_STYLE}
+              >
+                <option value="exclusion">Exclusions — work we&rsquo;re not doing</option>
+                <option value="qualification">Qualifications — what the price assumes</option>
+              </select>
             </label>
             <label>
               <span className={LABEL_CLS}>Category</span>

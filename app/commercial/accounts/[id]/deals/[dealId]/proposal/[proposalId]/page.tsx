@@ -35,7 +35,7 @@ import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { listProposalEmailSends } from "@/lib/commercial/proposals/email";
 import { ProposalSendControl } from "@/components/commercial/proposal-send-control";
 import { fmtEtDate, formatCentsFull } from "@/lib/commercial/invoices/format";
-import { resolveProposalExclusionTexts } from "@/lib/commercial/proposals/exclusion-texts";
+import { resolveProposalExclusions } from "@/lib/commercial/proposals/exclusion-texts";
 import {
   getCommercialOpportunity,
   derivedOppName,
@@ -536,9 +536,9 @@ async function fileEstimateReportAction(formData: FormData) {
   const existing = await getProposal(proposalId);
   if (!existing || existing.opportunity_id !== dealId) notFound();
 
-  const [lineItems, exclusionTexts, company] = await Promise.all([
+  const [lineItems, resolvedEx, company] = await Promise.all([
     listLineItemsForProposal(proposalId),
-    resolveProposalExclusionTexts(existing),
+    resolveProposalExclusions(existing),
     (async () => {
       const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
       return getOperatingCompany();
@@ -551,7 +551,8 @@ async function fileEstimateReportAction(formData: FormData) {
     pdfBuffer = await renderProposalPdf({
       proposal: existing,
       lineItems,
-      exclusions: exclusionTexts,
+      exclusions: resolvedEx.filter((e) => e.kind === "exclusion").map((e) => e.text),
+      qualifications: resolvedEx.filter((e) => e.kind === "qualification").map((e) => e.text),
       // The estimator view — quantities, unit prices, bid notes, watermark.
       mode: "internal",
       company,
