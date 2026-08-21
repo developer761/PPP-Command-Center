@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { formatCentsFull } from "@/lib/commercial/invoices/format";
 import { INPUT_CLS } from "@/lib/commercial/form-classnames";
+import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
 import { AIA_STATUS_META, type AiaG702, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
 import type { AiaApplication, AiaLineItem } from "@/lib/commercial/aia/db";
@@ -59,6 +60,7 @@ function G702Line({
 
 export function AiaApplicationDetail({
   application,
+  lienWaiver,
   accountId,
   dealId,
   back = "",
@@ -97,6 +99,8 @@ export function AiaApplicationDetail({
   saveLineAutosaveAction: SaveAction;
   deleteLineAction: Action;
   setStatusAction: Action;
+  /** The signed waiver covering THIS application's payment, if one is filed. */
+  lienWaiver?: { id: string; file_name: string } | null;
   errorMessage?: string | null;
 }) {
   // basePath may already carry a query (the deal Project sub-tab), so append
@@ -229,6 +233,27 @@ export function AiaApplicationDetail({
               </PendingSubmitButton>
             </form>
           ))}
+        </div>
+
+        {/* Lien waiver for THIS application's payment — Stephanie 2026-08-20:
+            "Add lien waiver option to AIA billing just as it is under the
+            invoicing." Same control, same endpoint shape, same storage: the
+            file lands in the deal's Documents tab and the application links to
+            it. Stored, never generated — the GC sends it, we sign and return
+            it, the platform keeps the copy. */}
+        <div className="mt-3">
+          <LienWaiverUpload
+            aiaApplicationId={application.id}
+            hasWaiver={!!lienWaiver}
+            downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
+            fileName={lienWaiver?.file_name ?? null}
+            title={
+              application.is_retainage_release
+                ? "Final lien waiver"
+                : `Lien waiver — Application No. ${application.application_number}`
+            }
+            compact
+          />
         </div>
       </section>
 

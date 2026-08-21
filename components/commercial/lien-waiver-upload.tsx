@@ -13,6 +13,7 @@ export function LienWaiverUpload({
   invoiceId,
   milestoneId,
   paymentId,
+  aiaApplicationId,
   hasWaiver,
   downloadHref,
   fileName,
@@ -26,6 +27,10 @@ export function LienWaiverUpload({
   milestoneId?: string;
   /** Payment-level PARTIAL waiver — wins over milestoneId/invoiceId when set. */
   paymentId?: string;
+  /** AIA application waiver — on a progress-billed job the requisition IS the
+   *  payment request, so the waiver belongs to the application, not to an
+   *  invoice that may not exist (Stephanie 2026-08-20). */
+  aiaApplicationId?: string;
   hasWaiver: boolean;
   downloadHref?: string | null;
   fileName?: string | null;
@@ -40,7 +45,9 @@ export function LienWaiverUpload({
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const endpoint = paymentId
+  const endpoint = aiaApplicationId
+    ? `/api/commercial/aia/${aiaApplicationId}/lien-waiver`
+    : paymentId
     ? `/api/commercial/payments/${paymentId}/lien-waiver`
     : milestoneId
     ? `/api/commercial/milestones/${milestoneId}/lien-waiver`

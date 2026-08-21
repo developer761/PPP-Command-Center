@@ -9,6 +9,7 @@ import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-col
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
+import { getAiaLienWaiver } from "@/lib/commercial/aia/lien-waiver";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
@@ -485,9 +486,12 @@ export async function AiaTool({
           if (application.status === "draft") {
             await reconcileDraftChangeOrderRows(selectedAppId);
           }
-          const [lines, g702] = await Promise.all([
+          const [lines, g702, lienWaiver] = await Promise.all([
             listAiaLineItems(selectedAppId),
             resolveG702(selectedAppId),
+            // Stephanie 2026-08-20: "Add lien waiver option to AIA billing just
+            // as it is under the invoicing."
+            getAiaLienWaiver(selectedAppId).catch(() => null),
           ]);
           return (
             <>
@@ -502,6 +506,7 @@ export async function AiaTool({
                 g702={g702!}
                 basePath={b}
                 exportHref={`/api/commercial/aia/${selectedAppId}/export`}
+                lienWaiver={lienWaiver}
                 editable={application.status === "draft"}
                 upsertLineAction={upsertLineAction}
                 saveLineAutosaveAction={saveLineAutosaveAction}
