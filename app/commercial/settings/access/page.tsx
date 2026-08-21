@@ -222,108 +222,58 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
         </p>
       </header>
 
-      {/* Roles key — what each toggle below actually does */}
-      <dl className="bg-ppp-charcoal-50/60 border border-ppp-charcoal-100 rounded-xl p-4 mb-5 space-y-2.5">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-400">What the toggles mean</p>
-        <div className="flex gap-2.5">
-          <span aria-hidden className="mt-1.5 h-2 w-2 rounded-full bg-ppp-navy-600 shrink-0" />
+      {/* Roles key.
+          Karan 2026-08-21: this was ~150 words of explanation standing between
+          the heading and anything you could actually do — a lecture before the
+          page. Every one of those sentences is now the tooltip on the toggle it
+          describes, where it is read at the moment it matters. What survives
+          here is the one thing that is NOT visible from a toggle: that a
+          proposal is blocked until an approver approves it. */}
+      <details className="bg-ppp-charcoal-50/60 border border-ppp-charcoal-100 rounded-xl mb-5">
+        <summary className="list-none cursor-pointer px-4 py-2.5 text-[12.5px] font-semibold text-ppp-charcoal-700 min-h-[44px] flex items-center gap-2">
+          <span className="text-cc-brand-700">Admin · Approver · Receiver — what they mean</span>
+        </summary>
+        <dl className="px-4 pb-4 space-y-2">
           <div>
             <dt className="text-[13px] font-semibold text-ppp-charcoal inline">Admin</dt>
-            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — full control: provisions logins, sets who&rsquo;s an approver or receiver, and can do everything in the Commercial Command Center. Admins can always approve proposals — the toggle below is for granting approval to people who are NOT admins.</dd>
+            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — everything, including provisioning logins. Admins can always approve proposals, so the Approver toggle is for people who are not admins.</dd>
           </div>
-        </div>
-        <div className="flex gap-2.5">
-          <span aria-hidden className="mt-1.5 h-2 w-2 rounded-full bg-cc-brand-600 shrink-0" />
           <div>
-            <dt className="text-[13px] font-semibold text-ppp-charcoal inline">Proposal approver</dt>
-            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — signs off proposals before they reach a GC. A proposal <strong>can&rsquo;t be emailed until an approver approves it</strong>. Every approver is alerted (bell + email) the moment approval is requested. Brendan is the primary approver.</dd>
+            <dt className="text-[13px] font-semibold text-ppp-charcoal inline">Approver</dt>
+            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — <strong>a proposal cannot be emailed to a GC until an approver approves it.</strong> Every approver is alerted the moment approval is requested.</dd>
           </div>
-        </div>
-        <div className="flex gap-2.5">
-          <span aria-hidden className="mt-1.5 h-2 w-2 rounded-full bg-ppp-green-600 shrink-0" />
           <div>
             <dt className="text-[13px] font-semibold text-ppp-charcoal inline">Receiver</dt>
-            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — kept in the loop on decisions: pinged whenever a proposal is <strong>approved</strong> or <strong>sent back for changes</strong>. Receivers don&rsquo;t approve — they just watch (e.g. the office wanting visibility).</dd>
+            <dd className="text-[12.5px] text-ppp-charcoal-500 inline"> — watches without approving: pinged when a proposal is approved or sent back.</dd>
           </div>
-        </div>
-      </dl>
+        </dl>
+      </details>
 
       <CommercialAccessManager
         initialUsers={users}
         currentUserId={user.id}
         initialApproverEmails={approverEmails}
         initialReceiverEmails={receiverEmails}
+        crewUserIds={[...crewRoleUserIds]}
+        emailOnUserIds={[...emailOnUserIds]}
+        toggleCrewAction={toggleCrewAction}
+        toggleUserEmailAction={toggleUserEmailAction}
       />
 
-      {/* Crew logins — the scoped self-service role (Karan 2026-08). */}
-      <section className="mt-8">
-        <div className="mb-3">
-          <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
-          <h2 className="text-xl font-bold tracking-tight text-ppp-charcoal">Crew logins</h2>
-          <p className="text-[13px] text-ppp-charcoal-500 mt-1 max-w-2xl">
-            A crew login can reach <strong>only</strong> their schedule, calendar, hours and the
-            PIN clock — everything else redirects. Anyone who also holds another role is
-            unrestricted, so this has no effect on admins.
-          </p>
-        </div>
-        <ul className="bg-surface border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100">
-          {users.map((u) => {
-            const isCrew = crewRoleUserIds.has(u.user_id);
-            const isAdminUser = u.role === "admin";
-            return (
-              <li key={u.user_id} className="flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap">
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{u.full_name || u.email}</div>
-                  <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{u.email}</div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                {/* Email notifications — independent of the crew gate, so an
-                    admin (who has no crew toggle) can still be switched on. */}
-                <form action={toggleUserEmailAction}>
-                  <input type="hidden" name="user_id" value={u.user_id} />
-                  <input type="hidden" name="email" value={u.email ?? ""} />
-                  <input type="hidden" name="enable" value={emailOnUserIds.has(u.user_id) ? "0" : "1"} />
-                  <SubmitButton
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation ${
-                      emailOnUserIds.has(u.user_id)
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                        : "border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-                    }`}
-                    title={
-                      emailOnUserIds.has(u.user_id)
-                        ? `Emailing ${u.email} for every notification. Click to stop.`
-                        : `Send ${u.email} an email for every notification, not just a bell.`
-                    }
-                  >
-                    {emailOnUserIds.has(u.user_id) ? "Emails on" : "Emails off"}
-                  </SubmitButton>
-                </form>
-                {isAdminUser ? (
-                  <span className="text-[11.5px] text-ppp-charcoal-400">Admin — always unrestricted</span>
-                ) : (
-                  <form action={toggleCrewAction}>
-                    <input type="hidden" name="user_id" value={u.user_id} />
-                    <input type="hidden" name="make_crew" value={isCrew ? "0" : "1"} />
-                    <SubmitButton
-                      className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation ${
-                        isCrew
-                          ? "border-cc-brand-600 bg-cc-brand-50 text-cc-brand-800"
-                          : "border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-                      }`}
-                    >
-                      {isCrew ? "Crew — restricted" : "Make crew"}
-                    </SubmitButton>
-                  </form>
-                )}
-                </div>
-              </li>
-            );
-          })}
-          {users.length === 0 && (
-            <li className="px-4 py-3 text-[12.5px] text-ppp-charcoal-400">No Commercial logins yet.</li>
-          )}
-        </ul>
-      </section>
+      {/* The standalone "Crew logins" list lived here and has been removed.
+          Karan 2026-08-21: "the whole access page is so messy, unorganized,
+          confusing".
+
+          It re-listed every person a second time to show two controls — the
+          crew restriction and the notification-email switch — and for admins,
+          who are the majority here, the crew half printed the dead sentence
+          "Admin — always unrestricted". Both controls now sit on the person's
+          own row above, where everything else about them already was, and the
+          crew one only renders where it can actually apply.
+
+          The notification-email switch being in a section titled "Crew logins"
+          was the worst of it: that is the switch deciding who gets emailed, and
+          it was filed under a heading nobody with that question would open. */}
 
       {/* R10: schedule emails — inline, right here on Access. */}
       <section className="mt-8">

@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import type { ManagedUser } from "@/lib/auth/user-management";
+import { SubmitButton } from "@/components/commercial/submit-button";
 
 const INPUT =
   "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 text-base sm:text-sm text-ppp-charcoal focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
@@ -33,9 +34,30 @@ export default function CommercialAccessManager({
   currentUserId,
   initialApproverEmails = [],
   initialReceiverEmails = [],
+  crewUserIds = [],
+  emailOnUserIds = [],
+  toggleCrewAction,
+  toggleUserEmailAction,
 }: {
   initialUsers: ManagedUser[];
   currentUserId: string;
+  /**
+   * Karan 2026-08-21: "the whole access page is so messy, unorganized,
+   * confusing".
+   *
+   * It listed the same five people THREE times — once as Commercial users,
+   * again under "Crew logins", again under schedule emails — and the crew
+   * section's rows were mostly the dead text "Admin — always unrestricted".
+   * Worse, the per-user NOTIFICATION EMAIL toggle lived inside "Crew logins",
+   * which is the last place anyone would look for it and is very likely part of
+   * why nobody could work out who was getting emailed.
+   *
+   * One person, one row, everything about them on it.
+   */
+  crewUserIds?: string[];
+  emailOnUserIds?: string[];
+  toggleCrewAction?: (fd: FormData) => Promise<void>;
+  toggleUserEmailAction?: (fd: FormData) => Promise<void>;
   /** R1d: emails flagged as proposal approvers (admins are always approvers). */
   initialApproverEmails?: string[];
   /** RUX-6: emails flagged to get pinged on proposal approve / changes-requested. */
@@ -180,14 +202,9 @@ export default function CommercialAccessManager({
         </div>
       )}
 
-      <AddUserForm
-        onCreated={async (msg) => {
-          note("ok", msg);
-          await refresh();
-        }}
-        onError={(msg) => note("err", msg)}
-      />
-
+      {/* People first, form second. The page used to open with an empty
+          create-user form — so the answer to "who has access?", which is why
+          anyone opens this page, sat below a task almost nobody was doing. */}
       <section className="rounded-xl border border-ppp-charcoal-100 bg-surface overflow-hidden">
         <div className="px-4 py-3 border-b border-ppp-charcoal-100">
           <h2 className="text-[13px] font-bold text-ppp-charcoal">
@@ -211,6 +228,10 @@ export default function CommercialAccessManager({
                 isReceiver={receiverEmails.includes((u.email ?? "").trim().toLowerCase())}
                 onToggleReceiver={toggleReceiver}
                 receiverToggleLocked={togglingReceiver}
+                isCrew={crewUserIds.includes(u.user_id)}
+                emailsOn={emailOnUserIds.includes(u.user_id)}
+                toggleCrewAction={toggleCrewAction}
+                toggleUserEmailAction={toggleUserEmailAction}
                 onChanged={async (msg) => {
                   note("ok", msg);
                   await refresh();
@@ -221,6 +242,21 @@ export default function CommercialAccessManager({
           </ul>
         )}
       </section>
+
+      <details className="mt-4 rounded-xl border border-ppp-charcoal-100 bg-surface">
+        <summary className="list-none cursor-pointer px-4 py-3 text-[13px] font-semibold text-cc-brand-700 min-h-[44px] flex items-center">
+          + Add a Commercial user
+        </summary>
+        <div className="px-1 pb-1">
+          <AddUserForm
+            onCreated={async (msg) => {
+              note("ok", msg);
+              await refresh();
+            }}
+            onError={(msg) => note("err", msg)}
+          />
+        </div>
+      </details>
     </div>
   );
 }
@@ -392,6 +428,10 @@ function UserRow({
   isReceiver,
   onToggleReceiver,
   receiverToggleLocked,
+  isCrew = false,
+  emailsOn = false,
+  toggleCrewAction,
+  toggleUserEmailAction,
   onChanged,
   onError,
 }: {
@@ -403,6 +443,10 @@ function UserRow({
   isReceiver: boolean;
   onToggleReceiver: (email: string, make: boolean, label: string) => Promise<void>;
   receiverToggleLocked: boolean;
+  isCrew?: boolean;
+  emailsOn?: boolean;
+  toggleCrewAction?: (fd: FormData) => Promise<void>;
+  toggleUserEmailAction?: (fd: FormData) => Promise<void>;
   onChanged: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -676,6 +720,51 @@ function UserRow({
           >
             {receiverBusy ? "…" : isReceiver ? "✓ Receiver" : "Make receiver"}
           </button>
+          {/* Notification email — moved here from the "Crew logins" section,
+              where it had nothing to do with the heading above it and was
+              effectively hidden. This is the switch that decides whether a
+              person gets an EMAIL as well as a bell. */}
+          {toggleUserEmailAction && (
+            <form action={toggleUserEmailAction}>
+              <input type="hidden" name="user_id" value={user.user_id} />
+              <input type="hidden" name="email" value={user.email ?? ""} />
+              <input type="hidden" name="enable" value={emailsOn ? "0" : "1"} />
+              <SubmitButton
+                title={
+                  emailsOn
+                    ? `Emailing ${user.email} for every notification. Click to stop.`
+                    : `Bell only right now — click to email ${user.email} as well.`
+                }
+                className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] touch-manipulation ${
+                  emailsOn
+                    ? "border border-emerald-300 bg-emerald-50 text-emerald-800"
+                    : "border border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                }`}
+              >
+                {emailsOn ? "✓ Emails" : "Bell only"}
+              </SubmitButton>
+            </form>
+          )}
+          {/* Crew restriction — only where it can actually apply. An admin row
+              used to print "Admin — always unrestricted", which is a sentence
+              of dead text on every admin, on a page that already had too many
+              of them. */}
+          {toggleCrewAction && user.role !== "admin" && (
+            <form action={toggleCrewAction}>
+              <input type="hidden" name="user_id" value={user.user_id} />
+              <input type="hidden" name="make_crew" value={isCrew ? "0" : "1"} />
+              <SubmitButton
+                title="A crew login reaches only their schedule, calendar, hours and the PIN clock — everything else redirects."
+                className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] touch-manipulation ${
+                  isCrew
+                    ? "border border-cc-brand-600 bg-cc-brand-50 text-cc-brand-800"
+                    : "border border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                }`}
+              >
+                {isCrew ? "✓ Crew only" : "Restrict to crew"}
+              </SubmitButton>
+            </form>
+          )}
           {!isSelf && (
             <>
               <button
