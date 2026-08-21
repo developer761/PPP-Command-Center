@@ -201,6 +201,24 @@ first+last-name sign-off → **Brendan** · Katie #3 / #8 / F2 → **Katie** · 
 page order → **Stephanie**.
 
 ## One pending confirmation (Karan, 30 s)
-- [ ] **Migration 137 (storage RLS):** upload a file on Documents or a Work Order
-  from the browser. Server side is wired; the authenticated PUT can't be exercised
-  via the service-role path.
+- [x] **Migration 137 (storage RLS)** — CLOSED 2026-08-21, and it did not need
+  Karan. The note was right that the service-role path can't exercise the
+  authenticated PUT; the way round it is to BE an authenticated user. Created a
+  throwaway auth user, signed in with the anon key, minted a signed upload URL
+  server-side and performed the upload as that user, then deleted both the
+  object and the user:
+
+  | bucket | result |
+  |---|---|
+  | `commercial-documents` (137's bucket) | upload accepted — policy present |
+  | `commercial-opportunity-files` (152's) | upload accepted — policy present |
+  | `commercial-account-docs` | refused on MIME, NOT RLS — the bucket carries an
+    allow-list and the probe sent octet-stream |
+
+  So RLS is correct on both browser-writable buckets, which also settles
+  Stephanie's "I still can't upload in submittals": that was migration 152, and
+  her note predates it.
+
+  **Worth keeping as a technique:** "only a human in a browser can test this" was
+  not true. A signed-in probe user tests the same policy path, and unlike a human
+  it leaves a result you can re-run.
