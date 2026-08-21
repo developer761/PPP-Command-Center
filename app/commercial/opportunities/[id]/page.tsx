@@ -2134,6 +2134,8 @@ export default async function OpportunityDetailPage({
     grossMarginCents: pathMargin?.cents ?? null,
     grossMarginPct: pathMargin?.pct ?? null,
     marginProvisional: pathMargin?.provisional ?? false,
+    marginLabel: pathMargin?.label ?? null,
+    marginCaveat: pathMargin?.caveat ?? null,
     approvedChangeOrderCents: pathChangeOrders
       .filter((c) => c.status === "approved")
       .reduce((a, c) => a + (c.amount_cents ?? 0), 0),

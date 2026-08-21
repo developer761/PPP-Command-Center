@@ -67,6 +67,21 @@ export type StageKpiInput = {
    *  rather than the final one. Saying so is the difference between a number
    *  someone trusts and a number they quote. */
   marginProvisional?: boolean;
+  /**
+   * The label + caveat `dealMargin` chose for THIS margin.
+   *
+   * The strip used to hardcode its own names — "Projected margin" in the
+   * billing block, "Margin so far" / "Margin" in the closed block — while the
+   * Costs tab called the same number "Gross margin". One figure, four names,
+   * depending which tab you were on.
+   *
+   * Worse, the caveat was dropped. `dealMargin` says things like "Margin
+   * understated — 12 crew hours have no cost rate", which is the difference
+   * between a number you can quote and one you can't; the strip showed the
+   * percentage alone.
+   */
+  marginLabel?: string | null;
+  marginCaveat?: string | null;
   approvedChangeOrderCents?: number | null;
 
   openSubmittals?: number | null;
@@ -226,9 +241,12 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if (hasContract && i.grossMarginPct != null) {
       out.push({
         key: "margin",
-        label: "Projected margin",
+        // The source's own name for it, so this tab and the Costs tab agree.
+        label: i.marginLabel ?? "Projected margin",
         value: `${i.grossMarginPct}%`,
-        sub: money(i.grossMarginCents),
+        // A caveat outranks restating the dollars: it says the number is
+        // incomplete, and the dollars are one click away on Costs.
+        sub: i.marginCaveat ?? money(i.grossMarginCents),
         tone: i.grossMarginPct < 0 ? "bad" : i.grossMarginPct < 15 ? "warn" : "good",
       });
     }
@@ -269,9 +287,9 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if (i.grossMarginPct != null && hasContract) {
       out.push({
         key: "margin",
-        label: i.marginProvisional ? "Margin so far" : "Margin",
+        label: i.marginLabel ?? (i.marginProvisional ? "Margin so far" : "Margin"),
         value: `${i.grossMarginPct}%`,
-        sub: money(i.grossMarginCents),
+        sub: i.marginCaveat ?? money(i.grossMarginCents),
         tone: i.grossMarginPct < 0 ? "bad" : i.grossMarginPct < 15 ? "warn" : "good",
       });
     }
@@ -341,9 +359,14 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if (hasContract && i.grossMarginPct != null) {
       out.push({
         key: "final_margin",
-        label: "Final margin",
+        // "Final" is worth saying on a closed job — but only when it IS final.
+        // dealMargin marks a margin provisional when something is missing (crew
+        // hours with no cost rate, nothing billed yet), and a closed job with
+        // unrated labour does not have a final margin no matter what the status
+        // column says. Calling it one is how a wrong number gets quoted.
+        label: i.marginProvisional ? (i.marginLabel ?? "Margin so far") : "Final margin",
         value: `${i.grossMarginPct}%`,
-        sub: money(i.grossMarginCents),
+        sub: i.marginCaveat ?? money(i.grossMarginCents),
         tone: i.grossMarginPct < 0 ? "bad" : i.grossMarginPct < 15 ? "warn" : "good",
       });
     }

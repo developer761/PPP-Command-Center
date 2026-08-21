@@ -106,7 +106,8 @@ describe("her note: make the sign off prettier", () => {
     expect(block).toContain("Authorized Client Signature");
     // Her layout: name, then "Lead Estimator, Tomco Painting", then phone/email.
     expect(block).toContain("signContactName");
-    expect(block).toMatch(/e\.title.*company\?\.name|company\?\.name.*e\.title/s);
+    // [\s\S] rather than the /s flag — tsconfig targets below es2018.
+    expect(block).toMatch(/e\.title[\s\S]*company\?\.name|company\?\.name[\s\S]*e\.title/);
   });
 });
 
@@ -276,5 +277,31 @@ describe("her note: arrow keys to move between cells on the AIA", () => {
     // be worse than the tabbing she was complaining about.
     expect(src).toContain('if (e.key === "ArrowLeft" && !atStart) return');
     expect(src).toContain('if (e.key === "ArrowRight" && !atEnd) return');
+  });
+});
+
+// ── One number, one name ──────────────────────────────────────────────────
+describe("the deal's margin is called the same thing on every tab", () => {
+  const strip = readFileSync("lib/commercial/opportunities/stage-kpis.ts", "utf8");
+
+  it("the stage strip uses the label the margin came with", () => {
+    // It used to hardcode "Projected margin" in one block and "Margin so far" /
+    // "Margin" in another, while the Costs tab called the same figure "Gross
+    // margin" — one number, four names, depending which tab you were on.
+    // docs/OPEN_BACKLOG §"Also confirmed-open" logged this as HIGH.
+    const labels = [...strip.matchAll(/label: (i\.margin[^,]*|"[^"]*[Mm]argin[^"]*")/g)].map((m) => m[1]);
+    expect(labels.length, "the margin tiles moved").toBeGreaterThanOrEqual(3);
+    for (const l of labels) {
+      // Either it defers to the source's label, or — on a closed job — it may
+      // say "Final margin", but only behind the provisional check.
+      const ok = l.includes("i.marginLabel") || l.includes("i.marginProvisional");
+      expect(ok, `a margin tile hardcodes ${l} instead of using the source's label`).toBe(true);
+    }
+  });
+
+  it("and shows the caveat rather than swallowing it", () => {
+    // "Margin understated — 12 crew hours have no cost rate" is the difference
+    // between a number you can quote and one you can't.
+    expect(strip).toContain("i.marginCaveat ??");
   });
 });
