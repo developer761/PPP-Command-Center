@@ -441,7 +441,7 @@ export async function CloseoutTool({
   const items = activePkg ? await listCloseoutItems(activePkg.id) : [];
   const editable = activePkg ? isCloseoutEditable(activePkg.status) : false;
   // Issued but not closed → the cover + item set are frozen, but the checklist
-  // stays live so docs can be ticked "Received" as they come in.
+  // stays live so docs can be ticked "Sent" as they go out.
   const canTickItems = activePkg ? isCloseoutItemStatusEditable(activePkg.status) : false;
   const progress = closeoutProgressPct(items);
   const warrantyEnd = activePkg ? computeWarrantyEndDate(activePkg.substantial_completion_date, activePkg.warranty_years) : null;
@@ -551,7 +551,7 @@ export async function CloseoutTool({
             <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-2.5 text-[12px] text-ppp-charcoal-600">
               This package is <strong>{CLOSEOUT_STATUS_META[activePkg.status].label.toLowerCase()}</strong>.{" "}
               {canTickItems
-                ? "The cover + item list are locked, but you can still mark items Received as documents come in. Void it to change the cover or add/remove items."
+                ? "The cover + item list are locked, but you can still mark items Sent as documents go out. Void it to change the cover or add/remove items."
                 : "It's closed and fully locked — void it and start a new one to make changes."}
             </div>
           )}

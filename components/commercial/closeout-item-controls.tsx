@@ -11,7 +11,9 @@ import { useState, useTransition } from "react";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 type ItemStatus = "pending" | "received" | "na";
-const STATUS_LABEL: Record<ItemStatus, string> = { pending: "Pending", received: "Received", na: "N/A" };
+// Mirrors CLOSEOUT_ITEM_STATUS_LABEL — "Sent", not "Received" (Stephanie
+// 2026-08-17): these are documents Tomco sends out, not ones it takes in.
+const STATUS_LABEL: Record<ItemStatus, string> = { pending: "Pending", received: "Sent", na: "N/A" };
 
 export function CloseoutItemControls({
   itemId,

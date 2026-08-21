@@ -114,9 +114,22 @@ export const ADDABLE_CLOSEOUT_ITEM_KINDS = CLOSEOUT_ITEM_KINDS.filter(
 export const CLOSEOUT_ITEM_STATUSES = ["pending", "received", "na"] as const;
 export type CloseoutItemStatus = (typeof CLOSEOUT_ITEM_STATUSES)[number];
 
+/**
+ * Stephanie 2026-08-17: "Checklist status - change 'received' to 'sent'."
+ *
+ * She is right about the direction. Every item in a closeout package —
+ * warranty, lien waiver, final invoice, finish schedule — is a document TOMCO
+ * ASSEMBLES AND SENDS to the GC. "Received" described it from the customer's
+ * side of the transaction, which is backwards from where the person ticking
+ * the box is standing.
+ *
+ * The stored value stays `received`: it is in a CHECK constraint and on every
+ * existing row, and renaming it would be a migration plus a backfill to change
+ * one word on screen. The label is the part anyone sees.
+ */
 export const CLOSEOUT_ITEM_STATUS_LABEL: Record<CloseoutItemStatus, string> = {
   pending: "Pending",
-  received: "Received",
+  received: "Sent",
   na: "N/A",
 };
 

@@ -503,6 +503,21 @@ export async function ChangeOrdersPanel({
                             </summary>
                             <div className="mt-2 w-full sm:w-[30rem] max-w-full rounded-lg border border-ppp-charcoal-200 bg-surface p-3 space-y-2.5 shadow-sm">
                               <form action={sendAction} className="space-y-2.5">
+                                {/* Stephanie 2026-08-20, two reports, one
+                                    cause: "Once sent for approval, it brings
+                                    you all the way back to the accounts page"
+                                    AND "Change orders emailed to customer not
+                                    coming through."
+
+                                    This form was the only one in the panel not
+                                    posting opp_id + account_id. sendChangeOrder
+                                    Action requires all three to be UUIDs and
+                                    otherwise redirects to /commercial/accounts
+                                    — BEFORE it sends anything. So the bounce to
+                                    Accounts and the email that never arrived
+                                    were the same missing pair of inputs. */}
+                                <input type="hidden" name="opp_id" value={oppId} />
+                                <input type="hidden" name="account_id" value={accountId} />
                                 <input type="hidden" name="change_order_id" value={co.id} />
                                 <input type="hidden" name="back" value={back} />
                                 <input type="hidden" name="from" value={from} />
