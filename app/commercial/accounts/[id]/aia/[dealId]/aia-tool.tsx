@@ -681,10 +681,23 @@ async function AiaApplicationList({
             tone={dueNowCents > 0 ? "rose" : "neutral"}
             hint={dueNowCents > 0 ? "certified, not yet paid" : "nothing outstanding"}
           />
+          {/* Stephanie 2026-08-17: "when I pay all AIA's, where does it show
+              that the retainage is outstanding?" Here — but the hint said
+              "released at close-out", which described it as something that
+              happens on its own. It doesn't: it is billed on the final payment
+              application, and until then it is money earned and not yet asked
+              for. The tile now says which of those it is. */}
           <AiaSummaryTile
             label="Retainage held"
             value={formatCentsFull(retainageHeldCents)}
-            hint={retainageHeldCents > 0 ? "released at close-out" : "none held"}
+            tone={retainageHeldCents > 0 && !releaseApp ? "rose" : "neutral"}
+            hint={
+              retainageHeldCents <= 0
+                ? "none held"
+                : releaseApp
+                  ? `billed on Application No. ${releaseApp.application_number}`
+                  : "earned, not yet billed"
+            }
           />
         </div>
         {billedPct !== null && (

@@ -217,7 +217,21 @@ export function AiaApplicationDetail({
             <G702Line n="9" label="Balance to Finish (incl. retainage)" cents={g702.balanceToFinishCents} />
           </div>
         </div>
-        {/* Status controls */}
+        {/* Status controls.
+            Stephanie 2026-08-17: "When I choose paid on an invoice or AIA, what
+            amount is applied? They always pay less retainage and when I pay all
+            AIA's, where does it show that the retainage is outstanding?"
+
+            Fair questions, and the honest answer is that this button applies NO
+            amount — an application's status is a record of where the
+            certificate stands, while the money lives on Invoices. Nothing said
+            so next to the button, so "Paid" read like posting a payment.
+
+            And the second half is the real one: line 8 is ALREADY net of
+            retainage, so paying an application in full still leaves the
+            retainage held. That is not a shortfall to chase — it is money
+            earned and withheld by agreement until the release. Said in full
+            below rather than left to be inferred from line 5. */}
         <div className="mt-3 pt-3 border-t border-cc-brand-100 flex items-center gap-2 flex-wrap">
           <span className="text-[11px] text-ppp-charcoal-500">Mark as:</span>
           {(["draft", "submitted", "paid"] as AiaApplicationStatus[]).map((s) => (
@@ -233,6 +247,29 @@ export function AiaApplicationDetail({
               </PendingSubmitButton>
             </form>
           ))}
+        </div>
+
+        <div className="mt-2.5 rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-100 px-3 py-2">
+          <p className="text-[11.5px] text-ppp-charcoal-700">
+            <strong>Paid</strong> here means this certificate has been settled — it records no
+            money. Payments are recorded on Invoices.
+          </p>
+          <p className="text-[11.5px] text-ppp-charcoal-700 mt-1">
+            This application asks for{" "}
+            <strong className="tabular-nums">{formatCentsFull(g702.currentPaymentDueCents)}</strong>
+            {g702.retainageCents > 0 ? (
+              <>
+                {" "}— already net of{" "}
+                <strong className="tabular-nums">{formatCentsFull(g702.retainageCents)}</strong> retainage.
+                Paying it in full is correct; the retainage stays held until it is billed on the
+                final payment application.
+              </>
+            ) : application.is_retainage_release ? (
+              <> — this IS the retainage release, so nothing is held back.</>
+            ) : (
+              <> — no retainage is held on this contract.</>
+            )}
+          </p>
         </div>
 
         {/* Lien waiver for THIS application's payment — Stephanie 2026-08-20:
