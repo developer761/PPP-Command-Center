@@ -412,6 +412,21 @@ function UserRow({
   const [approverBusy, setApproverBusy] = useState(false);
   const [receiverBusy, setReceiverBusy] = useState(false);
   const label = user.full_name || user.email;
+  /**
+   * Name / title / phone — the three fields the proposal SIGN-OFF prints.
+   *
+   * Stephanie asked for a sign-off reading "Brendan Dwyer / Lead Estimator,
+   * Tomco Painting / 631-300-8984 / Brendan@Tomcopainting.com". The layout was
+   * rebuilt to match and it still printed "Brendan" and the company
+   * switchboard, because the record held nothing else: `title` had no editor
+   * anywhere, `phone` had one only on the RESIDENTIAL Access screen, and
+   * `full_name` was write-once at account creation. Commercial users — the
+   * people who actually sign proposals — could reach none of them.
+   */
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(user.full_name ?? "");
+  const [titleDraft, setTitleDraft] = useState(user.title ?? "");
+  const [phoneDraft, setPhoneDraft] = useState(user.phone ?? "");
 
   const doToggleApprover = async () => {
     if (approverBusy) return;
@@ -451,6 +466,27 @@ function UserRow({
     } finally {
       setBusy(false);
     }
+  };
+
+  const saveIdentity = async () => {
+    // Three separate PATCHes because each is separately audited. Only the ones
+    // that actually changed are sent.
+    const jobs: Array<[Record<string, unknown>, string]> = [];
+    if (nameDraft.trim() !== (user.full_name ?? "")) {
+      jobs.push([{ action: "name", full_name: nameDraft.trim() || null }, "name"]);
+    }
+    if (titleDraft.trim() !== (user.title ?? "")) {
+      jobs.push([{ action: "title", title: titleDraft.trim() || null }, "title"]);
+    }
+    if (phoneDraft.trim() !== (user.phone ?? "")) {
+      jobs.push([{ action: "phone", phone: phoneDraft.trim() || null }, "phone"]);
+    }
+    if (jobs.length === 0) { setEditing(false); return; }
+    for (const [body] of jobs) {
+      await patch(body, "");
+    }
+    onChanged(`Saved — these print on proposals ${nameDraft.trim() || label} signs.`);
+    setEditing(false);
   };
 
   const toggleActive = () => {
@@ -512,6 +548,79 @@ function UserRow({
             {user.auth_provider === "password" ? "Email + password" : "Google sign-in"}
             {user.last_login_at ? " · signed in before" : " · never signed in"}
           </div>
+
+          {/* Details that print on a proposal sign-off. */}
+          {editing ? (
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <label className="block">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 mb-0.5">Full name</span>
+                <input
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  placeholder="Brendan Dwyer"
+                  aria-label="Full name"
+                  className="w-full rounded border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-[12px] min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 mb-0.5">Title</span>
+                <input
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  placeholder="Lead Estimator"
+                  aria-label="Job title"
+                  className="w-full rounded border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-[12px] min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 mb-0.5">Phone</span>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={phoneDraft}
+                  onChange={(e) => setPhoneDraft(e.target.value)}
+                  placeholder="631-300-8984"
+                  aria-label="Contact phone"
+                  className="w-full rounded border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-[12px] min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40"
+                />
+              </label>
+              <div className="sm:col-span-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveIdentity()}
+                  disabled={busy}
+                  className="rounded-lg bg-cc-brand-600 px-3 py-1.5 text-[12px] font-semibold text-white min-h-[44px] sm:min-h-[32px] disabled:opacity-50"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNameDraft(user.full_name ?? "");
+                    setTitleDraft(user.title ?? "");
+                    setPhoneDraft(user.phone ?? "");
+                    setEditing(false);
+                  }}
+                  className="px-2 py-1 text-[12px] text-ppp-charcoal-500 min-h-[44px] sm:min-h-[32px]"
+                >
+                  Cancel
+                </button>
+                <span className="text-[11px] text-ppp-charcoal-400">These print under the signature line on proposals they send.</span>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="mt-1 inline-flex items-center gap-1.5 text-[11.5px] text-cc-brand-700 hover:underline min-h-[44px] sm:min-h-0 touch-manipulation"
+            >
+              {user.title || user.phone ? (
+                <>✎ {[user.title, user.phone].filter(Boolean).join(" · ")}</>
+              ) : (
+                <>✎ Add title &amp; phone <span className="text-ppp-charcoal-400">— they print on proposal sign-offs</span></>
+              )}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           {/* R1d: proposal-approval toggle — an explicit on/off flag,

@@ -470,6 +470,32 @@ export async function setUserActive(input: {
  * passwords work here, because the number is operational (it goes on purchase
  * orders) rather than personal preference.
  */
+export async function updateUserName(input: {
+  user_id: string;
+  full_name: string | null;
+  actor: ActorMeta;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const full_name = input.full_name?.trim() || null;
+  // Brendan's profile read "Brendan" — first name only — and that is what
+  // printed on proposals going to GCs. Editable now, because a name typed once
+  // at account creation is a name nobody can correct.
+  if (full_name && full_name.length > 120) {
+    return { ok: false, error: "That name is too long." };
+  }
+  const sb = adminClient();
+  const { error } = await sb.from("profiles").update({ full_name }).eq("user_id", input.user_id);
+  if (error) return { ok: false, error: error.message };
+  invalidateProfileCache(input.user_id);
+  await audit({
+    actor: input.actor,
+    action: "update_name",
+    target_user_id: input.user_id,
+    target_email: null,
+    detail: { name_set: !!full_name },
+  });
+  return { ok: true };
+}
+
 export async function updateUserTitle(input: {
   user_id: string;
   title: string | null;
