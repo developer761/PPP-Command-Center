@@ -29,6 +29,30 @@ export function anchorDateOnlyIso(dateOnly: string): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? `${dateOnly}T16:00:00.000Z` : null;
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Milliseconds for a value that may be a bare DATE or a full timestamp.
+ *
+ * `new Date("2026-01-01")` is UTC MIDNIGHT. Render that in Eastern and you get
+ * **31 December 2025** — a day early, and across a new year, the wrong YEAR on
+ * a document. Every DATE column on the platform reaches these helpers:
+ * proposal_due_at, follow_up_at, rfp_received_at, substantial_completion_date,
+ * the AIA periods, the work-order and field-ops dates.
+ *
+ * Confirmed live: `bid-lifecycle-timeline` prints `Due {absoluteDate(
+ * proposal_due_at)}`, and proposal_due_at is a DATE.
+ *
+ * A date-only string is already the calendar day somebody picked, so it is
+ * anchored at 16:00 UTC — noon-ish ET, the same calendar day in both EST and
+ * EDT — rather than converted. Real timestamps are left exactly as they are.
+ * Same rule `etDateOf` applies in lib/date-et.ts; this is the other half of it,
+ * for the formatters that live here.
+ */
+function msOf(iso: string): number {
+  return new Date(DATE_ONLY.test(iso) ? `${iso}T16:00:00.000Z` : iso).getTime();
+}
+
 /**
  * "3 minutes ago" / "5 hours ago" / "yesterday" / "3d ago" style.
  * Falls back to a short absolute date once we're past ~14 days
@@ -36,7 +60,7 @@ export function anchorDateOnlyIso(dateOnly: string): string | null {
  */
 export function relativeAgo(iso: string | null | undefined, now: number = Date.now()): string {
   if (!iso) return "—";
-  const t = new Date(iso).getTime();
+  const t = msOf(iso);
   if (!Number.isFinite(t)) return "—";
   const diff = now - t;
   if (diff < 0) {
@@ -71,7 +95,7 @@ export function relativeAgo(iso: string | null | undefined, now: number = Date.n
  */
 export function absoluteDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const t = new Date(iso).getTime();
+  const t = msOf(iso);
   if (!Number.isFinite(t)) return "—";
   return new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -87,9 +111,22 @@ export function absoluteDate(iso: string | null | undefined): string {
  */
 export function daysSinceIso(iso: string | null | undefined, now: number = Date.now()): number | null {
   if (!iso) return null;
-  const t = new Date(iso).getTime();
+  const t = msOf(iso);
   if (!Number.isFinite(t)) return null;
-  return Math.floor((now - t) / MS_PER_DAY);
+  // CALENDAR days, not milliseconds ÷ 86,400,000.
+  //
+  // The raw division is wrong twice over. It measures elapsed time, so at 9am
+  // "yesterday evening" is 14 hours ago and counts as 0 days — while a bare
+  // DATE anchored at noon counts as −1 for TODAY. That second one is the
+  // symptom the backlog recorded: "a proposal due today reads 1 day overdue".
+  //
+  // What every caller actually wants is how many times the date has changed in
+  // Eastern, which is a subtraction between two calendar days.
+  const dayOf = (ms: number) =>
+    new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const [ay, am, ad] = dayOf(now).split("-").map(Number);
+  const [by, bm, bd] = dayOf(t).split("-").map(Number);
+  return Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / MS_PER_DAY);
 }
 
 export { MS_PER_DAY };
