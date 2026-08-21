@@ -1826,6 +1826,15 @@ export default async function ProposalEditorPage({
                 <div>
                   <span className={LABEL_CLS}>Bid Set date <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
                   <DateField ariaLabel="Bid set date" name="bid_set_date" defaultValue={proposal.bid_set_date ?? ""} placeholder="Pick a date" className="mt-1" />
+                  {/* Stephanie asked twice why the bid set date wasn't on the
+                      customer PDF. It was wired — she just had no way to know
+                      that this optional field IS the sentence. Nothing named
+                      where it goes, so an empty field looked like a bug in the
+                      PDF rather than a blank on the form. */}
+                  <span className="mt-1 block text-[11px] text-ppp-charcoal-500">
+                    Prints in the opening line: &ldquo;&hellip;the following proposal based on plans dated
+                    {" "}{proposal.bid_set_date ? fmtEtDate(proposal.bid_set_date) : "—"}.&rdquo; Leave blank to omit it.
+                  </span>
                 </div>
                 <label className="block sm:col-span-2">
                   <span className={LABEL_CLS}>GC address (one line per row)</span>

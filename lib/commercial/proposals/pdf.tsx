@@ -1127,11 +1127,17 @@ function LineItemTable({
   groupByPhase = false,
   priceOnly = false,
   respectShowPrice = false,
+  scopeTotalLabel,
 }: {
   items: CommercialProposalLineItem[];
   showAlternateBadge: boolean;
   /** See LiRow — the per-line price checkbox is in use on this proposal. */
   respectShowPrice?: boolean;
+  /** Stephanie 2026-08-20: "On the price per item customer PDF we need to add
+   *  a total to the main scope only." A closing subtotal under the base scope
+   *  rows — alternates deliberately get none, since they are options the
+   *  customer has not bought and summing them reads as part of the price. */
+  scopeTotalLabel?: string;
   /** Customer copy: description + price, nothing else (Brendan 2026-08-17). */
   priceOnly?: boolean;
   /** Katie 2026-07-28: group the priced table by phase with a per-phase
@@ -1167,6 +1173,7 @@ function LineItemTable({
         {items.map((it) => (
           <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} respectShowPrice={respectShowPrice} />
         ))}
+        {scopeTotalLabel && <ScopeTotalRow items={items} label={scopeTotalLabel} respectShowPrice={respectShowPrice} />}
       </View>
     );
   }
@@ -1206,6 +1213,31 @@ function LineItemTable({
           </View>
         );
       })}
+      {scopeTotalLabel && <ScopeTotalRow items={items} label={scopeTotalLabel} respectShowPrice={respectShowPrice} />}
+    </View>
+  );
+}
+
+/** Closing total for the base scope table. Skipped when a hidden per-line
+ *  price would make the sum unverifiable from the page — a total the reader
+ *  cannot check against the lines above it invites exactly the "where does
+ *  this number come from" question a proposal exists to prevent. */
+function ScopeTotalRow({
+  items,
+  label,
+  respectShowPrice,
+}: {
+  items: CommercialProposalLineItem[];
+  label: string;
+  respectShowPrice?: boolean;
+}) {
+  if (items.length === 0) return null;
+  const anyHidden = respectShowPrice === true && items.some((i) => i.show_price === false);
+  const sum = items.reduce((n, it) => n + lineTotalCents(it), 0);
+  return (
+    <View style={styles.liSubtotalRow} wrap={false}>
+      <Text style={styles.liSubtotalLabel}>{label}</Text>
+      <Text style={styles.liSubtotalAmount}>{anyHidden ? "—" : formatDollars(sum)}</Text>
     </View>
   );
 }
@@ -1219,6 +1251,7 @@ function InclusionsInternal({
   groupByPhase = false,
   heading = "Inclusions",
   respectShowPrice = false,
+  scopeTotalLabel,
 }: {
   items: CommercialProposalLineItem[];
   internal: boolean;
@@ -1228,12 +1261,21 @@ function InclusionsInternal({
   heading?: string;
   /** See LiRow — honour the per-line price checkbox on the customer table. */
   respectShowPrice?: boolean;
+  /** Closing total under the base scope rows (customer itemized copy). */
+  scopeTotalLabel?: string;
 }) {
   if (items.length === 0) return null;
   return (
     <View style={{ marginTop: 4 }}>
       <Text style={styles.sectionUnderlineHeader}>{internal ? `${heading} (internal line-item view):` : `${heading}:`}</Text>
-      <LineItemTable items={items} showAlternateBadge={false} groupByPhase={groupByPhase} priceOnly={!internal} respectShowPrice={respectShowPrice} />
+      <LineItemTable
+        items={items}
+        showAlternateBadge={false}
+        groupByPhase={groupByPhase}
+        priceOnly={!internal}
+        respectShowPrice={respectShowPrice}
+        scopeTotalLabel={scopeTotalLabel}
+      />
     </View>
   );
 }
@@ -1581,6 +1623,7 @@ export function ProposalPdfDocument({
               internal={mode === "internal"}
               groupByPhase
               respectShowPrice={respectShowPrice}
+              scopeTotalLabel={mode === "internal" ? undefined : "Total scope"}
             />
           </>
         ) : (
