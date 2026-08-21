@@ -230,7 +230,11 @@ function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPd
 
         {inclusions.length > 0 ? (
           <View>
-            <Text style={styles.h2}>Scope of Work</Text>
+            {/* Stephanie 2026-08-20: "Inclusions, scope of work, change all
+                PDF's to read one or the other." Tomco's own Work Order heads
+                it "Inclusions:", so that is the word everywhere now — here
+                and on the customer proposal. */}
+            <Text style={styles.h2}>Inclusions</Text>
             <ScopeList lines={inclusions} />
           </View>
         ) : null}

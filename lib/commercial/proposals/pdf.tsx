@@ -403,6 +403,17 @@ const styles = StyleSheet.create({
     fontFamily: "Times-Bold",
     marginBottom: 14,
   },
+  signContact: {
+    marginTop: 18,
+  },
+  signContactName: {
+    fontFamily: "Times-Bold",
+    fontSize: 11,
+  },
+  signContactRow: {
+    fontSize: 11,
+    lineHeight: 1.35,
+  },
   signLine: {
     fontFamily: "Times-Bold",
     marginTop: 14,
@@ -1001,7 +1012,12 @@ function InclusionsCustomer({
   if (!anyHasPhase) {
     return (
       <View style={{ marginTop: 14 }}>
-        <Text style={styles.sectionUnderlineHeader}>Scope of Work:</Text>
+        {/* Stephanie 2026-08-20: "Inclusions, scope of work, change all PDF's
+            to read one or the other." Tomco's own Work Order heads this
+            section "Inclusions:", and the internal proposal view and the work
+            order both already say it — so the customer proposal was the only
+            document using the other word. */}
+        <Text style={styles.sectionUnderlineHeader}>Inclusions:</Text>
         <View style={{ marginTop: 4 }}>
           {items.map((it) => (
             <ItemLine key={it.id} item={it} />
@@ -1045,10 +1061,14 @@ function InclusionsCustomer({
 function LiRow({
   it,
   showAlternateBadge,
+  respectShowPrice = false,
   priceOnly = false,
 }: {
   it: CommercialProposalLineItem;
   showAlternateBadge: boolean;
+  /** The per-line "show price" control is in use on this proposal, so a line
+   *  that was left unticked prints without its money. */
+  respectShowPrice?: boolean;
   /** Brendan 2026-08-17, on the customer copy with per-line prices turned on:
    *  "it shows also the unit price and the unit and quantity. We don't want
    *  that. Just the price is good." So the CUSTOMER table is description +
@@ -1056,6 +1076,7 @@ function LiRow({
    *  checking that math is the whole reason the internal copy exists. */
   priceOnly?: boolean;
 }) {
+  const hidePrice = priceOnly && respectShowPrice === true && it.show_price === false;
   return (
     <View style={styles.liRow}>
       <Text style={[styles.liCell, styles.liCellDesc]}>
@@ -1074,17 +1095,28 @@ function LiRow({
           <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
         </>
       )}
-      {/* The itemized TABLE always shows its numbers. It only renders in two
-          situations — the internal estimator copy, and a customer copy where
-          someone deliberately turned on "show the full breakdown" — and in
-          both the whole point is the math. `show_price` is no longer consulted
-          here: since migration 148 it means "print this line's price inline on
-          the DEFAULT customer proposal", which is a different question. Reading
-          it here would have blanked every cell to "—" after the backfill. */}
       {!priceOnly && (
         <Text style={[styles.liCell, styles.liCellPrice]}>{formatDollars(it.unit_price_cents)}</Text>
       )}
-      <Text style={[styles.liCell, styles.liCellLine]}>{formatDollars(lineTotalCents(it))}</Text>
+      {/* Stephanie 2026-08-17: "There is an option to show price per line, but
+          it shows price per line regardless of whether that is chosen or not."
+
+          True, and deliberately so until now: migration 148 backfilled
+          show_price to FALSE on every existing line and flipped the default to
+          FALSE, because it means "opt this line's price into the BULLETED
+          customer proposal". Reading it here would have blanked every cell of
+          the itemized table instead.
+
+          So it is honoured only when the control is actually in use — i.e.
+          when at least one line on this proposal has been ticked. Nobody
+          ticking anything still prints every price, which is what turning the
+          itemized table on means. Tick some, and the unticked ones go blank:
+          the checkbox does what it says. */}
+      {hidePrice ? (
+        <Text style={[styles.liCell, styles.liCellLine]}> </Text>
+      ) : (
+        <Text style={[styles.liCell, styles.liCellLine]}>{formatDollars(lineTotalCents(it))}</Text>
+      )}
     </View>
   );
 }
@@ -1094,9 +1126,12 @@ function LineItemTable({
   showAlternateBadge,
   groupByPhase = false,
   priceOnly = false,
+  respectShowPrice = false,
 }: {
   items: CommercialProposalLineItem[];
   showAlternateBadge: boolean;
+  /** See LiRow — the per-line price checkbox is in use on this proposal. */
+  respectShowPrice?: boolean;
   /** Customer copy: description + price, nothing else (Brendan 2026-08-17). */
   priceOnly?: boolean;
   /** Katie 2026-07-28: group the priced table by phase with a per-phase
@@ -1130,7 +1165,7 @@ function LineItemTable({
       <View style={styles.liTable}>
         {header}
         {items.map((it) => (
-          <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} />
+          <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} respectShowPrice={respectShowPrice} />
         ))}
       </View>
     );
@@ -1159,10 +1194,10 @@ function LineItemTable({
               <View style={styles.liPhaseHeader}>
                 <Text style={styles.liPhaseHeaderText}>{g.label}</Text>
               </View>
-              {firstRow && <LiRow it={firstRow} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} />}
+              {firstRow && <LiRow it={firstRow} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} respectShowPrice={respectShowPrice} />}
             </View>
             {restRows.map((it) => (
-              <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} />
+              <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} priceOnly={priceOnly} respectShowPrice={respectShowPrice} />
             ))}
             <View style={styles.liSubtotalRow} wrap={false}>
               <Text style={styles.liSubtotalLabel}>{g.label} subtotal</Text>
@@ -1183,6 +1218,7 @@ function InclusionsInternal({
   internal,
   groupByPhase = false,
   heading = "Inclusions",
+  respectShowPrice = false,
 }: {
   items: CommercialProposalLineItem[];
   internal: boolean;
@@ -1190,12 +1226,14 @@ function InclusionsInternal({
   /** Section heading — "Inclusions" for the base scope, "Labor" for the
    *  hourly rows (so the priced view doesn't show two "Inclusions:" headers). */
   heading?: string;
+  /** See LiRow — honour the per-line price checkbox on the customer table. */
+  respectShowPrice?: boolean;
 }) {
   if (items.length === 0) return null;
   return (
     <View style={{ marginTop: 4 }}>
       <Text style={styles.sectionUnderlineHeader}>{internal ? `${heading} (internal line-item view):` : `${heading}:`}</Text>
-      <LineItemTable items={items} showAlternateBadge={false} groupByPhase={groupByPhase} priceOnly={!internal} />
+      <LineItemTable items={items} showAlternateBadge={false} groupByPhase={groupByPhase} priceOnly={!internal} respectShowPrice={respectShowPrice} />
     </View>
   );
 }
@@ -1218,22 +1256,21 @@ function AlternateSectionCustomer({
   altNotes: string | null | undefined;
 }) {
   if (items.length === 0 && !altNotes) return null;
-  const total = items.reduce(
-    (sum, it) => sum + Math.round(Number(it.quantity) * it.unit_price_cents),
-    0
-  );
+  /* Stephanie 2026-08-17: "The alternates are a bit wacky … the bullet is
+     coming first with the price and then the verbiage for the alternate and
+     then the total price shows up again." — and 2026-08-20: "Might be easier
+     to just remove the ADD ALTERNATE total and keep it broken out by item."
+     The repeated number WAS the ADD ALTERNATE line restating the sum of the
+     items directly above it. Gone; each alternate carries its own price. */
   return (
     <View style={styles.altSection}>
-      <Text style={styles.altHeader}>Alternate:</Text>
+      <Text style={styles.altHeader}>Add Alternate:</Text>
       {altNotes && (
         <Text style={{ marginBottom: 4, fontSize: 11 }}>{altNotes}</Text>
       )}
       {items.map((it) => (
         <ItemLine key={it.id} item={it} />
       ))}
-      {items.length > 0 && (
-        <Text style={styles.altAmount}>ADD ALTERNATE: {formatDollars(total)}</Text>
-      )}
     </View>
   );
 }
@@ -1336,7 +1373,39 @@ function EstimatorBlock({
   );
 }
 
-function SignatureBlock() {
+/**
+ * Sign-and-return block, with the estimator's details inside it.
+ *
+ * Stephanie 2026-08-17 ("Can we make the sign off prettier? See below") and
+ * again 2026-08-20 ("The estimator sign off still kind of lame looking. Please
+ * update to the one I provided"). Her layout, verbatim:
+ *
+ *     PLEASE SIGN AND RETURN APPROVED COPY OF PROPOSAL
+ *     Authorized Client Signature: ______________________ Date: ___________
+ *     Brendan Dwyer
+ *     Lead Estimator, Tomco Painting
+ *     631-300-8984
+ *     Brendan@Tomcopainting.com
+ *
+ * The name sits UNDER the signature line as the person returning it to, and
+ * the title carries the company on the same line — so this is not the old
+ * "Estimator:" block moved down, it is a different shape. The separate
+ * EstimatorBlock is therefore skipped whenever this renders, or the reader
+ * gets the same four facts twice on one page.
+ */
+function SignatureBlock({
+  e,
+  company,
+}: {
+  e: ProposalEstimatorSnapshot;
+  company?: OperatingCompany | null;
+}) {
+  const name = e.name?.trim();
+  // "Lead Estimator, Tomco Painting" — title and company on one line, which is
+  // how she wrote it. Either half alone still reads correctly.
+  const titleLine = [e.title?.trim(), company?.name?.trim()].filter(Boolean).join(", ");
+  const phone = e.phone?.trim() || company?.phone?.trim();
+  const email = e.email?.trim() || company?.email?.trim();
   return (
     <View style={styles.signBlock}>
       <Text style={styles.signHeading}>
@@ -1345,6 +1414,14 @@ function SignatureBlock() {
       <Text style={styles.signLine}>
         Authorized Client Signature: _____________________________________ Date: _______________
       </Text>
+      {(name || titleLine || phone || email) && (
+        <View style={styles.signContact}>
+          {name && <Text style={styles.signContactName}>{name}</Text>}
+          {titleLine && <Text style={styles.signContactRow}>{titleLine}</Text>}
+          {phone && <Text style={styles.signContactRow}>{phone}</Text>}
+          {email && <Text style={styles.signContactRow}>{email}</Text>}
+        </View>
+      )}
     </View>
   );
 }
@@ -1432,6 +1509,11 @@ export function ProposalPdfDocument({
   const overrideOnInternal =
     mode === "internal" && Math.abs(proposal.total_cents - itemizedSumCents) > 1;
   const showLineTable = mode === "internal" || (proposal.pdf_show_line_prices && !overrideActive);
+  // The per-line "show price" checkbox is only meaningful once somebody has
+  // ticked at least one line. Until then every line reads false — that is the
+  // migration-148 backfill, not a decision — and honouring it would blank the
+  // whole itemized table. See LiRow.
+  const respectShowPrice = lineItems.some((i) => i.show_price === true);
 
   return (
     <Document
@@ -1494,7 +1576,12 @@ export function ProposalPdfDocument({
                 the TOTAL.
               </Text>
             )}
-            <InclusionsInternal items={inclusions} internal={mode === "internal"} groupByPhase />
+            <InclusionsInternal
+              items={inclusions}
+              internal={mode === "internal"}
+              groupByPhase
+              respectShowPrice={respectShowPrice}
+            />
           </>
         ) : (
           <InclusionsCustomer
@@ -1514,14 +1601,27 @@ export function ProposalPdfDocument({
             separate "Labor" table below, where the estimator's qty/rate math
             is the whole point. */}
         {showLineTable && laborRows.length > 0 && (
-          <InclusionsInternal items={laborRows} internal={mode === "internal"} heading="Labor" />
+          <InclusionsInternal
+            items={laborRows}
+            internal={mode === "internal"}
+            heading="Labor"
+            respectShowPrice={respectShowPrice}
+          />
         )}
 
-        {/* Karan 2026-07-19 (1:1 reference match): Exclusions come
-            BEFORE the TOTAL row, not after. Reference flow is
-            intro → scope items → exclusions → TOTAL → estimator. */}
-        <ExclusionsBlock exclusions={exclusions} />
+        {/* ORDER — Stephanie 2026-08-17 and again 2026-08-20, both rounds:
+            "Total price goes after scope/inclusions · Alternate goes after
+            total price · Then Exclusions" and "Total price goes before
+            exclusions, not after".
 
+            This REVERSES Karan's 2026-07-19 "1:1 reference match" call, which
+            put Exclusions before the TOTAL to mirror the reference PDF we had
+            captured. Stephanie sends these proposals out of Tomco daily and
+            has asked twice, so her ordering wins over our reading of one
+            sample. Flagged to Karan rather than changed quietly.
+
+            Flow is now: Scope of Work → TOTAL → Alternate → Exclusions →
+            Qualifications → sign-off. */}
         <TotalRow label={totalLabel} cents={proposal.total_cents} />
 
         {/* Katie 2026-08-13: "on the proposal PDF the Alternates should be
@@ -1545,6 +1645,8 @@ export function ProposalPdfDocument({
             altNotes={proposal.alternate_notes}
           />
         )}
+
+        <ExclusionsBlock exclusions={exclusions} />
 
 
         {/* CIP notice: inline yellow-highlighted bold line above the
@@ -1588,9 +1690,15 @@ export function ProposalPdfDocument({
             in the reference. Sign-and-return line comes last, well
             below the estimator, so it doesn't split the natural
             "here's the number, here's who to reach" flow. */}
-        <EstimatorBlock e={proposal.estimator_snapshot_json} company={company} />
-
-        {showSignatureBlock && <SignatureBlock />}
+        {/* One or the other, never both — the sign-off now carries the same
+            name/title/phone/email, and printing the old "Estimator:" block
+            above it repeated all four on the same page. Internal/review
+            copies have no sign-off, so they keep the standalone block. */}
+        {showSignatureBlock ? (
+          <SignatureBlock e={proposal.estimator_snapshot_json} company={company} />
+        ) : (
+          <EstimatorBlock e={proposal.estimator_snapshot_json} company={company} />
+        )}
 
         {/* Footer fixed to bottom of every page. Karan 2026-07-17
             (Katie feedback: "Footer is getting cut off"): moved 30pt
