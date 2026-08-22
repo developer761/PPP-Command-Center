@@ -57,3 +57,38 @@ describe(`"'save row' implied I can click and save and I can't"`, () => {
     expect(BUTTON).toContain("if (wasPending.current && !pending) setDirty(false)");
   });
 });
+
+describe('"click off the items that were approved and not approved"', () => {
+  const DB = readFileSync("lib/commercial/proposals/db.ts", "utf8");
+  const MIG = readFileSync("supabase/migrations/167_proposal_line_customer_approved.sql", "utf8");
+
+  it("has three states, because 'nobody has said' is not 'declined'", () => {
+    // A boolean NOT NULL DEFAULT false would record every line of every
+    // proposal ever written as "the customer declined it".
+    expect(MIG).toContain("ADD COLUMN IF NOT EXISTS customer_approved boolean");
+    expect(MIG).not.toMatch(/customer_approved boolean\s+NOT NULL/i);
+    expect(DB).toContain("customer_approved: boolean | null");
+  });
+
+  it("is written by a path that is exempt from the draft-only guard", () => {
+    // Every other line-item writer calls assertProposalDraft, correctly — the
+    // sent document must not change. This field is not part of that document,
+    // and can only be answered once it has gone out, so guarding it the same
+    // way would make it unreachable exactly when it means something.
+    const fn = DB.slice(DB.indexOf("export async function setLineCustomerApproved"));
+    const body = fn.slice(0, fn.indexOf("\nexport async function", 10));
+    expect(body).not.toContain("assertProposalDraft");
+    // …and the exemption is why it may touch nothing else.
+    expect(body).toContain("update({ customer_approved: approved })");
+  });
+
+  it("only appears once the proposal has actually gone out", () => {
+    // Nobody can have answered before it was sent.
+    expect(EDITOR).toContain("hasBeenSent\n                  ? { accountId, dealId, proposalId, action: setLineApprovedAction }");
+  });
+
+  it("verifies the line belongs to this proposal before flipping it", () => {
+    const fn = EDITOR.slice(EDITOR.indexOf("async function setLineApprovedAction"));
+    expect(fn.slice(0, 2000)).toContain("if (!lines.some((l) => l.id === lineId))");
+  });
+});

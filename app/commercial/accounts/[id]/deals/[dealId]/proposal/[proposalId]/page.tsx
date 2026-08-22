@@ -586,6 +586,50 @@ async function fileEstimateReportAction(formData: FormData) {
   );
 }
 
+/**
+ * Record what the customer actually took, line by line.
+ *
+ * Stephanie: *"once the job is won, are we able to click off on the items that
+ * were approved and not approved in both inclusions and alternates, especially
+ * if we are breaking out the price."*
+ *
+ * On a broken-out proposal a GC often awards PART of it. Until now the platform
+ * recorded only that the deal was won, so which lines were bought lived in
+ * somebody's email.
+ *
+ * Deliberately NOT routed through updateLineItemAction: that path enforces
+ * draft-only, and this can only be answered once the proposal has been sent.
+ * See setLineCustomerApproved for why the exemption is safe.
+ */
+async function setLineApprovedAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  const lineId = String(formData.get("line_id") ?? "");
+  if (![accountId, dealId, proposalId, lineId].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  // Chain of trust: the line must belong to THIS proposal, and the proposal to
+  // this deal. Without it a line id from another job could be flipped.
+  const existing = await getProposal(proposalId);
+  if (!existing || existing.opportunity_id !== dealId) notFound();
+  const lines = await listLineItemsForProposal(proposalId);
+  if (!lines.some((l) => l.id === lineId)) {
+    redirect(`${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent("That line is no longer on this proposal.")}`);
+  }
+  // Three states, cycled by one control: unanswered → took it → didn't.
+  const raw = String(formData.get("to") ?? "");
+  const approved = raw === "yes" ? true : raw === "no" ? false : null;
+  const { setLineCustomerApproved } = await import("@/lib/commercial/proposals/db");
+  const res = await setLineCustomerApproved(lineId, approved, userId);
+  revalidatePath(`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`);
+  if (!res.ok) {
+    redirect(`${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent(res.error)}`);
+  }
+}
+
 async function renameProposalAction(formData: FormData) {
   "use server";
   const userId = await requireAuthed();
@@ -2221,7 +2265,14 @@ export default async function ProposalEditorPage({
               backHref={backParam}
             />
           ) : (
-            <ReadOnlyLineItems rows={inclusions} />
+            <ReadOnlyLineItems
+              rows={inclusions}
+              approval={
+                hasBeenSent
+                  ? { accountId, dealId, proposalId, action: setLineApprovedAction }
+                  : undefined
+              }
+            />
           )}
           {canEditLines && (
             <AddLineItemForm
@@ -2269,7 +2320,14 @@ export default async function ProposalEditorPage({
               backHref={backParam}
             />
           ) : (
-            <ReadOnlyLineItems rows={alternates} />
+            <ReadOnlyLineItems
+              rows={alternates}
+              approval={
+                hasBeenSent
+                  ? { accountId, dealId, proposalId, action: setLineApprovedAction }
+                  : undefined
+              }
+            />
           )}
 
           {/* Accepting an alternate — Stephanie 2026-08-20: "How do I add
@@ -2814,7 +2872,19 @@ function LineItemsTable({
 
 /** Read-only line-item list for a locked (non-draft) proposal — shows the scope
  *  without any editable inputs or Save/Remove/Add controls (R4 #2). */
-function ReadOnlyLineItems({ rows }: { rows: CommercialProposalLineItem[] }) {
+function ReadOnlyLineItems({
+  rows,
+  approval,
+}: {
+  rows: CommercialProposalLineItem[];
+  /**
+   * Present once the proposal has gone out — then each line can record what the
+   * customer said about it. Absent while the proposal is merely locked for some
+   * other reason, so the control never appears before there is anyone to have
+   * answered (Stephanie: "once the job is won…").
+   */
+  approval?: { accountId: string; dealId: string; proposalId: string; action: (fd: FormData) => void };
+}) {
   return (
     <ul className="space-y-2">
       {rows.map((r) => {
@@ -2830,7 +2900,47 @@ function ReadOnlyLineItems({ rows }: { rows: CommercialProposalLineItem[] }) {
                 {Number(r.quantity)}{r.unit ? ` ${r.unit}` : ""} × {formatDollars(r.unit_price_cents)}
               </p>
             </div>
-            <span className="shrink-0 text-[13px] font-semibold tabular-nums text-ppp-charcoal">{r.show_price === false ? "—" : formatDollars(lineCents)}</span>
+            <div className="shrink-0 flex items-center gap-3">
+              {approval && (
+                <form action={approval.action}>
+                  <input type="hidden" name="account_id" value={approval.accountId} />
+                  <input type="hidden" name="deal_id" value={approval.dealId} />
+                  <input type="hidden" name="proposal_id" value={approval.proposalId} />
+                  <input type="hidden" name="line_id" value={r.id} />
+                  {/* One control, three states — unanswered → took it → didn't
+                      → unanswered. A pair of buttons would double the width of
+                      every row for a field that is usually left alone, and a
+                      plain checkbox cannot say "nobody has told us yet", which
+                      is the state that matters most on a job still being
+                      negotiated. */}
+                  <input
+                    type="hidden"
+                    name="to"
+                    value={r.customer_approved === null || r.customer_approved === undefined ? "yes" : r.customer_approved ? "no" : ""}
+                  />
+                  <SubmitButton
+                    pendingLabel="…"
+                    className={
+                      r.customer_approved === true
+                        ? "inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[32px] rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 text-[11.5px] font-bold"
+                        : r.customer_approved === false
+                          ? "inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[32px] rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[11.5px] font-bold line-through"
+                          : "inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[32px] rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-500 text-[11.5px] font-semibold"
+                    }
+                    title={
+                      r.customer_approved === true
+                        ? "Customer took this line. Click to mark it declined."
+                        : r.customer_approved === false
+                          ? "Customer declined this line. Click to clear."
+                          : "Nobody has said yet. Click to mark it taken."
+                    }
+                  >
+                    {r.customer_approved === true ? "✓ Taken" : r.customer_approved === false ? "Declined" : "Not answered"}
+                  </SubmitButton>
+                </form>
+              )}
+              <span className="text-[13px] font-semibold tabular-nums text-ppp-charcoal">{r.show_price === false ? "—" : formatDollars(lineCents)}</span>
+            </div>
           </li>
         );
       })}

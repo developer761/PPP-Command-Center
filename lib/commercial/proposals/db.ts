@@ -181,6 +181,11 @@ export type CommercialProposalLineItem = {
    *  line can be discounted or uplifted while the quantity stays honest on the
    *  page. NULL = computed normally. */
   line_total_override_cents: number | null;
+  /** Did the customer take this line? NULL = nobody has said — the honest
+   *  starting state, and the one every existing row is in. Recorded AFTER the
+   *  proposal is sent, so it is written by setLineCustomerApproved rather than
+   *  the draft-only edit path. Migration 167. */
+  customer_approved: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -2209,6 +2214,45 @@ export async function updateLineItem(
   );
   await recomputeProposalTotal(item.proposal_id, actorUserId);
   return { ok: true, item };
+}
+
+/**
+ * Record whether the customer took a line.
+ *
+ * Stephanie: *"once the job is won, are we able to click off on the items that
+ * were approved and not approved in both inclusions and alternates."*
+ *
+ * DELIBERATELY EXEMPT from `assertProposalDraft`, which every other line-item
+ * writer goes through. That guard protects the SENT DOCUMENT — a proposal the
+ * GC holds a PDF of must not change underneath them. This is not part of that
+ * document: it is what the customer said about it afterwards, and it can only
+ * be answered once the proposal has gone out. Guarding it the same way would
+ * make the field unreachable in every state where it means anything.
+ *
+ * The exemption is exactly why this touches ONE column and takes no other
+ * input — a caller cannot ride any other edit in on it.
+ */
+export async function setLineCustomerApproved(
+  lineItemId: string,
+  approved: boolean | null,
+  actingUserId: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_proposal_line_items")
+    .select("*")
+    .eq("id", lineItemId)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "That line is no longer on this proposal." };
+  const { data: after, error } = await sb
+    .from("commercial_proposal_line_items")
+    .update({ customer_approved: approved })
+    .eq("id", lineItemId)
+    .select("*")
+    .single();
+  if (error) return { ok: false, error: error.message };
+  await logUpdate("commercial_proposal_line_items", lineItemId, before, after, actingUserId);
+  return { ok: true };
 }
 
 export async function deleteLineItem(
