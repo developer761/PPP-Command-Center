@@ -1318,14 +1318,10 @@ function TotalRow({ label, cents }: { label: string; cents: number }) {
   );
 }
 
-function AlternateSectionCustomer({
-  items,
-  altNotes,
-}: {
-  items: CommercialProposalLineItem[];
-  altNotes: string | null | undefined;
-}) {
-  if (items.length === 0 && !altNotes) return null;
+function AlternateSectionCustomer({ items }: { items: CommercialProposalLineItem[] }) {
+  // The qualifications paragraph is no longer part of this section, so an
+  // alternates block with no alternate LINES has nothing left to print.
+  if (items.length === 0) return null;
   /* Stephanie 2026-08-17: "The alternates are a bit wacky … the bullet is
      coming first with the price and then the verbiage for the alternate and
      then the total price shows up again." — and 2026-08-20: "Might be easier
@@ -1335,9 +1331,8 @@ function AlternateSectionCustomer({
   return (
     <View style={styles.altSection}>
       <Text style={styles.altHeader}>Add Alternate:</Text>
-      {altNotes && (
-        <Text style={{ marginBottom: 4, fontSize: 11 }}>{altNotes}</Text>
-      )}
+      {/* The qualifications paragraph moved to its own section after
+          Exclusions — see QualificationsBlock. */}
       {items.map((it) => (
         <ItemLine key={it.id} item={it} />
       ))}
@@ -1347,20 +1342,17 @@ function AlternateSectionCustomer({
 
 function AlternateSectionInternal({
   items,
-  altNotes,
   internal,
 }: {
   items: CommercialProposalLineItem[];
-  altNotes: string | null | undefined;
   internal: boolean;
 }) {
-  if (items.length === 0 && !altNotes) return null;
+  // Qualifications print in their own section on the internal copy too — the
+  // estimator's review PDF must show the same document shape the GC receives.
+  if (items.length === 0) return null;
   return (
     <View style={styles.altSection}>
       <Text style={styles.altHeader}>{internal ? "Alternate (internal):" : "Alternate:"}</Text>
-      {altNotes && (
-        <Text style={{ marginBottom: 4, fontSize: 11 }}>{altNotes}</Text>
-      )}
       {items.length > 0 && <LineItemTable items={items} showAlternateBadge={false} priceOnly={!internal} />}
     </View>
   );
@@ -1374,11 +1366,31 @@ function AlternateSectionInternal({
  * of the price, not something we are refusing to do, and printing it under
  * "Exclusions:" told a GC the opposite of what was meant.
  */
-function QualificationsBlock({ qualifications }: { qualifications: string[] }) {
-  if (qualifications.length === 0) return null;
+function QualificationsBlock({
+  qualifications,
+  notes,
+}: {
+  qualifications: string[];
+  /** The free-text paragraph from the editor's Qualifications box. */
+  notes?: string | null;
+}) {
+  const note = notes?.trim();
+  if (qualifications.length === 0 && !note) return null;
   return (
     <View style={{ marginTop: 16 }}>
       <Text style={styles.sectionUnderlineHeader}>Qualifications:</Text>
+      {/* Stephanie 2026-08-17: "Qualifications should be its own section after
+          exclusions, not grouped in with alternates."
+
+          This paragraph used to print INSIDE the Alternate block — the editor
+          box was even subtitled "shown above the alternate line items". So the
+          platform had two different things called Qualifications: this text,
+          which appeared among the alternates, and the library rows below, which
+          appeared under a heading of that name. Typing in the box marked
+          Qualifications did not put anything under Qualifications.
+
+          One section now. The paragraph leads it, the library lines follow. */}
+      {note && <Text style={{ marginBottom: 6, fontSize: 11 }}>{note}</Text>}
       {qualifications.map((q, i) => (
         <View key={i} style={styles.bulletRow}>
           <View style={styles.bulletDot} />
@@ -1775,21 +1787,14 @@ export function ProposalPdfDocument({
             check our rollup rule. Below the total they read as what they are:
             priced options the customer can add. */}
         {showLineTable ? (
-          <AlternateSectionInternal
-            items={alternates}
-            altNotes={proposal.alternate_notes}
-            internal={mode === "internal"}
-          />
+          <AlternateSectionInternal items={alternates} internal={mode === "internal"} />
         ) : (
-          <AlternateSectionCustomer
-            items={alternates}
-            altNotes={proposal.alternate_notes}
-          />
+          <AlternateSectionCustomer items={alternates} />
         )}
 
         <ExclusionsBlock exclusions={exclusions} />
 
-        <QualificationsBlock qualifications={qualifications} />
+        <QualificationsBlock qualifications={qualifications} notes={proposal.alternate_notes} />
 
 
         {/* CIP notice: inline yellow-highlighted bold line above the

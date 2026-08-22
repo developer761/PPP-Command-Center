@@ -39,6 +39,9 @@ export async function GET(request: Request) {
       id: r.id,
       text: r.text,
       category: r.category,
+      // Which PDF heading it prints under, so the picker can show it rather
+      // than the estimator finding out when the PDF renders (migration 164).
+      kind: r.kind,
       use_count: r.use_count,
     })),
   });
@@ -91,6 +94,7 @@ export async function POST(request: Request) {
       id: result.exclusion.id,
       text: result.exclusion.text,
       category: result.exclusion.category,
+      kind: result.exclusion.kind,
       use_count: result.exclusion.use_count,
     },
   });

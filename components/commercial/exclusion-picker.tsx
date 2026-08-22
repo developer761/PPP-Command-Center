@@ -24,8 +24,28 @@ type Row = {
   id: string;
   text: string;
   category: "standard" | "optional";
+  /**
+   * Which PDF section this line prints under (migration 164).
+   *
+   * The library holds both — an EXCLUSION is work we are not doing, a
+   * QUALIFICATION is a condition the price depends on — and they print under
+   * different headings. The picker showed neither, so the only way to know
+   * where a line would end up was to render the PDF. Optional so an older
+   * caller that has not been updated still compiles and simply shows nothing.
+   */
+  kind?: "exclusion" | "qualification";
   use_count: number;
 };
+
+/** Small marker so a qualification is recognisable in a list of exclusions. */
+function KindBadge({ kind }: { kind?: Row["kind"] }) {
+  if (kind !== "qualification") return null;
+  return (
+    <span className="ml-1.5 shrink-0 inline-flex items-center rounded px-1 py-0.5 bg-ppp-blue-50 text-ppp-blue-800 text-[9.5px] font-bold uppercase tracking-wide align-middle">
+      Qual
+    </span>
+  );
+}
 
 export type ExclusionPickerProps = {
   /** `to_` or `""` — matches the naming convention on the form. */
@@ -241,6 +261,7 @@ export function ExclusionPicker({
                   <span className="truncate max-w-[260px]" title={s.text}>
                     {s.text}
                   </span>
+                  <KindBadge kind={s.kind} />
                   <button
                     type="button"
                     onClick={() => removeRow(s.id)}
@@ -324,6 +345,7 @@ export function ExclusionPicker({
                   {exclusionCategoryLabel(r.category)}
                 </span>
                 <span className="flex-1">{r.text}</span>
+                <KindBadge kind={r.kind} />
                 {r.use_count > 0 && (
                   <span className="text-[10px] text-ppp-charcoal-500 tabular-nums shrink-0">
                     {r.use_count}×

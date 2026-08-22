@@ -51,3 +51,56 @@ describe("the proposal prints them as separate sections", () => {
     expect(SRC).toContain(">Qualifications:<");
   });
 });
+
+describe("only ONE thing is called Qualifications", () => {
+  const PDF = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+  const EDITOR = readFileSync(
+    "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx",
+    "utf8"
+  );
+
+  /**
+   * Migration 164 gave the exclusions library a `kind`, and the PDF a
+   * "Qualifications:" heading fed by it. But the editor ALREADY had a box
+   * titled "Qualifications" — renamed from "Alternate description" at
+   * Stephanie's request — and that box wrote `alternate_notes`, which printed
+   * INSIDE the Alternate block.
+   *
+   * So the platform had two different things under one name, and typing into
+   * the box marked Qualifications put nothing under the heading marked
+   * Qualifications. That was introduced by the 164 work, not reported by her.
+   *
+   * Her original words are the resolution: "Qualifications should be its own
+   * section after exclusions, not grouped in with alternates."
+   */
+  it("the alternate block no longer prints the qualifications paragraph", () => {
+    expect(PDF).not.toContain("altNotes");
+  });
+
+  it("the paragraph prints in the Qualifications section instead", () => {
+    expect(PDF).toContain("<QualificationsBlock qualifications={qualifications} notes={proposal.alternate_notes} />");
+  });
+
+  it("an alternates block with no alternate LINES renders nothing", () => {
+    // It used to render for a note alone; the note now lives elsewhere, so the
+    // old guard would have produced an empty "Alternate:" heading.
+    const block = PDF.slice(PDF.indexOf("function AlternateSectionCustomer"));
+    expect(block.slice(0, 400)).toContain("if (items.length === 0) return null;");
+  });
+
+  it("the editor stops promising the old placement", () => {
+    expect(EDITOR).not.toContain("shown above the alternate line items");
+    expect(EDITOR).toContain("Prints in its own section after Exclusions");
+  });
+
+  it("the picker can tell an exclusion from a qualification", () => {
+    // Without this the only way to learn where a library line prints was to
+    // render the PDF and look.
+    const picker = readFileSync("components/commercial/exclusion-picker.tsx", "utf8");
+    expect(picker).toContain("KindBadge");
+    expect(picker).toContain('kind?: "exclusion" | "qualification"');
+    // …and the search endpoint has to actually send it.
+    const api = readFileSync("app/api/commercial/exclusions/search/route.ts", "utf8");
+    expect(api).toContain("kind: r.kind");
+  });
+});

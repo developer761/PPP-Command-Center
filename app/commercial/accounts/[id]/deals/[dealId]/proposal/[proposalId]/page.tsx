@@ -2334,17 +2334,20 @@ export default async function ProposalEditorPage({
         {hiddenIds}
         <input type="hidden" name={FIELDS_INPUT_NAME} value={fieldsFor("qualifications")} />
 
-        {/* Qualifications (fka "Alternate description") — Karan meeting 2026-08 */}
+        {/* Qualifications (fka "Alternate description") — Karan meeting 2026-08.
+            Stephanie 2026-08-17: "Qualifications should be its own section
+            after exclusions, not grouped in with alternates." This box prints
+            in that section now, not above the alternate lines. */}
         <EditorSection
           title="Qualifications"
-          subtitle="Optional qualifications paragraph shown above the alternate line items on the proposal."
+          subtitle="Conditions the price depends on — e.g. assumes one mobilisation. Prints in its own section after Exclusions, above any qualification lines picked from the library."
           icon={
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M7 7h10 M7 12h10 M7 17h6" /><path d="M3 7h.01 M3 12h.01 M3 17h.01" />
             </svg>
           }
         >
-          <textarea name="alternate_notes" defaultValue={proposal.alternate_notes ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="e.g. Exterior: Power wash exterior of building." />
+          <textarea name="alternate_notes" defaultValue={proposal.alternate_notes ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="e.g. Price assumes one mobilisation and clear, unobstructed access." />
         </EditorSection>
       </AutosaveProposalForm>
 
@@ -2427,6 +2430,8 @@ export default async function ProposalEditorPage({
               id: e.id,
               text: e.text,
               category: e.category,
+              // Which heading it prints under — see the Qual badge.
+              kind: e.kind,
               use_count: e.use_count,
             }))}
             initialCustom={proposal.custom_exclusions ?? []}
