@@ -27,7 +27,7 @@ import { useRouter } from "next/navigation";
 import { IconBuilding, IconTarget, IconReceipt, IconFileDoc } from "./inline-icons";
 import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
-type PaletteKind = "account" | "opportunity" | "proposal" | "invoice" | "document";
+type PaletteKind = "account" | "opportunity" | "proposal" | "invoice" | "document" | "contact";
 
 type PaletteResult = {
   kind: PaletteKind;
@@ -43,6 +43,7 @@ const KIND_LABEL: Record<PaletteKind, string> = {
   proposal: "Proposals",
   invoice: "Invoices",
   document: "Documents",
+  contact: "People",
 };
 
 const KIND_ICON: Record<PaletteKind, typeof IconBuilding> = {
@@ -51,10 +52,14 @@ const KIND_ICON: Record<PaletteKind, typeof IconBuilding> = {
   proposal: IconFileDoc,
   invoice: IconReceipt,
   document: IconFileDoc,
+  contact: IconBuilding,
 };
 
 // Order the entity filter chips + result groups.
-const KIND_ORDER: PaletteKind[] = ["account", "opportunity", "proposal", "invoice", "document"];
+// Contacts sit high on purpose: "what is this person\'s number" is the search
+// that used to cost the most clicks — you knew the name and had to remember
+// which account held them (Karan 2026-08-22, on Salesforce being too clicky).
+const KIND_ORDER: PaletteKind[] = ["account", "opportunity", "contact", "proposal", "invoice", "document"];
 
 export function CommandPalette() {
   const router = useRouter();

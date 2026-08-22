@@ -27,7 +27,7 @@ import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-col
 const MAX_PER_KIND = 8;
 
 type PaletteResult = {
-  kind: "account" | "opportunity" | "proposal" | "invoice" | "document";
+  kind: "account" | "opportunity" | "proposal" | "invoice" | "document" | "contact";
   id: string;
   label: string;
   hint: string;
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
   // about, so typing in the Opportunities search doesn't surface a document.
   // Unknown names are ignored rather than erroring — a scope is a narrowing
   // hint, never a reason to return no results at all.
-  const ALL_KINDS = ["account", "opportunity", "proposal", "invoice", "document"] as const;
+  const ALL_KINDS = ["account", "opportunity", "proposal", "invoice", "document", "contact"] as const;
   const kindsRaw = (searchParams.get("kinds") ?? "").trim();
   const requested = kindsRaw
     ? kindsRaw.split(",").map((s) => s.trim()).filter((s): s is (typeof ALL_KINDS)[number] =>
@@ -110,7 +110,7 @@ export async function GET(request: Request) {
     `invoice_number.ilike.${idPattern},po_number.ilike.${pattern}` +
     (amountCents !== null ? `,total_cents.eq.${amountCents}` : "");
 
-  const [accountsRes, oppsRes, proposalsRes, invoicesRes, documentsRes] = await Promise.all([
+  const [accountsRes, oppsRes, proposalsRes, invoicesRes, documentsRes, contactsRes] = await Promise.all([
     want("account") ? sb
       .from("commercial_accounts")
       .select("id, company_name, city, state, account_seq")
@@ -149,6 +149,27 @@ export async function GET(request: Request) {
       .is("deleted_at", null)
       .ilike("file_name", `%${safe}%`)
       .order("created_at", { ascending: false })
+      .limit(MAX_PER_KIND) : EMPTY,
+    /**
+     * PEOPLE. Stephanie: *"how do I access the contact information from the
+     * opportunity?"* and *"Can we add contact information in the Account
+     * headers and the Opportunity headers"*.
+     *
+     * Karan 2026-08-22: "Salesforce is too clicky to get to certain
+     * information." A superintendent's phone number is the clearest example —
+     * you know the person's name and want their number, and reaching it meant
+     * remembering which account they hang off, opening it, finding the tab.
+     *
+     * Searchable by name, email OR phone, because all three are things you
+     * arrive holding: a name from a conversation, an address off an email, a
+     * number off a missed call.
+     */
+    want("contact") ? sb
+      .from("commercial_contacts")
+      .select("id, full_name, email, phone, title, commercial_account_contacts(account_id, commercial_accounts(company_name))")
+      .is("deleted_at", null)
+      .or(`full_name.ilike.${pattern},email.ilike.${pattern},phone.ilike.${pattern}`)
+      .order("full_name")
       .limit(MAX_PER_KIND) : EMPTY,
   ]);
 
@@ -284,6 +305,48 @@ export async function GET(request: Request) {
       hint: [d.category ? String(d.category).replace(/_/g, " ") : null, "document"].filter(Boolean).join(" · "),
       // Documents open the file directly (new tab, handled by the palette).
       href: `/api/commercial/documents/${d.id}/download`,
+    });
+  }
+
+  for (const c of (contactsRes.data ?? []) as {
+    id: string;
+    full_name: string;
+    email: string | null;
+    phone: string | null;
+    title: string | null;
+    /**
+     * The embedded account comes back as an OBJECT for this to-one relation,
+     * while supabase-js types it as an array — verified against the live
+     * database 2026-08-22. Reading it as `[0].company_name` returns undefined
+     * and every contact quietly loses its company from the hint: no error, no
+     * failing type, just a slightly emptier row nobody would question.
+     *
+     * Handled both ways rather than picking one, because the shape depends on
+     * how PostgREST resolves the relationship and is not ours to guarantee.
+     */
+    commercial_account_contacts: Array<{
+      account_id: string;
+      commercial_accounts:
+        | { company_name: string }
+        | { company_name: string }[]
+        | null;
+    }> | null;
+  }[]) {
+    const link = c.commercial_account_contacts?.[0] ?? null;
+    const acct = link?.commercial_accounts ?? null;
+    const company = (Array.isArray(acct) ? acct[0]?.company_name : acct?.company_name) ?? null;
+    // The hint IS the answer for most of these searches — you looked the person
+    // up to get their number, so put it in the row rather than one click away.
+    const hint = [c.title, c.phone, c.email, company].filter(Boolean).join(" · ") || "contact";
+    results.push({
+      kind: "contact",
+      id: c.id,
+      label: c.full_name,
+      hint,
+      // A contact has no page of its own; they live on the account that holds
+      // them. Landing on the Contacts tab puts you where you can call, edit or
+      // attach them — an id-only route would be a dead end.
+      href: link ? `/commercial/accounts/${link.account_id}?tab=people` : "/commercial/accounts",
     });
   }
 
