@@ -34,6 +34,19 @@ const ACTIONABLE_KINDS = new Set([
   "commercial_proposal_approval_requested",
   "commercial_proposal_changes_requested",
   "commercial_proposal_approved",
+  // Karan 2026-08-22, on the platform being less clicky than Salesforce: the
+  // bar answered "what needs me today" for the proposal loop only. These three
+  // are addressed to ONE PERSON BY NAME — somebody assigned you a task, your
+  // task is now late, someone wrote your name in a note — so they are as much
+  // "your court" as an approval request, and they were sitting in the bell.
+  //
+  // Everything else stays out on purpose, and the line is worth stating: an
+  // overdue invoice or an expiring COI is the TEAM's work, not a specific
+  // person's, and putting team-wide reminders here would turn a bar that means
+  // "you are blocking something" into a second feed people learn to dismiss.
+  "commercial_task_assigned",
+  "commercial_task_overdue",
+  "commercial_note_mention",
 ]);
 
 /** Per-kind framing so the bar says what to DO, not just what happened. */
@@ -41,6 +54,9 @@ function ctaFor(kind: string): string {
   if (kind === "commercial_proposal_approval_requested") return "Review & approve";
   if (kind === "commercial_proposal_changes_requested") return "Make the edits";
   if (kind === "commercial_proposal_approved") return "Send it";
+  if (kind === "commercial_task_assigned") return "Open the task";
+  if (kind === "commercial_task_overdue") return "It's overdue";
+  if (kind === "commercial_note_mention") return "Read it";
   return "Open";
 }
 
