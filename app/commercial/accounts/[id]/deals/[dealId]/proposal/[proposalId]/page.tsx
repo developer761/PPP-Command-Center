@@ -74,6 +74,7 @@ import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
 import ExclusionPicker from "@/components/commercial/exclusion-picker";
+import { RowSaveButton } from "@/components/commercial/row-save-button";
 import ProductPicker, { type PickableProduct } from "@/components/commercial/product-picker";
 import { IconTrophy } from "@/components/commercial/inline-icons";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -2648,7 +2649,37 @@ function LineItemsTable({
             <input type="hidden" name="deal_id" value={dealId} />
             <input type="hidden" name="proposal_id" value={proposalId} />
             <input type="hidden" name="id" value={r.id} />
-            <input type="hidden" name="is_alternate" value={r.is_alternate ? "on" : ""} />
+            {/* Stephanie: "Is there a way to convert an alternate into part of
+                the scope?"
+
+                This was a hidden field — read by the update action, writable by
+                nothing. The only way to move a line between Inclusions and
+                Alternates was Remove and re-add, losing the quantity, price,
+                phase and the product link with it.
+
+                A checkbox instead of a button, so it rides the row's existing
+                Save with everything else on it: one save, one optimistic-lock
+                check, no second action to keep in step with this one. */}
+            {r.is_labor ? (
+              // Labor rows don't offer it: the add form already refuses
+              // labour-as-an-alternate (`is_labor && !is_alternate`), and the
+              // hidden field preserves whatever the row already holds so saving
+              // a labour row can't silently change its bucket.
+              <input type="hidden" name="is_alternate" value={r.is_alternate ? "on" : ""} />
+            ) : (
+            <label className="flex items-center gap-2 text-[12px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] sm:min-h-0">
+              <input
+                type="checkbox"
+                name="is_alternate"
+                defaultChecked={r.is_alternate}
+                className="w-4 h-4 accent-cc-brand-600"
+              />
+              <span>
+                Alternate
+                <span className="text-ppp-charcoal-400"> — an option the customer can add, priced separately and kept out of the TOTAL</span>
+              </span>
+            </label>
+            )}
             {/* Migration 071: preserve the snapshotted product name on save;
                 the EditableProductChip below can blank this to convert the
                 row to free-text (fixes the mis-picked-variation dead-end). */}
@@ -2761,11 +2792,17 @@ function LineItemsTable({
                 >
                   Remove
                 </ConfirmSubmitButton>
-                <SubmitButton
-                  className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[13px] font-semibold hover:bg-ppp-navy-900 touch-manipulation"
-                >
-                  Save row
-                </SubmitButton>
+                {/* Stephanie: "'save row' implied I can click and save and I
+                    can't, change verbiage to 'saved row'."
+
+                    The button did work — but on an untouched row there is
+                    nothing to save, so clicking it appeared to do nothing, and
+                    a label reading "Save row" promised otherwise. It now shows
+                    the row's state: "Saved", disabled, until something in the
+                    row changes, then "Save row". That answers what she was
+                    actually telling us without a button whose label lies about
+                    its tense. */}
+                <RowSaveButton />
               </div>
             </div>
           </form>
