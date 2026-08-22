@@ -18,8 +18,11 @@ const ALLOWED = new Set(["application/pdf", "image/png", "image/jpeg", "image/jp
  * it is under the invoicing") — same size cap, same MIME allowlist, same
  * magic-byte check, same crew/access gates. The only difference is which
  * record the waiver hangs off. */
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { id } = await ctx.params;
+export async function POST(req: Request, ctx: { params: Promise<{ applicationId: string }> }) {
+  // The segment is [applicationId], matching the sibling /export route. Next
+  // refuses two different slug names on the same path — see the comment in the
+  // client for why this was caught late.
+  const { applicationId: id } = await ctx.params;
   if (!UUID_RE.test(id)) return NextResponse.json({ error: "bad_id" }, { status: 400 });
 
   const supabase = await createClient();
