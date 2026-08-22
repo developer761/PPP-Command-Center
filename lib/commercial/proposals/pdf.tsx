@@ -1443,7 +1443,7 @@ function EstimatorBlock({
   if (!e.name && !e.email && !e.phone) {
     if (!company?.phone && !company?.email) return null;
     return (
-      <View style={styles.estBlock}>
+      <View style={styles.estBlock} wrap={false}>
         <Text style={styles.estHeader}>Questions:</Text>
         <Text style={styles.estName}>{company.name}</Text>
         {company.phone && <Text style={styles.estRow}>{company.phone}</Text>}
@@ -1452,7 +1452,7 @@ function EstimatorBlock({
     );
   }
   return (
-    <View style={styles.estBlock}>
+    <View style={styles.estBlock} wrap={false}>
       {/* Karan 2026-07-17 (Katie feedback): reference PDF has an
           "Estimator:" bold+underlined header above the block, then
           name/phone/email each on their own line, all bold+underlined. */}
@@ -1512,7 +1512,18 @@ function SignatureBlock({
   const phone = e.phone?.trim() || company?.phone?.trim();
   const email = e.email?.trim() || company?.email?.trim();
   return (
-    <View style={styles.signBlock}>
+    // wrap={false} — keep the whole sign-off on one page.
+    //
+    // Caught by RENDERING the PDF rather than reading the source (2026-08-22):
+    // merging the estimator's details into this block made it tall enough to
+    // straddle a page break, and it did. "Brendan Dwyer / Lead Estimator" ended
+    // page one; his phone and email started page two, orphaned from the name
+    // they belong to. A GC reading that sees a signature block with no way to
+    // reach anyone, then a stray phone number on the next sheet.
+    //
+    // The block is short enough that pushing it whole to the next page always
+    // beats splitting it.
+    <View style={styles.signBlock} wrap={false}>
       <Text style={styles.signHeading}>
         PLEASE SIGN AND RETURN APPROVED COPY OF PROPOSAL
       </Text>
