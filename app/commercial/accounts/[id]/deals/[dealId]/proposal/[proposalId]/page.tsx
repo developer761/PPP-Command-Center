@@ -598,17 +598,20 @@ async function renameProposalAction(formData: FormData) {
   if (!existing || existing.opportunity_id !== dealId) notFound();
   const nextName = String(formData.get("project_name") ?? "").trim() || undefined;
   const header = { ...existing.header_json, project_name: nextName };
+  // ONLY the name. The seven pass-through fields that used to ride along here
+  // were read from `existing` — a snapshot taken a few lines above — and written
+  // back verbatim. A body autosave landing between that read and this write was
+  // silently reverted: intro text, exclusions, bid notes, the PDF options, all
+  // restored to whatever they were when the rename started.
+  //
+  // Two autosaves on one record, one of them read-modify-writing the whole row,
+  // is the same shape as the deal edit sheet that wiped proposed start/end
+  // dates. updateProposal is fully patch-based — every field is
+  // `if (input.X !== undefined)` — so simply not sending them leaves them
+  // alone, which closes the race without needing a version column.
   const result = await updateProposal({
     id: proposalId,
     header_json: header,
-    estimator_snapshot_json: existing.estimator_snapshot_json,
-    intro_text_override: existing.intro_text_override,
-    exclusion_ids: existing.exclusion_ids,
-    custom_exclusions: existing.custom_exclusions,
-    alternate_notes: existing.alternate_notes,
-    bid_notes: existing.bid_notes,
-    pdf_show_line_prices: existing.pdf_show_line_prices,
-    pdf_compact: existing.pdf_compact,
     updated_by_user_id: userId,
   });
   if (!result.ok) {
@@ -616,14 +619,25 @@ async function renameProposalAction(formData: FormData) {
       proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
-  // Karan 2026-07-16: name changes surface on THREE pages (editor +
-  // account page Proposals tab + global proposals kanban). Revalidate
-  // all three so the rename shows up wherever the user checks next.
-  revalidatePath(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
-  );
-  revalidatePath(`/commercial/accounts/${accountId}`);
-  revalidatePath("/commercial/proposals");
+  // Karan 2026-07-16: name changes surface on THREE pages (editor + account
+  // page Proposals tab + global proposals kanban). Revalidate all three so the
+  // rename shows up wherever the user checks next.
+  //
+  // But NOT on a debounced background save. Revalidating the editor ships a
+  // fresh RSC payload back with the action response and re-renders the tree the
+  // user is typing into — which is Stephanie's "it saves every 3 seconds making
+  // it hard to enter data without it being overwritten". The body form has
+  // honoured this seam since it was built; this third autosave was written from
+  // the same template and missed it, exactly as autosave-flag.ts predicts in
+  // its own comment. Blur and Enter still revalidate, which is when the other
+  // pages actually need to catch up.
+  if (!isBackgroundSave(formData)) {
+    revalidatePath(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
+    );
+    revalidatePath(`/commercial/accounts/${accountId}`);
+    revalidatePath("/commercial/proposals");
+  }
   // No redirect on success: this is a debounced autosave, and navigating on every
   // keystroke-pause scrolled the editor + stuck a ?saved=1 flag. revalidatePath
   // already refreshes the name in place (matches saveProposalAction).

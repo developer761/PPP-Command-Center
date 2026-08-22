@@ -90,7 +90,24 @@ export function directUploadDocument(opts: {
       await new Promise<void>((resolve, reject) => {
         const x = new XMLHttpRequest();
         xhr = x;
-        x.open("POST", url.toString());
+        // PUT, not POST. On the storage-v1 API the VERB is what distinguishes
+        // the two routes at this identical path: POST /object/upload/sign/...
+        // MINTS a signed URL, PUT uploads to one. Sending the file with POST
+        // therefore hits the create-a-URL route with a multipart body and is
+        // rejected outright.
+        //
+        // Verified against live Storage 2026-08-22 — same bucket, same signed
+        // token, same body, only the verb differing:
+        //   POST -> HTTP 400, nothing stored
+        //   PUT  -> HTTP 200, object stored
+        //
+        // This is Stephanie's "Storage rejected the file (HTTP 400)" on
+        // Documents and Work Orders. Migration 137 fixed the OTHER half of that
+        // report (the request ran as `anon` because the client sent the
+        // publishable key as its bearer), which is why the error survived a fix
+        // that was correct as far as it went. The comment two lines above this
+        // one has said "PUT straight to Storage" since the day it shipped.
+        x.open("PUT", url.toString());
         x.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
         x.setRequestHeader("authorization", `Bearer ${accessToken}`);
         x.setRequestHeader("x-upsert", "false");

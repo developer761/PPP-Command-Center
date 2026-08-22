@@ -27,6 +27,7 @@
  * editor/account/proposals-list pages.
  */
 import { useEffect, useRef, useState } from "react";
+import { AUTOSAVE_FLAG, AUTOSAVE_DEBOUNCE_MS } from "@/lib/commercial/autosave-flag";
 
 type Status = "idle" | "dirty" | "saving" | "saved";
 
@@ -53,16 +54,23 @@ export function AutosaveProposalName({
   const savedValueRef = useRef(initialValue.trim());
   const [status, setStatus] = useState<Status>("idle");
 
-  // When the server round-trips a fresh value (post-save redirect, or
-  // another tab renamed), reflect it in the input — but only if the
-  // input isn't currently focused. Never clobber active user typing.
+  // When the server round-trips a fresh value (post-save redirect, or another
+  // tab renamed), reflect it in the input.
+  //
+  // "Not focused" is not a safe enough test on its own. Type, pause, let a save
+  // fire, keep typing, then click away: the blur submits the NEW text while the
+  // earlier save's payload is still in flight, and when it lands the field is
+  // no longer focused — so it overwrote what was just typed with the older
+  // string. Only adopt the server's value when the box still holds exactly what
+  // was last saved, i.e. the user has typed nothing since.
   useEffect(() => {
-    savedValueRef.current = initialValue.trim();
     const el = inputRef.current;
+    const prevSaved = savedValueRef.current;
+    savedValueRef.current = initialValue.trim();
     if (!el) return;
-    if (document.activeElement !== el) {
-      el.value = initialValue;
-    }
+    if (document.activeElement === el) return;
+    if (el.value.trim() !== prevSaved) return; // unsaved edits present — leave them
+    el.value = initialValue;
   }, [initialValue]);
 
   useEffect(() => {
@@ -71,7 +79,17 @@ export function AutosaveProposalName({
     };
   }, []);
 
-  function submit() {
+  /**
+   * `background` = the debounce timer fired, not a person. The server skips
+   * revalidatePath for those, which is the whole point of the seam — see
+   * lib/commercial/autosave-flag.
+   *
+   * This component was written from the same template as its two siblings and
+   * missed the flag, which is the THIRD time that has happened (the module's
+   * own comment records the Work Order and Closeout tools). So a name save
+   * re-rendered the editor the user was typing into every 600ms.
+   */
+  function submit(background = false) {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
@@ -89,7 +107,9 @@ export function AutosaveProposalName({
     // uncontrolled (defaultValue), so a reset mid-type threw away
     // everything typed since the last save. The FormData carries the
     // sibling hidden ids plus this field, exactly as a submit would.
-    void Promise.resolve(action(new FormData(form))).catch((err: unknown) => {
+    const fd = new FormData(form);
+    if (background) fd.set(AUTOSAVE_FLAG, "1");
+    void Promise.resolve(action(fd)).catch((err: unknown) => {
       // Re-throw the redirect control signal instead of swallowing it.
       //
       // This was a bare `catch (){}`, and the comment below — "the server's
@@ -141,10 +161,14 @@ export function AutosaveProposalName({
             : () => {
                 setStatus("dirty");
                 if (timerRef.current) clearTimeout(timerRef.current);
-                timerRef.current = setTimeout(submit, 600);
+                // 600ms fired on the pause between two words. The shared
+                // constant is the pause between two thoughts.
+                timerRef.current = setTimeout(() => submit(true), AUTOSAVE_DEBOUNCE_MS);
               }
         }
-        onBlur={disabled ? undefined : submit}
+        // Blur and Enter pass background=false on purpose: leaving the field
+        // is the moment the new name should appear on the other pages.
+        onBlur={disabled ? undefined : () => submit(false)}
         onKeyDown={
           disabled
             ? undefined
