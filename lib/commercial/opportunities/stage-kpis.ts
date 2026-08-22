@@ -166,7 +166,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     }
     if (i.proposalDueAt) {
       const d = dueLabel(i.proposalDueAt, i.todayIso);
-      out.push({ key: "due", label: "Proposal due", value: d.text, sub: i.proposalDueAt, tone: d.tone });
+      out.push({ key: "due", label: "Proposal due", value: d.text, sub: i.proposalDueAt, tone: d.tone, href: "?tab=proposals" });
     }
   }
 
@@ -179,23 +179,26 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         label: "Proposal out",
         value: money(i.latestSentProposalCents),
         sub: i.latestSentProposalAt ? `sent ${agoLabel(i.latestSentProposalAt, i.todayIso)}` : null,
+        href: "?tab=proposals",
       });
     } else if ((i.currentQuoteCents ?? 0) > 0) {
-      out.push({ key: "quote", label: "Current quote", value: money(i.currentQuoteCents) });
+      out.push({ key: "quote", label: "Current quote", value: money(i.currentQuoteCents), href: "?tab=proposals" });
     }
     if (i.followUpAt) {
       const d = dueLabel(i.followUpAt, i.todayIso);
-      out.push({ key: "follow_up", label: "Follow-up", value: d.text, sub: i.followUpAt, tone: d.tone });
+      out.push({ key: "follow_up", label: "Follow-up", value: d.text, sub: i.followUpAt, tone: d.tone, href: "?tab=activity&sub=tasks" });
     }
   } else if (phase === "bidding" && (i.currentQuoteCents ?? 0) > 0) {
-    out.push({ key: "quote", label: "Current quote", value: money(i.currentQuoteCents) });
+    out.push({ key: "quote", label: "Current quote", value: money(i.currentQuoteCents), href: "?tab=proposals" });
   }
 
   if (phase === "won_not_started") {
     out.push(
       hasContract
-        ? { key: "contract", label: "Contract", value: money(i.contractCents), tone: "good" }
-        : { key: "contract", label: "Contract", value: "not set", tone: "warn" }
+        // "not set" is the one tile people MUST act on, and it had nowhere to
+        // go — Info is where the contract sum is entered.
+        ? { key: "contract", label: "Contract", value: money(i.contractCents), tone: "good", href: "?tab=info" }
+        : { key: "contract", label: "Contract", value: "not set", tone: "warn", href: "?tab=info" }
     );
     if (i.decidedAt) {
       out.push({ key: "won_ago", label: "Won", value: agoLabel(i.decidedAt, i.todayIso), sub: i.decidedAt });
@@ -235,7 +238,8 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
           label: "Billed",
           value: `${Math.round(((i.billedPreTaxCents ?? 0) / (i.contractCents || 1)) * 100)}%`,
           sub: `${money(i.billedPreTaxCents)} of ${money(i.contractCents)}`,
-        });
+          href: "?tab=project&sub=invoices",
+      });
       }
     }
     if (hasContract && i.grossMarginPct != null) {
@@ -248,6 +252,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         // incomplete, and the dollars are one click away on Costs.
         sub: i.marginCaveat ?? money(i.grossMarginCents),
         tone: i.grossMarginPct < 0 ? "bad" : i.grossMarginPct < 15 ? "warn" : "good",
+        href: "?tab=project&sub=transactions",
       });
     }
   }
@@ -261,6 +266,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         value: `${pct}%`,
         sub: `${money(i.billedPreTaxCents)} of ${money(i.contractCents)}`,
         tone: pct > 100 ? "warn" : "default",
+        href: "?tab=project&sub=invoices",
       });
     }
     // Karan 2026-08-13: "the overview when we're on delivery should have KPIs
@@ -279,10 +285,11 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         // happens on progress billing, and it needs correcting rather than
         // rounding to zero.
         tone: left < 0 ? "warn" : left === 0 ? "good" : "default",
+        href: "?tab=project&sub=invoices",
       });
     }
     if ((i.approvedChangeOrderCents ?? 0) !== 0) {
-      out.push({ key: "cos", label: "Approved COs", value: money(i.approvedChangeOrderCents) });
+      out.push({ key: "cos", label: "Approved COs", value: money(i.approvedChangeOrderCents), href: "?tab=project&sub=change-orders" });
     }
     if (i.grossMarginPct != null && hasContract) {
       out.push({
@@ -291,6 +298,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         value: `${i.grossMarginPct}%`,
         sub: i.marginCaveat ?? money(i.grossMarginCents),
         tone: i.grossMarginPct < 0 ? "bad" : i.grossMarginPct < 15 ? "warn" : "good",
+        href: "?tab=project&sub=transactions",
       });
     }
   }
@@ -317,7 +325,10 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
       });
     }
     if ((i.crewHours ?? 0) > 0) {
-      out.push({ key: "hours", label: "Crew hours", value: `${i.crewHours}` });
+      out.push({ key: "hours", label: "Crew hours", value: `${i.crewHours}`, // Crew hours live in Field Ops, not on the deal — scheduling must not
+        // fork into a per-job silo. The hours view takes no job filter, so this
+        // lands on the tool rather than pretending to be pre-filtered.
+        href: "/commercial/field-ops/hours" });
     }
   }
 
@@ -334,7 +345,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         tone: "warn",
       });
     } else if ((i.collectedCents ?? 0) > 0) {
-      out.push({ key: "ar", label: "Collected", value: money(i.collectedCents), tone: "good" });
+      out.push({ key: "ar", label: "Collected", value: money(i.collectedCents), tone: "good", href: "?tab=project&sub=invoices" });
     }
     // Retainage is the money a GC holds back on every application. It is
     // earned, it is not late, and it appears in NEITHER tile above — so
@@ -368,6 +379,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         value: `${i.grossMarginPct}%`,
         sub: i.marginCaveat ?? money(i.grossMarginCents),
         tone: i.grossMarginPct < 0 ? "bad" : i.grossMarginPct < 15 ? "warn" : "good",
+        href: "?tab=project&sub=transactions",
       });
     }
     if (i.closedOutAt) {

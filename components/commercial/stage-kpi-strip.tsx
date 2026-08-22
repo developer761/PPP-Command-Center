@@ -121,8 +121,13 @@ export function StageKpiStrip({
             // number; one without stays a div. Branched rather than a dynamic
             // component, because `Link` and `div` do not share a prop type and
             // the union silently widens `href` to `string | undefined`.
+            // A relative href ("?tab=…") hangs off this deal; an absolute one
+            // ("/commercial/…") leaves it, for a number owned by another tool.
+            // Concatenating blindly turned the second kind into
+            // `/commercial/opportunities/{id}/commercial/field-ops/hours`.
+            const href = k.href?.startsWith("/") ? k.href : `${basePath}${k.href}`;
             return k.href ? (
-              <Link key={k.key} href={`${basePath}${k.href}`} className="group flex-1 min-w-[7.5rem] block min-h-[44px]">
+              <Link key={k.key} href={href} className="group flex-1 min-w-[7.5rem] block min-h-[44px]">
                 {body}
               </Link>
             ) : (
