@@ -159,6 +159,17 @@ export type FinalizeDocumentUploadInput = {
   mime_type: string;
   notes?: string | null;
   uploaded_by_user_id: string;
+  /**
+   * Set to make this a NEW VERSION of an existing document rather than a new
+   * one. The row is inserted exactly as usual and then chained by the same
+   * helper the multipart path uses.
+   *
+   * Versioning was multipart-only, so a 30 MB plan set could be uploaded as a
+   * new document but not as a new VERSION of one — the POST 413s at Vercel's
+   * ~4.5 MB request cap before the route even runs. Upload the file, then fail
+   * to replace it.
+   */
+  previous_document_id?: string | null;
 };
 
 /**
@@ -278,5 +289,36 @@ export async function finalizeDocumentUpload(
   }
   const doc = row as CommercialDocument;
   await logInsert("commercial_documents", doc.id, doc, input.uploaded_by_user_id);
+
+  // A version bump is this same insert plus the chain link. Reusing the
+  // multipart path's helper keeps the race handling (migration 048's partial
+  // UNIQUE rejects a second concurrent bump) in ONE place.
+  if (input.previous_document_id) {
+    const { getDocument, chainDocumentVersion } = await import("./db");
+    const prev = await getDocument(input.previous_document_id);
+    if (!prev) {
+      await removeObject();
+      return { ok: false, error: "Previous version not found." };
+    }
+    if (prev.status === "superseded") {
+      await removeObject();
+      return { ok: false, error: "That version is already superseded — bump the current head instead." };
+    }
+    // The new version inherits its parent + category from the row it replaces;
+    // a caller claiming otherwise would move a file between deals.
+    if (
+      prev.parent_type !== input.parent_type ||
+      prev.parent_id !== input.parent_id
+    ) {
+      await removeObject();
+      return { ok: false, error: "A new version must stay on the same record." };
+    }
+    return chainDocumentVersion({
+      previous: prev,
+      newDocument: doc,
+      uploaded_by_user_id: input.uploaded_by_user_id,
+    });
+  }
+
   return { ok: true, document: doc };
 }

@@ -31,6 +31,14 @@ export function directUploadDocument(opts: {
   file: File;
   category: string;
   notes?: string | null;
+  /**
+   * Set to upload a NEW VERSION of an existing document rather than a new one.
+   *
+   * Versioning was multipart-only: a 30 MB plan set uploaded fine as a new
+   * document, then failed to replace one, because the multipart POST 413s at
+   * Vercel's ~4.5 MB request cap before the route runs. Same transport now.
+   */
+  previousDocumentId?: string | null;
   onProgress?: (fraction: number) => void;
 }): DirectUploadHandle {
   const base =
@@ -158,6 +166,7 @@ export function directUploadDocument(opts: {
         mime_type: mime,
         category: opts.category,
         notes: opts.notes ?? null,
+        previous_document_id: opts.previousDocumentId ?? null,
       }),
     });
     const fin = (await finRes.json().catch(() => ({}))) as {

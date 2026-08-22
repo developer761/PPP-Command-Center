@@ -332,6 +332,31 @@ export async function bumpDocumentVersion(
   });
   if (!uploaded.ok) return uploaded;
 
+  return chainDocumentVersion({
+    previous: prev,
+    newDocument: uploaded.document,
+    uploaded_by_user_id: input.uploaded_by_user_id,
+  });
+}
+
+/**
+ * Wire a freshly-inserted document row into the version chain and retire the
+ * one it replaces.
+ *
+ * Extracted so the DIRECT-to-Storage path can reuse it. Versioning used to be
+ * multipart-only, which meant a 30 MB plan set could be uploaded as a new
+ * document but not as a NEW VERSION of one — the POST 413s at Vercel's ~4.5 MB
+ * request cap before the route runs. Duplicating this logic to fix that would
+ * have meant two copies of the race handling below, which is exactly the kind
+ * of thing that drifts.
+ */
+export async function chainDocumentVersion(input: {
+  previous: CommercialDocument;
+  newDocument: CommercialDocument;
+  uploaded_by_user_id: string | null;
+}): Promise<{ ok: true; document: CommercialDocument } | { ok: false; error: string }> {
+  const prev = input.previous;
+  const uploaded = { document: input.newDocument };
   // Now wire the new row into the chain and demote the old row to
   // superseded. Do this as two sequential updates; a chain break is
   // recoverable (both rows still exist + point at their storage keys)

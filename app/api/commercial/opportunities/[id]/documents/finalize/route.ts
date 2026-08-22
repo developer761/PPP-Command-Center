@@ -61,6 +61,11 @@ export async function POST(
       mime_type: String(body.mime_type ?? ""),
       notes: rawNotes ? rawNotes.slice(0, 500) : null,
       uploaded_by_user_id: data.user.id,
+      // Present when this upload REPLACES an existing document. finalize
+      // validates that the id belongs to this same parent before chaining, so a
+      // caller cannot move a file onto another deal by naming its document.
+      previous_document_id:
+        typeof body.previous_document_id === "string" ? body.previous_document_id : null,
     });
     if (!result.ok) {
       return NextResponse.json({ error: "finalize_failed", detail: result.error }, { status: 400 });

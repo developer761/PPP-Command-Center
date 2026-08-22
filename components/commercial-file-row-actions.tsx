@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
+import { directUploadDocument } from "@/lib/commercial/uploads/direct-upload-client";
+
+/** Same threshold new-document uploads use — see commercial-files-upload-form. */
+const DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024;
 
 /**
  * Client-side row-action strip for a document on the Files sub-tab.
@@ -148,7 +152,7 @@ export function CommercialFileRowActions({
       )}
 
       {versionOpen && (
-        <VersionBumpSheet documentId={documentId} onClose={() => setVersionOpen(false)} />
+        <VersionBumpSheet documentId={documentId} oppId={oppId} onClose={() => setVersionOpen(false)} />
       )}
     </div>
   );
@@ -183,9 +187,12 @@ function transitionBtnCls(next: string): string {
  */
 function VersionBumpSheet({
   documentId,
+  oppId,
   onClose,
 }: {
   documentId: string;
+  /** Needed for the direct-to-Storage path — see the size branch in submit. */
+  oppId: string;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -223,14 +230,37 @@ function VersionBumpSheet({
     fd.append("file", file);
     if (notes.trim()) fd.append("notes", notes.trim());
     try {
-      const res = await fetch(`/api/commercial/documents/${documentId}/version`, {
-        method: "POST",
-        body: fd,
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: "Upload failed." }));
-        throw new Error(body.detail || body.error || `Upload failed (${res.status}).`);
+      // Over Vercel's ~4.5 MB request cap, multipart 413s at the EDGE before
+      // the route runs — the client then tries to res.json() an HTML error page
+      // and reports a bare "Upload failed (413)".
+      //
+      // A plan set is routinely tens of MB, so this made a document uploadable
+      // but not REPLACEABLE: the 30 MB original went up through the direct
+      // path, and every revision of it failed. Versions take the same transport
+      // above the same threshold that new documents already use.
+      if (file.size > DIRECT_UPLOAD_THRESHOLD) {
+        const handle = directUploadDocument({
+          parentType: "opportunity",
+          parentId: oppId,
+          file,
+          // finalize inherits the real category from the row being replaced;
+          // this is only the fallback if that lookup ever fails.
+          category: "other",
+          notes: notes.trim() || null,
+          previousDocumentId: documentId,
+        });
+        const result = await handle.promise;
+        if (!result.ok) throw new Error(result.error);
+      } else {
+        const res = await fetch(`/api/commercial/documents/${documentId}/version`, {
+          method: "POST",
+          body: fd,
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: "Upload failed." }));
+          throw new Error(body.detail || body.error || `Upload failed (${res.status}).`);
+        }
       }
       onClose();
       router.refresh();
