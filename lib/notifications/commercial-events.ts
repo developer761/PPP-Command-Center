@@ -1,4 +1,5 @@
 import "server-only";
+import { postCommercialSlack, slackEscape } from "@/lib/commercial/slack-notify";
 
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/resend";
@@ -1382,13 +1383,29 @@ export async function insertCommercialInvoicePaidNotifications(input: {
   actingUserId: string | null;
   actorName: string;
 }): Promise<{ fanout: number }> {
-  const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
-  if (recipients.length === 0) return { fanout: 0 };
 
   const relativeLink = `/commercial/invoices/${input.invoiceId}`;
   const emailLink = appendBase(relativeLink);
   const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
   const money = formatMoneyCents(input.totalCents);
+  // Slack posts BEFORE the recipient check, and outside it.
+  //
+  // Bells and emails are per-person, so giving up when nobody is assigned is
+  // right for them. The channel is not per-person — it is the room the team
+  // watches — and this event is exactly as true when the deal has no assignees.
+  // Gating it on recipients would make the channel silently incomplete in the
+  // one case nobody would think to check.
+  await postCommercialSlack({
+    text: `*Paid in full* — ${slackEscape(input.invoiceNumber)} · ${money}`,
+    context: slackEscape(input.oppTitle),
+    url: relativeLink,
+    urlLabel: "Open the invoice",
+    tone: "good",
+  });
+
+  const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
+  if (recipients.length === 0) return { fanout: 0 };
+
   const title = `PAID · ${input.invoiceNumber} · ${money}`;
   const body = `${shortOppTitle} is paid in full.`;
 
@@ -1448,8 +1465,6 @@ export async function insertCommercialProposalSentNotifications(input: {
   actingUserId: string | null;
   actorName: string;
 }): Promise<{ fanout: number }> {
-  const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
-  if (recipients.length === 0) return { fanout: 0 };
 
   const relativeLink = `/commercial/accounts/${input.accountId}/deals/${input.dealId}/proposal/${input.proposalId}`;
   const emailLink = appendBase(relativeLink);
@@ -1457,6 +1472,24 @@ export async function insertCommercialProposalSentNotifications(input: {
   const money = formatMoneyCents(input.totalCents);
   const revLabel = `R${input.revisionNumber}`;
   const gcSuffix = input.gcCompany ? ` to ${input.gcCompany}` : "";
+
+  // Slack posts BEFORE the recipient check, and outside it.
+  //
+  // Bells and emails are per-person, so giving up when nobody is assigned is
+  // right for them. The channel is not per-person — it is the room the team
+  // watches — and this event is exactly as true when the deal has no assignees.
+  // Gating it on recipients would make the channel silently incomplete in the
+  // one case nobody would think to check.
+  await postCommercialSlack({
+    text: `*Proposal sent* — ${slackEscape(revLabel)} · ${money}${input.gcCompany ? ` to *${slackEscape(input.gcCompany)}*` : ""}`,
+    context: `${slackEscape(input.oppTitle)} · sent by ${slackEscape(input.actorName)}`,
+    url: relativeLink,
+    urlLabel: "Open the proposal",
+    tone: "good",
+  });
+
+  const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
+  if (recipients.length === 0) return { fanout: 0 };
   const title = `Proposal sent: ${revLabel} · ${money}`;
   const body = `${input.actorName} sent ${revLabel}${gcSuffix} on ${shortOppTitle}.`;
 
@@ -1530,13 +1563,33 @@ export async function insertCommercialBidSubmittedNotifications(input: {
   contactEmail: string | null;
   oppTitle: string;
 }): Promise<{ fanout: number }> {
-  const { listManagedUsers } = await import("@/lib/auth/user-management");
-  const users = (await listManagedUsers()).filter((u) => u.has_new_platform_access && u.is_active);
-  if (users.length === 0) return { fanout: 0 };
 
   const relativeLink = `/commercial/opportunities/${input.opportunityId}`;
   const emailLink = appendBase(relativeLink);
   const who = input.contactName?.trim() || input.accountName;
+
+  // Slack posts BEFORE the recipient check, and outside it.
+  //
+  // Bells and emails are per-person, so giving up when nobody is assigned is
+  // right for them. The channel is not per-person — it is the room the team
+  // watches — and this event is exactly as true when the deal has no assignees.
+  // Gating it on recipients would make the channel silently incomplete in the
+  // one case nobody would think to check.
+  await postCommercialSlack({
+    text: `*New bid request* — *${slackEscape(input.accountName)}*`,
+    context: [
+      slackEscape(input.oppTitle),
+      `from ${slackEscape(who)}`,
+      input.contactEmail ? slackEscape(input.contactEmail) : null,
+    ].filter(Boolean).join(" · "),
+    url: relativeLink,
+    urlLabel: "Open the opportunity",
+    tone: "needs_action",
+  });
+
+  const { listManagedUsers } = await import("@/lib/auth/user-management");
+  const users = (await listManagedUsers()).filter((u) => u.has_new_platform_access && u.is_active);
+  if (users.length === 0) return { fanout: 0 };
   const shortTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
   const title = `New bid request: ${truncatePreview(input.accountName, BELL_TITLE_OPP_CAP)}`;
   const body = `${who} submitted a bid request through the website — ${shortTitle}.`;
@@ -1673,6 +1726,16 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
       if (r.ok && r.written) fanout += 1;
     })
   );
+  // ONE message, AFTER the fan-out. The bell + email loop above runs once per
+  // approver; Slack is a room they are all already in, so posting inside the
+  // loop would put the same line in three times for three approvers.
+  await postCommercialSlack({
+    text: `*Approval needed* — ${slackEscape(revLabel)} · ${money}${input.gcCompany ? ` for *${slackEscape(input.gcCompany)}*` : ""}`,
+    context: `${slackEscape(oppTitle)} · requested by ${slackEscape(requester)} · it can't go to the customer until an approver approves it`,
+    url: relativeLink,
+    urlLabel: "Review & approve",
+    tone: "needs_action",
+  });
   return { fanout, approverCount: approverIds.length };
 }
 
@@ -1769,6 +1832,28 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
     // thing you act on next — so it is a handoff, not an FYI.
     allowSelfNotify: true,
   });
+  // ONE post per decision, not one per recipient. This function is called once
+  // for the requester and again for every "receiver" CC'd on the outcome;
+  // `forReceiver` marks those copies (verified at all three call sites in
+  // proposals/db.ts), so the primary call is the single one that speaks for the
+  // event.
+  if (!input.forReceiver) {
+    const approvedDecision = input.decision === "approved";
+    await postCommercialSlack({
+      text: `${approvedDecision ? "*Proposal approved*" : "*Changes requested*"} — ${slackEscape(revLabel)}${input.gcCompany ? ` for *${slackEscape(input.gcCompany)}*` : ""}`,
+      context: [
+        slackEscape(oppTitle),
+        `${approvedDecision ? "approved" : "sent back"} by ${slackEscape(input.actorName)}`,
+        approvedDecision ? "ready to send to the customer" : null,
+        // The approver's reason IS the point of a rejection — putting it in the
+        // channel saves opening the proposal to find out why.
+        input.note?.trim() ? `“${slackEscape(truncatePreview(input.note.trim(), 160))}”` : null,
+      ].filter(Boolean).join(" · "),
+      url: relativeLink,
+      urlLabel: approvedDecision ? "Send it" : "Make the edits",
+      tone: approvedDecision ? "good" : "needs_action",
+    });
+  }
   return { ok: r.ok, written: r.ok ? (r as { written: boolean }).written : false };
 }
 
