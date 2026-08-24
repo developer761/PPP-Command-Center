@@ -323,6 +323,24 @@ export default function WorkOrderProgressBar({
       </ol>
 
       {/* Per-supplier sub-rows when this WO has multiple suppliers in flight */}
+      {/* R5.5 — a cancelled order retreats the bar to "not ordered", which is
+          the truth but on its own reads as though the order vanished. Say what
+          happened, so the retreat is explained rather than alarming. The copy
+          points at the next step, because re-sending is exactly what an admin
+          is here to do (and, before R5.6, exactly what was blocked). */}
+      {progress.supplierCancelledAt && (
+        <div className="mt-4 pt-3 border-t border-ppp-charcoal-100">
+          <div className="flex items-start gap-2 text-[11px] text-ppp-charcoal-600">
+            <span aria-hidden className="text-ppp-charcoal-400">✕</span>
+            <span>
+              <strong className="text-ppp-charcoal">Order cancelled</strong>
+              {` ${formatStepTime(progress.supplierCancelledAt)}`} — this job needs a
+              new materials order. The vendor was not notified.
+            </span>
+          </div>
+        </div>
+      )}
+
       {progress.perSupplier && progress.perSupplier.length > 1 && (
         <div className="mt-4 pt-3 border-t border-ppp-charcoal-100">
           <div className="text-[10px] uppercase tracking-wider font-bold text-ppp-charcoal-500 mb-1.5">
@@ -333,7 +351,8 @@ export default function WorkOrderProgressBar({
               <li key={s.supplierAccountId} className="flex items-center justify-between gap-2">
                 <span className="font-medium text-ppp-charcoal truncate">{s.supplierName}</span>
                 <span className="text-ppp-charcoal-500 shrink-0">
-                  {s.deliveredAt ? `Delivered ${formatStepTime(s.deliveredAt)}` :
+                  {s.cancelledAt ? `Cancelled ${formatStepTime(s.cancelledAt)}` :
+                   s.deliveredAt ? `Delivered ${formatStepTime(s.deliveredAt)}` :
                    s.acknowledgedAt ? `Acked ${formatStepTime(s.acknowledgedAt)}` :
                    s.sentAt ? `Sent ${formatStepTime(s.sentAt)}` :
                    s.draftedAt ? `Drafted ${formatStepTime(s.draftedAt)}` :

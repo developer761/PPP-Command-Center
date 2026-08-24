@@ -54,5 +54,8 @@ export type WoProgress = {
     sentAt: string | null;
     acknowledgedAt: string | null;
     deliveredAt: string | null;
+    /** R5.5: this supplier's order was withdrawn. The row stays visible — the
+     *  vendor was emailed a real order and the record should show it. */
+    cancelledAt?: string | null;
   }>;
 };

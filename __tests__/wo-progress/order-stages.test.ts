@@ -89,6 +89,37 @@ describe("deriveOrderStages", () => {
  * This is the same shape of logic in the same two places, so it lives in one
  * module and both must use it.
  */
+/**
+ * Pass-3 finding: fixing "still shows ordered" made the bar retreat to "never
+ * ordered" with nothing explaining why. Technically correct, but it reads as
+ * though the order vanished — the opposite over-correction, and the next
+ * round's complaint. The retreat has to come with a reason.
+ */
+describe("a cancellation is explained, not just subtracted", () => {
+  const bar = readFileSync(join(process.cwd(), "components/work-order-progress-bar.tsx"), "utf8");
+
+  it("says the order was cancelled", () => {
+    expect(bar).toContain("progress.supplierCancelledAt &&");
+    expect(bar).toMatch(/Order cancelled/);
+  });
+
+  it("tells the admin what to do next", () => {
+    // Re-sending is exactly what they're there for — and, before R5.6, exactly
+    // what was blocked.
+    expect(bar).toMatch(/needs a\s*\n?\s*new materials order/);
+  });
+
+  it("is honest that the vendor still has the original", () => {
+    // R5.5's held half: no cancellation notice goes out. Someone reading this
+    // bar must not assume the vendor knows.
+    expect(bar).toMatch(/vendor was not notified/);
+  });
+
+  it("labels the per-supplier row cancelled rather than falling back to Sent", () => {
+    expect(bar).toMatch(/s\.cancelledAt \? `Cancelled/);
+  });
+});
+
 describe("both progress loaders share the derivation", () => {
   const LOADERS = ["lib/wo-progress/derive.ts", "lib/materials-page-data.ts"];
   it.each(LOADERS)("%s calls deriveOrderStages", (rel) => {
