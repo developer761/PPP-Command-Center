@@ -24,6 +24,10 @@ export type WoProgress = {
    *  jobCompletedAt timestamp. Cancelled/voided/abandoned WOs do NOT count
    *  as complete. See lib/wo-progress/completion.ts. */
   jobCompletedAt: string | null;
+  /** R5.5: every order on this WO was cancelled, so it needs one again. Null
+   *  when any live order exists — a WO with one cancelled and one live order
+   *  is still ordered. */
+  supplierCancelledAt?: string | null;
   /** Kate round-2 #04: when colors were submitted via INTERNAL ENTRY (an AM
    *  entering on the customer's behalf, token kind='internal'), this is that
    *  staffer's display name so the bar reads "Amy Submitted" instead of

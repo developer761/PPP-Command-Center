@@ -293,7 +293,35 @@ export type SupplierOrderDraft = {
  * the loser with 23505. The send-route catches that as "duplicate_order" and
  * surfaces a friendly message; admin re-tries and gets the next N.
  */
-async function nextPoNumber(workOrderId: string, woNumber: string): Promise<string> {
+/**
+ * The next free PO number for a work order.
+ *
+ * `po_number` is globally UNIQUE, so this must return something genuinely
+ * unclaimed — and the old implementation could not. It COUNTED the WO's orders
+ * while excluding cancelled ones, which meant:
+ *
+ *   send order   → 0 existing → "PPP-WO00314545"
+ *   cancel it    → status='cancelled', but the row still holds that PO
+ *   send again   → cancelled excluded, count back to 0 → "PPP-WO00314545"
+ *                → 23505 unique_violation on a PO the cancelled row still owns
+ *
+ * Every retry recomputed the same number, so the work order could never take
+ * another order again. Not a race, not transient — permanent, which is exactly
+ * how Kate described it (R5.6), and WO 00314545 was sitting in that state in
+ * production.
+ *
+ * The exclusion was deliberate: "so a retracted order doesn't bump the next
+ * live PO to -2" (edge-case audit 2026-06-05). That cosmetic tidy-up created a
+ * hard block. It was also wrong on its own terms — a cancelled order's PO was
+ * already EMAILED to the vendor, so handing the same number to a different
+ * order gives them two different orders under one PO. The gap is the honest
+ * record.
+ *
+ * Counting is the wrong primitive regardless: it can't see which numbers are
+ * actually taken, and two concurrent sends compute the same count. So read the
+ * numbers in use — every status — and take the first free slot.
+ */
+export async function nextPoNumber(workOrderId: string, woNumber: string): Promise<string> {
   const base = `PPP-WO${woNumber}`;
   try {
     const sb = createClient(
@@ -301,30 +329,30 @@ async function nextPoNumber(workOrderId: string, woNumber: string): Promise<stri
       process.env.SUPABASE_SECRET_KEY!,
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
-    // Count existing supplier_orders for this WO (across all suppliers). A
-    // count of 0 → first order on the WO → use the bare WO PO. Any count
-    // > 0 → suffix with N+1. `head: true` skips returning rows (cheaper).
-    //
-    // Exclude `cancelled` rows so a retracted order doesn't bump the next
-    // live PO to -2 (edge-case audit 2026-06-05). Failed sends DO count —
-    // their PO already went into the audit log + a partial send may have
-    // reached the supplier, so we treat them as "this number is taken."
-    const { count, error } = await sb
+    const { data, error } = await sb
       .from("supplier_orders")
-      .select("id", { count: "exact", head: true })
-      .eq("work_order_id", workOrderId)
-      .neq("status", "cancelled");
-    if (!error && typeof count === "number") {
-      return count === 0 ? base : `${base}-${count + 1}`;
+      .select("po_number")
+      .eq("work_order_id", workOrderId);
+    if (!error && data) {
+      const taken = new Set(
+        (data as Array<{ po_number: string | null }>)
+          .map((r) => (r.po_number ?? "").trim())
+          .filter(Boolean)
+      );
+      if (!taken.has(base)) return base;
+      // Suffix upward past every number this WO has ever used. Bounded so a
+      // corrupt table can't spin; the timestamp fallback below covers it.
+      for (let n = 2; n <= 500; n++) {
+        const candidate = `${base}-${n}`;
+        if (!taken.has(candidate)) return candidate;
+      }
     }
-    if (error) console.warn("[supplier-order] PO count query failed:", error.message);
+    if (error) console.warn("[supplier-order] PO lookup failed:", error.message);
   } catch (err) {
-    console.warn("[supplier-order] PO count query unreachable:", err);
+    console.warn("[supplier-order] PO lookup unreachable:", err);
   }
-  // Fallback (Supabase unreachable): use a timestamp suffix so the UNIQUE
-  // constraint can't collide. Format stays human-readable. The 1-in-millions
-  // chance of accidentally landing on `${base}-${N}` for some real N is
-  // acceptable for a fallback path.
+  // Supabase unreachable, or 500 suffixes exhausted. A timestamp suffix keeps
+  // the number human-readable and can't collide with the `-N` series.
   return `${base}-t${String(Date.now()).slice(-6)}`;
 }
 

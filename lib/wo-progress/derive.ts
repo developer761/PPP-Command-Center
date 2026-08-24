@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { WoProgress } from "@/lib/wo-progress/types";
 import { buildAttribution } from "@/lib/wo-progress/attribution";
 import { getJobCompletedAt } from "@/lib/wo-progress/completion";
+import { deriveOrderStages, ORDER_STAGE_COLUMNS } from "@/lib/wo-progress/order-stages";
 
 /**
  * Builds the canonical progress timeline for one (or many) work orders.
@@ -56,34 +57,6 @@ type OrderRow = {
 
 /** Pick the most-recent timestamp from a set of rows (most-recent token,
  *  earliest open draft, etc.). Inputs can be null. */
-function pickMax(values: Array<string | null | undefined>): string | null {
-  let best: number | null = null;
-  let bestStr: string | null = null;
-  for (const v of values) {
-    if (!v) continue;
-    const ts = new Date(v).getTime();
-    if (isNaN(ts)) continue;
-    if (best === null || ts > best) {
-      best = ts;
-      bestStr = v;
-    }
-  }
-  return bestStr;
-}
-function pickMin(values: Array<string | null | undefined>): string | null {
-  let best: number | null = null;
-  let bestStr: string | null = null;
-  for (const v of values) {
-    if (!v) continue;
-    const ts = new Date(v).getTime();
-    if (isNaN(ts)) continue;
-    if (best === null || ts < best) {
-      best = ts;
-      bestStr = v;
-    }
-  }
-  return bestStr;
-}
 
 /**
  * Returns a Map<workOrderId, WoProgress> for the given WO IDs. One Supabase
@@ -163,7 +136,7 @@ export async function getProgressByWO(
   try {
     const { data: orderRows, error: orderErr } = await sb
       .from("supplier_orders")
-      .select("work_order_id, supplier_account_id, supplier_name, status, created_at, sent_at, acknowledged_at, delivered_at")
+      .select(ORDER_STAGE_COLUMNS)
       .in("work_order_id", workOrderIds)
       .order("created_at", { ascending: true });
     if (orderErr) throw orderErr;
@@ -187,26 +160,18 @@ export async function getProgressByWO(
       //                    suppliers confirmed)
       //   deliveredAt    = latest delivered_at across ALL orders (final
       //                    materials arrived)
-      existing.supplierDraftedAt = pickMin(rows.map((r) => r.created_at));
-      existing.supplierSentAt = pickMin(rows.map((r) => r.sent_at));
-      // ack/delivered need ALL suppliers to have the stamp — if any is
-      // missing, the stage stays "active" (waiting)
-      const allAcked = rows.length > 0 && rows.every((r) => r.acknowledged_at);
-      existing.supplierAcknowledgedAt = allAcked ? pickMax(rows.map((r) => r.acknowledged_at)) : null;
-      const allDelivered = rows.length > 0 && rows.every((r) => r.delivered_at);
-      existing.materialsDeliveredAt = allDelivered ? pickMax(rows.map((r) => r.delivered_at)) : null;
+      // R5.5 — shared with lib/materials-page-data.ts so the two loaders can't
+      // disagree about whether a work order is ordered.
+      const stages = deriveOrderStages(rows);
+      existing.supplierDraftedAt = stages.supplierDraftedAt;
+      existing.supplierSentAt = stages.supplierSentAt;
+      existing.supplierAcknowledgedAt = stages.supplierAcknowledgedAt;
+      existing.materialsDeliveredAt = stages.materialsDeliveredAt;
+      existing.supplierCancelledAt = stages.supplierCancelledAt;
 
-      // Per-supplier breakdown surface
-      if (rows.length > 0) {
-        existing.perSupplier = rows.map((r) => ({
-          supplierAccountId: r.supplier_account_id,
-          supplierName: r.supplier_name,
-          draftedAt: r.created_at,
-          sentAt: r.sent_at,
-          acknowledgedAt: r.acknowledged_at,
-          deliveredAt: r.delivered_at,
-        }));
-      }
+      // Per-supplier breakdown — from the same derivation, so a cancelled
+      // order carries its cancelledAt here too rather than only in one loader.
+      if (rows.length > 0) existing.perSupplier = stages.perSupplier;
     }
   } catch (err) {
     console.warn("[wo-progress] supplier_orders query failed:", err);

@@ -141,6 +141,8 @@ export type SentMessage = {
   submittedAt?: string | null;   // colors submitted timestamp
   expiresAt?: string | null;     // form link expiry
   followupDate?: string | null;  // WorkOrder.FollowupDate__c (YYYY-MM-DD)
+  /** R5.8: the order was withdrawn AFTER it had already been emailed. */
+  cancelledAt?: string | null;
   lastActivityAt?: string | null;// most recent of sent/opened/submitted
 };
 
@@ -329,6 +331,7 @@ export async function GET(request: Request) {
         supplier_name: string; po_number: string; sent_to_email: string;
         sent_at: string; resend_message_id: string | null; status: string;
         acknowledged_at: string | null; delivered_at: string | null;
+        cancelled_at?: string | null;
         delivery_status?: string | null;
         created_by_user_id?: string | null;
       }>) {
@@ -354,7 +357,10 @@ export async function GET(request: Request) {
           supplierName: o.supplier_name,
           acknowledged: !!o.acknowledged_at,
           delivered: !!o.delivered_at,
-          lastActivityAt: [o.sent_at, o.acknowledged_at, o.delivered_at]
+          cancelledAt: o.cancelled_at ?? null,
+          // Cancelling IS activity — it's usually the most recent thing that
+          // happened to the order, and the one a reader is looking for.
+          lastActivityAt: [o.sent_at, o.acknowledged_at, o.delivered_at, o.cancelled_at]
             .filter((d): d is string => !!d)
             .sort()
             .at(-1) ?? o.sent_at,

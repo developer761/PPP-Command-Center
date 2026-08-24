@@ -88,7 +88,7 @@ import { formatColorLabel } from "@/lib/supplier-order/estimate-gallons";
 import ModalPortal from "@/components/modal-portal";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
-import { FILTER_SEL, FILTER_GROUP_SENDER, FILTER_GROUP_STATUS, FILTER_GROUP_DATE } from "@/lib/ui/filter-chrome";
+import { FILTER_SEL, FILTER_GROUP_STATUS, FILTER_GROUP_DATE } from "@/lib/ui/filter-chrome";
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
 // worker has actively clicked a WO. The initial materials-list paint never
 // needs it — defer its JS so the page hydrates faster. First-WO-click pays
@@ -370,15 +370,17 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
    */
   type WoFilterStatus =
     | "all" | "needs_form" | "awaiting_customer" | "ready_to_order"
-    | "ordered" | "delivered" | "no_line_items";
+    | "ordered" | "cancelled" | "delivered" | "no_line_items";
   type WoDateDim = "form_sent" | "form_opened" | "form_submitted" | "order_sent" | "followup" | "close" | "start";
   type WoDatePreset = "any" | "today" | "yesterday" | "last7" | "month" | "custom";
-  const [filterSender, setFilterSender] = useState("");
   const [filterStatus, setFilterStatus] = useState<WoFilterStatus>("all");
   const [dateDim, setDateDim] = useState<WoDateDim>("form_sent");
   const [datePreset, setDatePreset] = useState<WoDatePreset>("any");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  /** R5.9: "off" leaves the Sort by control in charge; otherwise the chosen
+   *  date field ranks the list. */
+  const [dateSort, setDateSort] = useState<"off" | "newest" | "oldest">("off");
 
   // ET "today" so today/yesterday bucket the way the rest of Materials does.
   const todayEtStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
@@ -400,19 +402,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     }
   }, [datePreset, dateFrom, dateTo, todayEtStr]);
 
-  const senderOptions = useMemo(() => {
-    const names = new Set<string>();
-    for (const p of progressByWO.values()) {
-      if (p.sentByName) names.add(p.sentByName);
-    }
-    return [...names].sort();
-  }, [progressByWO]);
-
-  const filtersActive =
-    !!filterSender || filterStatus !== "all" || datePreset !== "any";
+  const filtersActive = filterStatus !== "all" || datePreset !== "any" || dateSort !== "off";
   const clearFilters = () => {
-    setFilterSender("");
     setFilterStatus("all");
+    setDateSort("off");
     setDatePreset("any");
     setDateFrom("");
     setDateTo("");
@@ -437,9 +430,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           return false;
         });
 
-    // R4.4 — sender / status / date, applied after the text search.
-    const matchesSender = (j: OpenWorkOrderForMaterials) =>
-      !filterSender || (progressByWO.get(j.wo.id)?.sentByName ?? "") === filterSender;
+    // R4.4 — status / date, applied after the text search. The sender filter
+    // was removed in R5.4: it matched the staffer who sent the COLOUR FORM,
+    // which says nothing about the work order itself, so most rows had no
+    // sender at all and picking one emptied the list. It answers a question
+    // about a message, which is what Mail Hub is for.
 
     const matchesStatus = (j: OpenWorkOrderForMaterials) => {
       if (filterStatus === "all") return true;
@@ -448,12 +443,18 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
       const sent = !!p?.formSentAt;
       const submitted = !!p?.formSubmittedAt;
       const ordered = !!p?.supplierSentAt;
+      // R5.8 — set only when EVERY order was cancelled, so the WO is genuinely
+      // back to needing one. See deriveOrderStages.
+      const cancelled = !!p?.supplierCancelledAt;
       switch (filterStatus) {
         // Mutually exclusive on purpose: a WO sits at exactly one pipeline
         // stage, so picking a status narrows rather than overlapping.
         case "needs_form": return !sent;
         case "awaiting_customer": return sent && !submitted;
+        // A cancelled WO IS ready to order again, so it legitimately appears
+        // under both — that overlap is the truth, not a bug.
         case "ready_to_order": return submitted && !ordered;
+        case "cancelled": return cancelled;
         case "ordered": return ordered && !p?.materialsDeliveredAt;
         case "delivered": return !!p?.materialsDeliveredAt;
         default: return true;
@@ -475,7 +476,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     };
 
     const withFilters = filtered.filter((j) => {
-      if (!matchesSender(j) || !matchesStatus(j)) return false;
+      if (!matchesStatus(j)) return false;
       if (!dateBounds) return true;
       const d = dimDate(j);
       // A WO with no date on the chosen dimension drops out when a date filter
@@ -532,8 +533,23 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
       if (!bc) return -1;
       return sortMode === "created-desc" ? bc.localeCompare(ac) : ac.localeCompare(bc);
     };
+    // R5.9 — when a date field is chosen, IT drives the order, exactly as Mail
+    // Hub does. Picking "Colors submitted · Last 7 days" and then reading a
+    // list ordered by close date makes the filter feel broken: you narrowed by
+    // one field and got ranked by another. Rows with no date on that field sort
+    // last regardless of direction, so a blank can never take the top slot.
+    if (dateSort !== "off") {
+      return withFilters.sort((a, b) => {
+        const da = dimDate(a) ?? "";
+        const db = dimDate(b) ?? "";
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return dateSort === "newest" ? db.localeCompare(da) : da.localeCompare(db);
+      });
+    }
     return withFilters.sort(sorter);
-  }, [openJobs, searchQuery, sortMode, filterSender, filterStatus, dateDim, dateBounds, progressByWO]);
+  }, [openJobs, searchQuery, sortMode, filterStatus, dateDim, dateBounds, dateSort, progressByWO]);
 
   // Focus mode (Kate #1): resolve the /materials/[woId] route param to an open
   // job, tolerating 15- vs 18-char Salesforce Ids (#8 — SF's classic 15-char
@@ -1056,21 +1072,6 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   is the work order's rather than the message's, because the
                   thing someone hunts for here is a pipeline stage. */}
               <div className="flex flex-wrap items-center gap-2 text-[12px]">
-                <span className={FILTER_GROUP_SENDER}>
-                  <span className="font-medium">Sender</span>
-                  <select
-                    value={filterSender}
-                    onChange={(e) => setFilterSender(e.target.value)}
-                    aria-label="Filter by who sent the color form"
-                    className={FILTER_SEL}
-                  >
-                    <option value="">Anyone</option>
-                    {senderOptions.map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </span>
-
                 <span className={FILTER_GROUP_STATUS}>
                   <span className="font-medium">Status</span>
                   <select
@@ -1087,6 +1088,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     </optgroup>
                     <optgroup label="Materials">
                       <option value="ordered">Ordered</option>
+                      <option value="cancelled">Order cancelled</option>
                       <option value="delivered">Materials delivered</option>
                     </optgroup>
                     <optgroup label="Data">
@@ -1124,6 +1126,16 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     <option value="month">This month</option>
                     <option value="custom">Custom range…</option>
                   </select>
+                  <select
+                    value={dateSort}
+                    onChange={(e) => setDateSort(e.target.value as typeof dateSort)}
+                    aria-label="Sort by this date"
+                    className={FILTER_SEL}
+                  >
+                    <option value="off">Don&apos;t sort by this</option>
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                  </select>
                   {datePreset === "custom" && (
                     <span className="inline-flex items-center gap-1.5">
                       <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="From date" className={FILTER_SEL} />
@@ -1157,11 +1169,27 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   <label htmlFor="wo-sort" className="text-ppp-charcoal-500">
                     Sort by:
                   </label>
+                  {/* R5.9: while a date field is driving the order this control
+                      does nothing. Saying so beats leaving someone to change it
+                      and wonder why the list didn't move. */}
+                  {dateSort !== "off" && (
+                    <span className="text-ppp-charcoal-400 italic">
+                      date filter &mdash;{" "}
+                      <button
+                        type="button"
+                        onClick={() => setDateSort("off")}
+                        className="text-ppp-blue-700 hover:underline not-italic font-medium"
+                      >
+                        use this instead
+                      </button>
+                    </span>
+                  )}
                   <select
                     id="wo-sort"
                     value={sortMode}
                     onChange={(e) => setSortMode(e.target.value as SortMode)}
-                    className="font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 text-base sm:text-inherit focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors"
+                    disabled={dateSort !== "off"}
+                    className="font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 text-base sm:text-inherit focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors disabled:text-ppp-charcoal-400 disabled:cursor-not-allowed disabled:hover:text-ppp-charcoal-400"
                   >
                     {SORT_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>

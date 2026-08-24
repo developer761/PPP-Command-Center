@@ -5,6 +5,7 @@ import type { FormStatus } from "@/lib/customer-form/wo-status";
 import type { WoProgress } from "@/lib/wo-progress/types";
 import { getJobCompletedAt } from "@/lib/wo-progress/completion";
 import { buildAttribution } from "@/lib/wo-progress/attribution";
+import { deriveOrderStages, ORDER_STAGE_COLUMNS } from "@/lib/wo-progress/order-stages";
 import { retainedPicksByLine, type RetainedPick } from "@/lib/customer-form/retained-picks";
 
 /**
@@ -71,28 +72,6 @@ function adminClient() {
 }
 
 /** Pick the max-non-null timestamp from a list. */
-function pickMax(values: Array<string | null | undefined>): string | null {
-  let best: number | null = null;
-  let bestStr: string | null = null;
-  for (const v of values) {
-    if (!v) continue;
-    const t = new Date(v).getTime();
-    if (isNaN(t)) continue;
-    if (best === null || t > best) { best = t; bestStr = v; }
-  }
-  return bestStr;
-}
-function pickMin(values: Array<string | null | undefined>): string | null {
-  let best: number | null = null;
-  let bestStr: string | null = null;
-  for (const v of values) {
-    if (!v) continue;
-    const t = new Date(v).getTime();
-    if (isNaN(t)) continue;
-    if (best === null || t < best) { best = t; bestStr = v; }
-  }
-  return bestStr;
-}
 
 export type MaterialsPageAuxData = {
   formStatusByWO: Map<string, FormStatus>;
@@ -186,7 +165,7 @@ export async function getMaterialsPageAuxData(
       .order("created_at", { ascending: false }),
     sb
       .from("supplier_orders")
-      .select("work_order_id, supplier_account_id, supplier_name, status, created_at, sent_at, acknowledged_at, delivered_at")
+      .select(ORDER_STAGE_COLUMNS)
       .in("work_order_id", workOrderIds)
       .order("created_at", { ascending: true }),
   ]);
@@ -321,22 +300,15 @@ export async function getMaterialsPageAuxData(
     for (const [woId, rows] of byWO) {
       const existing = progressByWO.get(woId);
       if (!existing) continue;
-      existing.supplierDraftedAt = pickMin(rows.map((r) => r.created_at));
-      existing.supplierSentAt = pickMin(rows.map((r) => r.sent_at));
-      const allAcked = rows.length > 0 && rows.every((r) => r.acknowledged_at);
-      existing.supplierAcknowledgedAt = allAcked ? pickMax(rows.map((r) => r.acknowledged_at)) : null;
-      const allDelivered = rows.length > 0 && rows.every((r) => r.delivered_at);
-      existing.materialsDeliveredAt = allDelivered ? pickMax(rows.map((r) => r.delivered_at)) : null;
-      if (rows.length > 0) {
-        existing.perSupplier = rows.map((r) => ({
-          supplierAccountId: r.supplier_account_id,
-          supplierName: r.supplier_name,
-          draftedAt: r.created_at,
-          sentAt: r.sent_at,
-          acknowledgedAt: r.acknowledged_at,
-          deliveredAt: r.delivered_at,
-        }));
-      }
+      // R5.5 — shared with lib/wo-progress/derive.ts. A cancelled order stops
+      // feeding the live stages but stays in perSupplier.
+      const stages = deriveOrderStages(rows);
+      existing.supplierDraftedAt = stages.supplierDraftedAt;
+      existing.supplierSentAt = stages.supplierSentAt;
+      existing.supplierAcknowledgedAt = stages.supplierAcknowledgedAt;
+      existing.materialsDeliveredAt = stages.materialsDeliveredAt;
+      existing.supplierCancelledAt = stages.supplierCancelledAt;
+      if (rows.length > 0) existing.perSupplier = stages.perSupplier;
     }
   } else if (ordersResult.status === "rejected") {
     console.warn("[materials-aux] supplier_orders query failed:", ordersResult.reason);

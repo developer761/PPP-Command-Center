@@ -50,6 +50,8 @@ type SentMessage = {
   opened?: boolean;
   submitted?: boolean;
   acknowledged?: boolean;
+  /** R5.8: withdrawn after the vendor had already been emailed. */
+  cancelledAt?: string | null;
   delivered?: boolean;
   expired?: boolean; // Kate #07 — form invite past expiry, not submitted
   // Kate round-2 #07 — Activity History dimensions.
@@ -154,7 +156,7 @@ export default function InboxView() {
     | "all"
     | "opened" | "not_opened" | "submitted" | "expired"
     | "email_delivered" | "bounced"
-    | "acknowledged" | "awaiting_ack" | "materials_delivered";
+    | "acknowledged" | "awaiting_ack" | "materials_delivered" | "order_cancelled";
   type DateDim = "sent" | "opened" | "submitted" | "expired" | "last_activity" | "followup";
   type DatePreset = "any" | "today" | "yesterday" | "last7" | "month" | "custom";
   const [sentStatus, setSentStatus] = useState<SentStatus>("all");
@@ -206,6 +208,12 @@ export default function InboxView() {
     const ms3d = 3 * 24 * 60 * 60 * 1000;
     const out = new Set<string>();
     for (const m of sentMessages) {
+      // R5.8 knock-on: cancelled orders are now IN this tab, and a withdrawn
+      // order is never something to chase a vendor about — including one would
+      // send someone asking about an order PPP already retracted. Checked
+      // before the bounce rule too: a cancelled order that also bounced is
+      // still nothing to follow up.
+      if (m.cancelledAt) continue;
       const ageMs = now - new Date(m.sentAt).getTime();
       if (m.deliveryStatus === "bounced") {
         out.add(m.id); continue;
@@ -256,6 +264,9 @@ export default function InboxView() {
           // form is never waiting on a supplier, so it must not match here.
           case "awaiting_ack": return m.kind === "supplier_order" && !m.acknowledged;
           case "materials_delivered": return !!m.delivered;
+          // R5.8 — the email went out and was then withdrawn. Distinct from a
+          // failed send, which never reached anyone and isn't in this tab.
+          case "order_cancelled": return !!m.cancelledAt;
           default: return true;
         }
       });
@@ -566,6 +577,7 @@ export default function InboxView() {
                         <option value="acknowledged">Acknowledged</option>
                         <option value="awaiting_ack">Awaiting acknowledgement</option>
                         <option value="materials_delivered">Materials delivered</option>
+                        <option value="order_cancelled">Cancelled</option>
                       </optgroup>
                       <optgroup label="Email">
                         <option value="email_delivered">Email delivered</option>
@@ -922,7 +934,12 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
     else if (message.opened) lifecycle = { label: "Opened", tone: "bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100" };
     else lifecycle = { label: "Waiting on customer", tone: "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100" };
   } else {
-    if (message.delivered) lifecycle = { label: "✓ Delivered", tone: "bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100" };
+    // R5.8 — cancelled wins over every other supplier state. The order may well
+    // have been acknowledged before it was withdrawn, and "Acknowledged" on a
+    // cancelled order reads as live. Charcoal, not orange: this is a closed
+    // state, not something waiting on anyone.
+    if (message.cancelledAt) lifecycle = { label: "Cancelled", tone: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-100 line-through" };
+    else if (message.delivered) lifecycle = { label: "✓ Delivered", tone: "bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100" };
     else if (message.acknowledged) lifecycle = { label: "Acknowledged", tone: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-100" };
     else lifecycle = { label: "Waiting on supplier", tone: "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100" };
   }

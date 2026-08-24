@@ -1,6 +1,7 @@
 import { isCompanyEmail } from "@/lib/auth/company-domain";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { nextPoNumber } from "@/lib/supplier-order/builder";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
@@ -205,9 +206,9 @@ export async function POST(request: Request) {
     }
     supplierOrderId = upd.data!.id;
   } else {
-    const ins = await sbAdmin
-      .from("supplier_orders")
-      .insert({
+    // One definition, used by the initial insert and the PO-collision retry —
+    // two copies would drift and the retry would quietly store a different row.
+    const orderRow = {
         work_order_id: body.workOrderId!,
         work_order_number: body.workOrderNumber ?? null,
         supplier_account_id: body.supplierAccountId!,
@@ -229,22 +230,72 @@ export async function POST(request: Request) {
         // "waiting for first event."
         delivery_status: "sent",
         created_by_user_id: data.user.id,
-      })
+    };
+    const ins = await sbAdmin
+      .from("supplier_orders")
+      .insert(orderRow)
       .select("id")
       .single();
+    let insData = ins.data;
     if (ins.error) {
-      // 23505 = unique_violation — could be PO collision OR the "one open
-      // draft per (wo, supplier)" partial-unique kicking in if another admin
-      // raced us. Return 409 so the UI tells the admin to refresh.
-      if (ins.error.code === "23505") {
+      // 23505 = unique_violation. Two very different causes, and the old code
+      // treated both as "refresh and retry":
+      //
+      //   (a) po_number collision — the PO was computed when the draft was
+      //       built, so it can be stale by the time Send is pressed, and
+      //       before R5.6 it could be a number a cancelled order still held.
+      //       Telling the admin to refresh was useless there: the recomputed
+      //       number was identical every time, so the work order was bricked.
+      //   (b) the "one open draft per (wo, supplier)" partial-unique — that IS
+      //       a real concurrent-admin conflict and refreshing is the answer.
+      //
+      // (a) is recoverable without the admin doing anything, so recover: take
+      // a freshly-computed PO and insert once more. Only (b) reaches the 409.
+      const isPoCollision = /po_number/i.test(ins.error.message ?? "");
+      if (ins.error.code === "23505" && isPoCollision) {
+        const freshPo = await nextPoNumber(body.workOrderId!, body.workOrderNumber ?? "");
+        console.warn(
+          `[supplier-order/send] PO ${body.poNumber} was taken; retrying as ${freshPo}`
+        );
+        const retry = await sbAdmin
+          .from("supplier_orders")
+          .insert({ ...orderRow, po_number: freshPo })
+          .select("id")
+          .single();
+        if (retry.error) {
+          return NextResponse.json({
+            error: "duplicate_order",
+            message: "Couldn't allocate a PO number for this order. Refresh and try again.",
+          }, { status: 409 });
+        }
+        // The email must carry the number that actually got stored, or the
+        // vendor quotes a PO the Command Center has never heard of. The PO
+        // appears in the subject AND in the rendered body ("PO Number: …"),
+        // and both were composed against the stale one — so rewrite the text
+        // too, not just the column. A row saying -2 under an email saying -1
+        // is the same defect one layer down.
+        const stalePo = body.poNumber!;
+        const swap = (t: string | undefined) =>
+          t ? t.split(stalePo).join(freshPo) : t;
+        body.subject = swap(body.subject);
+        body.body = swap(body.body);
+        body.poNumber = freshPo;
+        // Persist the rewritten copy, or Mail Hub renders the stale text.
+        await sbAdmin
+          .from("supplier_orders")
+          .update({ draft_body: body.body! })
+          .eq("id", retry.data!.id);
+        insData = retry.data;
+      } else if (ins.error.code === "23505") {
         return NextResponse.json({
           error: "duplicate_order",
-          message: "Another admin sent this order or a draft already exists. Refresh + retry.",
+          message: "Another admin is already working on an order for this work order and supplier. Refresh and try again.",
         }, { status: 409 });
+      } else {
+        return NextResponse.json({ error: "insert_failed", message: ins.error.message }, { status: 500 });
       }
-      return NextResponse.json({ error: "insert_failed", message: ins.error.message }, { status: 500 });
     }
-    supplierOrderId = ins.data!.id;
+    supplierOrderId = insData!.id;
   }
 
   // Step 2: Fire the Resend send. ReplyTo = orders@orders.precisionpaintingplus.net
