@@ -66,6 +66,12 @@ type Draft = {
   gallonEstimates: GallonEstimate[];
   colorNotesDefault: string;
   allowedMaterialTypeValues?: string[];
+  /** R5.3 — the paint lines the EMAIL will carry, so this screen shows the same
+   *  thing it is previewing rather than its own empty payload. Optional: an
+   *  older cached draft response won't have them. */
+  resolvedMaterialType?: string | null;
+  resolvedMaterialTypeOverrides?: Record<string, string>;
+  exteriorMaterialType?: string | null;
   noColorsPicked: boolean;
 };
 
@@ -524,9 +530,30 @@ export default function OrderBuilderView({
                 />
               </div>
             </div>
-            {!payload.mainMaterialType && (
+            {/* R5.3 — the email resolves a line from the work order even when
+                this screen's own payload is empty, and the screen used to deny
+                it: an orange "not set" warning above an email that carried the
+                line. Show what will actually be sent. */}
+            {!payload.mainMaterialType && currentDraft?.resolvedMaterialType && (
+              <p className="mt-2 text-[11px] text-ppp-charcoal-600 bg-[var(--color-surface-muted)] border border-ppp-charcoal-100 rounded-lg px-3 py-2">
+                Using <strong className="text-ppp-charcoal">{currentDraft.resolvedMaterialType}</strong>{" "}
+                from this work order. Pick above to override it for this order.
+              </p>
+            )}
+            {!payload.mainMaterialType && !currentDraft?.resolvedMaterialType && (
               <p className="mt-2 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
                 ⚠ Paint line not set — pick one here.
+              </p>
+            )}
+            {/* R5.3 — a mixed job gets two answers on the entry form, and both
+                belong here. The exterior line isn't a second default: it lands
+                on the colours that are exterior, which is what the rows below
+                show. Saying so beats an unexplained per-line value. */}
+            {currentDraft?.exteriorMaterialType && (
+              <p className="mt-2 text-[11px] text-ppp-charcoal-600 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2">
+                This job has exterior work too —{" "}
+                <strong className="text-ppp-charcoal">{currentDraft.exteriorMaterialType}</strong>{" "}
+                is applied to the exterior colours below. Interior colours use the default above.
               </p>
             )}
           </section>
@@ -703,7 +730,16 @@ export default function OrderBuilderView({
                             id={`mt-${key}`}
                             value={payload.materialTypeOverrides[key] ?? ""}
                             onChange={(v) => setLineFor(e, v)}
-                            placeholder="— use default —"
+                            // R5.3: when the builder has already decided a line
+                            // for this colour — the exterior answer on a mixed
+                            // job — name it. "— use default —" was wrong twice
+                            // over: it isn't the default, and it hid the fact
+                            // that the email had an answer this screen didn't.
+                            placeholder={
+                              currentDraft?.resolvedMaterialTypeOverrides?.[key]
+                                ? `${currentDraft.resolvedMaterialTypeOverrides[key]} (from the job)`
+                                : "— use default —"
+                            }
                             compact
                             allowClear
                             availableValues={lineMaterialValues}

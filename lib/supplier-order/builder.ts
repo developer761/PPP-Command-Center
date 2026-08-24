@@ -265,6 +265,27 @@ export type SupplierOrderDraft = {
    *  server-side in the builder from `workTypeName` + WOLI product names.
    *  Empty array = no filtering (mixed/unknown WO → show all). */
   allowedMaterialTypeValues: string[];
+  /** R5.3 — the paint lines this EMAIL will actually carry, so the order screen
+   *  can show the same thing it is previewing.
+   *
+   *  On a mixed job the entry form correctly asks twice, and the email applies
+   *  the exterior answer to the colours that are exterior (R4.3) — but none of
+   *  that was visible on the order screen, which knew only its own saved
+   *  payload. Kate's report was that "neither answer reaches the order screen";
+   *  the answers were reaching the vendor, just not the person sending them.
+   *
+   *  Deliberately RESOLVED values, not a new source of truth: this reports what
+   *  the builder decided, so displaying it cannot make the screen and the email
+   *  disagree. Which of the three sources wins is a separate question (R5.2,
+   *  held) and is untouched here. */
+  resolvedMaterialType: string | null;
+  /** Effective per-colour lines keyed `${colorId}::${finish ?? ""}` — the
+   *  estimator's explicit overrides plus the exterior defaults derived from the
+   *  job's scopes. */
+  resolvedMaterialTypeOverrides: Record<string, string>;
+  /** The exterior line the AM picked, when the job has both scopes. Null on a
+   *  single-scope job. */
+  exteriorMaterialType: string | null;
 };
 
 /* ─── Helpers ─── */
@@ -1343,5 +1364,9 @@ export async function buildSupplierOrderDraft(
     phoneNumber: settings.phoneNumber,
     pickupDefault: settings.pickupDefault,
     allowedMaterialTypeValues,
+    // R5.3 — what the email decided, handed back so the screen can show it.
+    resolvedMaterialType: materialType,
+    resolvedMaterialTypeOverrides: Object.fromEntries(derivedMaterialTypeOverrides),
+    exteriorMaterialType: exteriorLine || null,
   };
 }
