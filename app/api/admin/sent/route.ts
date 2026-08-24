@@ -212,13 +212,17 @@ export async function GET(request: Request) {
 
     let orderQuery = sb
       .from("supplier_orders")
-      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at, delivery_status, created_by_user_id")
-      // The Sent tab is the complete record of what actually went out. An order
-      // that progressed past "sent" (acknowledged/delivered) is still a sent
-      // email — keep it visible so its lifecycle chips render. Excludes "failed"
-      // (never sent) and "cancelled" (withdrawn). sent_at NOT NULL is the real
-      // "was it sent" guard.
-      .in("status", ["sent", "acknowledged", "delivered"])
+      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at, cancelled_at, delivery_status, created_by_user_id")
+      // The Sent tab is the complete record of what actually went out, and
+      // "cancelled" now belongs in it (R5.8). Cancelling is an internal state
+      // change — the email had already reached the vendor — so hiding it made
+      // the record claim less than this tab's own description promises, and
+      // left Kate's Cancelled filter with nothing to match.
+      //
+      // "failed" still stays out: those never sent. The sent_at NOT NULL guard
+      // below is what actually separates the two, so a cancelled DRAFT (never
+      // emailed) is still correctly excluded.
+      .in("status", ["sent", "acknowledged", "delivered", "cancelled"])
       .not("sent_at", "is", null)
       .order("sent_at", { ascending: false })
       .limit(limit);
