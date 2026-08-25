@@ -369,6 +369,16 @@ export async function insertCommercialTaskAssignedNotification(input: {
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
 
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Open the task",
+    tone: "neutral",
+  });
+
   await dispatchCommercialNotification({
     kind: "commercial_task_assigned",
     recipientUserId: input.recipientUserId,
@@ -440,6 +450,16 @@ export async function insertCommercialTaskOverdueNotification(input: {
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the opportunity →</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
+
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "It's overdue",
+    tone: "needs_action",
+  });
 
   await dispatchCommercialNotification({
     kind: "commercial_task_overdue",
@@ -534,6 +554,16 @@ export async function insertCommercialOppStatusChangedNotifications(input: {
 </div>`;
 
   let fanout = 0;
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Open the deal",
+    tone: "neutral",
+  });
+
   await Promise.allSettled(
     Array.from(recipientIds).map(async (uid) => {
       const r = await dispatchCommercialNotification({
@@ -631,6 +661,16 @@ export async function insertCommercialOppNoteAddedNotifications(input: {
 </div>`;
 
   let fanout = 0;
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Read the note",
+    tone: "neutral",
+  });
+
   await Promise.allSettled(
     Array.from(recipientIds).map(async (uid) => {
       const r = await dispatchCommercialNotification({
@@ -698,6 +738,16 @@ export async function insertCommercialNoteMentionNotifications(input: {
 </div>`;
 
   let fanout = 0;
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Read it",
+    tone: "neutral",
+  });
+
   await Promise.allSettled(
     Array.from(new Set(input.mentionedUserIds)).map(async (uid) => {
       const r = await dispatchCommercialNotification({
@@ -805,6 +855,16 @@ export async function insertCommercialDocumentExpiringNotification(input: {
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
 
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Open documents",
+    tone: "needs_action",
+  });
+
   await dispatchCommercialNotification({
     kind: "commercial_document_expiring",
     recipientUserId: input.recipientUserId,
@@ -860,6 +920,16 @@ export async function insertCommercialHotDealCoolingNotification(input: {
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
 
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Open the deal",
+    tone: "needs_action",
+  });
+
   await dispatchCommercialNotification({
     kind: "commercial_hot_deal_cooling",
     recipientUserId: input.recipientUserId,
@@ -912,6 +982,16 @@ export async function insertCommercialDebriefOverdueNotification(input: {
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Complete the debrief →</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
+
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Fill in the debrief",
+    tone: "needs_action",
+  });
 
   await dispatchCommercialNotification({
     kind: "commercial_debrief_overdue",
@@ -1016,6 +1096,16 @@ export async function insertCommercialInvoiceDunningMarker(input: {
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the invoice →</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
+
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Open the invoice",
+    tone: "needs_action",
+  });
 
   await dispatchCommercialNotification({
     kind: "commercial_invoice_dunning",
@@ -1133,6 +1223,16 @@ export async function insertCommercialAiaDunningMarker(input: {
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the application &rarr;</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
+
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Open the application",
+    tone: "needs_action",
+  });
 
   await dispatchCommercialNotification({
     kind: "commercial_aia_dunning",
@@ -1286,6 +1386,16 @@ export async function insertCommercialInvoiceCreatedNotifications(input: {
 </div>`;
 
   let fanout = 0;
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Open the invoice",
+    tone: "neutral",
+  });
+
   await Promise.allSettled(
     recipients.map(async (uid) => {
       const r = await dispatchCommercialNotification({
@@ -1352,6 +1462,16 @@ export async function insertCommercialInvoicePaymentRecordedNotifications(input:
 </div>`;
 
   let fanout = 0;
+  // ONE post per event — inserted above the per-recipient work below, so a
+  // bell that fans out to five people still puts a single line in the channel.
+  await postCommercialSlack({
+    text: `*${slackEscape(title)}*`,
+    context: slackEscape(body),
+    url: relativeLink,
+    urlLabel: "Open the invoice",
+    tone: "good",
+  });
+
   await Promise.allSettled(
     recipients.map(async (uid) => {
       const r = await dispatchCommercialNotification({
