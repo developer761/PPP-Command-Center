@@ -115,7 +115,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ...result });
   }
 
-  /* ── Save an accepted number ──────────────────────────────────────────── */
+  /* ── Save an accepted number ────────────────────────────────────────────
+   *
+   * DORMANT while the tool is a sandbox. No UI calls this today: the sandbox at
+   * /dashboard/measure only uses "photo" and "address", neither of which writes
+   * anything. This is the seam where the tool connects to work orders — kept
+   * whole and tested so wiring it up is a UI change, not a rebuild. */
   if (action === "save") {
     const woliId = String(body.woliId ?? "").trim();
     if (!woliId) return NextResponse.json({ error: "missing_woli" }, { status: 400 });

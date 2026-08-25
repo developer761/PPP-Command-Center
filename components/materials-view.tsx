@@ -2027,36 +2027,7 @@ function JobDetailImpl({
                   ? "No rooms on this WO yet — add rooms/colors in Salesforce before ordering."
                   : "Step 1: pick a store and set what to buy. Step 2: fulfilment and the email. Nothing sends until you say so."}
               </p>
-                {/* The measure tool, surfaced where the gap is visible. Shown to
-                  anyone who can enter colours, not just admins: measuring is
-                  field work, and 77% of open jobs have no measurement at all,
-                  which is what makes the gallon estimate unusable. */}
-              {canEnterColors && job.lineItems.length > 0 && (() => {
-                const unmeasured = job.lineItems.filter(
-                  (li) => effectiveSqft(li.raw.id, li.raw.sqFootage) <= 0
-                ).length;
-                return (
-                  <>
-                    <Link
-                      href={`/dashboard/materials/${encodeURIComponent(job.wo.id)}/measure`}
-                      className={`inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors mt-1 ${
-                        unmeasured > 0
-                          ? "bg-ppp-orange-700 text-ppp-orange-50 hover:bg-ppp-orange-800"
-                          : "border border-ppp-charcoal-100 bg-white text-ppp-charcoal hover:bg-ppp-charcoal-50"
-                      }`}
-                    >
-                      📏 {unmeasured > 0 ? `Measure ${unmeasured} room${unmeasured === 1 ? "" : "s"}` : "Room measurements"}
-                    </Link>
-                    <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                      {unmeasured > 0
-                        ? "Without square footage the order can't size the paint — measure, photograph, or pull from the address."
-                        : "Every room has a measurement. Paint quantities will calculate."}
-                    </p>
-                  </>
-                );
-              })()}
-
-            {/* R4.7: "Preview Materials Order" removed — it linked to the
+              {/* R4.7: "Preview Materials Order" removed — it linked to the
                   #preview anchor on the very page Order Materials already opens,
                   so it was a second button to the same destination. */}
               </>);

@@ -50,6 +50,10 @@ const navSections: NavSection[] = [
       { label: "Customers", href: "/dashboard/customers", icon: <IconUser /> },
       { label: "Mail", href: "/dashboard/inbox", icon: <IconInbox /> },
       { label: "Notifications", href: "/dashboard/notifications", icon: <IconBell /> },
+      // Sandbox while the measurement methods are being judged. Sits under
+      // Operations Tools because that's where it belongs once it's connected
+      // to work orders — no need to move it later.
+      { label: "Measure", href: "/dashboard/measure", icon: <IconRuler /> },
     ],
   },
   {
@@ -296,6 +300,14 @@ function IconInbox() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </svg>
+  );
+}
+function IconRuler() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21.3 8.7 8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z" />
+      <path d="m7.5 10.5 2 2M10.5 7.5l2 2M13.5 4.5l2 2M4.5 13.5l2 2" />
     </svg>
   );
 }
