@@ -22,6 +22,9 @@ export type OrderPageData = {
   workOrderId: string;
   sourceLines: SourceLine[];
   canOrderMaterials: boolean;
+  /** The customer's address, for the measure tool's property lookup. Null when
+   *  Salesforce has none on the account. */
+  address: { street: string; city: string; state: string; postalCode: string } | null;
 };
 
 // STANDARD_SURFACES is imported, not redeclared — the Rooms & Colors list and
@@ -62,11 +65,28 @@ export async function loadOrderPageData(
     });
   }
 
+  // ID-first, name fallback — the same lookup the draft route uses, so the
+  // address the measure tool reads is the one the order would deliver to.
+  const acct =
+    (job.wo.accountId ? bundle.snapshot.accounts.find((a) => a.id === job.wo.accountId) : null) ??
+    (job.wo.accountName ? bundle.snapshot.accounts.find((a) => a.name === job.wo.accountName) : null) ??
+    null;
+  const address =
+    acct?.billingStreet
+      ? {
+          street: acct.billingStreet ?? "",
+          city: acct.billingCity ?? "",
+          state: acct.billingState ?? "",
+          postalCode: acct.billingPostalCode ?? "",
+        }
+      : null;
+
   return {
     job,
     workOrderId: woId,
     sourceLines,
     canOrderMaterials: bundle.viewer?.isAdmin ?? false,
+    address,
   };
 }
 
