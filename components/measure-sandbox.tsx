@@ -394,7 +394,7 @@ function RoomRow({
             type="button" onClick={() => fileRef.current?.click()} disabled={row.busy}
             className="min-h-[44px] px-3 rounded-lg border border-ppp-charcoal-200 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
-            {row.busy ? "Reading…" : "✨ AI guess"}
+            {row.busy ? "Reading…" : "✨ Estimate whole room"}
           </button>
           <input
             ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
@@ -404,7 +404,7 @@ function RoomRow({
             type="button" onClick={() => tapRef.current?.click()}
             className="min-h-[44px] px-3 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-sm font-medium text-ppp-blue-800 hover:bg-ppp-blue-100 touch-manipulation whitespace-nowrap"
           >
-            📐 Measure
+            📐 Measure a wall
           </button>
           <input
             ref={tapRef} type="file" accept="image/*" capture="environment" className="hidden"
