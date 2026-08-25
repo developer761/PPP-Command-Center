@@ -67,6 +67,78 @@ export async function POST(request: Request) {
   }
   const action = String(body.action ?? "");
 
+  /* ── Work orders, for the picker ──────────────────────────────────────── */
+  if (action === "workOrders") {
+    const { loadDashboardData } = await import("@/lib/data-source");
+    const { deriveOpenMaterialsWorkOrders } = await import("@/lib/salesforce/materials");
+    const bundle = await loadDashboardData({}, { materials: true });
+    if (!bundle.snapshot) return NextResponse.json({ ok: true, workOrders: [] });
+    const q = String(body.query ?? "").trim().toLowerCase();
+    const jobs = deriveOpenMaterialsWorkOrders(bundle.snapshot)
+      .map((j) => {
+        // Surfacing how many rooms still need a number is the whole point of
+        // the list — it turns picking a job into triage.
+        const unmeasured = j.lineItems.filter(
+          (li) => !(li.raw.sqFootage > 0) && !(li.raw.wallSurfaceArea > 0)
+        ).length;
+        return {
+          id: j.wo.id,
+          number: j.wo.workOrderNumber ?? j.wo.id.slice(-6),
+          customer: j.wo.accountName ?? "(unknown)",
+          rooms: j.lineItems.length,
+          unmeasured,
+        };
+      })
+      .filter((w) => w.rooms > 0)
+      .filter((w) => !q || w.number.toLowerCase().includes(q) || w.customer.toLowerCase().includes(q))
+      // Jobs with the most missing measurements first — they're the ones the
+      // materials tool currently can't size.
+      .sort((a, b) => b.unmeasured - a.unmeasured || a.customer.localeCompare(b.customer))
+      .slice(0, 40);
+    return NextResponse.json({ ok: true, workOrders: jobs });
+  }
+
+  /* ── One work order's rooms ───────────────────────────────────────────── */
+  if (action === "rooms") {
+    const woId = String(body.workOrderId ?? "").trim();
+    if (!woId) return NextResponse.json({ error: "missing_wo" }, { status: 400 });
+    const { loadOrderPageData } = await import("@/lib/materials/order-page-data");
+    const { roomLabelFrom } = await import("@/lib/customer-form/room-label");
+    const data = await loadOrderPageData(woId);
+    if (!data) return NextResponse.json({ ok: false, message: "Work order not found." });
+
+    // Whatever has already been captured, so re-opening a job shows the work.
+    const ids = data.job.lineItems.map((li) => li.raw.id);
+    const saved = new Map<string, Record<string, unknown>>();
+    try {
+      const { data: rows } = await admin().from("wo_li_sqft_overrides").select("*").in("woli_id", ids);
+      for (const r of (rows ?? []) as Array<Record<string, unknown>>) saved.set(String(r.woli_id), r);
+    } catch {
+      /* pre-156 — nothing captured yet */
+    }
+
+    const acct = data.job.wo;
+    return NextResponse.json({
+      ok: true,
+      workOrder: { id: data.workOrderId, number: acct.workOrderNumber ?? null, customer: acct.accountName ?? null },
+      address: data.address,
+      rooms: data.job.lineItems.map((li) => {
+        const s = saved.get(li.raw.id);
+        return {
+          woliId: li.raw.id,
+          label: roomLabelFrom(li.raw.areaLabel, li.raw.productName, "Unnamed area"),
+          sfSqft: li.raw.sqFootage || 0,
+          savedSqft: s ? Number(s.sqft) || null : null,
+          savedSource: (s?.source as string) ?? null,
+          lengthFt: s?.length_ft != null ? Number(s.length_ft) : null,
+          widthFt: s?.width_ft != null ? Number(s.width_ft) : null,
+          ceilingFt: s?.ceiling_ft != null ? Number(s.ceiling_ft) : null,
+          surfaces: (li.raw.surfaces ?? "").split(";").map((x) => x.trim()).filter(Boolean),
+        };
+      }),
+    });
+  }
+
   /* ── Photo → dimensions ───────────────────────────────────────────────── */
   if (action === "photo") {
     const imageBase64 = String(body.imageBase64 ?? "");
@@ -117,10 +189,11 @@ export async function POST(request: Request) {
 
   /* ── Save an accepted number ────────────────────────────────────────────
    *
-   * DORMANT while the tool is a sandbox. No UI calls this today: the sandbox at
-   * /dashboard/measure only uses "photo" and "address", neither of which writes
-   * anything. This is the seam where the tool connects to work orders — kept
-   * whole and tested so wiring it up is a UI change, not a rebuild. */
+   * LIVE when a work order is selected. Writes to wo_li_sqft_overrides — the
+   * table the gallon estimator, the order builder and the supplier email
+   * already read — so a room measured here reaches the vendor quantities with
+   * no other code involved. The free-form sandbox never calls it, so testing
+   * still can't touch a real job. */
   if (action === "save") {
     const woliId = String(body.woliId ?? "").trim();
     if (!woliId) return NextResponse.json({ error: "missing_woli" }, { status: 400 });

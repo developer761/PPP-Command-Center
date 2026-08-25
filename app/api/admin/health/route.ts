@@ -1,3 +1,4 @@
+import { providerStatus } from "@/lib/measure/property-providers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
@@ -121,6 +122,23 @@ export async function GET() {
       message: present ? c.presentMessage : c.missingMessage,
       group: "platform",
       fix: present ? undefined : `Set ${c.envVar} in Vercel → Project Settings → Environment Variables.`,
+    });
+  }
+
+  // Which property-data provider answers an address lookup for the measure
+  // tool. Without one it runs on demo numbers, which are fine for judging the
+  // flow and useless for buying paint — so it must be visible, not inferred.
+  {
+    const live = providerStatus().find((p) => p.configured) ?? null;
+    checks.push({
+      id: "property_data_provider",
+      label: "Property data for room measurement",
+      status: live ? "ok" : "warn",
+      message: live
+        ? `${live.name} is live — address lookups return real building square footage.`
+        : "No provider configured, so address lookups return DEMO numbers. Set one of ATTOM_API_KEY, ESTATED_API_KEY or RENTCAST_API_KEY.",
+      group: "platform",
+      fix: live ? undefined : "Sign up with ATTOM, Estated or Rentcast and set its key in Vercel → Environment Variables.",
     });
   }
 

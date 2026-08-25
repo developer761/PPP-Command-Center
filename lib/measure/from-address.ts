@@ -2,6 +2,7 @@ import "server-only";
 
 import { distributeHouseSqft, DISTRIBUTABLE_SHARE } from "@/lib/measure/geometry";
 import type { MeasureSuggestion } from "@/lib/measure/types";
+import { firstConfiguredProvider } from "@/lib/measure/property-providers";
 
 /**
  * Whole-house square footage from property records, split across the rooms on
@@ -74,9 +75,20 @@ class DemoProvider implements PropertyLookupProvider {
   }
 }
 
-/** Swap in ATTOM/Estated/Rentcast here — nothing else has to change. */
+/**
+ * The live provider, or the demo one when no key is set.
+ *
+ * Resolved per call rather than cached so adding a key in Vercel takes effect
+ * on the next request instead of on the next deploy.
+ */
 export function propertyProvider(): PropertyLookupProvider {
-  return new DemoProvider();
+  return firstConfiguredProvider() ?? new DemoProvider();
+}
+
+/** True when no real provider is configured — the UI says so either way, so a
+ *  demo number is never mistaken for a county record. */
+export function usingDemoPropertyData(): boolean {
+  return firstConfiguredProvider() === null;
 }
 
 export async function suggestFromAddress(input: {

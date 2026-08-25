@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { geometryFromDimensions, perimeterGainVsSquareGuess, distributeHouseSqft } from "@/lib/measure/geometry";
 import { CONFIDENCE_LABEL, SOURCE_LABEL, type MeasureSuggestion, type MeasureConfidence } from "@/lib/measure/types";
+import MeasurePhotoTool, { type PhotoMeasureResult } from "@/components/measure-photo-tool";
 
 /**
  * Standalone sandbox for the room-measurement tool.
@@ -26,6 +27,13 @@ type Row = {
   suggestion: MeasureSuggestion | null;
   busy: boolean;
   error: string | null;
+  /** Set only in work-order mode — the line item this room saves to. */
+  woliId?: string;
+  saved?: boolean;
+};
+
+type WorkOrderOption = {
+  id: string; number: string; customer: string; rooms: number; unmeasured: number;
 };
 
 const CONF_TONE: Record<MeasureConfidence, string> = {
@@ -44,6 +52,12 @@ const newRow = (label: string): Row => ({
 export default function MeasureSandbox() {
   const [rows, setRows] = useState<Row[]>(() => STARTERS.map(newRow));
   const [addr, setAddr] = useState({ street: "", city: "", state: "NY", postalCode: "" });
+  // Work-order mode. Null = free-form sandbox, where nothing can be saved.
+  const [wo, setWo] = useState<{ id: string; number: string | null; customer: string | null } | null>(null);
+  const [woList, setWoList] = useState<WorkOrderOption[]>([]);
+  const [woQuery, setWoQuery] = useState("");
+  const [woBusy, setWoBusy] = useState(false);
+  const [woOpen, setWoOpen] = useState(false);
   const [addrBusy, setAddrBusy] = useState(false);
   const [addrNote, setAddrNote] = useState<string | null>(null);
 
@@ -64,6 +78,63 @@ export default function MeasureSandbox() {
     return { sqft: Math.round(sqft), wall: Math.round(wall), measured };
   }, [rows]);
 
+  async function searchWorkOrders(q: string) {
+    setWoBusy(true);
+    try {
+      const res = await fetch("/api/admin/measure", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "workOrders", query: q }),
+      });
+      const data = await res.json();
+      setWoList(data.workOrders ?? []);
+    } catch { setWoList([]); }
+    finally { setWoBusy(false); }
+  }
+
+  async function openWorkOrder(id: string) {
+    setWoBusy(true);
+    try {
+      const res = await fetch("/api/admin/measure", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rooms", workOrderId: id }),
+      });
+      const data = await res.json();
+      if (!data.ok) return;
+      setWo(data.workOrder);
+      setWoOpen(false);
+      if (data.address) setAddr(data.address);
+      setRows(
+        (data.rooms as Array<Record<string, unknown>>).map((r) => ({
+          id: String(r.woliId),
+          woliId: String(r.woliId),
+          label: String(r.label),
+          // Seed from whatever exists: a previous capture first, then whatever
+          // Salesforce already had — so re-opening a job shows the work rather
+          // than asking for it again.
+          lengthFt: r.lengthFt != null ? String(r.lengthFt) : "",
+          widthFt: r.widthFt != null ? String(r.widthFt) : "",
+          ceilingFt: r.ceilingFt != null ? String(r.ceilingFt) : "",
+          suggestion:
+            !r.lengthFt && (r.savedSqft || r.sfSqft)
+              ? {
+                  source: (r.savedSource as never) ?? "manual",
+                  confidence: "medium",
+                  sqft: Number(r.savedSqft ?? r.sfSqft),
+                  rationale: r.savedSqft ? "Already captured for this room." : "Already on the work order in Salesforce.",
+                }
+              : null,
+          busy: false, error: null, saved: false,
+        }))
+      );
+    } finally { setWoBusy(false); }
+  }
+
+  function leaveWorkOrder() {
+    setWo(null);
+    setRows(STARTERS.map(newRow));
+    setAddr({ street: "", city: "", state: "NY", postalCode: "" });
+  }
+
   async function lookupAddress() {
     setAddrBusy(true); setAddrNote(null);
     try {
@@ -77,6 +148,35 @@ export default function MeasureSandbox() {
       setAddrNote(`Found ${Number(data.property?.buildingSqft ?? 0).toLocaleString()} sq ft on record — split across ${rows.length} rooms below.`);
     } catch { setAddrNote("Couldn't reach the lookup."); }
     finally { setAddrBusy(false); }
+  }
+
+  /** Only reachable in work-order mode — the sandbox has no woliId, so a
+   *  free-form room can never write to a real job. */
+  async function saveRoom(row: Row) {
+    if (!row.woliId || !wo) return;
+    const L = parseFloat(row.lengthFt) || 0, W = parseFloat(row.widthFt) || 0;
+    const sqft = L > 0 && W > 0
+      ? geometryFromDimensions({ lengthFt: L, widthFt: W, ceilingFt: parseFloat(row.ceilingFt) || 0 }).floorAreaSqft
+      : row.suggestion?.sqft ?? 0;
+    if (!sqft) { patch(row.id, { error: "Measure it or pick a suggestion first." }); return; }
+    patch(row.id, { busy: true, error: null });
+    try {
+      const res = await fetch("/api/admin/measure", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save", woliId: row.woliId, workOrderId: wo.id, roomLabel: row.label,
+          sqft,
+          lengthFt: L || null, widthFt: W || null, ceilingFt: parseFloat(row.ceilingFt) || null,
+          source: L > 0 && W > 0 ? "dimensions" : row.suggestion?.source ?? "manual",
+          confidence: L > 0 && W > 0 ? "high" : row.suggestion?.confidence ?? "medium",
+          suggestion: row.suggestion,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) patch(row.id, { error: data.message ?? "Couldn't save." });
+      else patch(row.id, { saved: true });
+    } catch { patch(row.id, { error: "Couldn't save — check your signal." }); }
+    finally { patch(row.id, { busy: false }); }
   }
 
   async function onPhoto(row: Row, file: File) {
@@ -102,14 +202,85 @@ export default function MeasureSandbox() {
     <div className="space-y-5 pb-10">
       <div>
         <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
-          Sandbox
+          {wo ? "Work order" : "Sandbox"}
         </div>
-        <h1 className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy mt-1">Room measurement</h1>
+        <h1 className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy mt-1">
+          {wo ? `${wo.customer ?? "(unknown)"}` : "Room measurement"}
+        </h1>
         <p className="text-xs text-ppp-charcoal-500 mt-1.5 leading-relaxed max-w-2xl">
-          Try the four ways of getting square footage. Nothing here touches a work order or a
-          supplier order — it&rsquo;s for judging whether the numbers are good enough before
-          any of them can affect what PPP buys.
+          {wo
+            ? `WO ${wo.number ?? ""} — measurements save straight onto these rooms, so the materials order can size the paint.`
+            : "Try the four ways of getting square footage. Nothing here touches a real job until you pick a work order below."}
         </p>
+      </div>
+
+      {/* Pick a job, or stay in the sandbox. Kept at the top because which
+          mode you're in changes whether anything can be saved. */}
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4">
+        {wo ? (
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-xs text-ppp-charcoal-600">
+              Working on <strong className="text-ppp-charcoal">WO {wo.number}</strong>
+            </span>
+            <button type="button" onClick={leaveWorkOrder}
+              className="text-xs font-medium text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 px-1">
+              Leave — back to the sandbox
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h2 className="text-sm font-semibold text-ppp-charcoal">Measure a real work order</h2>
+              <button
+                type="button"
+                onClick={() => { setWoOpen((o) => !o); if (!woOpen && woList.length === 0) void searchWorkOrders(""); }}
+                className="text-xs font-medium text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 px-1"
+              >
+                {woOpen ? "Hide" : "Pick a job"}
+              </button>
+            </div>
+            {woOpen && (
+              <div className="mt-3">
+                <input
+                  value={woQuery}
+                  onChange={(e) => { setWoQuery(e.target.value); void searchWorkOrders(e.target.value); }}
+                  placeholder="Search customer or WO number…"
+                  className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+                />
+                <ul className="mt-2 max-h-64 overflow-y-auto divide-y divide-ppp-charcoal-100 border border-ppp-charcoal-100 rounded-lg">
+                  {woBusy && woList.length === 0 && (
+                    <li className="px-3 py-3 text-xs text-ppp-charcoal-500 italic">Loading…</li>
+                  )}
+                  {woList.map((w) => (
+                    <li key={w.id}>
+                      <button
+                        type="button" onClick={() => openWorkOrder(w.id)}
+                        className="w-full text-left px-3 py-2.5 min-h-[44px] hover:bg-ppp-blue-50/60 transition-colors touch-manipulation"
+                      >
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-ppp-charcoal truncate">{w.customer}</span>
+                          {w.unmeasured > 0 ? (
+                            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-ppp-orange-700 text-ppp-orange-50">
+                              {w.unmeasured} unmeasured
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-[10px] text-ppp-green-700">all measured</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-ppp-charcoal-500 font-mono">
+                          {w.number} · {w.rooms} room{w.rooms === 1 ? "" : "s"}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                  {!woBusy && woList.length === 0 && (
+                    <li className="px-3 py-3 text-xs text-ppp-charcoal-500 italic">No open jobs match.</li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Whole-job lookup. First because it's the zero-effort path — the one
@@ -156,6 +327,8 @@ export default function MeasureSandbox() {
               key={row.id} row={row} onPatch={(p) => patch(row.id, p)}
               onPhoto={(f) => onPhoto(row, f)}
               onRemove={() => setRows((rs) => rs.filter((r) => r.id !== row.id))}
+              canSave={!!wo && !!row.woliId}
+              onSave={() => saveRoom(row)}
             />
           ))}
         </ul>
@@ -181,9 +354,17 @@ export default function MeasureSandbox() {
 }
 
 function RoomRow({
-  row, onPatch, onPhoto, onRemove,
-}: { row: Row; onPatch: (p: Partial<Row>) => void; onPhoto: (f: File) => void; onRemove: () => void }) {
+  row, onPatch, onPhoto, onRemove, canSave, onSave,
+}: {
+  row: Row; onPatch: (p: Partial<Row>) => void; onPhoto: (f: File) => void;
+  onRemove: () => void; canSave: boolean; onSave: () => void;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const tapRef = useRef<HTMLInputElement>(null);
+  // Tap-to-measure works on a local object URL — the photo never leaves the
+  // device for this path, unlike the AI estimate.
+  const [tapUrl, setTapUrl] = useState<string | null>(null);
+  const [tapTarget, setTapTarget] = useState<"length" | "width" | "ceiling">("length");
   const L = parseFloat(row.lengthFt) || 0;
   const W = parseFloat(row.widthFt) || 0;
   const geo = L > 0 && W > 0 ? geometryFromDimensions({ lengthFt: L, widthFt: W, ceilingFt: parseFloat(row.ceilingFt) || 0 }) : null;
@@ -213,11 +394,25 @@ function RoomRow({
             type="button" onClick={() => fileRef.current?.click()} disabled={row.busy}
             className="min-h-[44px] px-3 rounded-lg border border-ppp-charcoal-200 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
-            {row.busy ? "Reading…" : "📷 Photo"}
+            {row.busy ? "Reading…" : "✨ AI guess"}
           </button>
           <input
             ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = ""; }}
+          />
+          <button
+            type="button" onClick={() => tapRef.current?.click()}
+            className="min-h-[44px] px-3 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-sm font-medium text-ppp-blue-800 hover:bg-ppp-blue-100 touch-manipulation whitespace-nowrap"
+          >
+            📐 Measure
+          </button>
+          <input
+            ref={tapRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) setTapUrl(URL.createObjectURL(f));
+              e.target.value = "";
+            }}
           />
         </div>
       </div>
@@ -266,6 +461,40 @@ function RoomRow({
         <div role="alert" className="mt-3 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
           {row.error}
         </div>
+      )}
+
+      {canSave && (
+        <button
+          type="button" onClick={onSave} disabled={row.busy}
+          className={`mt-3 w-full min-h-[44px] rounded-lg text-sm font-semibold transition-colors touch-manipulation disabled:opacity-50 ${
+            row.saved
+              ? "bg-ppp-green-50 text-ppp-green-700 border border-ppp-green-100"
+              : "bg-ppp-green text-ppp-navy hover:bg-ppp-green-600 active:bg-ppp-green"
+          }`}
+        >
+          {row.busy ? "Saving…" : row.saved ? "✓ Saved to this work order" : "Save to work order"}
+        </button>
+      )}
+
+      {tapUrl && (
+        <MeasurePhotoTool
+          imageUrl={tapUrl}
+          label={`${row.label} — measuring the ${tapTarget}`}
+          onClose={() => { URL.revokeObjectURL(tapUrl); setTapUrl(null); }}
+          onResult={(r: PhotoMeasureResult) => {
+            const ft = (Math.round(r.feet * 10) / 10).toString();
+            onPatch(
+              tapTarget === "length" ? { lengthFt: ft }
+              : tapTarget === "width" ? { widthFt: ft }
+              : { ceilingFt: ft }
+            );
+            // Walk the worker to the next dimension rather than making them
+            // remember which one they've done.
+            setTapTarget((t) => (t === "length" ? "width" : t === "width" ? "ceiling" : "length"));
+            URL.revokeObjectURL(tapUrl);
+            setTapUrl(null);
+          }}
+        />
       )}
     </li>
   );
