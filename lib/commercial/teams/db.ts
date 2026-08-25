@@ -320,6 +320,62 @@ export async function applyTeamToAccountAssignments(
  *  role-based assignments (see applyTeamToAccountAssignments). Opportunities
  *  don't have their own assignment table — a deal's crew is the account's —
  *  so setting a team there is the label + the getEffectiveOwnerTeam lookup. */
+/**
+ * Put a team's people onto a DEAL, with the roles they hold on that team.
+ *
+ * Brendan 2026-08-25: *"Ideally, we should be able to pick actual team for
+ * instance 'Tomco Suffolk' and that should populate Me as the sales person, Kim
+ * as the estimator, Stephanie as the office contact… based on the team you pick
+ * the roles will change."*
+ *
+ * The account side has done this since teams shipped; the deal side only stored
+ * `team_id` and left the roster empty. So picking a team on a job looked like it
+ * did nothing — the label changed and nobody appeared — which is exactly what
+ * Brendan hit when he said he wasn't sure how to test it.
+ *
+ * Deliberately ADDITIVE, matching the account behaviour: anyone already on the
+ * deal stays. Someone may have been doing the work for weeks, and replacing a
+ * roster because a dropdown changed is a far worse surprise than one extra name
+ * that can be removed by hand.
+ *
+ * Roles come from the TEAM membership, not from the person — the same
+ * superintendent can be a PM on one team and a super on another, which is why
+ * the role lives on the membership row.
+ */
+export async function applyTeamToOpportunityAssignments(
+  opportunityId: string,
+  teamId: string,
+  actorUserId: string
+): Promise<{ added: number; alreadyThere: number; skipped: string[] }> {
+  const team = await getTeam(teamId);
+  if (!team) return { added: 0, alreadyThere: 0, skipped: [] };
+  const { addOpportunityAssignment } = await import(
+    "@/lib/commercial/opportunities/assignments"
+  );
+  let added = 0;
+  let alreadyThere = 0;
+  const skipped: string[] = [];
+  for (const m of team.members) {
+    const res = await addOpportunityAssignment({
+      opportunity_id: opportunityId,
+      user_id: m.user_id,
+      role: m.role,
+      assigned_by_user_id: actorUserId,
+    });
+    if (res.ok) {
+      added += 1;
+    } else if (res.error.toLowerCase().includes("already assigned")) {
+      // Idempotent — re-picking the same team must not error or duplicate.
+      alreadyThere += 1;
+    } else {
+      // A member who has lost Commercial access, or whose role the deal's own
+      // CHECK constraint refuses, is REPORTED rather than silently dropped.
+      skipped.push(`${m.name} (${res.error})`);
+    }
+  }
+  return { added, alreadyThere, skipped };
+}
+
 export async function setOwnerTeam(
   parent: "account" | "opportunity",
   ownerId: string,
@@ -339,10 +395,13 @@ export async function setOwnerTeam(
   // been doing the work for weeks, and silently un-assigning a whole crew
   // because someone blanked a dropdown is a far worse surprise than a stale
   // name on the roster (which the user can remove individually).
-  const applied =
-    parent === "account" && teamId
+  // Both parents populate their roster now. Only accounts did, so picking a
+  // team on a DEAL set a label and nothing else.
+  const applied = !teamId
+    ? undefined
+    : parent === "account"
       ? await applyTeamToAccountAssignments(ownerId, teamId, actorUserId)
-      : undefined;
+      : await applyTeamToOpportunityAssignments(ownerId, teamId, actorUserId);
   return { ok: true, applied };
 }
 

@@ -205,6 +205,8 @@ type SP = Promise<{
    *  Read by the change-status card; ignoring it opened the Lost flow on Won. */
   to_sub?: string;
   status_ok?: string;
+  /** What picking a team just did, e.g. "Added 3 team members to this job". */
+  team_applied?: string;
   /** `status` when a next-step button sent the user here to change it. */
   focus?: string;
   /** Carries the reason a debrief failed to save. Was emitted and never read —
@@ -493,7 +495,24 @@ async function setDealTeamAction(formData: FormData) {
     redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
   }
   revalidatePath(`/commercial/opportunities/${opp_id}`);
-  redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+  // SAY what it did. Picking a team now adds its people to the deal with their
+  // team roles — Brendan 2026-08-25 — and a silent success is what made this
+  // look inert before: the label changed and nothing visibly happened.
+  //
+  // `skipped` is reported rather than swallowed: a member who has lost
+  // Commercial access simply does not appear, and a roster that is quietly one
+  // person short is worse than a sentence saying who was left out.
+  const ap = result.applied;
+  let note = "";
+  if (ap) {
+    const bits: string[] = [];
+    if (ap.added > 0) bits.push(`Added ${ap.added} team member${ap.added === 1 ? "" : "s"} to this job`);
+    if (ap.alreadyThere > 0) bits.push(`${ap.alreadyThere} already on it`);
+    if (ap.skipped.length > 0) bits.push(`couldn't add ${ap.skipped.join(", ")}`);
+    if (bits.length > 0) note = `&team_applied=${encodeURIComponent(bits.join(" · "))}`;
+  }
+  // Land on Team, not Info — the roster that just changed is the thing to look at.
+  redirect(`/commercial/opportunities/${opp_id}?tab=overview&sub=team&status_ok=1${note}`);
 }
 
 /** Add someone to this job's contact list. */
@@ -2889,6 +2908,7 @@ export default async function OpportunityDetailPage({
           account={account}
           errorMessage={pickFirst(sp.error)}
           statusOk={pickFirst(sp.status_ok) === "1"}
+          teamApplied={pickFirst(sp.team_applied)}
           preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
           preselectSub={pickFirst(sp.to_sub)}
           focusStatus={pickFirst(sp.focus) === "status"}
@@ -3922,6 +3942,7 @@ async function InfoTab({
   account,
   errorMessage,
   statusOk,
+  teamApplied,
   preselectTo,
   preselectSub,
   focusStatus,
@@ -3935,6 +3956,8 @@ async function InfoTab({
   account: CommercialAccount | null;
   errorMessage?: string;
   statusOk?: boolean;
+  /** Sentence describing what assigning a team just changed. */
+  teamApplied?: string;
   preselectTo?: OpportunityStatus;
   /** True when a next-step button sent the user here to change the status. */
   focusStatus?: boolean;
@@ -4068,6 +4091,11 @@ async function InfoTab({
           {errorMessage}
         </div>
       )}
+      {teamApplied && (
+        <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
+          {teamApplied}
+        </div>
+      )}
       {statusOk && (
         <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
           <span>Status updated to <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>.</span>
@@ -4162,11 +4190,44 @@ async function InfoTab({
             </PendingSubmitButton>
           </form>
         </div>
-        {effectiveTeam.team && (
+        {/* Brendan 2026-08-25: "I'm not 100% sure how the PPP team works, so I'm
+            unsure how to test it. I see I can add team members…"
+
+            He was on a deal, where the only visible control adds ONE person at
+            a time. Nothing here said that named teams exist, that picking one
+            fills in everybody with their roles, or where they are made — the
+            account page carried that hint and only when there were zero teams,
+            and the deal page carried none at all.
+
+            So the line is always shown, and it names the destination. */}
+        {effectiveTeam.team ? (
           <p className="text-[11px] text-ppp-charcoal-500 -mt-1">
             {effectiveTeam.team.members.length} member
             {effectiveTeam.team.members.length === 1 ? "" : "s"}
             {effectiveTeam.inherited ? " · inherited from the customer" : ""}
+            {" · "}
+            <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+              Edit teams
+            </Link>
+          </p>
+        ) : (
+          <p className="text-[11px] text-ppp-charcoal-500 -mt-1">
+            {allTeams.length === 0 ? (
+              <>
+                No teams yet — build one in{" "}
+                <Link href="/commercial/settings/teams" className="font-semibold text-cc-brand-700 hover:underline">
+                  Settings → Teams
+                </Link>{" "}
+                (e.g. “Tomco Suffolk”: sales rep, estimator, office contact), then pick it here and everyone lands on the job with their role.
+              </>
+            ) : (
+              <>
+                Picking a team adds its people to this job with their roles.{" "}
+                <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+                  Manage teams
+                </Link>
+              </>
+            )}
           </p>
         )}
       </Card>
