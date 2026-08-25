@@ -128,3 +128,62 @@ describe("one message per EVENT, never per recipient", () => {
     expect(code).not.toContain("COMMERCIAL_INCIDENT_SLACK_WEBHOOK");
   });
 });
+
+describe("edge cases real data will actually produce", () => {
+  async function capture(event: Parameters<typeof postCommercialSlack>[0]) {
+    process.env.COMMERCIAL_SLACK_WEBHOOK = "https://hooks.slack.test/x";
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchSpy);
+    await postCommercialSlack(event);
+    return JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+  }
+
+  it("omits the context block entirely when every part was null", async () => {
+    // The callers build context with [a, b, c].filter(Boolean).join(" · "),
+    // which yields "" when a deal has no title, no actor and no note. An empty
+    // context block renders as a stray blank line in Slack.
+    const body = await capture({ text: "x", context: "" });
+    expect(body.attachments[0].blocks.map((b: { type: string }) => b.type)).not.toContain("context");
+  });
+
+  it("survives a GC name containing Slack markup characters", async () => {
+    // "Smith & Sons <Contracting>" and names with asterisks are real. Escaped
+    // text must not break the block, and the plain-text banner must not show
+    // stray punctuation.
+    const gc = slackEscape("Smith & Sons <Contracting> *Ltd*");
+    const body = await capture({ text: `*New bid request* — *${gc}*` });
+    expect(body.text).not.toContain("*");
+    expect(body.attachments[0].blocks[0].text.text).toContain("&amp;");
+    expect(body.attachments[0].blocks[0].text.text).toContain("&lt;Contracting&gt;");
+  });
+
+  it("renders a button once the app URL is configured", async () => {
+    // Without NEXT_PUBLIC_APP_URL the button is dropped by design. With it, a
+    // relative path must become a real absolute URL — otherwise every message
+    // in the channel is a dead end.
+    const prev = process.env.NEXT_PUBLIC_APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL = "https://hub.precisionpaintingplus.net";
+    const body = await capture({ text: "x", url: "/commercial/proposals", urlLabel: "Review" });
+    const actions = body.attachments[0].blocks.find((b: { type: string }) => b.type === "actions");
+    expect(actions, "no button rendered even though the app URL is set").toBeTruthy();
+    expect(actions.elements[0].url).toBe("https://hub.precisionpaintingplus.net/commercial/proposals");
+    if (prev) process.env.NEXT_PUBLIC_APP_URL = prev; else delete process.env.NEXT_PUBLIC_APP_URL;
+  });
+
+  it("does not double a slash when the app URL has a trailing one", async () => {
+    const prev = process.env.NEXT_PUBLIC_APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL = "https://hub.precisionpaintingplus.net/";
+    const body = await capture({ text: "x", url: "/commercial/proposals" });
+    const actions = body.attachments[0].blocks.find((b: { type: string }) => b.type === "actions");
+    expect(actions.elements[0].url).not.toContain("net//");
+    if (prev) process.env.NEXT_PUBLIC_APP_URL = prev; else delete process.env.NEXT_PUBLIC_APP_URL;
+  });
+
+  it("bounds how long it can hold up the caller", async () => {
+    // Two callers AWAIT their notification function — including the PUBLIC bid
+    // form, where a hanging Slack would add latency to a GC's submission. The
+    // timeout is what keeps that bounded.
+    const src = readFileSync("lib/commercial/slack-notify.ts", "utf8");
+    expect(src).toContain("AbortSignal.timeout(");
+  });
+});
