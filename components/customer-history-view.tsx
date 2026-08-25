@@ -50,7 +50,7 @@ type MailEvent = {
   id: string;
   kind:
     | "form_sent" | "form_opened" | "form_submitted"
-    | "order_sent" | "order_acknowledged" | "order_delivered"
+    | "order_sent" | "order_acknowledged" | "order_delivered" | "order_cancelled"
     | "reply_in";
   at: string;
   workOrderId: string;
@@ -77,6 +77,7 @@ const KIND_ICON: Record<MailEvent["kind"], string> = {
   order_sent: "📦",
   order_acknowledged: "🤝",
   order_delivered: "🚚",
+  order_cancelled: "✕",
   reply_in: "💬",
 };
 

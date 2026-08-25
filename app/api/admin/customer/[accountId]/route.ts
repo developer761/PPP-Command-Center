@@ -38,7 +38,7 @@ export type CustomerMailEvent = {
   id: string;
   kind:
     | "form_sent" | "form_opened" | "form_submitted"
-    | "order_sent" | "order_acknowledged" | "order_delivered"
+    | "order_sent" | "order_acknowledged" | "order_delivered" | "order_cancelled"
     | "reply_in";
   at: string;
   workOrderId: string;
@@ -189,7 +189,7 @@ export async function GET(
           .in("work_order_id", visibleWoIds)
           .order("sent_at", { ascending: false, nullsFirst: false }),
         sb.from("supplier_orders")
-          .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, acknowledged_at, delivered_at, status, delivery_status")
+          .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, acknowledged_at, delivered_at, cancelled_at, status, delivery_status")
           .in("work_order_id", visibleWoIds),
         sb.from("inbox_messages")
           .select("id, kind, linked_work_order_id, from_email, from_name, subject, body_text, received_at")
@@ -251,6 +251,7 @@ export async function GET(
           id: string; work_order_id: string; work_order_number: string | null;
           supplier_name: string; po_number: string; sent_to_email: string;
           sent_at: string | null; acknowledged_at: string | null; delivered_at: string | null;
+          cancelled_at?: string | null;
           status: string; delivery_status: string | null;
         }>) {
           if (o.sent_at) {
@@ -261,6 +262,17 @@ export async function GET(
               label: `Order sent to ${o.supplier_name}`,
               detail: `${o.po_number}${o.delivery_status === "bounced" ? " · ⚠ Bounced" : ""}`,
               tone: o.delivery_status === "bounced" ? "warning" : "neutral",
+            });
+          }
+          // R5.5, fifth surface. A customer's history showing "Order sent"
+          // and nothing after reads as an order that is still coming.
+          if (o.cancelled_at) {
+            events.push({
+              id: `order_cancelled:${o.id}`, kind: "order_cancelled", at: o.cancelled_at,
+              workOrderId: o.work_order_id, workOrderNumber: o.work_order_number,
+              who: o.supplier_name,
+              label: `Order to ${o.supplier_name} cancelled`,
+              detail: o.po_number, tone: "warning",
             });
           }
           if (o.acknowledged_at) {

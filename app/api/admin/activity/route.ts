@@ -40,7 +40,7 @@ export type ActivityEvent = {
   id: string;
   kind:
     | "form_sent" | "form_opened" | "form_submitted"
-    | "order_sent" | "order_acknowledged" | "order_delivered"
+    | "order_sent" | "order_acknowledged" | "order_delivered" | "order_cancelled"
     | "reply_received";
   at: string;
   /** Short headline for the feed row — already has the relevant noun. */
@@ -107,8 +107,13 @@ export async function GET(request: Request) {
 
     let orderQuery = sb
       .from("supplier_orders")
-      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_at, acknowledged_at, delivered_at, status")
-      .or(`sent_at.gte.${cutoff},acknowledged_at.gte.${cutoff},delivered_at.gte.${cutoff}`)
+      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_at, acknowledged_at, delivered_at, cancelled_at, status")
+      // R5.5, fourth surface. Cancelling is an EVENT and belongs in an event
+      // feed — without it the log shows "Order sent to Aboffs" and nothing
+      // after, so someone scanning recent activity sees an order that looks
+      // live. `status` was already selected here and never read, which is a
+      // fair sign the case was meant to be handled.
+      .or(`sent_at.gte.${cutoff},acknowledged_at.gte.${cutoff},delivered_at.gte.${cutoff},cancelled_at.gte.${cutoff}`)
       .limit(limit * 2);
     if (scopedWoIds) orderQuery = orderQuery.in("work_order_id", scopedWoIds);
 
@@ -181,6 +186,7 @@ export async function GET(request: Request) {
         id: string; work_order_id: string; work_order_number: string | null;
         supplier_name: string; po_number: string;
         sent_at: string | null; acknowledged_at: string | null; delivered_at: string | null;
+        cancelled_at?: string | null;
         status: string;
       }>) {
         if (r.sent_at && r.sent_at >= cutoff) {
@@ -193,6 +199,20 @@ export async function GET(request: Request) {
             workOrderId: r.work_order_id,
             workOrderNumber: r.work_order_number,
             tone: "neutral",
+          });
+        }
+        if (r.cancelled_at && r.cancelled_at >= cutoff) {
+          events.push({
+            id: `order_cancelled:${r.id}`,
+            kind: "order_cancelled",
+            at: r.cancelled_at,
+            label: `Order to ${r.supplier_name} cancelled`,
+            // Naming the PO matters here: the vendor still holds it, and it is
+            // what anyone chasing this will quote.
+            detail: r.po_number,
+            workOrderId: r.work_order_id,
+            workOrderNumber: r.work_order_number,
+            tone: "warning",
           });
         }
         if (r.acknowledged_at && r.acknowledged_at >= cutoff) {

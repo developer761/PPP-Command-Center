@@ -220,11 +220,28 @@ export async function POST(request: Request) {
     // kindTag === "order"
     const { data: order, error } = await sb
       .from("supplier_orders")
-      .select("id, work_order_id, supplier_name, po_number, sent_to_email, draft_body, work_order_number, sent_at, resend_message_id")
+      .select("id, work_order_id, supplier_name, po_number, sent_to_email, draft_body, work_order_number, sent_at, resend_message_id, status, cancelled_at")
       .eq("id", ref)
       .maybeSingle();
     if (error || !order) {
       return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+    }
+
+    // R5.8 knock-on. Cancelled orders became visible in the Sent tab so Kate's
+    // Cancelled filter would have something to match — and that exposed a path
+    // that could not exist before: cancelling does NOT clear delivery_status,
+    // so a bounced-then-cancelled order arrives in the list wearing a Re-send
+    // button. Pressing it would email a vendor an order PPP had withdrawn.
+    //
+    // Guarded here rather than only in the UI, because the UI is a courtesy and
+    // this is the actual boundary. Making a row visible must never make an
+    // action on it reachable by accident.
+    if ((order as { cancelled_at?: string | null }).cancelled_at ||
+        (order as { status?: string | null }).status === "cancelled") {
+      return NextResponse.json({
+        error: "order_cancelled",
+        message: "This order was cancelled — re-sending it would tell the supplier it's live again. Build a new order on the work order instead.",
+      }, { status: 409 });
     }
 
     if (viewer.scope !== "all") {

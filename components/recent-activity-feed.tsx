@@ -18,7 +18,7 @@ import { fmtMonthDay } from "@/lib/format";
 
 type ActivityKind =
   | "form_sent" | "form_opened" | "form_submitted"
-  | "order_sent" | "order_acknowledged" | "order_delivered"
+  | "order_sent" | "order_acknowledged" | "order_delivered" | "order_cancelled"
   | "reply_received";
 
 type ActivityEvent = {
@@ -39,6 +39,7 @@ const KIND_ICON: Record<ActivityKind, string> = {
   order_sent: "📦",
   order_acknowledged: "🤝",
   order_delivered: "🚚",
+  order_cancelled: "✕",
   reply_received: "💬",
 };
 

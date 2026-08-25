@@ -987,7 +987,12 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
                 {lifecycle.label}
               </span>
             )}
-            {message.deliveryStatus === "bounced" && (
+            {/* R5.8 knock-on: a cancelled order can carry deliveryStatus
+              "bounced" (cancelling doesn't clear it), and now that cancelled
+              orders appear in this tab that combination would offer a Re-send
+              on a withdrawn order. The API refuses it too — this just avoids
+              presenting a button whose only outcome is an error. */}
+          {message.deliveryStatus === "bounced" && !message.cancelledAt && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-ppp-orange-700 text-ppp-orange-50 border-ppp-orange-700">
                 ⚠ Bounced
               </span>
