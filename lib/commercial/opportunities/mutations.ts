@@ -25,6 +25,37 @@ import type {
  *   - Soft-delete guard on the parent account before insert/update
  */
 
+/**
+ * Only two values are legal, and the column has a CHECK behind them.
+ *
+ * Anything unrecognised becomes 'append' — the default Brendan asked for —
+ * rather than being passed through to Postgres, where a junk value from a
+ * hand-posted form would fail the whole write and lose everything else the
+ * person typed.
+ */
+function normalizeNicknameMode(v: string | null | undefined): "append" | "replace" {
+  return v === "replace" ? "replace" : "append";
+}
+
+/**
+ * Has Postgres rejected this write because `title_override_mode` isn't there
+ * yet?
+ *
+ * Migrations are applied by hand after a deploy, so for a window the code knows
+ * about a column the database does not. Shipping a write that names it
+ * unconditionally is how the opportunity page went down on 2026-08-25 — an
+ * unrelated new column took the whole query with it. Creating and editing a
+ * deal must keep working across that window; the nickname simply behaves the
+ * way it did before until the migration lands.
+ */
+function isMissingNicknameMode(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  return (
+    err.code === "42703" &&
+    /title_override_mode/i.test(err.message ?? "")
+  );
+}
+
 export type CreateOpportunityInput = {
   account_id: string;
   title: string;
@@ -61,6 +92,8 @@ export type CreateOpportunityInput = {
   // override. Both nullable; NULL is the default state.
   rfp_received_at?: string | null;
   title_override?: string | null;
+  /** 'append' (default) or 'replace' — migration 170. See derivedOppName. */
+  title_override_mode?: string | null;
   // Migration 122 — a deal can carry its own team (distinct from the GC's).
   team_id?: string | null;
   created_by_user_id?: string | null;
@@ -168,9 +201,7 @@ export async function createCommercialOpportunity(
   // convention on the JD Sports reference PDF.
   const dealNumber = await assignDealNumber(input.account_id);
 
-  const { data, error } = await sb
-    .from("commercial_opportunities")
-    .insert({
+  const insertPayload: Record<string, unknown> = {
       account_id: input.account_id,
       primary_contact_id: primaryContactId,
       title: input.title.trim(),
@@ -205,6 +236,7 @@ export async function createCommercialOpportunity(
       // Migration 069 — new nullable fields, insert as-supplied.
       rfp_received_at: input.rfp_received_at ?? null,
       title_override: input.title_override?.trim() || null,
+      title_override_mode: normalizeNicknameMode(input.title_override_mode),
       // Territory default — Brendan 2026-08-25: "the location of the job will
       // determine the team who will execute the project."
       //
@@ -214,9 +246,19 @@ export async function createCommercialOpportunity(
       team_id: input.team_id ?? territoryTeamId,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
-    })
-    .select("*")
-    .single();
+  };
+
+  const runInsert = () =>
+    sb.from("commercial_opportunities").insert(insertPayload).select("*").single();
+
+  let { data, error } = await runInsert();
+  if (isMissingNicknameMode(error)) {
+    // Migration 170 hasn't been applied yet. Drop the one field it owns and
+    // create the deal anyway — losing a nickname preference is nothing next to
+    // refusing to create the job.
+    delete insertPayload.title_override_mode;
+    ({ data, error } = await runInsert());
+  }
 
   if (error) return { ok: false, error: error.message };
   const opp = data as CommercialOpportunity;
@@ -393,16 +435,23 @@ export async function updateCommercialOpportunity(
   if (input.rfp_received_at !== undefined) {
     patch.rfp_received_at = input.rfp_received_at || null;
   }
+  if (input.title_override_mode !== undefined) {
+    patch.title_override_mode = normalizeNicknameMode(input.title_override_mode);
+  }
   if (input.title_override !== undefined) {
     patch.title_override = input.title_override?.trim() || null;
   }
 
-  const { data: after, error } = await sb
-    .from("commercial_opportunities")
-    .update(patch)
-    .eq("id", input.id)
-    .select("*")
-    .single();
+  const runUpdate = () =>
+    sb.from("commercial_opportunities").update(patch).eq("id", input.id).select("*").single();
+
+  let { data: after, error } = await runUpdate();
+  if (isMissingNicknameMode(error)) {
+    // Same window as the insert above — save everything else on the sheet
+    // rather than refusing the edit over one preference field.
+    delete patch.title_override_mode;
+    ({ data: after, error } = await runUpdate());
+  }
 
   if (error) return { ok: false, error: error.message };
   const opp = after as CommercialOpportunity;

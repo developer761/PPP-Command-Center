@@ -1500,6 +1500,18 @@ export async function approveProposal(input: {
     changes_requested_at: null,
   });
 
+  // Brendan 2026-08-26: "once I approve it the notification should go away on
+  // its own." The "Approval needed" bell is retired for EVERY approver here —
+  // the proposal is no longer waiting on any of them, and a queue that keeps
+  // showing finished work stops being a queue. Best-effort: tidying a bell must
+  // never fail a decision that already landed.
+  void (async () => {
+    const { clearApprovalRequestNotifications } = await import(
+      "@/lib/notifications/commercial-events"
+    );
+    await clearApprovalRequestNotifications(input.proposal_id);
+  })();
+
   // Notify the requester (if any, and not the approver themselves).
   if (
     proposal.approval_requested_by_user_id &&
@@ -1586,6 +1598,18 @@ export async function requestProposalChanges(input: {
     approved_by_user_id: null,
     approval_approved_at: null,
   });
+
+  // Brendan 2026-08-26: "once I approve it the notification should go away on
+  // its own." The "Approval needed" bell is retired for EVERY approver here —
+  // the proposal is no longer waiting on any of them, and a queue that keeps
+  // showing finished work stops being a queue. Best-effort: tidying a bell must
+  // never fail a decision that already landed.
+  void (async () => {
+    const { clearApprovalRequestNotifications } = await import(
+      "@/lib/notifications/commercial-events"
+    );
+    await clearApprovalRequestNotifications(input.proposal_id);
+  })();
 
   if (
     proposal.approval_requested_by_user_id &&

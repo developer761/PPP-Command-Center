@@ -192,6 +192,10 @@ export type CommercialOpportunity = {
   // When set, derivedOppName returns this verbatim instead of the
   // computed {account}—{client}—{street}. Leave NULL to auto-derive.
   title_override: string | null;
+  /** 'append' | 'replace' — migration 170. Optional because a row read before
+   *  that migration is applied simply won't carry it; derivedOppName reads an
+   *  absent value as 'replace', the behaviour those rows already have. */
+  title_override_mode?: string | null;
   /** Per-job tax exemption (migration 139). NULL inherits the account;
    *  true/false overrides it for this job only — NY exemption certificates
    *  are issued per project. Resolve via lib/commercial/tax/exemption.ts,
@@ -283,16 +287,41 @@ export function derivedOppName(
   opp: Pick<CommercialOpportunity, "title" | "client_name"> & {
     property_street?: string | null;
     title_override?: string | null;
+    /** 'append' (default) or 'replace' — migration 170. Undefined on a row read
+     *  before that migration lands, which reads as 'replace': the behaviour
+     *  those rows already had. */
+    title_override_mode?: string | null;
   },
   accountName: string | null | undefined,
 ): string {
-  // (1) Explicit nickname wins.
+  // (1) The nickname.
+  //
+  // Brendan 2026-08-26: "the project nickname should go at the end of the
+  // title, and be toggleable." It used to REPLACE the name outright, so typing
+  // "Building C" erased the date, the GC and the address from every list that
+  // job appeared in — the three things a pipeline is scanned by. Appending
+  // keeps all of it and adds his shorthand on the end.
   const override = opp.title_override?.trim();
-  if (override) return override;
+  const appends = (opp.title_override_mode ?? "replace") === "append";
+  if (override && !appends) return override;
 
   // (2) A name the person actually typed into "Opportunity name".
   const title = (opp.title ?? "").trim();
-  if (title && !isAutoFilledTitle(title, opp, accountName)) return title;
+  const base =
+    title && !isAutoFilledTitle(title, opp, accountName)
+      ? title
+      : computedOppName(opp, accountName);
+
+  if (override) {
+    // Guard against "…- Building C - Building C": somebody who typed the
+    // nickname into the title too, or an older deal whose name already ends
+    // with it.
+    const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    if (!base) return override;
+    return norm(base).endsWith(norm(override)) ? base : `${base} - ${override}`;
+  }
+
+  if (base) return base;
 
   // (3) Computed "{account} - {client} - {street}".
   const computed = computedOppName(opp, accountName);

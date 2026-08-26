@@ -14,6 +14,10 @@
  */
 
 import { useRef, useState } from "react";
+import { directUploadDocument } from "@/lib/commercial/uploads/direct-upload-client";
+
+/** Vercel caps a multipart request body at ~4.5 MB; above this we go direct. */
+const DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024;
 import { useRouter } from "next/navigation";
 
 const ACCEPTED_MIME = [
@@ -67,23 +71,50 @@ export default function ProposalMarkupUpload({
 
     setUploading(true);
     setError(null);
+    const NOTES = "Marked-up / bid-set doc attached from the proposal builder.";
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("category", "bid_set");
-      fd.append("notes", "Marked-up / bid-set doc attached from the proposal builder.");
-      const res = await fetch(`/api/commercial/opportunities/${opportunityId}/documents`, {
-        method: "POST",
-        body: fd,
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        const detail =
-          (body as { detail?: string; error?: string }).detail ??
-          (body as { error?: string }).error ??
-          `HTTP ${res.status}`;
-        setError(`Upload failed: ${detail}`);
-        return;
+      // Brendan 2026-08-26: "I tried to upload a marked up document onto the
+      // bid notes and it says upload failed http 413."
+      //
+      // This box advertises 50 MB and POSTed multipart to a Vercel route, which
+      // caps a request body at ~4.5 MB — so anything over that 413s AT THE EDGE
+      // before the route runs, and the client reads an HTML error page. A
+      // marked-up plan set is routinely tens of MB, so the one file this
+      // control exists for was the one it could never take.
+      //
+      // Same cliff, same fix as the Documents "new version" box: direct to
+      // Storage above the threshold, multipart below it, which keeps small
+      // attachments on the simpler path.
+      if (file.size > DIRECT_UPLOAD_THRESHOLD) {
+        const result = await directUploadDocument({
+          parentType: "opportunity",
+          parentId: opportunityId,
+          file,
+          category: "bid_set",
+          notes: NOTES,
+        }).promise;
+        if (!result.ok) {
+          setError(`Upload failed: ${result.error}`);
+          return;
+        }
+      } else {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("category", "bid_set");
+        fd.append("notes", NOTES);
+        const res = await fetch(`/api/commercial/opportunities/${opportunityId}/documents`, {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          const detail =
+            (body as { detail?: string; error?: string }).detail ??
+            (body as { error?: string }).error ??
+            `HTTP ${res.status}`;
+          setError(`Upload failed: ${detail}`);
+          return;
+        }
       }
       router.refresh();
     } catch (err) {

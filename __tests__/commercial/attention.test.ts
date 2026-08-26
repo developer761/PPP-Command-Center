@@ -349,3 +349,85 @@ describe("nextStep", () => {
     expect(step.href).toContain("tab=proposals");
   });
 });
+
+/**
+ * Every disclaimer has to CLEAR when the thing it complains about is done.
+ *
+ * Brendan 2026-08-26: "the disclaimers should go away once they're resolved —
+ * it still said no work order after I made one."
+ *
+ * A rule that fires correctly and clears incorrectly is worse than no rule:
+ * it teaches people the strip is decoration, and then the one that costs money
+ * (contract value) goes unread too. Each case below sets up the state that
+ * raises a warning, flips ONLY the field that resolves it, and asserts the
+ * warning is gone — the asymmetry a "does it fire?" test can never see.
+ */
+describe("every warning clears when it is resolved", () => {
+  const won = {
+    oppId: "o1",
+    status: "pre_sale_closed",
+    subStatus: "won",
+    decidedAt: "2026-06-01",   // long past every grace period
+    todayIso: "2026-08-26",
+    contractBaseCents: 250_000_00,
+    hasProject: true,
+    hasWorkOrder: true,
+    hasBilling: true,
+    followUpAt: null,
+    proposalCount: 1,
+    sentProposalCount: 1,
+    approvedNotSentCount: 0,
+  };
+
+  const keys = (i: Parameters<typeof attentionFor>[0]) =>
+    attentionFor(i).map((a) => a.key);
+
+  const cases: Array<{
+    key: string;
+    raise: Record<string, unknown>;
+    resolve: Record<string, unknown>;
+  }> = [
+    { key: "no_project",        raise: { hasProject: false }, resolve: { hasProject: true } },
+    { key: "no_contract_value", raise: { contractBaseCents: null }, resolve: { contractBaseCents: 1 } },
+    { key: "no_work_order",     raise: { hasWorkOrder: false }, resolve: { hasWorkOrder: true } },
+    {
+      key: "billing_nothing_billed",
+      raise: { status: "billing", subStatus: null, hasBilling: false },
+      resolve: { hasBilling: true },
+    },
+    {
+      // NOT status "proposal" — that maps to the Sent column, which
+      // deliberately suppresses this warning (somebody moved it there because
+      // the GC has it). "Awaiting sign-off" is the stage this rule is for.
+      key: "approved_not_sent",
+      raise: {
+        status: "estimating",
+        subStatus: "proposal_pending_approval",
+        approvedNotSentCount: 1,
+        sentProposalCount: 0,
+        followUpAt: "2026-09-01",
+      },
+      resolve: { approvedNotSentCount: 0 },
+    },
+    {
+      key: "no_follow_up",
+      raise: { status: "proposal", subStatus: null, sentProposalCount: 1, followUpAt: null },
+      resolve: { followUpAt: "2026-09-01" },
+    },
+  ];
+
+  for (const c of cases) {
+    it(`${c.key} fires, then clears`, () => {
+      const raised = { ...won, ...c.raise } as Parameters<typeof attentionFor>[0];
+      expect(keys(raised)).toContain(c.key);
+      const fixed = { ...raised, ...c.resolve } as Parameters<typeof attentionFor>[0];
+      expect(keys(fixed)).not.toContain(c.key);
+    });
+  }
+
+  it("a job with everything done wears no warnings at all", () => {
+    // The state Brendan expects to reach. If this is ever non-empty, some rule
+    // has no off switch — which is the whole complaint.
+    expect(keys({ ...won, followUpAt: null } as Parameters<typeof attentionFor>[0])).toEqual([]);
+  });
+});

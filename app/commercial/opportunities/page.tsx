@@ -122,6 +122,7 @@ import { listTeams } from "@/lib/commercial/teams/db";
 import { IconBulb } from "@/components/commercial/inline-icons";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
+import { NicknameModeToggle } from "@/components/commercial/nickname-mode-toggle";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -342,6 +343,8 @@ async function createDealFromPipelineAction(formData: FormData) {
   // Added with Brendan's field order — the form offered these two and the
   // writer silently dropped them, which is worse than not offering them.
   const title_override = String(formData.get("title_override") ?? "").trim().slice(0, 200) || null;
+  // Brendan 2026-08-26 — the nickname adds to the name by default now.
+  const title_override_mode = String(formData.get("title_override_mode") ?? "");
   const estimator_name = String(formData.get("estimator_name") ?? "").trim().slice(0, 120) || null;
   const property_street = String(formData.get("property_street") ?? "").trim() || null;
   const property_city = String(formData.get("property_city") ?? "").trim() || null;
@@ -413,6 +416,7 @@ async function createDealFromPipelineAction(formData: FormData) {
     team_id,
     client_name,
     title_override,
+    title_override_mode,
     estimator_name,
     property_street,
     property_city,
@@ -558,18 +562,37 @@ export default async function CommercialOpportunitiesPage({
   const viewMode: "list" | "customer" | "sheet" =
     viewRaw === "customer" ? "customer" : viewRaw === "list" ? "list" : "sheet";
 
+  // Brendan 2026-08-26: "the opportunities aren't in order of when they were
+  // created — one from a day ago is below one from nine days ago."
+  //
+  // There was no newest-first option at all. The default sorted by
+  // `updated_at`, so any old opportunity someone touched today jumped the queue
+  // over the one Brendan had just created — and the age each card SHOWS is not
+  // the field it was sorted by, which is why the order read as random rather
+  // than merely different. Newest-first is now the default.
   const SORT_OPTIONS = [
+    { key: "newest", label: "Newest first" },
     { key: "recent", label: "Most recently updated" },
     { key: "oldest", label: "Oldest / stuck opportunities" },
     { key: "bid_high", label: "Highest bid first" },
     { key: "due_soon", label: "Proposal due soonest" },
   ] as const;
   type SortKey = (typeof SORT_OPTIONS)[number]["key"];
+  /**
+   * The order used when no ?sort= is in the URL.
+   *
+   * Named rather than repeated: FIVE separate places compared the sort against
+   * the literal "recent" to decide whether it was worth a URL param. Changing
+   * the default without changing all five would have written ?sort=newest into
+   * every link while the bare URL also meant newest — an argument the page
+   * would have with itself on every filter change.
+   */
+  const DEFAULT_SORT: SortKey = "newest";
   const sortRaw = pickFirst(sp.sort);
   const sortKey: SortKey =
     sortRaw && SORT_OPTIONS.some((o) => o.key === sortRaw)
       ? (sortRaw as SortKey)
-      : "recent";
+      : DEFAULT_SORT;
   const sourceSet: Set<OpportunitySource> = new Set();
   if (sourcesRaw) {
     for (const s of sourcesRaw.split(",")) {
@@ -705,7 +728,13 @@ export default async function CommercialOpportunitiesPage({
 
   const stableTie = (a: CommercialOpportunity, b: CommercialOpportunity) =>
     new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  const createdMs = (o: CommercialOpportunity) =>
+    o.created_at ? new Date(o.created_at).getTime() : 0;
   opps = [...opps].sort((a, b) => {
+    if (sortKey === "newest") {
+      const diff = createdMs(b) - createdMs(a);
+      return diff !== 0 ? diff : stableTie(a, b);
+    }
     if (sortKey === "oldest") {
       return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
     }
@@ -811,7 +840,7 @@ export default async function CommercialOpportunitiesPage({
   if (search) baseParams.set("q", search);
   if (validColumn) baseParams.set("status", validColumn);
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
-  if (sortKey !== "recent") baseParams.set("sort", sortKey);
+  if (sortKey !== DEFAULT_SORT) baseParams.set("sort", sortKey);
   // Sheet is the default, so it needs no param — but list and by-GC do, or
   // changing a filter would silently drop you back into the sheet.
   if (viewMode === "list") baseParams.set("view", "list");
@@ -909,7 +938,7 @@ export default async function CommercialOpportunitiesPage({
     if (viewMode === "list") p.set("view", "list");
     else if (viewMode === "customer") p.set("view", "customer");
     else if (viewMode === "sheet") p.set("view", "sheet");
-    if (newSort !== "recent") p.set("sort", newSort);
+    if (newSort !== DEFAULT_SORT) p.set("sort", newSort);
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -920,7 +949,7 @@ export default async function CommercialOpportunitiesPage({
     if (hotFilter && drop !== "hot") p.set("hot", "1");
     if (staleFilter && drop !== "stale") p.set("stale", "1");
     if (sourceSet.size > 0 && drop !== "sources") p.set("sources", Array.from(sourceSet).join(","));
-    if (sortKey !== "recent") p.set("sort", sortKey);
+    if (sortKey !== DEFAULT_SORT) p.set("sort", sortKey);
     if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
     if (overdueFilter) p.set("overdue", "1");
     if (coldRfpFilter) p.set("coldrfp", "1");
@@ -951,7 +980,7 @@ export default async function CommercialOpportunitiesPage({
     !!search || !!validColumn || staleFilter || hotFilter || sourceSet.size > 0 ||
     overdueFilter || coldRfpFilter || followupFilter ||
     mineFilter || !!estimatorFilter || !!newFilter || !!laneFilter;
-  const sortChanged = sortKey !== "recent";
+  const sortChanged = sortKey !== DEFAULT_SORT;
   const activeFilterCount =
     (search ? 1 : 0) + (validColumn ? 1 : 0) +
     (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size +
@@ -1224,7 +1253,7 @@ export default async function CommercialOpportunitiesPage({
           {sourceSet.size > 0 && (
             <input type="hidden" name="sources" value={Array.from(sourceSet).join(",")} />
           )}
-          {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
+          {sortKey !== DEFAULT_SORT && <input type="hidden" name="sort" value={sortKey} />}
 
           {/* View toggle — segmented control. SHEET is the default (Karan
               2026-08-17); By-GC and List are the opt-in alternates. */}
@@ -1912,6 +1941,7 @@ function NewDealSlideOut({
               placeholder="What the team calls it — e.g. Jericho Turnpike lobby"
               className={INPUT_CLS}
             />
+            <NicknameModeToggle idPrefix="new-deal-nickname" />
           </div>
 
           <div>

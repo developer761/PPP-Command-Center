@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import { multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
 import { useRouter } from "next/navigation";
 
 /**
@@ -105,7 +106,16 @@ export function SignaturePad({ hasSignature }: { hasSignature: boolean }) {
       try {
         const fd = new FormData();
         fd.append("kind", "signature");
-        fd.append("file", new File([blob], "signature.png", { type: "image/png" }));
+        const png = new File([blob], "signature.png", { type: "image/png" });
+        // A canvas PNG is normally a few KB, but a very large or very dense
+        // signature can grow — and a 413 here reads as "couldn't capture the
+        // signature", which sends someone hunting in the wrong place.
+        const tooBig = multipartOversizeError(png, "as a signature");
+        if (tooBig) {
+          setError(tooBig);
+          return;
+        }
+        fd.append("file", png);
         const res = await fetch("/api/commercial/operating-company/asset", { method: "POST", body: fd });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {

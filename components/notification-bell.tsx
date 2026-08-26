@@ -37,8 +37,16 @@ type Item = {
   created_at: string;
 };
 
-const OPEN_POLL_MS = 45_000;
-const IDLE_POLL_MS = 90_000;
+// Brendan 2026-08-26: "the notifications aren't instant."
+//
+// They were on a 90-second idle loop, so approving something and looking at the
+// bell showed the old state for up to a minute and a half — long enough to
+// conclude it was broken and click again. This is a handful of people on one
+// small team; a 15-second loop is a few requests a minute against one indexed
+// query, and it is the difference between a bell people trust and one they
+// refresh the page to check.
+const OPEN_POLL_MS = 10_000;
+const IDLE_POLL_MS = 15_000;
 
 function formatAgo(createdAt: string, now: number): string {
   const t = new Date(createdAt).getTime();

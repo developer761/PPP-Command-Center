@@ -46,6 +46,9 @@ import { marginFrom } from "@/lib/commercial/projects/financials";
 import TrendChart from "@/components/trend-chart";
 import { DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
 import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
+import { listAllWorkOrders } from "@/lib/commercial/work-orders/db";
+import { rankJobsInFlight } from "@/lib/commercial/reports/jobs-in-flight";
+import { JobsInFlight } from "@/components/commercial/jobs-in-flight";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
@@ -325,6 +328,40 @@ export default async function CommercialDashboardPage() {
   const laborUnratedHours = allProjectRows.reduce((acc, p) => acc + p.laborUnratedHours, 0);
   const totalCostCents = costs.total + crewLaborCents;
   const grossRevenueCents = allProjectRows.reduce((acc, p) => acc + p.billedContractCents, 0);
+
+  // Brendan 2026-08-26: "under 'this month' it should say things specific to
+  // the deals." Everything above is a company aggregate; this is the same money
+  // cut by job, with the one fact each job still owes. Work-order state is the
+  // fact he named, so it is loaded here rather than inferred.
+  const liveWorkOrders = await listAllWorkOrders().catch(() => []);
+  const woByOpp = new Map<string, { sent: boolean }>();
+  for (const w of liveWorkOrders) {
+    const prev = woByOpp.get(w.opportunity_id);
+    // A job can carry several sheets (migration 123). It counts as sent once
+    // ANY of them has gone out — chasing a second, later sheet is not what this
+    // row is for.
+    woByOpp.set(w.opportunity_id, { sent: (prev?.sent ?? false) || !!w.sent_at });
+  }
+  const jobsInFlight = rankJobsInFlight(
+    allProjectRows
+      // Finished jobs are not "in flight". They still count in the revenue
+      // totals above, which is why those load with includeClosed.
+      .filter((p) => p.opp.status !== "post_sale_closed")
+      .map((p) => {
+        const wo = woByOpp.get(p.opp.id);
+        return {
+          oppId: p.opp.id,
+          name: derivedOppName(p.opp, accountNameById.get(p.opp.account_id) ?? ""),
+          accountName: p.accountName,
+          billedCents: p.billedContractCents,
+          contractCents: p.contractToDateCents,
+          workOrderMissing: !wo,
+          workOrderUnsent: !!wo && !wo.sent,
+          outstandingCents: p.outstandingCents,
+          overBilledCents: Math.max(0, p.billedContractCents - p.contractToDateCents),
+        };
+      })
+  );
   const netProfitCents = grossRevenueCents - totalCostCents;
   const revMarginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
   const revMarginTone: ChartTone = revMarginPct === null ? "neutral" : revMarginPct < 0 ? "rose" : revMarginPct < 15 ? "amber" : "emerald";
@@ -444,6 +481,9 @@ export default async function CommercialDashboardPage() {
           </div>
           <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
         </div>
+
+        {/* Directly under "This month" — where Brendan asked for it. */}
+        <JobsInFlight jobs={jobsInFlight} />
         <details className="group/rev mt-3">
           <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] select-none">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/rev:rotate-90"><path d="M9 18l6-6-6-6" /></svg>

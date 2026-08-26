@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
 import { useRouter } from "next/navigation";
 
 /**
@@ -25,6 +26,19 @@ export function BrandAssetUpload({
   const [error, setError] = useState<string | null>(null);
 
   async function submit(fd: FormData) {
+    // A logo is kilobytes, but nothing stopped someone attaching a 20 MB
+    // artboard export — and that 413s at the Vercel edge before the route
+    // runs, so the client reads an HTML error page and shows a bare status
+    // code. Brendan hit exactly that shape on the bid-set box; this is the
+    // same class, caught in the browser with a sentence that says what to do.
+    const picked = fd.get("file");
+    if (picked instanceof File) {
+      const tooBig = multipartOversizeError(picked, "as a brand asset");
+      if (tooBig) {
+        setError(tooBig);
+        return;
+      }
+    }
     setBusy(true);
     setError(null);
     try {

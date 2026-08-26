@@ -99,3 +99,83 @@ describe("derivedOppName", () => {
     ).toBe("Untitled opportunity");
   });
 });
+
+/**
+ * Brendan 2026-08-26: "the project nickname should go at the end of the
+ * opportunity title, and we should be able to toggle that."
+ *
+ * The nickname used to REPLACE the whole name. Typing "Building C" erased the
+ * date, the GC and the address from every list that job appears in — the three
+ * things a pipeline is actually scanned by — so the shorthand cost you the
+ * ability to find the job.
+ *
+ * Migration 170 adds `title_override_mode`. New deals default to 'append';
+ * every deal that ALREADY had a nickname is backfilled to 'replace', because
+ * those jobs are named what they are named today and flipping the meaning of
+ * the column under live data would rename all of them at once. An undefined
+ * mode — a row read before the migration lands — must read as 'replace' for
+ * exactly the same reason.
+ */
+describe("nickname: append vs replace", () => {
+  const withNick = { ...base, title: "08-18-2026 Tomco Painting - Airef - 120 Jericho Turnpike" };
+
+  it("appends to the end, keeping the GC and address", () => {
+    // The base here is the COMPUTED name. An untouched auto-fill resolves
+    // through computedOppName, which has never carried the date prefix — the
+    // date lives on the raw `title` column, not on what lists display.
+    expect(
+      derivedOppName({ ...withNick, title_override: "Building C", title_override_mode: "append" }, GC)
+    ).toBe("Tomco Painting - Airef - 120 Jericho Turnpike - Building C");
+  });
+
+  it("replaces outright when that is the mode", () => {
+    expect(
+      derivedOppName({ ...withNick, title_override: "Building C", title_override_mode: "replace" }, GC)
+    ).toBe("Building C");
+  });
+
+  it("an unmigrated row (mode undefined) keeps the name it has today", () => {
+    // The regression that would rename every existing job on one deploy.
+    expect(derivedOppName({ ...withNick, title_override: "Building C" }, GC)).toBe("Building C");
+  });
+
+  it("does not repeat a nickname the title already ends with", () => {
+    expect(
+      derivedOppName(
+        { ...base, title: "Riverhead Job - Building C", title_override: "Building C", title_override_mode: "append" },
+        GC
+      )
+    ).toBe("Riverhead Job - Building C");
+    // Same check, ignoring case and punctuation drift.
+    expect(
+      derivedOppName(
+        { ...base, title: "Riverhead Job — building c", title_override: "Building C", title_override_mode: "append" },
+        GC
+      )
+    ).toBe("Riverhead Job — building c");
+  });
+
+  it("appends onto a hand-written title, not just the computed one", () => {
+    expect(
+      derivedOppName(
+        { ...base, title: "Riverhead High School", title_override: "Phase 2", title_override_mode: "append" },
+        GC
+      )
+    ).toBe("Riverhead High School - Phase 2");
+  });
+
+  it("stands alone when there is nothing to append to", () => {
+    expect(
+      derivedOppName(
+        { client_name: null, property_street: null, title: "", title_override: "Building C", title_override_mode: "append" },
+        null
+      )
+    ).toBe("Building C");
+  });
+
+  it("no nickname behaves exactly as before", () => {
+    expect(derivedOppName({ ...withNick, title_override: null, title_override_mode: "append" }, GC)).toBe(
+      "Tomco Painting - Airef - 120 Jericho Turnpike"
+    );
+  });
+});

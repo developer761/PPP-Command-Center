@@ -77,6 +77,7 @@ import { listAccountTags, listAllDistinctTags, addAccountTag, removeAccountTag, 
 import { SubmitButton } from "@/components/commercial/submit-button";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
+import { NicknameModeToggle } from "@/components/commercial/nickname-mode-toggle";
 // InfoDot import removed 2026-07-08 Batch 2b — labels use native `title`
 // attribute for hover tooltips instead of the visible `?` badge.
 
@@ -1610,11 +1611,13 @@ async function createDealInlineAction(formData: FormData) {
   // It matters more than a label: title_override is what wins on the proposal
   // PDF's PROJECT line and on the project card.
   const nicknameRaw = String(formData.get("title_override") ?? "").trim();
+  const nicknameMode = String(formData.get("title_override_mode") ?? "");
 
   const result = await createCommercialOpportunity({
     account_id,
     title,
     title_override: nicknameRaw ? nicknameRaw.slice(0, 200) : null,
+    title_override_mode: nicknameMode,
     status,
     sub_status,
     follow_up_at,
@@ -1756,6 +1759,7 @@ async function editDealFromAccountAction(formData: FormData) {
   // Migration 069 — user-supplied custom display name. Blank = clear.
   const titleOverrideRaw = String(formData.get("title_override") ?? "").trim();
   const title_override = titleOverrideRaw ? titleOverrideRaw.slice(0, 200) : null;
+  const title_override_mode = String(formData.get("title_override_mode") ?? "");
 
   // Katie gap #1 — Attention contact. Empty = clear. A non-empty value MUST be
   // one of THIS GC's contacts (a forged POST can't smuggle another account's
@@ -1789,6 +1793,7 @@ async function editDealFromAccountAction(formData: FormData) {
     estimator_user_id,
     estimator_name,
     title_override,
+    title_override_mode,
     updated_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -3564,6 +3569,7 @@ async function NewDealForm({
           placeholder="e.g. Jericho Turnpike lobby"
           className={inputCls}
         />
+        <NicknameModeToggle idPrefix="acct-new-deal-nickname" />
       </label>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -6150,6 +6156,10 @@ async function DealEditSheet({
                 defaultValue={deal.title_override ?? ""}
                 placeholder="e.g. JD Sports 37-38 Junction Blvd"
                 className={inputCls}
+              />
+              <NicknameModeToggle
+                idPrefix="edit-title-override"
+                value={(deal as { title_override_mode?: string | null }).title_override_mode}
               />
             </div>
             <div>

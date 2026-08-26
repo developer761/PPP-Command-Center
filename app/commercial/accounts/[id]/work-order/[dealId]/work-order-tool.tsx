@@ -77,8 +77,17 @@ function base(id: string, dealId: string, origin?: string, woId?: string | null,
   return `/commercial/opportunities/${dealId}?tab=project&sub=work-order${woQs}${toolOriginQs(from)}`;
 }
 function revalidateWO(id: string, dealId: string) {
-  revalidatePath(`/commercial/opportunities/${dealId}`);
-  revalidatePath(`/commercial/accounts/${id}`);
+  // Brendan 2026-08-26: "it still said no work order after I made one."
+  //
+  // The rule itself is correct and clears — attention.test.ts now proves all
+  // six warnings turn off when resolved, and the live rows agree. What was left
+  // was staleness: the tool lives on its own route, and returning to the deal
+  // is a CLIENT navigation, so the page can be served from the router cache
+  // captured before the work order existed. "page" scope only drops that one
+  // entry; the deal renders its tabs through a layout, so the subtree could
+  // still answer from cache. Layout scope drops the whole branch.
+  revalidatePath(`/commercial/opportunities/${dealId}`, "layout");
+  revalidatePath(`/commercial/accounts/${id}`, "layout");
   revalidatePath("/commercial/post-job/work-orders");
 }
 function ymd(raw: string): string | null {

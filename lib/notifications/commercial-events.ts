@@ -1292,6 +1292,47 @@ export async function hasRecentNotification(
   return (data ?? []).length > 0;
 }
 
+/**
+ * Retire the "Approval needed" bells for a proposal once somebody has decided.
+ *
+ * Brendan 2026-08-26: "once I approve it the notification should go away on its
+ * own." It didn't — the request bell stayed unread for every approver until
+ * each of them clicked it individually, so a queue of things needing action
+ * kept showing work that was already done, and the count stopped meaning
+ * anything.
+ *
+ * Marks the request read for EVERYONE, not just the approver who acted: the
+ * proposal is no longer waiting on any of them. The separate "decided"
+ * notification that goes to the requester is what carries the outcome forward,
+ * so nothing is lost by clearing this one.
+ *
+ * Best-effort. A proposal that was approved must never fail because a bell
+ * could not be tidied.
+ */
+export async function clearApprovalRequestNotifications(
+  proposalId: string
+): Promise<void> {
+  try {
+    const sb = adminClient();
+    const { error } = await sb
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("kind", "commercial_proposal_approval_requested")
+      .eq("work_order_id", proposalId)
+      .is("read_at", null);
+    if (error) {
+      console.warn(
+        `[commercial-events] could not clear approval bells for ${proposalId}: ${error.message}`
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[commercial-events] clearApprovalRequestNotifications threw:",
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Invoicing (Phase 3, Karan 2026-07-07)
 //
@@ -1675,6 +1716,29 @@ async function resolveOppAccountAndTitle(
  * R6 — a GC submitted a bid through the public online form. Fan a bell + email
  * out to the whole active commercial team so a fresh lead never gets missed.
  */
+/**
+ * Who gets told a proposal is waiting on approval.
+ *
+ * Exported because this one rule decides whether a person sees their own work,
+ * and it has been wrong twice. The default is "everyone but you" — nobody needs
+ * telling about their own action. The exception is when YOU are an approver:
+ * the request is now sitting in your queue, and skipping you hides it. The
+ * previous version only made that exception when the requester was the SOLE
+ * approver, so adding a second approver silently stopped the first one seeing
+ * his own requests.
+ */
+export function approvalRequestRecipients(
+  allApprovers: string[],
+  actingUserId: string | null
+): { recipients: string[]; actorIsApprover: boolean } {
+  const actorIsApprover = !!actingUserId && allApprovers.includes(actingUserId);
+  if (actorIsApprover) return { recipients: allApprovers, actorIsApprover };
+  const others = allApprovers.filter((uid) => !(actingUserId && uid === actingUserId));
+  // No one else to ask: fall back to the full list rather than telling nobody
+  // and leaving the proposal gated in silence.
+  return { recipients: others.length > 0 ? others : allApprovers, actorIsApprover };
+}
+
 export async function insertCommercialBidSubmittedNotifications(input: {
   opportunityId: string;
   accountId: string;
@@ -1770,17 +1834,20 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
     "@/lib/commercial/proposals/db"
   );
   const allApprovers = await listProposalApproverUserIds();
-  const others = allApprovers.filter(
-    (uid) => !(input.actingUserId && uid === input.actingUserId)
+  // Normally notify everyone BUT the requester — you don't need telling about
+  // your own action.
+  //
+  // Unless the requester is an APPROVER, in which case the request is now
+  // sitting in their queue too and skipping them hides their own work from
+  // them. The old rule only made that exception when they were the SOLE
+  // approver, so the moment a second approver existed Brendan stopped seeing
+  // his own requests — Brendan 2026-08-26: "I don't see the approvals I send
+  // in my notifications." Being one of two approvers does not make the item
+  // any less his to action.
+  const { recipients: approverIds, actorIsApprover } = approvalRequestRecipients(
+    allApprovers,
+    input.actingUserId ?? null
   );
-  // Normally notify everyone BUT the requester. If the requester is the only
-  // approver, notify them anyway — the proposal is now gated on an action only
-  // they can take, and dropping it left the request completely silent.
-  const selfIsSoleApprover =
-    others.length === 0 &&
-    !!input.actingUserId &&
-    allApprovers.includes(input.actingUserId);
-  const approverIds = others.length > 0 ? others : allApprovers;
   if (approverIds.length === 0) return { fanout: 0, approverCount: 0 };
 
   const { accountId, oppTitle } = await resolveOppAccountAndTitle(input.opportunityId);
@@ -1833,7 +1900,7 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
     approverIds.map(async (uid) => {
       const r = await dispatchCommercialNotification({
         kind: "commercial_proposal_approval_requested",
-        allowSelfNotify: selfIsSoleApprover,
+        allowSelfNotify: actorIsApprover,
         recipientUserId: uid,
         actingUserId: input.actingUserId,
         sourceId: input.proposalId,

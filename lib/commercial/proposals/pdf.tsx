@@ -25,6 +25,7 @@ import {
   proposalRevisionLabel,
 } from "./constants";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
+import { documentCategoryLabel } from "@/lib/commercial/documents/categories";
 import type {
   CommercialProposal,
   CommercialProposalLineItem,
@@ -1612,6 +1613,35 @@ export type RenderProposalArgs = {
    * same ZIP + jurisdictions the invoice uses, so the two cannot disagree.
    */
   tax?: ProposalTaxLine | null;
+  /**
+   * Plans + markups filed against this opportunity, listed on the INTERNAL
+   * copy only.
+   *
+   * Brendan 2026-08-26: "the marked up plans should be attached to the internal
+   * report." A PDF renderer can't splice a foreign plan set (or a DWG, or a
+   * photo) into its own pages, so the report does the next honest thing: it
+   * names every plan document on file, with its date and size, so a reviewer
+   * holding only this report knows what exists and can tell at a glance whether
+   * the markup they were promised was ever uploaded. Silence on the report
+   * previously read as "no markups" whether or not any had been attached.
+   */
+  attachments?: ProposalAttachment[];
+};
+
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "unknown size";
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  return `${(kb / 1024).toFixed(kb / 1024 < 10 ? 1 : 0)} MB`;
+}
+
+export type ProposalAttachment = {
+  file_name: string;
+  category: string;
+  uploaded_at: string;
+  size_bytes: number;
+  notes?: string | null;
 };
 
 /**
@@ -1649,6 +1679,7 @@ export function ProposalPdfDocument({
   company = null,
   tax = null,
   qualifications = [],
+  attachments = [],
 }: RenderProposalArgs) {
   const pageStyle = proposal.pdf_compact ? [styles.page, COMPACT_PAGE] : styles.page;
   // Migration 063 (2026-07-19): labor rows render in their own PDF
@@ -1877,6 +1908,36 @@ export function ProposalPdfDocument({
                 </Text>
               </View>
             )}
+            {/* Brendan 2026-08-26: "the marked up plans should be attached to
+                the internal report." Named here rather than spliced in — see
+                RenderProposalArgs.attachments. Prints even when empty, because
+                "no plans on file" is the answer a reviewer needs most. */}
+            <View wrap={false} style={{ marginTop: 10, padding: 8, backgroundColor: "#F3F4F6", borderLeftWidth: 3, borderLeftColor: MUTED }}>
+              <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                Plans &amp; markups on file ({attachments.length})
+              </Text>
+              {attachments.length === 0 ? (
+                <Text style={{ fontSize: 10, color: CHARCOAL, lineHeight: 1.4 }}>
+                  No plan set or marked-up drawing has been uploaded to this opportunity.
+                </Text>
+              ) : (
+                attachments.map((a, i) => (
+                  <View key={`${a.file_name}-${i}`} style={{ marginBottom: 2 }}>
+                    <Text style={{ fontSize: 10, color: CHARCOAL, lineHeight: 1.4 }}>
+                      • {a.file_name}
+                      <Text style={{ color: MUTED }}>
+                        {"  —  "}{documentCategoryLabel(a.category)} · {formatDateLong(a.uploaded_at)} · {formatFileSize(a.size_bytes)}
+                      </Text>
+                    </Text>
+                    {a.notes && a.notes.trim() && (
+                      <Text style={{ fontSize: 9, color: MUTED, lineHeight: 1.35, marginLeft: 8 }}>
+                        {a.notes.trim()}
+                      </Text>
+                    )}
+                  </View>
+                ))
+              )}
+            </View>
           </>
         )}
 

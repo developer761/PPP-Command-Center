@@ -281,6 +281,17 @@ export type AddContactInput = {
  *
  * Returns the new account_contact junction row's id.
  */
+/**
+ * Compare two people's names for "is this the same human".
+ *
+ * Deliberately forgiving about case and spacing and nothing else — "Bob Smith"
+ * and "bob  smith" are one person; "Bob Smith" and "Bob Smith Jr" are two, and
+ * guessing otherwise would merge them permanently.
+ */
+export function normalizeName(n: string | null | undefined): string {
+  return (n ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export async function addContactToAccount(input: AddContactInput): Promise<
   { ok: true; account_contact_id: string } | { ok: false; error: string }
 > {
@@ -300,14 +311,43 @@ export async function addContactToAccount(input: AddContactInput): Promise<
 
   let contactId: string | null = null;
 
+  // Reuse an existing person rather than minting a duplicate — but ONLY when
+  // it is actually the same person.
+  //
+  // Brendan 2026-08-26: "I made three contacts when I created the account and
+  // only one saved." All three DID save. Matching on email alone reused the
+  // first contact row and threw away the name typed on the other two, so the
+  // account came back showing the same human three times under three roles —
+  // which reads as "the other two never went in", and is worse than a
+  // duplicate, because it silently misattributes people.
+  //
+  // A shared inbox is the normal case this hits: at a small GC, the estimator,
+  // the owner and the AP clerk all sit behind one info@ address. Same mailbox,
+  // three different people. So the name has to agree too; when it doesn't, they
+  // get their own record.
   if (input.email?.trim()) {
-    const { data: existing } = await sb
+    const email = input.email.trim().toLowerCase();
+    const wanted = normalizeName(input.full_name);
+    const { data: existingRows } = await sb
       .from("commercial_contacts")
-      .select("id")
-      .eq("email", input.email.trim().toLowerCase())
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (existing) contactId = (existing as { id: string }).id;
+      .select("id, full_name, phone, title")
+      .eq("email", email)
+      .is("deleted_at", null);
+    const candidates = (existingRows ?? []) as Array<{
+      id: string; full_name: string | null; phone: string | null; title: string | null;
+    }>;
+    const sameHuman = candidates.find((c) => normalizeName(c.full_name) === wanted);
+    if (sameHuman) {
+      contactId = sameHuman.id;
+      // Somebody re-entering a known contact often has the detail we're
+      // missing. Fill the gaps; never overwrite what is already recorded.
+      const patch: Record<string, string> = {};
+      if (!sameHuman.phone && input.phone?.trim()) patch.phone = input.phone.trim();
+      if (!sameHuman.title && input.title?.trim()) patch.title = input.title.trim();
+      if (Object.keys(patch).length > 0) {
+        await sb.from("commercial_contacts").update(patch).eq("id", sameHuman.id);
+      }
+    }
   }
 
   if (!contactId) {

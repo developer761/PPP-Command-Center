@@ -10,6 +10,21 @@ import {
   listLineItemsForProposal,
 } from "@/lib/commercial/proposals/db";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
+import type { DocumentCategory } from "@/lib/commercial/documents/categories";
+
+/**
+ * What Brendan means by "the plans" — the drawing set and anything marked up on
+ * top of it. Kept narrow on purpose; see the call site.
+ *
+ * Typed as DocumentCategory[] so it cannot drift from the real enum: a first
+ * draft of this list carried "drawings" and "plans", neither of which is a
+ * category this app has ever written, so both would have matched nothing
+ * forever and the omission would have looked like "no markups uploaded".
+ */
+const PLAN_CATEGORIES: ReadonlySet<string> = new Set<DocumentCategory>([
+  "bid_set",   // the GC's plan set, and the marked-up copies filed against it
+  "submittal", // shop drawings / product data — also drawings a reviewer wants
+]);
 
 /**
  * GET /api/commercial/proposals/[proposalId]/pdf[?mode=internal]
@@ -114,6 +129,32 @@ export async function GET(
       mode,
       showSignatureBlock,
       company: await getOperatingCompany(),
+      // Brendan 2026-08-26: "the marked up plans should be attached to the
+      // internal report." Only the plan-side categories — a COI or a saved
+      // email is not what he is looking for when he opens the review copy, and
+      // listing every file on the opportunity would bury the one that matters.
+      // Customer copies never see this.
+      attachments:
+        mode === "internal"
+          ? (await (async () => {
+              const { listDocumentsForParent } = await import(
+                "@/lib/commercial/documents/db"
+              );
+              const docs = await listDocumentsForParent(
+                "opportunity",
+                proposal.opportunity_id
+              );
+              return docs
+                .filter((d) => PLAN_CATEGORIES.has(d.category))
+                .map((d) => ({
+                  file_name: d.file_name,
+                  category: d.category,
+                  uploaded_at: d.uploaded_at,
+                  size_bytes: d.size_bytes,
+                  notes: d.notes,
+                }));
+            })())
+          : [],
       tax: await (async () => {
         const { loadProposalTaxLine } = await import(
           "@/lib/commercial/proposals/proposal-tax-load"

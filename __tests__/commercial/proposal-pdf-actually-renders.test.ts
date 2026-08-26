@@ -123,3 +123,96 @@ describe("the proposal PDF renders", () => {
     expect(block).toContain("wrap={false}");
   });
 });
+
+/**
+ * Brendan 2026-08-26: "the marked up plans should be attached to the internal
+ * report."
+ *
+ * Two things have to hold, and only one of them is about the happy path. The
+ * list has to render — but the EMPTY case has to render too, because "no plan
+ * set has been uploaded" is the reading a reviewer most needs and the state a
+ * silent section is indistinguishable from.
+ */
+describe("plans & markups on the internal report", () => {
+  const plans = [
+    {
+      file_name: "JD-Sports-Junction-Blvd-MARKUP.pdf",
+      category: "bid_set",
+      uploaded_at: "2026-08-26",
+      size_bytes: 41_238_912,
+      notes: "Marked-up / bid-set doc attached from the proposal builder.",
+    },
+    {
+      file_name: "shop-drawings-rev-C.pdf",
+      category: "submittal",
+      uploaded_at: "2026-08-20",
+      size_bytes: 812_004,
+      notes: null,
+    },
+  ];
+
+  it("renders with plans attached, and does not blow the page count out", async () => {
+    const base = await renderProposalPdf({
+      proposal: proposal({ bid_notes: "Two coats over primer." }),
+      lineItems: [line("l1", "Paint exposed structure", 120_000)],
+      exclusions: [], mode: "internal",
+    });
+    const withPlans = await renderProposalPdf({
+      proposal: proposal({ bid_notes: "Two coats over primer." }),
+      lineItems: [line("l1", "Paint exposed structure", 120_000)],
+      exclusions: [], mode: "internal", attachments: plans,
+    });
+    expect(withPlans.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pageCount(withPlans)).toBeLessThanOrEqual(pageCount(base) + 1);
+  });
+
+  it("renders the empty state rather than going quiet", async () => {
+    const buf = await renderProposalPdf({
+      proposal: proposal(),
+      lineItems: [line("l1", "Paint exposed structure", 120_000)],
+      exclusions: [], mode: "internal", attachments: [],
+    });
+    expect(buf.subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
+  it("never reaches the customer copy — it is our filing, not theirs", async () => {
+    // The customer PDF and the internal PDF are the same renderer with a flag.
+    // A section that leaks across that flag is how a GC learns what we marked
+    // up on their own drawings.
+    //
+    // Asserting on filenames in the bytes would NOT work: @react-pdf compresses
+    // its content streams, so a `.not.toContain("MARKUP")` passes whether or
+    // not the section rendered — it can never fail, which makes it worse than
+    // no test. What can't be faked is that passing the attachments changes
+    // NOTHING about the customer output.
+    const args = {
+      lineItems: [line("l1", "Paint exposed structure", 120_000)],
+      exclusions: [], mode: "customer" as const,
+    };
+    const without = await renderProposalPdf({ proposal: proposal(), ...args });
+    const withPlans = await renderProposalPdf({ proposal: proposal(), ...args, attachments: plans });
+    expect(pageCount(withPlans)).toBe(pageCount(without));
+    // Content-stream length is the part that grows when something new draws.
+    const streamBytes = (b: Buffer) =>
+      (b.toString("latin1").match(/\/Length\s+(\d+)/g) ?? [])
+        .map((m) => Number(m.replace(/\D/g, "")))
+        .reduce((a, n) => a + n, 0);
+    expect(streamBytes(withPlans)).toBe(streamBytes(without));
+  });
+
+  it("the internal copy DOES grow when plans are listed (guards the test above)", async () => {
+    // Without this, the customer-copy test could be passing because the
+    // section renders nowhere at all.
+    const args = {
+      lineItems: [line("l1", "Paint exposed structure", 120_000)],
+      exclusions: [], mode: "internal" as const,
+    };
+    const streamBytes = (b: Buffer) =>
+      (b.toString("latin1").match(/\/Length\s+(\d+)/g) ?? [])
+        .map((m) => Number(m.replace(/\D/g, "")))
+        .reduce((a, n) => a + n, 0);
+    const none = await renderProposalPdf({ proposal: proposal(), ...args, attachments: [] });
+    const two = await renderProposalPdf({ proposal: proposal(), ...args, attachments: plans });
+    expect(streamBytes(two)).toBeGreaterThan(streamBytes(none));
+  });
+});

@@ -72,7 +72,34 @@ export function AutoOpportunityTitle({
     const events: (keyof HTMLElementEventMap)[] = ["input", "change"];
     const targets = [clientEl, streetEl, builderEl].filter(Boolean) as HTMLInputElement[];
     for (const el of targets) for (const ev of events) el.addEventListener(ev, compose);
+
+    // Brendan 2026-08-26: "when I use the Google autofill for the address it
+    // doesn't go into the name of the opportunity, but if I type it manually it
+    // does."
+    //
+    // That is the tell for a value set from script. A browser address-autofill
+    // or a Places widget assigns `input.value` directly, and assigning value
+    // fires NO event at all — the DOM only dispatches `input` for keystrokes
+    // and for the browser's own form-autofill path, which not every fill takes.
+    // So the listeners above were correct and simply never ran, and the title
+    // kept whatever it had composed from an empty street.
+    //
+    // Nothing observable distinguishes "filled by script" from "unchanged", so
+    // watch the values themselves. It costs one string compare per field every
+    // 300ms, only while the title is still auto-composed — the moment somebody
+    // types their own title this stops mattering and compose() returns early.
+    let last = targets.map((el) => el.value).join("\u0000");
+    const poll = window.setInterval(() => {
+      if (touchedRef.current) return;
+      const now = targets.map((el) => el.value).join("\u0000");
+      if (now !== last) {
+        last = now;
+        compose();
+      }
+    }, 300);
+
     return () => {
+      window.clearInterval(poll);
       for (const el of targets) for (const ev of events) el.removeEventListener(ev, compose);
     };
   }, [builder, builderFieldId]);
