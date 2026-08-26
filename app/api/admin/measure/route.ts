@@ -205,8 +205,12 @@ export async function POST(request: Request) {
     // Derive from dimensions when we have them so the stored area and the
     // stored perimeter can never disagree with each other.
     let sqft = Math.round(Number(body.sqft ?? 0));
-    let perimeterLf: number | null = null;
-    if (lengthFt && widthFt && lengthFt > 0 && widthFt > 0) {
+    // An explicit perimeter comes from WALKING the room, and it is the one
+    // number a rectangle cannot express — an L-shaped room has more wall than
+    // any length × width implies. Never recompute over it.
+    let perimeterLf: number | null =
+      body.perimeterLf != null && Number(body.perimeterLf) > 0 ? Number(body.perimeterLf) : null;
+    if (perimeterLf == null && lengthFt && widthFt && lengthFt > 0 && widthFt > 0) {
       const geo = geometryFromDimensions({ lengthFt, widthFt, ceilingFt: ceilingFt ?? 0 });
       sqft = Math.round(geo.floorAreaSqft);
       perimeterLf = geo.perimeterLf;

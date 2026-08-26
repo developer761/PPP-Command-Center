@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { geometryFromDimensions, perimeterGainVsSquareGuess, distributeHouseSqft } from "@/lib/measure/geometry";
 import { CONFIDENCE_LABEL, SOURCE_LABEL, type MeasureSuggestion, type MeasureConfidence } from "@/lib/measure/types";
 import MeasurePhotoTool, { type PhotoMeasureResult } from "@/components/measure-photo-tool";
+import MeasureFloorPlan from "@/components/measure-floor-plan";
 
 /**
  * Standalone sandbox for the room-measurement tool.
@@ -30,6 +31,12 @@ type Row = {
   /** Set only in work-order mode — the line item this room saves to. */
   woliId?: string;
   saved?: boolean;
+  /** Set when the room was WALKED. Carries the true area and perimeter, which
+   *  length × width cannot express for an L-shaped or bumped-out room — so
+   *  these override the derived values rather than being recomputed. */
+  planAreaSqft?: number;
+  planPerimeterLf?: number;
+  planWallCount?: number;
 };
 
 type WorkOrderOption = {
@@ -68,7 +75,14 @@ export default function MeasureSandbox() {
     let sqft = 0, wall = 0, measured = 0;
     for (const r of rows) {
       const L = parseFloat(r.lengthFt) || 0, W = parseFloat(r.widthFt) || 0;
-      if (L > 0 && W > 0) {
+      if (r.planAreaSqft) {
+        // Walked: real area AND real perimeter, so the wall figure uses the
+        // room's actual shape rather than a rectangle standing in for it.
+        const h = parseFloat(r.ceilingFt) || 8;
+        sqft += r.planAreaSqft;
+        wall += Math.round((r.planPerimeterLf ?? 0) * h);
+        measured++;
+      } else if (L > 0 && W > 0) {
         const g = geometryFromDimensions({ lengthFt: L, widthFt: W, ceilingFt: parseFloat(r.ceilingFt) || 0 });
         sqft += g.floorAreaSqft; wall += g.paintableWallSqft; measured++;
       } else if (r.suggestion) {
@@ -155,9 +169,13 @@ export default function MeasureSandbox() {
   async function saveRoom(row: Row) {
     if (!row.woliId || !wo) return;
     const L = parseFloat(row.lengthFt) || 0, W = parseFloat(row.widthFt) || 0;
-    const sqft = L > 0 && W > 0
-      ? geometryFromDimensions({ lengthFt: L, widthFt: W, ceilingFt: parseFloat(row.ceilingFt) || 0 }).floorAreaSqft
-      : row.suggestion?.sqft ?? 0;
+    // A walked plan wins: it knows the room's real shape, where length × width
+    // can only ever describe a rectangle.
+    const sqft = row.planAreaSqft
+      ? row.planAreaSqft
+      : L > 0 && W > 0
+        ? geometryFromDimensions({ lengthFt: L, widthFt: W, ceilingFt: parseFloat(row.ceilingFt) || 0 }).floorAreaSqft
+        : row.suggestion?.sqft ?? 0;
     if (!sqft) { patch(row.id, { error: "Measure it or pick a suggestion first." }); return; }
     patch(row.id, { busy: true, error: null });
     try {
@@ -166,9 +184,15 @@ export default function MeasureSandbox() {
         body: JSON.stringify({
           action: "save", woliId: row.woliId, workOrderId: wo.id, roomLabel: row.label,
           sqft,
-          lengthFt: L || null, widthFt: W || null, ceilingFt: parseFloat(row.ceilingFt) || null,
-          source: L > 0 && W > 0 ? "dimensions" : row.suggestion?.source ?? "manual",
-          confidence: L > 0 && W > 0 ? "high" : row.suggestion?.confidence ?? "medium",
+          // Send the walked perimeter explicitly. Without it the server would
+          // derive 2(L+W) from the bounding box and throw away the one number
+          // walking the room exists to produce.
+          perimeterLf: row.planPerimeterLf ?? null,
+          lengthFt: row.planAreaSqft ? null : L || null,
+          widthFt: row.planAreaSqft ? null : W || null,
+          ceilingFt: parseFloat(row.ceilingFt) || null,
+          source: row.planAreaSqft || (L > 0 && W > 0) ? "dimensions" : row.suggestion?.source ?? "manual",
+          confidence: row.planAreaSqft || (L > 0 && W > 0) ? "high" : row.suggestion?.confidence ?? "medium",
           suggestion: row.suggestion,
         }),
       });
@@ -365,6 +389,7 @@ function RoomRow({
   // device for this path, unlike the AI estimate.
   const [tapUrl, setTapUrl] = useState<string | null>(null);
   const [tapTarget, setTapTarget] = useState<"length" | "width" | "ceiling">("length");
+  const [planOpen, setPlanOpen] = useState(false);
   const L = parseFloat(row.lengthFt) || 0;
   const W = parseFloat(row.widthFt) || 0;
   const geo = L > 0 && W > 0 ? geometryFromDimensions({ lengthFt: L, widthFt: W, ceilingFt: parseFloat(row.ceilingFt) || 0 }) : null;
@@ -406,6 +431,12 @@ function RoomRow({
           >
             📐 Measure a wall
           </button>
+          <button
+            type="button" onClick={() => setPlanOpen(true)}
+            className="min-h-[44px] px-3 rounded-lg border border-ppp-charcoal-200 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 touch-manipulation whitespace-nowrap"
+          >
+            🧭 Walk the room
+          </button>
           <input
             ref={tapRef} type="file" accept="image/*" capture="environment" className="hidden"
             onChange={(e) => {
@@ -417,7 +448,16 @@ function RoomRow({
         </div>
       </div>
 
-      {geo && (
+      {row.planAreaSqft ? (
+        <div className="mt-3 text-[11px] text-ppp-charcoal-600 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2">
+          <strong className="text-ppp-charcoal">{row.planAreaSqft.toLocaleString()} sq ft</strong> floor ·{" "}
+          <strong className="text-ppp-charcoal">{row.planPerimeterLf} ft</strong> around, from{" "}
+          {row.planWallCount} walls
+          <div className="mt-1 text-ppp-charcoal-500">
+            Walked, so this is the room&rsquo;s real shape — not a rectangle standing in for it.
+          </div>
+        </div>
+      ) : geo && (
         <div className="mt-3 text-[11px] text-ppp-charcoal-600 bg-[var(--color-surface-muted)] rounded-lg px-3 py-2">
           <strong className="text-ppp-charcoal">{geo.floorAreaSqft.toLocaleString()} sq ft</strong> floor ·{" "}
           <strong className="text-ppp-charcoal">{geo.paintableWallSqft.toLocaleString()} sq ft</strong> paintable wall
@@ -474,6 +514,27 @@ function RoomRow({
         >
           {row.busy ? "Saving…" : row.saved ? "✓ Saved to this work order" : "Save to work order"}
         </button>
+      )}
+
+      {planOpen && (
+        <MeasureFloorPlan
+          roomLabel={row.label}
+          initialCeilingFt={row.ceilingFt}
+          onClose={() => setPlanOpen(false)}
+          onApply={(r) => {
+            onPatch({
+              planAreaSqft: r.floorAreaSqft,
+              planPerimeterLf: r.perimeterLf,
+              planWallCount: r.wallCount,
+              ceilingFt: r.ceilingFt ? String(r.ceilingFt) : row.ceilingFt,
+              // Clear the rectangle inputs so two conflicting descriptions of
+              // the same room can't sit on screen together.
+              lengthFt: "", widthFt: "",
+              saved: false,
+            });
+            setPlanOpen(false);
+          }}
+        />
       )}
 
       {tapUrl && (
