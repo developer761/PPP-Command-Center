@@ -82,7 +82,8 @@ export async function GET(
   }
 
   const url = new URL(req.url);
-  const mode = url.searchParams.get("mode") === "internal" ? "internal" : "customer";
+  const mode: "internal" | "customer" =
+    url.searchParams.get("mode") === "internal" ? "internal" : "customer";
   const showSignatureBlock = url.searchParams.get("signature") === "1";
 
   const proposal = await getProposal(proposalId);
@@ -147,11 +148,17 @@ export async function GET(
 
   let pdfBuffer: Buffer;
   try {
-    const { renderProposalPdf } = await import(
-      "@/lib/commercial/proposals/pdf"
-    );
+    const { renderProposalPdf } = await import("@/lib/commercial/proposals/pdf");
     const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
-    pdfBuffer = await renderProposalPdf({
+    const { loadProposalTaxLine } = await import(
+      "@/lib/commercial/proposals/proposal-tax-load"
+    );
+
+    // Resolved ONCE. The internal report may be laid out several times to find
+    // the height that fits on one page (see below), and re-reading the company
+    // and re-computing the tax on every attempt would be three round-trips per
+    // try for an answer that cannot change between them.
+    const shared = {
       proposal,
       lineItems,
       exclusions,
@@ -159,11 +166,6 @@ export async function GET(
       mode,
       showSignatureBlock,
       company: await getOperatingCompany(),
-      // Brendan 2026-08-26: "the marked up plans should be attached to the
-      // internal report." Only the plan-side categories — a COI or a saved
-      // email is not what he is looking for when he opens the review copy, and
-      // listing every file on the opportunity would bury the one that matters.
-      // Customer copies never see this.
       // ONLY the ones that can't be spliced onto the end — see the PDF's
       // "Also on file" block. Decided from type and size alone, which is why it
       // can be known before the render.
@@ -176,16 +178,36 @@ export async function GET(
           size_bytes: d.size_bytes,
           notes: d.notes,
         })),
-      tax: await (async () => {
-        const { loadProposalTaxLine } = await import(
-          "@/lib/commercial/proposals/proposal-tax-load"
+      tax: await loadProposalTaxLine({
+        opportunityId: proposal.opportunity_id,
+        priceCents: proposal.total_cents,
+      }),
+    };
+
+    if (mode === "internal") {
+      // Karan 2026-08-26: "when I do plan report and have like 5 line items it
+      // goes to 2 different pages — it should always be one." The report is
+      // laid out on progressively taller sheets until it flows onto one page,
+      // then scaled back to Letter. See fit-one-page for why it isn't done by
+      // trimming content or shrinking type directly.
+      const { renderFitToOnePage } = await import(
+        "@/lib/commercial/proposals/fit-one-page"
+      );
+      const fit = await renderFitToOnePage((pageHeightScale) =>
+        renderProposalPdf({ ...shared, pageHeightScale })
+      );
+      pdfBuffer = fit.bytes;
+      if (!fit.fitted) {
+        // Past the legibility floor. One page nobody can read is not what was
+        // asked for, so it keeps its natural length — worth knowing about.
+        console.warn(
+          `[proposal-pdf] report ${proposalId} is too long to fit one readable page (${lineItems.length} line items)`
         );
-        return loadProposalTaxLine({
-          opportunityId: proposal.opportunity_id,
-          priceCents: proposal.total_cents,
-        });
-      })(),
-    });
+      }
+    } else {
+      // The customer copy is a letterhead document and is never rescaled.
+      pdfBuffer = await renderProposalPdf(shared);
+    }
   } catch (err) {
     // Post-audit fix: log the full error server-side but return an
     // opaque message to the client so react-pdf internals + paths

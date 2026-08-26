@@ -246,3 +246,92 @@ describe("plans & markups on the internal report", () => {
     expect(streamBytes(two)).toBeGreaterThan(streamBytes(none));
   });
 });
+
+/**
+ * The plan report is ONE page.
+ *
+ * Karan 2026-08-26: "when I do plan report and have like 5 line items it goes
+ * to 2 different pages — it should always be one."
+ *
+ * Two things were true when I measured it. It spilled at THREE line items, not
+ * five. And `pdf_compact` — the toggle that exists precisely to squeeze it onto
+ * one page — made no difference whatsoever: two pages with it on, two with it
+ * off. Nor was it one oversized block: drop the exclusions, or the
+ * qualifications, or the bid notes, or the line descriptions, and the same
+ * report fits. The height is cumulative, so there was nothing to trim that
+ * wasn't content somebody had asked to see.
+ *
+ * So it is laid out on a taller sheet until it flows onto one page, then scaled
+ * back to Letter — a printer's fit-to-page. These assert the outcome, because
+ * page count is the entire claim.
+ */
+describe("the plan report fits on one page", () => {
+  const heavy = {
+    exclusions: ["Drywall repair", "Scaffolding", "Wall covering removal"],
+    qualifications: ["Price assumes one mobilisation and clear, unobstructed access"],
+    mode: "internal" as const,
+  };
+  const items = (n: number) =>
+    Array.from({ length: n }, (_, i) => line(`l${i}`, "Loxon (masonry primer/finish) — precast concrete.", 250_00));
+
+  it.each([1, 3, 5, 8, 12])("%i line items → one page", async (n) => {
+    const { renderFitToOnePage, pdfPageCount } = await import(
+      "@/lib/commercial/proposals/fit-one-page"
+    );
+    const r = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({
+        proposal: proposal({ bid_notes: "Two coats over primer." }),
+        lineItems: items(n),
+        ...heavy,
+        pageHeightScale,
+      })
+    );
+    expect(r.fitted).toBe(true);
+    expect(await pdfPageCount(r.bytes)).toBe(1);
+  });
+
+  it("comes back as a LETTER page, not the tall sheet it was laid out on", async () => {
+    // The scale-down is the half that can silently not happen — leaving a
+    // correct-looking one-page PDF that prints at the wrong size.
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    const { PDFDocument } = await import("pdf-lib");
+    const r = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({
+        proposal: proposal({ bid_notes: "Two coats over primer." }),
+        lineItems: items(5), ...heavy, pageHeightScale,
+      })
+    );
+    const size = (await PDFDocument.load(new Uint8Array(r.bytes))).getPage(0).getSize();
+    expect(Math.round(size.width)).toBe(612);
+    expect(Math.round(size.height)).toBe(792);
+  });
+
+  it("stops before the type becomes unreadable", async () => {
+    // A report long enough to need more than a ~60% reduction keeps its natural
+    // length. One page nobody can read is not what was asked for.
+    const { renderFitToOnePage, pdfPageCount } = await import(
+      "@/lib/commercial/proposals/fit-one-page"
+    );
+    const r = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({
+        proposal: proposal({ bid_notes: "Two coats over primer." }),
+        lineItems: items(40), ...heavy, pageHeightScale,
+      })
+    );
+    expect(r.fitted).toBe(false);
+    expect(await pdfPageCount(r.bytes)).toBeGreaterThan(1);
+  });
+
+  it("never rescales the customer copy", async () => {
+    // Fit-to-page is for the estimator's working document. The letterhead a GC
+    // signs must always be full size.
+    const buf = await renderProposalPdf({
+      proposal: proposal(), lineItems: items(5),
+      exclusions: heavy.exclusions, qualifications: heavy.qualifications,
+      mode: "customer",
+    });
+    const { PDFDocument } = await import("pdf-lib");
+    const size = (await PDFDocument.load(new Uint8Array(buf))).getPage(0).getSize();
+    expect(Math.round(size.height)).toBe(792);
+  });
+});

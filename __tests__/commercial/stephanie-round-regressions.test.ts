@@ -127,7 +127,16 @@ describe("her note: put it on one page, or let me change font size and spacing",
 
   it("is applied to the page, not merely defined", () => {
     expect(SRC).toContain("proposal.pdf_compact ? [styles.page, COMPACT_PAGE] : styles.page");
-    expect(SRC).toContain('<Page size="LETTER" style={pageStyle}>');
+    // Asserts the page is LETTER at ordinary density — NOT the exact JSX. The
+    // literal `<Page size="LETTER" …>` string used to be pinned here, and it
+    // broke the moment the page size became a value (Karan 2026-08-26: the plan
+    // report has to fit on one page, which is done by laying it out on a taller
+    // sheet and scaling back to Letter). A test that pins markup fails on
+    // rewrites and passes on regressions; this one reads what the size will
+    // actually be.
+    const m = /<Page\s+size=\{([\s\S]*?)\}\s+style=\{pageStyle\}>/.exec(SRC);
+    expect(m, "the Page no longer takes pageStyle").toBeTruthy();
+    expect(m![1], "an ordinary render must still be LETTER").toContain('"LETTER"');
   });
 
   it("page numbers still print when it runs over anyway", () => {

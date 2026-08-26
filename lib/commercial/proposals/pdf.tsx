@@ -1626,6 +1626,21 @@ export type RenderProposalArgs = {
    * previously read as "no markups" whether or not any had been attached.
    */
   attachments?: ProposalAttachment[];
+  /**
+   * Lay the document out on a page this many times taller than Letter.
+   *
+   * Karan 2026-08-26: "when I do plan report and have like 5 line items it goes
+   * to 2 different pages — it should always be one."
+   *
+   * Nothing here shrinks type directly. The document is laid out on a TALLER
+   * sheet so everything flows onto one page, and the caller then scales that
+   * single page down onto Letter — which is exactly what a printer's
+   * fit-to-page does, and why the proportions stay right. See
+   * lib/commercial/proposals/fit-one-page.
+   *
+   * 1 = an ordinary Letter page. The customer copy never passes anything else.
+   */
+  pageHeightScale?: number;
 };
 
 function formatFileSize(bytes: number): string {
@@ -1680,6 +1695,7 @@ export function ProposalPdfDocument({
   tax = null,
   qualifications = [],
   attachments = [],
+  pageHeightScale = 1,
 }: RenderProposalArgs) {
   const pageStyle = proposal.pdf_compact ? [styles.page, COMPACT_PAGE] : styles.page;
   // Migration 063 (2026-07-19): labor rows render in their own PDF
@@ -1740,7 +1756,7 @@ export function ProposalPdfDocument({
       author="Tomco Painting"
       subject={proposal.header_json.project_name ?? "Proposal"}
     >
-      <Page size="LETTER" style={pageStyle}>
+      <Page size={pageHeightScale === 1 ? "LETTER" : { width: 612, height: 792 * pageHeightScale }} style={pageStyle}>
         {/* Karan 2026-07-21: subtle NEUTRAL paper texture behind all
             content (first child = furthest back). Gray speckle only —
             never the warm cream that read as "too yellow" before. */}
