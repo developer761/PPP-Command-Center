@@ -404,6 +404,18 @@ const styles = StyleSheet.create({
     fontFamily: "Times-Bold",
     marginBottom: 14,
   },
+  /* Price / NYS Sales Tax / TOTAL stack, right-aligned under the scope.
+     They used to reuse `totalRow`, which is flexDirection:"row" — so all three
+     printed on ONE line with no separator: "Price: $5.00NYS Sales Tax
+     (8.625%): $0.43TOTAL: $5.43". Brendan sent a screenshot of exactly that,
+     and it was in my own render output before that; three Texts in a row
+     container do not stack. */
+  taxBlock: {
+    marginTop: 22,
+    marginBottom: 6,
+    flexDirection: "column",
+    alignItems: "flex-end",
+  },
   taxLine: {
     fontSize: 11,
     lineHeight: 1.5,
@@ -581,6 +593,23 @@ function formatDollars(cents: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+/**
+ * Quantities with thousands separators.
+ *
+ * Brendan 2026-08-26: *"ideally nice to have a comma to break up the numbers,
+ * right now it says like 100000 without a comma."* Money already did this;
+ * quantities were rendered raw, so 12,500 sq ft printed as "12500" on a
+ * document a GC prices from.
+ *
+ * Fractions are kept when they exist — 2.5 hours is a real quantity — but a
+ * whole number stays whole rather than gaining ".00".
+ */
+function formatQty(q: number | string): string {
+  const n = Number(q);
+  if (!Number.isFinite(n)) return String(q);
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 function formatDateLong(iso: string | undefined): string {
@@ -998,7 +1027,7 @@ function InclusionsCustomer({
       <View key={it.id} style={styles.bulletRow}>
         <View style={styles.bulletDot} />
         <Text style={styles.bulletBody}>
-          {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"}{priceTail}
+          {it.description} — {formatQty(hrs)} {hrs === 1 ? "hr" : "hrs"}{priceTail}
         </Text>
       </View>
     );
@@ -1096,7 +1125,7 @@ function LiRow({
       </Text>
       {!priceOnly && (
         <>
-          <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
+          <Text style={[styles.liCell, styles.liCellQty]}>{formatQty(it.quantity)}</Text>
           <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
         </>
       )}
@@ -1296,7 +1325,7 @@ function InclusionsInternal({
  */
 function TaxedTotalBlock({ label, tax }: { label: string; tax: ProposalTaxLine }) {
   return (
-    <View style={styles.totalRow}>
+    <View style={styles.taxBlock} wrap={false}>
       <Text style={styles.taxLine}>Price: {formatDollars(tax.priceCents)}</Text>
       <Text style={styles.taxLine}>
         {tax.label}: {formatDollars(tax.taxCents)}
@@ -1713,6 +1742,13 @@ export function ProposalPdfDocument({
             this is for internal review only." The sales paragraph is addressed
             to the GC; on an estimator's review copy it is a screenful of
             boilerplate between them and the numbers they opened it for. */}
+        {mode === "internal" && (
+          <View style={{ marginBottom: 12, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: "#FEF3C7", borderLeftWidth: 3, borderLeftColor: "#F59E0B" }}>
+            <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: "#92400E", textTransform: "uppercase", letterSpacing: 1 }}>
+              Internal · estimator view · not for customer
+            </Text>
+          </View>
+        )}
         {mode !== "internal" && <Text style={styles.intro}>{intro}</Text>}
 
         {showLineTable ? (
@@ -1824,13 +1860,13 @@ export function ProposalPdfDocument({
             internal PDF can't be mistaken for what went to the GC, and
             the estimator scratch-pad from the editor actually surfaces
             on the review PDF (Karan 2026-07-15). */}
+        {/* The banner moved to the TOP of the page — Brendan 2026-08-26: "the
+            'not for customer' disclaimer should be at the top so we know off
+            the rip it's not for the customer instead of it being at the
+            bottom." A warning that a document must not be sent is worth
+            nothing below the thing you already read and forwarded. */}
         {mode === "internal" && (
           <>
-            <View style={{ marginTop: 14, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: "#FEF3C7", borderLeftWidth: 3, borderLeftColor: "#F59E0B" }}>
-              <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: "#92400E", textTransform: "uppercase", letterSpacing: 1 }}>
-                Internal · estimator view · not for customer
-              </Text>
-            </View>
             {proposal.bid_notes && proposal.bid_notes.trim() && (
               <View style={{ marginTop: 10, padding: 8, backgroundColor: "#F3F4F6", borderLeftWidth: 3, borderLeftColor: MUTED }}>
                 <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>

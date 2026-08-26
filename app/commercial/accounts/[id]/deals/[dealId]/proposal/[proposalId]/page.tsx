@@ -71,7 +71,7 @@ import {
 import { listProducts } from "@/lib/commercial/products/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
-import { productUnitLabel } from "@/lib/commercial/products/constants";
+import { PRODUCT_UNITS, productUnitLabel } from "@/lib/commercial/products/constants";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
 import ExclusionPicker from "@/components/commercial/exclusion-picker";
 import { RowSaveButton } from "@/components/commercial/row-save-button";
@@ -1442,7 +1442,11 @@ export default async function ProposalEditorPage({
                 <path d="M19 12H5" />
                 <path d="m12 19-7-7 7-7" />
               </svg>
-              <span>Back to {account.company_name} proposals</span>
+              {/* Names the JOB, not the customer. It always returned to the
+                  deal, but "Back to Devin's Contracting proposals" reads like
+                  it goes to the account — which is half of why Brendan thought
+                  clicking a proposal had moved him there. */}
+              <span>Back to {oppName}</span>
             </Link>
             <span aria-hidden className="text-ppp-charcoal-300">·</span>
             <span className="text-ppp-charcoal-900 font-medium">{oppName}</span>
@@ -2796,7 +2800,26 @@ function LineItemsTable({
               </label>
               <label className="block">
                 <span className={LABEL_CLS}>Unit</span>
-                <input type="text" id={`unit-${r.id}`} name="unit" defaultValue={productUnitLabel(r.unit)} className={INPUT_CLS} />
+                {/* A PICKER, not free text.
+                  Brendan 2026-08-26 asked for the small details; this one was
+                  corrupting data. The input rendered productUnitLabel(r.unit) —
+                  the LABEL — and saving wrote that label back as the value, so
+                  `linear_foot` became `linear ft` the first time anyone edited
+                  a row. The live table already holds "sq ft", "sf", "Square ft"
+                  and, because it was a free box, quantities: "5000 sq ft",
+                  "10 each".
+
+                  Six options, so a plain select rather than a searchable one.
+                  A legacy value is kept as its own option so opening an old row
+                  never silently rewrites it. */}
+                <select id={`unit-${r.id}`} name="unit" defaultValue={r.unit} className={SELECT_CLS} style={SELECT_BG_STYLE}>
+                  {!PRODUCT_UNITS.includes(r.unit as never) && r.unit && (
+                    <option value={r.unit}>{r.unit} (as entered)</option>
+                  )}
+                  {PRODUCT_UNITS.map((u) => (
+                    <option key={u} value={u}>{productUnitLabel(u)}</option>
+                  ))}
+                </select>
               </label>
               <label className="block">
                 <span className={LABEL_CLS}>Unit price</span>
@@ -3056,7 +3079,11 @@ function AddLineItemForm({
         </label>
         <label className="block">
           <span className={LABEL_CLS}>Unit</span>
-          <input type="text" id={`${prefix}-unit`} name="unit" defaultValue={isLabor ? "hour" : "each"} className={INPUT_CLS} />
+          <select id={`${prefix}-unit`} name="unit" defaultValue={isLabor ? "hour" : "each"} className={SELECT_CLS} style={SELECT_BG_STYLE}>
+            {PRODUCT_UNITS.map((u) => (
+              <option key={u} value={u}>{productUnitLabel(u)}</option>
+            ))}
+          </select>
         </label>
         <label className="block">
           <span className={LABEL_CLS}>{isLabor ? "$ / hour" : "Unit price"}</span>

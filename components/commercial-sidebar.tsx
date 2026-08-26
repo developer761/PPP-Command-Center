@@ -186,9 +186,11 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
   );
   // The Work Order account route is `work-order` (singular); its sidebar index
   // is `work-orders` (plural) — map it so the nav still highlights.
-  const toolOverride = toolDetailMatch
-    ? `/commercial/post-job/${toolDetailMatch[1] === "work-order" ? "work-orders" : toolDetailMatch[1]}`
-    : null;
+  // The six delivery tools have the same shape as the proposal above: they live
+  // under /commercial/accounts/<id>/<tool>/<dealId>, and the Post-Job rows this
+  // pointed at were retired in the restructure — so they fell through to the
+  // account prefix and lit ACCOUNTS as well. They are all views of a JOB.
+  const toolOverride = toolDetailMatch ? "/commercial/opportunities" : null;
 
   // A proposal detail/builder lives UNDER the deal
   // (/commercial/accounts/<id>/deals/<dealId>/proposal/...) but is reached from
@@ -197,7 +199,21 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
   // pattern as the tool-detail override above.
   const proposalDetail =
     /^\/commercial\/accounts\/[^/]+\/deals\/[^/]+\/proposal(?:\/|$)/.test(pathname);
-  const wantedOverride = toolOverride ?? (proposalDetail ? "/commercial/proposals" : null);
+  // Brendan 2026-08-26: "when I click on a proposal it brings me to the account
+  // tab… it should keep me on the opp page."
+  //
+  // It does keep him — the page and the back link are both the deal. What moved
+  // was the SIDEBAR: a proposal lives at /commercial/accounts/<id>/deals/<id>/
+  // proposal/<id>, so ordinary prefix matching lights ACCOUNTS, and the whole
+  // left rail says you have left the pipeline. The Proposals row this used to
+  // point at was removed in the restructure, so the override silently fell
+  // through to that prefix match.
+  //
+  // A proposal reached from a deal belongs to OPPORTUNITIES — that is where the
+  // deal lives and where the back link returns. Same for the delivery tools
+  // below, which sit under the same account-shaped path.
+  const wantedOverride =
+    toolOverride ?? (proposalDetail ? "/commercial/opportunities" : null);
 
   // Only honour an override that points at a row the sidebar actually RENDERS.
   //

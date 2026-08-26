@@ -43,6 +43,19 @@ export type CreateAccountInput = {
   created_by_user_id?: string | null;
 };
 
+/**
+ * Three uppercase letters from a company name — "Devin's Contracting" → DEV.
+ *
+ * Mirrors the SQL in migrations 065/169 so a row created by the app and one
+ * repaired by the backfill agree. A name with no letters at all ("123
+ * Holdings") gets ACC rather than the shared "GC", so its deals are still
+ * distinguishable from every other account's.
+ */
+export function deriveDealPrefix(companyName: string | null | undefined): string {
+  const letters = (companyName ?? "").replace(/[^A-Za-z]/g, "");
+  return letters ? letters.slice(0, 3).toUpperCase() : "ACC";
+}
+
 export async function createCommercialAccount(
   input: CreateAccountInput
 ): Promise<{ ok: true; account: CommercialAccount } | { ok: false; error: string }> {
@@ -54,6 +67,12 @@ export async function createCommercialAccount(
     .from("commercial_accounts")
     .insert({
       company_name: input.company_name.trim(),
+      // The three-letter code that opens this account's deal numbers
+      // ("DEV-0001"). Migration 065 added the column and backfilled the
+      // accounts that existed that day, but nothing ever set it on INSERT — so
+      // every account created since carried NULL and its deals fell back to the
+      // shared literal "GC". Brendan 2026-08-26: "all the opps are the same".
+      deal_code_prefix: deriveDealPrefix(input.company_name),
       dba: input.dba?.trim() || null,
       industry: input.industry?.trim() || null,
       rating: input.rating ?? null,
