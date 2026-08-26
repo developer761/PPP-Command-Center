@@ -11,6 +11,7 @@ import {
 } from "@/lib/commercial/proposals/db";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
 import type { DocumentCategory } from "@/lib/commercial/documents/categories";
+import { isAppendablePdf, MAX_APPEND_BYTES } from "@/lib/commercial/proposals/append-attachments";
 
 /**
  * What Brendan means by "the plans" — the drawing set and anything marked up on
@@ -21,6 +22,17 @@ import type { DocumentCategory } from "@/lib/commercial/documents/categories";
  * category this app has ever written, so both would have matched nothing
  * forever and the omission would have looked like "no markups uploaded".
  */
+/**
+ * Will this document be spliced onto the end of the report?
+ *
+ * Type and size only — no download — so the renderer can be told in advance
+ * which files it still needs to MENTION, and the ordinary case (a PDF plan set
+ * that appends cleanly) prints no list at all.
+ */
+function willAppend(d: { mime_type: string; file_name: string; size_bytes: number }): boolean {
+  return isAppendablePdf(d.mime_type, d.file_name) && d.size_bytes <= MAX_APPEND_BYTES;
+}
+
 const PLAN_CATEGORIES: ReadonlySet<string> = new Set<DocumentCategory>([
   "bid_set",   // the GC's plan set, and the marked-up copies filed against it
   "submittal", // shop drawings / product data — also drawings a reviewer wants
@@ -115,6 +127,24 @@ export async function GET(
   const exclusions = resolved.filter((e) => e.kind === "exclusion").map((e) => e.text);
   const qualifications = resolved.filter((e) => e.kind === "qualification").map((e) => e.text);
 
+  // Brendan 2026-08-26: "the marked up plans should be attached to the internal
+  // report." Only the plan-side categories — a COI or a saved email is not what
+  // he wants when he opens the review copy, and listing every file on the job
+  // would bury the one that matters. Customer copies never see any of this.
+  const planDocs =
+    mode === "internal"
+      ? await (async () => {
+          const { listDocumentsForParent } = await import(
+            "@/lib/commercial/documents/db"
+          );
+          const docs = await listDocumentsForParent(
+            "opportunity",
+            proposal.opportunity_id
+          );
+          return docs.filter((d) => PLAN_CATEGORIES.has(d.category));
+        })()
+      : [];
+
   let pdfBuffer: Buffer;
   try {
     const { renderProposalPdf } = await import(
@@ -134,27 +164,18 @@ export async function GET(
       // email is not what he is looking for when he opens the review copy, and
       // listing every file on the opportunity would bury the one that matters.
       // Customer copies never see this.
-      attachments:
-        mode === "internal"
-          ? (await (async () => {
-              const { listDocumentsForParent } = await import(
-                "@/lib/commercial/documents/db"
-              );
-              const docs = await listDocumentsForParent(
-                "opportunity",
-                proposal.opportunity_id
-              );
-              return docs
-                .filter((d) => PLAN_CATEGORIES.has(d.category))
-                .map((d) => ({
-                  file_name: d.file_name,
-                  category: d.category,
-                  uploaded_at: d.uploaded_at,
-                  size_bytes: d.size_bytes,
-                  notes: d.notes,
-                }));
-            })())
-          : [],
+      // ONLY the ones that can't be spliced onto the end — see the PDF's
+      // "Also on file" block. Decided from type and size alone, which is why it
+      // can be known before the render.
+      attachments: planDocs
+        .filter((d) => !willAppend(d))
+        .map((d) => ({
+          file_name: d.file_name,
+          category: d.category,
+          uploaded_at: d.uploaded_at,
+          size_bytes: d.size_bytes,
+          notes: d.notes,
+        })),
       tax: await (async () => {
         const { loadProposalTaxLine } = await import(
           "@/lib/commercial/proposals/proposal-tax-load"
@@ -174,6 +195,48 @@ export async function GET(
       { error: "pdf_render_failed" },
       { status: 500 }
     );
+  }
+
+  // Splice the plan set onto the end, so the internal report IS the document
+  // you hand to a reviewer rather than a note about where the plans live.
+  // Karan 2026-08-26: "I didn't see it there as a second page document."
+  if (mode === "internal" && planDocs.length > 0) {
+    try {
+      const { appendPdfAttachments } = await import(
+        "@/lib/commercial/proposals/append-attachments"
+      );
+      const { getDocumentDownloadUrl } = await import(
+        "@/lib/commercial/documents/db"
+      );
+      const result = await appendPdfAttachments(
+        pdfBuffer,
+        planDocs.filter(willAppend).map((d) => ({
+          fileName: d.file_name,
+          mimeType: d.mime_type,
+          sizeBytes: d.size_bytes,
+          load: async () => {
+            const signed = await getDocumentDownloadUrl(d.id);
+            if (!signed.ok) return null;
+            const res = await fetch(signed.url);
+            if (!res.ok) return null;
+            return new Uint8Array(await res.arrayBuffer());
+          },
+        }))
+      );
+      pdfBuffer = result.bytes;
+      if (result.skipped.length > 0) {
+        // Not silent: a plan set that could not be spliced is exactly the thing
+        // somebody would otherwise assume was included.
+        console.warn(
+          "[proposal-pdf] attachments not appended:",
+          result.skipped.map((x) => `${x.fileName} (${x.reason})`).join("; ")
+        );
+      }
+    } catch (err) {
+      // The report still has to open. It already NAMES every plan document, so
+      // the worst case is the reviewer opening one from the Files tab.
+      console.error("[proposal-pdf] appending attachments failed:", err);
+    }
   }
 
   // No `R{n}` in the filename (Brendan 2026-08-17) — the revision is labelled

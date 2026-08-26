@@ -1908,36 +1908,36 @@ export function ProposalPdfDocument({
                 </Text>
               </View>
             )}
-            {/* Brendan 2026-08-26: "the marked up plans should be attached to
-                the internal report." Named here rather than spliced in — see
-                RenderProposalArgs.attachments. Prints even when empty, because
-                "no plans on file" is the answer a reviewer needs most. */}
-            <View wrap={false} style={{ marginTop: 10, padding: 8, backgroundColor: "#F3F4F6", borderLeftWidth: 3, borderLeftColor: MUTED }}>
-              <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
-                Plans &amp; markups on file ({attachments.length})
-              </Text>
-              {attachments.length === 0 ? (
-                <Text style={{ fontSize: 10, color: CHARCOAL, lineHeight: 1.4 }}>
-                  No plan set or marked-up drawing has been uploaded to this opportunity.
+            {/* Karan 2026-08-26: "we don't need PLANS & MARKUPS ON FILE —
+                it becomes three pages instead of two and the estimator block
+                comes down onto a second page of its own."
+                
+                The plan set is spliced onto the end of this document now, so
+                naming the files was saying twice what the pages already show —
+                and it cost a page break through the sign-off, which is the one
+                part of the report a reviewer needs to reach someone by.
+                
+                What survives is the exception: a file that CANNOT be spliced
+                (a spreadsheet, a photo, something oversized) still has to be
+                mentioned, or it is silently missing from a document that looks
+                complete. The route decides that from the file's type and size
+                before rendering, so in the ordinary case this list is empty and
+                nothing prints at all. */}
+            {attachments.length > 0 && (
+              <View wrap={false} style={{ marginTop: 10, padding: 8, backgroundColor: "#F3F4F6", borderLeftWidth: 3, borderLeftColor: MUTED }}>
+                <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                  Also on file — not attached here
                 </Text>
-              ) : (
-                attachments.map((a, i) => (
-                  <View key={`${a.file_name}-${i}`} style={{ marginBottom: 2 }}>
-                    <Text style={{ fontSize: 10, color: CHARCOAL, lineHeight: 1.4 }}>
-                      • {a.file_name}
-                      <Text style={{ color: MUTED }}>
-                        {"  —  "}{documentCategoryLabel(a.category)} · {formatDateLong(a.uploaded_at)} · {formatFileSize(a.size_bytes)}
-                      </Text>
+                {attachments.map((a, i) => (
+                  <Text key={`${a.file_name}-${i}`} style={{ fontSize: 10, color: CHARCOAL, lineHeight: 1.4 }}>
+                    • {a.file_name}
+                    <Text style={{ color: MUTED }}>
+                      {"  —  "}{documentCategoryLabel(a.category)} · {formatFileSize(a.size_bytes)} · open it from the job&rsquo;s Files tab
                     </Text>
-                    {a.notes && a.notes.trim() && (
-                      <Text style={{ fontSize: 9, color: MUTED, lineHeight: 1.35, marginLeft: 8 }}>
-                        {a.notes.trim()}
-                      </Text>
-                    )}
-                  </View>
-                ))
-              )}
-            </View>
+                  </Text>
+                ))}
+              </View>
+            )}
           </>
         )}
 

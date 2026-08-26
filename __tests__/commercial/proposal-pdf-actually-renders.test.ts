@@ -166,11 +166,41 @@ describe("plans & markups on the internal report", () => {
     expect(pageCount(withPlans)).toBeLessThanOrEqual(pageCount(base) + 1);
   });
 
-  it("renders the empty state rather than going quiet", async () => {
+  it("prints NOTHING when there is nothing that failed to attach", async () => {
+    // Karan 2026-08-26: "we don't need PLANS & MARKUPS ON FILE — it becomes
+    // three pages instead of two and the estimator block comes down onto a
+    // second page of its own."
+    //
+    // The plan set is spliced onto the end of the document now, so naming the
+    // files said twice what the pages already show — and it cost a page break
+    // through the sign-off. The route passes only files it could NOT append, so
+    // in the ordinary case this list is empty and must add no height at all.
+    const streamBytes = (b: Buffer) =>
+      (b.toString("latin1").match(/\/Length\s+(\d+)/g) ?? [])
+        .map((m) => Number(m.replace(/\D/g, "")))
+        .reduce((a, n) => a + n, 0);
+    const args = {
+      proposal: proposal(),
+      lineItems: [line("l1", "Paint exposed structure", 120_000)],
+      exclusions: [], mode: "internal" as const,
+    };
+    const none = await renderProposalPdf({ ...args, attachments: [] });
+    const undef = await renderProposalPdf({ ...args });
+    expect(streamBytes(none)).toBe(streamBytes(undef));
+    expect(pageCount(none)).toBe(1);
+  });
+
+  it("still names a file it could not attach — silence would read as complete", async () => {
+    // A spreadsheet or an oversized set has no pages to splice, so the only
+    // way a reviewer learns it exists is this line.
     const buf = await renderProposalPdf({
       proposal: proposal(),
       lineItems: [line("l1", "Paint exposed structure", 120_000)],
-      exclusions: [], mode: "internal", attachments: [],
+      exclusions: [], mode: "internal",
+      attachments: [{
+        file_name: "AIA_takeoff.xlsx", category: "bid_set",
+        uploaded_at: "2026-08-26", size_bytes: 8_889, notes: null,
+      }],
     });
     expect(buf.subarray(0, 5).toString()).toBe("%PDF-");
   });
