@@ -7,7 +7,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { normalizeRole } from "@/lib/auth/roles";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
-import { INPUT_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
+import { INPUT_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { ASSIGNMENT_ROLES, assignmentRoleLabel } from "@/lib/commercial/accounts/assignment-roles";
@@ -56,6 +56,23 @@ async function renameTeamAction(formData: FormData) {
   revalidatePath(BASE);
   redirect(res.ok ? `${BASE}?team=${id}` : `${BASE}?team=${id}&error=${encodeURIComponent(res.error)}`);
 }
+/** Territory: which zips this team covers (Karan 2026-08-26). */
+async function setZipsAction(formData: FormData) {
+  "use server";
+  const uid = await requireAdmin();
+  const id = String(formData.get("team_id") ?? "");
+  if (!UUID_RE.test(id)) redirect(BASE);
+  const { parseZipPrefixes } = await import("@/lib/commercial/teams/zip-territory");
+  const { setTeamZipPrefixes } = await import("@/lib/commercial/teams/db");
+  const res = await setTeamZipPrefixes(id, parseZipPrefixes(String(formData.get("zips") ?? "")), uid);
+  revalidatePath(BASE);
+  redirect(
+    res.ok
+      ? `${BASE}?team=${id}&zips_ok=${res.prefixes.length}`
+      : `${BASE}?team=${id}&error=${encodeURIComponent(res.error)}`
+  );
+}
+
 async function deleteTeamAction(formData: FormData) {
   "use server";
   const uid = await requireAdmin();
@@ -190,6 +207,38 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
                 <ConfirmSubmitButton message={`Delete the team "${selected.name}"? It will be removed from any account/opportunity it's assigned to.`} pendingLabel="Deleting…" className="inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 touch-manipulation">Delete team</ConfirmSubmitButton>
               </form>
             </div>
+
+            {/* Territory — Brendan 2026-08-25: "the location of the job will
+                determine the team who will execute the project." */}
+            <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Territory</h2>
+            <p className="text-[12px] text-ppp-charcoal-500 mb-2">
+              Zip codes this team covers. A new job in one of them picks this team automatically —
+              you can still change it on the job. Use a prefix for a whole area:{" "}
+              <span className="font-mono">117</span> covers all of Suffolk,{" "}
+              <span className="font-mono">11722</span> claims one town back from it.
+              The most specific wins, and two teams may share a zip.
+            </p>
+            <form action={setZipsAction} className="mb-5">
+              <input type="hidden" name="team_id" value={selected.id} />
+              <textarea
+                name="zips"
+                rows={2}
+                defaultValue={selected.zip_prefixes.join(", ")}
+                placeholder="117, 11722, 11780"
+                className={TEXTAREA_CLS}
+                aria-label={`Zip codes covered by ${selected.name}`}
+              />
+              <div className="flex items-center gap-3 mt-2">
+                <SubmitButton
+                  className="px-3 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700"
+                >Save territory</SubmitButton>
+                <span className="text-[11.5px] text-ppp-charcoal-500">
+                  {selected.zip_prefixes.length === 0
+                    ? "No zips yet — this team is never picked automatically."
+                    : `${selected.zip_prefixes.length} zip${selected.zip_prefixes.length === 1 ? "" : " code"}${selected.zip_prefixes.length === 1 ? "" : "s"} covered`}
+                </span>
+              </div>
+            </form>
 
             <h2 className="text-sm font-bold text-ppp-charcoal mb-2">Members</h2>
             {selected.members.length === 0 ? (

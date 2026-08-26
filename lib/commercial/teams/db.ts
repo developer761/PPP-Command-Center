@@ -21,8 +21,8 @@ export type TeamMember = {
   role: AssignmentRole;
   is_team_admin: boolean;
 };
-export type TeamSummary = { id: string; name: string; member_count: number; admin_name: string | null };
-export type TeamWithMembers = { id: string; name: string; members: TeamMember[] };
+export type TeamSummary = { id: string; name: string; member_count: number; admin_name: string | null; zip_prefixes: string[] };
+export type TeamWithMembers = { id: string; name: string; members: TeamMember[]; zip_prefixes: string[] };
 
 function displayName(email: string | null, sf: string | null): string {
   return personName(sf, email, "(user)");
@@ -54,7 +54,7 @@ export async function listAssignableUsers(): Promise<{ user_id: string; name: st
 export async function listTeams(): Promise<TeamSummary[]> {
   const sb = commercialDb();
   const rows = await paginateAll<{ id: string; name: string }>(() =>
-    sb.from("commercial_teams").select("id, name").is("deleted_at", null).order("name").order("id")
+    sb.from("commercial_teams").select("id, name, zip_prefixes, created_at").is("deleted_at", null).order("name").order("id")
   );
   if (rows.length === 0) return [];
   const ids = rows.map((t) => t.id);
@@ -83,6 +83,7 @@ export async function listTeams(): Promise<TeamSummary[]> {
   return rows.map((t) => ({
     id: t.id,
     name: t.name,
+    zip_prefixes: (t as { zip_prefixes?: string[] | null }).zip_prefixes ?? [],
     member_count: countByTeam.get(t.id) ?? 0,
     admin_name: adminUserByTeam.has(t.id) ? nameByUser.get(adminUserByTeam.get(t.id)!) ?? null : null,
   }));
@@ -90,7 +91,7 @@ export async function listTeams(): Promise<TeamSummary[]> {
 
 export async function getTeam(id: string): Promise<TeamWithMembers | null> {
   const sb = commercialDb();
-  const { data: team } = await sb.from("commercial_teams").select("id, name").eq("id", id).is("deleted_at", null).maybeSingle();
+  const { data: team } = await sb.from("commercial_teams").select("id, name, zip_prefixes").eq("id", id).is("deleted_at", null).maybeSingle();
   if (!team) return null;
   const t = team as { id: string; name: string };
   const mem = await paginateAll<{ id: string; user_id: string; role: AssignmentRole; is_team_admin: boolean }>(() =>
@@ -119,7 +120,12 @@ export async function getTeam(id: string): Promise<TeamWithMembers | null> {
       is_team_admin: m.is_team_admin,
     }))
     .sort((a, b) => Number(b.is_team_admin) - Number(a.is_team_admin) || a.name.localeCompare(b.name));
-  return { id: t.id, name: t.name, members: members2 };
+  return {
+    id: t.id,
+    name: t.name,
+    zip_prefixes: (t as { zip_prefixes?: string[] | null }).zip_prefixes ?? [],
+    members: members2,
+  };
 }
 
 export async function createTeam(name: string, actorUserId: string): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
@@ -374,6 +380,61 @@ export async function applyTeamToOpportunityAssignments(
     }
   }
   return { added, alreadyThere, skipped };
+}
+
+/**
+ * Set the zip prefixes a team covers.
+ *
+ * Karan 2026-08-26: *"when making a team we need to be able to add zipcodes
+ * that belong to that team."*
+ *
+ * Replaces the whole list rather than adding — the textarea in Settings is the
+ * territory, so removing a line has to remove the territory. An add-only setter
+ * would make a zip impossible to take away without a second control.
+ */
+export async function setTeamZipPrefixes(
+  teamId: string,
+  prefixes: string[],
+  actorUserId: string
+): Promise<{ ok: true; prefixes: string[] } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_teams")
+    .select("id, zip_prefixes")
+    .eq("id", teamId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "Team not found." };
+  // Bounded so a paste of an entire zip database can't land in one row.
+  const clean = [...new Set(prefixes.map((p) => p.replace(/\D/g, "")).filter((p) => p.length >= 2 && p.length <= 5))].slice(0, 500);
+  const { error } = await sb.from("commercial_teams").update({ zip_prefixes: clean }).eq("id", teamId);
+  if (error) return { ok: false, error: error.message };
+  await logUpdate("commercial_teams", teamId, before, { ...before, zip_prefixes: clean }, actorUserId);
+  return { ok: true, prefixes: clean };
+}
+
+/**
+ * The team whose territory covers this zip — the DB-backed wrapper around the
+ * pure resolver, so callers don't each fetch teams their own way.
+ */
+export async function teamForZip(
+  zip: string | null | undefined
+): Promise<{ teamId: string; teamName: string; matchedPrefix: string; ambiguous: string[] } | null> {
+  if (!zip) return null;
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_teams")
+    .select("id, name, zip_prefixes, created_at")
+    .is("deleted_at", null);
+  const { resolveTeamForZip } = await import("./zip-territory");
+  const hit = resolveTeamForZip(zip, (data ?? []) as never);
+  if (!hit) return null;
+  return {
+    teamId: hit.team.id,
+    teamName: hit.team.name,
+    matchedPrefix: hit.matchedPrefix,
+    ambiguous: hit.runnersUp.map((t) => t.name),
+  };
 }
 
 export async function setOwnerTeam(

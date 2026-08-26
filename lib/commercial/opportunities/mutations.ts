@@ -109,6 +109,19 @@ export async function createCommercialOpportunity(
 
   const sb = commercialDb();
 
+  // Which team covers this address? Resolved BEFORE the insert so the deal is
+  // created already staffed, rather than saved and then corrected.
+  // Best-effort: a territory lookup must never block creating a job.
+  let territoryTeamId: string | null = null;
+  if (!input.team_id && input.property_zip?.trim()) {
+    try {
+      const { teamForZip } = await import("@/lib/commercial/teams/db");
+      territoryTeamId = (await teamForZip(input.property_zip))?.teamId ?? null;
+    } catch {
+      territoryTeamId = null;
+    }
+  }
+
   // Guard: refuse to attach to a missing or soft-deleted account.
   const { data: account } = await sb
     .from("commercial_accounts")
@@ -192,7 +205,13 @@ export async function createCommercialOpportunity(
       // Migration 069 — new nullable fields, insert as-supplied.
       rfp_received_at: input.rfp_received_at ?? null,
       title_override: input.title_override?.trim() || null,
-      team_id: input.team_id ?? null,
+      // Territory default — Brendan 2026-08-25: "the location of the job will
+      // determine the team who will execute the project."
+      //
+      // Only when the caller did NOT pick one. An explicit choice always wins:
+      // this is a default, not a rule, and a crew someone deliberately assigned
+      // must never be replaced because of an address.
+      team_id: input.team_id ?? territoryTeamId,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
     })
@@ -202,6 +221,26 @@ export async function createCommercialOpportunity(
   if (error) return { ok: false, error: error.message };
   const opp = data as CommercialOpportunity;
   await logInsert("commercial_opportunities", opp.id, opp, input.created_by_user_id);
+
+  // Staff the job from its team.
+  //
+  // Setting team_id on the insert names a crew but assigns nobody — this path
+  // does not go through setOwnerTeam, which is where the roster is applied. A
+  // deal created with a team and an empty Team tab is exactly the "picking a
+  // team does nothing" complaint Brendan raised, just arriving by a different
+  // route. Best-effort: the job exists either way.
+  if (opp.team_id) {
+    try {
+      const { applyTeamToOpportunityAssignments } = await import("@/lib/commercial/teams/db");
+      await applyTeamToOpportunityAssignments(
+        opp.id,
+        opp.team_id,
+        input.created_by_user_id ?? ""
+      );
+    } catch (err) {
+      console.warn("[opportunities] staffing from team failed:", err instanceof Error ? err.message : err);
+    }
+  }
 
   // Log the initial status as the first row in the opp's status_log
   // (from_status=NULL) so the Timeline tab in later batches has a
