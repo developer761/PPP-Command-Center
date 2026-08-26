@@ -18,6 +18,20 @@
  * a morning.
  */
 
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+
+/**
+ * Compact money, for the figures on this block.
+ *
+ * NOT written here. `formatCentsCompact` has existed since Phase 3 and is
+ * strictly better than the local money() this module used to carry: it guards
+ * NaN, has M and B tiers, and puts the minus sign before the $ — the local one
+ * rendered a negative as "$-5k". Re-exported so the two components reading it
+ * don't have to know where it lives.
+ */
+export { formatCentsCompact as money };
+
+
 export type DealStandingInput = {
   /** Pre-tax billed against the contract. */
   billedCents: number;
@@ -42,17 +56,7 @@ export type StandingLine = {
   tone: "plain" | "warn";
 };
 
-export function money(cents: number): string {
-  const d = cents / 100;
-  if (Math.abs(d) >= 1000) {
-    // Round FIRST, then decide whether a decimal is worth printing. Testing
-    // `k % 1 === 0` on the raw value printed "$5.0k" for $5,004 — the trailing
-    // ".0" says "we measured to a tenth" about a number that rounds clean.
-    const oneDp = (d / 1000).toFixed(1);
-    return `$${oneDp.endsWith(".0") ? oneDp.slice(0, -2) : oneDp}k`;
-  }
-  return `$${Math.round(d).toLocaleString("en-US")}`;
-}
+
 
 /** Percent of the contract billed, or null when there is no contract to compare
  *  against — a brand-new job must not read as "0% billed" when the number it
@@ -76,13 +80,13 @@ export function dealStandingLines(i: DealStandingInput): StandingLine[] {
   }
 
   if (i.outstandingCents > 0) {
-    out.push({ label: "GC owes", value: money(i.outstandingCents), tone: "warn" });
+    out.push({ label: "GC owes", value: formatCentsCompact(i.outstandingCents), tone: "warn" });
   }
 
   if (i.retainageCents > 0) {
     // Not "owed" — it is held by agreement. Shown because it is the money that
     // gets forgotten at close-out.
-    out.push({ label: "Retainage held", value: money(i.retainageCents), tone: "plain" });
+    out.push({ label: "Retainage held", value: formatCentsCompact(i.retainageCents), tone: "plain" });
   }
 
   if (i.pendingCoCount > 0) {
@@ -95,9 +99,9 @@ export function dealStandingLines(i: DealStandingInput): StandingLine[] {
 
   const left = i.contractCents - i.billedCents;
   if (i.contractCents > 0 && left > 0) {
-    out.push({ label: "Left to bill", value: money(left), tone: "plain" });
+    out.push({ label: "Left to bill", value: formatCentsCompact(left), tone: "plain" });
   } else if (i.contractCents > 0 && left < 0) {
-    out.push({ label: "Billed over contract", value: money(-left), tone: "warn" });
+    out.push({ label: "Billed over contract", value: formatCentsCompact(-left), tone: "warn" });
   }
 
   return out;

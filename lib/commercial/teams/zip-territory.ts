@@ -23,12 +23,10 @@ export type TeamTerritory = {
   created_at?: string | null;
 };
 
-/** "11722-1234" → "11722". Null for anything that isn't a usable US zip. */
-export function normalizeZip(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, "");
-  return digits.length >= 5 ? digits.slice(0, 5) : null;
-}
+// The SAME definition the sales-tax resolver uses. Both decide something about
+// a job from its address, so they must agree on what the address is.
+import { normalizeZip } from "@/lib/commercial/zip";
+export { normalizeZip };
 
 /**
  * The team whose territory best covers `zip`, or null.

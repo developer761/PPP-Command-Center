@@ -21,12 +21,11 @@ export function thouToPct(thou: number): number {
   return Math.round(thou) / 1000;
 }
 
-/** Normalize a raw ZIP to its 5-digit base ("11201-1234" → "11201"). */
-export function normalizeZip(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, "");
-  return digits.length >= 5 ? digits.slice(0, 5) : null;
-}
+// One definition, in lib/commercial/zip — see the note there. Re-exported so
+// every existing `import { normalizeZip } from ".../tax/constants"` keeps
+// working rather than being churned across the codebase.
+import { normalizeZip } from "@/lib/commercial/zip";
+export { normalizeZip };
 
 /**
  * Resolve the tax jurisdiction for a ZIP via LONGEST-prefix match across active

@@ -3,6 +3,7 @@ import Link from "next/link";
 // One money formatter, not two — the copy here had already drifted from the
 // one on the Activity rail, so the same $5,004 read "$5.0k" on one screen.
 import { money } from "@/lib/commercial/opportunities/deal-standing";
+import type { JobInFlight } from "@/lib/commercial/reports/jobs-in-flight";
 
 /**
  * What is actually happening on each live job, under the company totals.
@@ -21,15 +22,11 @@ import { money } from "@/lib/commercial/opportunities/deal-standing";
  * order is blocking a crew this morning; a $200k job billed in full is not.
  */
 
-export type JobInFlight = {
-  oppId: string;
-  name: string;
-  accountName: string;
-  billedCents: number;
-  contractCents: number;
-  /** The single most useful thing to say about this job right now. */
-  flag: string | null;
-};
+// The shape comes from the ranker, not from here. Declaring it twice — once in
+// lib and once in the component — meant two hand-kept copies of the same six
+// fields with nothing checking they agreed; the compiler would have accepted
+// them drifting apart indefinitely.
+export type { JobInFlight } from "@/lib/commercial/reports/jobs-in-flight";
 
 export function JobsInFlight({ jobs }: { jobs: JobInFlight[] }) {
   if (jobs.length === 0) return null;

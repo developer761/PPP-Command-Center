@@ -2,6 +2,7 @@ import "server-only";
 
 import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { formatChangeOrderNumber } from "./constants";
+import { formatCentsFull } from "@/lib/commercial/invoices/format";
 
 /**
  * The CHANGE ORDERS register — every change order on a job, on one document.
@@ -140,15 +141,11 @@ const TONE: Record<string, string> = {
   declined: "#b91c1c",
 };
 
-function money(cents: number): string {
-  const neg = cents < 0;
-  const s = (Math.abs(cents) / 100).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  });
-  return neg ? `-${s}` : s;
-}
+// Was a local copy with an identical body. Proven equivalent on every case
+// tried — and the shared one additionally guards NaN, which the local one
+// rendered as "$NaN" on a document that goes to a GC.
+const money = formatCentsFull;
+
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
