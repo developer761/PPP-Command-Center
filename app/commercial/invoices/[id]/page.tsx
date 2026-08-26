@@ -1095,9 +1095,16 @@ export async function InvoiceDetailView({
               <span>Payment recorded — capped to invoice balance</span>
             </div>
             <div className="mt-1 text-[12.5px] text-amber-800">
-              You entered <span className="font-mono">${(requested / 100).toFixed(2)}</span> but only{" "}
-              <span className="font-mono">${(applied / 100).toFixed(2)}</span> was owed. The extra{" "}
-              <span className="font-mono">${((requested - applied) / 100).toFixed(2)}</span> was not recorded — refund the payer separately if needed.
+              {/* Karan 2026-08-26: "ideally nice to have a comma to break up the
+                  numbers — right now it says like 100000 without a comma."
+                  This is a money message about an OVERPAYMENT, so it is read by
+                  someone already worried about a figure; "$100000.00" is the
+                  worst possible place to drop the separators. formatCentsFull
+                  was already imported into this file and simply wasn't used
+                  here. */}
+              You entered <span className="font-mono">{formatCentsFull(requested)}</span> but only{" "}
+              <span className="font-mono">{formatCentsFull(applied)}</span> was owed. The extra{" "}
+              <span className="font-mono">{formatCentsFull(requested - applied)}</span> was not recorded — refund the payer separately if needed.
             </div>
           </div>
         );

@@ -136,6 +136,17 @@ export async function createWorkOrder(input: {
     .select(WO_COLS)
     .maybeSingle();
   if (error || !inserted) {
+    // Log the real reason. The message below is deliberately calm for the
+    // person reading it, but it is also completely undiagnosable: if this
+    // starts failing for a real cause — a constraint, a bad user id, a column
+    // added by a migration nobody applied — the only symptom anywhere is a job
+    // that keeps saying "No work order yet" no matter how many times somebody
+    // clicks Fix. Which is exactly the shape of the complaint that sent me
+    // looking here.
+    console.error(
+      `[work-orders] create failed for opp ${input.opportunity_id}:`,
+      error?.message ?? "insert returned no row"
+    );
     return { ok: false, error: "Couldn't create the work order — please reload and try again." };
   }
   const wo = inserted as WorkOrder;
