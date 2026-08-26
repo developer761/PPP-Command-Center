@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+// One money formatter, not two — the copy here had already drifted from the
+// one on the Activity rail, so the same $5,004 read "$5.0k" on one screen.
+import { money } from "@/lib/commercial/opportunities/deal-standing";
+
 /**
  * What is actually happening on each live job, under the company totals.
  *
@@ -26,15 +30,6 @@ export type JobInFlight = {
   /** The single most useful thing to say about this job right now. */
   flag: string | null;
 };
-
-function money(cents: number): string {
-  const d = cents / 100;
-  if (Math.abs(d) >= 1000) {
-    const k = d / 1000;
-    return `$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
-  }
-  return `$${Math.round(d).toLocaleString("en-US")}`;
-}
 
 export function JobsInFlight({ jobs }: { jobs: JobInFlight[] }) {
   if (jobs.length === 0) return null;

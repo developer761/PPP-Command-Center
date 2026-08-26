@@ -1,5 +1,11 @@
 import Link from "next/link";
 import {
+  billedPct,
+  dealStandingLines,
+  money,
+  type DealStandingInput,
+} from "@/lib/commercial/opportunities/deal-standing";
+import {
   dueLabel,
   type ActivityEntry,
   type ActivityFeed,
@@ -55,11 +61,18 @@ export function ActivityRail({
   feed,
   todayIso,
   oppId,
+  standing,
 }: {
   feed: ActivityFeed;
   todayIso: string;
   oppId: string;
+  /** Brendan 2026-08-26 — the present state of the job, above its history.
+   *  Omitted on surfaces that don't load the money. */
+  standing?: DealStandingInput;
 }) {
+  const standingLines = standing ? dealStandingLines(standing) : [];
+  const pct = standing ? billedPct(standing) : null;
+  const showStanding = !!standing && standing.isWon && (standingLines.length > 0 || pct !== null);
   return (
     <aside
       aria-label="Activity"
@@ -116,6 +129,61 @@ export function ActivityRail({
           </ul>
         )}
       </div>
+
+      {/* ── Where it stands. ──
+          Brendan 2026-08-26: "under 'this month' it should say things specific
+          to the deal — billed 5k out of 25k, the work order hasn't been sent."
+
+          Above the history deliberately. The chronology answers "what
+          happened"; this answers "where are we", which is the question people
+          actually open a job to settle, and it was nowhere on the page. */}
+      {showStanding && standing && (
+        <div className="px-3.5 py-2.5 border-b border-ppp-charcoal-100">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1.5">
+            Where it stands
+          </h3>
+
+          {pct !== null && (
+            <div className="mb-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[12px] font-semibold text-ppp-charcoal">Billed</span>
+                <span className="text-[11.5px] tabular-nums">
+                  <span className="font-bold text-ppp-charcoal">{money(standing.billedCents)}</span>
+                  <span className="text-ppp-charcoal-400"> of {money(standing.contractCents)}</span>
+                </span>
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="h-1.5 flex-1 rounded-full bg-ppp-charcoal-100 overflow-hidden">
+                  <span
+                    className="block h-full rounded-full bg-cc-brand-500"
+                    style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                  />
+                </span>
+                <span className="text-[10.5px] tabular-nums text-ppp-charcoal-400 shrink-0 w-8 text-right">
+                  {pct}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          {standingLines.length > 0 && (
+            <ul className="space-y-1">
+              {standingLines.map((l) => (
+                <li key={l.label} className="flex items-baseline justify-between gap-2">
+                  <span className="text-[11.5px] text-ppp-charcoal-500">{l.label}</span>
+                  <span
+                    className={`text-[11.5px] font-semibold tabular-nums shrink-0 ${
+                      l.tone === "warn" ? "text-amber-700" : "text-ppp-charcoal"
+                    }`}
+                  >
+                    {l.value}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* ── Behind us. Every source merged, newest month first. ── */}
       {feed.months.length === 0 ? (

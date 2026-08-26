@@ -1903,6 +1903,18 @@ export default async function OpportunityDetailPage({
   const pathContractBaseCents = contractToDate - pathApprovedCoCents;
   const invoicedCents = pathFin?.invoicedCents ?? 0;
   const collectedCents = pathFin?.collectedCents ?? 0;
+
+  // Brendan 2026-08-26 — the present state of the job, for the Activity rail.
+  // The rail's history says what happened; this says where we are.
+  const dealStanding = {
+    billedCents: pathFin?.billedPreTaxCents ?? 0,
+    contractCents: contractToDate,
+    outstandingCents: Math.max(0, invoicedCents - collectedCents),
+    retainageCents: pathRetainageCents ?? 0,
+    workOrderSent: pathWorkOrder ? !!pathWorkOrder.sent_at : null,
+    pendingCoCount,
+    isWon: pathIsWon,
+  };
   // ── Split the ledgers ────────────────────────────────────────────────
   // `pathFin` deliberately COMBINES invoices + AIA (that's what makes the
   // rollups agree platform-wide). But the delivery strip has one tile per
@@ -2892,7 +2904,7 @@ export default async function OpportunityDetailPage({
                 : null
             }
           />
-          <ActivityRail feed={projectActivityFeed} todayIso={etTodayIso()} oppId={opp.id} />
+          <ActivityRail feed={projectActivityFeed} todayIso={etTodayIso()} oppId={opp.id} standing={dealStanding} />
         </div>
       )}
 
@@ -2924,7 +2936,7 @@ export default async function OpportunityDetailPage({
             />
           </div>
           {!isDeletedDeal && (
-            <ActivityRail feed={activityFeed} todayIso={etTodayIso()} oppId={opp.id} />
+            <ActivityRail feed={activityFeed} todayIso={etTodayIso()} oppId={opp.id} standing={dealStanding} />
           )}
         </div>
       )}
