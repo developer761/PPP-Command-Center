@@ -13,6 +13,26 @@ import { personName } from "@/lib/commercial/person-name";
  * identity as commercial_account_assignments.
  */
 
+/**
+ * Read a team row, tolerating `zip_prefixes` not existing yet.
+ *
+ * Migration 168 adds that column, and on this project migrations are pasted by
+ * hand AFTER the deploy — so there is always a window where the new code is
+ * live and the column is not. Selecting it unconditionally took the whole
+ * opportunity page down with "column commercial_teams.zip_prefixes does not
+ * exist", which is what Karan hit within minutes of the push.
+ *
+ * A missing column is therefore treated as "no territory", not as an error:
+ * teams keep working, the Territory box is simply empty until 168 lands.
+ *
+ * postgres error 42703 = undefined_column. Matched on the message too, because
+ * PostgREST does not always surface the code.
+ */
+function isMissingColumn(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  return err.code === "42703" || /column .*zip_prefixes.* does not exist/i.test(err.message ?? "");
+}
+
 export type TeamMember = {
   id: string;
   user_id: string;
@@ -53,8 +73,12 @@ export async function listAssignableUsers(): Promise<{ user_id: string; name: st
 
 export async function listTeams(): Promise<TeamSummary[]> {
   const sb = commercialDb();
+  // Probe once for the column rather than wrapping the paginator — paginateAll
+  // needs a real query builder, and a .then() chain is no longer one.
+  const probe = await sb.from("commercial_teams").select("id, zip_prefixes").limit(1);
+  const cols = isMissingColumn(probe.error) ? "id, name, created_at" : "id, name, zip_prefixes, created_at";
   const rows = await paginateAll<{ id: string; name: string }>(() =>
-    sb.from("commercial_teams").select("id, name, zip_prefixes, created_at").is("deleted_at", null).order("name").order("id")
+    sb.from("commercial_teams").select(cols).is("deleted_at", null).order("name").order("id")
   );
   if (rows.length === 0) return [];
   const ids = rows.map((t) => t.id);
@@ -91,7 +115,15 @@ export async function listTeams(): Promise<TeamSummary[]> {
 
 export async function getTeam(id: string): Promise<TeamWithMembers | null> {
   const sb = commercialDb();
-  const { data: team } = await sb.from("commercial_teams").select("id, name, zip_prefixes").eq("id", id).is("deleted_at", null).maybeSingle();
+  const teamRes = await sb
+    .from("commercial_teams")
+    .select("id, name, zip_prefixes")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  const { data: team } = isMissingColumn(teamRes.error)
+    ? await sb.from("commercial_teams").select("id, name").eq("id", id).is("deleted_at", null).maybeSingle()
+    : teamRes;
   if (!team) return null;
   const t = team as { id: string; name: string };
   const mem = await paginateAll<{ id: string; user_id: string; role: AssignmentRole; is_team_admin: boolean }>(() =>
@@ -408,6 +440,9 @@ export async function setTeamZipPrefixes(
   // Bounded so a paste of an entire zip database can't land in one row.
   const clean = [...new Set(prefixes.map((p) => p.replace(/\D/g, "")).filter((p) => p.length >= 2 && p.length <= 5))].slice(0, 500);
   const { error } = await sb.from("commercial_teams").update({ zip_prefixes: clean }).eq("id", teamId);
+  if (isMissingColumn(error)) {
+    return { ok: false, error: "Territories aren't set up yet — migration 168 hasn't been applied." };
+  }
   if (error) return { ok: false, error: error.message };
   await logUpdate("commercial_teams", teamId, before, { ...before, zip_prefixes: clean }, actorUserId);
   return { ok: true, prefixes: clean };
@@ -422,10 +457,13 @@ export async function teamForZip(
 ): Promise<{ teamId: string; teamName: string; matchedPrefix: string; ambiguous: string[] } | null> {
   if (!zip) return null;
   const sb = commercialDb();
-  const { data } = await sb
+  const res = await sb
     .from("commercial_teams")
     .select("id, name, zip_prefixes, created_at")
     .is("deleted_at", null);
+  // No column yet → no territories → no automatic team. Correct, not an error.
+  if (isMissingColumn(res.error)) return null;
+  const { data } = res;
   const { resolveTeamForZip } = await import("./zip-territory");
   const hit = resolveTeamForZip(zip, (data ?? []) as never);
   if (!hit) return null;
