@@ -161,32 +161,51 @@ async function emailFallback(a: MaterialsAlert, why: string): Promise<{ ok: bool
  * Report a materials/paint failure. Safe to call from anywhere, including a
  * catch block that is already handling an error.
  */
-export async function alertMaterialsFailure(a: MaterialsAlert): Promise<void> {
-  // Console first, unconditionally. Whatever happens to Slack and email, there
-  // is a paper trail in the Vercel logs.
+export type AlertDelivery = {
+  delivered: boolean;
+  /** Which channel carried it, or why nothing did. */
+  via: "slack" | "email" | "none" | "suppressed";
+  detail: string;
+};
+
+/**
+ * Deliver an alert and SAY which channel carried it.
+ *
+ * Separate from the fire-and-forget wrapper so the admin test button can report
+ * what actually happened. "Sent" with no channel named is the kind of answer
+ * that lets a misconfigured webhook look healthy.
+ */
+export async function deliverMaterialsAlert(
+  a: MaterialsAlert,
+  opts: { bypassDedup?: boolean } = {}
+): Promise<AlertDelivery> {
   console.error(`[materials-alert:${a.kind}] ${a.summary}`, a.workOrder ?? "", a.detail ?? {});
-
   try {
-    const key = `${a.kind}|${a.workOrder ?? ""}|${a.summary}`;
-    if (seenRecently(key)) return;
-
+    if (!opts.bypassDedup) {
+      const key = `${a.kind}|${a.workOrder ?? ""}|${a.summary}`;
+      if (seenRecently(key)) return { delivered: true, via: "suppressed", detail: "identical alert within 60s" };
+    }
     const slack = await postToSlack(a);
-    if (slack.ok) return;
+    if (slack.ok) return { delivered: true, via: "slack", detail: "posted to the materials channel" };
 
     const email = await emailFallback(a, slack.detail);
     if (email.ok) {
       console.warn(`[materials-alert] Slack unavailable (${slack.detail}); delivered by email instead.`);
-      return;
+      return { delivered: true, via: "email", detail: `Slack unavailable (${slack.detail}) — emailed ops instead` };
     }
 
-    // Both channels are down. This is the case Kate specifically asked about,
-    // and there is nothing left to notify WITH — so make it as findable as
-    // possible rather than pretending it was handled.
     console.error(
       `[materials-alert:UNDELIVERED] Nobody was told about this failure. slack=${slack.detail}; email=${email.detail}. Original: ${buildAlertText(a)}`
     );
+    return { delivered: false, via: "none", detail: `slack: ${slack.detail}; email: ${email.detail}` };
   } catch (err) {
-    // Reporting a failure must never become a failure.
     console.error("[materials-alert] alerting itself threw:", err);
+    return { delivered: false, via: "none", detail: err instanceof Error ? err.message : String(err) };
   }
+}
+
+export async function alertMaterialsFailure(a: MaterialsAlert): Promise<void> {
+  // Fire-and-forget wrapper. Callers in hot paths do not want the result and
+  // must never be blocked by a slow Slack round-trip.
+  await deliverMaterialsAlert(a);
 }
