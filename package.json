@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "smoke": "node scripts/smoke-pages.mjs"
+    "smoke": "node scripts/smoke-pages.mjs",
+    "check:enums": "node scripts/check-db-enums.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
