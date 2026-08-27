@@ -89,6 +89,7 @@ import ModalPortal from "@/components/modal-portal";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
 import { FILTER_SEL, FILTER_GROUP_STATUS, FILTER_GROUP_DATE } from "@/lib/ui/filter-chrome";
+import { deriveWoStage, STAGE_BADGES, type StageProgress, type StageBadge } from "@/lib/materials/wo-stage";
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
 // worker has actively clicked a WO. The initial materials-list paint never
 // needs it — defer its JS so the page hydrates faster. First-WO-click pays
@@ -1278,7 +1279,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                             <div className="font-semibold text-ppp-charcoal text-sm truncate min-w-0 flex-1">
                               {j.wo.accountName ?? "(unknown account)"}
                             </div>
-                            <FormStatusBadge status={formStatus} />
+                            <FormStatusBadge status={formStatus} progress={progressByWO.get(j.wo.id)} />
                           </div>
                           <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-2 truncate">
                             <span className="font-mono">{j.wo.workOrderNumber ?? j.wo.id.slice(-6)}</span>
@@ -2688,48 +2689,47 @@ function StatCard({
 }
 
 /**
- * Customer-form lifecycle badge rendered on every WO card in the left rail.
- * Tiny, status-coded chip that lets the rep/admin scan the column at a
- * glance: green = customer picked colors (ready to order materials), blue =
- * customer opened the email, charcoal = email sent (waiting), orange = the
- * token expired so admin should resend, no chip = no form sent yet.
+ * Stage badge on every WO card in the left rail.
  *
- * Renders nothing when status === "none" so cards without a form stay clean.
+ * Kate, batch 6: "the tag on work orders is Submitted no matter where the work
+ * order is in the order progression." It only modelled the colour-form half —
+ * sent, opened, submitted, expired — and stopped there, so a job whose paint
+ * was ordered last week and delivered yesterday still read "Submitted".
+ *
+ * The ordering half was already on the card; the badge just ignored it. The
+ * precedence lives in lib/materials/wo-stage.ts so it can be tested against the
+ * cases that actually bite: timestamps arriving out of order, a token lapsing
+ * after a submission, a cancelled order on a job that also took a delivery.
+ *
+ * Renders nothing when no form was ever sent, so untouched cards stay clean.
  */
-function FormStatusBadge({ status }: { status: FormStatus | undefined }) {
-  if (!status || status.status === "none") return null;
+function FormStatusBadge({
+  status,
+  progress,
+}: {
+  status: FormStatus | undefined;
+  progress: StageProgress | undefined;
+}) {
+  const stage = deriveWoStage(status ? { status: status.status as never } : null, progress);
+  if (stage === "none") return null;
+  const badge = STAGE_BADGES[stage];
 
-  const config: Record<Exclude<FormStatus["status"], "none">, { label: string; cls: string; title: string }> = {
-    submitted: {
-      label: "✓ Submitted",
-      cls: "bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100",
-      title: "Customer submitted colors — ready to order materials",
-    },
-    opened: {
-      label: "👁 Opened",
-      cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-100",
-      title: "Customer opened the form but hasn't submitted yet",
-    },
-    sent: {
-      label: "📨 Sent",
-      cls: "bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100",
-      title: "Email delivered — waiting on customer",
-    },
-    expired: {
-      label: "⏳ Expired",
-      cls: "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100",
-      title: "Token expired — resend the form to get fresh access",
-    },
+  const TONE: Record<StageBadge["tone"], string> = {
+    green: "bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100",
+    blue: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-100",
+    charcoal: "bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100",
+    orange: "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100",
+    navy: "bg-ppp-navy/10 text-ppp-navy border-ppp-navy/20",
   };
-  const c = config[status.status];
-  // Tooltip-rich span (title attribute) — gives admins context on hover
-  // without crowding the rail layout. Inline so the row stays single-line.
+
+  // Tooltip-rich span — context on hover without crowding the rail. Inline so
+  // the row stays single-line.
   return (
     <span
-      title={c.title}
-      className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${c.cls}`}
+      title={badge.title}
+      className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${TONE[badge.tone]}`}
     >
-      {c.label}
+      {badge.label}
     </span>
   );
 }
