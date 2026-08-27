@@ -1,5 +1,6 @@
 import { isCompanyEmail } from "@/lib/auth/company-domain";
 import { NextResponse } from "next/server";
+import { alertMaterialsFailure } from "@/lib/alerts/materials-alerts";
 import { createClient } from "@/lib/supabase/server";
 import { nextPoNumber } from "@/lib/supplier-order/builder";
 import { getProfileByUserId } from "@/lib/auth/profile";
@@ -367,6 +368,21 @@ export async function POST(request: Request) {
         sent_at: null,
       })
       .eq("id", supplierOrderId);
+    // ── Kate R6.1 ── "The person sending it sees the error; nobody else is
+    // told." The row is marked failed, but nothing surfaces that unless someone
+    // happens to look at the order list — and the vendor is expecting paint.
+    void alertMaterialsFailure({
+      kind: "supplier_order_send_failed",
+      summary: "The order never left the building — Resend refused it.",
+      workOrder: body.workOrderNumber ?? null,
+      detail: {
+        "PO": body.poNumber ?? null,
+        "Vendor": body.supplierName ?? null,
+        "Sent to": body.sentToEmail ?? null,
+        "Resend said": send.error.slice(0, 300),
+        "Order id": supplierOrderId,
+      },
+    });
     return NextResponse.json({
       ok: false,
       error: "email_send_failed",
@@ -411,6 +427,12 @@ export async function POST(request: Request) {
   });
   } catch (err) {
     console.error("[supplier-order/send POST] unhandled:", err);
+    // Kate asked for ANY failure on this side, not only the enumerated ones.
+    void alertMaterialsFailure({
+      kind: "unexpected_error",
+      summary: "Sending a supplier order threw before it could complete.",
+      detail: { "Error": err instanceof Error ? err.message : String(err) },
+    });
     return NextResponse.json(
       { ok: false, error: "internal_error", message: err instanceof Error ? err.message : String(err) },
       { status: 500 }

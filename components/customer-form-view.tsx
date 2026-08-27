@@ -179,7 +179,7 @@ const FINISH_OPTIONS = [
 // surface override dropdown all stay in lockstep. Adding a product = one
 // entry in that file. Picker is filtered per-WO (interior-only WOs hide
 // exterior products and vice versa) — Katie 2026-06-05.
-import { filterMaterialTypesForWorkOrder, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor, salesforceLineFor } from "@/lib/customer-form/material-types";
+import { filterMaterialTypesForWorkOrder, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
 import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
@@ -988,15 +988,15 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                 />
               </div>
             )}
-            {/* Salesforce's MaterialType__c is ONE restricted picklist per work
-                order, so it physically cannot hold both. Say so rather than
-                dropping the second choice silently — both are kept here and
-                both reach the vendor order, which is where they're acted on. */}
+            {/* Both sides now reach Salesforce. Product_Lines__c is plain text,
+                so a mixed job records "Interior: X | Exterior: Y" — the old
+                "only one line saves" caveat described a restricted picklist
+                this no longer writes to (Kate R6.2). */}
             {paintLineLists.isSplit && materialType && materialTypeExterior && (
               <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
-                Salesforce stores one paint line per work order, so{" "}
-                <strong className="text-ppp-charcoal">{salesforceLineFor(materialType, materialTypeExterior).chosen}</strong>{" "}
-                is what saves there. Both lines are kept in the Command Center and both go on the materials order.
+                Both lines are saved —{" "}
+                <strong className="text-ppp-charcoal">{materialType}</strong> inside and{" "}
+                <strong className="text-ppp-charcoal">{materialTypeExterior}</strong> outside — and both go on the materials order.
               </p>
             )}
           </div>

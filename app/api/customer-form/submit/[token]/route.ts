@@ -8,7 +8,8 @@ import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
 import { insertCustomerFormSubmittedNotification } from "@/lib/notifications/insert";
-import { VALID_MATERIAL_TYPE_VALUES, toSalesforceMaterialType, salesforceLineFor } from "@/lib/customer-form/material-types";
+import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { formatProductLines } from "@/lib/customer-form/product-lines";
 import { alertSalesforceWriteFailure } from "@/lib/customer-form/sf-failure-alert";
 import {
   STANDARD_SURFACE_FIELDS,
@@ -526,71 +527,33 @@ export async function POST(
     });
   }
 
-  // Material Type writeback — single WorkOrder.MaterialType__c update when
-  // the customer picked a paint product line. Skip when empty/null so we
-  // don't blank out an admin-set value. Pushed as a WorkOrder-level attempt
-  // alongside the WOLI batch so it benefits from the same audit + retry
-  // logic in writeSfBatch.
+  // Paint product lines → WorkOrder.Product_Lines__c  (Kate R6.2)
+  //
+  // The hub writes what the AM/customer actually selected, and NEVER touches
+  // MaterialType__c. That field stays the estimator's answer from the quote, so
+  // what was SOLD can always be read next to what was ORDERED.
+  //
+  // This replaces a write that had been failing silently since at least
+  // 2026-07-14. MaterialType__c is a restricted picklist whose vocabulary
+  // carries a scope ("Regal Select Exterior") while the hub works in line names
+  // alone, so every value had to be translated — and the four with no
+  // equivalent (Ben, Mooreglo, Mooregard, Moore Life) were dropped rather than
+  // guessed at. Worse, it holds ONE value, so a mixed job's exterior line could
+  // not be recorded at all. A plain text field has neither limit.
   const interiorLine = typeof body.materialType === "string" ? body.materialType.trim() : "";
   const exteriorLine = typeof body.materialTypeExterior === "string" ? body.materialTypeExterior.trim() : "";
-  // R4.3 — Benjamin Moore's interior and exterior ranges are different products,
-  // so a job with both work types needs two answers. WorkOrder.MaterialType__c
-  // is ONE restricted picklist though (verified on the live org, and the
-  // WorkOrderLineItem field is a different, older grade vocabulary that isn't
-  // interchangeable), so only one can be recorded there. Interior wins; the
-  // form says so, and BOTH lines are kept in the submitted payload and reach
-  // the vendor order, which is where they're acted on.
-  const { chosen: customerMaterialType, dropped: exteriorNotStoredInSf } =
-    salesforceLineFor(interiorLine, exteriorLine);
-  // Flag surfaced in the response so the form can show a "your paint line
-  // wasn't saved" warning instead of a clean success thank-you. Without this
-  // the customer thinks SF was updated when it wasn't. Audit 2026-06-07.
-  let materialTypeDropped = false;
-  if (exteriorNotStoredInSf) {
-    console.log(`[customer-form] WO ${status.token.work_order_id.slice(0, 8)}…: both paint lines set; MaterialType__c holds "${customerMaterialType}", "${exteriorNotStoredInSf}" kept in the Command Center payload only.`);
+  const productLines = formatProductLines({ interior: interiorLine, exterior: exteriorLine });
+  if (productLines) {
+    attempts.push({
+      sObject: "WorkOrder",
+      recordId: status.token.work_order_id,
+      fields: { Product_Lines__c: productLines },
+    });
   }
-  if (customerMaterialType) {
-    if (!VALID_MATERIAL_TYPES.has(customerMaterialType)) {
-      // Value isn't in our allowlist (~24 items as of Katie's 2026-06-10
-      // expansion). Two real reasons this happens:
-      //   (a) Tampered/stale client — picklist changed since the form loaded.
-      //   (b) Legacy SF value — admin set MaterialType__c to "Aura ULTRA" or
-      //       some retired picklist value before our allowlist existed, the
-      //       form pre-filled it, and the customer submitted without changing.
-      // Either way: DON'T fail the whole submit (would block the colors from
-      // writing back too). Skip the MaterialType__c write only — leave the
-      // existing SF value alone — and log so admin can clean up the picklist.
-      console.warn(`[customer-form] dropping MaterialType__c write for WO ${status.token.work_order_id.slice(0, 8)}…: value "${customerMaterialType}" not in VALID_MATERIAL_TYPES allowlist (likely legacy SF value or tampered client). WOLI writes proceed normally.`);
-      materialTypeDropped = true;
-    } else {
-      // Translate the app's paint line into a value the RESTRICTED picklist
-      // actually accepts. The org's vocabulary is line + SCOPE ("Regal Select
-      // Interior"), which matches neither the old finish-bearing values nor the
-      // line-only ones Kate asked for — so every write to this field had been
-      // rejected with INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST since at least
-      // 2026-07-14, silently, visible only in sf_writes_audit.
-      //
-      // The scope isn't a question for a human: the work order already knows
-      // whether it's interior or exterior work, so we derive it.
-      const sfMaterialType = toSalesforceMaterialType(customerMaterialType, {
-        workTypeName: fresh.workTypeName,
-        lineItemProductNames: fresh.lineItems.map((li) => li.productName),
-      });
-      if (!sfMaterialType) {
-        // No equivalent in the org's picklist (Ben, Mooreglo, Mooregard, Moore
-        // Life). Skipping beats guessing "Other" — recording the wrong paint on
-        // a real job is worse than recording none. Katie can add the value.
-        console.warn(`[customer-form] MaterialType__c write skipped for WO ${status.token.work_order_id.slice(0, 8)}…: "${customerMaterialType}" has no value in the restricted picklist. Ask Katie to add it.`);
-        materialTypeDropped = true;
-      } else {
-        attempts.push({
-          sObject: "WorkOrder",
-          recordId: status.token.work_order_id,
-          fields: { MaterialType__c: sfMaterialType },
-        });
-      }
-    }
-  }
+  // Nothing is dropped any more — both sides fit, and there is no vocabulary to
+  // fail against. Kept in the response because the form and the staff-facing
+  // write-failure banner still read it; it is now always false.
+  const materialTypeDropped = false;
 
   // "Colors Received" — the flag PPP actually runs on.
   //

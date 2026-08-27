@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { alertMaterialsFailure } from "@/lib/alerts/materials-alerts";
 
 /**
  * Resend lifecycle-events webhook — listens for every event Resend emits
@@ -181,8 +182,15 @@ export async function POST(request: Request) {
   // terminal-negative status. Email-event volume here is tiny, so the extra
   // round-trip is irrelevant.
   const [existingOrder, existingToken] = await Promise.all([
-    sb.from("supplier_orders").select("id, delivery_status").eq("resend_message_id", emailId).maybeSingle(),
-    sb.from("customer_form_tokens").select("token, delivery_status").eq("resend_message_id_invite", emailId).maybeSingle(),
+    // Selecting the identifying columns too: an alert saying "an order
+    // bounced" with no PO or vendor is something Kate cannot act on, and a
+    // second lookup after the fact would race the row being updated below.
+    sb.from("supplier_orders")
+      .select("id, delivery_status, po_number, supplier_name, sent_to_email, work_order_number")
+      .eq("resend_message_id", emailId).maybeSingle(),
+    sb.from("customer_form_tokens")
+      .select("token, delivery_status, work_order_number, customer_name, customer_email")
+      .eq("resend_message_id_invite", emailId).maybeSingle(),
   ]);
 
   const matchedOrder = !!existingOrder.data;
@@ -220,6 +228,50 @@ export async function POST(request: Request) {
   if (existingToken.error) {
     console.error(`[resend-events] customer_form_tokens lookup failed:`, existingToken.error.message);
   }
+  // ── Kate R6.1 ── A bounce is the failure that looks most like a success:
+  // the order carries a PO and reads as sent, the form shows as delivered, and
+  // the job simply waits. Nobody finds out unless we say so.
+  const TERMINAL_BAD = new Set(["bounced", "complained", "failed"]);
+  if (TERMINAL_BAD.has(status)) {
+    const o = existingOrder.data as Record<string, unknown> | null;
+    const t = existingToken.data as Record<string, unknown> | null;
+    if (o) {
+      void alertMaterialsFailure({
+        kind: "supplier_order_bounced",
+        summary: `The vendor never received this order — Resend reported "${status}".`,
+        workOrder: (o.work_order_number as string | null) ?? null,
+        detail: {
+          "PO": (o.po_number as string | null) ?? null,
+          "Vendor": (o.supplier_name as string | null) ?? null,
+          "Sent to": (o.sent_to_email as string | null) ?? null,
+          "Reason": payload.data?.bounce?.message ?? payload.data?.bounce?.type ?? null,
+        },
+      });
+    }
+    if (t) {
+      void alertMaterialsFailure({
+        kind: "color_form_bounced",
+        summary: `The customer never received the colour form — Resend reported "${status}". The job is waiting on colours.`,
+        workOrder: (t.work_order_number as string | null) ?? null,
+        detail: {
+          "Customer": (t.customer_name as string | null) ?? null,
+          "Sent to": (t.customer_email as string | null) ?? null,
+          "Reason": payload.data?.bounce?.message ?? payload.data?.bounce?.type ?? null,
+        },
+      });
+    }
+    if (!o && !t) {
+      // A hard bounce we cannot tie to a job is still a bounce. Worth saying so
+      // rather than dropping it, because it usually means a send happened
+      // outside the flows that record a message id.
+      void alertMaterialsFailure({
+        kind: "unexpected_error",
+        summary: `An email ${status} but matched no supplier order or colour form.`,
+        detail: { "Resend id": emailId, "Event": eventType },
+      });
+    }
+  }
+
   if (!matchedOrder && !matchedToken) {
     // Could be a test email (no DB row) or a row created before migration
     // 010 — log + ack. We don't want Resend to retry forever for these.

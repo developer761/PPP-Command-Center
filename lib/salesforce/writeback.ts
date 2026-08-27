@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { alertMaterialsFailure } from "@/lib/alerts/materials-alerts";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { clearSalesforceCache } from "@/lib/salesforce/queries";
 
@@ -57,6 +58,9 @@ export async function writeSf(
     source: SfWriteSource;
     triggeredByUserId?: string | null;
     triggeredByToken?: string | null;
+    /** Work order number, purely so a failure alert can name the job. Optional
+     *  because not every caller has it; the record id is always included. */
+    workOrderNumber?: string | null;
     /** Optional snapshot of pre-write values for the audit row. */
     priorValues?: Record<string, unknown> | null;
     /** Set by writeSfBatch: skip the per-record cache invalidation and do it
@@ -176,6 +180,31 @@ export async function writeSf(
     retryCount: attempts - 1,
     durationMs: Date.now() - t0,
   });
+  // ── Kate R6.1 ── Every Salesforce rejection, not just the colour writeback.
+  //
+  // Wired HERE rather than at each call site on purpose: the follow-up date, the
+  // paint product lines, Colors Received and anything added later all funnel
+  // through this one function. Alerting per-caller means the next writeback
+  // someone adds is silently unmonitored, which is precisely how the paint-line
+  // write went on failing from 2026-07-14 with nobody the wiser.
+  //
+  // A rejection here means the hub and Salesforce now disagree: the person on
+  // screen saw it save. Fire-and-forget so a slow Slack call never adds latency
+  // to a customer's submit.
+  void alertMaterialsFailure({
+    kind: "salesforce_write_rejected",
+    summary: `Salesforce refused to update ${attempt.sObject}. The hub shows this saved; Salesforce does not.`,
+    workOrder: ctx.workOrderNumber ?? null,
+    detail: {
+      "Object": attempt.sObject,
+      "Record": attempt.recordId,
+      "Fields": Object.keys(attempt.fields).join(", "),
+      "Salesforce said": lastErrorCode ? `${lastErrorCode}: ${message}` : message,
+      "Tries": attempts,
+      "Source": ctx.source,
+    },
+  });
+
   return {
     ok: false,
     recordId: attempt.recordId,

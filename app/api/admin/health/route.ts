@@ -149,6 +149,29 @@ export async function GET() {
   // the string actually PARSES: a value set with the wrong separator, a typo'd
   // domain, or smart quotes pasted from an email would show as "set" in Vercel
   // and still silently deliver to nobody.
+  // Kate R6.1 — where materials/paint failures go. Two channels, because an
+  // alert nobody receives is the failure mode this whole feature exists to
+  // remove: Slack first, ops email if Slack is unset or answers badly.
+  {
+    const hook = (process.env.PPP_MATERIALS_SLACK_WEBHOOK ?? "").trim();
+    const looksReal = /^https:\/\/hooks\.slack\.com\//.test(hook);
+    const fallback = opsAlertRecipients().length;
+    checks.push({
+      id: "materials_alert_channel",
+      label: "Materials failure alerts (PPP_MATERIALS_SLACK_WEBHOOK)",
+      status: looksReal ? "ok" : fallback > 0 ? "warn" : "fail",
+      message: looksReal
+        ? "Slack webhook set — bounces, failed sends and Salesforce rejections post to the channel."
+        : hook
+          ? `Set, but it is not a Slack webhook URL (${hook.length} characters, expected https://hooks.slack.com/...). Alerts will fall through to email.`
+          : fallback > 0
+            ? `Not set — materials failures are being emailed to ${fallback} ops recipient${fallback === 1 ? "" : "s"} instead of posted to Slack.`
+            : "Not set, and no ops email recipients either — a failed supplier order or bounced colour form would tell NOBODY.",
+      group: "platform",
+      fix: "Create an incoming webhook for the paint/materials channel in Slack, then add PPP_MATERIALS_SLACK_WEBHOOK in Vercel → Settings → Environment Variables and redeploy.",
+    });
+  }
+
   {
     const raw = (process.env.PPP_SF_FAILURE_ALERT_EMAILS ?? "").trim();
     const parsed = opsAlertRecipients();
