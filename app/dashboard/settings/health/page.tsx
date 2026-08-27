@@ -32,6 +32,9 @@ export default async function HealthPage() {
       />
       <HealthChecksView
         endpoint="/api/admin/health"
+        // Kate R6.1 — one click to prove materials alerts reach Slack, and to
+        // say so if they only reached email instead.
+        extraTest={{ endpoint: "/api/admin/test-materials-alert", label: "Send test materials alert" }}
         groupMeta={{
           platform: {
             heading: "Platform setup",

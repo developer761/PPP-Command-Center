@@ -45,14 +45,24 @@ export default function HealthChecksView({
   endpoint,
   groupMeta,
   showSlackTest = false,
+  extraTest,
 }: {
   endpoint: string;
   groupMeta: GroupMeta;
   /** When true, renders a "Send test alert" button alongside the
-   *  Re-run button. Only meaningful on the Commercial CC page today
-   *  (PPP CC may opt in once it wires observability for its own
-   *  surfaces). */
+   *  Re-run button. Commercial's incident webhook. */
   showSlackTest?: boolean;
+  /**
+   * A second, caller-supplied test button.
+   *
+   * Passed in rather than hardcoded because this component is shared by both
+   * platforms, and each has its own alert channel — baking a residential
+   * endpoint in here would fire Commercial's page at the wrong webhook.
+   *
+   * The endpoint should return `{ ok, meaning? , detail? }`; `meaning` is
+   * preferred because it says what to DO, not just what happened.
+   */
+  extraTest?: { endpoint: string; label: string };
 }) {
   const [checks, setChecks] = useState<HealthCheck[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -60,6 +70,9 @@ export default function HealthChecksView({
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [slackTestState, setSlackTestState] = useState<
+    "idle" | "sending" | { ok: boolean; detail: string }
+  >("idle");
+  const [extraTestState, setExtraTestState] = useState<
     "idle" | "sending" | { ok: boolean; detail: string }
   >("idle");
   // Track the previous response so an interim refresh doesn't blank
@@ -143,6 +156,23 @@ export default function HealthChecksView({
     }
   }, []);
 
+  const sendExtraTest = useCallback(async () => {
+    if (!extraTest) return;
+    setExtraTestState("sending");
+    try {
+      const res = await fetch(extraTest.endpoint, { method: "POST" });
+      const data = await res.json();
+      setExtraTestState({
+        ok: !!data.ok,
+        // `meaning` explains what to do next; fall back through the other
+        // shapes so an unexpected error still says something useful.
+        detail: data.meaning ?? data.detail ?? data.error ?? "no detail",
+      });
+    } catch (err) {
+      setExtraTestState({ ok: false, detail: err instanceof Error ? err.message : String(err) });
+    }
+  }, [extraTest]);
+
   // First paint: show skeleton when truly no data yet. After the first
   // load, never blank — keep stale data visible during refresh.
   if (loading && !checks && !lastGoodChecksRef.current) {
@@ -209,6 +239,16 @@ export default function HealthChecksView({
               {slackTestState === "sending" ? "Sending…" : "Send test Slack alert"}
             </button>
           )}
+          {extraTest && (
+            <button
+              type="button"
+              onClick={sendExtraTest}
+              disabled={extraTestState === "sending"}
+              className="px-3 py-1.5 rounded-md border border-current text-xs font-medium hover:bg-surface/40 transition-colors disabled:opacity-50 touch-manipulation min-h-[44px]"
+            >
+              {extraTestState === "sending" ? "Sending…" : extraTest.label}
+            </button>
+          )}
           <button
             type="button"
             onClick={load}
@@ -231,6 +271,19 @@ export default function HealthChecksView({
         >
           {slackTestState.ok ? "✓ " : "⚠ "}
           {slackTestState.detail}
+        </div>
+      )}
+
+      {typeof extraTestState === "object" && (
+        <div
+          className={`rounded-lg border px-4 py-2.5 text-xs ${
+            extraTestState.ok
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-amber-50 border-amber-200 text-amber-800"
+          }`}
+        >
+          {extraTestState.ok ? "✓ " : "⚠ "}
+          {extraTestState.detail}
         </div>
       )}
 
