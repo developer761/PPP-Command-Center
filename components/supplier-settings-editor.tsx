@@ -98,7 +98,7 @@ export default function SupplierSettingsEditor() {
         <button
           type="button"
           onClick={load}
-          className="ml-3 underline text-ppp-orange-700 hover:text-ppp-orange-900"
+          className="ml-3 underline text-ppp-orange-700 hover:text-ppp-orange-700"
         >
           Retry
         </button>

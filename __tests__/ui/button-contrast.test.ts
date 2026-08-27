@@ -199,6 +199,71 @@ describe("the hover ramp stays out of the dead zone", () => {
     expect(bad, "white on these resting fills fails AA in the light theme").toEqual([]);
   });
 
+  it("text on a dark scrim is actually readable", () => {
+    // The gap that let a broken pill through with a green suite: every rule
+    // above asks about `bg-ppp-*` under `text-white`, and none asks about
+    // `text-ppp-*` on a `bg-black/N` scrim. Overlays on camera video use
+    // exactly that pairing, because video has no theme to inherit.
+    //
+    // The PPP orange ramp is NOT monotonic — 100 is pale, 200 and 300 are dark
+    // browns, 800 and 900 are pale again — so "a low number is light" reasoning
+    // silently picks an unreadable colour. text-ppp-orange-200 on black is
+    // 1.64:1; it looked plausible and shipped past every other assertion here.
+    const bad: string[] = [];
+    for (const f of FILES) {
+      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+        const scrim = cls.match(/(?<![-\w:])bg-black\/\[?\.?(\d+)/);
+        if (!scrim) continue;
+        const fg = cls.match(/(?<![-\w:])text-(ppp-[a-z]+(?:-\d+)?)(?![-\w])/)?.[1];
+        if (!fg) continue;
+        const hex = LIGHT["--color-" + fg];
+        if (!hex) {
+          // NOT a skip. A token absent from the light theme is defined only in
+          // the dark block, so in light mode the custom property resolves to
+          // nothing and the text silently inherits whatever it is sitting on.
+          // Skipping here is what made the first version of this guard vacuous:
+          // text-ppp-orange-200 is dark-only, so the lookup came back undefined
+          // and the broken pill sailed through a green suite.
+          bad.push(`${f.replace(ROOT + "/", "")} :: text-${fg} is not defined in the light theme`);
+          continue;
+        }
+        // A heavy scrim over arbitrary video is effectively near-black.
+        const r = contrast(hex, "#0a0a0a");
+        if (r < 4.5) bad.push(`${f.replace(ROOT + "/", "")} :: text-${fg} on black scrim (${r.toFixed(2)}:1)`);
+      }
+    }
+    expect(bad, "this text is unreadable on the scrim it sits on").toEqual([]);
+  });
+
+  it("every ppp colour utility refers to a token that actually exists", () => {
+    // Tailwind generates a utility only for tokens declared in `@theme`. Eight
+    // brand tokens (orange 200/300/400/800/900, green 200/300/800) are declared
+    // ONLY inside the [data-theme="dark"] rule, which is far below @theme — so
+    // classes naming them compile to nothing at all. Not a contrast problem: no
+    // rule is emitted, the property is never set, and the element silently
+    // inherits. A border falls back to currentColor and a background vanishes.
+    //
+    // This is why the scrim guard above must treat an unknown token as a
+    // failure rather than skipping it — skipping is exactly what let a dead
+    // class through a fully green suite.
+    const bad: string[] = [];
+    for (const f of FILES) {
+      const src = readFileSync(f, "utf8");
+      for (const [, cls] of src.matchAll(/"([^"\n]*)"/g)) {
+        for (const [, prefix, tok] of cls.matchAll(
+          /(?<![-\w])(?:hover:|active:|focus:|group-hover:|dark:|sm:|md:|lg:)*(text|bg|border|ring|from|to|via|decoration|outline|divide|shadow|accent|caret|fill|stroke)-(ppp-[a-z]+(?:-\d+)?)(?![-\w])/g
+        )) {
+          if (!(("--color-" + tok) in LIGHT)) {
+            bad.push(`${f.replace(ROOT + "/", "")} :: ${prefix}-${tok}`);
+          }
+        }
+      }
+    }
+    // Commercial is a separate platform with its own session; report only ours.
+    const residential = [...new Set(bad)].filter((b) => !b.includes("commercial"));
+    expect(residential, "these classes generate no CSS — the token is dark-only").toEqual([]);
+  });
+
   it("no NEW class pairs a fill with white where dark inverts that fill", () => {
     // The orange-700 regression in one rule: a token dark turns into a
     // foreground must never be a fill under hardcoded white.

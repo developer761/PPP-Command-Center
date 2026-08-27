@@ -841,7 +841,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
             charcoal: "bg-ppp-charcoal-50 border-ppp-charcoal-100 text-ppp-charcoal-500",
             // Critical = "go out today / tomorrow." Heavier weight + a pulsing
             // dot so it can't get lost in a row of softer chips.
-            critical: "bg-ppp-orange-100 border-ppp-orange-200 text-ppp-orange-700 font-semibold",
+            critical: "bg-ppp-orange-100 border-ppp-orange-100 text-ppp-orange-700 font-semibold",
           }[tone];
           return (
             <span
@@ -1843,7 +1843,7 @@ function JobDetailImpl({
             >
               <span aria-hidden>⚠</span>
               <span className="leading-snug">
-                <strong className="text-ppp-orange-800">
+                <strong className="text-ppp-orange-700">
                   {/* Kate round-3 #06: the noun was pluralised but the verb
                       wasn't, so a single colour read "1 color need a manual
                       quantity." Both agree now. */}
@@ -2510,7 +2510,7 @@ function SqftEditor({
           status === "error"
             ? "border-red-300 bg-red-50"
             : missing
-              ? "border-ppp-orange-200 bg-ppp-orange-50/60"
+              ? "border-ppp-orange-100 bg-ppp-orange-50/60"
               : "border-ppp-charcoal-100 bg-white"
         }`}
       >

@@ -595,10 +595,13 @@ function RoomRow({
           label={`${row.label} — measure a wall`}
           onClose={() => setGroundOpen(false)}
           onNeedVertical={() => { setGroundOpen(false); setCameraOpen(true); }}
+          // Length and Width only. This tool measures along the FLOOR — offering
+          // a Ceiling button would let a worker file a wall run as a ceiling
+          // height, which reads as an ordinary number and quietly changes how
+          // much paint gets bought. Ceilings go through the vertical hand-off.
           targets={[
             { id: "lengthFt", label: "Length" },
             { id: "widthFt", label: "Width" },
-            { id: "ceilingFt", label: "Ceiling" },
           ]}
           onResult={(r, target) => {
             const ft = (Math.round(r.feet * 100) / 100).toString();

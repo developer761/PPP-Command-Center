@@ -219,6 +219,25 @@ describe("holding still and averaging — does it actually help?", () => {
     expect(wobbly).toBeGreaterThan(4);
     expect(attitudeSpread([{ alpha: 0, beta: 60, gamma: 0 }])).toBe(Infinity);
   });
+
+  it("counts a bearing wobble too, not just pitch", () => {
+    // Measured on a 12ft wall from 10ft back: 1 degree of bearing error costs
+    // 4.2in against pitch's 6.7in. An earlier version ignored bearing entirely
+    // and called a visibly shaky hold steady.
+    const panned = attitudeSpread([
+      { alpha: 20, beta: 60, gamma: 0 }, { alpha: 26, beta: 60, gamma: 0 },
+    ]);
+    expect(panned).toBeGreaterThan(2);
+  });
+
+  it("measures bearing wobble the short way round the compass", () => {
+    // Across the 360/0 seam a naive difference reads 358 degrees of wobble and
+    // would reject a perfectly steady hold.
+    const acrossSeam = attitudeSpread([
+      { alpha: 359, beta: 60, gamma: 0 }, { alpha: 1, beta: 60, gamma: 0 },
+    ]);
+    expect(acrossSeam).toBeLessThan(3);
+  });
 });
 
 

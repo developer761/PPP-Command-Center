@@ -140,7 +140,7 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
                   <button
                     type="button"
                     onClick={() => setRowError(null)}
-                    className="shrink-0 underline hover:text-ppp-orange-900"
+                    className="shrink-0 underline hover:text-ppp-orange-700"
                   >
                     Dismiss
                   </button>
@@ -187,7 +187,7 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
                       type="button"
                       onClick={() => transition(o.id, "delivered")}
                       disabled={isOpen}
-                      className="px-3 py-2 sm:py-1 text-xs sm:text-[11px] rounded border border-ppp-green-100 bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100 active:bg-ppp-green-200 disabled:opacity-50 transition-colors font-medium touch-manipulation"
+                      className="px-3 py-2 sm:py-1 text-xs sm:text-[11px] rounded border border-ppp-green-100 bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100 active:bg-ppp-green-100 disabled:opacity-50 transition-colors font-medium touch-manipulation"
                       title="Materials arrived"
                     >
                       Mark delivered

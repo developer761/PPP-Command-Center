@@ -192,7 +192,7 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
         className={[
           "flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-full border text-[11px] font-medium transition-colors",
           impersonating
-            ? "border-ppp-orange-200 bg-ppp-orange-50 text-ppp-orange-700 hover:bg-ppp-orange-100"
+            ? "border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 hover:bg-ppp-orange-100"
             : "border-ppp-charcoal-100 bg-white text-ppp-charcoal hover:bg-ppp-blue-50 hover:border-ppp-blue-200",
         ].join(" ")}
         aria-haspopup="listbox"

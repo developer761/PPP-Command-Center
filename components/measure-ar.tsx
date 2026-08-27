@@ -5,6 +5,7 @@ import ModalPortal from "@/components/modal-portal";
 import {
   distanceM, formatMetres, metresToFeet, projectToScreen, arConfidence, type Vec3,
 } from "@/lib/measure/ar-math";
+import { haptic } from "@/lib/measure/haptics";
 
 /**
  * Measuring the way Apple's Measure does it: put a point on a corner, walk, and
@@ -85,6 +86,11 @@ export default function MeasureAR({
   const readoutRef = useRef<HTMLSpanElement>(null);
   const lineRef = useRef<SVGLineElement>(null);
   const dotRef = useRef<SVGCircleElement>(null);
+  /** The reading, drawn ON the line at its midpoint — where Apple puts it, and
+   *  where your eyes already are while you aim. */
+  const labelRef = useRef<SVGGElement>(null);
+  const labelTextRef = useRef<SVGTextElement>(null);
+  const labelBgRef = useRef<SVGRectElement>(null);
   /** Live values the render loop owns — refs, not state: this runs at 60fps and
    *  a setState per frame would drop frames on a mid-range phone. */
   const reticleRef = useRef<Vec3 | null>(null);
@@ -136,6 +142,15 @@ export default function MeasureAR({
       const refSpace = await session.requestReferenceSpace("local");
       const viewerSpace = await session.requestReferenceSpace("viewer");
       const hitSource = await session.requestHitTestSource({ space: viewerSpace });
+      if (!hitSource) {
+        // Without this the session runs, the camera shows, and the crosshair
+        // never finds anything — an indefinite "move the phone slowly" with a
+        // permanently disabled button and no way to tell what went wrong.
+        await session.end().catch(() => {});
+        setPhase("error");
+        setError("This device started an AR session but wouldn't provide surface detection.");
+        return;
+      }
 
       // The loop's liveness is a local flag, not a ref comparison. A ref can
       // be cleared by any unrelated remount, and because the guard sat BEFORE
@@ -145,7 +160,7 @@ export default function MeasureAR({
       session.addEventListener("end", () => {
         alive = false;
         sessionRef.current = null;
-        hitSource?.cancel();
+        hitSource.cancel();
         setPhase("idle");
       });
 
@@ -155,13 +170,11 @@ export default function MeasureAR({
 
         // Where the crosshair meets a real surface.
         let hit: Vec3 | null = null;
-        if (hitSource) {
-          const results = frame.getHitTestResults(hitSource);
-          const pose = results.length ? results[0].getPose(refSpace) : null;
-          if (pose) {
-            const p = pose.transform.position;
-            hit = { x: p.x, y: p.y, z: p.z };
-          }
+        const results = frame.getHitTestResults(hitSource);
+        const pose = results.length ? results[0].getPose(refSpace) : null;
+        if (pose) {
+          const p = pose.transform.position;
+          hit = { x: p.x, y: p.y, z: p.z };
         }
         reticleRef.current = hit;
         if (hit) setTracking(true);
@@ -199,9 +212,21 @@ export default function MeasureAR({
             dotRef.current.setAttribute("cx", String(a.x));
             dotRef.current.setAttribute("cy", String(a.y));
             dotRef.current.style.opacity = "1";
+
+            // Pin the reading to the middle of the span itself.
+            const g = labelRef.current, txt = labelTextRef.current, bg = labelBgRef.current;
+            if (g && txt && bg && from && to) {
+              txt.textContent = formatMetres(distanceM(from, to));
+              const w = Math.max(46, txt.textContent.length * 11 + 16);
+              bg.setAttribute("x", String(-w / 2));
+              bg.setAttribute("width", String(w));
+              g.setAttribute("transform", `translate(${(a.x + b.x) / 2}, ${(a.y + b.y) / 2})`);
+              g.style.opacity = "1";
+            }
           } else {
             lineRef.current.style.opacity = "0";
             dotRef.current.style.opacity = "0";
+            if (labelRef.current) labelRef.current.style.opacity = "0";
           }
         }
       };
@@ -214,11 +239,12 @@ export default function MeasureAR({
 
   const addPoint = () => {
     const p = reticleRef.current;
-    if (!p) return;
+    if (!p) { haptic("rejected"); return; }
     setPoints((prev) => {
       if (prev.length >= 2) return prev;
       const next = [...prev, p];
-      if (next.length === 2) setLockedM(distanceM(next[0], next[1]));
+      if (next.length === 2) { setLockedM(distanceM(next[0], next[1])); haptic("locked"); }
+      else haptic("point");
       return next;
     });
   };
@@ -247,6 +273,11 @@ export default function MeasureAR({
             <svg className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden>
               <line ref={lineRef} stroke="#8DC442" strokeWidth={4} strokeLinecap="round" style={{ opacity: 0 }} />
               <circle ref={dotRef} r={8} fill="#8DC442" stroke="#fff" strokeWidth={2} style={{ opacity: 0 }} />
+              <g ref={labelRef} style={{ opacity: 0 }}>
+                <rect ref={labelBgRef} x={-30} y={-15} width={60} height={30} rx={15} fill="rgba(0,0,0,.72)" />
+                <text ref={labelTextRef} x={0} y={6} textAnchor="middle"
+                  fontSize={17} fontWeight={700} fill="#fff">0</text>
+              </g>
             </svg>
 
             <div className="pointer-events-auto flex items-start justify-between gap-3 p-3">
@@ -298,7 +329,7 @@ export default function MeasureAR({
                           setPoints([]); setLockedM(null);
                         }}
                         className={`flex-1 min-h-[52px] rounded-xl text-sm font-bold touch-manipulation ${
-                          saved[t.label] ? "bg-ppp-green-100 text-ppp-green-800" : "bg-ppp-green text-ppp-navy"
+                          saved[t.label] ? "bg-ppp-green-100 text-ppp-navy" : "bg-ppp-green text-ppp-navy"
                         }`}
                       >{saved[t.label] ? `${t.label} ✓` : t.label}</button>
                     ))}

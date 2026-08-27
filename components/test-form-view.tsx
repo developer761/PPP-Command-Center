@@ -178,8 +178,8 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
               trimmedId === ""
                 ? "border-ppp-charcoal-100"
                 : inputUsable
-                ? "border-ppp-green-300 bg-ppp-green-50"
-                : "border-ppp-orange-300 bg-ppp-orange-50"
+                ? "border-ppp-green-100 bg-ppp-green-50"
+                : "border-ppp-orange-100 bg-ppp-orange-50"
             }`}
           />
           {trimmedId && (
@@ -248,7 +248,7 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
       </div>
 
       {result && (
-        <div className={`border rounded-2xl p-5 ${result.ok ? "border-ppp-green-200 bg-ppp-green-50" : "border-ppp-orange-200 bg-ppp-orange-50"}`}>
+        <div className={`border rounded-2xl p-5 ${result.ok ? "border-ppp-green-100 bg-ppp-green-50" : "border-ppp-orange-100 bg-ppp-orange-50"}`}>
           <div className={`font-semibold text-sm ${result.ok ? "text-ppp-green-700" : "text-ppp-orange-700"}`}>
             {result.ok
               ? result.mode === "preview"

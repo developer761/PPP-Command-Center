@@ -377,7 +377,7 @@ export default function OrderFulfillmentView({
       </div>
 
       {!persistenceAvailable && (
-        <div role="alert" className="bg-ppp-orange-50 border border-ppp-orange-200 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
+        <div role="alert" className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
           <strong className="block">This order couldn&apos;t be loaded from saved state.</strong>
           Quantities, paint lines and extras you set on the build step are NOT included below —
           the email would go out from system estimates only. Check the email body carefully before
@@ -413,7 +413,7 @@ export default function OrderFulfillmentView({
           <button
             type="button"
             onClick={() => setSendResult(null)}
-            className="mt-2 text-xs text-ppp-orange-700 underline hover:text-ppp-orange-900"
+            className="mt-2 text-xs text-ppp-orange-700 underline hover:text-ppp-orange-700"
           >
             Dismiss + try again
           </button>

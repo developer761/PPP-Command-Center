@@ -122,7 +122,7 @@ export default function Topbar({
         <form action="/api/admin/sf-refresh-cache" method="POST" className="hidden sm:block">
           <button
             type="submit"
-            className="flex items-center gap-2 px-3 py-1.5 bg-ppp-green-50 border border-ppp-green-100 rounded-full hover:bg-ppp-green-100 hover:border-ppp-green-200 transition-colors group"
+            className="flex items-center gap-2 px-3 py-1.5 bg-ppp-green-50 border border-ppp-green-100 rounded-full hover:bg-ppp-green-100 hover:border-ppp-green-100 transition-colors group"
             title={`Synced ${formatAgo(ago)} · click to refresh from Salesforce`}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-ppp-green animate-pulse" />
@@ -150,7 +150,7 @@ export default function Topbar({
         <form action="/api/admin/sf-refresh-cache" method="POST" className="sm:hidden">
           <button
             type="submit"
-            className="flex items-center justify-center gap-1 h-11 min-w-[60px] px-3 rounded-lg bg-ppp-green-50 border border-ppp-green-100 hover:bg-ppp-green-100 active:bg-ppp-green-200 transition-colors touch-manipulation"
+            className="flex items-center justify-center gap-1 h-11 min-w-[60px] px-3 rounded-lg bg-ppp-green-50 border border-ppp-green-100 hover:bg-ppp-green-100 active:bg-ppp-green-100 transition-colors touch-manipulation"
             title={`Synced ${formatAgo(ago)} · tap to refresh from Salesforce`}
             aria-label={`Synced ${formatAgo(ago)}. Tap to refresh from Salesforce.`}
           >

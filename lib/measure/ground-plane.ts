@@ -193,9 +193,17 @@ export function attitudeSpread(samples: Attitude[]): number {
   const mean = averageAttitude(samples)!;
   let worst = 0;
   for (const s of samples) {
-    // Only pitch matters for distance; a compass wobble moves the bearing, not
-    // the range, and is far less costly.
-    worst = Math.max(worst, Math.abs(s.beta - mean.beta));
+    // BOTH axes count. An earlier version checked only pitch, on the reasoning
+    // that a compass wobble moves the bearing rather than the range — which is
+    // true of a single point and false of a measurement, because the span is
+    // the chord between two bearings. Measured on a 12ft wall from 10ft back:
+    // 1 degree of bearing error costs 4.2in against pitch's 6.7in. Same order.
+    // Reporting only pitch under-stated how shaky a hold really was.
+    const dBeta = Math.abs(s.beta - mean.beta);
+    // Bearing is circular: 359 and 1 are two degrees apart, not 358.
+    let dAlpha = Math.abs(s.alpha - mean.alpha) % 360;
+    if (dAlpha > 180) dAlpha = 360 - dAlpha;
+    worst = Math.max(worst, dBeta, dAlpha);
   }
   return worst;
 }

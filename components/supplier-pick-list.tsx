@@ -109,7 +109,7 @@ export default function SupplierPickList({
             <button
               type="button"
               onClick={() => setRetryNonce((n) => n + 1)}
-              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-orange-200 bg-white text-xs font-medium text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors touch-manipulation"
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-orange-100 bg-white text-xs font-medium text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors touch-manipulation"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M21 12a9 9 0 1 1-3.51-7.13" /><path d="M21 3v6h-6" />

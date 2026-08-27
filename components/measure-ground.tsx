@@ -10,6 +10,7 @@ import FeetInchesInput, {
   EMPTY_FT_IN, toDecimalFeet, fromDecimalFeet, type FeetInchesValue,
 } from "@/components/feet-inches-input";
 import { formatMetres, metresToFeet } from "@/lib/measure/ar-math";
+import { haptic } from "@/lib/measure/haptics";
 
 /**
  * Measuring on an iPhone, with no AR available at all.
@@ -56,7 +57,9 @@ export default function MeasureGround({
 }) {
   const [phase, setPhase] = useState<"intro" | "live" | "denied" | "unsupported">("intro");
   const [detail, setDetail] = useState<string | null>(null);
-  const [heightM, setHeightM] = useState<number>(1.5);
+  // 5ft exactly: a plausible chest height AND one that reads back as a round
+  // number. 1.5m displays as 4'11", which looks like something went wrong.
+  const [heightM, setHeightM] = useState<number>(1.524);
   const [heightDraft, setHeightDraft] = useState<FeetInchesValue>(EMPTY_FT_IN);
   const [points, setPoints] = useState<Vec2[]>([]);
   const [capturing, setCapturing] = useState(false);
@@ -70,8 +73,15 @@ export default function MeasureGround({
   const streamRef = useRef<MediaStream | null>(null);
   const attitudeRef = useRef<Attitude | null>(null);
   const readoutRef = useRef<HTMLSpanElement>(null);
+  /** Live aim feedback, written straight to the DOM from the sensor handler.
+   *  Telling someone the aim was too flat AFTER a held burst wastes the hold;
+   *  saying so while they are still aiming costs nothing. */
+  const aimStatusRef = useRef<HTMLSpanElement>(null);
+  /** Which way the already-anchored corner lies, in plain words. Without FOV we
+   *  cannot draw it on the picture, but we can always say left or right. */
+  const bearingHintRef = useRef<HTMLSpanElement>(null);
   const pointsRef = useRef<Vec2[]>([]);
-  const heightRef = useRef(1.5);
+  const heightRef = useRef(1.524);
   useEffect(() => { pointsRef.current = points; }, [points]);
   useEffect(() => { heightRef.current = heightM; }, [heightM]);
 
@@ -80,7 +90,7 @@ export default function MeasureGround({
     try {
       const v = parseFloat(localStorage.getItem(HEIGHT_KEY) ?? "");
       if (v > 0.6 && v < 2.4) { setHeightM(v); setHeightDraft(fromDecimalFeet(metresToFeet(v))); }
-      else setHeightDraft(fromDecimalFeet(metresToFeet(1.5)));
+      else setHeightDraft(fromDecimalFeet(metresToFeet(1.524)));
     } catch { /* private mode — the default stands */ }
   }, []);
 
@@ -109,14 +119,41 @@ export default function MeasureGround({
     attitudeRef.current = a;
     if (burstRef.current) burstRef.current.push(a);
 
-    const out = readoutRef.current;
-    if (!out) return;
-    if (lockedRef.current != null) { out.textContent = formatMetres(lockedRef.current); return; }
     const here = groundPoint(a, heightRef.current);
     const pts = pointsRef.current;
-    out.textContent =
-      pts.length === 1 && here ? formatMetres(groundDistance(pts[0], here))
-      : here ? "0″" : "—";
+
+    const out = readoutRef.current;
+    if (out) {
+      if (lockedRef.current != null) out.textContent = formatMetres(lockedRef.current);
+      else out.textContent =
+        pts.length === 1 && here ? formatMetres(groundDistance(pts[0], here))
+        : here ? "0″" : "—";
+    }
+
+    const status = aimStatusRef.current;
+    if (status && lockedRef.current == null) {
+      const q = groundAimQuality(depressionAngle(a), heightRef.current);
+      status.textContent = q.usable ? "" : (q.reason ?? "");
+      status.style.opacity = q.usable ? "0" : "1";
+    }
+
+    // After the first corner, say which way the other one is. Purely from the
+    // bearing difference, so it needs no lens model and cannot mislead.
+    const hint = bearingHintRef.current;
+    if (hint) {
+      if (pts.length === 1 && here) {
+        const a1 = Math.atan2(pts[0].x, pts[0].y);
+        const a2 = Math.atan2(here.x, here.y);
+        let d = ((a2 - a1) * 180) / Math.PI;
+        while (d > 180) d -= 360;
+        while (d < -180) d += 360;
+        hint.textContent = Math.abs(d) < 3 ? "same spot as the first corner"
+          : `first corner is ${Math.round(Math.abs(d))}° to your ${d > 0 ? "left" : "right"}`;
+        hint.style.opacity = "1";
+      } else {
+        hint.style.opacity = "0";
+      }
+    }
   }, []);
 
   useEffect(() => () => {
@@ -166,13 +203,17 @@ export default function MeasureGround({
       burstRef.current = null;
       setCapturing(false);
       const avg = averageAttitude(samples);
-      if (!avg || samples.length < 5) { setAimWarning("Couldn't read the phone's tilt — hold it still and try again."); return; }
+      if (!avg || samples.length < 5) {
+        haptic("rejected");
+        setAimWarning("Couldn't read the phone's tilt — hold it still and try again.");
+        return;
+      }
       // Refuse a flat aim before it becomes a number: error goes as h/sin²θ, so
       // near the horizon a degree of tremor is worth feet, not inches.
       const quality = groundAimQuality(depressionAngle(avg), heightRef.current);
-      if (!quality.usable) { setAimWarning(quality.reason); return; }
+      if (!quality.usable) { haptic("rejected"); setAimWarning(quality.reason); return; }
       const p = groundPoint(avg, heightRef.current);
-      if (!p) { setAimWarning("Aim down at the floor where the wall meets it."); return; }
+      if (!p) { haptic("rejected"); setAimWarning("Aim down at the floor where the wall meets it."); return; }
       onPoint(p, attitudeSpread(samples));
     }, BURST_MS);
   };
@@ -182,7 +223,8 @@ export default function MeasureGround({
     setPoints((prev) => {
       if (prev.length >= 2) return prev;
       const next = [...prev, p];
-      if (next.length === 2) setLockedM(groundDistance(next[0], next[1]));
+      if (next.length === 2) { setLockedM(groundDistance(next[0], next[1])); haptic("locked"); }
+      else haptic("point");
       return next;
     });
   });
@@ -261,6 +303,18 @@ export default function MeasureGround({
               <p className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-[11px] text-center max-w-[92%] pointer-events-none">
                 {capturing ? "Hold still…" : "Put the crosshair where the wall meets the floor"}
               </p>
+              {/* A fixed scrim, not a themed fill. This sits on live video, which
+                  has no theme of its own — and every themed 600-900 token flips
+                  role in dark mode, so white on one of those is unreadable half
+                  the time. Black at 78% is legible over any room. */}
+              <span
+                ref={aimStatusRef} style={{ opacity: 0 }}
+                className="absolute top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/[.78] text-ppp-orange-100 text-[11px] font-semibold text-center max-w-[92%] pointer-events-none transition-opacity"
+              />
+              <span
+                ref={bearingHintRef} style={{ opacity: 0 }}
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/55 text-white/90 text-[11px] text-center pointer-events-none transition-opacity"
+              />
             </>
           )}
 
@@ -324,7 +378,7 @@ export default function MeasureGround({
             </div>
 
             {aimWarning && (
-              <p className="text-[11px] text-ppp-orange-200 bg-ppp-orange-900/40 rounded-lg px-3 py-2 leading-snug">
+              <p className="text-[11px] text-ppp-orange-100 bg-ppp-orange-50/40 rounded-lg px-3 py-2 leading-snug">
                 {aimWarning}
               </p>
             )}
@@ -358,7 +412,7 @@ export default function MeasureGround({
                         setPoints([]); setLockedM(null);
                       }}
                       className={`flex-1 min-h-[52px] rounded-xl text-sm font-bold touch-manipulation ${
-                        saved[t.label] ? "bg-ppp-green-100 text-ppp-green-800" : "bg-ppp-green text-ppp-navy"
+                        saved[t.label] ? "bg-ppp-green-100 text-ppp-navy" : "bg-ppp-green text-ppp-navy"
                       }`}
                     >{saved[t.label] ? `${t.label} ✓` : t.label}</button>
                   ))}
@@ -389,7 +443,7 @@ export default function MeasureGround({
               </button>
               {onNeedVertical && (
                 <button type="button" onClick={onNeedVertical} className="min-h-[44px] underline touch-manipulation">
-                  Measure something vertical
+                  Ceiling height →
                 </button>
               )}
             </div>

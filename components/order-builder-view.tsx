@@ -933,7 +933,7 @@ export default function OrderBuilderView({
                         <button
                           type="button"
                           onClick={() => removeExtra(e.extraId)}
-                          className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-800 px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
+                          className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-700 px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
                           aria-label={`Remove ${e.name}`}
                         >
                           Remove
@@ -1104,7 +1104,7 @@ function CustomColorItems({
               <button
                 type="button"
                 onClick={() => onChange(items.filter((x) => x.id !== it.id))}
-                className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-800 px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
+                className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-700 px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
                 aria-label={`Remove ${it.label}`}
               >
                 Remove

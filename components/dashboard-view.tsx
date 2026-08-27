@@ -1004,7 +1004,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
           {!repScopedToSelf && (topPerformer ? (
             <Link
               href={`/dashboard/rep/${topPerformer.id}`}
-              className="block bg-white border border-ppp-charcoal-100 rounded-xl p-5 hover:border-ppp-green-200 hover:shadow-md hover:shadow-ppp-charcoal/5 transition-all"
+              className="block bg-white border border-ppp-charcoal-100 rounded-xl p-5 hover:border-ppp-green-100 hover:shadow-md hover:shadow-ppp-charcoal/5 transition-all"
             >
               <div className="flex items-center gap-2 mb-3">
                 <div className="h-6 w-6 rounded-md bg-ppp-green-50 text-ppp-green-700 flex items-center justify-center text-xs font-bold">

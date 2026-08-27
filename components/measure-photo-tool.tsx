@@ -415,7 +415,7 @@ export default function MeasurePhotoTool({
                   }}
                   className={`flex-1 min-h-[52px] rounded-lg text-sm font-semibold transition-colors touch-manipulation ${
                     saved[t.label]
-                      ? "bg-ppp-green-100 text-ppp-green-800 border border-ppp-green-200"
+                      ? "bg-ppp-green-100 text-ppp-navy border border-ppp-green-100"
                       : "bg-ppp-green text-ppp-navy hover:bg-ppp-green-600 active:bg-ppp-green-700"
                   }`}
                 >
