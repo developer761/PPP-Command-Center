@@ -5,6 +5,7 @@ import { geometryFromDimensions, perimeterGainVsSquareGuess, distributeHouseSqft
 import { CONFIDENCE_LABEL, SOURCE_LABEL, type MeasureSuggestion, type MeasureConfidence } from "@/lib/measure/types";
 import MeasurePhotoTool, { type PhotoMeasureResult } from "@/components/measure-photo-tool";
 import MeasureFloorPlan from "@/components/measure-floor-plan";
+import MeasureLiveCamera from "@/components/measure-live-camera";
 import FeetInchesInput, { fromDecimalFeet, toDecimalFeet } from "@/components/feet-inches-input";
 
 /**
@@ -397,11 +398,12 @@ function RoomRow({
   onRemove: () => void; canSave: boolean; onSave: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const tapRef = useRef<HTMLInputElement>(null);
+  /** Live viewfinder is open (before a frame is held). */
+  const [cameraOpen, setCameraOpen] = useState(false);
   // Tap-to-measure works on a local object URL — the photo never leaves the
   // device for this path, unlike the AI estimate.
   const [tapUrl, setTapUrl] = useState<string | null>(null);
-  const [tapTarget, setTapTarget] = useState<"length" | "width" | "ceiling">("length");
+
   const [planOpen, setPlanOpen] = useState(false);
   const L = parseFloat(row.lengthFt) || 0;
   const W = parseFloat(row.widthFt) || 0;
@@ -448,7 +450,7 @@ function RoomRow({
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = ""; }}
           />
           <button
-            type="button" onClick={() => tapRef.current?.click()}
+            type="button" onClick={() => setCameraOpen(true)}
             className="flex flex-col items-center justify-center gap-0.5 min-h-[62px] px-1.5 py-2 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-800 hover:bg-ppp-blue-100 touch-manipulation transition-colors"
           >
             <span aria-hidden className="text-lg leading-none">📐</span>
@@ -461,14 +463,7 @@ function RoomRow({
             <span aria-hidden className="text-lg leading-none">🧭</span>
             <span className="text-[11px] font-semibold leading-tight text-center">Walk the room</span>
           </button>
-          <input
-            ref={tapRef} type="file" accept="image/*" capture="environment" className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) setTapUrl(URL.createObjectURL(f));
-              e.target.value = "";
-            }}
-          />
+
         </div>
       </div>
 
@@ -561,23 +556,37 @@ function RoomRow({
         />
       )}
 
+      {/* Live viewfinder first — the camera opens inside the page, there is no
+          shutter, and nothing reaches the camera roll. */}
+      {cameraOpen && (
+        <MeasureLiveCamera
+          label={`${row.label} — measure a wall`}
+          onClose={() => setCameraOpen(false)}
+          onFrame={(dataUrl) => { setCameraOpen(false); setTapUrl(dataUrl); }}
+        />
+      )}
+
       {tapUrl && (
         <MeasurePhotoTool
           imageUrl={tapUrl}
-          label={`${row.label} — measuring the ${tapTarget}`}
-          onClose={() => { URL.revokeObjectURL(tapUrl); setTapUrl(null); }}
-          onResult={(r: PhotoMeasureResult) => {
-            const ft = (Math.round(r.feet * 10) / 10).toString();
-            onPatch(
-              tapTarget === "length" ? { lengthFt: ft }
-              : tapTarget === "width" ? { widthFt: ft }
-              : { ceilingFt: ft }
-            );
-            // Walk the worker to the next dimension rather than making them
-            // remember which one they've done.
-            setTapTarget((t) => (t === "length" ? "width" : t === "width" ? "ceiling" : "length"));
-            URL.revokeObjectURL(tapUrl);
-            setTapUrl(null);
+          label={row.label}
+          onClose={() => setTapUrl(null)}
+          // One tap files the number where it belongs. The previous version
+          // guessed the next dimension and cycled a counter, so a ceiling
+          // measured out of order landed in the width box silently.
+          targets={[
+            { id: "lengthFt", label: "Length" },
+            { id: "widthFt", label: "Width" },
+            { id: "ceilingFt", label: "Ceiling" },
+          ]}
+          onResult={(r: PhotoMeasureResult, target?: string) => {
+            const ft = (Math.round(r.feet * 100) / 100).toString();
+            if (target === "lengthFt") onPatch({ lengthFt: ft });
+            else if (target === "widthFt") onPatch({ widthFt: ft });
+            else if (target === "ceilingFt") onPatch({ ceilingFt: ft });
+            // Deliberately does NOT close: the calibration belongs to the
+            // frame, so length, width and ceiling can all be filed from one
+            // setup. The tool's own Done button closes it.
           }}
         />
       )}

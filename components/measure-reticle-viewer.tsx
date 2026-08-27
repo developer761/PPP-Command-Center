@@ -129,8 +129,20 @@ export default function MeasureReticleViewer({
   const project = (p: Point) => (natural ? imageToViewport(p, t, natural, viewport) : null);
   const TONE = { ref: "#8DC442", target: "#2BAAE1" } as const;
 
+  // min-h floor, not just min-h-0: this pane IS the aiming surface, so it must
+  // never be squeezed out by the panel below it. Without the floor, a short
+  // viewport (small phone in landscape, or any phone with the keyboard up)
+  // collapsed it to 0px — the reticle then reports nothing and the whole tool
+  // sits inert with a disabled button and no explanation.
+  //
+  // 140px rather than a more comfortable 180: measured against the real
+  // chrome, 180 pushed the commit button off the bottom at a ~300px viewport,
+  // which is an iPhone SE with the keyboard up. A cramped but working view
+  // beats a roomy one whose button cannot be reached. flex-1 gives the pane
+  // everything spare whenever there is any, so the floor only bites when the
+  // alternative was breaking.
   return (
-    <div className="relative flex-1 min-h-0 overflow-hidden bg-black">
+    <div className="relative flex-1 min-h-[140px] overflow-hidden bg-black">
       <div
         ref={boxRef}
         role="application"

@@ -73,7 +73,7 @@ export default function MeasureFloorPlan({
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-50 bg-white flex flex-col">
+      <div className="fixed inset-x-0 top-0 z-50 h-dvh-full bg-white flex flex-col">
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-ppp-charcoal-100 shrink-0">
           <div className="min-w-0">
             <div className="font-semibold text-ppp-charcoal text-sm truncate">{roomLabel}</div>
@@ -237,7 +237,7 @@ function PlanDrawing({ plan }: { plan: FloorPlan }) {
 
   return (
     <div className="px-4 py-3">
-      <div className="mx-auto w-full rounded-xl border border-ppp-charcoal-100 bg-[var(--color-surface-muted)] aspect-[4/3] max-h-[34vh] flex items-center justify-center overflow-hidden">
+      <div className="mx-auto w-full rounded-xl border border-ppp-charcoal-100 bg-[var(--color-surface-muted)] aspect-[4/3] max-h-[30dvh] flex items-center justify-center overflow-hidden">
         {points.length < 2 ? (
           <p className="text-xs text-ppp-charcoal-400 italic px-6 text-center">
             The room will draw itself here as you add walls.

@@ -210,9 +210,9 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
     // R4.11 (same class as the Send Color Form dialog): portalled so no page
     // ancestor's transform can turn `fixed` into a page offset. See ModalPortal.
     <ModalPortal>
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe-sm sm:pb-4">
+    <div className="fixed inset-x-0 top-0 z-[70] h-dvh-full flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe-sm sm:pb-4">
       <div className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div className="relative z-10 w-full sm:max-w-md max-h-[92vh] sm:max-h-[85vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col">
+      <div className="relative z-10 w-full sm:max-w-md max-h-dvh-sheet sm:max-h-[85vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col">
         <div className="px-5 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 shrink-0">
           <div>
             <h3 className="text-base font-bold text-ppp-navy">Add a new supplier</h3>

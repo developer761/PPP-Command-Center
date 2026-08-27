@@ -36,9 +36,22 @@ const files = [...walk(join(ROOT, "components")), ...walk(join(ROOT, "app"))].fi
   (f) => !f.includes("/commercial/") && !f.includes("commercial-")
 );
 
-/** Full-viewport overlays — the ones that break. A `fixed` element that isn't
- *  pinned to all four edges is usually a sticky bar, which is unaffected. */
-const OVERLAY = /className=\{?["'`][^"'`]*\bfixed\b[^"'`]*\binset-0\b/;
+/**
+ * Full-viewport overlays — the ones that break.
+ *
+ * Two spellings, both full-screen:
+ *   · `fixed inset-0` — pinned to all four edges;
+ *   · `fixed inset-x-0 top-0 h-dvh-full` — pinned to three and sized by dvh,
+ *     which is what iOS Safari needs. `inset-0` measures the LAYOUT viewport
+ *     there, so the strip behind the toolbars counts as page and a bottom-pinned
+ *     footer lands below the visible screen.
+ *
+ * The second spelling is why this file's own guard fired: switching the measure
+ * overlays to it dropped them out of the old regex, and the portal check would
+ * have gone quietly vacuous. A `fixed` element pinned to fewer edges without a
+ * full-height class is usually a sticky bar, which is unaffected.
+ */
+const OVERLAY = /className=\{?["'`][^"'`]*\bfixed\b[^"'`]*(\binset-0\b|\bh-dvh-full\b)/;
 
 /** Strip comments: the first version of this test looked for the string
  *  "ModalPortal" anywhere in the file, and the comment EXPLAINING the rule
@@ -76,5 +89,11 @@ describe("full-screen overlays are portalled out of the page tree", () => {
     // vacuously and the bug walks straight back in for a fourth round.
     const withOverlays = files.filter((f) => OVERLAY.test(readFileSync(f, "utf8")));
     expect(withOverlays.length).toBeGreaterThanOrEqual(2);
+
+    // And prove BOTH spellings are still reachable, so a future sweep that
+    // converts every overlay to one form can't half-blind this guard.
+    const src = withOverlays.map((f) => readFileSync(f, "utf8"));
+    expect(src.some((s) => /\bfixed\b[^"'`]*\binset-0\b/.test(s))).toBe(true);
+    expect(src.some((s) => /\bfixed\b[^"'`]*\bh-dvh-full\b/.test(s))).toBe(true);
   });
 });

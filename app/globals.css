@@ -521,3 +521,28 @@ select:not([multiple]):not([size]):not(.appearance-none) {
 @utility mb-safe {
   margin-bottom: env(safe-area-inset-bottom);
 }
+
+/* ---------------------------------------------------------------------------
+   Full-height overlays that respect the browser's own chrome.
+
+   `position: fixed; inset: 0` sizes to the LAYOUT viewport. On iOS Safari that
+   includes the strip sitting behind the address bar and the bottom toolbar, so
+   a bottom-pinned footer is placed below the visible screen — the panel looks
+   like it runs off the page and the primary button cannot be reached. `dvh`
+   tracks the toolbars as they retract; `svh` is the safe small-viewport value;
+   `vh` is the last-resort fallback for anything that supports neither.
+
+   Three declarations in ONE rule, not three utility classes: within a rule the
+   last VALID declaration wins and unsupported units are simply dropped. As
+   separate classes the winner would depend on stylesheet order instead.
+   --------------------------------------------------------------------------- */
+@utility h-dvh-full {
+  height: 100vh;
+  height: 100svh;
+  height: 100dvh;
+}
+@utility max-h-dvh-sheet {
+  max-height: 92vh;
+  max-height: 92svh;
+  max-height: 92dvh;
+}

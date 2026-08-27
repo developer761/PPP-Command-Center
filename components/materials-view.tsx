@@ -3234,7 +3234,7 @@ function SendColorFormButton({
           currentTime stays 0). See ModalPortal. */}
       {open && (
         <ModalPortal>
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe-sm sm:pb-4">
+        <div className="fixed inset-x-0 top-0 z-50 h-dvh-full flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe-sm sm:pb-4">
           <div
             className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm animate-fade-in"
             onClick={() => !sending && reset()}
@@ -3243,7 +3243,7 @@ function SendColorFormButton({
           {/* max-h + flex-col so tall content (long form URL after
               send, or mobile keyboard shrinking viewport) has a
               scroll region and the Cancel/Send footer stays reachable. */}
-          <div className="relative z-10 w-full sm:max-w-md max-h-[92vh] sm:max-h-[85vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col animate-fade-up">
+          <div className="relative z-10 w-full sm:max-w-md max-h-dvh-sheet sm:max-h-[85vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col animate-fade-up">
             <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 shrink-0 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="text-base font-bold text-ppp-navy">Send Color Form</h3>

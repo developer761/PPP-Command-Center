@@ -14,7 +14,12 @@ import type { NextConfig } from "next";
  * - Referrer-Policy: send only the origin (not the full path with
  *   sensitive query strings like ?token=) when navigating cross-origin.
  * - Permissions-Policy: disable APIs we don't use; reduces attack surface
- *   if a stray script ever lands on the page.
+ *   if a stray script ever lands on the page. `camera=(self)` — NOT `()` — is
+ *   deliberate: the measure tool opens a live viewfinder in-page rather than
+ *   handing off to the phone's Camera app, and `camera=(self)` blocks that for the
+ *   whole origin including ourselves. The browser still asks the user for
+ *   permission; this header only says the origin is allowed to ask. Everything
+ *   else stays fully disabled.
  *
  * NO Content-Security-Policy yet — Next.js with Turbopack inlines styles
  * and uses unsafe-inline for some hydration scripts; a strict CSP needs
@@ -28,7 +33,7 @@ const SECURITY_HEADERS = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=()" },
 ];
 
 const nextConfig: NextConfig = {

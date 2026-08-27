@@ -65,15 +65,36 @@ export type PhotoMeasureResult = {
 };
 
 export default function MeasurePhotoTool({
-  imageUrl, label, onResult, onClose,
+  imageUrl, label, onResult, onClose, targets,
 }: {
   imageUrl: string;
   label: string;
-  onResult: (r: PhotoMeasureResult) => void;
+  /** `target` is the id of whichever slot the worker filed the number under. */
+  onResult: (r: PhotoMeasureResult, target?: string) => void;
   onClose: () => void;
+  /**
+   * What this measurement could be. When supplied, the finished number is
+   * filed straight into the slot the worker picks — one tap, saved, done.
+   *
+   * The old flow guessed: it applied the result to whichever dimension it
+   * thought was next and silently advanced a counter, so measuring a ceiling
+   * after two walls put the number in the wrong box with nothing to show for
+   * it. Asking is one tap and cannot be wrong.
+   */
+  targets?: Array<{ id: string; label: string }>;
 }) {
   /** Where the crosshair is currently pointing, in image pixels. */
   const [aim, setAim] = useState<Point | null>(null);
+  /**
+   * What has already been filed from this one setup, e.g. {Length: "12′ 7″"}.
+   *
+   * Saving used to close the tool, which meant measuring the width after the
+   * length made you re-open the camera and re-tag all four calibration corners
+   * for the same wall. The calibration is a property of the FRAME, not of one
+   * measurement — so it is kept, and each save just clears the two target
+   * points ready for the next span.
+   */
+  const [saved, setSaved] = useState<Record<string, string>>({});
   const [stage, setStage] = useState<Stage>("reference");
   const [refPts, setRefPts] = useState<Point[]>([]);
   const [tgtPts, setTgtPts] = useState<Point[]>([]);
@@ -190,7 +211,7 @@ export default function MeasurePhotoTool({
     // off-screen when scrolled down. Caught by the R4.11 guard test, which is
     // the third time that rule has paid for itself.
     <ModalPortal>
-    <div className="fixed inset-0 z-50 bg-ppp-navy/95 flex flex-col">
+    <div className="fixed inset-x-0 top-0 z-50 h-dvh-full bg-ppp-navy/95 flex flex-col">
       <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
         <div className="min-w-0">
           <div className="text-white font-semibold text-sm truncate">{label}</div>
@@ -199,14 +220,24 @@ export default function MeasurePhotoTool({
               ? method === "plane"
                 ? `The 4 corners of the ${rect.label.split(" (")[0].toLowerCase()}, in order — ${refPts.length}/4`
                 : `Both ends of the ${reference.label.toLowerCase()}`
-              : stage === "target" ? "Now both ends of what you're measuring"
+              : stage === "target"
+                ? Object.keys(saved).length > 0
+                  ? `Saved ${Object.entries(saved).map(([k, v]) => `${k} ${v}`).join(" · ")} — measure another?`
+                  : "Now both ends of what you're measuring"
               : "Measurement ready"}
           </div>
         </div>
+        {/* Once something has been filed, leaving IS finishing — a bare ✕ reads
+            like discarding the work you just saved. */}
         <button
-          type="button" onClick={onClose} aria-label="Close"
-          className="shrink-0 h-11 w-11 rounded-lg text-white/80 hover:bg-white/10 text-xl touch-manipulation"
-        >✕</button>
+          type="button" onClick={onClose}
+          aria-label={Object.keys(saved).length > 0 ? "Done" : "Close"}
+          className={`shrink-0 min-h-[44px] rounded-lg touch-manipulation ${
+            Object.keys(saved).length > 0
+              ? "px-4 bg-ppp-green text-ppp-navy text-sm font-bold"
+              : "w-11 text-white/80 hover:bg-white/10 text-xl"
+          }`}
+        >{Object.keys(saved).length > 0 ? "Done" : "✕"}</button>
       </div>
 
       <MeasureReticleViewer
@@ -264,7 +295,7 @@ export default function MeasurePhotoTool({
       </div>
 
       <div
-        className="shrink-0 bg-white rounded-t-2xl px-4 pt-4 space-y-3 max-h-[42vh] overflow-y-auto"
+        className="shrink min-h-0 bg-white rounded-t-2xl px-4 pt-4 space-y-3 max-h-[42dvh] overflow-y-auto"
         style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         {stage === "reference" && (
@@ -363,29 +394,61 @@ export default function MeasurePhotoTool({
           </div>
         )}
 
-        <div className="flex gap-2">
-          {stage !== "reference" && (
-            <button type="button" onClick={reset}
-              className="min-h-[44px] px-4 rounded-lg border border-ppp-charcoal-200 text-sm font-medium text-ppp-charcoal-600 touch-manipulation">
-              Start over
+        {measurement && err && targets && targets.length > 0 ? (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1.5">
+              Save {measurement.display} as
+            </p>
+            <div className="flex gap-2">
+              {targets.map((t) => (
+                <button
+                  key={t.id} type="button"
+                  onClick={() => {
+                    onResult({
+                      inches: measurement.inches, feet: measurement.feet, display: measurement.display,
+                      confidence: err.confidence, errorPct: err.pct,
+                    }, t.id);
+                    setSaved((s) => ({ ...s, [t.label]: measurement.display }));
+                    // Keep the calibration, drop only the measured span.
+                    setTgtPts([]);
+                    setStage("target");
+                  }}
+                  className={`flex-1 min-h-[52px] rounded-lg text-sm font-semibold transition-colors touch-manipulation ${
+                    saved[t.label]
+                      ? "bg-ppp-green-100 text-ppp-green-800 border border-ppp-green-200"
+                      : "bg-ppp-green text-ppp-navy hover:bg-ppp-green-600 active:bg-ppp-green-700"
+                  }`}
+                >
+                  {saved[t.label] ? `${t.label} ✓` : t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            {stage !== "reference" && (
+              <button type="button" onClick={reset}
+                className="min-h-[44px] px-4 rounded-lg border border-ppp-charcoal-200 text-sm font-medium text-ppp-charcoal-600 touch-manipulation">
+                Start over
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={!measurement}
+              onClick={() => measurement && err && onResult({
+                inches: measurement.inches, feet: measurement.feet, display: measurement.display,
+                confidence: err.confidence, errorPct: err.pct,
+              })}
+              className="flex-1 min-h-[44px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue disabled:opacity-50 transition-colors touch-manipulation"
+            >
+              {measurement
+                ? `Use ${measurement.display}`
+                : refPts.length < refPointsNeeded
+                  ? `${refPointsNeeded - refPts.length} more reference point${refPointsNeeded - refPts.length === 1 ? "" : "s"}`
+                  : `${2 - tgtPts.length} more point${2 - tgtPts.length === 1 ? "" : "s"} to measure`}
             </button>
-          )}
-          <button
-            type="button"
-            disabled={!measurement}
-            onClick={() => measurement && err && onResult({
-              inches: measurement.inches, feet: measurement.feet, display: measurement.display,
-              confidence: err.confidence, errorPct: err.pct,
-            })}
-            className="flex-1 min-h-[44px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue disabled:opacity-50 transition-colors touch-manipulation"
-          >
-            {measurement
-              ? `Use ${measurement.display}`
-              : refPts.length < refPointsNeeded
-                ? `${refPointsNeeded - refPts.length} more reference point${refPointsNeeded - refPts.length === 1 ? "" : "s"}`
-                : `${2 - tgtPts.length} more point${2 - tgtPts.length === 1 ? "" : "s"} to measure`}
-          </button>
-        </div>
+          </div>
+        )}
 
         <p className="text-[10px] text-ppp-charcoal-400 leading-snug">
           {method === "plane"
