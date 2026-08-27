@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Roboto, Roboto_Condensed } from "next/font/google";
 import "./globals.css";
+import ServiceWorkerRegister from "@/components/service-worker-register";
 
 // Roboto + Roboto Condensed = PPP's official primary fonts (Brand Guidelines).
 const roboto = Roboto({
@@ -21,7 +22,33 @@ export const metadata: Metadata = {
   title: "PPP Command Center",
   description:
     "Internal operations platform for Precision Painting Plus® — unified analytics, work order coordination, and team workflows.",
-  icons: { icon: "/brand/logo.svg" },
+  // The wordmark stays the browser favicon; the square mark is what a phone
+  // shows on a home screen. A 3.7:1 wordmark squashed into an app icon is
+  // unreadable at 60px, which is the only size that matters there.
+  icons: {
+    icon: [
+      { url: "/brand/logo.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  manifest: "/manifest.webmanifest",
+  /**
+   * iOS ignores the manifest's `display` field. Installing to the home screen
+   * only drops Safari's chrome if these are present, so without them "Add to
+   * Home Screen" produces a bookmark that still opens in a browser.
+   */
+  appleWebApp: {
+    capable: true,
+    title: "PPP Hub",
+    // "default" keeps the status bar legible over the navy chrome;
+    // "black-translucent" would slide content under the notch.
+    statusBarStyle: "default",
+  },
+  // Phone numbers on work orders are meant to be tappable, but iOS also
+  // auto-links things that merely look like numbers — PO numbers, WO numbers,
+  // square footages — and turns them blue mid-sentence. Explicit links only.
+  formatDetection: { telephone: false },
 };
 
 /**
@@ -38,7 +65,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#1e3a8a",
+  // PPP navy. This was #1e3a8a — a stock Tailwind blue that appears nowhere in
+  // the brand — which tinted the phone's status bar a colour the product
+  // doesn't use. Matches the manifest so the chrome is one colour.
+  themeColor: "#172B4D",
+  // Installed apps run edge-to-edge; without this, content can sit under the
+  // home indicator on a notched iPhone. Panes that pin controls to the bottom
+  // pair this with env(safe-area-inset-bottom).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -49,7 +83,20 @@ export default function RootLayout({
       lang="en"
       className={`${roboto.variable} ${robotoCondensed.variable} h-full antialiased`}
     >
-      <body className="min-h-full">{children}</body>
+      <head>
+        {/*
+          Next emits the standardised `mobile-web-app-capable`, which iOS
+          honours from 16.4. Older iPhones only recognise the apple-prefixed
+          name, and without it "Add to Home Screen" produces a bookmark that
+          still opens inside Safari — the browser bars stay, which is most of
+          what installing was for. Crews carry old phones, so both ship.
+        */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+      </head>
+      <body className="min-h-full">
+        {children}
+        <ServiceWorkerRegister />
+      </body>
     </html>
   );
 }
