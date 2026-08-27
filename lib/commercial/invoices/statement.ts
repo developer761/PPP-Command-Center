@@ -14,6 +14,7 @@ import { listCommercialInvoices } from "./db";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, type InvoiceStatus } from "./constants";
 import { daysPastDue as arDaysPastDue } from "@/lib/commercial/reports/ar-aging";
+import { safeNowMs } from "@/lib/commercial/now";
 
 export type ARStatementRow = {
   invoiceId: string;
@@ -82,6 +83,7 @@ export async function getOpenInvoiceStatementForAccount(
   accountId: string,
   now: number = Date.now()
 ): Promise<ARStatement> {
+  now = safeNowMs(now, "statement");
   const [invoices, opps] = await Promise.all([
     listCommercialInvoices({ accountId }),
     listCommercialOpportunities({ accountId, includeArchived: true }),

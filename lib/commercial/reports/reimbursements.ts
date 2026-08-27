@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { etDateOf } from "@/lib/date-et";
+import { safeNowMs } from "@/lib/commercial/now";
 
 /**
  * REIMBURSEMENTS — what the company owes its own people.
@@ -88,6 +89,7 @@ export function summarizeReimbursements(
   filters: ReimbursementFilters = {},
   nowMs = Date.now()
 ): ReimbursementsReport {
+  nowMs = safeNowMs(nowMs, "reimbursements");
   const { fromYmd, toYmd, person } = filters;
   const filtered = !!(fromYmd || toYmd || person);
 
@@ -143,6 +145,7 @@ export async function getReimbursementsReport(
   filters: ReimbursementFilters = {},
   nowMs = Date.now()
 ): Promise<ReimbursementsReport> {
+  nowMs = safeNowMs(nowMs, "reimbursements");
   const sb = commercialDb();
   const opps = await listCommercialOpportunities({ includeArchived: true });
   const oppById = new Map(opps.map((o) => [o.id, o] as const));

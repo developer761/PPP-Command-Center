@@ -6,6 +6,7 @@ import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/op
 import { deriveInvoiceStatus, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { resolveTaxExemption } from "@/lib/commercial/tax/exemption";
 import { etDateOf } from "@/lib/date-et";
+import { safeNowMs } from "@/lib/commercial/now";
 
 /**
  * SALES TAX — what we charged, and what we didn't charge on whose authority.
@@ -112,6 +113,7 @@ export function summarizeSalesTax(
   filters: SalesTaxFilters = {},
   nowMs = Date.now()
 ): SalesTaxReport {
+  nowMs = safeNowMs(nowMs, "sales-tax");
   const { fromYmd, toYmd, accountId, uncertifiedOnly } = filters;
   const filtered = !!(fromYmd || toYmd || accountId || uncertifiedOnly);
 
@@ -166,6 +168,7 @@ export async function getSalesTaxReport(
   filters: SalesTaxFilters = {},
   nowMs = Date.now()
 ): Promise<SalesTaxReport> {
+  nowMs = safeNowMs(nowMs, "sales-tax");
   const sb = commercialDb();
   const opps = await listCommercialOpportunities({ includeArchived: true });
   const oppById = new Map(opps.map((o) => [o.id, o] as const));

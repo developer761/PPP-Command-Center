@@ -8,6 +8,7 @@ import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
 import { aiaDueAtFrom, aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
 import { daysPastDue } from "./ar-aging";
 import { etDateOf } from "@/lib/date-et";
+import { safeNowMs } from "@/lib/commercial/now";
 
 /**
  * The RECEIVABLES report — Alex's ask, 2026-08-19, modelled on the sheet Mary
@@ -147,6 +148,13 @@ export async function getReceivablesReport(
   nowMs = Date.now(),
   filters: ReceivableFilters = {}
 ): Promise<ReceivablesReport> {
+  // The first argument is a TIMESTAMP, not the filters — an easy call to get
+  // backwards, and getting it backwards used to throw "Invalid time value" from
+  // `new Date(nowMs).toISOString()` three frames deep in summarize(), taking the
+  // whole Accounting page down with it. Every caller today passes it correctly;
+  // this is so that stops being load-bearing. A bad clock reading is not a
+  // reason to refuse to show someone what they are owed.
+  nowMs = safeNowMs(nowMs, "receivables");
   const [invoices, opps] = await Promise.all([
     listCommercialInvoices({}),
     // includeArchived: archiving a deal is a tidy-up, not a write-off — the

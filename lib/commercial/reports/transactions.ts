@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { etDateOf } from "@/lib/date-et";
+import { safeNowMs } from "@/lib/commercial/now";
 
 /**
  * TRANSACTIONS — the money that actually moved, by month.
@@ -132,6 +133,7 @@ export function summarizeTransactions(
   filters: TxnFilters = {},
   nowMs = Date.now()
 ): TransactionsReport {
+  nowMs = safeNowMs(nowMs, "transactions");
   const { fromYmd, toYmd, direction, party, undepositedOnly } = filters;
   const filtered = !!(fromYmd || toYmd || direction || party || undepositedOnly);
 
@@ -221,6 +223,7 @@ export async function getTransactionsReport(
   filters: TxnFilters = {},
   nowMs = Date.now()
 ): Promise<TransactionsReport> {
+  nowMs = safeNowMs(nowMs, "transactions");
   const sb = commercialDb();
 
   const opps = await listCommercialOpportunities({ includeArchived: true });
