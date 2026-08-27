@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Roboto, Roboto_Condensed } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/service-worker-register";
+import InstallAppPrompt from "@/components/install-app-prompt";
 
 // Roboto + Roboto Condensed = PPP's official primary fonts (Brand Guidelines).
 const roboto = Roboto({
@@ -96,6 +97,7 @@ export default function RootLayout({
       <body className="min-h-full">
         {children}
         <ServiceWorkerRegister />
+        <InstallAppPrompt />
       </body>
     </html>
   );
