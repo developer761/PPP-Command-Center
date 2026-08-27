@@ -6,6 +6,7 @@ import { CONFIDENCE_LABEL, SOURCE_LABEL, type MeasureSuggestion, type MeasureCon
 import MeasurePhotoTool, { type PhotoMeasureResult } from "@/components/measure-photo-tool";
 import MeasureFloorPlan from "@/components/measure-floor-plan";
 import MeasureLiveCamera from "@/components/measure-live-camera";
+import MeasureAR, { useArSupported } from "@/components/measure-ar";
 import FeetInchesInput, { fromDecimalFeet, toDecimalFeet } from "@/components/feet-inches-input";
 
 /**
@@ -400,6 +401,10 @@ function RoomRow({
   const fileRef = useRef<HTMLInputElement>(null);
   /** Live viewfinder is open (before a frame is held). */
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [arOpen, setArOpen] = useState(false);
+  /** True on Android Chrome (ARCore). Always false on iPhone — Safari ships no
+   *  WebXR, so the button routes to the reference-object tool there instead. */
+  const arSupported = useArSupported();
   // Tap-to-measure works on a local object URL — the photo never leaves the
   // device for this path, unlike the AI estimate.
   const [tapUrl, setTapUrl] = useState<string | null>(null);
@@ -450,11 +455,13 @@ function RoomRow({
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = ""; }}
           />
           <button
-            type="button" onClick={() => setCameraOpen(true)}
+            type="button" onClick={() => (arSupported ? setArOpen(true) : setCameraOpen(true))}
             className="flex flex-col items-center justify-center gap-0.5 min-h-[62px] px-1.5 py-2 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-800 hover:bg-ppp-blue-100 touch-manipulation transition-colors"
           >
             <span aria-hidden className="text-lg leading-none">📐</span>
-            <span className="text-[11px] font-semibold leading-tight text-center">Measure a wall</span>
+            <span className="text-[11px] font-semibold leading-tight text-center">
+              {arSupported ? "Measure in AR" : "Measure a wall"}
+            </span>
           </button>
           <button
             type="button" onClick={() => setPlanOpen(true)}
@@ -552,6 +559,26 @@ function RoomRow({
               saved: false,
             });
             setPlanOpen(false);
+          }}
+        />
+      )}
+
+      {/* Real AR where the device can do it: anchor a corner, walk, and the
+          number keeps up. Android/ARCore only — see measure-ar.tsx. */}
+      {arOpen && (
+        <MeasureAR
+          label={`${row.label} — measure a wall`}
+          onClose={() => setArOpen(false)}
+          targets={[
+            { id: "lengthFt", label: "Length" },
+            { id: "widthFt", label: "Width" },
+            { id: "ceilingFt", label: "Ceiling" },
+          ]}
+          onResult={(r, target) => {
+            const ft = (Math.round(r.feet * 100) / 100).toString();
+            if (target === "lengthFt") onPatch({ lengthFt: ft });
+            else if (target === "widthFt") onPatch({ widthFt: ft });
+            else if (target === "ceilingFt") onPatch({ ceilingFt: ft });
           }}
         />
       )}
