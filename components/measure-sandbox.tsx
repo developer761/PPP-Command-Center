@@ -7,6 +7,7 @@ import MeasurePhotoTool, { type PhotoMeasureResult } from "@/components/measure-
 import MeasureFloorPlan from "@/components/measure-floor-plan";
 import MeasureLiveCamera from "@/components/measure-live-camera";
 import MeasureAR, { useArSupported } from "@/components/measure-ar";
+import MeasureGround from "@/components/measure-ground";
 import FeetInchesInput, { fromDecimalFeet, toDecimalFeet } from "@/components/feet-inches-input";
 
 /**
@@ -402,6 +403,7 @@ function RoomRow({
   /** Live viewfinder is open (before a frame is held). */
   const [cameraOpen, setCameraOpen] = useState(false);
   const [arOpen, setArOpen] = useState(false);
+  const [groundOpen, setGroundOpen] = useState(false);
   /** True on Android Chrome (ARCore). Always false on iPhone — Safari ships no
    *  WebXR, so the button routes to the reference-object tool there instead. */
   const arSupported = useArSupported();
@@ -455,7 +457,10 @@ function RoomRow({
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = ""; }}
           />
           <button
-            type="button" onClick={() => (arSupported ? setArOpen(true) : setCameraOpen(true))}
+            // Android/ARCore gets true AR; everything else (iPhone) gets the
+            // gravity-referenced floor tool. The reference-object photo flow is
+            // still reachable from inside it for anything not on the floor.
+            type="button" onClick={() => (arSupported ? setArOpen(true) : setGroundOpen(true))}
             className="flex flex-col items-center justify-center gap-0.5 min-h-[62px] px-1.5 py-2 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-800 hover:bg-ppp-blue-100 touch-manipulation transition-colors"
           >
             <span aria-hidden className="text-lg leading-none">📐</span>
@@ -569,6 +574,27 @@ function RoomRow({
         <MeasureAR
           label={`${row.label} — measure a wall`}
           onClose={() => setArOpen(false)}
+          targets={[
+            { id: "lengthFt", label: "Length" },
+            { id: "widthFt", label: "Width" },
+            { id: "ceilingFt", label: "Ceiling" },
+          ]}
+          onResult={(r, target) => {
+            const ft = (Math.round(r.feet * 100) / 100).toString();
+            if (target === "lengthFt") onPatch({ lengthFt: ft });
+            else if (target === "widthFt") onPatch({ widthFt: ft });
+            else if (target === "ceilingFt") onPatch({ ceilingFt: ft });
+          }}
+        />
+      )}
+
+      {/* iPhone path: no AR available, so measure along the floor using the one
+          thing Safari does expose accurately — which way is down. */}
+      {groundOpen && (
+        <MeasureGround
+          label={`${row.label} — measure a wall`}
+          onClose={() => setGroundOpen(false)}
+          onNeedVertical={() => { setGroundOpen(false); setCameraOpen(true); }}
           targets={[
             { id: "lengthFt", label: "Length" },
             { id: "widthFt", label: "Width" },
