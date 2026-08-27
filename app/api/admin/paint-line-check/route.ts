@@ -55,6 +55,24 @@ export async function GET(request: Request) {
     if (target && typeof target.length === "number" && target.length < 60) {
       problems.push(`Product_Lines__c holds only ${target.length} characters; "Interior: … | Exterior: …" needs roughly 60. Longer values will be truncated before writing.`);
     }
+    // The formatter truncates against a CONSTANT. Verified as 255 on 2026-08-27,
+    // but a field converted to a Long Text Area, or shortened, would leave that
+    // constant stale — over-long writes rejected with STRING_TOO_LONG, taking
+    // the colours down with them since they share one batch. Compare, don't
+    // just print both and leave a human to notice.
+    if (target && typeof target.length === "number" && target.length !== PRODUCT_LINES_MAX) {
+      problems.push(
+        `The field holds ${target.length} characters but the formatter truncates at ${PRODUCT_LINES_MAX}. ` +
+          (target.length < PRODUCT_LINES_MAX
+            ? "Writes longer than the field will be REJECTED. Lower PRODUCT_LINES_MAX in lib/customer-form/product-lines.ts."
+            : "Harmless today, but the formatter is cutting values shorter than it needs to. Raise PRODUCT_LINES_MAX to match.")
+      );
+    }
+    // A picklist here would mean somebody converted it back, and every write
+    // would start failing the way MaterialType__c did.
+    if (target && target.type !== "string" && target.type !== "textarea") {
+      problems.push(`Product_Lines__c is a ${target.type}, not free text. The hub writes plain line names and has no picklist vocabulary to satisfy.`);
+    }
     if (!estimator) problems.push("WorkOrder.MaterialType__c is missing — the hub reads it to seed the AM's default, so the estimator's suggestion will not appear.");
 
     let sample: Record<string, unknown> | null = null;
