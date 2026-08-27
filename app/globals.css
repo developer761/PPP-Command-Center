@@ -264,6 +264,24 @@ body {
   --color-rose-800: #d9b5ba;
   --color-rose-900: #e8d3d5;
 
+  /* Teal — muted. The ONE status colour with no dark mapping.
+     `almost_done` is painted bg-teal-500 / bg-teal-50 text-teal-700 on the
+     Field Ops calendar and the status board, and teal was the only family in
+     that set the dark theme never remapped — so every sibling status
+     (emerald · amber · rose) desaturated correctly while "Almost done" kept
+     Tailwind's stock #14b8a6 and glowed against the near-black surface.
+     Sits between the emerald sage and the cc-brand blue, which is exactly
+     where the status itself sits: past in-progress, not yet complete. */
+  --color-teal-50:  #10221f;
+  --color-teal-100: #163029;
+  --color-teal-200: #1f443b;
+  --color-teal-400: #4d9d92;
+  --color-teal-500: #45908a;
+  --color-teal-600: #3a7a75;
+  --color-teal-700: #7ab8b0;   /* text on the -50 tint */
+  --color-teal-800: #a4d0ca;
+  --color-teal-900: #c9e3df;
+
   /* cc-brand → BLUE in dark (RUX-0, Karan 2026-08). Was indigo; now tracks the
      dark ppp-blue ramp so the accent is a consistent blue, never purple. -700
      stays light enough for the active-nav label (text-cc-brand-700 on the dark

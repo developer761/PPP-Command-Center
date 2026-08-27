@@ -2283,10 +2283,17 @@ function CustomerBoardRow({
                   open bid{open.length === 1 ? "" : "s"}
                 </span>
               </span>
+              {/* Teal, not cyan. Cyan was the only place on the Commercial
+                  platform using that family, and the dark theme never remapped
+                  it — so this one pill kept Tailwind's stock cyan and glowed
+                  next to two siblings that desaturate properly. Teal sits in
+                  the same blue-green slot between the blue "open bids" and the
+                  emerald "weighted", it now has a dark ramp, and it already
+                  means in-delivery on the Field Ops board. */}
               {inDelivery.length > 0 && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border bg-cyan-50 text-cyan-800 border-cyan-200 tabular-nums">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border bg-teal-50 text-teal-800 border-teal-200 tabular-nums">
                   {inDelivery.length}
-                  <span className="font-medium text-cyan-700">under contract</span>
+                  <span className="font-medium text-teal-700">under contract</span>
                 </span>
               )}
               {weightedCents > 0 && (
