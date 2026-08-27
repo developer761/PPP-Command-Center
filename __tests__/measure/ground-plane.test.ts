@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   cameraForward, depressionAngle, groundPoint, groundDistance,
   groundErrorEstimate, groundAimQuality, averageAttitude, attitudeSpread,
-  calibrateHeight, type Attitude,
+  calibrateHeight, groundPointSnapped, type Attitude,
 } from "@/lib/measure/ground-plane";
 
 const FT = 0.3048;
@@ -272,5 +272,49 @@ describe("height calibration — the error averaging cannot remove", () => {
     expect(h).not.toBeNull();
     expect(h!).toBeGreaterThan(1.5);
     expect(h!).toBeLessThan(1.7);
+  });
+});
+
+
+describe("snapping the aim to a detected edge", () => {
+  const h = 1.524;
+
+  it("with no correction it matches the unsnapped point exactly", () => {
+    const a: Attitude = { alpha: 35, beta: 62, gamma: 0 };
+    const plain = groundPoint(a, h)!;
+    const snapped = groundPointSnapped(a, h, 0)!;
+    expect(snapped.x).toBeCloseTo(plain.x, 9);
+    expect(snapped.y).toBeCloseTo(plain.y, 9);
+  });
+
+  it("aiming further down brings the point closer, and vice versa", () => {
+    const a: Attitude = { alpha: 0, beta: 65, gamma: 0 };
+    const base = Math.hypot(groundPoint(a, h)!.x, groundPoint(a, h)!.y);
+    const lower = groundPointSnapped(a, h, 2 * D2R)!;
+    const higher = groundPointSnapped(a, h, -2 * D2R)!;
+    expect(Math.hypot(lower.x, lower.y)).toBeLessThan(base);
+    expect(Math.hypot(higher.x, higher.y)).toBeGreaterThan(base);
+  });
+
+  it("moves the pitch WITHOUT dragging the bearing along", () => {
+    // The detector scans rows for a horizontal line, so it knows nothing about
+    // left and right. Rotating the whole forward vector would silently swing
+    // the bearing too, which shows up as a wrong wall length rather than as an
+    // obviously wrong direction.
+    const a: Attitude = { alpha: 40, beta: 62, gamma: 0 };
+    const before = groundPoint(a, h)!;
+    const after = groundPointSnapped(a, h, 3 * D2R)!;
+    expect(Math.atan2(after.x, after.y)).toBeCloseTo(Math.atan2(before.x, before.y), 9);
+  });
+
+  it("refuses a correction that lifts the aim off the floor", () => {
+    // A large upward nudge on an already-shallow aim would otherwise return a
+    // distance racing toward infinity.
+    const shallow: Attitude = { alpha: 0, beta: 88, gamma: 0 };
+    expect(groundPointSnapped(shallow, h, -5 * D2R)).toBeNull();
+  });
+
+  it("has nothing to preserve when pointing straight down", () => {
+    expect(groundPointSnapped({ alpha: 0, beta: 0, gamma: 0 }, h, 1 * D2R)).toBeNull();
   });
 });

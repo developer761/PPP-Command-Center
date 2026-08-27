@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ModalPortal from "@/components/modal-portal";
 import {
-  groundPoint, groundDistance, averageAttitude, attitudeSpread, groundAimQuality,
-  depressionAngle, calibrateHeight, type Attitude, type Vec2,
+  groundPoint, groundPointSnapped, groundDistance, averageAttitude, attitudeSpread,
+  groundAimQuality, depressionAngle, calibrateHeight, type Attitude, type Vec2,
 } from "@/lib/measure/ground-plane";
+import {
+  grayWindow, rowGradientProfile, findDominantEdge, pixelOffsetToAngle, DEFAULT_V_FOV,
+} from "@/lib/measure/edge-snap";
 import FeetInchesInput, {
   EMPTY_FT_IN, toDecimalFeet, fromDecimalFeet, type FeetInchesValue,
 } from "@/components/feet-inches-input";
@@ -82,6 +85,28 @@ export default function MeasureGround({
   const bearingHintRef = useRef<HTMLSpanElement>(null);
   const pointsRef = useRef<Vec2[]>([]);
   const heightRef = useRef(1.524);
+  /**
+   * Edge snapping. The detector reads the live frame and reports where the
+   * wall-floor junction sits relative to the centre of the screen; that offset
+   * becomes a pitch correction applied to every sample.
+   *
+   * Aim placement is the largest remaining error now that tremor is averaged
+   * out and height is calibrated: a 20px misplacement costs about 4in on a 12ft
+   * wall, against the 0.34in the burst-average achieves. Snapping takes that to
+   * roughly a quarter inch even with the assumed field of view 20% wrong.
+   */
+  const snapRef = useRef(0);
+  const snapCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [snapped, setSnapped] = useState(false);
+  /**
+   * The detected line, drawn where it actually is.
+   *
+   * Showing the lock as a bar through the crosshair would make a WRONG lock —
+   * a rug edge, a shadow, a skirting board — look exactly like a right one. The
+   * whole safety of snapping rests on the worker being able to see what it
+   * grabbed, so the line is drawn at the row it was found on.
+   */
+  const snapLineRef = useRef<HTMLDivElement>(null);
   useEffect(() => { pointsRef.current = points; }, [points]);
   useEffect(() => { heightRef.current = heightM; }, [heightM]);
 
@@ -119,7 +144,7 @@ export default function MeasureGround({
     attitudeRef.current = a;
     if (burstRef.current) burstRef.current.push(a);
 
-    const here = groundPoint(a, heightRef.current);
+    const here = groundPointSnapped(a, heightRef.current, snapRef.current);
     const pts = pointsRef.current;
 
     const out = readoutRef.current;
@@ -160,6 +185,75 @@ export default function MeasureGround({
     stopStream();
     window.removeEventListener("deviceorientation", onOrientation);
   }, [stopStream, onOrientation]);
+
+  /**
+   * Look for the wall–floor junction near the centre of the frame.
+   *
+   * On a timer at ~12Hz, not once per rendered frame. The correction only has
+   * to be current while the phone is being held still — which is exactly when a
+   * measurement is taken — and running edge detection 60 times a second would
+   * burn battery on a job site to no benefit.
+   *
+   * A stale correction paired with a fresh attitude would be wrong while the
+   * phone is swinging, so the snap is dropped the moment the detector loses
+   * confidence rather than being allowed to persist.
+   */
+  useEffect(() => {
+    if (phase !== "live") return;
+    const canvas = snapCanvasRef.current ?? document.createElement("canvas");
+    snapCanvasRef.current = canvas;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    let stop = false;
+
+    const tick = () => {
+      if (stop) return;
+      const v = videoRef.current;
+      if (!ctx || !v || !v.videoWidth) return;
+      // Downscale hard: the junction is a long low-frequency edge, so detail
+      // beyond a few hundred pixels adds cost and noise, not accuracy.
+      const W = 240;
+      const H = Math.max(8, Math.round((v.videoHeight / v.videoWidth) * W));
+      if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+      try {
+        ctx.drawImage(v, 0, 0, W, H);
+      } catch {
+        return;   // frame not ready
+      }
+      // 55% of the frame height. Narrower keeps the detector honest but makes
+      // it refuse a junction that is plainly visible on screen; this band still
+      // bounds how far a snap can pull the aim, via maxDelta below.
+      const winH = Math.max(9, Math.round(H * 0.55));
+      const winW = Math.max(3, Math.round(W * 0.6));
+      const win = grayWindow(ctx.getImageData(0, 0, W, H).data, W, H, winW, winH);
+      if (!win) return;
+      const hit = findDominantEdge(rowGradientProfile(win.gray, win.width, win.height), 2.2);
+      const hide = () => { if (snapLineRef.current) snapLineRef.current.style.opacity = "0"; };
+      if (!hit) { snapRef.current = 0; setSnapped(false); hide(); return; }
+      // Angle per pixel is set by the FULL frame, never the crop window.
+      const delta = pixelOffsetToAngle(hit.offsetPx, H, DEFAULT_V_FOV);
+      // A correction larger than the window could justify means the detector
+      // has locked onto something else — a doorway, a counter, a shadow.
+      const maxDelta = pixelOffsetToAngle(winH / 2, H, DEFAULT_V_FOV);
+      if (Math.abs(delta) > maxDelta) { snapRef.current = 0; setSnapped(false); hide(); return; }
+      snapRef.current = delta;
+      setSnapped(true);
+
+      // Put the indicator on the row it was actually found on. The feed is
+      // object-cover, so the video is scaled to fill and cropped — the visible
+      // height of the whole frame is videoH * that scale, not the container's.
+      const bar = snapLineRef.current;
+      if (bar) {
+        const box = v.getBoundingClientRect();
+        const scale = Math.max(box.width / v.videoWidth, box.height / v.videoHeight);
+        const shownFrameH = v.videoHeight * scale;
+        bar.style.transform = `translateY(${(hit.offsetPx / H) * shownFrameH}px)`;
+        bar.style.opacity = "1";
+      }
+    };
+
+    const id = window.setInterval(tick, 80);
+    return () => { stop = true; window.clearInterval(id); snapRef.current = 0; };
+  }, [phase]);
 
   /** Both permissions must be asked from the tap, not on mount — iOS requires it. */
   const start = async () => {
@@ -212,7 +306,7 @@ export default function MeasureGround({
       // near the horizon a degree of tremor is worth feet, not inches.
       const quality = groundAimQuality(depressionAngle(avg), heightRef.current);
       if (!quality.usable) { haptic("rejected"); setAimWarning(quality.reason); return; }
-      const p = groundPoint(avg, heightRef.current);
+      const p = groundPointSnapped(avg, heightRef.current, snapRef.current);
       if (!p) { haptic("rejected"); setAimWarning("Aim down at the floor where the wall meets it."); return; }
       onPoint(p, attitudeSpread(samples));
     }, BURST_MS);
@@ -296,24 +390,31 @@ export default function MeasureGround({
                     </circle>
                   )}
                   <circle cx="38" cy="38" r="20" fill="none" stroke="rgba(0,0,0,.5)" strokeWidth="4" />
-                  <circle cx="38" cy="38" r="20" fill="none" stroke="#fff" strokeWidth="2" />
+                  <circle cx="38" cy="38" r="20" fill="none"
+                    stroke={snapped ? "#8DC442" : "#fff"} strokeWidth={snapped ? 3 : 2} />
+
                   <circle cx="38" cy="38" r="2.5" fill="#EE662E" />
                 </svg>
               </div>
+              {/* The detected floor line, at the row it was found on. */}
+              <div
+                ref={snapLineRef} aria-hidden
+                className="opacity-0 absolute left-0 right-0 top-1/2 h-0 border-t-2 border-ppp-green pointer-events-none transition-opacity duration-150 shadow-[0_0_0_1px_rgba(0,0,0,.45)]"
+              />
               <p className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-[11px] text-center max-w-[92%] pointer-events-none">
-                {capturing ? "Hold still…" : "Put the crosshair where the wall meets the floor"}
+                {capturing ? "Hold still…"
+                  : snapped ? "Locked on the floor line — press Add"
+                  : "Put the crosshair where the wall meets the floor"}
               </p>
               {/* A fixed scrim, not a themed fill. This sits on live video, which
                   has no theme of its own — and every themed 600-900 token flips
                   role in dark mode, so white on one of those is unreadable half
                   the time. Black at 78% is legible over any room. */}
               <span
-                ref={aimStatusRef} style={{ opacity: 0 }}
-                className="absolute top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/[.78] text-ppp-orange-100 text-[11px] font-semibold text-center max-w-[92%] pointer-events-none transition-opacity"
+                ref={aimStatusRef} className="opacity-0 absolute top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/[.78] text-ppp-orange-100 text-[11px] font-semibold text-center max-w-[92%] pointer-events-none transition-opacity"
               />
               <span
-                ref={bearingHintRef} style={{ opacity: 0 }}
-                className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/55 text-white/90 text-[11px] text-center pointer-events-none transition-opacity"
+                ref={bearingHintRef} className="opacity-0 absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/55 text-white/90 text-[11px] text-center pointer-events-none transition-opacity"
               />
             </>
           )}

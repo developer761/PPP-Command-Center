@@ -236,3 +236,35 @@ export function calibrateHeight(
   if (h < 0.6 || h > 2.4) return null;
   return h;
 }
+
+/**
+ * The same floor point, with the aim nudged up or down by a known angle.
+ *
+ * Used by edge snapping: the detector says the wall–floor junction sits a few
+ * pixels off centre, that offset converts to an angle, and the aim is corrected
+ * by it before the distance is worked out.
+ *
+ * Only the PITCH moves. The bearing is left exactly as the phone reports it,
+ * because the detector searches rows for a near-horizontal line and therefore
+ * knows nothing about left and right. Rotating the whole forward vector would
+ * quietly drag the bearing along with the correction.
+ */
+export function groundPointSnapped(
+  a: Attitude,
+  cameraHeightM: number,
+  pitchDeltaRad: number
+): Vec2 | null {
+  if (!(cameraHeightM > 0)) return null;
+  const f = cameraForward(a);
+  const horiz = Math.hypot(f.x, f.y);
+  // Straight up or straight down has no bearing to preserve, and the division
+  // below would be by zero.
+  if (horiz < 1e-6) return null;
+  const dep = Math.atan2(-f.z, horiz) + pitchDeltaRad;
+  // Still has to point at the floor after the nudge.
+  if (!(dep > 1e-4)) return null;
+  const t = cameraHeightM / Math.sin(dep);
+  const flat = Math.cos(dep) * t;
+  const p = { x: (f.x / horiz) * flat, y: (f.y / horiz) * flat };
+  return Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+}

@@ -271,9 +271,9 @@ export default function MeasureAR({
         {phase === "running" ? (
           <>
             <svg className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden>
-              <line ref={lineRef} stroke="#8DC442" strokeWidth={4} strokeLinecap="round" style={{ opacity: 0 }} />
-              <circle ref={dotRef} r={8} fill="#8DC442" stroke="#fff" strokeWidth={2} style={{ opacity: 0 }} />
-              <g ref={labelRef} style={{ opacity: 0 }}>
+              <line ref={lineRef} stroke="#8DC442" strokeWidth={4} strokeLinecap="round" className="opacity-0" />
+              <circle ref={dotRef} r={8} fill="#8DC442" stroke="#fff" strokeWidth={2} className="opacity-0" />
+              <g ref={labelRef} className="opacity-0">
                 <rect ref={labelBgRef} x={-30} y={-15} width={60} height={30} rx={15} fill="rgba(0,0,0,.72)" />
                 <text ref={labelTextRef} x={0} y={6} textAnchor="middle"
                   fontSize={17} fontWeight={700} fill="#fff">0</text>
