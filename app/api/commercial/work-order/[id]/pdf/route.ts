@@ -75,11 +75,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   let pdf: Buffer;
   try {
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
     const { renderWorkOrderPdf } = await import("@/lib/commercial/work-orders/pdf");
     const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
     const oc = await getOperatingCompany();
     const [logo, signature] = await Promise.all([getBrandLogoBuffer(), getBrandSignatureBuffer()]);
-    pdf = await renderWorkOrderPdf({
+    const __args = {
       content,
       header: {
         dealName,
@@ -106,7 +107,15 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       company: { name: oc.name, phone: oc.phone, website: oc.website, signature_name: oc.signature_name, signature_title: oc.signature_title },
       logo,
       signature,
-    });
+    };
+    // Karan 2026-08-26: "everything is supposed to have one page for the
+    // PDF." Laid out on a taller sheet until it flows onto one page, then
+    // scaled back to Letter — see lib/commercial/proposals/fit-one-page.
+    const __fit = await renderFitToOnePage((pageHeightScale) =>
+      renderWorkOrderPdf({ ...__args, pageHeightScale })
+    );
+    pdf = __fit.bytes;
+    if (!__fit.fitted) console.warn("[work-order-pdf] too long to fit one readable page — sent at natural length");
   } catch (err) {
     console.error("[work-order-pdf] render failed:", err);
     return NextResponse.json({ error: "pdf_render_failed" }, { status: 500 });

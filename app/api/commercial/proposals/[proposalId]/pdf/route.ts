@@ -184,29 +184,29 @@ export async function GET(
       }),
     };
 
-    if (mode === "internal") {
-      // Karan 2026-08-26: "when I do plan report and have like 5 line items it
-      // goes to 2 different pages — it should always be one." The report is
-      // laid out on progressively taller sheets until it flows onto one page,
-      // then scaled back to Letter. See fit-one-page for why it isn't done by
-      // trimming content or shrinking type directly.
-      const { renderFitToOnePage } = await import(
-        "@/lib/commercial/proposals/fit-one-page"
+    // BOTH copies are one page. Karan 2026-08-26: "everything is supposed to
+    // have one page for the PDF, unless it's internal — then when we add bid
+    // notes it can have more."
+    //
+    // The internal report was done first and the customer copy deliberately
+    // left alone, on my reasoning that a letterhead document a GC signs should
+    // never be rescaled. That was my call to make and it was the wrong one:
+    // five of the live proposals were going out at two pages. The rule is the
+    // rule; the internal copy's exemption is only for the plan set spliced onto
+    // its END, which is added after this fit and so doesn't fight it.
+    const { renderFitToOnePage } = await import(
+      "@/lib/commercial/proposals/fit-one-page"
+    );
+    const fit = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({ ...shared, pageHeightScale })
+    );
+    pdfBuffer = fit.bytes;
+    if (!fit.fitted) {
+      // Past the legibility floor. One page nobody can read is not what was
+      // asked for, so it keeps its natural length — worth knowing about.
+      console.warn(
+        `[proposal-pdf] ${mode} copy of ${proposalId} is too long to fit one readable page (${lineItems.length} line items)`
       );
-      const fit = await renderFitToOnePage((pageHeightScale) =>
-        renderProposalPdf({ ...shared, pageHeightScale })
-      );
-      pdfBuffer = fit.bytes;
-      if (!fit.fitted) {
-        // Past the legibility floor. One page nobody can read is not what was
-        // asked for, so it keeps its natural length — worth knowing about.
-        console.warn(
-          `[proposal-pdf] report ${proposalId} is too long to fit one readable page (${lineItems.length} line items)`
-        );
-      }
-    } else {
-      // The customer copy is a letterhead document and is never rescaled.
-      pdfBuffer = await renderProposalPdf(shared);
     }
   } catch (err) {
     // Post-audit fix: log the full error server-side but return an

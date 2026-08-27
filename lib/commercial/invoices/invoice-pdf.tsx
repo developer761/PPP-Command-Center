@@ -101,6 +101,10 @@ export type InvoicePdfRow = {
 };
 
 export type InvoicePdfInput = {
+  /** Lay out on a sheet this many times taller than Letter, so the document
+   *  flows onto ONE page and the caller can scale it back down. 1 = ordinary
+   *  Letter. See lib/commercial/proposals/fit-one-page. */
+  pageHeightScale?: number;
   invoiceNumber: string;
   issuedAt: string | null;
   dueAt: string | null;
@@ -207,7 +211,7 @@ function InvoiceDoc(input: InvoicePdfInput) {
   const overdue = input.balanceCents > 0 && !!dueDay && isPastEt(dueDay);
   return (
     <Document>
-      <Page size="LETTER" style={styles.page}>
+      <Page size={(input.pageHeightScale ?? 1) === 1 ? "LETTER" : { width: 612, height: 792 * (input.pageHeightScale ?? 1) }} style={styles.page}>
         {input.isVoid ? (
           <Text style={styles.voidWatermark} fixed>
             VOIDED

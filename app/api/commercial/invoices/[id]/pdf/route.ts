@@ -45,7 +45,21 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   let pdfBuffer: Buffer;
   try {
     const { renderInvoicePdf } = await import("@/lib/commercial/invoices/invoice-pdf");
-    pdfBuffer = await renderInvoicePdf(input);
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    // Karan 2026-08-26: "everything is supposed to have one page for the PDF."
+    // A one-line invoice on a job that carries a contract summary was coming
+    // out at two — the summary is a keep-together block, so it moved wholesale
+    // to a second sheet rather than splitting. This lays it out on a taller
+    // sheet until it flows onto one page, then scales back to Letter.
+    const fit = await renderFitToOnePage((pageHeightScale) =>
+      renderInvoicePdf({ ...input, pageHeightScale })
+    );
+    pdfBuffer = fit.bytes;
+    if (!fit.fitted) {
+      console.warn(
+        `[invoice-pdf] invoice ${id} is too long to fit one readable page — sent at its natural length`
+      );
+    }
   } catch (err) {
     console.error("[invoice-pdf] render failed:", err);
     return NextResponse.json(

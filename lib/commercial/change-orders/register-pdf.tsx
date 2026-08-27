@@ -171,6 +171,12 @@ export type ChangeOrderRegisterRow = {
 };
 
 export type ChangeOrderRegisterInput = {
+  /** Lay out on a sheet this many times taller than Letter so the document
+   *  flows onto ONE page; the caller scales it back to Letter. Karan
+   *  2026-08-26: "everything is supposed to have one page for the PDF."
+   *  See lib/commercial/proposals/fit-one-page. */
+  pageHeightScale?: number;
+
   projectName: string;
   jobNumber: string | null;
   address: string | null;
@@ -268,7 +274,7 @@ function ChangeOrderRegisterDocument(input: ChangeOrderRegisterInput) {
 
   return (
     <Document title={`Change Orders — ${input.projectName}`}>
-      <Page size="LETTER" style={styles.page}>
+      <Page size={(input.pageHeightScale ?? 1) === 1 ? "LETTER" : { width: 612, height: 792 * (input.pageHeightScale ?? 1) }} style={styles.page}>
         {input.logo ? (
           <Image src={input.logo} style={styles.logoImage} />
         ) : (

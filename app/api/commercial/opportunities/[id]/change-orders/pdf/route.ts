@@ -69,7 +69,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const { renderChangeOrderRegisterPdf, changeOrderRegisterDocNumber } = await import(
       "@/lib/commercial/change-orders/register-pdf"
     );
-    pdf = await renderChangeOrderRegisterPdf({
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    const __args = {
       projectName: derivedOppName(opp, account.company_name ?? null),
       jobNumber: opp.deal_number ?? formatOpportunityNumber(opp.project_number) ?? null,
       address: addressParts.join(", ") || null,
@@ -87,7 +88,15 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       originalContractCents: baseContract > 0 ? baseContract : null,
       company: { name: company.name, phone: company.phone, website: company.website },
       logo,
-    });
+    };
+    // Karan 2026-08-26: "everything is supposed to have one page for the
+    // PDF." Laid out on a taller sheet until it flows onto one page, then
+    // scaled back to Letter — see lib/commercial/proposals/fit-one-page.
+    const __fit = await renderFitToOnePage((pageHeightScale) =>
+      renderChangeOrderRegisterPdf({ ...__args, pageHeightScale })
+    );
+    pdf = __fit.bytes;
+    if (!__fit.fitted) console.warn("[co-register-pdf] too long to fit one readable page — sent at natural length");
   } catch (err) {
     console.error("[change-orders-register-pdf] render failed:", err);
     return NextResponse.json({ error: "pdf_render_failed" }, { status: 500 });

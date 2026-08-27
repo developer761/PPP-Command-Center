@@ -369,12 +369,34 @@ export type WorkOrderIndexRow = {
 
 export async function listAllWorkOrders(): Promise<WorkOrderIndexRow[]> {
   const sb = commercialDb();
+  // A work order is only real if the job and the company it belongs to still
+  // are. This filtered on `voided_at` alone, so it returned sheets for deleted
+  // deals and deleted GCs — 7 of the 10 rows on this platform today, left
+  // behind by the orphan leak that the account cascade fixed on 2026-08-10
+  // without cleaning up what it had already produced.
+  //
+  // Nothing user-facing renders them right now (the Work Orders index is a
+  // retired redirect, and the one live caller only looks up opportunities that
+  // have already passed a deleted filter). That is luck, not design: the name
+  // says "all work orders" and the next caller would inherit stale sheets for
+  // companies that no longer exist — exactly the "stray WO" bug this codebase
+  // has already chased twice.
+  //
+  // `!inner` is the Supabase idiom for "must exist AND match the filter below".
   const { data } = await sb
     .from("commercial_work_orders")
-    .select("id, opportunity_id, account_id, status, sent_at, updated_at")
+    .select(
+      "id, opportunity_id, account_id, status, sent_at, updated_at, " +
+        "opp:commercial_opportunities!inner(deleted_at), account:commercial_accounts!inner(deleted_at)"
+    )
     .is("voided_at", null)
+    .is("opp.deleted_at", null)
+    .is("account.deleted_at", null)
     .order("updated_at", { ascending: false });
-  return (data ?? []) as WorkOrderIndexRow[];
+  // Strip the join shape — callers want plain rows.
+  return ((data ?? []) as unknown as Array<WorkOrderIndexRow & { opp?: unknown; account?: unknown }>).map(
+    ({ opp: _o, account: _a, ...rest }) => rest as WorkOrderIndexRow
+  );
 }
 
 // ────────────── Autofill: compose the WO body from proposal + finishes ──────

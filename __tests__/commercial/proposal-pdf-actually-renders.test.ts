@@ -322,16 +322,26 @@ describe("the plan report fits on one page", () => {
     expect(await pdfPageCount(r.bytes)).toBeGreaterThan(1);
   });
 
-  it("never rescales the customer copy", async () => {
-    // Fit-to-page is for the estimator's working document. The letterhead a GC
-    // signs must always be full size.
-    const buf = await renderProposalPdf({
-      proposal: proposal(), lineItems: items(5),
-      exclusions: heavy.exclusions, qualifications: heavy.qualifications,
-      mode: "customer",
-    });
+  it("the CUSTOMER copy is one page too", async () => {
+    // I originally exempted the customer copy, reasoning that a letterhead a GC
+    // signs shouldn't be rescaled. Karan overruled it — "everything is supposed
+    // to have one page" — and he was right: five live proposals were going out
+    // at two pages. Only the INTERNAL copy may run long, and only because a
+    // plan set gets spliced onto its end after this fit.
+    const { renderFitToOnePage, pdfPageCount } = await import(
+      "@/lib/commercial/proposals/fit-one-page"
+    );
+    const r = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({
+        proposal: proposal(), lineItems: items(5),
+        exclusions: heavy.exclusions, qualifications: heavy.qualifications,
+        mode: "customer", pageHeightScale,
+      })
+    );
+    expect(await pdfPageCount(r.bytes)).toBe(1);
     const { PDFDocument } = await import("pdf-lib");
-    const size = (await PDFDocument.load(new Uint8Array(buf))).getPage(0).getSize();
+    const size = (await PDFDocument.load(new Uint8Array(r.bytes))).getPage(0).getSize();
+    expect(Math.round(size.width)).toBe(612);
     expect(Math.round(size.height)).toBe(792);
   });
 });

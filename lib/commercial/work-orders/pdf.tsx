@@ -53,6 +53,12 @@ export type CompanyContact = {
 };
 
 export type WorkOrderPdfInput = {
+  /** Lay out on a sheet this many times taller than Letter so the document
+   *  flows onto ONE page; the caller scales it back to Letter. Karan
+   *  2026-08-26: "everything is supposed to have one page for the PDF."
+   *  See lib/commercial/proposals/fit-one-page. */
+  pageHeightScale?: number;
+
   content: WorkOrderContent;
   header: {
     dealName: string;
@@ -175,11 +181,11 @@ function FinishGrid({ rows }: { rows: WorkOrderFinishRow[] }) {
   );
 }
 
-function WorkOrderDoc({ content, header, company, logo, signature }: WorkOrderPdfInput) {
+function WorkOrderDoc({ content, header, company, logo, signature, pageHeightScale = 1 }: WorkOrderPdfInput) {
   const { inclusions, alternates, exclusions, finishes } = content;
   return (
     <Document>
-      <Page size="LETTER" style={styles.page}>
+      <Page size={pageHeightScale === 1 ? "LETTER" : { width: 612, height: 792 * pageHeightScale }} style={styles.page}>
         <LogoBlock company={company} logo={logo} />
 
         <View style={styles.row}>

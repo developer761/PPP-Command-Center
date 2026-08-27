@@ -72,3 +72,54 @@ describe("renderInvoicePdf", () => {
     expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
   });
 });
+
+/**
+ * How many PAGES the invoice takes.
+ *
+ * Every test above asserts the bytes start with "%PDF-", which proves the
+ * component tree is valid and nothing else. They would all pass on a
+ * five-page invoice for a one-line job — and page count is the defect people
+ * actually notice, because this document goes to a GC's accounts-payable desk.
+ *
+ * Checked after finding the same blind spot on the plan report, where it had
+ * quietly grown to two pages and pushed the estimator sign-off onto a sheet of
+ * its own.
+ */
+describe("invoice page count", () => {
+  const pages = async (input: InvoicePdfInput) => {
+    const { PDFDocument } = await import("pdf-lib");
+    const buf = await renderInvoicePdf(input);
+    return (await PDFDocument.load(new Uint8Array(buf), { ignoreEncryption: true })).getPageCount();
+  };
+  const row = (i: number) => ({
+    description: `Line item ${i} — interior repaint, two coats`,
+    quantity: 1, unit: null, unitPriceCents: 25_000, amountCents: 25_000,
+  });
+
+  it("a short invoice is ONE page", async () => {
+    expect(await pages(baseInput({ rows: [row(1)] }))).toBe(1);
+  });
+
+  it("an empty invoice is one page, not zero", async () => {
+    // A zero-page PDF opens to nothing; it would look like a broken download.
+    expect(await pages(baseInput({ rows: [], customerMessage: null, poNumber: null }))).toBe(1);
+  });
+
+  it("a typical invoice still fits on one page", async () => {
+    expect(await pages(baseInput({ rows: [1, 2, 3].map(row) }))).toBe(1);
+  });
+
+  it("a long invoice grows, but stays proportionate", async () => {
+    // 20 lines legitimately needs a second sheet. What this guards against is a
+    // layout change that suddenly makes it five.
+    expect(await pages(baseInput({ rows: Array.from({ length: 20 }, (_, i) => row(i)) }))).toBeLessThanOrEqual(2);
+  });
+
+  it("is LETTER, so it prints on US paper without scaling", async () => {
+    const { PDFDocument } = await import("pdf-lib");
+    const buf = await renderInvoicePdf(baseInput());
+    const size = (await PDFDocument.load(new Uint8Array(buf))).getPage(0).getSize();
+    expect(Math.round(size.width)).toBe(612);
+    expect(Math.round(size.height)).toBe(792);
+  });
+});

@@ -52,6 +52,12 @@ export type ChangeOrderPdfCompany = {
 };
 
 export type ChangeOrderPdfInput = {
+  /** Lay out on a sheet this many times taller than Letter so the document
+   *  flows onto ONE page; the caller scales it back to Letter. Karan
+   *  2026-08-26: "everything is supposed to have one page for the PDF."
+   *  See lib/commercial/proposals/fit-one-page. */
+  pageHeightScale?: number;
+
   coNumber: string;
   title: string;
   description: string | null;
@@ -98,7 +104,7 @@ function ChangeOrderDoc(input: ChangeOrderPdfInput) {
   const barColor = input.isDeduct ? "#b91c1c" : "#172B4D";
   return (
     <Document>
-      <Page size="LETTER" style={styles.page}>
+      <Page size={(input.pageHeightScale ?? 1) === 1 ? "LETTER" : { width: 612, height: 792 * (input.pageHeightScale ?? 1) }} style={styles.page}>
         <View>
           {input.logo ? <Image src={input.logo} style={styles.logoImage} /> : <Text style={styles.wordmark}>{input.company.name}</Text>}
           {headerContact ? <Text style={styles.contact}>{headerContact}</Text> : null}

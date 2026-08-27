@@ -86,10 +86,27 @@ try {
 
   // Real records, so the dynamic routes are exercised too — a page that only
   // renders with data is exactly where a runtime error hides.
+  //
+  // The opportunity and invoice pick their PARENT too. Filtering on the row's
+  // own `deleted_at` alone picked up an ORPHAN — a live job whose GC had been
+  // deleted — and every one of its twelve tab URLs then smoke-tested the
+  // not-found page and passed. Twelve green checks that touched none of the
+  // code they were meant to cover. `!inner` is the Supabase idiom for "the
+  // parent must exist AND match the filter below".
   const [{ data: acc }, { data: opp }, { data: inv }] = await Promise.all([
     admin.from("commercial_accounts").select("id").is("deleted_at", null).limit(1),
-    admin.from("commercial_opportunities").select("id").is("deleted_at", null).limit(1),
-    admin.from("commercial_invoices").select("id").is("deleted_at", null).limit(1),
+    admin
+      .from("commercial_opportunities")
+      .select("id, account:commercial_accounts!inner(deleted_at)")
+      .is("deleted_at", null)
+      .is("account.deleted_at", null)
+      .limit(1),
+    admin
+      .from("commercial_invoices")
+      .select("id, account:commercial_accounts!inner(deleted_at)")
+      .is("deleted_at", null)
+      .is("account.deleted_at", null)
+      .limit(1),
   ]);
 
   const paths = [...staticPages()];

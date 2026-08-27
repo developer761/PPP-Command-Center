@@ -48,7 +48,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   let pdfBuffer: Buffer;
   try {
     const { renderChangeOrderPdf } = await import("@/lib/commercial/change-orders/pdf");
-    pdfBuffer = await renderChangeOrderPdf(built.input);
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    // Karan 2026-08-26: "everything is supposed to have one page for the PDF."
+    const fit = await renderFitToOnePage((pageHeightScale) =>
+      renderChangeOrderPdf({ ...built.input, pageHeightScale })
+    );
+    pdfBuffer = fit.bytes;
+    if (!fit.fitted) console.warn("[change-order-pdf] too long to fit one readable page — sent at natural length");
   } catch (err) {
     console.error("[change-order-pdf] render failed:", err);
     return NextResponse.json(
