@@ -5,6 +5,7 @@ import { geometryFromDimensions, perimeterGainVsSquareGuess, distributeHouseSqft
 import { CONFIDENCE_LABEL, SOURCE_LABEL, type MeasureSuggestion, type MeasureConfidence } from "@/lib/measure/types";
 import MeasurePhotoTool, { type PhotoMeasureResult } from "@/components/measure-photo-tool";
 import MeasureFloorPlan from "@/components/measure-floor-plan";
+import FeetInchesInput, { fromDecimalFeet, toDecimalFeet } from "@/components/feet-inches-input";
 
 /**
  * Standalone sandbox for the room-measurement tool.
@@ -72,24 +73,26 @@ export default function MeasureSandbox() {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...p } : r)));
 
   const totals = useMemo(() => {
-    let sqft = 0, wall = 0, measured = 0;
+    let sqft = 0, wall = 0, measured = 0, assumedCeilings = 0;
     for (const r of rows) {
       const L = parseFloat(r.lengthFt) || 0, W = parseFloat(r.widthFt) || 0;
       if (r.planAreaSqft) {
         // Walked: real area AND real perimeter, so the wall figure uses the
         // room's actual shape rather than a rectangle standing in for it.
         const h = parseFloat(r.ceilingFt) || 8;
+        if (!(parseFloat(r.ceilingFt) > 0)) assumedCeilings++;
         sqft += r.planAreaSqft;
         wall += Math.round((r.planPerimeterLf ?? 0) * h);
         measured++;
       } else if (L > 0 && W > 0) {
         const g = geometryFromDimensions({ lengthFt: L, widthFt: W, ceilingFt: parseFloat(r.ceilingFt) || 0 });
+        if (g.ceilingAssumed) assumedCeilings++;
         sqft += g.floorAreaSqft; wall += g.paintableWallSqft; measured++;
       } else if (r.suggestion) {
         sqft += r.suggestion.sqft; measured++;
       }
     }
-    return { sqft: Math.round(sqft), wall: Math.round(wall), measured };
+    return { sqft: Math.round(sqft), wall: Math.round(wall), measured, assumedCeilings };
   }, [rows]);
 
   async function searchWorkOrders(q: string) {
@@ -361,7 +364,7 @@ export default function MeasureSandbox() {
       {/* Sticky so the running total stays visible while working down a list —
           the number that answers "is this job sized yet". */}
       {totals.measured > 0 && (
-        <div className="sticky bottom-0 bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 shadow-lg shadow-ppp-charcoal/10">
+        <div className="sticky bottom-0 bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 pb-safe-sm shadow-lg shadow-ppp-charcoal/10">
           <div className="flex items-baseline justify-between gap-3 flex-wrap text-sm">
             <span className="font-semibold text-ppp-charcoal">
               {totals.measured} of {rows.length} rooms sized
@@ -371,6 +374,16 @@ export default function MeasureSandbox() {
               {totals.wall > 0 && <> · <strong className="text-ppp-navy">{totals.wall.toLocaleString()}</strong> sq ft wall</>}
             </span>
           </div>
+          {/* The wall figure is what paint gets ordered against. When it rests
+              on an assumed 8 ft ceiling rather than a measured one, say so —
+              a real 9 ft ceiling under-orders by 12% and nothing else on this
+              screen would ever reveal it. */}
+          {totals.assumedCeilings > 0 && totals.wall > 0 && (
+            <p className="mt-1.5 text-[11px] text-ppp-orange-700 leading-snug">
+              {totals.assumedCeilings === 1 ? "1 room has" : `${totals.assumedCeilings} rooms have`} no ceiling
+              height — assuming 8 ft. Enter the real height if it differs.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -402,7 +415,7 @@ function RoomRow({
           value={row.label}
           onChange={(e) => onPatch({ label: e.target.value })}
           aria-label="Room name"
-          className="flex-1 min-w-0 px-3 py-2 text-base sm:text-sm font-semibold text-ppp-charcoal border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+          className="flex-1 min-w-0 min-h-[44px] px-3 py-2 text-base font-semibold text-ppp-charcoal border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
         />
         <button
           type="button" onClick={onRemove} aria-label={`Remove ${row.label}`}
@@ -410,16 +423,25 @@ function RoomRow({
         >✕</button>
       </div>
 
-      <div className="mt-3 flex gap-2 flex-wrap">
-        <Num label="Length ft" value={row.lengthFt} onChange={(v) => onPatch({ lengthFt: v })} />
-        <Num label="Width ft" value={row.widthFt} onChange={(v) => onPatch({ widthFt: v })} />
-        <Num label="Ceiling ft" value={row.ceilingFt} onChange={(v) => onPatch({ ceilingFt: v })} placeholder="8" />
-        <div className="flex items-end">
+      <div className="mt-3 space-y-2.5">
+        <div className="grid grid-cols-2 gap-2">
+          <Num label="Length" value={row.lengthFt} onChange={(v) => onPatch({ lengthFt: v })} />
+          <Num label="Width" value={row.widthFt} onChange={(v) => onPatch({ widthFt: v })} />
+          <Num label="Ceiling" value={row.ceilingFt} onChange={(v) => onPatch({ ceilingFt: v })} placeholderFeet="8" />
+        </div>
+        {/* Three equal targets, one row, always inside the card. The previous
+            version laid these out with a bare `flex` and whitespace-nowrap, so
+            on a phone they ran ~457px wide inside a ~358px card: the third one
+            was unreachable and the first two touched with no gap between them. */}
+        <div className="w-full grid grid-cols-3 gap-2">
           <button
             type="button" onClick={() => fileRef.current?.click()} disabled={row.busy}
-            className="min-h-[44px] px-3 rounded-lg border border-ppp-charcoal-200 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:opacity-50 touch-manipulation whitespace-nowrap"
+            className="flex flex-col items-center justify-center gap-0.5 min-h-[62px] px-1.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:opacity-50 touch-manipulation transition-colors"
           >
-            {row.busy ? "Reading…" : "✨ Estimate whole room"}
+            <span aria-hidden className="text-lg leading-none">✨</span>
+            <span className="text-[11px] font-semibold leading-tight text-center">
+              {row.busy ? "Reading…" : "Photo estimate"}
+            </span>
           </button>
           <input
             ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
@@ -427,15 +449,17 @@ function RoomRow({
           />
           <button
             type="button" onClick={() => tapRef.current?.click()}
-            className="min-h-[44px] px-3 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-sm font-medium text-ppp-blue-800 hover:bg-ppp-blue-100 touch-manipulation whitespace-nowrap"
+            className="flex flex-col items-center justify-center gap-0.5 min-h-[62px] px-1.5 py-2 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-800 hover:bg-ppp-blue-100 touch-manipulation transition-colors"
           >
-            📐 Measure a wall
+            <span aria-hidden className="text-lg leading-none">📐</span>
+            <span className="text-[11px] font-semibold leading-tight text-center">Measure a wall</span>
           </button>
           <button
             type="button" onClick={() => setPlanOpen(true)}
-            className="min-h-[44px] px-3 rounded-lg border border-ppp-charcoal-200 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 touch-manipulation whitespace-nowrap"
+            className="flex flex-col items-center justify-center gap-0.5 min-h-[62px] px-1.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal hover:bg-ppp-charcoal-50 touch-manipulation transition-colors"
           >
-            🧭 Walk the room
+            <span aria-hidden className="text-lg leading-none">🧭</span>
+            <span className="text-[11px] font-semibold leading-tight text-center">Walk the room</span>
           </button>
           <input
             ref={tapRef} type="file" accept="image/*" capture="environment" className="hidden"
@@ -561,16 +585,27 @@ function RoomRow({
   );
 }
 
-function Num({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+/**
+ * A length, entered the way a tape reads it.
+ *
+ * Stores decimal feet upstream — every consumer already parseFloat()s these —
+ * but never shows decimal feet to the person holding the tape. Asking for
+ * 12.58 when the tape says 12′ 7″ is a conversion done in someone else's
+ * hallway, and 12.7 is a different room.
+ */
+function Num({ label, value, onChange, placeholderFeet }: { label: string; value: string; onChange: (v: string) => void; placeholderFeet?: string }) {
+  const ftIn = fromDecimalFeet(parseFloat(value) || 0);
   return (
-    <label className="flex-1 min-w-[88px]">
-      <span className="block text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">{label}</span>
-      <input
-        type="number" inputMode="decimal" step="0.1" min="0"
-        value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2.5 text-base border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
-      />
-    </label>
+    <FeetInchesInput
+      compact
+      label={label}
+      placeholderFeet={placeholderFeet}
+      value={ftIn}
+      onChange={(v) => {
+        const dec = toDecimalFeet(v);
+        onChange(dec > 0 ? String(dec) : "");
+      }}
+    />
   );
 }
 

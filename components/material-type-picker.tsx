@@ -250,7 +250,7 @@ export default function MaterialTypePicker({
         className={
           triggerClassName ??
           (compact
-            ? "text-[11px] sm:text-[10px] px-2 py-1 border border-ppp-charcoal-100 rounded bg-white text-ppp-charcoal max-w-[180px] truncate focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue inline-flex items-center gap-1.5"
+            ? "text-[11px] sm:text-[10px] px-2 py-2.5 sm:py-1 min-h-[44px] sm:min-h-0 border border-ppp-charcoal-100 rounded bg-white text-ppp-charcoal max-w-[180px] truncate focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue inline-flex items-center gap-1.5 touch-manipulation"
             : "w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white text-left focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue inline-flex items-center justify-between gap-2")
         }
       >

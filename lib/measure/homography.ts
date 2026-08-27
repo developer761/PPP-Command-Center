@@ -107,7 +107,7 @@ export function measureOnPlane(H: Homography, a: Pt, b: Pt): number | null {
 export type CalibrationRect = { id: string; label: string; widthIn: number; heightIn: number; hint: string };
 
 export const CALIBRATION_RECTS: CalibrationRect[] = [
-  { id: "door_32", label: "Interior door (32″ × 80″)", widthIn: 32, heightIn: 80, hint: "Tap the four corners of the door frame, going round in order." },
+  { id: "door_32", label: "Interior door (32″ × 80″)", widthIn: 32, heightIn: 80, hint: "Line the crosshair up on each corner of the door frame, going round in order." },
   { id: "door_30", label: "Narrow door (30″ × 80″)", widthIn: 30, heightIn: 80, hint: "Older or closet doors are often 30″ wide." },
   { id: "door_36", label: "Wide door (36″ × 80″)", widthIn: 36, heightIn: 80, hint: "Front doors and accessible doors are usually 36″." },
   { id: "paper", label: "Sheet of paper (8.5″ × 11″)", widthIn: 8.5, heightIn: 11, hint: "Tape a letter sheet flat to the wall — the most reliable option." },

@@ -2,6 +2,9 @@
 
 import { useMemo, useState } from "react";
 import ModalPortal from "@/components/modal-portal";
+import FeetInchesInput, {
+  EMPTY_FT_IN, toDecimalFeet, fromDecimalFeet, formatFtIn, type FeetInchesValue,
+} from "@/components/feet-inches-input";
 import {
   buildFloorPlan, wallAreaFromPlan, planProblems, versusBoundingRectangle,
   type WallSegment, type FloorPlan,
@@ -14,7 +17,11 @@ import {
  * tape. The layout is built around that:
  *   · the plan draws ITSELF as walls go in, so a wrong turn is visible
  *     immediately rather than at the end;
- *   · the number pad opens on a decimal keyboard, one field, big target;
+ *   · lengths go in as feet and inches, because that is what the tape says —
+ *     asking for 12.58 when the tape reads 12′ 7″ is a conversion done in the
+ *     head, on a phone, in someone else’s house, and 12.7 is a different room;
+ *   · each wall can be named ("north wall", "behind the door") so a list of
+ *     eight numbers is still readable an hour later;
  *   · the current wall is always the last row and always in reach — you never
  *     scroll back up to continue;
  *   · closure is checked continuously, so "you're 2 ft out" arrives while the
@@ -35,22 +42,28 @@ export default function MeasureFloorPlan({
   onClose: () => void;
 }) {
   const [walls, setWalls] = useState<WallSegment[]>([]);
-  const [draft, setDraft] = useState("");
-  const [ceiling, setCeiling] = useState(initialCeilingFt ?? "");
+  const [draft, setDraft] = useState<FeetInchesValue>(EMPTY_FT_IN);
+  const [draftName, setDraftName] = useState("");
+  const [ceiling, setCeiling] = useState<FeetInchesValue>(
+    fromDecimalFeet(parseFloat(initialCeilingFt ?? "") || 0)
+  );
+  const ceilingFt = toDecimalFeet(ceiling);
+  const draftFt = toDecimalFeet(draft);
 
   const plan: FloorPlan = useMemo(() => buildFloorPlan(walls), [walls]);
   const problems = useMemo(() => planProblems(plan, walls), [plan, walls]);
   const comparison = useMemo(() => versusBoundingRectangle(plan), [plan]);
   const wallArea = useMemo(
-    () => (plan.closed ? wallAreaFromPlan(plan, parseFloat(ceiling) || 0) : null),
-    [plan, ceiling]
+    () => (plan.closed ? wallAreaFromPlan(plan, ceilingFt) : null),
+    [plan, ceilingFt]
   );
 
   const addWall = () => {
-    const n = parseFloat(draft);
-    if (!Number.isFinite(n) || n <= 0) return;
-    setWalls((ws) => [...ws, { lengthFt: n, turn: "right" }]);
-    setDraft("");
+    if (!(draftFt > 0)) return;
+    const note = draftName.trim();
+    setWalls((ws) => [...ws, { lengthFt: draftFt, turn: "right", note: note || undefined }]);
+    setDraft(EMPTY_FT_IN);
+    setDraftName("");
   };
 
   const flipTurn = (i: number) =>
@@ -84,7 +97,13 @@ export default function MeasureFloorPlan({
                   </span>
                   <span className="text-[11px] text-ppp-charcoal-600">
                     {plan.perimeterLf} ft around
-                    {wallArea ? ` · ${wallArea.paintableWallSqft.toLocaleString()} sq ft of wall` : ""}
+                    {wallArea
+                      ? ` · ${wallArea.paintableWallSqft.toLocaleString()} sq ft of wall${
+                          // Never hide the guess behind a confident number: this
+                          // figure is what gets ordered against.
+                          wallArea.ceilingAssumed ? " (assuming 8 ft ceiling)" : ""
+                        }`
+                      : ""}
                   </span>
                 </div>
                 {comparison && comparison.areaDiffPct > 2 && (
@@ -97,7 +116,7 @@ export default function MeasureFloorPlan({
                 )}
               </div>
             ) : (
-              problems.length > 0 && (
+              walls.length > 0 && problems.length > 0 && (
                 <div className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 px-4 py-3 space-y-1">
                   {problems.map((p, i) => (
                     <div key={i} className="text-[12px] text-ppp-orange-700 leading-snug">{p}</div>
@@ -107,13 +126,26 @@ export default function MeasureFloorPlan({
             )}
           </div>
 
-          <ul className="px-4 space-y-2">
+          {/* Ceiling height is set once for the room, not per wall — it does
+              not belong in the per-wall entry bar competing for thumb space. */}
+          <div className="px-4 pb-3">
+            <FeetInchesInput label="Ceiling height" value={ceiling} onChange={setCeiling} placeholderFeet="8" />
+          </div>
+
+          <ul className="px-4 pb-4 space-y-2">
             {walls.map((wall, i) => (
               <li key={i} className="flex items-center gap-2">
                 <span className="shrink-0 w-7 h-7 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-600 text-[11px] font-bold flex items-center justify-center">
                   {i + 1}
                 </span>
-                <span className="flex-1 text-sm text-ppp-charcoal font-medium">{wall.lengthFt} ft</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm text-ppp-charcoal font-semibold tabular-nums">
+                    {formatFtIn(fromDecimalFeet(wall.lengthFt))}
+                  </span>
+                  {wall.note && (
+                    <span className="block text-[11px] text-ppp-charcoal-500 truncate">{wall.note}</span>
+                  )}
+                </span>
                 {/* The turn belongs to the corner at the END of this wall, so
                     it only means something once another wall follows it. */}
                 {i < walls.length - 1 || plan.closed ? (
@@ -141,49 +173,51 @@ export default function MeasureFloorPlan({
         </div>
 
         {/* Entry pinned to the bottom — always under the thumb, never scrolled
-            away from, whatever the list length. */}
-        <div className="shrink-0 border-t border-ppp-charcoal-100 p-4 space-y-3">
-          <div className="flex gap-2">
-            <label className="flex-1">
-              <span className="sr-only">Length of wall {walls.length + 1} in feet</span>
-              <input
-                type="number" inputMode="decimal" step="0.1" min="0"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addWall(); } }}
-                placeholder={`Wall ${walls.length + 1} — feet`}
-                className="w-full px-3 py-3 text-base border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
-              />
-            </label>
-            <button
-              type="button" onClick={addWall} disabled={!(parseFloat(draft) > 0)}
-              className="shrink-0 min-h-[48px] px-5 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue disabled:opacity-40 transition-colors touch-manipulation"
-            >
-              Add
-            </button>
-          </div>
-
-          <div className="flex gap-2 items-end">
-            <label className="w-32">
-              <span className="block text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">Ceiling ft</span>
-              <input
-                type="number" inputMode="decimal" step="0.1" min="0"
-                value={ceiling} onChange={(e) => setCeiling(e.target.value)} placeholder="8"
-                className="w-full px-3 py-2.5 text-base border border-ppp-charcoal-200 rounded-lg"
-              />
-            </label>
+            away from, whatever the list length. pb honours the iOS home
+            indicator: the app runs viewportFit:cover, so without this the Add
+            button sits under the bar and the tap lands on nothing. */}
+        <div
+          className="shrink-0 border-t border-ppp-charcoal-100 px-4 pt-3 space-y-2"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        >
+          {plan.closed && (
             <button
               type="button"
-              disabled={!plan.closed}
               onClick={() => onApply({
                 floorAreaSqft: plan.floorAreaSqft,
                 perimeterLf: plan.perimeterLf,
-                ceilingFt: parseFloat(ceiling) || null,
+                ceilingFt: ceilingFt || null,
                 wallCount: walls.filter((w) => w.lengthFt > 0).length,
               })}
-              className="flex-1 min-h-[48px] rounded-lg bg-ppp-green text-ppp-navy text-sm font-semibold hover:bg-ppp-green-600 active:bg-ppp-green disabled:opacity-40 transition-colors touch-manipulation"
+              className="w-full min-h-[52px] rounded-lg bg-ppp-green text-ppp-navy text-sm font-semibold hover:bg-ppp-green-600 active:bg-ppp-green-700 transition-colors touch-manipulation"
             >
-              {plan.closed ? `Use ${plan.floorAreaSqft.toLocaleString()} sq ft` : "Close the room to finish"}
+              Use {plan.floorAreaSqft.toLocaleString()} sq ft
+            </button>
+          )}
+
+          <input
+            type="text"
+            value={draftName}
+            onChange={(e) => setDraftName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addWall(); } }}
+            placeholder={`Name this wall (optional) — e.g. "behind the door"`}
+            aria-label={`Name for wall ${walls.length + 1}, optional`}
+            maxLength={60}
+            className="w-full px-3 py-2.5 text-base border border-ppp-charcoal-200 rounded-lg placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+          />
+
+          <div className="flex items-end gap-2">
+            <FeetInchesInput
+              label={`Wall ${walls.length + 1}`}
+              value={draft}
+              onChange={setDraft}
+              onEnter={addWall}
+            />
+            <button
+              type="button" onClick={addWall} disabled={!(draftFt > 0)}
+              className="shrink-0 min-h-[48px] px-5 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue-400 disabled:opacity-40 transition-colors touch-manipulation"
+            >
+              Add
             </button>
           </div>
         </div>
@@ -203,7 +237,7 @@ function PlanDrawing({ plan }: { plan: FloorPlan }) {
 
   return (
     <div className="px-4 py-3">
-      <div className="rounded-xl border border-ppp-charcoal-100 bg-[var(--color-surface-muted)] aspect-[4/3] flex items-center justify-center overflow-hidden">
+      <div className="mx-auto w-full rounded-xl border border-ppp-charcoal-100 bg-[var(--color-surface-muted)] aspect-[4/3] max-h-[34vh] flex items-center justify-center overflow-hidden">
         {points.length < 2 ? (
           <p className="text-xs text-ppp-charcoal-400 italic px-6 text-center">
             The room will draw itself here as you add walls.

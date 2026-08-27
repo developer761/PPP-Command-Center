@@ -210,7 +210,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
     // R4.11 (same class as the Send Color Form dialog): portalled so no page
     // ancestor's transform can turn `fixed` into a page offset. See ModalPortal.
     <ModalPortal>
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe-sm sm:pb-4">
       <div className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
       <div className="relative z-10 w-full sm:max-w-md max-h-[92vh] sm:max-h-[85vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col">
         <div className="px-5 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 shrink-0">
@@ -482,9 +482,10 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
           </Field>
 
           <Field label="Active">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
+            <label className="inline-flex items-center gap-2 min-h-[44px] sm:min-h-0 cursor-pointer">
               <input
                 type="checkbox"
+                className="h-5 w-5 sm:h-4 sm:w-4 shrink-0 accent-ppp-blue cursor-pointer"
                 checked={isActive}
                 onChange={(e) => setIsActive(e.target.checked)}
               />
@@ -495,9 +496,10 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
           </Field>
 
           <Field label="Phone-only supplier">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
+            <label className="inline-flex items-center gap-2 min-h-[44px] sm:min-h-0 cursor-pointer">
               <input
                 type="checkbox"
+                className="h-5 w-5 sm:h-4 sm:w-4 shrink-0 accent-ppp-blue cursor-pointer"
                 checked={phoneOnly}
                 onChange={(e) => setPhoneOnly(e.target.checked)}
               />
@@ -517,9 +519,10 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
           </Field>
 
           <Field label="Default to pickup">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
+            <label className="inline-flex items-center gap-2 min-h-[44px] sm:min-h-0 cursor-pointer">
               <input
                 type="checkbox"
+                className="h-5 w-5 sm:h-4 sm:w-4 shrink-0 accent-ppp-blue cursor-pointer"
                 checked={pickupDefault}
                 onChange={(e) => setPickupDefault(e.target.checked)}
               />

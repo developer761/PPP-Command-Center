@@ -450,7 +450,7 @@ export default function OrderBuilderView({
       <div>
         <Link
           href={`/dashboard/materials/${encodeURIComponent(workOrderId)}`}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-ppp-blue-700 hover:text-ppp-blue-800 hover:underline"
+          className="inline-flex items-center gap-1.5 min-h-[44px] py-2 -my-2 text-xs font-medium text-ppp-blue-700 hover:text-ppp-blue-800 hover:underline touch-manipulation"
         >
           <span aria-hidden>←</span> Back to work order
         </Link>
@@ -818,7 +818,7 @@ export default function OrderBuilderView({
                         type="button"
                         onClick={() => togglePrimer(p.value)}
                         aria-pressed={!!sel}
-                        className={`text-[11px] px-2.5 py-1.5 rounded-l-lg min-h-[36px] touch-manipulation transition-colors ${
+                        className={`text-[11px] px-2.5 py-1.5 rounded-l-lg min-h-[44px] touch-manipulation transition-colors ${
                           sel ? "text-ppp-blue-800 font-semibold" : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 rounded-r-lg"
                         }`}
                       >
@@ -875,8 +875,8 @@ export default function OrderBuilderView({
                       sel ? "bg-ppp-blue-50 border-ppp-blue-100" : "bg-white border-ppp-charcoal-100 hover:bg-ppp-charcoal-50"
                     }`}
                   >
-                    <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
-                      <input type="checkbox" checked={!!sel} onChange={() => toggleExtra(c)} className="shrink-0" />
+                    <label className="flex items-center gap-2 flex-1 min-w-0 min-h-[44px] sm:min-h-0 cursor-pointer">
+                      <input type="checkbox" checked={!!sel} onChange={() => toggleExtra(c)} className="h-5 w-5 sm:h-4 sm:w-4 shrink-0 accent-ppp-blue cursor-pointer" />
                       <span className="flex-1 truncate">{c.name}</span>
                     </label>
                     {sel ? (

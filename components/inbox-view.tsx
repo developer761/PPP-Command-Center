@@ -444,9 +444,10 @@ export default function InboxView() {
                 <>{summary.returned} messages in this view · all caught up ✓</>
               )}
             </div>
-            <label className="inline-flex items-center gap-2 text-xs text-ppp-charcoal-500 cursor-pointer">
+            <label className="inline-flex items-center gap-2 min-h-[44px] sm:min-h-0 text-xs text-ppp-charcoal-500 cursor-pointer">
               <input
                 type="checkbox"
+                className="h-5 w-5 sm:h-4 sm:w-4 shrink-0 accent-ppp-blue cursor-pointer"
                 checked={showArchived}
                 onChange={(e) => setShowArchived(e.target.checked)}
               />

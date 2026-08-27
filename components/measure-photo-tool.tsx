@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import MeasureReticleViewer from "@/components/measure-reticle-viewer";
 import {
   SCALE_REFERENCES, scaleFromReference, estimateError, formatFeetInches,
   type Point, type ScaledMeasurement,
@@ -12,17 +13,27 @@ import {
 } from "@/lib/measure/homography";
 
 /**
- * Tap two points on something you know, then two on what you want.
+ * Mark two points on something you know, then two on what you want.
  *
- * The interaction is deliberately the same shape as Apple's Measure — place a
- * point, place a second, read the distance — because that is the part people
- * already understand. What differs is where the scale comes from: ARKit gets it
- * from LiDAR and motion, which Safari cannot reach, so this gets it from an
- * object in the photo whose real size is fixed by building code.
+ * AIMING, NOT TAPPING. The first cut asked you to tap the photo where the point
+ * should go. That reads fine on a laptop and is unusable on a phone: a
+ * fingertip is about 40px wide and it lands squarely on the pixel you are
+ * trying to see, so you are placing a window corner blind and then discovering
+ * it was 30px out when the number comes back wrong. Apple's Measure never asks
+ * for that — a reticle sits at the centre of the screen and you move the world
+ * under it, then press a button somewhere else entirely.
  *
- * Points are stored in NATURAL image coordinates, not screen pixels, so a
- * rotated phone, a pinch-zoom or a different device doesn't move a tap that was
- * already placed.
+ * So: the crosshair is fixed, the photo pans and pinches to 8× beneath it, and
+ * a thumb-sized button at the bottom commits the point. Aiming and pressing are
+ * in different places, so nothing is ever hidden. Points can be taken back one
+ * at a time rather than starting the whole calibration again.
+ *
+ * The scale itself still has to come from the picture — ARKit gets it from
+ * LiDAR and motion, which Safari cannot reach — so it comes from an object in
+ * frame whose real size is fixed by building code.
+ *
+ * Points are stored in NATURAL image coordinates, not screen pixels, so
+ * rotating the phone or zooming never moves a point already placed.
  */
 
 type Stage = "reference" | "target" | "done";
@@ -61,8 +72,8 @@ export default function MeasurePhotoTool({
   onResult: (r: PhotoMeasureResult) => void;
   onClose: () => void;
 }) {
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  /** Where the crosshair is currently pointing, in image pixels. */
+  const [aim, setAim] = useState<Point | null>(null);
   const [stage, setStage] = useState<Stage>("reference");
   const [refPts, setRefPts] = useState<Point[]>([]);
   const [tgtPts, setTgtPts] = useState<Point[]>([]);
@@ -86,31 +97,38 @@ export default function MeasurePhotoTool({
   const rectHeightIn = rectCustom ? parseFloat(rectH) || 0 : rect.heightIn;
   const refPointsNeeded = method === "plane" ? 4 : 2;
 
-  /** Screen tap → natural image coordinates. */
-  const toNatural = useCallback((clientX: number, clientY: number): Point | null => {
-    const img = imgRef.current;
-    if (!img || !natural) return null;
-    const box = img.getBoundingClientRect();
-    const x = ((clientX - box.left) / box.width) * natural.w;
-    const y = ((clientY - box.top) / box.height) * natural.h;
-    if (x < 0 || y < 0 || x > natural.w || y > natural.h) return null;
-    return { x, y };
-  }, [natural]);
-
-  const handleTap = (e: React.MouseEvent | React.TouchEvent) => {
-    const t = "touches" in e ? e.changedTouches[0] : e;
-    const pt = toNatural(t.clientX, t.clientY);
-    if (!pt) return;
+  /**
+   * Commit whatever the crosshair is on. Deliberately NOT bound to a tap on
+   * the image: dragging is how you aim, so a tap there would fire constantly.
+   */
+  const placePoint = useCallback(() => {
+    if (!aim) return;
     if (stage === "reference") {
-      const next = [...refPts, pt].slice(-refPointsNeeded);
+      const next = [...refPts, aim];
       setRefPts(next);
       if (next.length === refPointsNeeded) setStage("target");
     } else if (stage === "target") {
-      const next = [...tgtPts, pt].slice(-2);
+      const next = [...tgtPts, aim];
       setTgtPts(next);
       if (next.length === 2) setStage("done");
     }
-  };
+  }, [aim, stage, refPts, tgtPts, refPointsNeeded]);
+
+  /**
+   * Take back one point. The old flow only offered "Start over", which on the
+   * four-corner path threw away three good corners to fix the fourth — so
+   * people lived with a bad corner instead, and the measurement silently ate
+   * the error.
+   */
+  const undoPoint = useCallback(() => {
+    if (tgtPts.length > 0) {
+      setTgtPts((ps) => ps.slice(0, -1));
+      setStage("target");
+    } else if (refPts.length > 0) {
+      setRefPts((ps) => ps.slice(0, -1));
+      setStage("reference");
+    }
+  }, [refPts.length, tgtPts.length]);
 
   // Perspective path: recover the wall plane from the four tapped corners.
   const homography: Homography | null =
@@ -148,7 +166,7 @@ export default function MeasurePhotoTool({
             pct: calibrationOff ? 25 : 2,
             confidence: (calibrationOff ? "low" : "high") as "high" | "medium" | "low",
             note: calibrationOff
-              ? "Those four taps don't form a rectangle — check you went round the corners in order, then start over."
+              ? "Those four points don't form a rectangle — a corner is out of order or off the frame. Undo back to it and re-aim."
               : null,
           }
         : null
@@ -165,7 +183,6 @@ export default function MeasurePhotoTool({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const pct = (p: Point) => natural ? { left: `${(p.x / natural.w) * 100}%`, top: `${(p.y / natural.h) * 100}%` } : {};
 
   return (
     // Portalled: page shells carry `.animate-fade-up`, whose live transform
@@ -180,9 +197,9 @@ export default function MeasurePhotoTool({
           <div className="text-white/70 text-[11px]">
             {stage === "reference"
               ? method === "plane"
-                ? `Tap the 4 corners of the ${rect.label.split(" (")[0].toLowerCase()}, in order — ${refPts.length}/4`
-                : `Tap both ends of the ${reference.label.toLowerCase()}`
-              : stage === "target" ? "Now tap both ends of what you're measuring"
+                ? `The 4 corners of the ${rect.label.split(" (")[0].toLowerCase()}, in order — ${refPts.length}/4`
+                : `Both ends of the ${reference.label.toLowerCase()}`
+              : stage === "target" ? "Now both ends of what you're measuring"
               : "Measurement ready"}
           </div>
         </div>
@@ -192,60 +209,71 @@ export default function MeasurePhotoTool({
         >✕</button>
       </div>
 
-      {/* The photo. Points sit in an overlay positioned by percentage, so they
-          stay put through rotation and resize. */}
-      <div className="flex-1 min-h-0 flex items-center justify-center px-2 overflow-hidden">
-        <div className="relative max-h-full">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            ref={imgRef}
-            src={imageUrl}
-            alt={`Photo of ${label}`}
-            onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
-            onClick={handleTap}
-            className="max-h-[60vh] w-auto rounded-lg cursor-crosshair touch-manipulation select-none"
-            draggable={false}
-          />
-          {natural && (
-            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox={`0 0 ${natural.w} ${natural.h}`} preserveAspectRatio="none">
-              {method === "line" && refPts.length === 2 && (
-                <line x1={refPts[0].x} y1={refPts[0].y} x2={refPts[1].x} y2={refPts[1].y}
-                  stroke="#8DC442" strokeWidth={natural.w / 200} strokeLinecap="round" />
-              )}
-              {method === "plane" && refPts.length >= 2 && (
-                <polygon
-                  points={refPts.map((p) => `${p.x},${p.y}`).join(" ")}
-                  fill="rgba(141,196,66,0.18)"
-                  stroke="#8DC442"
-                  strokeWidth={natural.w / 250}
-                  strokeLinejoin="round"
-                />
-              )}
-              {tgtPts.length === 2 && (
-                <line x1={tgtPts[0].x} y1={tgtPts[0].y} x2={tgtPts[1].x} y2={tgtPts[1].y}
-                  stroke="#2BAAE1" strokeWidth={natural.w / 200} strokeLinecap="round" />
-              )}
-            </svg>
-          )}
-          {refPts.map((p, i) => (
-            <span key={`r${i}`} style={pct(p)}
-              className="absolute -translate-x-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-ppp-green border-2 border-white shadow" />
-          ))}
-          {tgtPts.map((p, i) => (
-            <span key={`t${i}`} style={pct(p)}
-              className="absolute -translate-x-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-ppp-blue border-2 border-white shadow" />
-          ))}
-        </div>
+      <MeasureReticleViewer
+        imageUrl={imageUrl}
+        alt={`Photo of ${label}`}
+        onReticleChange={setAim}
+        hint={
+          stage === "reference"
+            ? method === "plane"
+              ? `Aim at corner ${refPts.length + 1} of the ${rect.label.split(" (")[0].toLowerCase()}`
+              : `Aim at ${refPts.length === 0 ? "one end" : "the other end"} of the ${reference.label.toLowerCase()}`
+            : stage === "target"
+              ? `Aim at ${tgtPts.length === 0 ? "the start" : "the end"} of what you're measuring`
+              : "Drag to check the points sit where you meant"
+        }
+        points={[
+          ...refPts.map((p, i) => ({ p, tone: "ref" as const, n: i + 1 })),
+          ...tgtPts.map((p, i) => ({ p, tone: "target" as const, n: i + 1 })),
+        ]}
+        lines={[
+          // Plane mode traces the rectangle as corners land, so a corner taken
+          // out of order shows up as a bow-tie immediately rather than as a
+          // wrong number several steps later.
+          ...(method === "plane"
+            ? refPts.map((a, i) => ({ a, b: refPts[(i + 1) % refPts.length], tone: "ref" as const }))
+                .slice(0, refPts.length === 4 ? 4 : Math.max(0, refPts.length - 1))
+            : refPts.length === 2
+              ? [{ a: refPts[0], b: refPts[1], tone: "ref" as const }]
+              : []),
+          ...(tgtPts.length === 2 ? [{ a: tgtPts[0], b: tgtPts[1], tone: "target" as const }] : []),
+        ]}
+      />
+
+      {/* Aim above, press down here. The two never overlap, which is the
+          entire reason this is accurate on a phone. */}
+      <div className="shrink-0 flex items-stretch gap-2 px-3 py-2.5 bg-ppp-navy">
+        <button
+          type="button" onClick={undoPoint}
+          disabled={refPts.length === 0 && tgtPts.length === 0}
+          className="shrink-0 min-h-[52px] px-4 rounded-xl border border-white/25 text-white text-sm font-semibold disabled:opacity-30 touch-manipulation"
+        >
+          ⟲ Undo
+        </button>
+        <button
+          type="button" onClick={placePoint}
+          disabled={!aim || stage === "done"}
+          className="flex-1 min-h-[52px] rounded-xl bg-ppp-blue text-ppp-navy text-sm font-bold disabled:opacity-40 transition-colors active:bg-ppp-blue-400 touch-manipulation"
+        >
+          {stage === "done"
+            ? "All points placed"
+            : stage === "reference"
+              ? `Set point ${refPts.length + 1} of ${refPointsNeeded}`
+              : `Set ${tgtPts.length === 0 ? "start" : "end"} point`}
+        </button>
       </div>
 
-      <div className="shrink-0 bg-white rounded-t-2xl p-4 space-y-3 max-h-[45vh] overflow-y-auto">
+      <div
+        className="shrink-0 bg-white rounded-t-2xl px-4 pt-4 space-y-3 max-h-[42vh] overflow-y-auto"
+        style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+      >
         {stage === "reference" && (
           <div>
             {/* Method first: it changes what the taps mean. */}
             <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden mb-3 w-full">
               {([
-                ["plane", "Accurate", "4 taps on a rectangle — works from any angle"],
-                ["line", "Quick", "2 taps — only if you're square to the wall"],
+                ["plane", "Accurate", "4 corners of a rectangle — works from any angle"],
+                ["line", "Quick", "2 points — only if you're square to the wall"],
               ] as const).map(([m, title, sub]) => (
                 <button
                   key={m} type="button"
@@ -264,7 +292,7 @@ export default function MeasurePhotoTool({
             {method === "plane" ? (
               <>
                 <label className="block text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">
-                  What rectangle are you tapping?
+                  What rectangle are you using?
                 </label>
                 <select
                   value={rectId} onChange={(e) => { setRectId(e.target.value); reset(); }}
@@ -353,9 +381,9 @@ export default function MeasurePhotoTool({
           >
             {measurement
               ? `Use ${measurement.display}`
-              : method === "plane"
-                ? `Tap ${refPts.length < 4 ? `${4 - refPts.length} more corner${4 - refPts.length === 1 ? "" : "s"}` : "2 points to measure"}`
-                : "Tap 4 points to measure"}
+              : refPts.length < refPointsNeeded
+                ? `${refPointsNeeded - refPts.length} more reference point${refPointsNeeded - refPts.length === 1 ? "" : "s"}`
+                : `${2 - tgtPts.length} more point${2 - tgtPts.length === 1 ? "" : "s"} to measure`}
           </button>
         </div>
 

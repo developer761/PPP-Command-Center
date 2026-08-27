@@ -1149,7 +1149,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px]"
+                    className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                   >
                     Clear all
                   </button>
@@ -3234,7 +3234,7 @@ function SendColorFormButton({
           currentTime stays 0). See ModalPortal. */}
       {open && (
         <ModalPortal>
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe-sm sm:pb-4">
           <div
             className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm animate-fade-in"
             onClick={() => !sending && reset()}

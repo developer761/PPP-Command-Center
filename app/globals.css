@@ -496,3 +496,28 @@ select:not([multiple]):not([size]):not(.appearance-none) {
 [data-theme="dark"] select:not([multiple]):not([size]):not(.appearance-none) {
   background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2214%22%20height%3D%2214%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23a1a1aa%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%2F%3E%3C%2Fsvg%3E");
 }
+
+/* ---------------------------------------------------------------------------
+   Safe area for bottom-anchored surfaces.
+
+   The app declares viewportFit:cover so an installed PWA runs edge to edge.
+   The cost is that the layout now extends UNDERNEATH the iOS home indicator,
+   so anything pinned to the bottom — a sticky action bar, a mobile bottom
+   sheet — puts its primary button beneath a system bar that eats the tap. The
+   button looks perfectly fine and simply does not work, which is the worst
+   kind of bug to field-report.
+
+   Every bottom-anchored surface gets one of these. They fall back to the plain
+   padding on hardware with no inset, so they are safe to apply unconditionally.
+   --------------------------------------------------------------------------- */
+@utility pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+@utility pb-safe-sm {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+/* For a sheet that already has its own inner padding and just needs the extra
+   clearance added on. */
+@utility mb-safe {
+  margin-bottom: env(safe-area-inset-bottom);
+}

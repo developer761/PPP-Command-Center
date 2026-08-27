@@ -142,15 +142,22 @@ export function wallAreaFromPlan(
   plan: FloorPlan,
   ceilingFt: number,
   openings: { doors?: number; windows?: number } = {}
-): { grossWallSqft: number; paintableWallSqft: number } {
-  const h = ceilingFt > 0 ? ceilingFt : 8;
+): { grossWallSqft: number; paintableWallSqft: number; ceilingAssumed: boolean } {
+  // 8 ft is the right guess for residential Long Island, but a guess it is —
+  // and this figure becomes a paint order. Report that it was assumed.
+  const assumed = !(ceilingFt > 0);
+  const h = assumed ? 8 : ceilingFt;
   const grossWallSqft = round(plan.perimeterLf * h);
   const doors = Math.max(0, Math.floor(openings.doors ?? 0));
   const windows = Math.max(0, Math.floor(openings.windows ?? 0));
   const deduction = doors * 20 + windows * 15;
   // Same floor as the rectangular path: a slip claiming 12 doors must not drive
   // the wall area to nothing and under-order the paint.
-  return { grossWallSqft, paintableWallSqft: round(Math.max(grossWallSqft * 0.4, grossWallSqft - deduction)) };
+  return {
+    grossWallSqft,
+    paintableWallSqft: round(Math.max(grossWallSqft * 0.4, grossWallSqft - deduction)),
+    ceilingAssumed: assumed,
+  };
 }
 
 /**

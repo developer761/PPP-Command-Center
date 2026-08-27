@@ -40,7 +40,7 @@ export type ScaleReference = {
 };
 
 export const SCALE_REFERENCES: ScaleReference[] = [
-  { id: "door_height", label: "Door — top to bottom", inches: 80, hint: "Standard interior door is 6'8\". Tap the top of the frame, then the floor." },
+  { id: "door_height", label: "Door — top to bottom", inches: 80, hint: "Standard interior door is 6'8\". Aim at the top of the frame, then at the floor." },
   { id: "door_width", label: "Door — side to side", inches: 32, hint: "Most interior doors are 30–36\". Use 32\" unless you know otherwise." },
   { id: "outlet_height", label: "Outlet — floor to centre", inches: 15, hint: "Outlets sit 12–18\" up; 15\" is the usual." },
   { id: "switch_height", label: "Light switch — floor to centre", inches: 48, hint: "Switches are 48\" up by code." },

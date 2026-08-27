@@ -36,6 +36,15 @@ export type RoomGeometry = {
   grossWallSqft: number;
   /** Wall area after deducting doors and windows. What actually gets painted. */
   paintableWallSqft: number;
+  /**
+   * True when nobody entered a ceiling height and 8 ft was assumed.
+   *
+   * The assumption is a good one — most Long Island residential ceilings are
+   * 8 ft — but it silently drives a wall area that becomes a paint quantity,
+   * and a real 9 ft ceiling under-orders by 12%. Callers must SAY when the
+   * number rests on a guess rather than a tape.
+   */
+  ceilingAssumed: boolean;
 };
 
 const round = (n: number) => Math.round(n * 10) / 10;
@@ -68,7 +77,7 @@ export function geometryFromDimensions(
   // the paint. 40% of gross is the least a real room can plausibly paint.
   const paintableWallSqft = round(Math.max(grossWallSqft * 0.4, grossWallSqft - deduction));
 
-  return { floorAreaSqft, perimeterLf, grossWallSqft, paintableWallSqft };
+  return { floorAreaSqft, perimeterLf, grossWallSqft, paintableWallSqft, ceilingAssumed: !(d.ceilingFt > 0) };
 }
 
 /**
