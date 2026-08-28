@@ -627,6 +627,11 @@ export async function softDeleteCommercialOpportunity(
   try {
     const { cascadeDeleteJobsForOwner } = await import("@/lib/commercial/field-ops/jobs");
     await cascadeDeleteJobsForOwner({ opportunity_id: id }, deletedByUserId ?? "system");
+    // …and the bells that pointed at it. Without this the badge keeps counting
+    // items whose only action is to open a deleted job — see
+    // lib/notifications/retire.
+    const { retireNotificationsFor } = await import("@/lib/notifications/retire");
+    await retireNotificationsFor(id);
   } catch (err) {
     console.warn("[opportunities] field-ops cascade delete failed:", err);
   }

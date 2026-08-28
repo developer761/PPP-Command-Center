@@ -222,6 +222,11 @@ export async function softDeleteCommercialAccount(
   try {
     const { cascadeDeleteJobsForOwner } = await import("@/lib/commercial/field-ops/jobs");
     await cascadeDeleteJobsForOwner({ account_id: id }, deletedByUserId ?? "system");
+    // …and the bells. Each deal's own delete retires its own; this catches the
+    // notifications that name the ACCOUNT (a proposal deep-link carries the
+    // account id too).
+    const { retireNotificationsFor } = await import("@/lib/notifications/retire");
+    await retireNotificationsFor(id);
   } catch (err) {
     console.warn("[accounts] field-ops cascade delete failed:", err);
   }
