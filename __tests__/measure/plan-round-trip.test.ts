@@ -39,19 +39,25 @@ describe("a walked plan beats every rectangle approximation", () => {
 
 describe("the number is not dropped between the room and the vendor", () => {
   const api = codeOnly(read("app/api/admin/measure/route.ts"));
-  const ui = codeOnly(read("components/measure-sandbox.tsx"));
+  const ui = codeOnly(read("components/measure-tool.tsx"));
 
   it("the UI sends the walked perimeter explicitly", () => {
-    expect(ui).toMatch(/perimeterLf: row\.planPerimeterLf/);
+    expect(ui).toMatch(/perimeterLf:\s*measurement\.room\.perimeterLf/);
   });
 
-  it("the UI stops sending length/width once a room is walked", () => {
-    // Otherwise the server would recompute 2(L+W) from a rectangle that no
-    // longer describes the room.
-    expect(ui).toMatch(/lengthFt: row\.planAreaSqft \? null :/);
-    expect(ui).toMatch(/widthFt: row\.planAreaSqft \? null :/);
+  it("a walked room never sends length or width", () => {
+    // The invariant, not the old shape: sending either would let the server
+    // re-derive a RECTANGLE's perimeter over the real one, which is the entire
+    // thing walking the room exists to beat. The new UI branches on
+    // `measurement.room` and sends sqft + perimeterLf alone.
+    const walked = ui.slice(ui.indexOf("measurement.room"), ui.indexOf("measurement.room") + 700);
+    expect(walked).toMatch(/sqft:\s*measurement\.room\.sqft/);
+    expect(walked).toMatch(/perimeterLf:\s*measurement\.room\.perimeterLf/);
+    expect(walked, "a walked room must not send lengthFt").not.toMatch(/lengthFt:/);
+    expect(walked, "a walked room must not send widthFt").not.toMatch(/widthFt:/);
   });
 
+  
   it("the server honours an explicit perimeter instead of re-deriving one", () => {
     expect(api).toMatch(/body\.perimeterLf != null && Number\(body\.perimeterLf\) > 0/);
     // The derive path must be reachable only when nothing was supplied.
@@ -62,7 +68,4 @@ describe("the number is not dropped between the room and the vendor", () => {
     expect(api).toMatch(/perimeter_lf: perimeterLf/);
   });
 
-  it("a walked area wins over the rectangle in the UI's own maths", () => {
-    expect(ui).toMatch(/row\.planAreaSqft\s*\n?\s*\?\s*row\.planAreaSqft/);
   });
-});

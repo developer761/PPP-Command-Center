@@ -3,23 +3,27 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { capabilitiesFor, normalizeRole, homeHrefFor } from "@/lib/auth/roles";
-import MeasureSandbox from "@/components/measure-sandbox";
+import MeasureTool from "@/components/measure-tool";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Room measurement — standalone sandbox.
+ * Measure — one button, then decide where the number goes.
  *
- * Kept off the work order on purpose while it's being evaluated: nothing here
- * writes to `wo_li_sqft_overrides`, so no number produced during testing can
- * reach a supplier order. Connecting it is a small change once the numbers
- * prove out, because the capture libraries it uses are the ones the connected
- * version would use.
+ * This replaced a room-first page: pick a job, pick a room, pick one of three
+ * capture methods, and the number landed in a Length/Width/Ceiling box. Karan's
+ * verdict was that it was confusing, and it was — every one of those steps was
+ * a decision standing between someone and the thing they came to do. Apple's
+ * Measure asks for none of them.
+ *
+ * The room-first surfaces (address lookup, per-room grid, walk-the-room) are
+ * not gone; they were the right idea in the wrong order and will come back
+ * behind the measurement rather than in front of it.
  *
  * Gated on canEnterColors — measuring is field work an Account Manager does.
  * Ordering the paint stays admin-only, elsewhere.
  */
-export default async function MeasureSandboxPage() {
+export default async function MeasurePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
@@ -30,7 +34,7 @@ export default async function MeasureSandboxPage() {
 
   return (
     <div className="animate-fade-up max-w-3xl mx-auto">
-      <MeasureSandbox />
+      <MeasureTool />
     </div>
   );
 }

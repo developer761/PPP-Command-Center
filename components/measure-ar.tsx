@@ -37,7 +37,14 @@ type Phase = "checking" | "unsupported" | "idle" | "running" | "error";
  * the XR runtime and there is one answer per device.
  */
 let arProbe: Promise<boolean> | null = null;
-function probeAr(): Promise<boolean> {
+/**
+ * Exported so a click handler can AWAIT the answer.
+ *
+ * `useArSupported()` returns null until the probe resolves, and `null ? ar :
+ * ground` is falsy — so tapping Measure before it settled sent an ARCore phone
+ * to the non-AR tool. Awaiting removes the race instead of racing it better.
+ */
+export function probeAr(): Promise<boolean> {
   if (!arProbe) {
     arProbe =
       typeof navigator === "undefined" || !navigator.xr
@@ -313,7 +320,32 @@ export default function MeasureAR({
                 >—</span>
               </div>
 
-              {measurement && targets.length > 0 ? (
+              {measurement && targets.length === 0 ? (
+                /* No targets means the caller wants the raw number and will ask
+                   what it was afterwards. Without this branch the tool locks a
+                   measurement and offers no way to hand it back — the save row
+                   renders with zero buttons and onResult never fires. */
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const display = formatMetres(measurement.m);
+                      onResult({
+                        feet: metresToFeet(measurement.m), display,
+                        confidence: measurement.confidence, errorPct: measurement.pct,
+                      }, "");
+                      setPoints([]); setLockedM(null);
+                    }}
+                    className="w-full min-h-[56px] rounded-xl bg-ppp-green text-ppp-navy text-base font-bold touch-manipulation"
+                  >
+                    Use {formatMetres(measurement.m)}
+                  </button>
+                  <button
+                    type="button" onClick={() => { setPoints([]); setLockedM(null); }}
+                    className="w-full min-h-[44px] rounded-xl bg-black/60 text-white text-sm font-semibold touch-manipulation"
+                  >Measure again</button>
+                </div>
+              ) : measurement && targets.length > 0 ? (
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     {targets.map((t) => (

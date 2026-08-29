@@ -501,6 +501,27 @@ export default function MeasureGround({
                   </button>
                 </div>
               </div>
+            ) : lockedM != null && targets.length === 0 ? (
+              /* Caller wants the raw number and will ask what it was afterwards.
+                 Without this the save row renders with no buttons at all and the
+                 measurement cannot be handed back. */
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const display = formatMetres(lockedM);
+                    onResult({ feet: metresToFeet(lockedM), display, confidence: "medium", errorPct: 2 }, "");
+                    setPoints([]); setLockedM(null);
+                  }}
+                  className="w-full min-h-[56px] rounded-xl bg-ppp-green text-ppp-navy text-base font-bold touch-manipulation"
+                >
+                  Use {formatMetres(lockedM)}
+                </button>
+                <button type="button" onClick={() => { setPoints([]); setLockedM(null); }}
+                  className="w-full min-h-[44px] rounded-xl bg-black/50 text-white text-sm font-semibold touch-manipulation">
+                  Measure again
+                </button>
+              </div>
             ) : lockedM != null ? (
               <div className="space-y-2">
                 <div className="flex gap-2">
