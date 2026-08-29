@@ -60,6 +60,23 @@ type RoomOption = { woliId: string; label: string };
 
 const STORE_KEY = "ppp.measure.session";
 
+/**
+ * Ask for Motion & Orientation while still inside the user's tap.
+ *
+ * Resolves either way — a refusal is handled by the tool, which explains what
+ * to turn back on. Never throws, so a browser without the API (everything but
+ * iOS) simply falls through.
+ */
+async function ensureOrientationPermission(): Promise<void> {
+  try {
+    const Ctor = (typeof DeviceOrientationEvent !== "undefined" ? DeviceOrientationEvent : undefined) as
+      (typeof DeviceOrientationEvent & { requestPermission?: () => Promise<string> }) | undefined;
+    if (Ctor && typeof Ctor.requestPermission === "function") await Ctor.requestPermission();
+  } catch {
+    /* declined, or already answered — the tool reports it either way */
+  }
+}
+
 const DIMENSIONS: Array<{ id: Assignment["dimension"]; label: string }> = [
   { id: "lengthFt", label: "Length" },
   { id: "widthFt", label: "Width" },
@@ -99,7 +116,16 @@ export default function MeasureTool() {
   const startMeasuring = useCallback(async () => {
     setOpening(true);
     try {
-      setTool((await probeAr()) ? "ar" : "ground");
+      const ar = await probeAr();
+      if (!ar) {
+        // iOS only grants Motion & Orientation from a user GESTURE, and this
+        // click is the gesture. Requesting it inside the tool — which mounts
+        // asynchronously — silently fails, which is why the tool used to carry
+        // its own "Start measuring" button purely to have something to tap.
+        // Asking here lets the tool open straight onto the camera.
+        await ensureOrientationPermission();
+      }
+      setTool(ar ? "ar" : "ground");
     } finally {
       setOpening(false);
     }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ModalPortal from "@/components/modal-portal";
 import {
   groundPoint, groundPointSnapped, groundDistance, averageAttitude, attitudeSpread,
-  groundAimQuality, depressionAngle, calibrateHeight, type Attitude, type Vec2,
+  groundAimQuality, depressionAngle, calibrateHeight, stableTail, type Attitude, type Vec2,
 } from "@/lib/measure/ground-plane";
 import {
   grayWindow, rowGradientProfile, findDominantEdge, pixelOffsetToAngle, DEFAULT_V_FOV,
@@ -46,7 +46,19 @@ import { haptic } from "@/lib/measure/haptics";
  */
 
 const HEIGHT_KEY = "ppp.measure.holdHeightM";
-const BURST_MS = 600;
+/**
+ * How many recent attitude samples the tap consumes.
+ *
+ * The averaging used to happen AFTER the tap: press, then hold still for 600ms
+ * while a ring filled. That was the wrong place for it. You have already been
+ * holding the phone steady while you aimed — the samples exist before the tap,
+ * not after it — so a rolling buffer gives the identical noise reduction with
+ * no wait and no instruction. Apple's Measure has no "hold still" step and
+ * neither should this.
+ *
+ * ~40 samples is about 0.6s at the 60Hz iOS reports orientation at.
+ */
+const ROLLING_SAMPLES = 40;
 
 export default function MeasureGround({
   label, targets, onResult, onClose, onNeedVertical,
@@ -58,7 +70,7 @@ export default function MeasureGround({
   /** Escape hatch to the reference-object tool for anything not on the floor. */
   onNeedVertical?: () => void;
 }) {
-  const [phase, setPhase] = useState<"intro" | "live" | "denied" | "unsupported">("intro");
+  const [phase, setPhase] = useState<"starting" | "live" | "denied" | "unsupported">("starting");
   const [detail, setDetail] = useState<string | null>(null);
   // 5ft exactly: a plausible chest height AND one that reads back as a round
   // number. 1.5m displays as 4'11", which looks like something went wrong.
@@ -124,8 +136,8 @@ export default function MeasureGround({
     streamRef.current = null;
   }, []);
 
-  /** Samples accumulated during a hold. Non-null only while capturing. */
-  const burstRef = useRef<Attitude[] | null>(null);
+  /** The last ROLLING_SAMPLES attitudes, always. A tap consumes these. */
+  const burstRef = useRef<Attitude[]>([]);
   const lockedRef = useRef<number | null>(null);
   useEffect(() => { lockedRef.current = lockedM; }, [lockedM]);
 
@@ -142,7 +154,9 @@ export default function MeasureGround({
     if (e.alpha == null || e.beta == null || e.gamma == null) return;
     const a: Attitude = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
     attitudeRef.current = a;
-    if (burstRef.current) burstRef.current.push(a);
+    // Always collecting. The tap reads what is already here.
+    burstRef.current.push(a);
+    if (burstRef.current.length > ROLLING_SAMPLES) burstRef.current.shift();
 
     const here = groundPointSnapped(a, heightRef.current, snapRef.current);
     const pts = pointsRef.current;
@@ -185,6 +199,13 @@ export default function MeasureGround({
     stopStream();
     window.removeEventListener("deviceorientation", onOrientation);
   }, [stopStream, onOrientation]);
+
+  // Straight to the camera on mount — no "Start measuring" step in between.
+  useEffect(() => {
+    void start();
+    // Intentionally once: re-running would restart the stream mid-measurement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Look for the wall–floor junction near the centre of the frame.
@@ -255,7 +276,14 @@ export default function MeasureGround({
     return () => { stop = true; window.clearInterval(id); snapRef.current = 0; };
   }, [phase]);
 
-  /** Both permissions must be asked from the tap, not on mount — iOS requires it. */
+  /**
+   * Open straight onto the camera.
+   *
+   * iOS requires DeviceOrientation permission to come from a user GESTURE, so
+   * the caller's "Measure" tap requests it before mounting this — see
+   * `ensureOrientationPermission` in measure-tool. getUserMedia carries no such
+   * rule, so the camera can start here and the tool needs no button of its own.
+   */
   const start = async () => {
     setDetail(null);
     try {
@@ -284,32 +312,33 @@ export default function MeasureGround({
   };
 
   /**
-   * Collect a burst while the crosshair is held on the corner, then commit the
-   * average. One instantaneous sample carries the whole hand tremor.
+   * Take a point, instantly, from the samples already collected.
+   *
+   * There is no wait and no instruction. The rolling buffer has been filling
+   * the whole time the crosshair was on the corner, so the tap simply averages
+   * what is there — identical noise reduction to the old post-tap hold, minus
+   * the hold. Apple's Measure asks you to press a button and nothing else.
    */
   const capture = (onPoint: (p: Vec2, spreadDeg: number) => void) => {
-    if (capturing) return;
-    burstRef.current = [];
-    setCapturing(true);
+    // Only the run the phone has actually been steady for. The buffer also
+    // holds where you were pointing a moment ago, and averaging that in would
+    // drag a measurement back toward the corner you just left.
+    const samples = stableTail(burstRef.current);
     setAimWarning(null);
-    window.setTimeout(() => {
-      const samples = burstRef.current ?? [];
-      burstRef.current = null;
-      setCapturing(false);
-      const avg = averageAttitude(samples);
-      if (!avg || samples.length < 5) {
-        haptic("rejected");
-        setAimWarning("Couldn't read the phone's tilt — hold it still and try again.");
-        return;
-      }
-      // Refuse a flat aim before it becomes a number: error goes as h/sin²θ, so
-      // near the horizon a degree of tremor is worth feet, not inches.
-      const quality = groundAimQuality(depressionAngle(avg), heightRef.current);
-      if (!quality.usable) { haptic("rejected"); setAimWarning(quality.reason); return; }
-      const p = groundPointSnapped(avg, heightRef.current, snapRef.current);
-      if (!p) { haptic("rejected"); setAimWarning("Aim down at the floor where the wall meets it."); return; }
-      onPoint(p, attitudeSpread(samples));
-    }, BURST_MS);
+    const avg = averageAttitude(samples);
+    if (!avg) {
+      // Only reachable before the sensor has reported at all.
+      haptic("rejected");
+      setAimWarning("Still reading the phone's tilt — try again in a moment.");
+      return;
+    }
+    // Refuse a flat aim before it becomes a number: error goes as h/sin²θ, so
+    // near the horizon a degree of tremor is worth feet, not inches.
+    const quality = groundAimQuality(depressionAngle(avg), heightRef.current);
+    if (!quality.usable) { haptic("rejected"); setAimWarning(quality.reason); return; }
+    const p = groundPointSnapped(avg, heightRef.current, snapRef.current);
+    if (!p) { haptic("rejected"); setAimWarning("Aim lower — at the floor, where the wall meets it."); return; }
+    onPoint(p, attitudeSpread(samples));
   };
 
   const addPoint = () => capture((p, spread) => {
@@ -359,10 +388,10 @@ export default function MeasureGround({
           <div className="min-w-0">
             <div className="text-white font-semibold text-sm truncate">{label}</div>
             <div className="text-white/70 text-[11px]">
-              {phase !== "live" ? "Measure along the floor"
-                : calibrating ? "Calibrating — measure something you know"
-                : points.length === 0 ? `Holding at ${heightFtIn} · aim where the wall meets the floor`
-                : points.length === 1 ? "Now the other corner"
+              {phase !== "live" ? "Opening the camera…"
+                : calibrating ? "Measure something you know the length of"
+                : points.length === 0 ? "Aim at one end of the wall"
+                : points.length === 1 ? "Now the other end"
                 : "Measured"}
             </div>
           </div>
@@ -402,9 +431,9 @@ export default function MeasureGround({
                 className="opacity-0 absolute left-0 right-0 top-1/2 h-0 border-t-2 border-ppp-green pointer-events-none transition-opacity duration-150 shadow-[0_0_0_1px_rgba(0,0,0,.45)]"
               />
               <p className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-[11px] text-center max-w-[92%] pointer-events-none">
-                {capturing ? "Hold still…"
-                  : snapped ? "Locked on the floor line — press Add"
-                  : "Put the crosshair where the wall meets the floor"}
+                {snapped
+                  ? "On the floor line — tap +"
+                  : "Point at the bottom of the wall"}
               </p>
               {/* A fixed scrim, not a themed fill. This sits on live video, which
                   has no theme of its own — and every themed 600-900 token flips
@@ -422,30 +451,17 @@ export default function MeasureGround({
           {phase !== "live" && (
             <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
               <div className="max-w-sm">
-                {phase === "intro" && (
-                  <>
-                    <p className="text-white font-semibold text-base">Point at the floor, not the wall</p>
-                    <p className="text-white/70 text-[12px] mt-2 leading-snug">
-                      Your iPhone can&apos;t do live AR in the browser, but it does know which way is
-                      down — exactly, and without drifting. Aim where a wall meets the floor, hold
-                      still for a moment, then do the other corner.
-                    </p>
-                    <div className="mt-4 text-left">
-                      <FeetInchesInput
-                        label="How high are you holding the phone?"
-                        value={heightDraft}
-                        onChange={applyTypedHeight}
-                      />
-                      <p className="text-white/50 text-[11px] mt-1.5 leading-snug">
-                        Roughly chest height. You can measure something you know afterwards and it
-                        will work the exact height out for you.
-                      </p>
-                    </div>
-                    <button type="button" onClick={start}
-                      className="mt-4 w-full min-h-[56px] rounded-xl bg-ppp-blue text-ppp-navy text-base font-bold touch-manipulation">
-                      Start measuring
-                    </button>
-                  </>
+                {/* No intro screen. Apple's Measure opens on the camera and asks
+                    for nothing; a setup page in front of a measuring tool is the
+                    single biggest reason this did not feel like one. The holding
+                    height defaults silently to 5ft and can be corrected from the
+                    footer AFTER a number exists, which is the only moment anyone
+                    can tell whether it needs correcting. */}
+                {phase === "starting" && (
+                  <div
+                    className="mx-auto h-7 w-7 rounded-full border-2 border-white/25 border-t-white animate-spin"
+                    role="status" aria-label="Opening the camera"
+                  />
                 )}
                 {(phase === "denied" || phase === "unsupported") && (
                   <>
@@ -553,15 +569,18 @@ export default function MeasureGround({
                 </button>
                 <button type="button" onClick={addPoint} disabled={capturing}
                   className="flex-1 min-h-[56px] rounded-xl bg-ppp-blue text-ppp-navy text-base font-bold disabled:opacity-60 touch-manipulation">
-                  {capturing ? "Hold still…" : points.length === 0 ? "Add first corner" : "Add end corner"}
+                  {points.length === 0 ? "＋  Set point" : "＋  Set end point"}
                 </button>
               </div>
             )}
 
             <div className="flex items-center justify-between gap-2 text-[11px] text-white/60">
+              {/* Only offered once a number exists. Before that nobody can tell
+                  whether the default needs correcting, and asking up front was
+                  the single most un-Apple thing this tool did. */}
               <button type="button" onClick={() => { setCalibrating(true); setPoints([]); setLockedM(null); }}
                 className="min-h-[44px] underline touch-manipulation">
-                Set my height from a known length
+                {lockedM != null ? "Number look off? Set your height" : `Holding at ${heightFtIn}`}
               </button>
               {onNeedVertical && (
                 <button type="button" onClick={onNeedVertical} className="min-h-[44px] underline touch-manipulation">

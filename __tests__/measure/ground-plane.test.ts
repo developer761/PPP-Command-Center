@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   cameraForward, depressionAngle, groundPoint, groundDistance,
   groundErrorEstimate, groundAimQuality, averageAttitude, attitudeSpread,
-  calibrateHeight, groundPointSnapped, type Attitude,
+  calibrateHeight, groundPointSnapped, stableTail, type Attitude,
 } from "@/lib/measure/ground-plane";
 
 const FT = 0.3048;
@@ -316,5 +316,44 @@ describe("snapping the aim to a detected edge", () => {
 
   it("has nothing to preserve when pointing straight down", () => {
     expect(groundPointSnapped({ alpha: 0, beta: 0, gamma: 0 }, h, 1 * D2R)).toBeNull();
+  });
+});
+
+
+describe("only averaging the aim you are on now", () => {
+  it("keeps a steady run", () => {
+    const run: Attitude[] = Array.from({ length: 20 }, (_, i) => ({ alpha: 30 + i * 0.02, beta: 62, gamma: 0 }));
+    expect(stableTail(run).length).toBe(20);
+  });
+
+  it("drops samples from the corner you just left", () => {
+    // The flaw a rolling buffer introduces: swing to the far corner and tap
+    // immediately, and a naive average is dragged back toward where you were.
+    const oldAim: Attitude[] = Array.from({ length: 30 }, () => ({ alpha: -31, beta: 67, gamma: 0 }));
+    const newAim: Attitude[] = Array.from({ length: 6 }, () => ({ alpha: 31, beta: 67, gamma: 0 }));
+    const tail = stableTail([...oldAim, ...newAim]);
+    expect(tail.length).toBe(6);
+    expect(tail.every((s) => s.alpha === 31)).toBe(true);
+  });
+
+  it("survives the compass seam", () => {
+    const across: Attitude[] = [
+      { alpha: 359.5, beta: 62, gamma: 0 }, { alpha: 0.2, beta: 62, gamma: 0 },
+      { alpha: 0.4, beta: 62, gamma: 0 },
+    ];
+    expect(stableTail(across).length).toBe(3);
+  });
+
+  it("returns at least the newest sample when the phone is moving", () => {
+    // Mid-swing every sample disagrees with the last. A short, current run
+    // beats a long, stale one.
+    const moving: Attitude[] = Array.from({ length: 10 }, (_, i) => ({ alpha: i * 10, beta: 62, gamma: 0 }));
+    const tail = stableTail(moving);
+    expect(tail.length).toBeGreaterThanOrEqual(1);
+    expect(tail[tail.length - 1].alpha).toBe(90);
+  });
+
+  it("handles an empty buffer", () => {
+    expect(stableTail([])).toEqual([]);
   });
 });

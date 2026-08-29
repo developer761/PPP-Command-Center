@@ -268,3 +268,34 @@ export function groundPointSnapped(
   const p = { x: (f.x / horiz) * flat, y: (f.y / horiz) * flat };
   return Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
 }
+
+/**
+ * The tail of a sample buffer that belongs to where the phone is pointing NOW.
+ *
+ * A rolling buffer removes the "hold still" step — the samples are already
+ * there when you tap — but it introduces a subtler problem: it also holds where
+ * you were pointing a moment ago. Swing to the far corner of a room and tap
+ * straight away, and the average is dragged back toward the corner you just
+ * left, producing a confidently wrong number rather than an obviously wrong one.
+ *
+ * So walk backwards from the newest sample and stop at the first one that
+ * disagrees with it. What survives is exactly the run the phone has been steady
+ * for: long when you have been holding an aim, short when you have just moved,
+ * and never contaminated by a different aim entirely. The user does nothing
+ * either way.
+ */
+export function stableTail(samples: Attitude[], maxDeviationDeg = 1.5): Attitude[] {
+  if (samples.length === 0) return [];
+  const newest = samples[samples.length - 1];
+  const out: Attitude[] = [];
+  for (let i = samples.length - 1; i >= 0; i--) {
+    const s = samples[i];
+    const dBeta = Math.abs(s.beta - newest.beta);
+    // Bearing is circular; 359 and 1 are two degrees apart.
+    let dAlpha = Math.abs(s.alpha - newest.alpha) % 360;
+    if (dAlpha > 180) dAlpha = 360 - dAlpha;
+    if (Math.max(dBeta, dAlpha) > maxDeviationDeg) break;
+    out.push(s);
+  }
+  return out.reverse();
+}
