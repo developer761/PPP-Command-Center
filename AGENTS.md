@@ -72,3 +72,51 @@ GET /api/admin/rep-validation?email=<rep@precisionpaintingplus.com>
 ```
 
 Returns the full scorecard + the per-KPI input counts + field-coverage flags so you can triage "0 vs missing data."
+
+---
+
+## Verifying a change — the layers, and what each one cannot see
+
+`npm test` is **one layer, not the answer.** It is deliberately pure-logic — no
+database, no browser, no rendered document (see `vitest.config.ts`) — which
+keeps it a few seconds and zero-flake, and means it structurally cannot see the
+class of bug that actually ships here. Every one of these got past a green
+suite:
+
+| What shipped green | What would have caught it |
+|---|---|
+| A form posting a field its action never read (Send-for-approval silently bailed) | reading both sides of the seam |
+| A picker offering a value the DB's CHECK rejects — `commercial_team_members` held **zero rows for months** | `npm run check:enums` |
+| The plan report and the invoice quietly at **two pages** | rendering the PDF and counting pages |
+| A page that only 500s with real data | `npm run smoke` |
+| `teal`/`cyan` never remapped for dark, glowing on a near-black surface | the dark-theme coverage test |
+
+**Run `npm run verify`** (types + unit + db enums), or `npm run verify -- --full`
+with a dev server up to add the 73-page smoke. It prints what each layer catches
+AND what it is blind to, because a check whose blind spots aren't stated gets
+trusted for things it never covered.
+
+### Two rules that came out of the above
+
+**Prove a check can FAIL before you believe it.** Break the thing on purpose and
+watch it go red. In one week, eight checks written here could not have failed —
+`expect(pdf).not.toContain("MARKUP")` (react-pdf compresses its streams, so it
+passes either way), a cascade guard that matched the *import* line rather than
+the call, a page counter that returned `0` for its own output, a dark-theme
+reader that only saw the first of two `[data-theme="dark"]` blocks. A check that
+cannot fail is worse than no check: it launders a guess into "verified".
+
+**Test the ARTIFACT and the SEAM, not the file.** Render the PDF. Fetch the page.
+Do the action and re-read the row. Assert on values a rewrite can't fake — page
+count, page size, byte deltas, a re-read record — never on source text or JSX
+markup: a test pinning `<Page size="LETTER">` broke on a no-op refactor and would
+have passed straight through a real regression.
+
+### One shared working tree, two sessions
+
+Two `next dev` servers here overwrite each other's `.next`, and everything
+downstream becomes noise. In two days this produced three false alarms — "the
+reports page freezes the browser", "69 of 73 pages are down", "login is
+completely dead" — all of which were a dying server, not the code. `npm run
+verify` warns when it sees more than one. Before believing any single
+dev-server result, check nobody else is serving from this directory.
