@@ -79,7 +79,10 @@ describe("ground-plane measuring — geometry", () => {
   it("rejects an aim too flat to trust", () => {
     expect(groundAimQuality(3 * D2R, 1.5).usable).toBe(false);
     expect(groundAimQuality(30 * D2R, 1.5).usable).toBe(true);
-    expect(groundAimQuality(-5 * D2R, 1.5).reason).toMatch(/aim down/i);
+    // Asserts the ACTION the message asks for, not its exact wording — the
+    // copy changed when these messages stopped describing our geometry and
+    // started describing the person's next move.
+    expect(groundAimQuality(-5 * D2R, 1.5).reason).toMatch(/bottom of the wall/i);
   });
 });
 
