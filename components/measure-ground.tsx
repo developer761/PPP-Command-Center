@@ -164,9 +164,9 @@ export default function MeasureGround({
     const out = readoutRef.current;
     if (out) {
       if (lockedRef.current != null) out.textContent = formatMetres(lockedRef.current);
-      else out.textContent =
-        pts.length === 1 && here ? formatMetres(groundDistance(pts[0], here))
-        : here ? "0″" : "—";
+      // Nothing to show before a point is anchored — "0 inches" reads as a
+      // measurement of zero rather than as no measurement yet.
+      else out.textContent = pts.length === 1 && here ? formatMetres(groundDistance(pts[0], here)) : "";
     }
 
     const status = aimStatusRef.current;
@@ -332,12 +332,20 @@ export default function MeasureGround({
       setAimWarning("Still reading the phone's tilt — try again in a moment.");
       return;
     }
-    // Refuse a flat aim before it becomes a number: error goes as h/sin²θ, so
-    // near the horizon a degree of tremor is worth feet, not inches.
-    const quality = groundAimQuality(depressionAngle(avg), heightRef.current);
+    // Judge the CORRECTED aim, not the raw one.
+    //
+    // This was backwards, and it produced the worst moment in the tool. A
+    // first-time user points at the WALL, because the wall is the thing they
+    // are measuring. The edge detector has already found the floor line below
+    // and worked out the nudge that makes that aim valid — but the raw aim was
+    // tested first, so the tool refused an aim it was about to be able to use.
+    // Snapping is not a refinement here; it is what makes pointing naturally
+    // work at all.
+    const corrected = depressionAngle(avg) + snapRef.current;
+    const quality = groundAimQuality(corrected, heightRef.current);
     if (!quality.usable) { haptic("rejected"); setAimWarning(quality.reason); return; }
     const p = groundPointSnapped(avg, heightRef.current, snapRef.current);
-    if (!p) { haptic("rejected"); setAimWarning("Aim lower — at the floor, where the wall meets it."); return; }
+    if (!p) { haptic("rejected"); setAimWarning("Point at the bottom of the wall, where it meets the floor."); return; }
     onPoint(p, attitudeSpread(samples));
   };
 
@@ -527,7 +535,13 @@ export default function MeasureGround({
                   onClick={() => {
                     const display = formatMetres(lockedM);
                     onResult({ feet: metresToFeet(lockedM), display, confidence: "medium", errorPct: 2 }, "");
+                    // Hand back AND get out of the way. The caller opens its own
+                    // sheet at a lower z-index, so staying mounted would leave
+                    // that sheet behind the camera and the tap would look like
+                    // it did nothing at all.
                     setPoints([]); setLockedM(null);
+                    stopStream();
+                    onClose();
                   }}
                   className="w-full min-h-[56px] rounded-xl bg-ppp-green text-ppp-navy text-base font-bold touch-manipulation"
                 >

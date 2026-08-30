@@ -334,7 +334,12 @@ export default function MeasureAR({
                         feet: metresToFeet(measurement.m), display,
                         confidence: measurement.confidence, errorPct: measurement.pct,
                       }, "");
+                      // Hand back and close: the caller's sheet sits at a lower
+                      // z-index, so staying mounted would hide it behind the
+                      // camera and the tap would appear to do nothing.
                       setPoints([]); setLockedM(null);
+                      endSession();
+                      onClose();
                     }}
                     className="w-full min-h-[56px] rounded-xl bg-ppp-green text-ppp-navy text-base font-bold touch-manipulation"
                   >

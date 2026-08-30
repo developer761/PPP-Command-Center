@@ -145,9 +145,12 @@ export function groundAimQuality(
 ): { usable: boolean; errorM: number; reason: string | null } {
   const errorM = groundErrorEstimate(depressionRad, cameraHeightM);
   const deg = depressionRad / D2R;
-  if (!(deg > 0)) return { usable: false, errorM: Infinity, reason: "Aim down at the floor where the wall meets it." };
+  // Phrased as the action to take, not as the geometry that failed. "Too flat
+  // to the floor" describes our method; "point at the bottom of the wall"
+  // describes what the person is holding the phone to do.
+  if (!(deg > 0)) return { usable: false, errorM: Infinity, reason: "Point at the bottom of the wall." };
   if (deg < 8) {
-    return { usable: false, errorM, reason: "Too flat to the floor — step closer, or aim at a nearer point." };
+    return { usable: false, errorM, reason: "Point a bit lower — at the bottom of the wall, or step closer." };
   }
   return { usable: true, errorM, reason: null };
 }
