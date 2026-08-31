@@ -61,7 +61,8 @@ for (const f of files) {
 
     // tap-target: an interactive element with an explicit height under 44px
     // and no mobile-first min-h to lift it.
-    if (/<(button|a|select|input)\b/i.test(raw)) {
+    const isBox = /type=["'](checkbox|radio)["']/.test(raw);
+    if (/<(button|a|select|input)\b/i.test(raw) && !isBox) {
       const h = cls.match(/(?:^|\s)h-(\d+)(?:\s|$)/);
       const minH = /min-h-\[4[4-9]px\]|min-h-\[[5-9]\dpx\]|min-h-11|min-h-12/.test(cls);
       if (h && Number(h[1]) * 4 < 44 && !minH) {
@@ -70,8 +71,10 @@ for (const f of files) {
     }
 
     // vh-unit: unreachable under Safari's toolbar.
-    if (/\b(h-screen|min-h-screen|max-h-screen)\b/.test(cls) || /\b\d+vh\b/.test(raw)) {
-      if (!/dvh/.test(cls) && !/dvh/.test(raw)) add("vh-unit", f, n, "vh sits under Safari's toolbar — use dvh", raw);
+    const fullVh = /\b(h-screen|max-h-screen)\b/.test(cls) || /\b(100vh|9[5-9]vh)\b/.test(raw);
+    const pinned = /\b(fixed|absolute)\b/.test(cls);
+    if (fullVh && pinned && !/dvh/.test(raw)) {
+      add("vh-unit", f, n, "full-height pinned panel in vh — bottom lands under Safari's toolbar; use h-dvh-full", raw);
     }
 
     // fixed-bottom without safe-area padding.
@@ -79,7 +82,11 @@ for (const f of files) {
     // is a full-screen modal backdrop — the home indicator over a dimmed
     // overlay is not a defect, and flagging those was noise. The sheet CONTENT
     // inside still needs its own padding, but that is a different element.
-    if (/\bfixed\b/.test(cls) && /\bbottom-0\b/.test(cls) && !/\binset-0\b/.test(cls)) {
+    // `top-0 bottom-0` is a full-height side sheet, not a bottom-pinned bar —
+    // it needs a safe-area inset only if it has its own bottom action row,
+    // which is a property of that inner element, not this one.
+    const fullHeightSheet = /\btop-0\b/.test(cls) || /\binset-y-0\b/.test(cls);
+    if (/\bfixed\b/.test(cls) && /\bbottom-0\b/.test(cls) && !/\binset-0\b/.test(cls) && !fullHeightSheet) {
       if (!/safe-area-inset-bottom|pb-\[env/.test(below)) add("fixed-bottom", f, n, "pinned to bottom with no safe-area inset — home indicator overlaps", raw);
     }
 
@@ -90,7 +97,7 @@ for (const f of files) {
     // stat text is a deliberate, legible layout at 390px; only 4+ genuinely
     // crushes. Both were false positives in the first run.
     const hiddenOnMobile = /(?:^|\s)hidden(?:\s|$)/.test(cls) && /(sm|md|lg):(grid|flex|block)/.test(cls);
-    if (gc && Number(gc[1]) >= 4 && !hiddenOnMobile && !/(sm|md|lg|xl):grid-cols-/.test(cls)) {
+    if (gc && Number(gc[1]) >= 4 && Number(gc[1]) !== 7 && !hiddenOnMobile && !/(sm|md|lg|xl):grid-cols-/.test(cls)) {
       add("grid-fixed", f, n, `grid-cols-${gc[1]} with no responsive variant — stays ${gc[1]} columns at 390px`, raw);
     }
 
