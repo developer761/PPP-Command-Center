@@ -1,3 +1,4 @@
+import { type Platform } from "@/lib/platform-cookie";
 "use client";
 
 import { useEffect, useState } from "react";
@@ -24,7 +25,7 @@ type Props = {
     firstName: string | null;
     initial: string;
   };
-  showSwitcher: boolean;
+  accessible: Platform[];
   /** Platform admin — gates admin-only sidebar items (Access). */
   isAdmin: boolean;
   /** Admin or account manager — gates the Accounting nav item. */
@@ -33,7 +34,7 @@ type Props = {
   crewOnly?: boolean;
 };
 
-export default function CommercialChrome({ children, user, showSwitcher, isAdmin, canSeeFinance = false, crewOnly = false }: Props) {
+export default function CommercialChrome({ children, user, accessible, isAdmin, canSeeFinance = false, crewOnly = false }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
@@ -56,7 +57,7 @@ export default function CommercialChrome({ children, user, showSwitcher, isAdmin
   return (
     <div className="flex min-h-screen bg-[var(--color-surface-muted)]">
       <aside className="hidden lg:block shrink-0">
-        <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} canSeeFinance={canSeeFinance} crewOnly={crewOnly} />
+        <CommercialSidebar accessible={accessible} isAdmin={isAdmin} canSeeFinance={canSeeFinance} crewOnly={crewOnly} />
       </aside>
 
       {mobileOpen && (
@@ -80,7 +81,7 @@ export default function CommercialChrome({ children, user, showSwitcher, isAdmin
         // a11y walk).
         inert={!mobileOpen}
       >
-        <CommercialSidebar showSwitcher={showSwitcher} isAdmin={isAdmin} canSeeFinance={canSeeFinance} crewOnly={crewOnly} onNavigate={() => setMobileOpen(false)} />
+        <CommercialSidebar accessible={accessible} isAdmin={isAdmin} canSeeFinance={canSeeFinance} crewOnly={crewOnly} onNavigate={() => setMobileOpen(false)} />
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">

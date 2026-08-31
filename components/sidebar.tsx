@@ -1,3 +1,4 @@
+import { type Platform } from "@/lib/platform-cookie";
 "use client";
 
 import Image from "next/image";
@@ -85,10 +86,11 @@ type SidebarProps = {
   onNavigate?: () => void;
   /** When true, renders the bottom-left "Switch to New Platform" block.
    *  Comes from DashboardChrome which reads it off the user's profile. */
-  showSwitcher?: boolean;
+  /** Platforms this viewer may open. Switcher shows when there's >1. */
+  accessible?: Platform[];
 };
 
-export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarProps = {}) {
+export default function Sidebar({ onNavigate, accessible = [] }: SidebarProps = {}) {
   const pathname = usePathname();
   const params = useSearchParams();
   const viewer = useViewer();
@@ -219,12 +221,12 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
             Admin section's "Test Color Form" entry. Lives inside the nav
             so it scrolls naturally with the other items (no more pinned-
             outside floating; no random "disappearing" on tall sidebars). */}
-        {showSwitcher && (
+        {accessible.length > 1 && (
           <div className="mt-6 pt-4 border-t border-ppp-charcoal-100">
             <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
               Platforms
             </div>
-            <PlatformSwitcher current="command_center" />
+            <PlatformSwitcher current="command_center" accessible={accessible} />
           </div>
         )}
       </nav>

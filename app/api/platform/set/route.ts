@@ -4,6 +4,7 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import {
   PLATFORM_COOKIE,
   PLATFORM_COOKIE_MAX_AGE_SECONDS,
+  PLATFORM_HOME,
   isPlatform,
 } from "@/lib/platform-cookie";
 
@@ -39,14 +40,13 @@ export async function POST(request: Request) {
 
   const profile = await getProfileByUserId(user.id);
   const access = platformAccess(profile);
-  if (body.platform === "command_center" && !access.hasCommandCenter) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
-  if (body.platform === "new_platform" && !access.hasNewPlatform) {
+  // One check against the accessible list, rather than an if-per-platform that
+  // has to be remembered every time a platform is added.
+  if (!access.accessible.includes(body.platform)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const target = body.platform === "command_center" ? "/dashboard" : "/commercial";
+  const target = PLATFORM_HOME[body.platform];
   const res = NextResponse.json({ ok: true, redirect: target });
   res.cookies.set(PLATFORM_COOKIE, body.platform, {
     path: "/",

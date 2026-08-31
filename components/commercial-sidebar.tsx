@@ -1,3 +1,4 @@
+import { type Platform } from "@/lib/platform-cookie";
 "use client";
 
 import Image from "next/image";
@@ -129,7 +130,8 @@ const navSections: NavSection[] = [
 type Props = {
   /** Set when the viewer also has Command Center access — only then is the
    *  switcher block at the bottom-left rendered. */
-  showSwitcher: boolean;
+  /** Platforms this viewer may open. Switcher shows when there's >1. */
+  accessible: Platform[];
   /** Platform admin — gates adminOnly nav items (e.g. Access provisioning). */
   isAdmin?: boolean;
   /** Admin or account manager — gates financeOnly nav items (Accounting). Same
@@ -142,7 +144,7 @@ type Props = {
   onNavigate?: () => void;
 };
 
-export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSeeFinance = false, crewOnly = false, onNavigate }: Props) {
+export default function CommercialSidebar({ accessible, isAdmin = false, canSeeFinance = false, crewOnly = false, onNavigate }: Props) {
   const pathname = usePathname();
   // Drop admin-only rows (Access) for non-admins so a Commercial tester never
   // sees a link that would just bounce them. The page redirects too (defense).
@@ -341,12 +343,12 @@ export default function CommercialSidebar({ showSwitcher, isAdmin = false, canSe
         {/* Platform switcher — same shape + position as the Command Center
             sidebar: last item inside the nav block so it scrolls with the
             other items. Visible only to multi-platform users. */}
-        {showSwitcher && (
+        {accessible.length > 1 && (
           <div className="mt-6 pt-4 border-t border-ppp-charcoal-100">
             <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-navy-600 uppercase">
               Platforms
             </div>
-            <PlatformSwitcher current="new_platform" />
+            <PlatformSwitcher current="new_platform" accessible={accessible} />
           </div>
         )}
       </nav>

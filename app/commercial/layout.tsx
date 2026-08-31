@@ -101,7 +101,7 @@ export default async function CommercialDashboardLayout({
     <div className="cc-theme-root" data-cc-root data-theme={theme}>
     <CommercialChrome
       user={{ email, fullName, firstName, initial }}
-      showSwitcher={access.hasBoth}
+      accessible={access.accessible}
       isAdmin={isAdmin}
       canSeeFinance={canSeeFinance}
       crewOnly={crewOnly}

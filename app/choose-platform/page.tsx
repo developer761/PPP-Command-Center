@@ -30,11 +30,13 @@ export default async function ChoosePlatformPage() {
   const profile = await getProfileByUserId(user.id);
   const access = platformAccess(profile);
 
-  if (access.hasNeither) {
+  // Count-driven rather than hasBoth/hasNeither: those two names only mean
+  // something while there are exactly two platforms.
+  if (access.accessible.length === 0) {
     redirect("/");
   }
 
-  if (!access.hasBoth) {
+  if (access.accessible.length === 1) {
     // R4.1: send an account manager straight to Operations Tools. /dashboard
     // would bounce them there anyway, but this is the first hop of every login
     // and a visible redirect on the way in reads like something went wrong.

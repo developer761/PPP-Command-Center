@@ -164,7 +164,7 @@ export default async function DashboardLayout({
         sfUserId: profile?.sf_user_id ?? null,
         sfUserName: profile?.sf_user_name ?? null,
       }}
-      showPlatformSwitcher={access.hasBoth}
+      accessiblePlatforms={access.accessible}
     >
       {children}
     </DashboardChrome>

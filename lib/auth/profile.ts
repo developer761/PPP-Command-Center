@@ -1,3 +1,4 @@
+import { ALL_PLATFORMS, type Platform } from "@/lib/platform-cookie";
 import "server-only";
 
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
@@ -47,16 +48,23 @@ export type Profile = {
 export function platformAccess(profile: Profile | null): {
   hasCommandCenter: boolean;
   hasNewPlatform: boolean;
-  hasBoth: boolean;
-  hasNeither: boolean;
+  accessible: Platform[];
 } {
   const hasCommandCenter = profile?.has_command_center_access ?? true;
   const hasNewPlatform = profile?.has_new_platform_access ?? false;
+  // `accessible` replaced hasBoth/hasNeither: both names only mean something
+  // while there are exactly two platforms, and a third would have made
+  // hasBoth silently answer the wrong question at every call site. A count
+  // survives. The two remaining booleans stay because ~25 call sites ask only
+  // `hasNewPlatform` as a plain route guard, and a third platform does not
+  // change any of those answers.
+  const accessible: Platform[] = ALL_PLATFORMS.filter((p) =>
+    p === "command_center" ? hasCommandCenter : hasNewPlatform
+  );
   return {
     hasCommandCenter,
     hasNewPlatform,
-    hasBoth: hasCommandCenter && hasNewPlatform,
-    hasNeither: !hasCommandCenter && !hasNewPlatform,
+    accessible,
   };
 }
 

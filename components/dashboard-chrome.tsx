@@ -1,3 +1,4 @@
+import { type Platform } from "@/lib/platform-cookie";
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -41,7 +42,7 @@ type Props = {
   searchIndex?: SearchableSnapshot | null;
   /** Phase 0 New Platform — true when the viewer also has New Platform
    *  access, so the bottom-left sidebar "Switch" block renders. */
-  showPlatformSwitcher?: boolean;
+  accessiblePlatforms?: Platform[];
 };
 
 const SF_USER_ID_RE = /^005[A-Za-z0-9]{12,15}$/;
@@ -51,7 +52,7 @@ export default function DashboardChrome({
   user,
   profile,
   searchIndex = null,
-  showPlatformSwitcher = false,
+  accessiblePlatforms = [],
 }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
@@ -133,7 +134,7 @@ export default function DashboardChrome({
     <ViewerProvider viewer={viewer}>
       <div className="flex min-h-screen bg-[var(--color-surface-muted)]">
         <aside className="hidden lg:block shrink-0">
-          <Sidebar showSwitcher={showPlatformSwitcher} />
+          <Sidebar accessible={accessiblePlatforms} />
         </aside>
 
         {mobileOpen && (
@@ -153,7 +154,7 @@ export default function DashboardChrome({
           aria-modal={mobileOpen}
           role={mobileOpen ? "dialog" : undefined}
         >
-          <Sidebar onNavigate={() => setMobileOpen(false)} showSwitcher={showPlatformSwitcher} />
+          <Sidebar onNavigate={() => setMobileOpen(false)} accessible={accessiblePlatforms} />
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0">
