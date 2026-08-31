@@ -64,6 +64,35 @@ export async function GET(request: Request) {
       }
     }
 
+    /**
+     * WHICH ORG ARE WE EVEN ASKING?
+     *
+     * Everything above assumes the hub is querying the Salesforce that PPP
+     * actually works in. If the connection points at a sandbox, every user
+     * lookup is being answered by a copy that may never have had these people
+     * in it — and the symptom is identical to a genuinely missing user, which
+     * is exactly how an hour disappears. So the answer says where it came from.
+     */
+    type OrgRow = { Name: string | null; IsSandbox: boolean; InstanceName: string | null };
+    let org: OrgRow | null = null;
+    try {
+      const r = await conn.query<OrgRow>("SELECT Name, IsSandbox, InstanceName FROM Organization LIMIT 1");
+      org = (r.records[0] as OrgRow | undefined) ?? null;
+    } catch {
+      // Reading the org is diagnostics, never the answer — a failure here must
+      // not take down the user lookup this endpoint exists for.
+    }
+
+    // Is this org populated at all? A count distinguishes "this person is
+    // missing" from "everyone is missing".
+    let activeUsers: number | null = null;
+    try {
+      const r = await conn.query<{ expr0?: number }>("SELECT COUNT(Id) FROM User WHERE IsActive = true");
+      activeUsers = (r.records[0] as { expr0?: number } | undefined)?.expr0 ?? null;
+    } catch {
+      /* diagnostics only */
+    }
+
     const best = pickBestUser(found);
     const anyActive = found.some((u) => u.isActive);
 
@@ -82,8 +111,12 @@ export async function GET(request: Request) {
       // apostrophes and hyphens only — enough for a person's name.
       const safeName = term.replace(/[^a-z0-9 '\-]/gi, "");
       if (safeName.length >= 2) {
+        // Match the NAME or the ADDRESS: a person whose SF name is spelled
+        // differently from what anyone remembers is still findable by the local
+        // part of the email they actually sign in with, and vice versa.
+        const esc = safeName.replace(/'/g, "\\'");
         const r = await conn.query<{ Name: string | null; Email: string | null; IsActive: boolean }>(
-          `SELECT Name, Email, IsActive FROM User WHERE Name LIKE '%${safeName.replace(/'/g, "\\'")}%' ORDER BY IsActive DESC LIMIT 15`
+          `SELECT Name, Email, IsActive FROM User WHERE Name LIKE '%${esc}%' OR Email LIKE '%${esc}%' ORDER BY IsActive DESC LIMIT 15`
         );
         didYouMean = r.records.map((u) => ({ name: u.Name, email: u.Email, active: u.IsActive }));
       }
@@ -91,6 +124,13 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
+      org: org
+        ? { name: org.Name, isSandbox: org.IsSandbox, instance: org.InstanceName,
+            note: org.IsSandbox
+              ? "SANDBOX — this is not the Salesforce PPP works in. Users missing here may exist in production."
+              : "Production." }
+        : { note: "Could not read the Organization record." },
+      activeUsersInOrg: activeUsers,
       searched: addresses,
       foundPerAddress: perAddress,
       hubWouldPick: best,
