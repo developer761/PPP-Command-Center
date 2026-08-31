@@ -1,5 +1,6 @@
-import { type Platform } from "@/lib/platform-cookie";
 "use client";
+
+import { type Platform } from "@/lib/platform-cookie";
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";

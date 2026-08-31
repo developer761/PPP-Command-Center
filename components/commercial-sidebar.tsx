@@ -1,5 +1,6 @@
-import { type Platform } from "@/lib/platform-cookie";
 "use client";
+
+import { type Platform } from "@/lib/platform-cookie";
 
 import Image from "next/image";
 import Link from "next/link";

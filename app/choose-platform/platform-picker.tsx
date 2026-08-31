@@ -47,15 +47,15 @@ export default function PlatformPicker({ email }: { email: string }) {
       </header>
 
       <main className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-4xl">
+        <div className="w-full max-w-5xl">
           <div className="text-center mb-10">
             <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal">Where to today?</h1>
             <p className="mt-2 text-sm text-ppp-charcoal-500">
-              You have access to both platforms. Pick one to start — you can switch from the sidebar anytime.
+              Pick where to start — you can switch from the sidebar anytime.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Command Center */}
             <button
               type="button"
@@ -122,6 +122,45 @@ export default function PlatformPicker({ email }: { email: string }) {
               <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 group-hover:gap-2 transition-all">
                 {busy === "new_platform" ? "Loading…" : "Open"}
                 {busy !== "new_platform" && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M5 12h14 M13 5l7 7-7 7" />
+                  </svg>
+                )}
+              </div>
+            </button>
+
+            {/* Messaging — the Hatch replacement. Orange because blue is the
+                residential signal and emerald is commercial; a third surface
+                needs its own accent or the picker reads as two-plus-a-copy. */}
+            <button
+              type="button"
+              onClick={() => choose("messaging")}
+              disabled={busy !== null}
+              className={[
+                "group relative text-left rounded-xl border-2 bg-white p-6 transition-all",
+                "border-ppp-charcoal-100 hover:border-ppp-orange-500 hover:shadow-lg",
+                busy === "messaging" ? "ring-2 ring-ppp-orange-500 ring-offset-2" : "",
+                busy && busy !== "messaging" ? "opacity-60" : "",
+              ].join(" ")}
+            >
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="h-12 w-12 rounded-lg bg-ppp-orange-50 flex items-center justify-center text-ppp-orange-700">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                  </svg>
+                </div>
+                <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-ppp-orange-700 bg-ppp-orange-50 px-2 py-0.5 rounded">
+                  Building
+                </span>
+              </div>
+              <h2 className="text-lg font-bold text-ppp-charcoal mb-1">Messaging</h2>
+              <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
+                Lead nurture, follow-ups, coordination and post-job surveys over SMS.
+                Replaces Hatch.
+              </p>
+              <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ppp-orange-700 group-hover:gap-2 transition-all">
+                {busy === "messaging" ? "Loading…" : "Open"}
+                {busy !== "messaging" && (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M5 12h14 M13 5l7 7-7 7" />
                   </svg>

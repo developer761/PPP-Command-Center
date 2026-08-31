@@ -32,6 +32,9 @@ export type Profile = {
    *  the application layer when reading legacy rows that pre-date the
    *  ALTER TABLE so the app doesn't crash on a stale snapshot. */
   has_command_center_access?: boolean;
+  /** Migration 175 — the Messaging platform (Hatch replacement). Defaults
+   *  FALSE: this surface can text customers, so it is granted, never inherited. */
+  has_messaging_access?: boolean;
   has_new_platform_access?: boolean;
   last_login_at: string | null;
   /** R7 (migration 110) — when the user first dismissed/finished the Commercial
@@ -48,10 +51,12 @@ export type Profile = {
 export function platformAccess(profile: Profile | null): {
   hasCommandCenter: boolean;
   hasNewPlatform: boolean;
+  hasMessaging: boolean;
   accessible: Platform[];
 } {
   const hasCommandCenter = profile?.has_command_center_access ?? true;
   const hasNewPlatform = profile?.has_new_platform_access ?? false;
+  const hasMessaging = profile?.has_messaging_access ?? false;
   // `accessible` replaced hasBoth/hasNeither: both names only mean something
   // while there are exactly two platforms, and a third would have made
   // hasBoth silently answer the wrong question at every call site. A count
@@ -59,11 +64,12 @@ export function platformAccess(profile: Profile | null): {
   // `hasNewPlatform` as a plain route guard, and a third platform does not
   // change any of those answers.
   const accessible: Platform[] = ALL_PLATFORMS.filter((p) =>
-    p === "command_center" ? hasCommandCenter : hasNewPlatform
+    p === "command_center" ? hasCommandCenter : p === "new_platform" ? hasNewPlatform : hasMessaging
   );
   return {
     hasCommandCenter,
     hasNewPlatform,
+    hasMessaging,
     accessible,
   };
 }

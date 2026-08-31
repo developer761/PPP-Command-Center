@@ -9,22 +9,23 @@
 
 export const PLATFORM_COOKIE = "ppp_last_platform";
 
-export type Platform = "command_center" | "new_platform";
+export type Platform = "command_center" | "new_platform" | "messaging";
 
 export function isPlatform(v: unknown): v is Platform {
-  return v === "command_center" || v === "new_platform";
+  return v === "command_center" || v === "new_platform" || v === "messaging";
 }
 
 /** Every platform, in the order the picker and switcher list them. Adding a
  *  platform means adding it here and to the three records below — the compiler
  *  then points at anything else that needs updating. */
-export const ALL_PLATFORMS: readonly Platform[] = ["command_center", "new_platform"] as const;
+export const ALL_PLATFORMS: readonly Platform[] = ["command_center", "new_platform", "messaging"] as const;
 
 /** User-facing names. The internal slug stays `new_platform` (DB column +
  *  cookie value); only the label reads "Commercial" (Karan 2026-06-13). */
 export const PLATFORM_LABEL: Record<Platform, string> = {
   command_center: "PPP Command Center",
   new_platform: "Commercial Command Center",
+  messaging: "Messaging",
 };
 
 /** Where each platform opens. The residential home is role-aware at the
@@ -32,6 +33,7 @@ export const PLATFORM_LABEL: Record<Platform, string> = {
 export const PLATFORM_HOME: Record<Platform, string> = {
   command_center: "/dashboard",
   new_platform: "/commercial",
+  messaging: "/messaging",
 };
 
 /** 90-day expiry — long enough to feel sticky, short enough that a user
