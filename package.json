@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage",
     "smoke": "node scripts/smoke-pages.mjs",
     "check:enums": "node scripts/check-db-enums.mjs",
+    "check:schema": "node scripts/check-schema-drift.mjs",
     "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
