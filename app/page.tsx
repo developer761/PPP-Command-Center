@@ -12,10 +12,15 @@ const ERROR_COPY: Record<string, string> = {
     "Sign-in didn't complete. Please try again — if it keeps failing, contact an admin.",
   no_code:
     "Sign-in didn't complete. Please try again.",
+  // Kate 2026-08-31: both cases mean the same thing to the person standing
+  // there — nobody active answers to this address — so both say it plainly.
+  // The old inactive copy also implied we had found THEIR user and it was
+  // switched off, which was wrong when the lookup had actually matched a
+  // long-dead record on the other domain.
   no_sf_user:
-    "We couldn't find a matching Salesforce user for your email. Ask an admin to confirm your Salesforce account is active and your email matches.",
+    "There's no active Salesforce user with these credentials. Both @precisionpaintingplus.com and @precisionpaintingplus.net were checked. Ask an admin to confirm your Salesforce user is active.",
   sf_user_inactive:
-    "Your Salesforce user is marked inactive. Contact an admin to reactivate it before signing in.",
+    "There's no active Salesforce user with these credentials. Both @precisionpaintingplus.com and @precisionpaintingplus.net were checked. Ask an admin to confirm your Salesforce user is active.",
   access_revoked:
     "Your account has been deactivated. Contact an admin if you think this is a mistake.",
 };
