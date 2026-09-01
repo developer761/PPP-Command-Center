@@ -31,11 +31,21 @@
   --color-ppp-green-600: #6da030;
   --color-ppp-green-700: #527b22;
 
-  /* Forest — the deep green used for the platform-switch button. NOT part of
-     the brand scale: brand green (#8dc442) is a light yellow-green that needs
-     dark text, and the switcher is a solid fill with white text. The emerald
-     it replaced sat at 3.77:1 against white, under AA for text this size;
-     forest-600 is 8.12:1. Karan 2026-09-01. */
+  /* Forest — the green the platform switcher accents with. NOT part of the
+     brand scale: brand green (#8dc442) is a light yellow-green needing dark
+     text, and this family has to work as both a tint and an accent.
+     Karan 2026-09-01.
+
+     Read the roles, not the numbers — this family does NOT get darker as it
+     climbs, because -500 is a TEXT accent and has to inverse-flip for dark
+     mode while the solids stay dark:
+       -50   hover tint behind the ghost row
+       -200  hover border
+       -500  accent text + icon on hover
+       -600/-700  solid fills (kept for reuse; the switcher no longer uses them) */
+  --color-ppp-forest-50: #edf6f1;
+  --color-ppp-forest-200: #b9dcca;
+  --color-ppp-forest-500: #0b5b40;
   --color-ppp-forest-600: #0b5b40;
   --color-ppp-forest-700: #094a34;
 
@@ -237,11 +247,15 @@ body {
   --color-ppp-green-500: #6f9c39;
   --color-ppp-green-600: #5d8430;
 
-  /* Forest stays DARK in dark mode rather than inverting the way the tint
-     scales do — it is a solid button with white text, so flipping it to a pale
-     sage (the fate of emerald-800: #a1cdb8) would put white on near-white.
-     Lifted just enough to separate from the near-black page, and hover
-     LIGHTENS here instead of darkening. 6.73:1 on white. */
+  /* Forest in dark mode splits by ROLE, which is why this is not a uniform
+     flip. The tint (-50) and border (-200) invert like every other surface
+     token — dark green on a near-black column. The accent (-500) inverts the
+     OTHER way, to a pale green, because it is text and text on a dark tint has
+     to be light. The solids (-600/-700) stay dark, since flipping them to the
+     pale sage emerald-800 becomes (#a1cdb8) would put white on near-white. */
+  --color-ppp-forest-50: #12241d;
+  --color-ppp-forest-200: #2b4a3c;
+  --color-ppp-forest-500: #7fd0aa;
   --color-ppp-forest-600: #14684e;
   --color-ppp-forest-700: #1a7a5c;
   --color-ppp-green-700: #aecb84;   /* text — reads on dark */

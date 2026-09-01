@@ -60,22 +60,27 @@ export default function PlatformSwitcher({
     }
   };
 
-  // Tint by the CURRENT platform's canonical accent so it matches the rest of
-  // that platform's chrome. Karan 2026-07-27 audit: the commercial side used
-  // ppp-blue, but blue is the RESIDENTIAL signal (bell) and cc-brand (red) is
-  // the commercial accent — so inside commercial the switcher read off-brand.
-  // Solid colored button → white text in BOTH themes. (Tint shades like
-  // text-cc-brand-50 broke in dark: those flip to a dark tint = dark-on-dark.)
+  // GHOST ROW, not a colour block (Karan 2026-09-01, after a solid emerald and
+  // then a solid forest both read too heavy): transparent, hairline border,
+  // muted label — the same visual weight as the nav items above it. Colour
+  // arrives only on hover.
   //
-  // Residential green is `ppp-forest`, a deep green defined for exactly this
-  // button. It replaced emerald-600, which read bright and — at 3.77:1 against
-  // white — failed AA for text this size. forest-600 is 8.12:1, and unlike the
-  // emerald scale it does NOT invert in dark mode, so it cannot become a pale
-  // sage under white text if residential ever gets a dark theme.
-  const accent =
+  // The resting styles are all neutral charcoal tokens, which already invert
+  // correctly for the commercial dark theme (label 7.30:1 on white, 11.74:1 on
+  // the dark column). The hairline is deliberately below the 3:1 that WCAG
+  // asks of a boundary — it is decorative here, because the icon and the label
+  // identify this control, not its edge.
+  //
+  // Hover accent differs per platform so the switcher still reads as part of
+  // the chrome it sits in: forest in residential, cc-brand in commercial.
+  // Both use the -700 role rather than -600: cc-brand-600 on its own -50 tint
+  // is 3.32:1 light and 2.70:1 dark, under AA for a 12px semibold label.
+  // cc-brand-700 is the token already designated for nav text — 4.75:1 and
+  // 6.56:1 — and forest-500 is the equivalent accent on the residential side.
+  const hover =
     current === "command_center"
-      ? { bg: "bg-ppp-forest-600", hover: "hover:bg-ppp-forest-700", text: "text-white" }
-      : { bg: "bg-cc-brand-600", hover: "hover:bg-cc-brand-700", text: "text-white" };
+      ? "hover:bg-ppp-forest-50 hover:border-ppp-forest-200 hover:text-ppp-forest-500"
+      : "hover:bg-cc-brand-50 hover:border-cc-brand-200 hover:text-cc-brand-700";
 
   return (
     <div className="flex flex-col gap-1">
@@ -87,7 +92,7 @@ export default function PlatformSwitcher({
           disabled={busy !== null}
           aria-label={`Switch to ${PLATFORM_LABEL[target]}`}
           title={`Switch to ${PLATFORM_LABEL[target]}`}
-          className={`flex w-full items-center gap-2 rounded-lg ${accent.bg} ${accent.hover} ${accent.text} px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors disabled:opacity-70 touch-manipulation`}
+          className={`group flex w-full items-center gap-2 rounded-lg border border-ppp-charcoal-200 bg-transparent px-3 py-2 min-h-[44px] sm:min-h-0 text-ppp-charcoal-600 ${hover} transition-colors disabled:opacity-60 touch-manipulation`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
             <path d="M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14 M7 23l-4-4 4-4 M21 13v2a4 4 0 0 1-4 4H3" />
