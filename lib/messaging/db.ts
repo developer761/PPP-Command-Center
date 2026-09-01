@@ -232,3 +232,75 @@ export async function sidebarWorkspaces() {
     .map((w) => ({ id: w.id, name: w.name, region: regionOf(w.name), unread: unread.get(w.id) ?? 0 }))
     .sort((a, b) => order.indexOf(a.region) - order.indexOf(b.region) || a.name.localeCompare(b.name));
 }
+
+/* ─────────────────────── agent config + training ─────────────────── */
+
+export type AgentConfig = {
+  id: string;
+  workspace_id: string | null;
+  persona_name: string;
+  persona_role: string;
+  required_flow: string[];
+  services_included: string | null;
+  services_excluded: string | null;
+  offsite_rules: string | null;
+  tone_rules: string | null;
+  office_location: string | null;
+  service_area_note: string | null;
+  confidence_threshold: number;
+  autosend: boolean;
+  max_turns: number;
+  booking_hours: Record<string, { open: string; close: string }>;
+};
+
+export async function loadAgentConfig(workspaceId?: string) {
+  const sb = messagingDb();
+  const { data: rows } = await sb.from("sms_agent_configs").select("*");
+  const all = (rows ?? []) as unknown as AgentConfig[];
+  const override = workspaceId ? all.find((c) => c.workspace_id === workspaceId) : undefined;
+  const base = all.find((c) => c.workspace_id === null);
+  return { config: override ?? base ?? null, isOverride: !!override, hasDefault: !!base };
+}
+
+/** Every terminal state Emily can reach, with what each one means. Verbatim
+ *  from PPP's prompt so the screen uses the office's own words. */
+export const END_STATES: { key: string; label: string; when: string }[] = [
+  { key: "success", label: "Success", when: "Details, address, contact and availability collected. Checking the schedule." },
+  { key: "phone_pricing", label: "Phone Pricing", when: "Qualifies for an off-site quote and everything needed is collected." },
+  { key: "schedule_follow_up", label: "Schedule Follow-up", when: "Asked for a call, cannot talk now, or does not know their availability yet." },
+  { key: "transferred", label: "Transferred", when: "Text-only preference, another language, or asked to meet at the office." },
+  { key: "lost", label: "Lost", when: "Not moving forward." },
+  { key: "bailout", label: "Bailout", when: "Wrong person, chose another company, something negative, or vulgar language." },
+  { key: "discard", label: "Discard", when: "Not an estimate request, or work we do not cover." },
+  { key: "area_not_serviced", label: "Area not serviced", when: "Zip outside the active service areas." },
+  { key: "bot_suspected", label: "Bot Suspected", when: "Asked whether they are talking to a bot." },
+  { key: "msg_liked_loved", label: "Msg Liked/Loved", when: "Reacted to a message rather than replying." },
+];
+
+export async function trainingStats() {
+  const sb = messagingDb();
+  const { data } = await sb
+    .from("sms_training_examples")
+    .select("conduct, outcome, approved, pii_scrubbed, source");
+  const rows = data ?? [];
+  const usable = rows.filter((r) => r.approved && r.pii_scrubbed);
+  const count = (pred: (r: (typeof rows)[number]) => boolean) => rows.filter(pred).length;
+  return {
+    total: rows.length,
+    usable: usable.length,
+    needsScrub: count((r) => !r.pii_scrubbed),
+    needsReview: count((r) => r.pii_scrubbed && !r.approved),
+    byConduct: {
+      good: count((r) => r.conduct === "good"),
+      mixed: count((r) => r.conduct === "mixed"),
+      bad: count((r) => r.conduct === "bad"),
+      unlabelled: count((r) => !r.conduct),
+    },
+    booked: count((r) => r.outcome === "success"),
+    // The pair that matters: handled well but did not book, and booked despite
+    // being handled badly. If both are non-zero, conduct and outcome genuinely
+    // disagree and training on outcome alone would teach the model luck.
+    goodButLost: count((r) => r.conduct === "good" && r.outcome !== "success" && !!r.outcome),
+    badButBooked: count((r) => r.conduct === "bad" && r.outcome === "success"),
+  };
+}

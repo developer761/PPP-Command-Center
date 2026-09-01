@@ -14,6 +14,8 @@ const NAV = [
   { href: "/messaging/dashboard", label: "Dashboard", icon: "M3 3v18h18 M7 15l3-4 3 3 4-6" },
   { href: "/messaging", label: "Conversations", icon: "M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" },
   { href: "/messaging/automations", label: "Automations", icon: "M6 3v12 M18 9v12 M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 15a9 9 0 0 1 9-9" },
+  { href: "/messaging/agent", label: "Chatbot", icon: "M12 8V4H8 M4 8h16v12H4z M2 14h2 M20 14h2 M15 13v2 M9 13v2" },
+  { href: "/messaging/training", label: "Training", icon: "M22 10v6M2 10l10-5 10 5-10 5z M6 12v5c3 3 9 3 12 0v-5" },
 ];
 
 /**
