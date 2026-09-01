@@ -379,3 +379,74 @@ export async function loadBoard(workspaceId?: string) {
   }
   return columns;
 }
+
+/* ─────────────────────── human agent stats ───────────────────────── */
+
+/**
+ * Hatch's Human Agents table. Same columns, including the voice ones we cannot
+ * yet fill — see the note on `voice` below.
+ */
+export type HumanAgentStats = {
+  name: string;
+  conversations: number;
+  successPct: number;
+  textConversations: number;
+  avgResponseMins: number | null;
+};
+
+export async function humanAgentStats(workspaceId?: string): Promise<HumanAgentStats[]> {
+  const sb = messagingDb();
+  let cq = sb.from("sms_conversations").select("id, outcome, assigned_user_id, state");
+  if (workspaceId) cq = cq.eq("workspace_id", workspaceId);
+  const { data: convs } = await cq;
+  const rows = (convs ?? []).filter((c) => c.assigned_user_id);
+  if (!rows.length) return [];
+
+  const { data: msgs } = await sb
+    .from("sms_messages")
+    .select("conversation_id, direction, created_at, sent_by_user_id")
+    .in("conversation_id", rows.map((r) => r.id))
+    .order("created_at", { ascending: true });
+
+  // Response time = inbound message -> the next outbound in that thread. The
+  // number Hatch reports, and the one that actually predicts conversion.
+  const gaps = new Map<string, number[]>();
+  const byConv = new Map<string, typeof msgs>();
+  for (const m of msgs ?? []) {
+    const list = byConv.get(m.conversation_id) ?? [];
+    list.push(m); byConv.set(m.conversation_id, list);
+  }
+  for (const [convId, list] of byConv) {
+    const owner = rows.find((r) => r.id === convId)?.assigned_user_id as string | undefined;
+    if (!owner) continue;
+    let pending: string | null = null;
+    for (const m of list ?? []) {
+      if (m.direction === "inbound") pending = m.created_at;
+      else if (pending) {
+        const mins = (new Date(m.created_at).getTime() - new Date(pending).getTime()) / 60000;
+        const g = gaps.get(owner) ?? []; g.push(mins); gaps.set(owner, g);
+        pending = null;
+      }
+    }
+  }
+
+  const by = new Map<string, { total: number; success: number }>();
+  for (const r of rows) {
+    const k = r.assigned_user_id as string;
+    const e = by.get(k) ?? { total: 0, success: 0 };
+    e.total++;
+    if (r.outcome === "success") e.success++;
+    by.set(k, e);
+  }
+
+  return [...by.entries()].map(([id, e]) => {
+    const g = gaps.get(id) ?? [];
+    return {
+      name: id,
+      conversations: e.total,
+      successPct: e.total ? Math.round((e.success / e.total) * 1000) / 10 : 0,
+      textConversations: e.total,
+      avgResponseMins: g.length ? Math.round(g.reduce((a, b) => a + b, 0) / g.length) : null,
+    };
+  }).sort((a, b) => b.conversations - a.conversations);
+}
