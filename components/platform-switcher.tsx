@@ -66,9 +66,15 @@ export default function PlatformSwitcher({
   // the commercial accent — so inside commercial the switcher read off-brand.
   // Solid colored button → white text in BOTH themes. (Tint shades like
   // text-cc-brand-50 broke in dark: those flip to a dark tint = dark-on-dark.)
+  //
+  // Residential green is `ppp-forest`, a deep green defined for exactly this
+  // button. It replaced emerald-600, which read bright and — at 3.77:1 against
+  // white — failed AA for text this size. forest-600 is 8.12:1, and unlike the
+  // emerald scale it does NOT invert in dark mode, so it cannot become a pale
+  // sage under white text if residential ever gets a dark theme.
   const accent =
     current === "command_center"
-      ? { bg: "bg-emerald-600", hover: "hover:bg-emerald-700", text: "text-white" }
+      ? { bg: "bg-ppp-forest-600", hover: "hover:bg-ppp-forest-700", text: "text-white" }
       : { bg: "bg-cc-brand-600", hover: "hover:bg-cc-brand-700", text: "text-white" };
 
   return (

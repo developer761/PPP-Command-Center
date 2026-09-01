@@ -31,6 +31,14 @@
   --color-ppp-green-600: #6da030;
   --color-ppp-green-700: #527b22;
 
+  /* Forest — the deep green used for the platform-switch button. NOT part of
+     the brand scale: brand green (#8dc442) is a light yellow-green that needs
+     dark text, and the switcher is a solid fill with white text. The emerald
+     it replaced sat at 3.77:1 against white, under AA for text this size;
+     forest-600 is 8.12:1. Karan 2026-09-01. */
+  --color-ppp-forest-600: #0b5b40;
+  --color-ppp-forest-700: #094a34;
+
   /* ─── Secondary palette ─── */
   /* Karan 2026-07-21: full navy ramp filled in. Navy #172b4d is the
      official PPP secondary and the site's primary text color, but only
@@ -228,6 +236,14 @@ body {
   --color-ppp-green-300: #4a6030;
   --color-ppp-green-500: #6f9c39;
   --color-ppp-green-600: #5d8430;
+
+  /* Forest stays DARK in dark mode rather than inverting the way the tint
+     scales do — it is a solid button with white text, so flipping it to a pale
+     sage (the fate of emerald-800: #a1cdb8) would put white on near-white.
+     Lifted just enough to separate from the near-black page, and hover
+     LIGHTENS here instead of darkening. 6.73:1 on white. */
+  --color-ppp-forest-600: #14684e;
+  --color-ppp-forest-700: #1a7a5c;
   --color-ppp-green-700: #aecb84;   /* text — reads on dark */
   --color-ppp-green-800: #c8dcab;
 
