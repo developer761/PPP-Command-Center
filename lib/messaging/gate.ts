@@ -15,7 +15,7 @@
  * message of the day — are only testable if they can be constructed.
  */
 import type { E164 } from "./phone";
-import type { MessageTransport } from "./transport";
+import { activeTransport, type MessageTransport } from "./transport";
 import {
   withinQuietHours, nextSendableTime, withinDailyCap,
   DEFAULT_DAILY_CAP, type QuietHours,
@@ -37,7 +37,10 @@ export type GateDeps = {
   isSuppressed(to: E164): Promise<boolean>;
   /** Messages already sent to this handset today, across every agent and workspace. */
   sentToday(to: E164): Promise<number>;
-  transport: MessageTransport;
+  /** Supplied only by tests. App callers never hold a transport — the gate
+   *  resolves its own — so there is no object to pass around that could be
+   *  used to send around this function. */
+  transport?: MessageTransport;
   dailyCap?: number;
 };
 
@@ -106,7 +109,8 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     return { ok: false, reason: "daily_cap", retryAt: nextSendableTime(startOfNextDay(now, ws.time_zone), ws.time_zone, hours) };
   }
 
-  const { providerId } = await deps.transport.send(ws.phone_e164 as E164, to, body);
+  const transport = deps.transport ?? activeTransport();
+  const { providerId } = await transport.send(ws.phone_e164 as E164, to, body);
   return { ok: true, providerId };
 }
 

@@ -42,3 +42,18 @@ export class LoggingTransport implements MessageTransport {
     return { providerId: `logging-${this.sent.length}` };
   }
 }
+
+/**
+ * The live transport, or nothing.
+ *
+ * Returns the logging fake unless a real carrier is deliberately wired here.
+ * That default is a safety property, not laziness: the tick can be scheduled,
+ * the queue can drain and the gate can run, and NOTHING reaches a customer
+ * until somebody changes this function. Shadow mode is the resting state.
+ *
+ * Twilio or AWS End User Messaging plugs in here once Katie settles the
+ * destination and the numbers are ported off the Salesforce account.
+ */
+export function activeTransport(): MessageTransport {
+  return new LoggingTransport();
+}
