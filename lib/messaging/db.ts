@@ -304,3 +304,78 @@ export async function trainingStats() {
     badButBooked: count((r) => r.conduct === "bad" && r.outcome === "success"),
   };
 }
+
+/* ─────────────────────────── the board ───────────────────────────── */
+
+/**
+ * Hatch's Conversations view is a board, not a list: Inbox / Scheduled for F/U
+ * in SF / Awaiting Update From Field / Sold, scoped to one workspace.
+ *
+ * Three of those four are derivable from what we store. The fourth is not, and
+ * is marked as such rather than faked — "awaiting update from field" is a state
+ * about the ESTIMATOR, not the customer, and PPP has not yet said what puts a
+ * conversation into it or takes it out. Guessing would produce a column that
+ * looks right and is always empty, or worse, quietly wrong.
+ */
+export type BoardColumnKey = "inbox" | "followup" | "field" | "sold";
+
+export const BOARD_COLUMNS: {
+  key: BoardColumnKey; label: string; hint: string; derivable: boolean;
+}[] = [
+  { key: "inbox",    label: "Inbox",                     hint: "Live, nobody has taken it", derivable: true },
+  { key: "followup", label: "Scheduled for F/U in SF",   hint: "Ended as schedule follow-up", derivable: true },
+  { key: "field",    label: "Awaiting Update From Field", hint: "Needs a definition from PPP", derivable: false },
+  { key: "sold",     label: "Sold",                      hint: "Ended as success", derivable: true },
+];
+
+export type BoardCard = {
+  id: string;
+  customer_phone: string;
+  customer_name: string | null;
+  owning_agent: string | null;
+  outcome: string | null;
+  last_message_at: string | null;
+  preview: string | null;
+  direction: string | null;
+};
+
+export async function loadBoard(workspaceId?: string) {
+  const sb = messagingDb();
+  let q = sb
+    .from("sms_conversations")
+    .select("id, customer_phone, customer_name, state, outcome, owning_agent, last_message_at")
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(200);
+  if (workspaceId) q = q.eq("workspace_id", workspaceId);
+  const { data: convs } = await q;
+  const rows = convs ?? [];
+
+  // One query for the newest message per conversation, rather than N.
+  const ids = rows.map((r) => r.id);
+  const { data: msgs } = ids.length
+    ? await sb.from("sms_messages").select("conversation_id, body, direction, created_at")
+        .in("conversation_id", ids).order("created_at", { ascending: false })
+    : { data: [] };
+  const newest = new Map<string, { body: string; direction: string }>();
+  for (const m of msgs ?? []) {
+    if (!newest.has(m.conversation_id)) newest.set(m.conversation_id, { body: m.body, direction: m.direction });
+  }
+
+  const columns: Record<BoardColumnKey, BoardCard[]> = { inbox: [], followup: [], field: [], sold: [] };
+  for (const r of rows) {
+    const card: BoardCard = {
+      id: r.id, customer_phone: r.customer_phone, customer_name: r.customer_name,
+      owning_agent: r.owning_agent, outcome: r.outcome, last_message_at: r.last_message_at,
+      preview: newest.get(r.id)?.body ?? null,
+      direction: newest.get(r.id)?.direction ?? null,
+    };
+    if (r.state !== "ended") columns.inbox.push(card);
+    else if (r.outcome === "schedule_follow_up") columns.followup.push(card);
+    else if (r.outcome === "success") columns.sold.push(card);
+    // Everything else ended in a way none of Hatch's four columns describes —
+    // lost, bailout, discard, area not serviced. Hatch presumably has more
+    // columns than the four visible in the screenshot; those conversations are
+    // not invented into a column they do not belong in.
+  }
+  return columns;
+}
