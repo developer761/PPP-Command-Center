@@ -450,3 +450,68 @@ export async function humanAgentStats(workspaceId?: string): Promise<HumanAgentS
     };
   }).sort((a, b) => b.conversations - a.conversations);
 }
+
+/* ─────────────────────── conversations report ────────────────────── */
+
+export type ReportRow = {
+  id: string;
+  customer_phone: string;
+  customer_name: string | null;
+  agent: string | null;
+  workspace_name: string;
+  started_at: string | null;
+  last_message_at: string | null;
+  durationMins: number | null;
+  outcome: string | null;
+};
+
+export const REPORT_PAGE_SIZE = 25;
+
+/**
+ * Hatch's flat conversations report: Contact, Agent, Date, Workspace, Duration,
+ * Disposition, paginated 25 at a time.
+ *
+ * Duration is first message to last, which is what Hatch appears to show — its
+ * rows read "22m", "2h 13m", "4d 6h". Note that a long duration is not a bad
+ * sign here: a conversation that ran four days is one where the customer kept
+ * replying, and Hatch's own human-agent averages sit in days.
+ */
+export async function loadReport(opts: {
+  workspaceId?: string; outcome?: string; page?: number;
+}) {
+  const sb = messagingDb();
+  const page = Math.max(1, opts.page ?? 1);
+  const from = (page - 1) * REPORT_PAGE_SIZE;
+
+  let q = sb
+    .from("sms_conversations")
+    .select("id, customer_phone, customer_name, owning_agent, outcome, created_at, last_message_at, sms_sub_accounts(name)", { count: "exact" })
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .range(from, from + REPORT_PAGE_SIZE - 1);
+  if (opts.workspaceId) q = q.eq("workspace_id", opts.workspaceId);
+  if (opts.outcome) q = q.eq("outcome", opts.outcome);
+
+  const { data, count } = await q;
+  const rows: ReportRow[] = (data ?? []).map((r) => {
+    const ws = r.sms_sub_accounts as unknown as { name: string } | null;
+    const start = r.created_at ? new Date(r.created_at).getTime() : null;
+    const end = r.last_message_at ? new Date(r.last_message_at).getTime() : null;
+    return {
+      id: r.id, customer_phone: r.customer_phone, customer_name: r.customer_name,
+      agent: r.owning_agent, workspace_name: ws?.name ?? "—",
+      started_at: r.created_at, last_message_at: r.last_message_at,
+      durationMins: start && end && end >= start ? Math.round((end - start) / 60000) : null,
+      outcome: r.outcome,
+    };
+  });
+  return { rows, total: count ?? 0, page, pages: Math.max(1, Math.ceil((count ?? 0) / REPORT_PAGE_SIZE)) };
+}
+
+/** "22m", "2h 13m", "4d 6h" — Hatch's own formatting. */
+export function humanDuration(mins: number | null): string {
+  if (mins == null) return "—";
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h}h ${mins % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}

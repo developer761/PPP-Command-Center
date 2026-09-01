@@ -28,7 +28,7 @@ export default async function MessagingDashboard({
     { done: ready.missingNumbers === 0, label: ready.missingNumbers === 0 ? "Every live workspace has a number" : `${ready.missingNumbers} live workspace(s) with no number`, detail: "Without one it cannot send from the local area code the customer replies to." },
     { done: ready.optOuts > 0, label: ready.optOuts > 0 ? `${ready.optOuts} numbers suppressed` : "Opt-out list not imported", detail: "Hard gate on the first send. Somebody who told Hatch to stop has told PPP to stop." },
     { done: false, label: "Carrier not connected", detail: "Twilio or AWS, once the numbers are ported off Salesforce's account. Until then every send is recorded, never delivered." },
-    { done: false, label: "Inbound calls unhandled", detail: "Porting a number moves voice too. Hatch forwards these numbers to (877) 645-3563; on the new carrier that has to exist before any number moves." },
+    { done: false, label: "Call forwarding not set on the new carrier", detail: "Voice features are out of scope (Karan, 2026-09-01) — but porting moves voice with the number, and an unconfigured number answers with a carrier error rather than going silent. One forward-to-(877) rule per number at cutover." },
     { done: ready.cronSecret, label: ready.cronSecret ? "Scheduler authenticated" : "CRON_SECRET not set", detail: "The tick refuses to run without it rather than running open." },
     { done: ready.activeCampaigns > 0, label: ready.activeCampaigns > 0 ? `${ready.activeCampaigns} campaigns active` : "No campaigns active", detail: "Imported from Hatch, then editable under Automations." },
   ];
@@ -110,16 +110,10 @@ export default async function MessagingDashboard({
             ))}
           </ul>
         )}
-        <div className="mt-2.5 rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 px-4 py-3">
-          <p className="text-[13px] font-semibold text-ppp-orange-700">Hatch reports voice here. This does not.</p>
-          <p className="mt-1.5 text-[12.5px] text-ppp-orange-700/90 leading-relaxed">
-            Hatch&apos;s table carries Calls and average call duration beside the text
-            columns, and your workspace settings have voicemail, call recording and
-            forwarding to (877) 645-3563. None of that is modelled here yet.
-            It matters beyond reporting: porting a number moves voice with it, so
-            inbound calls need somewhere to go before any number leaves Salesforce.
-          </p>
-        </div>
+        <p className="mt-2.5 text-[12px] text-ppp-charcoal-500 leading-relaxed">
+          Hatch reports voice here as well. PPP is not carrying that over, so
+          those columns are deliberately absent rather than pending.
+        </p>
       </section>
     </main>
   );
