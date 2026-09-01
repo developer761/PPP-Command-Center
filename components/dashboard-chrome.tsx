@@ -9,7 +9,7 @@ import Topbar from "@/components/topbar";
 import ImpersonationBanner from "@/components/impersonation-banner";
 import { ViewerProvider } from "@/lib/auth/viewer-context";
 import type { Viewer } from "@/lib/auth/viewer";
-import { normalizeRole, type UserRole } from "@/lib/auth/roles";
+import { capabilitiesFor, normalizeRole, type UserRole } from "@/lib/auth/roles";
 
 type SearchableSnapshot = {
   reps?: Array<{ id: string; name: string; email?: string | null; region?: string | null }>;
@@ -96,8 +96,10 @@ export default function DashboardChrome({
     );
     const isAccountManager =
       profile.isAccountManager ?? role === "account_manager";
-    // Admins + Account Managers see everyone by default.
-    const canSeeAll = isAdmin || isAccountManager;
+    // From the shared capability table, not re-derived here. A second copy of
+    // this rule is how a new role ends up with the nav of one thing and the
+    // data scope of another.
+    const canSeeAll = capabilitiesFor(role).canSeeAllWorkOrders;
     const viewAsUserId =
       isAdmin && viewAsRaw && SF_USER_ID_RE.test(viewAsRaw) ? viewAsRaw : null;
 

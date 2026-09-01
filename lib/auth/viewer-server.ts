@@ -78,7 +78,11 @@ export async function resolveViewer(
   //                              have no View Switcher and may lack an SF map,
   //                              so a stray ?scope=my is ignored for them)
   //   admin/AM (default)      → "all"
-  const canSeeAll = isAdmin || isAccountManager;
+  // From the capability, NOT re-derived. This line read
+  // `isAdmin || isAccountManager` and was the reason adding a role to roles.ts
+  // alone would have left a regional manager scoped to their own jobs — the
+  // one thing the role exists to change.
+  const canSeeAll = caps.canSeeAllWorkOrders;
   let scope: ViewerScope;
   if (!canSeeAll) {
     scope = "my";

@@ -24,6 +24,10 @@ type Banner = { kind: "ok" | "err"; text: string } | null;
 const roleBadge: Record<UserRole, string> = {
   admin: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-100",
   account_manager: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-100",
+  // Green, distinct from the rep's grey: the difference between the two is
+  // that this one sees every job, and the badge is where an admin checks that
+  // at a glance.
+  regional_manager: "bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100",
   rep: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-100",
 };
 

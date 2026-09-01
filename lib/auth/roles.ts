@@ -10,17 +10,22 @@
  *                      Send Color Form). Operations Tools ONLY: no analytics
  *                      or finance surfaces (R4.1), cannot order materials
  *                      (greyed), cannot open Settings.
+ *   regional_manager — a rep who oversees a region: everything a rep has, plus
+ *                      EVERY work order rather than only their own (Kate,
+ *                      2026-09-01). Not an operations role — no ordering, no
+ *                      colour entry, no Settings.
  *   rep              — sees only their OWN work orders + their own numbers.
  *
  * `is_admin` (the legacy boolean on profiles) is mirrored to `role='admin'`
  * so existing code keeps working; new code should prefer `role`.
  */
 
-export type UserRole = "admin" | "account_manager" | "rep";
+export type UserRole = "admin" | "account_manager" | "regional_manager" | "rep";
 
 export const USER_ROLE_VALUES: readonly UserRole[] = [
   "admin",
   "account_manager",
+  "regional_manager",
   "rep",
 ] as const;
 
@@ -38,6 +43,12 @@ export const USER_ROLES: { value: UserRole; label: string; blurb: string }[] = [
       "Operations only — sees every work order and enters colors (Internal Entry + Send Color Form). No analytics, no materials ordering, no Settings.",
   },
   {
+    value: "regional_manager",
+    label: "Regional Manager",
+    blurb:
+      "Everything a Sales Rep has, plus every work order instead of only their own. No ordering, no color entry, no Settings.",
+  },
+  {
     value: "rep",
     label: "Sales Rep",
     blurb:
@@ -50,7 +61,12 @@ export function normalizeRole(
   value: string | null | undefined,
   adminFallback = false
 ): UserRole {
-  if (value === "admin" || value === "account_manager" || value === "rep") {
+  if (
+    value === "admin" ||
+    value === "account_manager" ||
+    value === "regional_manager" ||
+    value === "rep"
+  ) {
     return value;
   }
   return adminFallback ? "admin" : "rep";
@@ -65,7 +81,11 @@ export function roleLabel(value: string | null | undefined): string {
 export type Capabilities = {
   isAdmin: boolean;
   isAccountManager: boolean;
-  /** Sees everyone's data by default (admin or account manager). */
+  /** Sees everyone's data by default — admin, account manager, or regional
+   *  manager. Read this rather than re-deriving it: the rule was duplicated in
+   *  two other files, and adding a role to this one alone would have left a
+   *  regional manager scoped to their own jobs, which is the opposite of the
+   *  point of the role. */
   canSeeAllWorkOrders: boolean;
   /** Place supplier/material orders. Admin only — AM sees it greyed (#5). */
   canOrderMaterials: boolean;
@@ -97,10 +117,13 @@ export function homeHrefFor(role: UserRole): string {
 export function capabilitiesFor(role: UserRole): Capabilities {
   const isAdmin = role === "admin";
   const isAccountManager = role === "account_manager";
+  const isRegionalManager = role === "regional_manager";
   return {
     isAdmin,
     isAccountManager,
-    canSeeAllWorkOrders: isAdmin || isAccountManager,
+    // A regional manager is a rep in every other respect — the ONE thing that
+    // differs is the breadth of what they can see.
+    canSeeAllWorkOrders: isAdmin || isAccountManager || isRegionalManager,
     canOrderMaterials: isAdmin,
     canEnterColors: isAdmin || isAccountManager,
     canManageSettings: isAdmin,
