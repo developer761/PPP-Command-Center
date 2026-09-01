@@ -472,7 +472,7 @@ export default async function CommercialDashboardPage() {
             <div className="flex items-baseline gap-2 text-[11.5px] tabular-nums">
               <span className="text-ppp-charcoal-500">This month <span className="font-bold text-ppp-charcoal">{formatCentsCompact(thisMonthBilledCents)}</span></span>
               {momBilledDeltaPct !== null && momBilledDeltaPct !== 0 && (
-                <span className={`inline-flex items-center gap-0.5 font-bold ${momBilledDeltaPct > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                <span className={`inline-flex items-center gap-0.5 font-bold ${momBilledDeltaPct > 0 ? "text-emerald-700" : "text-rose-700"}`}>
                   <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={momBilledDeltaPct > 0 ? "" : "rotate-180"}><path d="M12 19V5 M5 12l7-7 7 7" /></svg>
                   {Math.abs(momBilledDeltaPct)}% vs last
                 </span>

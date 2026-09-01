@@ -420,7 +420,7 @@ export default async function ProductDetailPage({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="block">
                 <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-                  SKU <span className="text-rose-600">*</span>
+                  SKU <span className="text-rose-700">*</span>
                 </span>
                 <input
                   type="text"
@@ -433,7 +433,7 @@ export default async function ProductDetailPage({
               </label>
               <label className="block">
                 <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-                  Name <span className="text-rose-600">*</span>
+                  Name <span className="text-rose-700">*</span>
                 </span>
                 <input
                   type="text"
@@ -488,7 +488,7 @@ export default async function ProductDetailPage({
               </label>
               <label className="block">
                 <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-                  Default price ($) <span className="text-rose-600">*</span>
+                  Default price ($) <span className="text-rose-700">*</span>
                 </span>
                 <input
                   type="text"
@@ -720,7 +720,7 @@ export default async function ProductDetailPage({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block sm:col-span-2">
                 <span className="block text-[11.5px] font-semibold text-ppp-charcoal-700 mb-1">
-                  Account <span className="text-rose-600">*</span>
+                  Account <span className="text-rose-700">*</span>
                 </span>
                 {/* Searchable combobox (>10 accounts) — consistent with the
                     "Variation of…" picker above (searchable-dropdown rule). */}
@@ -739,7 +739,7 @@ export default async function ProductDetailPage({
               </label>
               <label className="block">
                 <span className="block text-[11.5px] font-semibold text-ppp-charcoal-700 mb-1">
-                  Unit price ($) <span className="text-rose-600">*</span>
+                  Unit price ($) <span className="text-rose-700">*</span>
                 </span>
                 <input
                   type="text"

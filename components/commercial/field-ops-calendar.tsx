@@ -690,7 +690,7 @@ function DayPanel({
               {offOnly.map((o) => (
                 <li key={o.employee_id} className="flex items-center justify-between gap-2 text-[12.5px]">
                   <span className="text-ppp-charcoal-800 truncate min-w-0"><span className="font-semibold">{o.name}</span> <span className="text-amber-700">· {o.type.replace("_", " ").toLowerCase()}</span></span>
-                  <button onClick={() => onRemoveAbsence(o.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 shrink-0 min-h-[44px] sm:min-h-[32px] px-1.5 disabled:opacity-50">Clear</button>
+                  <button onClick={() => onRemoveAbsence(o.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-700 shrink-0 min-h-[44px] sm:min-h-[32px] px-1.5 disabled:opacity-50">Clear</button>
                 </li>
               ))}
             </ul>
@@ -865,7 +865,7 @@ function PersonPanel({
         )}
 
         {error ? (
-          <p className="text-[12.5px] text-rose-600">Couldn&rsquo;t load this shift — check your connection and reopen.</p>
+          <p className="text-[12.5px] text-rose-700">Couldn&rsquo;t load this shift — check your connection and reopen.</p>
         ) : loading && !detail ? (
           <p className="text-[12.5px] text-ppp-charcoal-400">Loading…</p>
         ) : detail && detail.shifts.length > 0 ? (
@@ -881,7 +881,7 @@ function PersonPanel({
                       <StatusPill status={s.job_status} />
                     </div>
                   </div>
-                  <button onClick={() => { if (window.confirm("Remove this shift? They'll be unscheduled and their clock-in reminder cancelled.")) onRemove(s.assignment_id); }} disabled={saving} className="inline-flex items-center text-[11px] font-semibold text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-50 shrink-0 min-h-[44px] px-2 touch-manipulation">Remove</button>
+                  <button onClick={() => { if (window.confirm("Remove this shift? They'll be unscheduled and their clock-in reminder cancelled.")) onRemove(s.assignment_id); }} disabled={saving} className="inline-flex items-center text-[11px] font-semibold text-rose-700 hover:bg-rose-50 rounded-lg disabled:opacity-50 shrink-0 min-h-[44px] px-2 touch-manipulation">Remove</button>
                 </div>
                 <div className="text-[12px] text-ppp-charcoal-600 mt-1.5">{s.start_time ? `${fmtTime12(s.start_time)}${s.end_time ? ` – ${fmtTime12(s.end_time)}` : ""} · ` : ""}{s.scheduled_hours}h</div>
                 {s.site && <div className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">{s.site}</div>}
@@ -897,7 +897,7 @@ function PersonPanel({
             {offInfo ? (
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[12.5px] text-amber-800 truncate min-w-0"><span className="font-semibold">Marked off</span> · {offInfo.short} <span className="text-amber-700/70">(crossed out on the calendar; they were emailed)</span></span>
-                <button type="button" onClick={() => onClearOff(offInfo.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 shrink-0 min-h-[44px] px-2 disabled:opacity-50 touch-manipulation">Clear</button>
+                <button type="button" onClick={() => onClearOff(offInfo.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-700 shrink-0 min-h-[44px] px-2 disabled:opacity-50 touch-manipulation">Clear</button>
               </div>
             ) : !offOpen ? (
               <button type="button" onClick={() => setOffOpen(true)} disabled={saving} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-amber-700 hover:text-amber-800 min-h-[44px] disabled:opacity-50">

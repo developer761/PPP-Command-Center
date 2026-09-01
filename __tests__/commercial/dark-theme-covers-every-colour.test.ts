@@ -121,3 +121,47 @@ describe("the dark theme covers every colour the UI paints with", () => {
     });
   }
 });
+
+/**
+ * Destructive labels use rose-700, not rose-600.
+ *
+ * Handed over from the residential session, and the numbers check out — I
+ * recomputed all four independently before applying it:
+ *
+ *              rose-600        rose-700
+ *   light card   4.70 ✓          6.29 ✓
+ *   light tint   4.28 ✗          5.72 ✓
+ *   DARK card    3.39 ✗          6.96 ✓
+ *   DARK tint    3.37 ✗          6.91 ✓
+ *
+ * Three of the four fail the 4.5:1 that 12px semibold needs, and dark fails
+ * worst — the dark ramp maps rose-600 to a muted #9b5c63 that sits almost
+ * invisibly on the #1a1a1e card. These are Deactivate / Remove / Delete team /
+ * Turn off: the one control on a page that most needs to be legible was the
+ * least legible on it.
+ *
+ * Only the TEXT utility. `bg-rose-600` is a solid fill carrying white text at
+ * 4.70:1 light / 5.12:1 dark — it passes, and darkening it would be a different
+ * and unnecessary change.
+ */
+describe("destructive text is rose-700", () => {
+  const files = [...walk("app/commercial"), ...walk("components/commercial")];
+
+  it("no text-rose-600 survives in Commercial", () => {
+    const offenders = files.filter((f) =>
+      /(?<![a-z-])text-rose-600\b/.test(readFileSync(f, "utf8"))
+    );
+    expect(
+      offenders,
+      `text-rose-600 fails WCAG AA on 3 of its 4 backdrops — worst in dark (3.39:1 on the card). Use text-rose-700.`
+    ).toEqual([]);
+  });
+
+  it("bg-rose-600 is deliberately left alone", () => {
+    // Guards the rule above from being over-applied by a future find/replace:
+    // the solid fill passes, and this test should fail if someone "helpfully"
+    // sweeps it too.
+    const usesFill = files.some((f) => /\bbg-rose-600\b/.test(readFileSync(f, "utf8")));
+    expect(usesFill).toBe(true);
+  });
+});

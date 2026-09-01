@@ -118,7 +118,7 @@ function SaveStatus({ status, errMsg, onRetry }: { status: "idle" | "saving" | "
     );
   if (status === "error")
     return (
-      <button type="button" onClick={onRetry} className="text-[10px] font-semibold text-rose-600 underline underline-offset-2 min-h-[44px] px-1 w-12" title={errMsg ?? "Save failed"}>
+      <button type="button" onClick={onRetry} className="text-[10px] font-semibold text-rose-700 underline underline-offset-2 min-h-[44px] px-1 w-12" title={errMsg ?? "Save failed"}>
         Retry
       </button>
     );

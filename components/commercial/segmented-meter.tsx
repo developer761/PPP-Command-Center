@@ -51,7 +51,7 @@ export function SegmentedMeter({
               {/* Mini-header — name + due */}
               <div className="mb-1 min-w-0">
                 <div className="text-[10.5px] font-semibold text-ppp-charcoal truncate" title={s.name}>{s.name}</div>
-                <div className={`text-[9.5px] ${isCredit ? "text-rose-600" : dueCls} truncate`}>{isCredit ? "Change-order credit" : s.due ? `Due ${s.due}` : "No due date"}</div>
+                <div className={`text-[9.5px] ${isCredit ? "text-rose-700" : dueCls} truncate`}>{isCredit ? "Change-order credit" : s.due ? `Due ${s.due}` : "No due date"}</div>
               </div>
               {/* Chunk */}
               <div className="h-2.5 rounded-full bg-ppp-charcoal-100 overflow-hidden relative" title={isCredit ? `Credit ${fmt(Math.abs(s.amountCents))}` : `${fmt(s.paidCents)} of ${fmt(s.amountCents)}`}>
@@ -61,7 +61,7 @@ export function SegmentedMeter({
               <div className="mt-1 flex items-center justify-between gap-1 text-[9.5px]">
                 <span className={`tabular-nums font-semibold ${isCredit ? "text-rose-700" : "text-ppp-charcoal-600"}`}>{isCredit ? `−${fmt(Math.abs(s.amountCents))}` : fmt(s.amountCents)}</span>
                 {isCredit ? (
-                  <span className="text-rose-600 font-bold uppercase tracking-wide">Credit</span>
+                  <span className="text-rose-700 font-bold uppercase tracking-wide">Credit</span>
                 ) : fullyPaid ? (
                   <span className="inline-flex items-center gap-0.5 text-emerald-700 font-bold uppercase tracking-wide"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Paid</span>
                 ) : partial ? (

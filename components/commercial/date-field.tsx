@@ -361,7 +361,7 @@ export function DateField({
           type="button"
           aria-label="Clear date"
           onClick={() => commit("")}
-          className="absolute right-0 top-0 bottom-0 inline-flex items-center justify-center w-11 rounded-r-lg border-l border-ppp-charcoal-100 text-ppp-charcoal-400 hover:text-rose-600 hover:bg-ppp-charcoal-50 text-[16px] leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 focus-visible:ring-inset touch-manipulation"
+          className="absolute right-0 top-0 bottom-0 inline-flex items-center justify-center w-11 rounded-r-lg border-l border-ppp-charcoal-100 text-ppp-charcoal-400 hover:text-rose-700 hover:bg-ppp-charcoal-50 text-[16px] leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 focus-visible:ring-inset touch-manipulation"
         >
           ×
         </button>
@@ -430,7 +430,7 @@ export function DateField({
               Today
             </button>
             {value && (
-              <button type="button" onClick={() => commit("")} className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 px-2 min-h-[44px] sm:min-h-0 inline-flex items-center">
+              <button type="button" onClick={() => commit("")} className="text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-rose-700 px-2 min-h-[44px] sm:min-h-0 inline-flex items-center">
                 Clear
               </button>
             )}

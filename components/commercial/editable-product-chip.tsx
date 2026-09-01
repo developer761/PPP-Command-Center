@@ -135,7 +135,7 @@ export function EditableProductChip({
           clearInputs();
           setMode("cleared");
         }}
-        className="inline-flex items-center min-h-[44px] text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-600 underline underline-offset-2 touch-manipulation"
+        className="inline-flex items-center min-h-[44px] text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 underline underline-offset-2 touch-manipulation"
         title="Drop the catalogue link and keep this as a free-text row (description kept)."
       >
         Clear

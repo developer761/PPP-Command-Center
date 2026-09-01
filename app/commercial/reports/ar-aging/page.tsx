@@ -168,7 +168,7 @@ export default async function ArAgingReportPage() {
                         <span className="block text-[10.5px] text-ppp-charcoal-400">{r.invoiceCount} open · oldest {Math.max(0, r.oldestDays)}d</span>
                       </td>
                       {BUCKETS.map((b) => (
-                        <td key={b.key} className={`text-right px-3 py-2.5 tabular-nums ${r[b.key] > 0 && b.danger ? "text-rose-600 font-semibold" : r[b.key] > 0 ? "text-ppp-charcoal-700" : "text-ppp-charcoal-300"}`}>
+                        <td key={b.key} className={`text-right px-3 py-2.5 tabular-nums ${r[b.key] > 0 && b.danger ? "text-rose-700 font-semibold" : r[b.key] > 0 ? "text-ppp-charcoal-700" : "text-ppp-charcoal-300"}`}>
                           {r[b.key] > 0 ? formatCentsFull(r[b.key]) : "—"}
                         </td>
                       ))}

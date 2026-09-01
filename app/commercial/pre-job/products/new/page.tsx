@@ -190,7 +190,7 @@ export default async function NewProductPage({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
             <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-              SKU <span className="text-rose-600">*</span>
+              SKU <span className="text-rose-700">*</span>
             </span>
             <input
               type="text"
@@ -204,7 +204,7 @@ export default async function NewProductPage({
           </label>
           <label className="block">
             <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-              Name <span className="text-rose-600">*</span>
+              Name <span className="text-rose-700">*</span>
             </span>
             <input
               type="text"
@@ -252,7 +252,7 @@ export default async function NewProductPage({
           </label>
           <label className="block">
             <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-              Default price ($) <span className="text-rose-600">*</span>
+              Default price ($) <span className="text-rose-700">*</span>
             </span>
             <input
               type="text"

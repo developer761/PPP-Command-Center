@@ -245,7 +245,7 @@ export default async function CommercialNotificationSettingsPage({
                 <ConfirmSubmitButton
                   message="Turn off email notifications? You'll still see everything in the bell."
                   pendingLabel="Removing…"
-                  className="inline-flex items-center rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 min-h-[44px] touch-manipulation"
+                  className="inline-flex items-center rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation"
                 >
                   Turn off
                 </ConfirmSubmitButton>
@@ -346,7 +346,7 @@ export default async function CommercialNotificationSettingsPage({
                     <ConfirmSubmitButton
                       message={`Delete the alert "${r.name}"? You'll stop receiving it.`}
                       pendingLabel="Deleting…"
-                      className="inline-flex items-center rounded-lg border border-rose-200 px-2.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 min-h-[44px] touch-manipulation"
+                      className="inline-flex items-center rounded-lg border border-rose-200 px-2.5 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation"
                     >
                       Delete
                     </ConfirmSubmitButton>

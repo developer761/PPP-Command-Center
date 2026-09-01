@@ -1866,7 +1866,7 @@ function NewDealSlideOut({
 
           <div>
             <label htmlFor="deal-title" className={LABEL_CLS}>
-              Opportunity name <span className="text-rose-600">*</span>
+              Opportunity name <span className="text-rose-700">*</span>
             </label>
             {/* Parity with the account's new-deal form (audit #14): this sheet
                 had a plain text input, so creating a deal from the pipeline

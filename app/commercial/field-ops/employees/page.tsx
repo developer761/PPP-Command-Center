@@ -256,7 +256,7 @@ export default async function FieldOpsEmployeesPage({
                     <ConfirmSubmitButton
                       message={`Deactivate ${e.display_name || `${e.first_name} ${e.last_name}`.trim() || "this crew member"}? They'll be removed from the scheduling picker and their clock-in magic link stops working.`}
                       pendingLabel="…"
-                      className="inline-flex items-center px-3 min-h-[44px] rounded-lg border border-rose-200 text-[12px] font-semibold text-rose-600 hover:bg-rose-50 touch-manipulation"
+                      className="inline-flex items-center px-3 min-h-[44px] rounded-lg border border-rose-200 text-[12px] font-semibold text-rose-700 hover:bg-rose-50 touch-manipulation"
                     >
                       Deactivate
                     </ConfirmSubmitButton>

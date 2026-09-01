@@ -147,7 +147,7 @@ export function AiaSettingsForm({
           </span>
         )}
         {status === "error" && (
-          <span className="inline-flex items-center gap-2 text-[11px] text-rose-600">
+          <span className="inline-flex items-center gap-2 text-[11px] text-rose-700">
             {errMsg}
             <button type="button" onClick={save} className="font-semibold underline underline-offset-2 min-h-[44px] px-1">Retry</button>
           </span>

@@ -204,7 +204,7 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
               </form>
               <form action={deleteTeamAction} className="self-end">
                 <input type="hidden" name="team_id" value={selected.id} />
-                <ConfirmSubmitButton message={`Delete the team "${selected.name}"? It will be removed from any account/opportunity it's assigned to.`} pendingLabel="Deleting…" className="inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 touch-manipulation">Delete team</ConfirmSubmitButton>
+                <ConfirmSubmitButton message={`Delete the team "${selected.name}"? It will be removed from any account/opportunity it's assigned to.`} pendingLabel="Deleting…" className="inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 touch-manipulation">Delete team</ConfirmSubmitButton>
               </form>
             </div>
 
@@ -277,7 +277,7 @@ export default async function TeamsSettingsPage({ searchParams }: { searchParams
                         <input type="hidden" name="team_id" value={selected.id} />
                         <input type="hidden" name="member_id" value={m.id} />
                         <SubmitButton
-                          className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-600 min-h-[44px] px-1.5"
+                          className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] px-1.5"
                         >Remove</SubmitButton>
                       </form>
                     </div>

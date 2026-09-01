@@ -319,7 +319,7 @@ export function AiaLineRow({
         </form>
       </div>
       {status === "error" && errMsg && (
-        <p role="alert" className="col-span-full text-[10.5px] text-rose-600 mt-0.5 pl-1">{errMsg}</p>
+        <p role="alert" className="col-span-full text-[10.5px] text-rose-700 mt-0.5 pl-1">{errMsg}</p>
       )}
     </div>
   );
@@ -336,7 +336,7 @@ function SaveStatus({ status, onRetry }: { status: "idle" | "saving" | "saved" |
     );
   if (status === "error")
     return (
-      <button type="button" onClick={onRetry} className="text-[10px] font-semibold text-rose-600 underline underline-offset-2 hover:text-rose-700 min-h-[44px] px-1">
+      <button type="button" onClick={onRetry} className="text-[10px] font-semibold text-rose-700 underline underline-offset-2 hover:text-rose-700 min-h-[44px] px-1">
         Retry
       </button>
     );

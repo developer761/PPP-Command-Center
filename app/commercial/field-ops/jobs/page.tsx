@@ -260,7 +260,7 @@ export default async function FieldOpsJobsPage({
                   <ConfirmSubmitButton
                     message="Delete this work order? It will be removed from the calendar and the scheduling picker."
                     pendingLabel="Deleting…"
-                    className="inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 touch-manipulation"
+                    className="inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 touch-manipulation"
                   >
                     Delete work order
                   </ConfirmSubmitButton>

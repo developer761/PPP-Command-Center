@@ -651,7 +651,7 @@ export async function CloseoutTool({
                   {editable && (
                     <form action={deleteItemAction} className="mt-1 text-right">
                       <Ctx /><input type="hidden" name="item_id" value={it.id} />
-                      <ConfirmSubmitButton className="text-[11px] text-ppp-charcoal-400 hover:text-rose-600 min-h-[44px] sm:min-h-[32px] inline-flex items-center" message="Remove this item?" pendingLabel="…">Remove</ConfirmSubmitButton>
+                      <ConfirmSubmitButton className="text-[11px] text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[32px] inline-flex items-center" message="Remove this item?" pendingLabel="…">Remove</ConfirmSubmitButton>
                     </form>
                   )}
                 </li>
@@ -728,7 +728,7 @@ export async function CloseoutTool({
           {activePkg.status === "draft" && (
             <form action={deletePackageAction} className="text-right">
               <Ctx />
-              <ConfirmSubmitButton className="text-[12px] text-ppp-charcoal-400 hover:text-rose-600 min-h-[44px] sm:min-h-[36px] inline-flex items-center" message="Delete this draft package?" pendingLabel="Deleting…">Delete draft package</ConfirmSubmitButton>
+              <ConfirmSubmitButton className="text-[12px] text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[36px] inline-flex items-center" message="Delete this draft package?" pendingLabel="Deleting…">Delete draft package</ConfirmSubmitButton>
             </form>
           )}
         </div>

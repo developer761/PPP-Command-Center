@@ -115,7 +115,7 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
           autoFocus
           className="w-40 mx-auto text-center text-3xl tracking-[0.5em] font-bold rounded-xl border-2 border-ppp-charcoal-200 py-3 outline-none focus:border-cc-brand-500"
         />
-        {error && <div role="alert" className="text-[13px] text-rose-600 mt-2">{error}</div>}
+        {error && <div role="alert" className="text-[13px] text-rose-700 mt-2">{error}</div>}
         <button onClick={enterPin} disabled={busy || pin.length !== 4} className="mt-4 w-full inline-flex items-center justify-center rounded-xl bg-cc-brand-600 text-white text-[16px] font-bold min-h-[56px] hover:bg-cc-brand-700 disabled:opacity-50">{busy ? "…" : "Enter"}</button>
       </div>
     );

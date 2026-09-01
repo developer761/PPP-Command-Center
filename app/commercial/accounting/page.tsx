@@ -1495,7 +1495,7 @@ export default async function AccountingPage({
                           ) : r.exemptKind === "unmarked" ? (
                             <span className="text-rose-700 font-semibold">
                               Never marked exempt
-                              <span className="block text-[10px] font-normal text-rose-600">
+                              <span className="block text-[10px] font-normal text-rose-700">
                                 no tax charged
                               </span>
                             </span>

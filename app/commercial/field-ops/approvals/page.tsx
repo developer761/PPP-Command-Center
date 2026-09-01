@@ -60,7 +60,7 @@ async function bulkApproveAction() {
 function varTone(v: number | null): string {
   if (v == null) return "text-ppp-charcoal-400";
   if (v === 0) return "text-ppp-green-700";
-  return v < 0 ? "text-rose-600" : "text-amber-700";
+  return v < 0 ? "text-rose-700" : "text-amber-700";
 }
 
 export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {

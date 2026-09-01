@@ -79,7 +79,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
   return (
     <div ref={rootRef} className="relative">
       <label htmlFor="new-deal-account" className={LABEL_CLS}>
-        GC <span className="text-rose-600">*</span>
+        GC <span className="text-rose-700">*</span>
       </label>
       <input
         id="new-deal-account"
@@ -140,7 +140,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
         </div>
       )}
       {name && !selectedId && !open && (
-        <p className="text-[11px] text-rose-600 mt-1">Pick one from the list.</p>
+        <p className="text-[11px] text-rose-700 mt-1">Pick one from the list.</p>
       )}
       {selectedId && (
         <p className="text-[11px] text-emerald-700 mt-1">✓ GC selected.</p>

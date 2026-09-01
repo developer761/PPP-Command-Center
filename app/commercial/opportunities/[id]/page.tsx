@@ -4476,7 +4476,7 @@ async function InfoTab({
                     <input type="hidden" name="link_id" value={c.id} />
                     <SubmitButton
                       pendingLabel="Removing…"
-                      className="inline-flex items-center min-h-[44px] text-[11.5px] text-ppp-charcoal-400 hover:text-rose-600 underline underline-offset-2"
+                      className="inline-flex items-center min-h-[44px] text-[11.5px] text-ppp-charcoal-400 hover:text-rose-700 underline underline-offset-2"
                     >
                       Remove from job
                     </SubmitButton>
