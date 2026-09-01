@@ -456,7 +456,7 @@ function UserRow({
                 {roleLabel(user.role)}
               </span>
               {!user.is_active && (
-                <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">Deactivated</span>
+                <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Deactivated</span>
               )}
             </div>
             <div className="text-xs text-ppp-charcoal-400 truncate mt-0.5">
@@ -604,7 +604,7 @@ function UserRow({
             }
             className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed ${
               user.is_active
-                ? "border border-rose-200 text-rose-600 hover:bg-rose-50"
+                ? "border border-rose-200 text-rose-700 hover:bg-rose-50"
                 : "border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
             }`}
           >
