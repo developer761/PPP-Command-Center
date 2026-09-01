@@ -4,6 +4,16 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 
+
+/**
+ * Never cached. Admin surfaces read live database and Salesforce state, and a
+ * cached response here is not a stale dashboard — it is a save that appears not
+ * to have worked. Kate hit exactly that on Settings > Suppliers: unchecking
+ * "Active" wrote correctly and the refresh handed back the pre-save list, so
+ * the change looked lost when it was already in the database.
+ */
+export const dynamic = "force-dynamic";
+
 /**
  * One-shot diagnostic: hits Salesforce DIRECTLY and reports how many
  * WorkOrderLineItem rows actually have Sq_Footage__c (or its fallback

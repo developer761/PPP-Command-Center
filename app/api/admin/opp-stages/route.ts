@@ -4,6 +4,16 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 
+
+/**
+ * Never cached. Admin surfaces read live database and Salesforce state, and a
+ * cached response here is not a stale dashboard — it is a save that appears not
+ * to have worked. Kate hit exactly that on Settings > Suppliers: unchecking
+ * "Active" wrote correctly and the refresh handed back the pre-save list, so
+ * the change looked lost when it was already in the database.
+ */
+export const dynamic = "force-dynamic";
+
 /**
  * Diagnostic — distribution of Opportunity.StageName values + IsWon / IsClosed
  * flags across the snapshot's opp universe. Investigates Karan's flag that

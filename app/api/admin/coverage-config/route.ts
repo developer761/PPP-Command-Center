@@ -6,6 +6,16 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
 import { COVERAGE_CONFIG } from "@/lib/supplier-order/estimate-gallons";
 import { mergeCoverageConfig, isValidCoverageValue, STRICT_POSITIVE_KEYS, MAX_COVERAGE_VALUES, invalidateCoverageConfigCache } from "@/lib/supplier-order/coverage-config";
 
+
+/**
+ * Never cached. Admin surfaces read live database and Salesforce state, and a
+ * cached response here is not a stale dashboard — it is a save that appears not
+ * to have worked. Kate hit exactly that on Settings > Suppliers: unchecking
+ * "Active" wrote correctly and the refresh handed back the pre-save list, so
+ * the change looked lost when it was already in the database.
+ */
+export const dynamic = "force-dynamic";
+
 /**
  * Paint-coverage config admin endpoint (Settings → Coverage).
  *

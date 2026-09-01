@@ -5,6 +5,16 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { PRODUCT_LINES_MAX } from "@/lib/customer-form/product-lines";
 
+
+/**
+ * Never cached. Admin surfaces read live database and Salesforce state, and a
+ * cached response here is not a stale dashboard — it is a save that appears not
+ * to have worked. Kate hit exactly that on Settings > Suppliers: unchecking
+ * "Active" wrote correctly and the refresh handed back the pre-save list, so
+ * the change looked lost when it was already in the database.
+ */
+export const dynamic = "force-dynamic";
+
 /**
  * Proves the paint-line writeback can actually land.  (Kate R6.2)
  *

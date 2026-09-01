@@ -65,7 +65,10 @@ export default function SupplierSettingsEditor() {
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const res = await fetch("/api/admin/supplier-settings");
+      // no-store as well as the route's force-dynamic: this fetch runs
+      // immediately after a save, and a cached response makes a change that
+      // landed look like one that did not.
+      const res = await fetch("/api/admin/supplier-settings", { cache: "no-store" });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         setState({ status: "error", message: data.message ?? data.error ?? `HTTP ${res.status}` });

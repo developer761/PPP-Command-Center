@@ -33,9 +33,8 @@ describe("Regional Manager is a rep who sees everything", () => {
     expect(differing).toEqual(["canSeeAllWorkOrders"]);
   });
 
-  it("cannot order materials, enter colors, or open Settings", () => {
+  it("cannot order materials or open Settings", () => {
     expect(rm.canOrderMaterials).toBe(false);
-    expect(rm.canEnterColors).toBe(false);
     expect(rm.canManageSettings).toBe(false);
     expect(rm.isAdmin).toBe(false);
     expect(rm.isAccountManager).toBe(false);
@@ -103,6 +102,50 @@ describe("the database accepts every role the app can produce", () => {
     const sql = readFileSync(join(ROOT, "supabase/migrations/177_regional_manager_role.sql"), "utf8");
     for (const role of ["scheduler", "foreman", "payroll", "viewer"]) {
       expect(sql).toContain(`'${role}'`);
+    }
+  });
+});
+
+
+describe("field users can enter colors (Kate, 2026-09-01)", () => {
+  it("every role can enter colors and send the color form", () => {
+    // "the field users should be able to enter colors + send the color form."
+    // Colour capture is field work — the rep is standing in the customer's
+    // hallway — and gating it to office roles meant the person actually WITH
+    // the customer had to ask someone else to send the form.
+    for (const role of USER_ROLE_VALUES) {
+      expect(capabilitiesFor(role).canEnterColors, `${role} cannot enter colors`).toBe(true);
+    }
+  });
+
+  it("this did NOT widen anything else", () => {
+    // Opening one capability must not quietly open the others. Ordering
+    // materials and Settings stay where they were.
+    expect(capabilitiesFor("rep").canOrderMaterials).toBe(false);
+    expect(capabilitiesFor("rep").canManageSettings).toBe(false);
+    expect(capabilitiesFor("rep").canSeeAllWorkOrders).toBe(false);
+    expect(capabilitiesFor("regional_manager").canOrderMaterials).toBe(false);
+    expect(capabilitiesFor("account_manager").canOrderMaterials).toBe(false);
+  });
+
+  it("the server routes read the capability rather than the role", () => {
+    // Seven routes enforce this. If any re-derived "admin or AM" locally, the
+    // UI would offer a rep a button whose route still returns 403 — which is
+    // worse than not offering it.
+    const dir = join(ROOT, "app/api");
+    const walk = (d: string, out: string[] = []): string[] => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const p = join(d, e.name);
+        if (e.isDirectory()) walk(p, out);
+        else if (e.name === "route.ts") out.push(p);
+      }
+      return out;
+    };
+    const guarded = walk(dir).filter((f) => readFileSync(f, "utf8").includes("canEnterColors"));
+    expect(guarded.length).toBeGreaterThanOrEqual(7);
+    for (const f of guarded) {
+      const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      expect(src, `${f} re-derives the colour gate`).not.toMatch(/isAdmin \|\| isAccountManager/);
     }
   });
 });

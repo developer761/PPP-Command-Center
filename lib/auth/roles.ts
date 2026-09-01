@@ -46,13 +46,13 @@ export const USER_ROLES: { value: UserRole; label: string; blurb: string }[] = [
     value: "regional_manager",
     label: "Regional Manager",
     blurb:
-      "Everything a Sales Rep has, plus every work order instead of only their own. No ordering, no color entry, no Settings.",
+      "Everything a Sales Rep has, plus every work order instead of only their own. No materials ordering, no Settings.",
   },
   {
     value: "rep",
     label: "Sales Rep",
     blurb:
-      "Sees only their own work orders and their own performance numbers. No ordering, no Settings.",
+      "Sees only their own work orders and their own numbers. Can enter colors and send the color form. No materials ordering, no Settings.",
   },
 ];
 
@@ -89,7 +89,19 @@ export type Capabilities = {
   canSeeAllWorkOrders: boolean;
   /** Place supplier/material orders. Admin only — AM sees it greyed (#5). */
   canOrderMaterials: boolean;
-  /** Enter customer colors: Internal Entry + Send Color Form. Admin or AM. */
+  /**
+   * Enter customer colors: Internal Entry + Send Color Form.
+   *
+   * EVERY role, since Kate 2026-09-01: "the field users should be able to enter
+   * colors + send the color form." Colour capture is field work — the rep is
+   * standing in the customer's hallway — and gating it to office roles meant
+   * the person actually with the customer had to ask someone else to send the
+   * form.
+   *
+   * Kept as a capability rather than deleted: it still gates seven server
+   * routes, and a future read-only role must be able to be excluded without
+   * re-finding all seven.
+   */
   canEnterColors: boolean;
   /** Open the Settings hub + provision users. Admin only. */
   canManageSettings: boolean;
@@ -125,7 +137,8 @@ export function capabilitiesFor(role: UserRole): Capabilities {
     // differs is the breadth of what they can see.
     canSeeAllWorkOrders: isAdmin || isAccountManager || isRegionalManager,
     canOrderMaterials: isAdmin,
-    canEnterColors: isAdmin || isAccountManager,
+    // Every role. See the field on Capabilities for why.
+    canEnterColors: true,
     canManageSettings: isAdmin,
     canSeeAnalytics: !isAccountManager,
   };
