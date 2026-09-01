@@ -32,7 +32,7 @@ export default async function MessagingLayout({ children }: { children: React.Re
   const initial = (profile?.full_name || user.email || "?").trim()[0]?.toUpperCase() ?? "?";
 
   return (
-    <MessagingChrome workspaces={workspaces} userInitial={initial}>
+    <MessagingChrome workspaces={workspaces} userInitial={initial} accessible={access.accessible}>
       {children}
     </MessagingChrome>
   );

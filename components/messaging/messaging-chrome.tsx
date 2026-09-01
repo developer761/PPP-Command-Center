@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import ModalPortal from "@/components/modal-portal";
+import PlatformSwitcher from "@/components/platform-switcher";
+import type { Platform } from "@/lib/platform-cookie";
 import MessagingSidebar, { type SidebarWorkspace } from "./messaging-sidebar";
 
 /**
@@ -15,10 +17,15 @@ import MessagingSidebar, { type SidebarWorkspace } from "./messaging-sidebar";
 export default function MessagingChrome({
   workspaces,
   userInitial,
+  accessible,
   children,
 }: {
   workspaces: SidebarWorkspace[];
   userInitial: string;
+  /** Every platform this viewer may open. Messaging is a peer of the two
+   *  Command Centers, so it gets the SAME switcher they do — a text link to
+   *  the picker was a dead end that made this surface feel like a silo. */
+  accessible: Platform[];
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -28,7 +35,7 @@ export default function MessagingChrome({
       {/* Desktop rail */}
       <aside className="hidden lg:flex lg:w-[268px] lg:shrink-0 lg:flex-col lg:h-screen lg:sticky lg:top-0 border-r border-ppp-charcoal-100">
         <MessagingSidebar workspaces={workspaces} />
-        <UserFooter initial={userInitial} />
+        <UserFooter initial={userInitial} accessible={accessible} />
       </aside>
 
       {/* Mobile drawer */}
@@ -46,7 +53,7 @@ export default function MessagingChrome({
           />
           <aside className="lg:hidden fixed inset-y-0 left-0 z-50 w-[min(84vw,300px)] flex flex-col shadow-2xl">
             <MessagingSidebar workspaces={workspaces} onNavigate={() => setOpen(false)} />
-            <UserFooter initial={userInitial} />
+            <UserFooter initial={userInitial} accessible={accessible} />
           </aside>
         </ModalPortal>
       )}
@@ -84,21 +91,18 @@ export default function MessagingChrome({
   );
 }
 
-function UserFooter({ initial }: { initial: string }) {
+function UserFooter({ initial, accessible }: { initial: string; accessible: Platform[] }) {
   return (
-    <div className="shrink-0 border-t border-ppp-charcoal-100 bg-white px-3 py-2.5 flex items-center gap-2 pb-safe-sm">
-      <span className="h-8 w-8 shrink-0 rounded-full bg-ppp-charcoal text-white text-[12px] font-bold flex items-center justify-center">
-        {initial}
-      </span>
-      <Link
-        href="/choose-platform"
-        className="ml-auto inline-flex items-center gap-1.5 min-h-[40px] px-2 rounded-lg text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 touch-manipulation"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14 M7 23l-4-4 4-4 M21 13v2a4 4 0 0 1-4 4H3" />
-        </svg>
-        Switch
-      </Link>
+    <div className="shrink-0 border-t border-ppp-charcoal-100 bg-white p-2.5 space-y-2 pb-safe-sm">
+      {/* The same switcher the Command Centers carry, rendering one button per
+          platform this person can actually open. */}
+      <PlatformSwitcher current="messaging" accessible={accessible} />
+      <div className="flex items-center gap-2 px-0.5">
+        <span className="h-7 w-7 shrink-0 rounded-full bg-ppp-charcoal text-white text-[11px] font-bold flex items-center justify-center">
+          {initial}
+        </span>
+        <span className="text-[12px] text-ppp-charcoal-500 truncate">Signed in</span>
+      </div>
     </div>
   );
 }
