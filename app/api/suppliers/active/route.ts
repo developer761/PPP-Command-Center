@@ -13,12 +13,25 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
  * Accessible to any signed-in user (workers + admin). No scope filter —
  * admin-configured suppliers are global to the org, not per-rep.
  *
- * Per Katie 2026-06-10: returns EVERY supplier_settings row that's not
- * been explicitly soft-deleted (only filter is `order_email IS NOT NULL`
- * for email suppliers OR `phone_only = true` for phone suppliers — both
- * are usable on a paint order). The picker shows them all; workers can
- * pick any of the 8 suppliers PPP has on file, not just the "active 5".
+ * Returns the suppliers a worker may ORDER FROM: configured (an order email,
+ * or phone-only with a number) AND `is_active`.
+ *
+ * `is_active` was NOT part of this filter until 2026-09-01, even though the
+ * Settings checkbox has always read "Active — appears in Supplier Order Modal"
+ * / "Inactive — hidden from order workflow". The route returned every row and
+ * the picker merely dimmed the retired ones, so deactivating a supplier
+ * changed nothing a worker saw — Kate hit this trying to leave only the test
+ * vendor visible for Jason + Alex. The label was the promise; this is the code
+ * catching up to it. (Supersedes Katie's 2026-06-10 "show them all".)
+ *
+ * Deactivating never breaks an order already pointed at that supplier: the
+ * order pages and the draft route resolve a supplier by id straight from
+ * supplier_settings with no is_active filter.
  */
+
+// Admin toggles a supplier off and expects the picker to agree on the next
+// load — a cached list is the whole bug Kate reported on the settings page.
+export const dynamic = "force-dynamic";
 
 function adminClient() {
   return createSupabaseAdminClient(
@@ -47,8 +60,8 @@ export type ActiveSupplier = {
    *  = pickup pre-selected. Per-supplier override of the address-based
    *  NYC default; admin can still toggle to delivery per order. */
   pickupDefault: boolean;
-  /** is_active=false means the supplier is in soft-retirement. UI shows
-   *  a muted "Inactive" badge but still allows ordering. */
+  /** Always true — inactive suppliers are filtered out server-side. Kept on
+   *  the payload so a caller can't silently start assuming the opposite. */
   isActive: boolean;
 };
 
@@ -108,6 +121,9 @@ export async function GET() {
       // crash the order modal.
       .filter((r: Row) => {
         if (!r.supplier_account_id) return false;
+        // Soft-retired in Settings → gone from the picker, per the checkbox's
+        // own wording. `undefined` (a row predating the column) stays active.
+        if (r.is_active === false) return false;
         const hasEmail = typeof r.order_email === "string" && r.order_email.length > 0;
         const hasPhone = Boolean(r.phone_only) && typeof r.phone_number === "string" && r.phone_number.length > 0;
         return hasEmail || hasPhone;

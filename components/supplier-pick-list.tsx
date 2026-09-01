@@ -46,7 +46,7 @@ export default function SupplierPickList({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/suppliers/active");
+        const res = await fetch("/api/suppliers/active", { cache: "no-store" });
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok || !data.ok) {
@@ -149,7 +149,6 @@ export default function SupplierPickList({
                 className={[
                   "w-full text-left px-4 sm:px-5 py-3.5 sm:py-3 min-h-[64px] sm:min-h-0",
                   "hover:bg-ppp-blue-50/40 active:bg-ppp-blue-50 transition-colors touch-manipulation",
-                  !s.isActive ? "opacity-70" : "",
                 ].join(" ")}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -169,11 +168,6 @@ export default function SupplierPickList({
                       {s.pickupDefault && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-charcoal-50 text-ppp-charcoal-700 border border-ppp-charcoal-100" title="Pickup is the default for this supplier">
                           Pickup
-                        </span>
-                      )}
-                      {!s.isActive && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-charcoal-50 text-ppp-charcoal-500 border border-ppp-charcoal-100" title="Soft-retired in Settings. Still usable.">
-                          Inactive
                         </span>
                       )}
                     </div>

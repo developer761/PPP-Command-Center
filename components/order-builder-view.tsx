@@ -224,7 +224,7 @@ export default function OrderBuilderView({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/suppliers/active");
+        const res = await fetch("/api/suppliers/active", { cache: "no-store" });
         const data = await res.json();
         if (cancelled || !res.ok || !data.ok) return;
         const hit = (data.suppliers ?? []).find(
