@@ -15,10 +15,12 @@
 --     area code, so almost certainly a rename — but it is an assumption.
 --   * Thumbtack has NO number in the inventory at all. Seeded numberless
 --     rather than invented.
--- Not seeded here: WC CT Meta and TX Meta 2, whose inventory names are
--- "WC CT Leads" and "TX Meta". Leads and Meta are different SOURCE buckets in
--- PPP's own naming, so treating one as the other could route a lead to the
--- wrong area code. Both are out of Phase 1 anyway.
+-- Not seeded with a number: WC CT Meta, whose inventory name is "WC CT Leads".
+-- Leads and Meta are different SOURCE buckets in PPP's own naming, so treating
+-- one as the other could route a lead to the wrong area code.
+--
+-- TEXAS is decommissioned — PPP no longer operates there (Karan 2026-09-01).
+-- The three TX workspaces are seeded but must never be activated. Both are out of Phase 1 anyway.
 --
 -- Idempotent: ON CONFLICT (name) refreshes the number/timezone/flags but never
 -- clobbers autosend_enabled, which is earned per workspace and must not be
@@ -58,17 +60,27 @@ VALUES
   ('CA San Diego Leads',    '+18587790696', 'America/Los_Angeles', FALSE, 'CA San Diego Leads', NULL),
   ('CA Meta',               '+12132972592', 'America/Los_Angeles', FALSE, 'CA Meta',            NULL),
   ('AM - CA LA',            '+13235533840', 'America/Los_Angeles', FALSE, 'AM - CA LA',         'Account-management surface.'),
-  -- ── Later phases: Colorado / Texas ─────────────────────────────────
+  -- ── Later phases: Colorado ─────────────────────────────────────────
   ('CO Denver Leads',       '+17206193724', 'America/Denver',  FALSE, 'CO Denver Leads',       NULL),
-  ('AM - Dallas TX',        '+14699666656', 'America/Chicago', FALSE, 'AM - Dallas TX',        'Account-management surface.'),
-  ('TX Meta 2',             NULL,           'America/Chicago', FALSE, 'TX Meta 2',             'Inventory lists "TX Meta" at 469-833-3951. The "2" suffix is unexplained — rename, or a second number? CONFIRM.'),
+
+  -- ── Texas: PPP NO LONGER OPERATES THERE (Karan 2026-09-01) ─────────
+  -- Never activate these. Seeded only so the inventory stays complete and
+  -- an inbound to a Texas number resolves to a known workspace instead of
+  -- falling through to an unmatched-triage bucket nobody reads.
+  --
+  -- Both AM - Dallas TX and TX Meta 2 are still ACTIVE in Hatch. If Hatch
+  -- bills per active workspace, PPP is paying for a state it has left —
+  -- roughly $3.3k/yr that can be cancelled today, with no dependency on
+  -- this replacement shipping.
+  ('AM - Dallas TX',        '+14699666656', 'America/Chicago', FALSE, 'AM - Dallas TX',        'DECOMMISSIONED — PPP no longer operates in Texas. Still active in Hatch: deactivate to stop paying for it.'),
+  ('TX Meta 2',             NULL,           'America/Chicago', FALSE, 'TX Meta 2',             'DECOMMISSIONED — PPP no longer operates in Texas. Still active in Hatch: deactivate to stop paying for it. (Inventory lists "TX Meta" at 469-833-3951; the "2" is now moot.)'),
 
   -- ── Inactive in Hatch. Rows exist so switching one on is a flag. ────
   ('Elevate Paint Co',      NULL, 'America/New_York',    FALSE, 'Elevate Paint Co - inactive',      'Inactive in Hatch. Separate brand under the PPP umbrella — would need its own voice and branding.'),
   ('FL Orlando Leads',      NULL, 'America/New_York',    FALSE, 'FL Orlando Leads - Inactive',      'Inactive in Hatch.'),
   ('LA Baton Rouge Leads',  NULL, 'America/Chicago',     FALSE, 'LA Baton Rouge Leads - Inactive',  'Inactive in Hatch.'),
   ('NC Leads',              NULL, 'America/New_York',    FALSE, 'NC Leads - Inactive',              'Inactive in Hatch.'),
-  ('TX Dallas Leads',       NULL, 'America/Chicago',     FALSE, 'TX Dallas Leads - Inactive',       'Inactive in Hatch.')
+  ('TX Dallas Leads',       NULL, 'America/Chicago',     FALSE, 'TX Dallas Leads - Inactive',       'DECOMMISSIONED — PPP no longer operates in Texas. Already inactive in Hatch.')
 ON CONFLICT (name) DO UPDATE SET
   phone_e164           = EXCLUDED.phone_e164,
   time_zone            = EXCLUDED.time_zone,
