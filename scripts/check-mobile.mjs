@@ -87,7 +87,12 @@ for (const f of files) {
     // which is a property of that inner element, not this one.
     const fullHeightSheet = /\btop-0\b/.test(cls) || /\binset-y-0\b/.test(cls);
     if (/\bfixed\b/.test(cls) && /\bbottom-0\b/.test(cls) && !/\binset-0\b/.test(cls) && !fullHeightSheet) {
-      if (!/safe-area-inset-bottom|pb-\[env/.test(below)) add("fixed-bottom", f, n, "pinned to bottom with no safe-area inset — home indicator overlaps", raw);
+      // This project ships its own safe-area utilities in globals.css —
+      // pb-safe, pb-safe-sm and mb-safe all resolve to
+      // max(padding, env(safe-area-inset-bottom)). Looking only for the raw
+      // env() call flagged correct code that used the shared utility, which is
+      // the thing the utility exists to encourage.
+      if (!/safe-area-inset-bottom|pb-\[env|\bpb-safe(?:-sm)?\b|\bmb-safe\b/.test(below)) add("fixed-bottom", f, n, "pinned to bottom with no safe-area inset — home indicator overlaps", raw);
     }
 
     // grid-fixed: multi-column with no responsive prefix anywhere in the class.

@@ -90,3 +90,106 @@ export async function activeWorkspaces() {
     .order("name");
   return data ?? [];
 }
+
+/* ─────────────────────────── thread view ─────────────────────────── */
+
+export type ThreadMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  channel: string;
+  body: string;
+  subject: string | null;
+  sent_by_agent: string | null;
+  delivery_status: string | null;
+  created_at: string;
+};
+
+export async function loadThread(id: string) {
+  const sb = messagingDb();
+  const { data: conv } = await sb
+    .from("sms_conversations")
+    .select("id, customer_phone, customer_name, customer_email, state, outcome, owning_agent, consent_basis, sf_lead_id, sf_opportunity_id, created_at, sms_sub_accounts(name, phone_e164)")
+    .eq("id", id)
+    .maybeSingle();
+  if (!conv) return null;
+  const { data: msgs } = await sb
+    .from("sms_messages")
+    .select("id, direction, channel, body, subject, sent_by_agent, delivery_status, created_at")
+    .eq("conversation_id", id)
+    .order("created_at", { ascending: true });
+  const ws = conv.sms_sub_accounts as unknown as { name: string; phone_e164: string | null } | null;
+  return {
+    conversation: { ...conv, workspace_name: ws?.name ?? "—", workspace_phone: ws?.phone_e164 ?? null },
+    messages: (msgs ?? []) as ThreadMessage[],
+  };
+}
+
+/* ─────────────────────────── dashboard ───────────────────────────── */
+
+/**
+ * The same five numbers Hatch reports per workspace — Active, Completed,
+ * Success, Drop Off, Take Over — so the shadow-run comparison in Stage 7 is
+ * like-for-like instead of needing a mapping nobody trusts.
+ *
+ * Hatch's own definitions, read off its dashboard:
+ *   Active     conversations still in flight
+ *   Completed  conversations that reached a terminal state
+ *   Success    of those completed, the share that ended in a booking
+ *   Drop Off   customer stopped replying
+ *   Take Over  a human stepped in
+ */
+export type AgentStats = {
+  workspace: string;
+  active: number;
+  completed: number;
+  successPct: number;
+  dropOffPct: number;
+  takeOverPct: number;
+};
+
+export async function agentStats(): Promise<AgentStats[]> {
+  const sb = messagingDb();
+  const { data } = await sb
+    .from("sms_conversations")
+    .select("state, outcome, sms_sub_accounts(name)");
+  const by = new Map<string, { active: number; completed: number; success: number; drop: number; take: number }>();
+  for (const r of data ?? []) {
+    const ws = (r.sms_sub_accounts as unknown as { name: string } | null)?.name ?? "—";
+    const e = by.get(ws) ?? { active: 0, completed: 0, success: 0, drop: 0, take: 0 };
+    if (r.state !== "ended") e.active++;
+    else {
+      e.completed++;
+      if (r.outcome === "success") e.success++;
+      if (r.outcome === "lost" || r.outcome === "discard") e.drop++;
+      if (r.outcome === "transferred") e.take++;
+    }
+    by.set(ws, e);
+  }
+  const pct = (n: number, d: number) => (d === 0 ? 0 : Math.round((n / d) * 1000) / 10);
+  return [...by.entries()]
+    .map(([workspace, e]) => ({
+      workspace, active: e.active, completed: e.completed,
+      successPct: pct(e.success, e.completed),
+      dropOffPct: pct(e.drop, e.completed),
+      takeOverPct: pct(e.take, e.completed),
+    }))
+    .sort((a, b) => b.completed - a.completed || a.workspace.localeCompare(b.workspace));
+}
+
+export async function readinessChecks() {
+  const sb = messagingDb();
+  const [{ count: optOuts }, { count: workspaces }, { count: campaigns }, { data: numbered }] = await Promise.all([
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true }),
+    sb.from("sms_sub_accounts").select("*", { count: "exact", head: true }).eq("is_active", true),
+    sb.from("sms_campaigns").select("*", { count: "exact", head: true }).eq("is_active", true),
+    sb.from("sms_sub_accounts").select("phone_e164").eq("is_active", true),
+  ]);
+  const missingNumbers = (numbered ?? []).filter((w) => !w.phone_e164).length;
+  return {
+    optOuts: optOuts ?? 0,
+    activeWorkspaces: workspaces ?? 0,
+    activeCampaigns: campaigns ?? 0,
+    missingNumbers,
+    cronSecret: !!process.env.CRON_SECRET,
+  };
+}

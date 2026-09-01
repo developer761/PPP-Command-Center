@@ -47,6 +47,12 @@ export default async function MessagingLayout({ children }: { children: React.Re
             </span>
             <span className="font-bold text-ppp-charcoal truncate">Messaging</span>
           </div>
+          {/* Two surfaces, so the nav is two links rather than a menu. A menu
+              for two items costs a tap and hides half of what exists. */}
+          <nav className="flex items-center gap-1 text-[13px] font-medium">
+            <Link href="/messaging" className="min-h-[44px] sm:min-h-0 px-2.5 flex items-center rounded-lg text-ppp-charcoal-600 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 touch-manipulation">Inbox</Link>
+            <Link href="/messaging/dashboard" className="min-h-[44px] sm:min-h-0 px-2.5 flex items-center rounded-lg text-ppp-charcoal-600 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 touch-manipulation">Stats</Link>
+          </nav>
           {/* 44px tap target on a phone, per iOS HIG — this is the only way out
               of the surface and it must not need a careful thumb. */}
           <Link
