@@ -7,6 +7,7 @@ import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { normalizeFulfillmentState, emptyFulfillmentState, type FulfillmentState } from "@/lib/supplier-order/fulfillment-state";
+import { capabilitiesFor } from "@/lib/auth/roles";
 import type { SourceLine } from "@/components/order-builder-view";
 
 /**
@@ -76,7 +77,13 @@ export async function loadOrderPageData(
     job,
     workOrderId: woId,
     sourceLines,
-    canOrderMaterials: bundle.viewer?.isAdmin ?? false,
+    // Derive from the ROLE, not `viewer.isAdmin` — this line read the admin
+    // flag directly, so widening the capability in roles.ts alone would have
+    // left both order pages still saying "admin-only" to everyone else. A
+    // missing viewer stays false rather than falling through to "rep".
+    canOrderMaterials: bundle.viewer
+      ? capabilitiesFor(bundle.viewer.role).canOrderMaterials
+      : false,
     address: acct?.billingStreet
       ? {
           street: acct.billingStreet ?? "",

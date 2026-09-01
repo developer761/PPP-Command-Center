@@ -107,9 +107,9 @@ export default async function OrderFulfillmentPage({
   if (!data.canOrderMaterials) {
     return (
       <div className="max-w-lg mx-auto py-16 text-center">
-        <h1 className="text-lg font-bold text-ppp-navy">Ordering is admin-only</h1>
+        <h1 className="text-lg font-bold text-ppp-navy">Account Managers can&rsquo;t order materials</h1>
         <p className="mt-2 text-sm text-ppp-charcoal-500">
-          Account Managers and reps can enter colors, but an admin places the material order.
+          You can enter colors and send the color form. Placing the material order is handled by an admin, regional manager or rep.
         </p>
         <Link
           href={`/dashboard/materials/${encodeURIComponent(data.workOrderId)}`}

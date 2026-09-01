@@ -21,7 +21,8 @@ export const dynamic = "force-dynamic";
  * behind the measurement rather than in front of it.
  *
  * Gated on canEnterColors — measuring is field work an Account Manager does.
- * Ordering the paint stays admin-only, elsewhere.
+ * Ordering the paint happens elsewhere (canOrderMaterials — every role
+ * except the account manager).
  */
 export default async function MeasurePage() {
   const supabase = await createClient();

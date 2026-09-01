@@ -79,6 +79,7 @@ import {
   type RoomTakeoff,
   type RoomSurface,
 } from "@/lib/supplier-order/estimate-gallons";
+import { capabilitiesFor } from "@/lib/auth/roles";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
@@ -215,14 +216,18 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     return summary;
   }, [formStatuses]);
   const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
-  // Placing supplier/material orders is admin-only. Account Managers see the
-  // button greyed with an explanation (Kate #5); reps likewise can't order.
-  const canOrderMaterials = viewer?.isAdmin ?? false;
-  const isAccountManager = viewer?.isAccountManager ?? false;
-  // Entering colors (Send Color Form + Internal Entry) is admin OR account
-  // manager — the server routes gate the same way (canEnterColors). Reps get
-  // a read-only note instead of buttons that would 403.
-  const canEnterColors = !!(viewer?.isAdmin || viewer?.isAccountManager);
+  // Both gates come from capabilitiesFor() and NOTHING is re-derived here.
+  // Each of these lines used to spell its own rule out of `viewer.isAdmin` /
+  // `viewer.isAccountManager`, which is exactly why widening the capability in
+  // roles.ts did not reach the screen: the server routes opened up and this
+  // component went on hiding the controls. A missing viewer stays locked.
+  //
+  //   canOrderMaterials — everyone EXCEPT the account manager (Kate 2026-09-01)
+  //   canEnterColors    — every role (Kate 2026-09-01)
+  const caps = viewer ? capabilitiesFor(viewer.role) : null;
+  const canOrderMaterials = caps?.canOrderMaterials ?? false;
+  const canEnterColors = caps?.canEnterColors ?? false;
+  const isAccountManager = caps?.isAccountManager ?? false;
 
   // Speed pass 2026-06-29 — when the server passes `openJobsSerialized`
   // (the already-derived open-WO list with Map→Array conversion), skip the
@@ -1892,7 +1897,8 @@ function JobDetailImpl({
               from the Activity History panel on the right. */}
 
           {/* ── Colors: collect color picks from the homeowner, or enter them
-              yourself (Internal Entry). Admin/AM only — reps get a read-only
+              yourself (Internal Entry). Every role — reps included (Kate 2026-09-01);
+              a viewer we can't identify gets a read-only
               note instead of buttons that would 403. */}
           <div className="rounded-lg border border-ppp-blue-100 bg-ppp-blue-50/30 p-3 mb-3">
             <div className="text-[10px] uppercase tracking-wider font-bold text-ppp-blue-700 mb-2">Colors</div>
@@ -2008,7 +2014,7 @@ function JobDetailImpl({
                   aria-disabled
                   title={
                     !canOrderMaterials
-                      ? "Only admins can place material orders."
+                      ? "Account Managers can't place material orders."
                       : "Add rooms/colors in Salesforce before ordering."
                   }
                   className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold bg-ppp-charcoal-100 text-ppp-charcoal-400 cursor-not-allowed"
@@ -2021,9 +2027,7 @@ function JobDetailImpl({
               )}
               <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
                 {!canOrderMaterials
-                  ? (isAccountManager
-                      ? "Account Managers can't place orders — an admin handles materials. You can still enter colors."
-                      : "Only admins can place material orders.")
+                  ? "Account Managers can't place orders — an admin, regional manager or rep handles materials. You can still enter colors."
                   : job.lineItems.length === 0
                   ? "No rooms on this WO yet — add rooms/colors in Salesforce before ordering."
                   : "Step 1: pick a store and set what to buy. Step 2: fulfilment and the email. Nothing sends until you say so."}
@@ -2037,7 +2041,7 @@ function JobDetailImpl({
           </div>
 
           {/* Kate #03: Follow-up date — mirrors WorkOrder.FollowupDate__c and
-              writes back to Salesforce. Admin/AM only (same as color entry). */}
+              writes back to Salesforce. Gated on canEnterColors — every role. */}
           {canEnterColors && (
             <FollowUpDateField key={`fu-${job.wo.id}`} workOrderId={job.wo.id} initial={job.wo.followupDate ?? null} />
           )}
@@ -2184,7 +2188,7 @@ function LineItemRow({
   effectiveSqftValue: number;
   /** Fires the SF write + updates the parent override map. */
   onUpdateSqft: (woliId: string, sqft: number) => Promise<{ ok: boolean; error?: string }>;
-  /** Admin/AM only. Reps are read-only (server route gates the same way). */
+  /** canEnterColors — every role. Server route gates the same way. */
   canEnterColors: boolean;
   /** R4.9/R4.10: what the customer actually entered for this line. */
   retainedPicks?: RetainedPick[];
@@ -2348,7 +2352,7 @@ function LineItemRow({
               wall area) still get the input so the worker can supplement. */}
           {/* Re-audit 2026-07-28 (F2): reps are read-only on this surface
               (Customer tab says so, and the server route now enforces
-              canEnterColors). Only render the writable input for admin/AM;
+              canEnterColors). Only render the writable input when canEnterColors;
               reps see the current measurement as plain text. */}
           {canEnterColors ? (
             <SqftEditor

@@ -12,8 +12,7 @@
  *                      (greyed), cannot open Settings.
  *   regional_manager — a rep who oversees a region: everything a rep has, plus
  *                      EVERY work order rather than only their own (Kate,
- *                      2026-09-01). Not an operations role — no ordering, no
- *                      colour entry, no Settings.
+ *                      2026-09-01).
  *   rep              — sees only their OWN work orders + their own numbers.
  *
  * `is_admin` (the legacy boolean on profiles) is mirrored to `role='admin'`
@@ -46,13 +45,13 @@ export const USER_ROLES: { value: UserRole; label: string; blurb: string }[] = [
     value: "regional_manager",
     label: "Regional Manager",
     blurb:
-      "Everything a Sales Rep has, plus every work order instead of only their own. No materials ordering, no Settings.",
+      "Everything a Sales Rep has, plus every work order instead of only their own. Can order materials. No Settings.",
   },
   {
     value: "rep",
     label: "Sales Rep",
     blurb:
-      "Sees only their own work orders and their own numbers. Can enter colors and send the color form. No materials ordering, no Settings.",
+      "Sees only their own work orders and their own numbers. Can enter colors, send the color form, and order materials. No Settings.",
   },
 ];
 
@@ -87,7 +86,19 @@ export type Capabilities = {
    *  regional manager scoped to their own jobs, which is the opposite of the
    *  point of the role. */
   canSeeAllWorkOrders: boolean;
-  /** Place supplier/material orders. Admin only — AM sees it greyed (#5). */
+  /**
+   * Place supplier/material orders.
+   *
+   * EVERY role EXCEPT the account manager, since Kate 2026-09-01: "materials
+   * ordering should be available to all but Account Management." Note this is
+   * the opposite shape from every other capability here — a single exclusion,
+   * not a widening, so read it as `!isAccountManager` rather than assuming
+   * admin is the only holder.
+   *
+   * The AM keeps seeing the button, greyed, with a reason (#5) — the role runs
+   * colour forms for every job, so silently hiding the control would read as a
+   * broken page rather than a deliberate boundary.
+   */
   canOrderMaterials: boolean;
   /**
    * Enter customer colors: Internal Entry + Send Color Form.
@@ -136,7 +147,9 @@ export function capabilitiesFor(role: UserRole): Capabilities {
     // A regional manager is a rep in every other respect — the ONE thing that
     // differs is the breadth of what they can see.
     canSeeAllWorkOrders: isAdmin || isAccountManager || isRegionalManager,
-    canOrderMaterials: isAdmin,
+    // A single EXCLUSION, not a widening — see the field doc. Admin, regional
+    // manager and rep all order; the account manager is the one who cannot.
+    canOrderMaterials: !isAccountManager,
     // Every role. See the field on Capabilities for why.
     canEnterColors: true,
     canManageSettings: isAdmin,

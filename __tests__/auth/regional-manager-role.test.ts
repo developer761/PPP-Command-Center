@@ -33,8 +33,10 @@ describe("Regional Manager is a rep who sees everything", () => {
     expect(differing).toEqual(["canSeeAllWorkOrders"]);
   });
 
-  it("cannot order materials or open Settings", () => {
-    expect(rm.canOrderMaterials).toBe(false);
+  it("orders materials like a rep, but cannot open Settings", () => {
+    // Kate 2026-09-01 widened ordering to every role except the account
+    // manager, so this flipped from false. Settings stays admin-only.
+    expect(rm.canOrderMaterials).toBe(true);
     expect(rm.canManageSettings).toBe(false);
     expect(rm.isAdmin).toBe(false);
     expect(rm.isAccountManager).toBe(false);
@@ -119,12 +121,15 @@ describe("field users can enter colors (Kate, 2026-09-01)", () => {
   });
 
   it("this did NOT widen anything else", () => {
-    // Opening one capability must not quietly open the others. Ordering
-    // materials and Settings stay where they were.
-    expect(capabilitiesFor("rep").canOrderMaterials).toBe(false);
+    // Opening one capability must not quietly open the others. Settings and
+    // work-order scope stay exactly where they were.
     expect(capabilitiesFor("rep").canManageSettings).toBe(false);
     expect(capabilitiesFor("rep").canSeeAllWorkOrders).toBe(false);
-    expect(capabilitiesFor("regional_manager").canOrderMaterials).toBe(false);
+    expect(capabilitiesFor("regional_manager").canManageSettings).toBe(false);
+    expect(capabilitiesFor("account_manager").canManageSettings).toBe(false);
+    // Ordering was widened SEPARATELY on the same day (Kate: "available to
+    // all but Account Management") — the account manager is the exception,
+    // and that exclusion is the thing that must not drift.
     expect(capabilitiesFor("account_manager").canOrderMaterials).toBe(false);
   });
 
