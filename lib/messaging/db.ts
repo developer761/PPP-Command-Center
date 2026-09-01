@@ -46,7 +46,7 @@ const STATE_FOR: Record<InboxBucket, string[]> = {
   ended: ["ended"],
 };
 
-export async function loadInbox(bucket: InboxBucket, workspaceId?: string) {
+export async function loadInbox(bucket: InboxBucket, workspaceId?: string, search?: string) {
   const sb = messagingDb();
   let q = sb
     .from("sms_conversations")
@@ -55,6 +55,12 @@ export async function loadInbox(bucket: InboxBucket, workspaceId?: string) {
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(100);
   if (workspaceId) q = q.eq("workspace_id", workspaceId);
+  // Name or number. Someone hunting a conversation has one or the other in
+  // front of them — usually the number, off a missed call.
+  if (search?.trim()) {
+    const t = search.trim().replace(/[%,()]/g, "");
+    q = q.or(`customer_name.ilike.%${t}%,customer_phone.ilike.%${t}%`);
+  }
   const { data, error } = await q;
   if (error) return { rows: [] as InboxRow[], error: error.message };
   const rows: InboxRow[] = (data ?? []).map((r) => {
@@ -192,4 +198,37 @@ export async function readinessChecks() {
     missingNumbers,
     cronSecret: !!process.env.CRON_SECRET,
   };
+}
+
+
+/* ─────────────────────────── sidebar ─────────────────────────────── */
+
+/** Hatch lists 32 workspaces flat and alphabetical, so AM - Dallas TX lands
+ *  above every New York inbox. Grouping by region is the one place worth
+ *  diverging: "which of my regions needs me" should not be a scan. */
+function regionOf(name: string): string {
+  if (/^NY |^NYC |LI |Queens|Wstch/i.test(name)) return "New York";
+  if (/^NJ /i.test(name)) return "New Jersey";
+  if (/^FL |SoFlo/i.test(name)) return "Florida";
+  if (/^CT |WC CT/i.test(name)) return "Connecticut";
+  if (/^CA /i.test(name)) return "California";
+  if (/^CO /i.test(name)) return "Colorado";
+  if (/^AM - /i.test(name)) return "Account management";
+  return "Other";
+}
+
+export async function sidebarWorkspaces() {
+  const sb = messagingDb();
+  const [{ data: ws }, { data: convs }] = await Promise.all([
+    sb.from("sms_sub_accounts").select("id, name").eq("is_active", true).order("name"),
+    sb.from("sms_conversations").select("workspace_id").eq("state", "human_active"),
+  ]);
+  const unread = new Map<string, number>();
+  for (const c of convs ?? []) unread.set(c.workspace_id, (unread.get(c.workspace_id) ?? 0) + 1);
+  // AM workspaces are a different job from lead inboxes, so they sit in their
+  // own group at the end rather than interleaved by state.
+  const order = ["New York", "New Jersey", "Florida", "Connecticut", "California", "Colorado", "Account management", "Other"];
+  return (ws ?? [])
+    .map((w) => ({ id: w.id, name: w.name, region: regionOf(w.name), unread: unread.get(w.id) ?? 0 }))
+    .sort((a, b) => order.indexOf(a.region) - order.indexOf(b.region) || a.name.localeCompare(b.name));
 }
