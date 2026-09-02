@@ -32,9 +32,20 @@ export type GateWorkspace = {
   send_on_weekends: boolean;
 };
 
+/** PPP campaigns send both channels in one sequence — the CA LA campaign opens
+ *  with an SMS and follows with an email fifteen minutes later. */
+export type SendChannel = "sms" | "email";
+
 export type GateDeps = {
-  /** True when the number is on the suppression list and has not re-subscribed. */
-  isSuppressed(to: E164): Promise<boolean>;
+  /**
+   * True when this person is suppressed on the channel we are about to use.
+   *
+   * Takes both identifiers rather than a phone, because 92 of the 213 failed
+   * Hatch opt-outs arrived over EMAIL. A list keyed only to a handset cannot
+   * stop the email half of a sequence, and honouring one channel while
+   * ignoring the other is worse than honouring neither — it looks compliant.
+   */
+  isSuppressed(target: { phone: E164 | null; email: string | null }, channel: SendChannel): Promise<boolean>;
   /** Messages already sent to this handset today, across every agent and workspace. */
   sentToday(to: E164): Promise<number>;
   /** Supplied only by tests. App callers never hold a transport — the gate
@@ -47,6 +58,9 @@ export type GateDeps = {
 export type SendRequest = {
   workspace: GateWorkspace;
   to: E164;
+  /** Required when channel is "email". */
+  toEmail?: string | null;
+  channel?: SendChannel;
   body: string;
   /** Which agent asked. Recorded, and used for nothing else — no agent gets an
    *  exemption, which is the point. */
@@ -60,6 +74,7 @@ export type GateRefusal =
   | "weekend"           // workspace policy, not law. Also deferrable.
   | "daily_cap"         // five agents talking over each other.
   | "no_workspace_number"
+  | "no_email_address"   // an email step with nowhere to send it
   | "empty_body";
 
 export type GateResult =
@@ -77,14 +92,21 @@ export type GateResult =
 export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateResult> {
   const now = req.now ?? new Date();
   const { workspace: ws, to, body } = req;
+  const channel: SendChannel = req.channel ?? "sms";
 
   // A workspace with no number cannot send from the local area code the
   // customer expects. Thumbtack is in exactly this state today.
-  if (!ws.phone_e164) return { ok: false, reason: "no_workspace_number" };
+  if (channel === "sms" && !ws.phone_e164) return { ok: false, reason: "no_workspace_number" };
+  if (channel === "email" && !req.toEmail) return { ok: false, reason: "no_email_address" };
   if (!body.trim()) return { ok: false, reason: "empty_body" };
 
-  // 1. Suppression. Absolute, and first, so nothing below can reorder past it.
-  if (await deps.isSuppressed(to)) return { ok: false, reason: "suppressed" };
+  // 1. Suppression, on the channel we are about to use. Absolute, and first,
+  //    so nothing below can reorder past it.
+  const suppressed = await deps.isSuppressed(
+    { phone: to ?? null, email: req.toEmail ?? null },
+    channel
+  );
+  if (suppressed) return { ok: false, reason: "suppressed" };
 
   const hours: QuietHours = {
     startHour: ws.quiet_hours_start,
@@ -92,6 +114,11 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   };
 
   // 2. Quiet hours, in the WORKSPACE's timezone, never the server's.
+  //    Applied to EMAIL as well as SMS. Quiet hours are a TCPA bound on texts
+  //    and email is CAN-SPAM, which has no such rule — but PPP's own campaign
+  //    emails already sit inside the window (09:00, and 15 minutes after a
+  //    launch text), so enforcing it cannot delay anything they scheduled, and
+  //    it removes any path to an email leaving at 3am.
   if (!withinQuietHours(now, ws.time_zone, hours)) {
     return { ok: false, reason: "quiet_hours", retryAt: nextSendableTime(now, ws.time_zone, hours) };
   }

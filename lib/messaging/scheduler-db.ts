@@ -53,10 +53,21 @@ export function schedulerDeps(): SchedulerDeps {
 
     async send(req: SendRequest): Promise<GateResult> {
       return gatedSend(req, {
-        async isSuppressed(to) {
+        async isSuppressed(target, channel) {
+          // Check the identifier for the channel we are about to use. 92 of the
+          // 213 failed Hatch opt-outs came in over email, and a sequence that
+          // sends both would otherwise keep emailing somebody who unsubscribed.
+          if (channel === "email") {
+            if (!target.email) return true; // no address = nothing we may send to
+            const { data } = await sb
+              .from("sms_opt_outs").select("id")
+              .ilike("email", target.email).is("opted_in_at", null).maybeSingle();
+            return !!data;
+          }
+          if (!target.phone) return true;
           const { data } = await sb
-            .from("sms_opt_outs").select("phone_e164")
-            .eq("phone_e164", to).is("opted_in_at", null).maybeSingle();
+            .from("sms_opt_outs").select("id")
+            .eq("phone_e164", target.phone).is("opted_in_at", null).maybeSingle();
           return !!data;
         },
         async sentToday(to) {

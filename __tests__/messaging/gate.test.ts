@@ -43,6 +43,7 @@ describe("gatedSend — refusals never touch the transport", () => {
   // sends anyway is worse than no rule.
   const cases: Array<[string, Partial<SendRequest>, Partial<Parameters<typeof gatedSend>[1]>, string]> = [
     ["opted out",            {},                                      { isSuppressed: async () => true }, "suppressed"],
+    ["an email step with no address", { channel: "email" as const },      {},                                 "no_email_address"],
     ["10:30pm local",        { now: utc("2026-07-16T02:30:00Z") },     {},                                 "quiet_hours"],
     ["7am local",            { now: utc("2026-07-15T11:00:00Z") },     {},                                 "quiet_hours"],
     ["already had 3 today",  {},                                      { sentToday: async () => 3 },       "daily_cap"],
@@ -139,5 +140,48 @@ describe("gatedSend — no agent gets an exemption", () => {
       expect(res.ok).toBe(false);
       expect(d.transport.sent).toHaveLength(0);
     }
+  });
+});
+
+describe("gatedSend — email is a separate suppression list", () => {
+  const EMAIL = { channel: "email" as const, toEmail: "person@example.com" };
+
+  it("sends an email step when the address is not suppressed", async () => {
+    const d = deps();
+    const r = await gatedSend(req(EMAIL), d);
+    expect(r.ok).toBe(true);
+  });
+
+  it("refuses an email step to an address that unsubscribed", async () => {
+    // 92 of the 213 failed Hatch opt-outs arrived over email. A phone-keyed
+    // list alone would have kept emailing every one of them.
+    const d = deps({ isSuppressed: async (_t, channel) => channel === "email" });
+    const r = await gatedSend(req(EMAIL), d);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("suppressed");
+    expect(d.transport.sent).toHaveLength(0);
+  });
+
+  it("an SMS opt-out does not silently block the email half, or vice versa", async () => {
+    // They are different lists under different law — TCPA and CAN-SPAM. The
+    // gate must ask about the channel it is actually using, not assume.
+    const smsOnly = deps({ isSuppressed: async (_t, channel) => channel === "sms" });
+    expect((await gatedSend(req(EMAIL), smsOnly)).ok).toBe(true);
+    expect((await gatedSend(req(), smsOnly)).ok).toBe(false);
+  });
+
+  it("passes BOTH identifiers so the port can pick the right one", async () => {
+    let seen: { phone: string | null; email: string | null } | null = null;
+    const d = deps({ isSuppressed: async (t) => { seen = t as never; return false; } });
+    await gatedSend(req(EMAIL), d);
+    expect(seen).toEqual({ phone: CUSTOMER, email: "person@example.com" });
+  });
+
+  it("refuses an email step with nowhere to send it", async () => {
+    const d = deps();
+    const r = await gatedSend(req({ channel: "email" }), d);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("no_email_address");
+    expect(d.transport.sent).toHaveLength(0);
   });
 });

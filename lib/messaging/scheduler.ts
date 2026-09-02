@@ -67,6 +67,7 @@ export function classifyRefusal(r: Extract<GateResult, { ok: false }>): "cancel"
       // Legal or permitted later; the gate already said when.
       return "reschedule";
     case "no_workspace_number":
+    case "no_email_address":
     case "empty_body":
       // Retrying cannot fix either. Surface it instead of hiding it in a queue.
       return "fail";
