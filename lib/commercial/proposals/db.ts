@@ -2256,6 +2256,13 @@ export async function updateLineItem(
  * The exemption is exactly why this touches ONE column and takes no other
  * input — a caller cannot ride any other edit in on it.
  */
+/** Has Postgres rejected this because migration 174 hasn't run yet? Migrations
+ *  are applied by hand after a deploy, so for a window the code knows about a
+ *  column the database does not. */
+function isMissingApprovedAt(err: { code?: string; message?: string } | null): boolean {
+  return !!err && err.code === "42703" && /customer_approved_at/i.test(err.message ?? "");
+}
+
 export async function setLineCustomerApproved(
   lineItemId: string,
   approved: boolean | null,
@@ -2268,12 +2275,32 @@ export async function setLineCustomerApproved(
     .eq("id", lineItemId)
     .maybeSingle();
   if (!before) return { ok: false, error: "That line is no longer on this proposal." };
-  const { data: after, error } = await sb
+  // Stamp WHEN, not just whether. On an ALTERNATE the timestamp decides whether
+  // the money belongs in the original contract sum (accepted at or before the
+  // win) or is a genuine change order (accepted after) — see migration 174.
+  // Clearing the answer clears the timestamp with it, so "not answered" cannot
+  // leave a stale date behind.
+  const patch: Record<string, unknown> = {
+    customer_approved: approved,
+    customer_approved_at: approved === null ? null : new Date().toISOString(),
+  };
+  let { data: after, error } = await sb
     .from("commercial_proposal_line_items")
-    .update({ customer_approved: approved })
+    .update(patch)
     .eq("id", lineItemId)
     .select("*")
     .single();
+  if (error && isMissingApprovedAt(error)) {
+    // Migration 174 hasn't been applied yet. Record the answer anyway — losing
+    // the timestamp is nothing next to refusing to record what the GC said.
+    delete patch.customer_approved_at;
+    ({ data: after, error } = await sb
+      .from("commercial_proposal_line_items")
+      .update(patch)
+      .eq("id", lineItemId)
+      .select("*")
+      .single());
+  }
   if (error) return { ok: false, error: error.message };
   await logUpdate("commercial_proposal_line_items", lineItemId, before, after, actingUserId);
   return { ok: true };
@@ -2366,10 +2393,86 @@ export async function proposalLineItemSumCents(proposalId: string): Promise<numb
   const sb = commercialDb();
   const { data: items } = await sb
     .from("commercial_proposal_line_items")
-    .select("quantity, unit_price_cents, is_alternate")
+    .select("quantity, unit_price_cents, is_alternate, customer_approved, customer_approved_at")
     .eq("proposal_id", proposalId);
-  const rows = (items as Array<{ quantity: number; unit_price_cents: number; is_alternate: boolean }> | null) ?? [];
-  return rows.reduce((acc, r) => (r.is_alternate ? acc : acc + Math.round(Number(r.quantity) * Number(r.unit_price_cents))), 0);
+  const rows =
+    (items as Array<{
+      quantity: number;
+      unit_price_cents: number;
+      is_alternate: boolean;
+      customer_approved?: boolean | null;
+      customer_approved_at?: string | null;
+    }> | null) ?? [];
+
+  // An ALTERNATE the customer awarded is part of the contract, not a change
+  // order. Stephanie 2026-09-01: "Many times the contract is issued with the
+  // alternate and it is part of the original contract sum. If the alternate
+  // shows up as a change order when billing, the GC is going to get confused
+  // and possibly kick it back because they never approved a CO even though the
+  // total contract amount is correct."
+  //
+  // This dropped every alternate unconditionally, and total_cents is the single
+  // contract number the AIA ladder, invoicing and the KPIs all consume. So an
+  // awarded alternate vanished from the contract, G702 line 1 came out short by
+  // exactly that amount, and the only way left to bill it was for somebody to
+  // raise a CO — which is how the GC ends up holding a change order for work
+  // they never approved as one.
+  //
+  // The cut-off is the WIN, per her rule: taken at or before it is contract,
+  // taken after it is a genuine change order and stays out of this sum.
+  const wonAtMs = await dealWonAtMs(proposalId);
+  return rows.reduce((acc, r) => {
+    const value = Math.round(Number(r.quantity) * Number(r.unit_price_cents));
+    if (!r.is_alternate) return acc + value;
+    if (r.customer_approved !== true) return acc; // declined, or never answered
+    return acceptedBeforeWin(r.customer_approved_at, wonAtMs) ? acc + value : acc;
+  }, 0);
+}
+
+/** When was this proposal's deal won? null when it hasn't been. */
+async function dealWonAtMs(proposalId: string): Promise<number | null> {
+  const sb = commercialDb();
+  const { data: p } = await sb
+    .from("commercial_proposals")
+    .select("opportunity_id")
+    .eq("id", proposalId)
+    .maybeSingle();
+  const oppId = (p as { opportunity_id?: string } | null)?.opportunity_id;
+  if (!oppId) return null;
+  const { data: o } = await sb
+    .from("commercial_opportunities")
+    .select("decided_at")
+    .eq("id", oppId)
+    .maybeSingle();
+  const decided = (o as { decided_at?: string | null } | null)?.decided_at;
+  if (!decided) return null;
+  const ms = Date.parse(decided);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Was this line taken at or before the win?
+ *
+ * Two deliberate "yes" cases beyond the obvious one:
+ *  · the deal isn't won yet — there is no "after" to be after, and the awarded
+ *    alternate is simply part of what is being priced.
+ *  · the row says taken with NO timestamp — it predates migration 174. Reading
+ *    that as "at the win" puts the money in the contract rather than inventing
+ *    a change order, which is the safe direction and the common case.
+ */
+export function acceptedBeforeWin(
+  approvedAt: string | null | undefined,
+  wonAtMs: number | null
+): boolean {
+  if (wonAtMs === null) return true;
+  if (!approvedAt) return true;
+  const ms = Date.parse(approvedAt);
+  if (!Number.isFinite(ms)) return true;
+  // Same ET calendar day as the win counts as part of the award, not after it —
+  // an alternate confirmed by email the afternoon the job was awarded is not a
+  // change order, and `decided_at` is a DATE while this is a timestamp.
+  const endOfWinDay = wonAtMs + 86_400_000;
+  return ms < endOfWinDay;
 }
 
 /** Recompute `commercial_proposals.total_cents` = the FINAL PRICE OVERRIDE when
