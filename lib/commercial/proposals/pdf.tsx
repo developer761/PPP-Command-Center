@@ -374,6 +374,13 @@ const styles = StyleSheet.create({
   altSection: {
     marginTop: 12,
   },
+  altTaxNote: {
+    fontSize: 9.5,
+    color: MUTED,
+    marginLeft: 14,
+    marginTop: 1,
+    marginBottom: 2,
+  },
   altHeader: {
     fontSize: 11,
     fontFamily: "Times-Bold",
@@ -1348,7 +1355,42 @@ function TotalRow({ label, cents }: { label: string; cents: number }) {
   );
 }
 
-function AlternateSectionCustomer({ items }: { items: CommercialProposalLineItem[] }) {
+/**
+ * Each alternate's price, plus the tax that would ride on it.
+ *
+ * Stephanie 2026-09-01: "If there is sales tax on project, there has to be
+ * sales tax on the alternates as well."
+ *
+ * `proposal.total_cents` sums only NON-alternate lines, so the tax block at the
+ * bottom of the page covers the base scope and nothing else. An alternate
+ * therefore printed a bare number while every other price on the page was
+ * quoted with tax beside it — and a GC who accepted one was billed more than
+ * the figure they accepted. The gap is small per line and exactly the kind that
+ * gets argued about at billing.
+ *
+ * Only when the job is actually taxable: `rateThou` comes from the same
+ * jurisdiction lookup the TOTAL used, so an exempt job (or one with no ZIP
+ * match) prints alternates exactly as before.
+ */
+function alternateTaxNote(
+  item: CommercialProposalLineItem,
+  tax: ProposalTaxLine | null
+): string | null {
+  if (!tax || !tax.rateThou) return null;
+  const base = lineTotalCents(item);
+  if (!Number.isFinite(base) || base <= 0) return null;
+  const cents = Math.round((base * tax.rateThou) / 100_000);
+  if (cents <= 0) return null;
+  return `+ ${formatDollars(cents)} ${tax.label} = ${formatDollars(base + cents)}`;
+}
+
+function AlternateSectionCustomer({
+  items,
+  tax,
+}: {
+  items: CommercialProposalLineItem[];
+  tax: ProposalTaxLine | null;
+}) {
   // The qualifications paragraph is no longer part of this section, so an
   // alternates block with no alternate LINES has nothing left to print.
   if (items.length === 0) return null;
@@ -1363,9 +1405,15 @@ function AlternateSectionCustomer({ items }: { items: CommercialProposalLineItem
       <Text style={styles.altHeader}>Add Alternate:</Text>
       {/* The qualifications paragraph moved to its own section after
           Exclusions — see QualificationsBlock. */}
-      {items.map((it) => (
-        <ItemLine key={it.id} item={it} />
-      ))}
+      {items.map((it) => {
+        const note = alternateTaxNote(it, tax);
+        return (
+          <View key={it.id}>
+            <ItemLine item={it} />
+            {note && <Text style={styles.altTaxNote}>{note}</Text>}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -1883,7 +1931,7 @@ export function ProposalPdfDocument({
         {showLineTable ? (
           <AlternateSectionInternal items={alternates} internal={mode === "internal"} />
         ) : (
-          <AlternateSectionCustomer items={alternates} />
+          <AlternateSectionCustomer items={alternates} tax={tax} />
         )}
 
         <ExclusionsBlock exclusions={exclusions} />

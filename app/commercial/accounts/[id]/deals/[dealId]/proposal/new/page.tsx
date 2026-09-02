@@ -16,6 +16,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { hydrateProposalContext } from "@/lib/commercial/proposals/hydrate";
+import type { CommercialProposal } from "@/lib/commercial/proposals/db";
 import {
   createProposal,
   findReusableDraftProposal,
@@ -69,6 +70,21 @@ export default async function CreateProposalRoute({
   // R1b/R1c: carry the pricing decisions forward on a revision bump.
   let bidSetDate: string | null = null;
   let finalPriceOverride: number | null = null;
+  // Stephanie 2026-09-01: "Carry over contact information and estimator info
+  // when proposal is revised."
+  //
+  // Everything else already came forward from the parent — intro, notes,
+  // exclusions, bid-set date, the price override. The header (which carries the
+  // Attention contact) and the estimator sign-off did NOT: they were re-derived
+  // from the deal on every revision. So an estimator who corrected the contact
+  // name or their own title on R1 — both of which the editor invites — watched
+  // R2 silently revert to whatever the deal record said, and had to redo it on
+  // every revision.
+  //
+  // Null, not undefined: these stay null on a FIRST proposal, where hydration
+  // is the only source there is.
+  let parentHeader: CommercialProposal["header_json"] | null = null;
+  let parentEstimator: CommercialProposal["estimator_snapshot_json"] | null = null;
 
   if (sp.bump && UUID_RE.test(sp.bump)) {
     const parent = await getProposal(sp.bump);
@@ -102,6 +118,8 @@ export default async function CreateProposalRoute({
       pdfShowLinePrices = parent.pdf_show_line_prices;
       bidSetDate = parent.bid_set_date;
       finalPriceOverride = parent.final_price_override_cents;
+      parentHeader = parent.header_json ?? null;
+      parentEstimator = parent.estimator_snapshot_json ?? null;
     }
   }
 
@@ -127,8 +145,14 @@ export default async function CreateProposalRoute({
 
   const result = await createProposal({
     opportunity_id: dealId,
-    header_json: ctx.header,
-    estimator_snapshot_json: ctx.estimator,
+    // A revision inherits what the previous one said; a first proposal
+    // hydrates. Merged over the hydrated values rather than replacing them, so
+    // a field the parent never set (a phone added to the profile since) still
+    // fills in, while anything the estimator actually typed wins.
+    header_json: parentHeader ? { ...ctx.header, ...parentHeader } : ctx.header,
+    estimator_snapshot_json: parentEstimator
+      ? { ...ctx.estimator, ...parentEstimator }
+      : ctx.estimator,
     exclusion_ids: exclusionIds,
     custom_exclusions: customExclusions,
     intro_text_override: intro,

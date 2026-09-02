@@ -345,3 +345,54 @@ describe("the plan report fits on one page", () => {
     expect(Math.round(size.height)).toBe(792);
   });
 });
+
+/**
+ * Alternates carry tax when the job is taxable.
+ *
+ * Stephanie 2026-09-01: "If there is sales tax on project, there has to be
+ * sales tax on the alternates as well."
+ *
+ * `proposal.total_cents` sums only NON-alternate lines, so the tax block at the
+ * foot of the page covers the base scope and nothing else. An alternate printed
+ * a bare number while every other price on the page was quoted with tax beside
+ * it — and a GC who accepted one got billed more than the figure they accepted.
+ */
+describe("tax on alternates", () => {
+  const withAlt = [
+    line("l1", "Base scope", 100_000_00),
+    line("a1", "Add alternate — soffits", 8_000_00, true),
+  ];
+  const suffolk = {
+    priceCents: 100_000_00, label: "NYS Sales Tax (8.75%)", taxCents: 8_750_00,
+    totalCents: 108_750_00, jurisdictionName: "Suffolk County", rateThou: 8750,
+  };
+  const streamBytes = (b: Buffer) =>
+    (b.toString("latin1").match(/\/Length\s+(\d+)/g) ?? [])
+      .map((m) => Number(m.replace(/\D/g, ""))).reduce((a, n) => a + n, 0);
+
+  it("adds a tax line to the alternate on a taxable job", async () => {
+    const taxed = await renderProposalPdf({
+      proposal: proposal(), lineItems: withAlt, exclusions: [], mode: "customer", tax: suffolk,
+    });
+    const exempt = await renderProposalPdf({
+      proposal: proposal(), lineItems: withAlt, exclusions: [], mode: "customer", tax: null,
+    });
+    expect(streamBytes(taxed)).toBeGreaterThan(streamBytes(exempt));
+  });
+
+  it("adds NOTHING on an exempt job", async () => {
+    // Capital-improvement and cert-exempt jobs must look exactly as before —
+    // a "+ $0.00 tax" line on an exempt proposal invites the wrong question.
+    const args = { proposal: proposal(), exclusions: [], mode: "customer" as const, tax: null };
+    const withAlternate = await renderProposalPdf({ ...args, lineItems: withAlt });
+    const control = await renderProposalPdf({ ...args, lineItems: withAlt });
+    expect(streamBytes(withAlternate)).toBe(streamBytes(control));
+  });
+
+  it("adds nothing when there are no alternates to tax", async () => {
+    const base = [line("l1", "Base scope", 100_000_00)];
+    const a = await renderProposalPdf({ proposal: proposal(), lineItems: base, exclusions: [], mode: "customer", tax: suffolk });
+    const b = await renderProposalPdf({ proposal: proposal(), lineItems: base, exclusions: [], mode: "customer", tax: suffolk });
+    expect(streamBytes(a)).toBe(streamBytes(b));
+  });
+});
