@@ -369,6 +369,8 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
   const items = await listLineItemsForProposal(seedProposal.id);
   const sov = items.filter((li) => !li.is_alternate);
   if (sov.length === 0) return;
+
+  const contractCents = Math.round(Number(seedProposal.total_cents ?? 0));
   const rows: Array<{
     application_id: string;
     position: number;
@@ -379,43 +381,71 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
     this_period_cents: number;
     materials_stored_cents: number;
     change_order_id: string | null;
-  }> = sov.map((li, i) => ({
-    application_id: app.id,
-    position: (i + 1) * 1000,
-    item_no: String(i + 1),
-    change_order_id: null,
-    description:
-      ([li.product_name, li.description].filter((x) => x && String(x).trim()).join(" — ") || "Line of work").slice(0, 500),
-    scheduled_value_cents: Math.max(0, Math.round(Number(li.quantity) * li.unit_price_cents)),
-    from_previous_cents: 0,
-    this_period_cents: 0,
-    materials_stored_cents: 0,
-  }));
+  }> = [];
 
-  // Reconcile the schedule of values so its total FOOTS to the G702 contract
-  // ladder — otherwise the two AIA sheets sent to the GC don't match:
-  //  (#2) a proposal final-price override makes total_cents != Σ(qty × price),
-  //       so G702 line 1 (= the override) would diverge from the G703 scheduled
-  //       column. SCALE each line proportionally to the contract sum — standard
-  //       AIA practice for a lump-sum contract, and it keeps every scheduled
-  //       value NON-NEGATIVE (grid + rollups clamp to ≥0), so an override
-  //       DISCOUNT can't produce an invalid negative "credit" row.
-  //  (#12) approved change orders feed G702 line 2 but weren't in the G703, so
-  //       Σ scheduled_value != Contract Sum to Date (line 3). Add one SOV line per
-  //       approved CO. (App 2+ copy these forward via the carry-forward seed.)
-  const rawSum = rows.reduce((s, r) => s + r.scheduled_value_cents, 0);
-  const contractCents = Math.round(Number(seedProposal.total_cents ?? 0));
-  if (contractCents > 0 && rawSum > 0 && contractCents !== rawSum) {
-    let acc = 0;
-    rows.forEach((r, i) => {
-      if (i === rows.length - 1) {
-        r.scheduled_value_cents = Math.max(0, contractCents - acc); // last line absorbs rounding
-      } else {
-        r.scheduled_value_cents = Math.max(0, Math.round((r.scheduled_value_cents * contractCents) / rawSum));
-        acc += r.scheduled_value_cents;
-      }
+  // Stephanie 2026-09-01: "The inclusions shouldn't show up line by line in the
+  // schedule of values, especially if the total price was altered. Line 1 is
+  // the Original Contract … and the lines below line 1 are all the change
+  // orders. We don't provide an item specific SOV unless the GC specifically
+  // requests it."
+  //
+  // This used to emit one row per inclusion, then — when a final-price override
+  // was set, which is simply how a bid gets negotiated to a round number —
+  // SCALE every row proportionally so the column footed to the contract sum.
+  // The GC therefore received per-item values that were arithmetic artefacts,
+  // matching no proposal, no conversation and no invoice. That is what
+  // "especially if the total price was altered" is describing.
+  //
+  // One line by default. `itemized_sov` opens the breakdown per application on
+  // the rare job where the GC asks — the exception, requested.
+  const itemized = (app as { itemized_sov?: boolean | null }).itemized_sov === true;
+
+  if (itemized) {
+    sov.forEach((li, i) => {
+      rows.push({
+        application_id: app.id,
+        position: (i + 1) * 1000,
+        item_no: String(i + 1),
+        change_order_id: null,
+        description:
+          ([li.product_name, li.description].filter((x) => x && String(x).trim()).join(" — ") || "Line of work").slice(0, 500),
+        scheduled_value_cents: Math.max(0, Math.round(Number(li.quantity) * li.unit_price_cents)),
+        from_previous_cents: 0,
+        this_period_cents: 0,
+        materials_stored_cents: 0,
+      });
+    });
+    // Reconcile so Σ scheduled_value equals the contract sum (G702 line 1).
+    // Only meaningful on the itemized path — the single line IS the contract
+    // sum, so it cannot diverge. A final-price override makes total_cents differ
+    // from Σ(qty × price); scaling proportionally is standard AIA practice for a
+    // lump-sum contract and keeps every value non-negative.
+    const rawSum = rows.reduce((sum, r) => sum + r.scheduled_value_cents, 0);
+    if (contractCents > 0 && rawSum > 0 && contractCents !== rawSum) {
+      let acc = 0;
+      rows.forEach((r, i) => {
+        if (i === rows.length - 1) {
+          r.scheduled_value_cents = Math.max(0, contractCents - acc); // last line absorbs rounding
+        } else {
+          r.scheduled_value_cents = Math.max(0, Math.round((r.scheduled_value_cents * contractCents) / rawSum));
+          acc += r.scheduled_value_cents;
+        }
+      });
+    }
+  } else {
+    rows.push({
+      application_id: app.id,
+      position: 1000,
+      item_no: "1",
+      change_order_id: null,
+      description: "Original Contract",
+      scheduled_value_cents: Math.max(0, contractCents),
+      from_previous_cents: 0,
+      this_period_cents: 0,
+      materials_stored_cents: 0,
     });
   }
+
   let nextNo = rows.length + 1;
   const approvedCOsAll = (await listChangeOrders(app.opportunity_id)).filter((c) => c.status === "approved");
   // Skip COs already billed on a live invoice — seeding one onto the schedule
