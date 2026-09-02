@@ -27,14 +27,20 @@ export async function snapshotAcceptedContract(oppId: string): Promise<void> {
   // how every other consumer of "the accepted proposal" disambiguates.
   const { data: propRows } = await sb
     .from("commercial_proposals")
-    .select("id, total_cents, approved_at, updated_at")
+    .select("id, total_cents, approved_at, updated_at, header_json")
     .eq("opportunity_id", oppId)
     .eq("status", "won")
     .is("deleted_at", null)
     .order("total_cents", { ascending: false })
     .limit(1);
   const won = (propRows ?? [])[0] as
-    | { id: string; total_cents: number | string; approved_at: string | null; updated_at: string }
+    | {
+        id: string;
+        total_cents: number | string;
+        approved_at: string | null;
+        updated_at: string;
+        header_json?: { show_capital_improvement_notice?: boolean } | null;
+      }
     | undefined;
   // No winning proposal to snapshot. Leave whatever is already there — this is
   // the state a re-quote creates, and clearing it here would delete the very
@@ -71,6 +77,42 @@ export async function snapshotAcceptedContract(oppId: string): Promise<void> {
     Number(current?.accepted_contract_cents ?? -1) === cents
   ) {
     return;
+  }
+
+  // Stephanie 2026-09-01: "When the job is won, tax status should carry over."
+  //
+  // The capital-improvement notice is a PER-PROPOSAL tick — it hydrates FROM
+  // the deal, but the estimator can turn it on or off on the document itself,
+  // and that answer never travelled back. So a proposal quoted and signed as a
+  // capital improvement was won onto a deal that still said taxable, and the
+  // first invoice charged tax the GC had already been told they would not pay.
+  //
+  // The winning proposal is the signed contract, so its answer wins. Only ever
+  // turns the exemption ON: clearing a `certificate` exemption because a
+  // proposal didn't happen to tick the CI box would throw away a cert somebody
+  // recorded against the job, which is a different fact entirely.
+  const wonAsCapitalImprovement =
+    won.header_json?.show_capital_improvement_notice === true;
+  if (wonAsCapitalImprovement) {
+    const { data: taxRow } = await sb
+      .from("commercial_opportunities")
+      .select("tax_exempt, tax_exempt_reason")
+      .eq("id", oppId)
+      .maybeSingle();
+    const t = taxRow as { tax_exempt?: boolean | null; tax_exempt_reason?: string | null } | null;
+    if (!t?.tax_exempt) {
+      const { error: taxErr } = await sb
+        .from("commercial_opportunities")
+        .update({ tax_exempt: true, tax_exempt_reason: "capital_improvement" })
+        .eq("id", oppId);
+      if (taxErr) {
+        // Best-effort: the contract snapshot below matters more, and a tax
+        // status that failed to carry is visible and correctable on the job.
+        console.warn(
+          `[accepted-contract] could not carry the capital-improvement status onto ${oppId}: ${taxErr.message}`
+        );
+      }
+    }
   }
 
   const { error } = await sb

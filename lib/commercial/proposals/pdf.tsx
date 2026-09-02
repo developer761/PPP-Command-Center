@@ -1731,20 +1731,37 @@ export function ProposalPdfDocument({
   lineItems,
   exclusions,
   mode = "customer",
-  // Karan 2026-07-19 (round 2 1:1): reference PDF does NOT include a
-  // "PLEASE SIGN AND RETURN APPROVED COPY OF PROPOSAL" line — the
-  // rendered reference ends with Estimator sign-off + footer. Prior
-  // "always sign" default was based on Katie feedback that turned out
-  // not to match Alex's actual customer-facing letterhead. Default
-  // OFF; callers can flip it on explicitly if a specific proposal
-  // needs the sign line.
-  showSignatureBlock = false,
+  /**
+   * Print the sign-and-return block on the CUSTOMER copy.
+   *
+   * This has been turned around once before and it is worth recording why, so
+   * it isn't turned back on a third reading of an old note.
+   *
+   * Karan, 2026-07-19: the reference PDF he was holding does NOT carry a
+   * "PLEASE SIGN AND RETURN APPROVED COPY OF PROPOSAL" line — it ends with the
+   * estimator sign-off and the footer. Default went OFF.
+   *
+   * Stephanie, 2026-09-01: asked for it back, and pasted the exact block she
+   * wants — heading, "Authorized Client Signature: ___ Date: ___", then
+   * Brendan's name, "Lead Estimator, Tomco Painting", phone and email. That is
+   * character-for-character what SignatureBlock already renders; it was built
+   * to her earlier wording and then never switched on, so it has been dead code
+   * since July. Karan 2026-09-02: go with her answer.
+   *
+   * She is the one sending these and chasing the signed copies back, which is
+   * the tie-breaker. Defaults to the CUSTOMER copy only — an estimator's review
+   * PDF has nobody to sign it, and keeps the standalone estimator block.
+   */
+  showSignatureBlock,
   company = null,
   tax = null,
   qualifications = [],
   attachments = [],
   pageHeightScale = 1,
 }: RenderProposalArgs) {
+  // Customer copies sign; internal review copies don't. An explicit prop still
+  // wins, so a caller can force either.
+  const signOff = showSignatureBlock ?? mode === "customer";
   const pageStyle = proposal.pdf_compact ? [styles.page, COMPACT_PAGE] : styles.page;
   // Migration 063 (2026-07-19): labor rows render in their own PDF
   // section between Inclusions and Alternates. Rolls into TOTAL like
@@ -2014,7 +2031,7 @@ export function ProposalPdfDocument({
             name/title/phone/email, and printing the old "Estimator:" block
             above it repeated all four on the same page. Internal/review
             copies have no sign-off, so they keep the standalone block. */}
-        {showSignatureBlock ? (
+        {signOff ? (
           <SignatureBlock e={proposal.estimator_snapshot_json} company={company} />
         ) : (
           <EstimatorBlock e={proposal.estimator_snapshot_json} company={company} />

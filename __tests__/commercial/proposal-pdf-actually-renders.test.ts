@@ -396,3 +396,52 @@ describe("tax on alternates", () => {
     expect(streamBytes(a)).toBe(streamBytes(b));
   });
 });
+
+/**
+ * The customer copy carries the sign-and-return block.
+ *
+ * Turned around once, so the reasoning is recorded rather than the conclusion.
+ * Karan 2026-07-19: the reference PDF he held ends with the estimator sign-off
+ * and the footer, no sign line — default went OFF. Stephanie 2026-09-01: asked
+ * for it back and pasted the exact block, which is character-for-character what
+ * SignatureBlock already renders. It had been built to her earlier wording and
+ * never switched on, so it was dead code from July. Karan 2026-09-02: go with
+ * her answer. She sends these and chases the signed copies back.
+ *
+ * Customer only. An estimator's review copy has nobody to sign it.
+ */
+describe("the sign-and-return block", () => {
+  const args = { lineItems: [line("l1", "Base scope", 100_000_00)], exclusions: [] };
+  const streamBytes = (b: Buffer) =>
+    (b.toString("latin1").match(/\/Length\s+(\d+)/g) ?? [])
+      .map((x) => Number(x.replace(/\D/g, ""))).reduce((a, n) => a + n, 0);
+
+  it("is on by default for the customer", async () => {
+    const on = await renderProposalPdf({ proposal: proposal(), ...args, mode: "customer" });
+    const off = await renderProposalPdf({ proposal: proposal(), ...args, mode: "customer", showSignatureBlock: false });
+    expect(streamBytes(on)).toBeGreaterThan(streamBytes(off));
+  });
+
+  it("an explicit prop still wins over the default", async () => {
+    // A caller that genuinely wants a customer copy without the sign line —
+    // a re-issue, a budget number — must still be able to say so.
+    const off = await renderProposalPdf({ proposal: proposal(), ...args, mode: "customer", showSignatureBlock: false });
+    const on = await renderProposalPdf({ proposal: proposal(), ...args, mode: "customer", showSignatureBlock: true });
+    expect(streamBytes(off)).not.toBe(streamBytes(on));
+  });
+
+  it("does not push the customer copy onto a second page", async () => {
+    // The block is short, but it lands at the very bottom where there is least
+    // room — exactly where the estimator sign-off once split across a page
+    // break. One page is the platform rule for every customer document.
+    const { renderFitToOnePage, pdfPageCount } = await import("@/lib/commercial/proposals/fit-one-page");
+    const r = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({
+        proposal: proposal({ bid_notes: "x" }), lineItems: [1,2,3,4,5].map((i) => line(`l${i}`, `Scope item ${i}`, 20_000_00)),
+        exclusions: ["Drywall repair", "Scaffolding"], qualifications: ["One mobilisation"],
+        mode: "customer", pageHeightScale,
+      })
+    );
+    expect(await pdfPageCount(r.bytes)).toBe(1);
+  });
+});

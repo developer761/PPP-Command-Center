@@ -64,7 +64,20 @@ describe("customer proposal — section order Stephanie asked for twice", () => 
       (body.match(/<EstimatorBlock/g) ?? []).length,
       "EstimatorBlock should appear once, on the branch with no sign-off"
     ).toBe(1);
-    expect(body).toContain("showSignatureBlock ? (");
+    // The RULE is that the two blocks are mutually exclusive — one ternary,
+    // SignatureBlock on one branch and EstimatorBlock on the other. Asserted by
+    // shape, not by the name of the variable steering it: this used to pin
+    // `showSignatureBlock ? (` and broke when that became `signOff` (the sign-
+    // off now defaults on for customer copies, per Stephanie 2026-09-01),
+    // while a change that rendered BOTH would have sailed past it.
+    expect(
+      (body.match(/<SignatureBlock/g) ?? []).length,
+      "SignatureBlock should appear once, on the branch with no estimator block"
+    ).toBe(1);
+    expect(
+      body,
+      "the two blocks must be the two arms of ONE ternary, never both"
+    ).toMatch(/\?\s*\(\s*\n?\s*<SignatureBlock[\s\S]*?\)\s*:\s*\(\s*\n?\s*<EstimatorBlock/);
   });
 
   it("no longer restates the alternates total under the alternates", () => {
