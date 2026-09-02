@@ -78,8 +78,20 @@ describe('"click off the items that were approved and not approved"', () => {
     const fn = DB.slice(DB.indexOf("export async function setLineCustomerApproved"));
     const body = fn.slice(0, fn.indexOf("\nexport async function", 10));
     expect(body).not.toContain("assertProposalDraft");
-    // …and the exemption is why it may touch nothing else.
-    expect(body).toContain("update({ customer_approved: approved })");
+
+    // …and the exemption is why it may touch nothing else. Asserted by NAMING
+    // the columns it writes rather than pinning the literal update call, which
+    // is what this used to do — that broke when migration 174 added
+    // customer_approved_at (a legitimate second column, stamped by the same
+    // answer), and it would equally have passed straight through a rewrite
+    // that started writing price or quantity here.
+    const writes = [...body.matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]);
+    const ALLOWED = new Set(["customer_approved", "customer_approved_at"]);
+    const forbidden = writes.filter(
+      (c) => !ALLOWED.has(c) && /^(quantity|unit_price_cents|description|product_name|is_alternate|position|phase|show_price)$/.test(c)
+    );
+    expect(forbidden, "this writer may only touch the customer's answer").toEqual([]);
+    expect(body).toContain("customer_approved");
   });
 
   it("only appears once the proposal has actually gone out", () => {
