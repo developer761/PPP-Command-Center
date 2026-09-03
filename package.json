@@ -13,7 +13,8 @@
     "smoke": "node scripts/smoke-pages.mjs",
     "check:enums": "node scripts/check-db-enums.mjs",
     "check:schema": "node scripts/check-schema-drift.mjs",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "build:aia-template": "node scripts/build-aia-template.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
