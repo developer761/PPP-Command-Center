@@ -78,7 +78,7 @@ export default function InboxView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<InboxMessage[]>([]);
-  const [summary, setSummary] = useState<{ unread: number; returned: number; scopeNote?: string | null }>({ unread: 0, returned: 0 });
+  const [summary, setSummary] = useState<{ unread: number; returned: number; scopeNote?: string | null; inboundConfigured?: boolean }>({ unread: 0, returned: 0 });
   const [sentMessages, setSentMessages] = useState<SentMessage[]>([]);
   const [sentSummary, setSentSummary] = useState<{ formInvites: number; supplierOrders: number; returned: number; scopeNote?: string | null }>({ formInvites: 0, supplierOrders: 0, returned: 0 });
   const [warning, setWarning] = useState<string | null>(null);
@@ -491,6 +491,7 @@ export default function InboxView() {
               scopeNote={summary.scopeNote ?? null}
               searchActive={!!search.trim()}
               filterActive={tab !== "all"}
+              inboundConfigured={summary.inboundConfigured ?? false}
             />
           )}
           {!loading && !error && visibleMessages.length > 0 && (
@@ -795,8 +796,13 @@ function EmptyState({
   scopeNote,
   searchActive,
   filterActive,
+  inboundConfigured = false,
 }: {
   archived: boolean;
+  /** Server says the inbound webhook secret is set. Defaults false so an older
+   *  API response falls back to the setup instructions rather than claiming
+   *  receiving works. */
+  inboundConfigured?: boolean;
   woFiltered?: boolean;
   scopeNote?: string | null;
   searchActive?: boolean;
@@ -855,20 +861,35 @@ function EmptyState({
       <div className="mx-auto h-12 w-12 rounded-full bg-ppp-blue-50 text-ppp-blue flex items-center justify-center text-2xl mb-3">
         📬
       </div>
-      <h3 className="text-base font-bold text-ppp-charcoal">Inbox is empty</h3>
-      <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto leading-relaxed">
-        Once Resend inbound is configured on{" "}
-        <strong className="text-ppp-charcoal font-mono">orders@orders.precisionpaintingplus.net</strong>,
-        every supplier reply + customer follow-up will land here.
-      </p>
-      <div className="mt-4 text-[11px] text-ppp-charcoal-500 max-w-md mx-auto text-left bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-lg px-4 py-3 leading-relaxed">
-        <strong className="text-ppp-charcoal">Setup steps:</strong>
-        <ol className="list-decimal list-inside mt-1 space-y-0.5">
-          <li>Resend dashboard → Inbound → Add address <code className="font-mono">orders@orders.precisionpaintingplus.net</code></li>
-          <li>Webhook URL: <code className="font-mono break-all">https://hub.precisionpaintingplus.net/api/webhooks/resend-inbound</code></li>
-          <li>Copy the webhook secret → set Vercel env var <code className="font-mono">RESEND_INBOUND_SECRET</code></li>
-        </ol>
-      </div>
+      <h3 className="text-base font-bold text-ppp-charcoal">
+        {inboundConfigured ? "No replies yet" : "Inbox is empty"}
+      </h3>
+      {inboundConfigured ? (
+        /* Receiving IS wired. Saying "once it is configured…" here told PPP to
+           redo setup they had already finished, and made a broken webhook look
+           like an unbuilt feature. */
+        <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto leading-relaxed">
+          Receiving is on for{" "}
+          <strong className="text-ppp-charcoal font-mono">orders@orders.precisionpaintingplus.net</strong>.
+          Supplier replies and customer follow-ups land here automatically — nothing has come in yet.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto leading-relaxed">
+            Once Resend inbound is configured on{" "}
+            <strong className="text-ppp-charcoal font-mono">orders@orders.precisionpaintingplus.net</strong>,
+            every supplier reply + customer follow-up will land here.
+          </p>
+          <div className="mt-4 text-[11px] text-ppp-charcoal-500 max-w-md mx-auto text-left bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-lg px-4 py-3 leading-relaxed">
+            <strong className="text-ppp-charcoal">Setup steps:</strong>
+            <ol className="list-decimal list-inside mt-1 space-y-0.5">
+              <li>Resend dashboard → Inbound → Add address <code className="font-mono">orders@orders.precisionpaintingplus.net</code></li>
+              <li>Webhook URL: <code className="font-mono break-all">https://hub.precisionpaintingplus.net/api/webhooks/resend-inbound</code></li>
+              <li>Copy the webhook secret → set Vercel env var <code className="font-mono">RESEND_INBOUND_SECRET</code></li>
+            </ol>
+          </div>
+        </>
+      )}
     </div>
   );
 }

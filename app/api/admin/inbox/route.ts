@@ -151,6 +151,13 @@ export async function GET(request: Request) {
     summary: {
       unread: unreadCount ?? 0,
       returned: messages?.length ?? 0,
+      // Whether inbound receiving is WIRED, so an empty inbox can tell the
+      // difference between "not set up" and "set up, nothing in yet". The
+      // empty state used to assert the former unconditionally and printed
+      // setup steps PPP had already completed — which is how a dead webhook
+      // read as an unfinished feature for weeks. Boolean only: never echo the
+      // secret itself to a browser.
+      inboundConfigured: Boolean(process.env.RESEND_INBOUND_SECRET?.trim()),
     },
   });
 }
