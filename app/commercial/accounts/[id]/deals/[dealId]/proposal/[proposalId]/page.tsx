@@ -552,15 +552,24 @@ async function fileEstimateReportAction(formData: FormData) {
   let pdfBuffer: Buffer;
   try {
     const { renderProposalPdf } = await import("@/lib/commercial/proposals/pdf");
-    pdfBuffer = await renderProposalPdf({
-      proposal: existing,
-      lineItems,
-      exclusions: resolvedEx.filter((e) => e.kind === "exclusion").map((e) => e.text),
-      qualifications: resolvedEx.filter((e) => e.kind === "qualification").map((e) => e.text),
-      // The estimator view — quantities, unit prices, bid notes, watermark.
-      mode: "internal",
-      company,
-    });
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    // Same fit as the download route and the send path. This was the third of
+    // three render sites and, like the send path, it skipped the fit — so a
+    // report FILED to the job could be a different shape from the one an
+    // estimator had just previewed.
+    const fit = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({
+        proposal: existing,
+        lineItems,
+        exclusions: resolvedEx.filter((e) => e.kind === "exclusion").map((e) => e.text),
+        qualifications: resolvedEx.filter((e) => e.kind === "qualification").map((e) => e.text),
+        // The estimator view — quantities, unit prices, bid notes, watermark.
+        mode: "internal",
+        company,
+        pageHeightScale,
+      })
+    );
+    pdfBuffer = fit.bytes;
   } catch (err) {
     console.error("[fileEstimateReport] render failed:", err);
     redirect(`${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent("Couldn't build the estimating report.")}`);
@@ -2595,8 +2604,12 @@ export default async function ProposalEditorPage({
           <label className="flex items-center gap-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
             <input type="checkbox" name="pdf_compact" defaultChecked={proposal.pdf_compact} className="w-4 h-4 accent-cc-brand-600" />
             <span className="text-[12.5px] text-ppp-charcoal-700">
-              Compact — tighter type and spacing to pull a slightly-long proposal back onto one page.
-              <span className="block text-[11.5px] text-ppp-charcoal-500">Nothing is dropped; if it still runs over, the pages are numbered.</span>
+              Compact — start the type and spacing tighter.
+              <span className="block text-[11.5px] text-ppp-charcoal-500">
+                Proposals are already fitted onto one page automatically, so you rarely
+                need this. Nothing is ever dropped; a proposal too long to fit and stay
+                readable goes out at its natural length with the pages numbered.
+              </span>
             </span>
           </label>
           {/* R1b: adjustable final price. Blank = the line-item sum; a value here

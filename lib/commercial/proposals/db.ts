@@ -2617,14 +2617,25 @@ export async function sendProposal(input: {
   const qualificationTexts = resolvedExclusions.filter((e) => e.kind === "qualification").map((e) => e.text);
 
   const { renderProposalPdf } = await import("./pdf");
+  const { renderFitToOnePage } = await import("./fit-one-page");
   let pdfBuffer: Buffer;
   try {
-    pdfBuffer = await renderProposalPdf({
+    // Brendan 2026-09-03: "this splits into 2 pages."
+    //
+    // It did — in the EMAIL, and only there. Fit-to-one-page lived in the
+    // download route and nowhere else, so previewing gave one page and the
+    // attachment the GC actually received had two. The customer's copy is the
+    // one that matters and it was the one skipping the fit.
+    //
+    // The comment above says "one resolver … so the archived snapshot can't
+    // differ from what the customer saw" — same intent, and the LAYOUT needed
+    // saying out loud too. Every proposal PDF now goes through the same fit.
+    const fitArgs = {
       proposal,
       lineItems,
       exclusions: exclusionTexts,
       qualifications: qualificationTexts,
-      mode: "customer",
+      mode: "customer" as const,
       // Same figure the download shows — one loader, both paths.
       tax: await (async () => {
         const { loadProposalTaxLine } = await import("./proposal-tax-load");
@@ -2639,7 +2650,18 @@ export async function sendProposal(input: {
         const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
         return getOperatingCompany();
       })(),
-    });
+    };
+    const fit = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({ ...fitArgs, pageHeightScale })
+    );
+    pdfBuffer = fit.bytes;
+    if (!fit.fitted) {
+      // Past the legibility floor — it goes out at its natural length rather
+      // than at a size nobody can read, and the pages carry numbers.
+      console.warn(
+        `[sendProposal] proposal ${proposal.id} is too long to fit one readable page`
+      );
+    }
   } catch (err) {
     console.error("[sendProposal] pdf render failed:", err);
     return { ok: false, error: "PDF render failed. Try Preview PDF first to see the error." };
