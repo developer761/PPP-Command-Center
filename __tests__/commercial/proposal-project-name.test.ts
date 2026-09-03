@@ -15,17 +15,27 @@ import { proposalProjectName } from "@/lib/commercial/proposals/project-name";
 const ACCOUNT = "Tomco Painting";
 
 describe("proposalProjectName", () => {
-  it("keeps Katie's end-customer convention: client name alone", () => {
-    // Katie 2026-07-20, the Tomco JD-Sports convention. An earlier version of
-    // Stephanie's fix appended the street here, which quietly changed the
-    // printed name on every deal Katie's rule covers. Her complaint was about
-    // the FALLBACK, not about these.
+  it("names the job by its ADDRESS when it has one", () => {
+    // Brendan 2026-09-03, asked what the customer-facing name should be:
+    // "I'd say it's should be the the address."
+    //
+    // This reverses Katie's 2026-07-20 order (the Tomco "JD Sports"
+    // convention — end-customer label alone). The two only disagree on a job
+    // carrying BOTH, and a GC's own records key on the site more often than on
+    // the end tenant. Katie's rule survives as the fallback below.
     const name = proposalProjectName(
       { client_name: "JD Sports", property_street: "123 Main St", title: "08-13-2026 Tomco - JD Sports - 123 Main St" },
       ACCOUNT
     );
-    expect(name).toBe("JD Sports");
+    expect(name).toBe("123 Main St");
     expect(name).not.toContain(ACCOUNT);
+  });
+
+  it("still uses the end-customer name when there is no address", () => {
+    // Katie's convention, now the fallback rather than the lead.
+    expect(
+      proposalProjectName({ client_name: "JD Sports", property_street: null }, ACCOUNT)
+    ).toBe("JD Sports");
   });
 
   it("names the job by address when there is no customer label", () => {
@@ -53,7 +63,7 @@ describe("proposalProjectName", () => {
         { title_override: "Main", client_name: "Plainview", property_street: "115 Connetquot Ave" },
         ACCOUNT
       )
-    ).toBe("Plainview");
+    ).toBe("115 Connetquot Ave");
   });
 
   it("does not let the nickname back in through the fallback", () => {

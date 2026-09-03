@@ -306,9 +306,17 @@ describe("the plan report fits on one page", () => {
     expect(Math.round(size.height)).toBe(792);
   });
 
-  it("stops before the type becomes unreadable", async () => {
-    // A report long enough to need more than a ~60% reduction keeps its natural
-    // length. One page nobody can read is not what was asked for.
+  it("does NOT give up on a long one — it keeps shrinking", async () => {
+    // This test used to assert the opposite: that past a ~60% reduction the fit
+    // stopped trying and returned natural length, on the reasoning that one
+    // unreadable page is worse than two readable ones.
+    //
+    // That reasoning was mine, not Karan's, and he overruled it on 2026-09-03:
+    // "make sure if we add a lot of stuff on like the proposals and stuff it
+    // still doesnt and never goes above one page." Measured, the old 1.7×
+    // ceiling was about thirty line items — inside the range a real proposal
+    // reaches, so the give-up branch was reachable in production, not
+    // hypothetical.
     const { renderFitToOnePage, pdfPageCount } = await import(
       "@/lib/commercial/proposals/fit-one-page"
     );
@@ -318,8 +326,9 @@ describe("the plan report fits on one page", () => {
         lineItems: items(40), ...heavy, pageHeightScale,
       })
     );
-    expect(r.fitted).toBe(false);
-    expect(await pdfPageCount(r.bytes)).toBeGreaterThan(1);
+    expect(r.fitted).toBe(true);
+    expect(r.scale, "should have climbed past the old 1.7 ceiling").toBeGreaterThan(1.7);
+    expect(await pdfPageCount(r.bytes)).toBe(1);
   });
 
   it("the CUSTOMER copy is one page too", async () => {

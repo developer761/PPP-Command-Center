@@ -42,20 +42,26 @@ export function proposalProjectName(
   // real name rather than replacing it. Her rule was about a name; his is about
   // a nickname. Same column, different meaning.
   //
-  // 1. The end-customer label on its own — Katie's Tomco JD-Sports convention,
-  //    2026-07-20. Deliberately NOT combined with the address: an earlier
-  //    version of this fix appended the street here, which quietly changed the
-  //    printed name for every deal Katie's rule covers. Stephanie's complaint
-  //    was never about these; it was about the fallback below.
-  const client = opp.client_name?.trim();
-  if (client) return client;
-
-  // 2. No customer label, so name the job by where it is. THIS is Stephanie's
-  //    fix: the old fallback went straight to derivedOppName, which composes
-  //    "{account} - {client} - {street}" and therefore opened with the
-  //    builder — already printed directly above as gc_company.
+  // 1. THE ADDRESS. Brendan 2026-09-03, asked what the customer-facing name
+  //    should be instead of the nickname: "I'd say it's should be the the
+  //    address."
+  //
+  //    This reverses the order Katie set on 2026-07-20 (the Tomco "JD Sports"
+  //    convention — the end-customer label on its own). Both are defensible and
+  //    they only differ when a job has BOTH: Brendan's own example is
+  //    "Plainview" at 115 Connetquot Avenue. He is the one sending these and
+  //    answering the GC's questions about them, and a GC's own records key on
+  //    the site far more often than on the end tenant, so the address wins.
+  //    The client name is still right behind it for a job with no address yet.
   const street = opp.property_street?.trim();
   if (street) return street;
+
+  // 2. No address recorded, so name it by the end customer — Katie's
+  //    convention, now the fallback rather than the lead. Deliberately NOT
+  //    combined with the address: an earlier version appended the street here,
+  //    which quietly changed the printed name for every deal her rule covered.
+  const client = opp.client_name?.trim();
+  if (client) return client;
 
   // 3. Last resort, so a bare deal still prints something rather than blank.
   //    `title_override: null` on purpose — derivedOppName appends the nickname

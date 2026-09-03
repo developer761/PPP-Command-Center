@@ -299,6 +299,12 @@ const styles = StyleSheet.create({
 // ─── Component ───────────────────────────────────────────────────────
 
 type SubmittalPdfInput = {
+  /**
+   * Lay the page out on a taller sheet so `renderFitToOnePage` can scale the
+   * result back onto Letter. Karan 2026-09-03: a customer-facing document
+   * "never goes above one page" — and this one grows with the item list.
+   */
+  pageHeightScale?: number;
   submittal: OpportunitySubmittal;
   items: Array<{
     position: number;
@@ -357,7 +363,7 @@ function safeDateLabel(value: string | null | undefined, fmt: Intl.DateTimeForma
   return d.toLocaleDateString("en-US", { timeZone: "America/New_York", ...fmt });
 }
 
-function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromCompany, logo, signature, signatureName, signatureTitle }: SubmittalPdfInput) {
+function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromCompany, logo, signature, signatureName, signatureTitle, pageHeightScale = 1 }: SubmittalPdfInput) {
   const issueDate = submittal.sent_at ?? submittal.created_at;
   const dateLabel = safeDateLabel(issueDate, { year: "numeric", month: "long", day: "numeric" });
   const submittalNumber = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${
@@ -395,7 +401,7 @@ function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromC
       author={fromCompany}
       subject={submittal.re_subject ?? "Submittals"}
     >
-      <Page size="LETTER" style={styles.page}>
+      <Page size={pageHeightScale === 1 ? "LETTER" : { width: 612, height: 792 * pageHeightScale }} style={styles.page}>
         {/* VOIDED watermark — diagonal text overlay on every page so a
             printed voided submittal can't be mistaken for the real one
             (audit PDF #S1). `fixed` repeats on each page. */}

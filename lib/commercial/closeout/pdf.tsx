@@ -110,13 +110,13 @@ function LogoBlock({ company, logo }: { company: CompanyContact; logo?: Buffer |
   );
 }
 
-function TransmittalDoc({ pkg, items, dealName, accountName, company, logo }: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null }) {
+function TransmittalDoc({ pkg, items, dealName, accountName, company, logo, pageHeightScale = 1 }: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; pageHeightScale?: number }) {
   const fromCompany = company.name;
   const included = items.filter((i) => i.included);
   const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
   return (
     <Document>
-      <Page size="LETTER" style={styles.page}>
+      <Page size={pageHeightScale === 1 ? "LETTER" : { width: 612, height: 792 * pageHeightScale }} style={styles.page}>
         <LogoBlock company={company} logo={logo} />
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
@@ -195,7 +195,7 @@ function TransmittalDoc({ pkg, items, dealName, accountName, company, logo }: { 
  * from the date hereof", and `warranty_years` of 1 is that same twelve months —
  * saying it the form's way costs nothing and matches what the GC is looking for.
  */
-function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature }: { pkg: PkgInput; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }) {
+function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature, pageHeightScale = 1 }: { pkg: PkgInput; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null; pageHeightScale?: number }) {
   const fromCompany = company.legal_name || company.name;
   const start = pkg.substantial_completion_date;
   const end = computeWarrantyEndDate(start, pkg.warranty_years);
@@ -212,7 +212,7 @@ function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature }: {
 
   return (
     <Document>
-      <Page size="LETTER" style={styles.page}>
+      <Page size={pageHeightScale === 1 ? "LETTER" : { width: 612, height: 792 * pageHeightScale }} style={styles.page}>
         <LogoBlock company={company} logo={logo} />
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
@@ -310,10 +310,10 @@ function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature }: {
   );
 }
 
-export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null }): Promise<Buffer> {
+export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; pageHeightScale?: number }): Promise<Buffer> {
   return renderToBuffer(<TransmittalDoc {...input} />);
 }
 
-export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }): Promise<Buffer> {
+export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null; pageHeightScale?: number }): Promise<Buffer> {
   return renderToBuffer(<WarrantyDoc {...input} />);
 }

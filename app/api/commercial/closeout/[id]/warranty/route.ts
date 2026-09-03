@@ -52,7 +52,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const { renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
     const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
     const oc = await getOperatingCompany();
-    pdf = await renderWarrantyLetterPdf({ pkg, dealName, accountName, company: { name: oc.name, phone: oc.phone, website: oc.website, signature_name: oc.signature_name, signature_title: oc.signature_title, legal_name: oc.legal_name, address_line1: oc.address_line1, address_line2: oc.address_line2, city: oc.city, state: oc.state, zip: oc.zip }, logo: await getBrandLogoBuffer(), signature: await getBrandSignatureBuffer() });
+    const logo = await getBrandLogoBuffer();
+    const signature = await getBrandSignatureBuffer();
+    // One page. The warranty is a form Tomco's customers file; a second
+    // sheet is a page that gets separated from the first.
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    pdf = (
+      await renderFitToOnePage((pageHeightScale) =>
+        renderWarrantyLetterPdf({ pkg, dealName, accountName, company: { name: oc.name, phone: oc.phone, website: oc.website, signature_name: oc.signature_name, signature_title: oc.signature_title, legal_name: oc.legal_name, address_line1: oc.address_line1, address_line2: oc.address_line2, city: oc.city, state: oc.state, zip: oc.zip }, logo, signature, pageHeightScale })
+      )
+    ).bytes;
   } catch (err) {
     console.error("[closeout-warranty-pdf] render failed:", err);
     return NextResponse.json({ error: "pdf_render_failed" }, { status: 500 });

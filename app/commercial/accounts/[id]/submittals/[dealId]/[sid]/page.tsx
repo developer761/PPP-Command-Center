@@ -527,7 +527,7 @@ async function autoFileSubmittalTransmittal(accountId: string, opportunityId: st
     const account = await getCommercialAccount(accountId);
     const { renderLetterOfTransmittalPdf } = await import("@/lib/commercial/opportunities/submittal-pdf");
     const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
-    const pdf = await renderLetterOfTransmittalPdf({
+    const lotProps = {
       submittal,
       items,
       opp,
@@ -545,7 +545,17 @@ async function autoFileSubmittalTransmittal(accountId: string, opportunityId: st
         };
       })()),
       logo: await getBrandLogoBuffer(),
-    });
+    };
+    // One page, like every other document a GC receives. The props are built
+    // ONCE and the renderer re-run per rung — resolving the operating company
+    // and the signature buffer inside the closure would repeat that work on
+    // every attempt.
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    const pdf = (
+      await renderFitToOnePage((pageHeightScale) =>
+        renderLetterOfTransmittalPdf({ ...lotProps, pageHeightScale })
+      )
+    ).bytes;
     const subLabel = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${submittal.revision_number > 0 ? `_Rev${submittal.revision_number}` : ""}`;
     await autoFileOpportunityDocument({
       opportunityId,

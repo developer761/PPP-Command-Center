@@ -64,22 +64,27 @@ describe("the nickname stays off customer documents", () => {
    */
   const ACCOUNT = "Alta Construction East";
 
-  it("prefers the customer's name over the nickname", () => {
+  it("names the job by its ADDRESS", () => {
+    // Asked what should replace the nickname, Brendan answered: "I'd say it's
+    // should be the the address." His own example — nickname "Main", customer
+    // Plainview, site 115 Connetquot Avenue.
     expect(
       proposalProjectName(
         { title_override: "Main", client_name: "Plainview", property_street: "115 Connetquot Ave" },
         ACCOUNT
       )
-    ).toBe("Plainview");
+    ).toBe("115 Connetquot Ave");
   });
 
-  it("falls back to the address, still not the nickname", () => {
+  it("falls back to the customer's name when there is no address yet", () => {
+    // Katie's 2026-07-20 "JD Sports" convention, kept as the fallback. The two
+    // rules only disagree when a job has both, and Brendan sends these.
     expect(
       proposalProjectName(
-        { title_override: "Ste A1", client_name: null, property_street: "3555 Veterans Memorial Hwy" },
+        { title_override: "Ste A1", client_name: "RAC", property_street: null },
         ACCOUNT
       )
-    ).toBe("3555 Veterans Memorial Hwy");
+    ).toBe("RAC");
   });
 
   it("does not let it back in through the last-resort fallback", () => {

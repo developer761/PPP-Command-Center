@@ -106,7 +106,7 @@ export async function GET(
       "@/lib/commercial/opportunities/submittal-pdf"
     );
     const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
-    pdfBuffer = await renderLetterOfTransmittalPdf({
+    const lotProps = {
       submittal,
       items,
       opp,
@@ -125,7 +125,17 @@ export async function GET(
         };
       })()),
       logo: await getBrandLogoBuffer(),
-    });
+    };
+    // One page, like every other document a GC receives. The props are built
+    // ONCE and the renderer re-run per rung — resolving the operating company
+    // and the signature buffer inside the closure would repeat that work on
+    // every attempt.
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    pdfBuffer = (
+      await renderFitToOnePage((pageHeightScale) =>
+        renderLetterOfTransmittalPdf({ ...lotProps, pageHeightScale })
+      )
+    ).bytes;
   } catch (err) {
     console.error("[submittal-pdf] render failed:", err);
     return NextResponse.json(

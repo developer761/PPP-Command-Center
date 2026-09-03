@@ -34,11 +34,29 @@ import { PDFDocument } from "pdf-lib";
  */
 
 /**
- * How much taller to try, in order. Each step is roughly one extra third of a
- * page of room; the last is a 60% reduction, which is about as small as 10pt
- * body type survives on paper.
+ * How much taller to try, in order.
+ *
+ * Karan 2026-09-03: "make sure if we add a lot of stuff on like the proposals
+ * and stuff it still doesnt and never goes above one page."
+ *
+ * The ladder used to stop at 1.7× on a legibility argument — that one page
+ * nobody can read is worse than two. That reasoning was mine, not his, and it
+ * meant a long proposal silently became a two-page document, which is the thing
+ * he has now asked twice not to happen. It also had a measurable cost: 30 line
+ * items already needed 1.7×, so the give-up point sat inside the range a real
+ * proposal can reach.
+ *
+ * Measured, so the steps mean something:
+ *   12 lines → 1.18×   20 → 1.36×   30 → 1.7×   40 → 2.0×   60 → 2.8×
+ *
+ * Fine steps low down, where nearly every proposal lands and a smaller step
+ * means less shrink than necessary; coarse steps high up, where the document is
+ * already unusual and each extra render costs another ~200ms. Stops at 4×,
+ * which absorbs roughly eighty line items — past any proposal Tomco writes,
+ * and especially so now that the schedule of values is one contract line rather
+ * than an itemised list.
  */
-const LADDER = [1, 1.18, 1.36, 1.55, 1.7] as const;
+const LADDER = [1, 1.18, 1.36, 1.55, 1.7, 1.9, 2.15, 2.45, 2.8, 3.2, 3.6, 4.0] as const;
 
 /**
  * How many pages does this PDF have?
@@ -90,9 +108,18 @@ export async function renderFitToOnePage(
     }
   }
 
-  // Past the floor: a genuinely long report. Give it back at its natural size
-  // rather than at a size nobody can read.
-  return { bytes: last!, scale: 1, fitted: false };
+  // Nothing on the ladder fit. Hand back the LAST attempt — the most compressed
+  // one — rather than the natural-length render.
+  //
+  // It is the closest thing to one page that exists, and the alternative is
+  // handing a GC the two-page document this whole function is here to prevent.
+  // A proposal that reaches here is extraordinary (roughly eighty line items),
+  // so it is worth a loud log rather than a silent fallback: something upstream
+  // is probably wrong with the data.
+  console.warn(
+    `[fit-one-page] could not reach one page even at ${LADDER[LADDER.length - 1]}× — sending the most compressed render. Check the line-item count.`
+  );
+  return { bytes: last!, scale: LADDER[LADDER.length - 1], fitted: false };
 }
 
 /** Draw a single tall page onto one Letter page, scaled to fit. */

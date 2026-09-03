@@ -203,7 +203,14 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
     const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
     const logo = await getBrandLogoBuffer();
     const { renderCloseoutTransmittalPdf } = await import("@/lib/commercial/closeout/pdf");
-    const transmittal = await renderCloseoutTransmittalPdf({ pkg, items, dealName, company, logo });
+    // One page — a transmittal that runs to two is a transmittal with a
+    // second sheet nobody staples on.
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    const transmittal = (
+      await renderFitToOnePage((pageHeightScale) =>
+        renderCloseoutTransmittalPdf({ pkg, items, dealName, company, logo, pageHeightScale })
+      )
+    ).bytes;
     await autoFileOpportunityDocument({
       opportunityId: dealId,
       category: "closeout",
@@ -257,7 +264,7 @@ async function issueWarrantyAction(formData: FormData) {
   const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
   const { renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
   try {
-    const warranty = await renderWarrantyLetterPdf({
+    const warrantyProps = {
       pkg,
       dealName,
       accountName: account.company_name,
@@ -276,7 +283,15 @@ async function issueWarrantyAction(formData: FormData) {
       },
       logo: await getBrandLogoBuffer(),
       signature: await getBrandSignatureBuffer(),
-    });
+    };
+    // One page. The warranty is a form Tomco's customers file; a second
+    // sheet is a page that gets separated from the first.
+    const { renderFitToOnePage: fitWarranty } = await import("@/lib/commercial/proposals/fit-one-page");
+    const warranty = (
+      await fitWarranty((pageHeightScale) =>
+        renderWarrantyLetterPdf({ ...warrantyProps, pageHeightScale })
+      )
+    ).bytes;
     await autoFileOpportunityDocument({
       opportunityId: dealId,
       category: "closeout",
