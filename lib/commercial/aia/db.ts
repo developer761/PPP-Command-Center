@@ -632,6 +632,23 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
         .eq("application_id", applicationId);
     }
   }
+
+  // …and bring the sales-tax row in step with the job's CURRENT tax status.
+  // Stephanie 2026-09-01: "if we change the sales tax status because they
+  // provided a cert later into the job if not after, we need the status to
+  // change the values within the AIA." Same reconcile as the change orders, so
+  // "they sent the cert" and "they approved a CO" both land the same way.
+  // Best-effort: a tax row that failed to update must not block the CO rows
+  // that just did.
+  try {
+    const { reconcileAiaTaxRow } = await import("./sales-tax");
+    await reconcileAiaTaxRow(applicationId);
+  } catch (err) {
+    console.warn(
+      "[aia] tax-row reconcile failed:",
+      err instanceof Error ? err.message : err
+    );
+  }
 }
 
 export async function updateAiaApplication(

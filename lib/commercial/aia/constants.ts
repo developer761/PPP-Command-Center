@@ -27,6 +27,9 @@ export type AiaLineInput = {
   from_previous_cents: number;
   this_period_cents: number;
   materials_stored_cents: number;
+  /** Optional so existing callers compile unchanged. Only the SALES TAX row
+   *  needs to be identifiable here — see isAiaTaxLine and computeG702. */
+  item_no?: string | null;
 };
 
 /** The computed G702 certificate summary (all cents). */
@@ -35,7 +38,11 @@ export type AiaG702 = {
   originalContractCents: number;
   /** 2 — Net change by approved Change Orders (Phase G). */
   netChangeOrdersCents: number;
-  /** 3 — Contract Sum to Date = (1) + (2). */
+  /** Sales tax on this contract, when the job is taxable. Its own component of
+   *  line 3 rather than part of line 1, so a certificate arriving mid-job takes
+   *  the tax off WITHOUT restating the contract the GC signed. */
+  salesTaxCents: number;
+  /** 3 — Contract Sum to Date = (1) + (2) + sales tax. */
   contractSumToDateCents: number;
   /** 4 — Total Completed & Stored to Date = Σ (D + E + F). */
   totalCompletedStoredCents: number;
@@ -110,7 +117,13 @@ export function computeG702({
   lines: AiaLineInput[];
   previousCertificatesCents: number;
 }): AiaG702 {
-  const contractSumToDate = originalContractCents + netChangeOrdersCents;
+  // Sales tax is read off its own G703 row, so line 3 and the schedule always
+  // agree — sovVarianceCents exists precisely to catch them drifting apart, and
+  // adding tax to one side only is how that would happen.
+  const salesTaxCents = lines
+    .filter((l) => isAiaTaxLine(l))
+    .reduce((sum, l) => sum + Math.round(l.scheduled_value_cents), 0);
+  const contractSumToDate = originalContractCents + netChangeOrdersCents + salesTaxCents;
   const sovTotal = lines.reduce(
     // NOT clamped at zero: a deductive change order is a real, negative line
     // on a real schedule of values, and dropping it here would make the sheet
@@ -138,6 +151,7 @@ export function computeG702({
   return {
     originalContractCents,
     netChangeOrdersCents,
+    salesTaxCents,
     contractSumToDateCents: contractSumToDate,
     totalCompletedStoredCents: totalCompletedStored,
     retainageCents: retainage,
@@ -241,6 +255,31 @@ export function isAiaChangeOrderLine(line: {
   item_no?: string | null;
 }): boolean {
   return !!line.change_order_id || /^CO-0*\d+$/i.test(line.item_no ?? "");
+}
+
+/**
+ * The sales-tax row on the schedule of values.
+ *
+ * Stephanie 2026-09-01: "The sales tax needs to appear within the totals of the
+ * scheduled values. With that, if we change the sales tax status because they
+ * provided a cert later into the job if not after, we need the status to change
+ * the values within the AIA."
+ *
+ * Its OWN row, deliberately, rather than folded into the contract. Her second
+ * sentence is the reason: a cert can arrive mid-job, and the tax then has to
+ * come off. If tax lived inside line 1, removing it would restate the Original
+ * Contract Sum — telling the GC the contract changed when it did not. That is
+ * the same confusion she described with alternates surfacing as change orders,
+ * and it is the thing to avoid.
+ *
+ * So tax behaves like a change order in the arithmetic: outside the original
+ * contract base, inside the contract sum to date. Line 1 stays the number they
+ * signed, and the tax can go to zero without touching it.
+ */
+export const AIA_TAX_ITEM_NO = "TAX";
+
+export function isAiaTaxLine(line: { item_no?: string | null }): boolean {
+  return (line.item_no ?? "").trim().toUpperCase() === AIA_TAX_ITEM_NO;
 }
 
 /**
