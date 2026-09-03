@@ -42,6 +42,7 @@ type SfUserRow = {
   Email: string | null;
   IsActive: boolean;
   CreatedDate: string;
+  UserType: string | null;
 };
 
 export async function lookupSfUserByEmail(
@@ -70,7 +71,7 @@ export async function lookupSfUserByEmail(
   // Both domains, together. Querying them in sequence and keeping the first
   // answer is what shadowed an active user behind a dead one.
   const found = (await Promise.all(addresses.map(queryCandidates))).flat();
-  const best = pickBestUser(found);
+  const best = pickBestUser(found, normalized);
 
   // An INACTIVE link must not shadow an active user the email search can still
   // reach: the same mistake the cross-domain fix was written to undo, and it
@@ -90,14 +91,53 @@ export async function lookupSfUserByEmail(
  * Pure, so the ranking can be tested without Salesforce — the ordering is the
  * part that was wrong, not the query.
  */
-export function pickBestUser(candidates: SfUserCandidate[]): SfUserLookupResult | null {
-  if (candidates.length === 0) return null;
-  const ranked = [...candidates].sort((a, b) => {
+export function pickBestUser(
+  candidates: SfUserCandidate[],
+  /** The address that was signed in with — used only to ORDER candidates that
+   *  already matched it. Optional so existing callers keep working. */
+  signedInEmail?: string
+): SfUserLookupResult | null {
+  // A Guest is a public-site visitor record, not a person with a login. One
+  // shares admin@precisionpaintingplus.net with the real Precision Admin user
+  // and, being newer, used to win on recency.
+  const usable = candidates.filter((c) => (c.userType ?? "").toLowerCase() !== "guest");
+  const pool = usable.length > 0 ? usable : candidates;
+  if (pool.length === 0) return null;
+
+  const local = (signedInEmail ?? "").toLowerCase().split("@")[0] ?? "";
+  const ranked = [...pool].sort((a, b) => {
     if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+    // Prefer the record that looks like the human whose address this is.
+    const an = nameMatchesLocalPart(a.name, local);
+    const bn = nameMatchesLocalPart(b.name, local);
+    if (an !== bn) return an ? -1 : 1;
     return (b.createdDate ?? "").localeCompare(a.createdDate ?? "");
   });
   const best = ranked[0];
   return { id: best.id, name: best.name, email: best.email, isActive: best.isActive };
+}
+
+/**
+ * Does this record's Name look like the person who owns `local`?
+ *
+ * This is NOT identity matching and cannot let a stranger in: every candidate
+ * here already matched the exact, Google-verified address. It only decides
+ * WHICH of several records sharing that one address is the human.
+ *
+ * PPP shares staff addresses with integration users. katie@precisionpaintingplus.com
+ * carries both "Katie Batilla" (2019) and "Field Service Optimization" (2023);
+ * on a pure recency tiebreak the integration account won, so Katie's own
+ * sessions resolved to it. Comparing "katie" against the record's name tokens
+ * separates them without inventing a link that isn't there.
+ */
+export function nameMatchesLocalPart(name: string, local: string): boolean {
+  if (!name || !local) return false;
+  const nameTokens = name.toLowerCase().replace(/-inactive$/, "").split(/[^a-z0-9]+/).filter(Boolean);
+  const localTokens = local.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (nameTokens.length === 0 || localTokens.length === 0) return false;
+  // A shared token of real length ("katie", "grajales") — not an initial, which
+  // would make "a.gallo" match any name starting with A.
+  return localTokens.some((lt) => lt.length >= 3 && nameTokens.includes(lt));
 }
 
 export type SfUserCandidate = {
@@ -106,6 +146,8 @@ export type SfUserCandidate = {
   email: string;
   isActive: boolean;
   createdDate: string | null;
+  /** Salesforce UserType. 'Guest' is a site visitor record, never a sign-in. */
+  userType?: string | null;
 };
 
 async function queryCandidates(email: string): Promise<SfUserCandidate[]> {
@@ -123,7 +165,7 @@ async function queryCandidates(email: string): Promise<SfUserCandidate[]> {
     // can't surprise us if the regex is ever loosened.
     const safe = email.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     const result = await conn.query<SfUserRow>(
-      `SELECT Id, Name, Email, IsActive, CreatedDate FROM User WHERE Email = '${safe}' ORDER BY IsActive DESC, CreatedDate DESC LIMIT 5`
+      `SELECT Id, Name, Email, IsActive, CreatedDate, UserType FROM User WHERE Email = '${safe}' ORDER BY IsActive DESC, CreatedDate DESC LIMIT 10`
     );
     // Every match, not just this domain's best — the caller ranks across both.
     return result.records.map((r) => ({
@@ -132,6 +174,7 @@ async function queryCandidates(email: string): Promise<SfUserCandidate[]> {
       email: r.Email ?? email,
       isActive: r.IsActive,
       createdDate: r.CreatedDate ?? null,
+      userType: r.UserType ?? null,
     }));
   } catch (err) {
     // SF unreachable or query rejected — don't block sign-in, return nothing.

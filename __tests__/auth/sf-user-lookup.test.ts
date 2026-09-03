@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { pickBestUser, type SfUserCandidate } from "@/lib/auth/sf-user-lookup";
+import { pickBestUser, nameMatchesLocalPart, type SfUserCandidate } from "@/lib/auth/sf-user-lookup";
 
 /**
  * Kate, 2026-08-31: Amy Mariani could not sign in. Her ACTIVE Salesforce user
@@ -173,5 +173,77 @@ describe("an admin-set link ranks against what the email search finds", () => {
     // who are not each other.
     expect(src).not.toMatch(/levenshtein|editDistance|similar/i);
     expect(src).not.toMatch(/Email LIKE/);
+  });
+});
+
+/**
+ * KATIE BATILLA, 2026-09-03 — found by simulating the sign-in gate for all 266
+ * PPP addresses in Salesforce, rather than by anyone reporting it.
+ *
+ * Nobody was locked out. The failure was quieter and worse: PPP shares staff
+ * addresses with integration users, and the tiebreak among equally-active
+ * records was "most recently created". katie@precisionpaintingplus.com carries
+ * BOTH "Katie Batilla" (2019) and "Field Service Optimization" (2023), so the
+ * integration account won and PPP's own primary contact resolved to it —
+ * wrong sf_user_id, wrong name in the greeting, wrong "My work orders" scope.
+ * She is an admin, so she was let in; she was simply let in as something else.
+ *
+ * Same shape on admin@precisionpaintingplus.net, where a Guest site-visitor
+ * record outranked the real Precision Admin user.
+ */
+describe("a shared address resolves to the human, not the integration user", () => {
+  const katie = {
+    id: "005Katie", name: "Katie Batilla", email: "katie@precisionpaintingplus.com",
+    isActive: true, createdDate: "2019-12-03T00:00:00Z", userType: "Standard",
+  };
+  const fsoBot = {
+    id: "005FSO", name: "Field Service Optimization", email: "katie@precisionpaintingplus.com",
+    isActive: true, createdDate: "2023-05-02T00:00:00Z", userType: "Standard",
+  };
+  // Named so it ALSO matches the local part "admin", and newer than the human.
+  // Without the Guest exclusion it wins on both remaining tiebreaks — which is
+  // the only way this fixture can prove the exclusion does anything. The real
+  // record ("S-Sign Site Site Guest User") is caught by the name rule anyway,
+  // so testing with it would have passed with the filter deleted.
+  const guest = {
+    id: "005Guest", name: "S-Sign Admin Site Guest User", email: "admin@precisionpaintingplus.net",
+    isActive: true, createdDate: "2023-06-20T00:00:00Z", userType: "Guest",
+  };
+  const admin = {
+    id: "005Admin", name: "Precision Admin", email: "admin@precisionpaintingplus.net",
+    isActive: true, createdDate: "2023-02-01T00:00:00Z", userType: "Standard",
+  };
+
+  it("Katie gets her own record, not the newer integration user", () => {
+    expect(pickBestUser([fsoBot, katie], "katie@precisionpaintingplus.com")?.id).toBe(katie.id);
+  });
+
+  it("without the address it still falls back to recency — the old behaviour", () => {
+    // Proves the fix comes from the new signal, not from a reordered array.
+    expect(pickBestUser([fsoBot, katie])?.id).toBe(fsoBot.id);
+  });
+
+  it("a Guest site record is never a sign-in", () => {
+    expect(pickBestUser([guest, admin], "admin@precisionpaintingplus.net")?.id).toBe(admin.id);
+    // ...even when it is the only thing left, it must not be chosen over nothing
+    // silently: a lone Guest still resolves, so the caller's isActive gate runs.
+    expect(pickBestUser([guest], "admin@precisionpaintingplus.net")?.id).toBe(guest.id);
+  });
+
+  it("an initial is not a name match — a.gallo must not match every A name", () => {
+    expect(nameMatchesLocalPart("Andres Gallo", "a.gallo")).toBe(true);
+    expect(nameMatchesLocalPart("Amy Mariani", "a.gallo")).toBe(false);
+    // the single letter "a" is too short to count
+    expect(nameMatchesLocalPart("Alice Smith", "a.zzzz")).toBe(false);
+  });
+
+  it("the -inactive suffix does not hide a name match", () => {
+    expect(nameMatchesLocalPart("Andres Grajales-inactive", "a.grajales")).toBe(true);
+  });
+
+  it("an inactive human still loses to an active one, name match or not", () => {
+    const deadKatie = { ...katie, id: "005KatieOld", isActive: false };
+    const liveBot = { ...fsoBot };
+    expect(pickBestUser([deadKatie, liveBot], "katie@precisionpaintingplus.com")?.id).toBe(liveBot.id);
   });
 });
