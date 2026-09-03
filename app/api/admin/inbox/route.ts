@@ -145,9 +145,36 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "query_failed", message: error.message }, { status: 500 });
   }
 
+  // Attach the human WO NUMBER. The row carries only the Salesforce Id, and the
+  // UI was printing its last 8 characters — "linked to WO 7shAPOAY", which
+  // matches nothing a person can look up. The PO number on the linked order
+  // already embeds the real number (PPP-WO00316046), so read it from there
+  // rather than loading a Salesforce snapshot just for a label.
+  const orderIds = Array.from(
+    new Set((messages ?? []).map((m) => m.linked_order_id).filter(Boolean))
+  ) as string[];
+  const woNumberByOrderId = new Map<string, string>();
+  if (orderIds.length > 0) {
+    const { data: orders } = await sb
+      .from("supplier_orders")
+      .select("id, po_number")
+      .in("id", orderIds);
+    for (const o of orders ?? []) {
+      // PPP-WO00316046 / PPP-WO00314545-2 → 00316046
+      const m = /WO(\d+)/.exec(String(o.po_number ?? ""));
+      if (m) woNumberByOrderId.set(o.id as string, m[1]);
+    }
+  }
+  const withWoNumber = (messages ?? []).map((m) => ({
+    ...m,
+    work_order_number: m.linked_order_id
+      ? woNumberByOrderId.get(m.linked_order_id as string) ?? null
+      : null,
+  }));
+
   return NextResponse.json({
     ok: true,
-    messages: messages ?? [],
+    messages: withWoNumber,
     summary: {
       unread: unreadCount ?? 0,
       returned: messages?.length ?? 0,

@@ -31,8 +31,12 @@ export type SupplierEmailTemplate = {
  *  entire line is OMITTED from the email rather than rendered as a blank
  *  "PPP Account: " — workers should never see placeholders. */
 export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
+  // The customer clause is CONDITIONAL: a work order with no Account resolved
+  // used to mail the supplier "PPP Order PPP-WO00316046 — (unknown customer)
+  // (WO 00316046)". The PO and WO already identify the order, so when there is
+  // no customer the clause disappears instead of advertising a gap in our data.
   subject:
-    "PPP Order {{po_number}} — {{customer_name}} (WO {{wo_number}})",
+    "PPP Order {{po_number}}{{#customer_name}} — {{customer_name}}{{/customer_name}} (WO {{wo_number}})",
   // R4.23: the vendor's own name came out of the greeting. They know who they
   // are; it read as mail-merge filler, and when supplier_settings held a
   // slightly different name than the account it was visibly wrong.
@@ -44,7 +48,7 @@ export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
     "Required by: {{required_by_date}}\n" +
     "Fulfillment: {{fulfillment_block}}\n\n" +
     "CUSTOMER + JOB\n" +
-    "Customer: {{customer_name}}\n" +
+    "{{#customer_name}}Customer: {{customer_name}}\n{{/customer_name}}" +
     "Work Order: #{{wo_number}}\n",
   // R4.28: "All replies route to our Command Center inbox." removed — it's an
   // internal detail the vendor has no use for, and it read like a warning.

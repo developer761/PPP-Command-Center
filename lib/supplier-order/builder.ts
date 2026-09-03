@@ -700,7 +700,16 @@ function resolveLineItems(
 function resolveDeliveryAddress(input: BuildSupplierOrderInput): DeliveryAddress | null {
   if (input.fulfillmentMethod === "pickup") return null;
 
-  const customerName = input.customerAccount?.name ?? "(unknown customer)";
+  // This name becomes the SHIP-TO line the supplier puts on the delivery, so
+  // unlike the email body it cannot simply be omitted — a package needs an
+  // addressee. It also must not read "(unknown customer)", which is what a work
+  // order with no Account resolved used to print on the label. Fall back to the
+  // work order, which is the reference PPP and the vendor already share.
+  const customerName =
+    input.customerAccount?.name?.trim() ||
+    (input.workOrder.workOrderNumber
+      ? `Precision Painting Plus — WO #${input.workOrder.workOrderNumber}`
+      : "Precision Painting Plus");
 
   // An address is only usable by a supplier if it has street + city + (state or
   // zip). A street-only / city-less address would ship a half address that
@@ -1165,7 +1174,12 @@ export async function buildSupplierOrderDraft(
     input.workOrder.workOrderNumber ?? input.workOrder.id.slice(-6)
   );
 
-  const customerName = input.customerAccount?.name ?? "(unknown customer)";
+  // EMPTY, not "(unknown customer)". The template wraps every use in a
+  // {{#customer_name}} section, so an unknown customer omits the line entirely
+  // rather than mailing a vendor the word "(unknown customer)" — the same rule
+  // the PPP Account line already follows two fields up. It also stops
+  // customer_first rendering as "(unknown" in any greeting that uses it.
+  const customerName = input.customerAccount?.name ?? "";
   const customerFirst = customerName.split(/\s+/)[0] || "there";
 
   const vars: Record<string, string> = {

@@ -21,6 +21,9 @@ type InboxMessage = {
   linked_token: string | null;
   linked_order_id: string | null;
   linked_work_order_id: string | null;
+  /** Human WO number resolved from the linked order's PO. Null when the
+   *  message is not tied to a supplier order (customer replies, unmatched). */
+  work_order_number?: string | null;
   from_email: string;
   from_name: string | null;
   subject: string | null;
@@ -765,7 +768,7 @@ function MessageRow({
           <div className="text-[11px] text-ppp-charcoal-500 mb-2">
             From <strong className="text-ppp-charcoal">{message.from_email}</strong> · {date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
             {message.linked_work_order_id && (
-              <> · linked to WO <span className="font-mono">{message.linked_work_order_id.slice(-8)}</span></>
+              <> · linked to WO <span className="font-mono">{message.work_order_number ?? message.linked_work_order_id.slice(-8)}</span></>
             )}
           </div>
           {message.body_text ? (
