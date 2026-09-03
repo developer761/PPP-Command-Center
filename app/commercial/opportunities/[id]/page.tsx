@@ -187,6 +187,7 @@ import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
 import { normalizeToolOrigin } from "@/lib/commercial/tool-origin";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
+import { MoneyInput } from "@/components/commercial/money-input";
 
 export const dynamic = "force-dynamic";
 
@@ -3611,9 +3612,7 @@ async function OpportunityInvoicesPanel({
                           <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
                             Amount
                           </span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
+                          <MoneyInput
                             name="amount"
                             required
                             defaultValue={(inv.balance_cents / 100).toFixed(2)}

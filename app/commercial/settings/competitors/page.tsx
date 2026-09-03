@@ -20,6 +20,7 @@ import { opportunityLossReasonLabel, type OpportunityLossReason, OPPORTUNITY_LOS
 import { IconGlobe, IconMapPin, IconDollar } from "@/components/commercial/inline-icons";
 import Link from "next/link";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { MoneyInput } from "@/components/commercial/money-input";
 
 function formatCentsCompact(cents: number): string {
   const dollars = cents / 100;
@@ -574,11 +575,11 @@ function IntelEditor({ competitor }: { competitor: Competitor }) {
         <div className="grid grid-cols-2 gap-2">
           <label className="block">
             <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Bid low ($)</span>
-            <input type="text" name="bid_low" defaultValue={dollarStr(competitor.typical_bid_low_cents)} inputMode="decimal" placeholder="10000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
+            <MoneyInput name="bid_low" defaultValue={dollarStr(competitor.typical_bid_low_cents)} placeholder="10000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
           </label>
           <label className="block">
             <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Bid high ($)</span>
-            <input type="text" name="bid_high" defaultValue={dollarStr(competitor.typical_bid_high_cents)} inputMode="decimal" placeholder="75000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
+            <MoneyInput name="bid_high" defaultValue={dollarStr(competitor.typical_bid_high_cents)} placeholder="75000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
           </label>
         </div>
         <label className="block">

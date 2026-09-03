@@ -36,15 +36,34 @@ describe("proposalProjectName", () => {
     expect(name).not.toContain(ACCOUNT);
   });
 
-  it("an explicit custom name still wins over everything", () => {
-    // Katie's 2026-07-20 rule. Regressing this puts "Jones Property" back on a
-    // PDF where somebody deliberately typed something else.
+  it("keeps the NICKNAME off the customer's copy", () => {
+    // Brendan 2026-09-03: "Let's not use the nickname customer facing. It
+    // should always be the most formal name customer facing." His proposal
+    // went out titled "Main" — office shorthand — for Plainview at 115
+    // Connetquot Avenue. The live nicknames make the case: "Ste A1",
+    // "Exterior", "Tomco Office".
+    //
+    // This supersedes Katie 2026-07-20 ("an explicit title_override must win"),
+    // and the two do not actually conflict: her field was "Custom display
+    // name", a formal name someone typed. Migration 170 turned it into
+    // "Project nickname · what the team calls it". Same column, different
+    // meaning, so the rule that governs it changed with it.
     expect(
       proposalProjectName(
-        { title_override: "The Big Job at Jones", client_name: "Jones", property_street: "5 Elm" },
+        { title_override: "Main", client_name: "Plainview", property_street: "115 Connetquot Ave" },
         ACCOUNT
       )
-    ).toBe("The Big Job at Jones");
+    ).toBe("Plainview");
+  });
+
+  it("does not let the nickname back in through the fallback", () => {
+    // derivedOppName APPENDS the nickname since migration 170, so the
+    // last-resort branch would smuggle it onto the document by the back door.
+    const name = proposalProjectName(
+      { title: "", title_override: "Exterior", client_name: null, property_street: null },
+      ACCOUNT
+    );
+    expect(name).not.toContain("Exterior");
   });
 
   it("falls back rather than printing an empty PROJECT line", () => {

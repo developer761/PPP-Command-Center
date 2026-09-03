@@ -635,9 +635,9 @@ function ProposalCard({
           </span>
           {/* No R# before the client has seen anything on this deal — see
               proposalRevisionLabel (Karan 2026-08). */}
-          {proposalRevisionLabel(row, anySentOnDeal) && (
+          {proposalRevisionLabel(row) && (
             <span className="text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums shrink-0">
-              {proposalRevisionLabel(row, anySentOnDeal)}
+              {proposalRevisionLabel(row)}
             </span>
           )}
           {/* Katie 2026-07-20 (migration 069): PROP-#### is the global
@@ -1386,7 +1386,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               className="flex items-center gap-3 px-4 py-2.5 min-h-[48px] flex-1 min-w-0"
                             >
                               <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums shrink-0 w-8">
-                                {proposalRevisionLabel(r, dealAnySent) || "—"}
+                                {proposalRevisionLabel(r) || "—"}
                               </span>
               {/* Audit fix: align breakpoint with the kanban card
                   (hidden sm:inline) so the PROP-#### chip surfaces at

@@ -73,6 +73,7 @@ import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from 
 import DueDatePickerWithPresets from "@/components/commercial/due-date-picker-with-presets";
 import CopyInvoiceLinkButton from "@/components/commercial/copy-invoice-link";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { MoneyInput } from "@/components/commercial/money-input";
 
 export const dynamic = "force-dynamic";
 
@@ -1754,7 +1755,7 @@ export async function InvoiceDetailView({
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
             <div className="sm:col-span-3">
               <label htmlFor="pmt-amount" className={LABEL_CLS}>Amount *</label>
-              <input id="pmt-amount" name="amount" type="text" required inputMode="decimal" placeholder={formatCentsFull(invoice.balance_cents)} className={INPUT_CLS} />
+              <MoneyInput id="pmt-amount" name="amount" required placeholder={formatCentsFull(invoice.balance_cents)} className={INPUT_CLS} />
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="pmt-date" className={LABEL_CLS}>Paid on</label>
@@ -1883,7 +1884,7 @@ export async function InvoiceDetailView({
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
                               <label className={LABEL_CLS} htmlFor={`mp-amt-${m.id}`}>Amount</label>
-                              <input id={`mp-amt-${m.id}`} name="amount" required inputMode="decimal" defaultValue={(mDue / 100).toFixed(2)} className={INPUT_CLS} />
+                              <MoneyInput id={`mp-amt-${m.id}`} name="amount" required defaultValue={(mDue / 100).toFixed(2)} className={INPUT_CLS} />
                             </div>
                             <div>
                               <span className={LABEL_CLS}>Paid on</span>
@@ -1963,7 +1964,7 @@ export async function InvoiceDetailView({
                             </div>
                             <div>
                               <label className={LABEL_CLS} htmlFor={`m-amt-${m.id}`}>Amount</label>
-                              <input id={`m-amt-${m.id}`} name="amount" defaultValue={(m.amount_cents / 100).toFixed(2)} inputMode="decimal" className={INPUT_CLS} />
+                              <MoneyInput id={`m-amt-${m.id}`} name="amount" defaultValue={(m.amount_cents / 100).toFixed(2)} className={INPUT_CLS} />
                             </div>
                             <div>
                               <span className={LABEL_CLS}>Due date</span>
@@ -2020,7 +2021,7 @@ export async function InvoiceDetailView({
               </div>
               <div>
                 <label className={LABEL_CLS} htmlFor="am-amt">Amount</label>
-                <input id="am-amt" name="amount" required inputMode="decimal" placeholder="0.00" className={INPUT_CLS} />
+                <MoneyInput id="am-amt" name="amount" required placeholder="0.00" className={INPUT_CLS} />
               </div>
               <div>
                 <span className={LABEL_CLS}>Due date</span>

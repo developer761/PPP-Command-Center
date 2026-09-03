@@ -4788,7 +4788,7 @@ async function AccountProposalsTab({
                               {/* No R# until the client has seen something on
                                   this deal (Karan 2026-08). */}
                               <span className={`font-bold text-ppp-charcoal tabular-nums shrink-0 ${isCurrent ? "text-[15px]" : "text-[12.5px] text-ppp-charcoal-600"}`}>
-                                {proposalRevisionLabel(r, dealAnySent) || "Proposal"}
+                                {proposalRevisionLabel(r) || "Proposal"}
                               </span>
                               {proposalDisplayId(r) && (
                                 <span className="font-mono text-[10px] text-ppp-navy-600 shrink-0" title="Global proposal number">

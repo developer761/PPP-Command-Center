@@ -18,6 +18,7 @@ import {
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
+import { MoneyInput } from "@/components/commercial/money-input";
 
 /**
  * Create-product form. Admin-only (matches archive/edit gate on the
@@ -254,11 +255,9 @@ export default async function NewProductPage({
             <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
               Default price ($) <span className="text-rose-700">*</span>
             </span>
-            <input
-              type="text"
+            <MoneyInput
               name="default_unit_price"
               required
-              inputMode="decimal"
               defaultValue={sp.price ?? ""}
               placeholder="79.99"
               className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
@@ -271,10 +270,8 @@ export default async function NewProductPage({
             <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
               PPP cost ($)
             </span>
-            <input
-              type="text"
+            <MoneyInput
               name="default_unit_cost"
-              inputMode="decimal"
               defaultValue={sp.cost ?? ""}
               placeholder="52.40"
               className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"

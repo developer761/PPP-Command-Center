@@ -104,8 +104,13 @@ export function proposalRecordId(
 ): string {
   const root = rootOf(projectNumber);
   if (!root) return "";
-  const rev = revisionNumber ?? 1;
-  return rev > 1 ? `PROP-${root}-R${rev}` : `PROP-${root}`;
+  // The R number counts REVISIONS, so it runs one behind revision_number —
+  // the original has had none and carries no suffix at all. Brendan
+  // 2026-09-03: "the original should have no R1 … then we create the R1 doc
+  // the first revision." Same rule as proposalRevisionLabel; they appear side
+  // by side on the proposal header and must not disagree.
+  const rev = Math.round(Number(revisionNumber ?? 1)) - 1;
+  return rev > 0 ? `PROP-${root}-R${rev}` : `PROP-${root}`;
 }
 
 /**

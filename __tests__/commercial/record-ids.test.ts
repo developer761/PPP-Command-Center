@@ -53,12 +53,13 @@ describe("shared record IDs", () => {
   });
 
   it("leaves the original proposal unsuffixed and tags only real revisions", () => {
-    // Karan: no R# until it's been sent and revised — an R1 tag on the
-    // original is noise the client shouldn't see.
+    // Brendan 2026-09-03: "The original should have no R1 … then we create the
+    // R1 doc the first revision." The R number counts REVISIONS, so it runs one
+    // behind revision_number — the original has had none.
     expect(proposalRecordId(ROOT, 1)).toBe("PROP-2026-0020");
     expect(proposalRecordId(ROOT, null)).toBe("PROP-2026-0020");
-    expect(proposalRecordId(ROOT, 2)).toBe("PROP-2026-0020-R2");
-    expect(proposalRecordId(ROOT, 11)).toBe("PROP-2026-0020-R11");
+    expect(proposalRecordId(ROOT, 2)).toBe("PROP-2026-0020-R1"); // the FIRST revision
+    expect(proposalRecordId(ROOT, 11)).toBe("PROP-2026-0020-R10");
   });
 
   it("only suffixes a work order when the project actually has several", () => {
@@ -105,10 +106,10 @@ describe("proposalDisplayId", () => {
   });
 
   it("tags later revisions but not the first", () => {
-    // Karan's rule: a proposal is just "the proposal" until it has been sent and
-    // revised, so an R1 tag on the original is noise the client shouldn't see.
+    // A proposal is just "the proposal" until it is revised; the first revision
+    // is R1 (Brendan 2026-09-03), which is revision_number 2.
     expect(proposalDisplayId({ project_number: "2026-0042", revision_number: 2 })).toBe(
-      "PROP-2026-0042-R2"
+      "PROP-2026-0042-R1"
     );
     expect(proposalDisplayId({ project_number: "2026-0042", revision_number: 1 })).not.toMatch(/-R/);
   });

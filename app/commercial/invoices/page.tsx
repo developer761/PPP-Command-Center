@@ -49,6 +49,7 @@ import { defaultStatementMessage } from "@/lib/commercial/invoices/statement-ema
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { LABEL_CLS, INPUT_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 import { InstantSearch } from "@/components/commercial/instant-search";
+import { MoneyInput } from "@/components/commercial/money-input";
 
 export const dynamic = "force-dynamic";
 
@@ -2305,9 +2306,7 @@ function FullDetailByOpp({
                           <input type="hidden" name="account_id" value={accountId} />
                           <label className="block">
                             <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Amount</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
+                            <MoneyInput
                               name="amount"
                               required
                               defaultValue={(inv.balance_cents / 100).toFixed(2)}

@@ -95,6 +95,7 @@ import {
 } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { MoneyInput } from "@/components/commercial/money-input";
 
 export const dynamic = "force-dynamic";
 
@@ -1263,7 +1264,7 @@ export default async function ProposalEditorPage({
   // this deal — see proposalRevisionLabel. Computed from the siblings, not
   // just this row, so R2 doesn't appear on a bump of a never-sent draft.
   const anySentOnDeal = siblingProposals.some((sp) => sp.sent_at != null);
-  const revLabel = proposalRevisionLabel(proposal, anySentOnDeal);
+  const revLabel = proposalRevisionLabel(proposal);
   // Kim: recipient list + operating-company identity + prior email-sends for the
   // "Send proposal" review sheet / "emailed to …" line.
   const [accountContacts, operatingCompany, proposalEmailSends] = await Promise.all([
@@ -2823,7 +2824,7 @@ function LineItemsTable({
               </label>
               <label className="block">
                 <span className={LABEL_CLS}>Unit price</span>
-                <input type="text" id={`price-${r.id}`} inputMode="decimal" name="unit_price" defaultValue={centsToDollarInput(r.unit_price_cents)} className={`${INPUT_CLS} tabular-nums`} />
+                <MoneyInput id={`price-${r.id}`} name="unit_price" defaultValue={centsToDollarInput(r.unit_price_cents)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
               {/* Brendan 2026-08-17: "we should be able to override a line item
                   price as well. So we can have the accurate qty if we decide to
@@ -3087,7 +3088,7 @@ function AddLineItemForm({
         </label>
         <label className="block">
           <span className={LABEL_CLS}>{isLabor ? "$ / hour" : "Unit price"}</span>
-          <input type="text" id={`${prefix}-price`} inputMode="decimal" name="unit_price" defaultValue="0.00" className={`${INPUT_CLS} tabular-nums`} />
+          <MoneyInput id={`${prefix}-price`} name="unit_price" defaultValue="0.00" className={`${INPUT_CLS} tabular-nums`} />
         </label>
       </div>
 
