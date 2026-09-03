@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { pickBestUser, type SfUserCandidate } from "@/lib/auth/sf-user-lookup";
 
 /**
@@ -105,5 +107,71 @@ describe("the lookup searches both domains rather than stopping at one", () => {
     expect(src).toMatch(/Promise\.all\(addresses\.map\(queryCandidates\)\)/);
     expect(src, "an early return would re-introduce the shadowing bug")
       .not.toMatch(/if \(!match\)/);
+  });
+});
+
+/**
+ * Jason Ng, 2026-09-03 — the case no email rule can reach.
+ *
+ * He signs in as jason.eng@precisionpaintingplus.net. Salesforce has that exact
+ * address on "Jason Eng-inactive" (deactivated), while his live record is
+ * "Jason Ng" <jason.ng@precisionpaintingplus.com>. The cross-domain swap that
+ * rescued Amy — and 42 others, counted against production — cannot help: the
+ * LOCAL part differs, so there is nothing to swap.
+ *
+ * The resolution is an admin-asserted row in sf_user_links, not a fuzzy match.
+ * These pin the RANKING that row participates in, which is the part that can
+ * silently go wrong: pickBestUser is pure, so the ordering is testable without
+ * Salesforce, exactly as the cross-domain fix left it.
+ */
+describe("an admin-set link ranks against what the email search finds", () => {
+  const linkedActive = {
+    id: "005JasonNgActive", name: "Jason Ng",
+    email: "jason.ng@precisionpaintingplus.com", isActive: true, createdDate: "2021-01-01T00:00:00Z",
+  };
+  const linkedDead = {
+    id: "005JasonEngOld", name: "Jason Eng-inactive",
+    email: "jason.eng@precisionpaintingplus.net", isActive: false, createdDate: "2019-01-01T00:00:00Z",
+  };
+  const emailActive = {
+    id: "005SomeoneActive", name: "Someone Live",
+    email: "jason.eng@precisionpaintingplus.net", isActive: true, createdDate: "2024-01-01T00:00:00Z",
+  };
+
+  it("an active record still beats an inactive one, link or not", () => {
+    // The rule the link must never be allowed to invert.
+    expect(pickBestUser([linkedDead, emailActive])?.id).toBe(emailActive.id);
+  });
+
+  it("the address alone resolves to the DEAD record — which is why a link is needed", () => {
+    // Only the inactive Jason Eng carries jason.eng@; nothing about the address
+    // can reach Jason Ng. This is the bug, asserted rather than described.
+    expect(pickBestUser([linkedDead])?.isActive).toBe(false);
+    expect(linkedDead.email).not.toBe(linkedActive.email);
+    expect(linkedDead.email.split("@")[0]).not.toBe(linkedActive.email.split("@")[0]);
+  });
+
+  it("the linked record is a normal candidate — being linked does not make it active", () => {
+    expect(pickBestUser([linkedActive])?.isActive).toBe(true);
+    expect(pickBestUser([linkedDead])?.isActive).toBe(false);
+  });
+
+  it("resolves the link by Id, never by trusting the stored name/email", () => {
+    // A row that cached isActive would let a deactivated employee keep signing
+    // in forever. The lookup must re-read Salesforce.
+    const src = readFileSync(join(process.cwd(), "lib/auth/sf-user-lookup.ts"), "utf8");
+    expect(src).toMatch(/FROM User WHERE Id = '\$\{sfUserId\}'/);
+    expect(src).toMatch(/if \(linked\?\.isActive\) return linked;/);
+    // and the Id is validated before it reaches SOQL
+    expect(src).toMatch(/\^\[a-zA-Z0-9\]\{15,18\}\$/);
+  });
+
+  it("never fuzzy-matches the address", () => {
+    const src = readFileSync(join(process.cwd(), "lib/auth/sf-user-lookup.ts"), "utf8");
+    // No edit-distance / LIKE / startsWith matching may enter this file: one
+    // character separates jason.eng from jason.ng, and also separates people
+    // who are not each other.
+    expect(src).not.toMatch(/levenshtein|editDistance|similar/i);
+    expect(src).not.toMatch(/Email LIKE/);
   });
 });
