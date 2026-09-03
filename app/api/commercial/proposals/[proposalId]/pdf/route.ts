@@ -202,10 +202,11 @@ export async function GET(
     );
     pdfBuffer = fit.bytes;
     if (!fit.fitted) {
-      // Past the legibility floor. One page nobody can read is not what was
-      // asked for, so it keeps its natural length — worth knowing about.
+      // The ladder ran out. It no longer falls back to natural length (Karan
+      // 2026-09-03: "never goes above one page"), so this is now a signal that
+      // something upstream is wrong with the data rather than a normal outcome.
       console.warn(
-        `[proposal-pdf] ${mode} copy of ${proposalId} is too long to fit one readable page (${lineItems.length} line items)`
+        `[proposal-pdf] ${mode} copy of ${proposalId} did not reach one page even fully compressed (${lineItems.length} line items)`
       );
     }
   } catch (err) {
@@ -259,6 +260,23 @@ export async function GET(
       // the worst case is the reviewer opening one from the Files tab.
       console.error("[proposal-pdf] appending attachments failed:", err);
     }
+  }
+
+  // Page numbers LAST, on the assembled document.
+  //
+  // Brendan 2026-09-03 asked for them, and pdf.tsx already had a react-pdf
+  // `fixed render` guarded on `totalPages > 1`. It could never fire: the fit
+  // above makes react-pdf's totalPages 1, and the extra pages only appear
+  // afterwards, when the plan set is spliced on with pdf-lib. The feature
+  // compiled, read correctly, and printed nothing.
+  //
+  // A no-op on a one-page document, which is every customer copy.
+  try {
+    const { stampPageNumbers } = await import("@/lib/commercial/pdf/stamp-page-numbers");
+    pdfBuffer = await stampPageNumbers(pdfBuffer);
+  } catch (err) {
+    // A missing page number is not worth failing a download over.
+    console.warn("[proposal-pdf] page numbering failed:", err);
   }
 
   // No `R{n}` in the filename (Brendan 2026-08-17) — the revision is labelled

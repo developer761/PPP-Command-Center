@@ -6,10 +6,16 @@ import { PDFDocument } from "pdf-lib";
  *
  * Karan 2026-08-26, the platform rule: "everything is supposed to have one page
  * for the PDF, unless it's internal — then when we add bid notes it can have
- * more." So every customer-facing document — invoice, change order, work order,
- * submittal, statement — goes through this, and only the internal estimator
- * report is allowed to run long (and then only because a plan set is spliced
- * onto the end of it).
+ * more." So every customer-facing document goes through this: proposal,
+ * invoice, change order, work order, letter of transmittal, closeout
+ * transmittal, warranty. The internal estimator report is allowed to run long
+ * (and then only because a plan set is spliced onto the end of it).
+ *
+ * The AR statement is NOT on that list and deliberately does not come through
+ * here — an earlier version of this comment claimed it did, which was wrong.
+ * A statement is a ledger; its whole job is to list every open invoice, and
+ * compressing forty of them onto one sheet would defeat the document. It
+ * paginates, with a repeating column header and page numbers.
  *
  * Karan 2026-08-26: "when I do plan report and have like 5 line items it goes
  * to 2 different pages — it should always be one."

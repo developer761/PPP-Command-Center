@@ -32,6 +32,8 @@ const styles = StyleSheet.create({
   agingCell: { width: "20%", padding: 6, textAlign: "center" },
   agingLabel: { fontSize: 7, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.4 },
   footer: { position: "absolute", bottom: 30, left: 54, right: 54, fontSize: 7.5, color: "#9ca3af", textAlign: "center", borderTopWidth: 0.5, borderTopColor: "#e5e7eb", paddingTop: 6 },
+  // Bottom-right, clear of the centred footer text above it.
+  pageNumber: { position: "absolute", bottom: 16, right: 54, fontSize: 7.5, color: "#9ca3af" },
 });
 
 export type CompanyContact = { name: string; phone?: string | null; website?: string | null };
@@ -170,6 +172,26 @@ function StatementDoc({
         <Text style={styles.footer} fixed>
           Statement of account · Please remit the total outstanding. Questions? Reply to this statement or call the number above.
         </Text>
+
+        {/*
+          Brendan 2026-09-03 asked for page numbers on the documents that run
+          long. This is the one customer-facing document that legitimately does:
+          a statement is a ledger, so it lists every open invoice rather than
+          being squeezed onto one sheet like the proposal and the transmittals.
+          It already repeats the column header across pages; without a number,
+          a GC holding three loose sheets cannot tell their order or whether one
+          is missing.
+
+          Safe as a react-pdf `fixed render` here precisely BECAUSE this
+          document never goes through renderFitToOnePage — in the proposal
+          report the identical pattern silently produced nothing, since the fit
+          makes totalPages 1 and the extra pages arrive later via pdf-lib.
+        */}
+        <Text
+          style={styles.pageNumber}
+          fixed
+          render={({ pageNumber, totalPages }) => (totalPages > 1 ? `Page ${pageNumber} of ${totalPages}` : "")}
+        />
       </Page>
     </Document>
   );
