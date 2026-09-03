@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import {
-  processInboundArchive,
-  type InboundPayload as ArchivePayload,
+import type {
+  InboundPayload as ArchivePayload,
+  InboundResult as ArchiveResult,
 } from "@/lib/commercial/email-archive/inbound";
 import { reportError, reportWarn } from "@/lib/observability";
 
@@ -29,6 +29,25 @@ import { reportError, reportWarn } from "@/lib/observability";
  * Idempotent — UNIQUE (resend_message_id) prevents double-ingest if Resend
  * retries the webhook. Returns 200 even when threading fails so Resend
  * doesn't keep retrying.
+ *
+ * WHY THE ARCHIVE IMPORT IS LAZY (2026-09-03)
+ * This endpoint is SHARED: it carries residential supplier-order and
+ * colour-form replies as well as the Commercial BCC archive. It was returning
+ * 500 to every request in production — GET included, where the identical-shape
+ * sibling /api/webhooks/resend-events returns a clean 405 — which is the
+ * signature of a module that fails to LOAD, not a handler that fails to run.
+ * The one structural difference is this file's static import of a Commercial
+ * module, which pulls isomorphic-dompurify and jsdom (declared in
+ * serverExternalPackages, so resolved at runtime rather than bundled).
+ *
+ * A static import means any failure in that chain takes the whole webhook down,
+ * including the residential path that has nothing to do with it — and it fails
+ * invisibly, because a webhook nobody is watching just stops receiving. Resend
+ * sees 500, retries, gives up. Materials-order replies have never landed:
+ * inbox_messages has zero rows.
+ *
+ * So the archive is imported inside the handler and its failure is contained.
+ * Commercial archiving behaves exactly as before when the import succeeds.
  *
  * Configuration in Resend dashboard:
  *   - Inbound address: orders@orders.precisionpaintingplus.net
@@ -174,7 +193,7 @@ export async function POST(request: Request) {
   // inbox_messages.resend_message_id prevents double-thread; archive
   // dedup happens via its own UNIQUE on (source_kind, source_id,
   // message_id).
-  const archiveResult = await processInboundArchive(data as unknown as ArchivePayload);
+  const archiveResult = await runInboundArchive(data as unknown as ArchivePayload);
   if (!archiveResult.ok && archiveResult.errors.length > 0) {
     console.warn(
       `[resend-inbound] archive errors: ${JSON.stringify(archiveResult.errors)}`
@@ -367,4 +386,26 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, kind, threaded: kind !== "unmatched" });
+}
+
+/**
+ * Run the Commercial BCC archive, contained.
+ *
+ * Returns the same shape on failure as a run that archived nothing, so the
+ * caller's residential threading proceeds untouched. Deliberately does NOT
+ * rethrow: an archive that cannot load must not cost PPP a supplier reply.
+ */
+async function runInboundArchive(data: ArchivePayload): Promise<ArchiveResult> {
+  try {
+    const mod = await import("@/lib/commercial/email-archive/inbound");
+    return await mod.processInboundArchive(data);
+  } catch (err) {
+    // Loud, because this is the failure that hid for months behind a 500.
+    reportError({
+      key: "resend_inbound_archive_unavailable",
+      message: `Commercial email archive could not run: ${err instanceof Error ? err.message : String(err)}`,
+      platform: "shared",
+    });
+    return { ok: false, matched: [], skipped: [], errors: [] };
+  }
 }
