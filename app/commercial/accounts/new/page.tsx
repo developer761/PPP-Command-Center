@@ -119,6 +119,25 @@ async function createAction(formData: FormData) {
   }
   const newAccountId = result.account.id;
 
+  // The named team picked on this form. Brendan 2026-09-03: the account page
+  // was "still asking for a team the old way" — individuals only, while the
+  // opportunity had moved to named teams.
+  //
+  // Applied through setOwnerTeam, the same call the account detail page and the
+  // opportunity use, so picking a team here staffs the account from that team's
+  // roster instead of merely labelling it. Best-effort: a team that fails to
+  // attach must not lose the company details somebody just typed.
+  {
+    const teamRaw = String(formData.get("team_id") ?? "").trim();
+    if (teamRaw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamRaw)) {
+      const { setOwnerTeam } = await import("@/lib/commercial/teams/db");
+      const teamResult = await setOwnerTeam("account", newAccountId, teamRaw, user.id);
+      if (!teamResult.ok) {
+        console.warn(`[accounts/new] could not attach team ${teamRaw}: ${teamResult.error}`);
+      }
+    }
+  }
+
   // ── Contacts typed on this form (Brendan 2026-08-12) ─────────────────────
   //
   // "While entering a new builder we can add an estimator's contact at the
@@ -372,6 +391,12 @@ export default async function NewCommercialAccountPage({
   // Assignable PPP staff for the team-on-create picker — same filter as
   // the Team tab on the detail page (has_new_platform_access + active).
   const assignableStaff = await listAssignableStaff();
+  // Brendan 2026-09-03: "I see the teams have been implemented on the Oppt page
+  // but it's still is asking for a team the old way on the account page."
+  // Named teams reached the opportunity and the account DETAIL page; account
+  // CREATE was the one surface still asking only for individuals.
+  const { listTeams } = await import("@/lib/commercial/teams/db");
+  const teams = await listTeams();
 
   return (
     <div className="space-y-6">
@@ -509,10 +534,31 @@ export default async function NewCommercialAccountPage({
             the account level. DB columns kept for audit; never written here now. */}
 
         <Section title="Team">
+          {teams.length > 0 && (
+            <label className="block">
+              <span className={LABEL_CLS}>
+                Team{" "}
+                <span className="font-normal text-ppp-charcoal-400">
+                  (optional — staffs the account from that team&apos;s roster)
+                </span>
+              </span>
+              <select name="team_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+                <option value="">No team</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                    {t.member_count > 0 ? ` · ${t.member_count} member${t.member_count === 1 ? "" : "s"}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <p className="text-[12px] text-ppp-charcoal-500 -mt-1 leading-relaxed">
-            Pick the PPP staff who&apos;ll manage this account. They&apos;ll get an
-            email with a link as soon as the account is created. You can adjust
-            roles + primaries later from the Team tab.
+            {teams.length > 0
+              ? "Or add people individually — useful for someone outside the team who still needs the notifications."
+              : "Pick the PPP staff who'll manage this account."}{" "}
+            They&apos;ll get an email with a link as soon as the account is created. You
+            can adjust roles + primaries later from the Team tab.
           </p>
           <CommercialNewAccountTeamPicker assignableStaff={assignableStaff} />
         </Section>

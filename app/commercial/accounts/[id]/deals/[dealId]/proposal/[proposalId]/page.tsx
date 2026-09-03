@@ -2168,6 +2168,40 @@ export default async function ProposalEditorPage({
           </div>
         </EditorSection>
 
+
+        {/* Intro override. The preview shows the intro that will ACTUALLY
+            print, bid-set clause and all — showing the date-less boilerplate
+            while the PDF says something else is how someone concludes the date
+            "didn't carry over" and retypes the paragraph by hand. */}
+        <EditorSection
+          title="Intro paragraph"
+          subtitle={<>Blank = the Tomco default: <em>&ldquo;{defaultIntroPreview}&rdquo;</em> Anything you type here replaces it.</>}
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2 M9 20h6 M12 4v16" />
+            </svg>
+          }
+        >
+          <textarea name="intro_text_override" defaultValue={proposal.intro_text_override ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="Leave blank to use the Tomco default." />
+        </EditorSection>
+      </AutosaveProposalForm>
+
+      {/* Sales tax — MOVED OUT of the autosave form above.
+          Brendan 2026-09-03: "i have tried to remove tax and its not coming
+          off." He was right, and it never could: this <form> sat INSIDE the
+          AutosaveProposalForm, and HTML forbids nested forms — the browser
+          drops the inner one. So the Treatment select belonged to the OUTER
+          form and "Save tax setting" ran saveProposalAction instead of
+          setJobTaxFromProposalAction. The setting was never written, the page
+          came back looking unchanged, and his PDF kept charging $21,875 on a
+          job he had marked a capital improvement.
+
+          Nothing about the tax code was wrong — a live check confirmed exempt
+          → no tax line and taxable → exactly his $21,875. The button simply
+          submitted the wrong form.
+
+          Also why it hid: a depth count of literal <form> tags shows nesting
+          depth 1 here, because the outer form is a COMPONENT. */}
         {/* Sales tax — Stephanie 2026-08-20: "Sales tax should be an option on
             the proposal not just on the opportunity overview." Same setting as
             the job's, edited here; a proposal-local copy would let the proposal
@@ -2205,23 +2239,6 @@ export default async function ProposalEditorPage({
             </form>
           </div>
         </EditorSection>
-
-        {/* Intro override. The preview shows the intro that will ACTUALLY
-            print, bid-set clause and all — showing the date-less boilerplate
-            while the PDF says something else is how someone concludes the date
-            "didn't carry over" and retypes the paragraph by hand. */}
-        <EditorSection
-          title="Intro paragraph"
-          subtitle={<>Blank = the Tomco default: <em>&ldquo;{defaultIntroPreview}&rdquo;</em> Anything you type here replaces it.</>}
-          icon={
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2 M9 20h6 M12 4v16" />
-            </svg>
-          }
-        >
-          <textarea name="intro_text_override" defaultValue={proposal.intro_text_override ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="Leave blank to use the Tomco default." />
-        </EditorSection>
-      </AutosaveProposalForm>
 
       {/* Line items — separate forms outside the main save form so each
           row is its own action. 2026-07-21: unified under EditorSection.

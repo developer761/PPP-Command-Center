@@ -150,3 +150,40 @@ describe("money inputs group their digits", () => {
     expect(editor).not.toMatch(/inputMode="decimal"[^>]*name="unit_price"/);
   });
 });
+
+describe("the account page picks a named team", () => {
+  /**
+   * "I see the teams have been implemented on the Oppt page but it's still is
+   * asking for a team the old way on the account page."
+   *
+   * Named teams reached the opportunity and the account DETAIL page. Account
+   * CREATE was the one surface still asking only for individuals — and
+   * `setOwnerTeam` had supported accounts the whole time, so the plumbing was
+   * there and the form simply never offered it.
+   */
+  const SRC = readFileSync("app/commercial/accounts/new/page.tsx", "utf8");
+
+  it("offers the named teams", () => {
+    expect(SRC).toContain("listTeams");
+    expect(SRC).toMatch(/<select name="team_id"/);
+  });
+
+  it("actually READS the field it posts", () => {
+    // The failure this codebase keeps repeating: a form offers a field and its
+    // own action never reads it, so the choice is swallowed and the page comes
+    // back looking like it worked.
+    expect(SRC).toMatch(/formData\.get\("team_id"\)/);
+  });
+
+  it("staffs the account rather than just labelling it", () => {
+    // setOwnerTeam is what the opportunity and the account detail page call —
+    // it applies the team's roster. Writing team_id alone would name a team
+    // and assign nobody, which is the "picking a team does nothing" complaint
+    // from an earlier round.
+    expect(SRC).toMatch(/setOwnerTeam\("account"/);
+  });
+
+  it("keeps the per-person picker for people outside the team", () => {
+    expect(SRC).toContain("CommercialNewAccountTeamPicker");
+  });
+});
