@@ -171,6 +171,7 @@ import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
 import { InlineFieldRow } from "@/components/commercial/inline-field";
 import { INLINE_FIELDS, inlineField, parseInlineValue } from "@/lib/commercial/opportunities/inline-fields";
 import { ActivityRail } from "@/components/commercial/activity-rail";
+import { DealStandingPanel } from "@/components/commercial/deal-standing-panel";
 import { buildActivityFeed, loadActivityEntries } from "@/lib/commercial/opportunities/activity";
 import { stageKpis, isDeliveryPhase } from "@/lib/commercial/opportunities/stage-kpis";
 import { getProjectFinancials, dealMargin } from "@/lib/commercial/projects/financials";
@@ -1559,6 +1560,7 @@ async function deleteFinishAction(formData: FormData) {
 // same moment `commercial_projects` gets its row (migration 131).
 type PrimaryTab =
   | "overview"
+  | "standing"
   | "docs"
   | "activity"
   | "proposals"
@@ -1602,12 +1604,16 @@ const PROJECT_SUB_TABS: { key: SubTab; label: string }[] = [
 // Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
 const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
   { key: "overview", label: "Overview" },
+  // Brendan 2026-08-26: "very imporant stuff we should make a tab for as well."
+  // Second, so it survives the horizontal scroll on a phone — the facts he
+  // named are the ones you open a job to check.
+  { key: "standing", label: "Where it stands" },
   { key: "proposals", label: "Proposals" },
   { key: "docs", label: "Documents" },
   { key: "activity", label: "Activity" },
 ];
 /** Primaries that carry sub-tabs. `proposals`, `invoices` and `debrief` are leaves. */
-type GroupTab = Exclude<PrimaryTab, "debrief" | "invoices" | "proposals" | "analytics">;
+type GroupTab = Exclude<PrimaryTab, "debrief" | "invoices" | "proposals" | "analytics" | "standing">;
 const SUB_TABS_BY_PRIMARY: Record<GroupTab, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
@@ -1644,6 +1650,7 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   // Direct primary hits.
   if (
     raw === "overview" ||
+    raw === "standing" ||
     raw === "docs" ||
     raw === "activity" ||
     raw === "proposals" ||
@@ -1915,6 +1922,8 @@ export default async function OpportunityDetailPage({
     workOrderSent: pathWorkOrder ? !!pathWorkOrder.sent_at : null,
     pendingCoCount,
     isWon: pathIsWon,
+    // Pre-sale, the proposal IS where the job stands.
+    proposalStatus: latestProposal?.status ?? null,
   };
   // ── Split the ledgers ────────────────────────────────────────────────
   // `pathFin` deliberately COMBINES invoices + AIA (that's what makes the
@@ -2391,7 +2400,7 @@ export default async function OpportunityDetailPage({
   // `?tab=team&error=...` etc. The `tab` variable below stays a flat
   // SubTab | "debrief" so all the existing tab === "team" checks below
   // continue to work — we just derive it from the resolved primary+sub.
-  const tab: SubTab | "debrief" | "invoices" | "proposals" | "analytics" =
+  const tab: SubTab | "debrief" | "invoices" | "proposals" | "analytics" | "standing" =
     primary === "debrief"
       ? "debrief"
       : primary === "analytics"
@@ -2400,6 +2409,8 @@ export default async function OpportunityDetailPage({
       ? "invoices"
       : primary === "proposals"
       ? "proposals"
+      : primary === "standing"
+      ? "standing"
       : sub!;
 
   // A delivery tool is open — the page becomes that tool, with a back arrow.
@@ -3043,6 +3054,15 @@ export default async function OpportunityDetailPage({
         three. Every tool takes the account id as `id` and the deal id as
         `dealId`; they are unchanged.
       */}
+      {/* Brendan 2026-08-26: "very imporant stuff we should make a tab for as
+          well." Same `dealStandingLines` the Activity rail reads, so the tab
+          and the rail cannot answer "where are we" differently. */}
+      {tab === "standing" && (
+        <div className="py-4 sm:py-5">
+          <DealStandingPanel standing={dealStanding} />
+        </div>
+      )}
+
       {tab === "proposals" && (
         <DealProposalsSection
           accountId={opp.account_id}

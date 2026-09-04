@@ -129,10 +129,30 @@ describe("what else earns a line", () => {
 });
 
 describe("pre-sale bids", () => {
-  it("show nothing — there is no contract to stand against", () => {
-    // A bid has no work order, no billing and no retainage. Printing "Work
-    // order: Not written" on a job nobody has won yet is noise on every open
-    // bid in the pipeline.
-    expect(dealStandingLines(deal({ isWon: false, workOrderSent: null }))).toEqual([]);
+  // This block used to assert pre-sale showed NOTHING. Half of that was right
+  // and half was a gap: the delivery lines are genuinely noise on a bid, but
+  // returning [] also meant the one fact Brendan named for this stage —
+  // "proposal send" — had nowhere to appear for the whole bidding period.
+  it("never shows the delivery lines — those are noise on a job nobody has won", () => {
+    const labels = dealStandingLines(
+      deal({ isWon: false, workOrderSent: null, proposalStatus: "sent" })
+    ).map((l) => l.label);
+    for (const forbidden of ["Work order", "Retainage held", "Left to bill", "GC owes"]) {
+      expect(labels, `a bid must not print "${forbidden}"`).not.toContain(forbidden);
+    }
+  });
+
+  it("says where the proposal has got to instead", () => {
+    expect(dealStandingLines(deal({ isWon: false, proposalStatus: "sent" }))).toEqual([
+      { label: "Proposal", value: "With the GC", tone: "plain" },
+    ]);
+  });
+
+  it("does not paint a fresh lead amber for having no proposal yet", () => {
+    // Warn means "we are demonstrably the holdup". Without the deal's stage,
+    // no-proposal-yet does not qualify.
+    const [line] = dealStandingLines(deal({ isWon: false, proposalStatus: null }));
+    expect(line.value).toBe("Not started");
+    expect(line.tone).toBe("plain");
   });
 });

@@ -47,6 +47,15 @@ export type DealStandingInput = {
   pendingCoCount: number;
   /** Is this a won / in-delivery job? Pre-sale bids have no contract yet. */
   isWon: boolean;
+  /**
+   * The newest proposal revision's status, or null when none exists yet.
+   *
+   * Brendan 2026-08-26 listed "proposal send" alongside the money as the facts
+   * he wanted at a glance — and the block used to return NOTHING at all until
+   * the job was won, which is exactly the stretch where the only thing worth
+   * saying is where the proposal has got to.
+   */
+  proposalStatus?: string | null;
 };
 
 export type StandingLine = {
@@ -66,9 +75,44 @@ export function billedPct(i: Pick<DealStandingInput, "billedCents" | "contractCe
   return Math.round((i.billedCents / i.contractCents) * 100);
 }
 
+/** How a proposal's raw status reads to a person, and whether we are the holdup. */
+function proposalLine(status: string | null | undefined): StandingLine | null {
+  if (status == null) {
+    // Plain, not warn. Without the deal's stage there is no way to tell a
+    // brand-new lead (where no proposal is perfectly normal) from a job sat in
+    // Estimating with nothing written. Amber on every fresh opportunity would
+    // be exactly the pipeline noise the delivery lines are held back to avoid.
+    return { label: "Proposal", value: "Not started", tone: "plain" };
+  }
+  switch (status) {
+    case "draft":
+      return { label: "Proposal", value: "Draft — not sent", tone: "warn" };
+    case "pending_approval":
+      return { label: "Proposal", value: "Waiting on an approver", tone: "warn" };
+    case "approved":
+      // Approved but still sitting here is the one people miss: the work is
+      // done and nobody has pressed send.
+      return { label: "Proposal", value: "Approved, not sent", tone: "warn" };
+    case "sent":
+      return { label: "Proposal", value: "With the GC", tone: "plain" };
+    case "won":
+      return { label: "Proposal", value: "Won", tone: "plain" };
+    case "lost":
+      return { label: "Proposal", value: "Lost", tone: "plain" };
+    default:
+      return null;
+  }
+}
+
 export function dealStandingLines(i: DealStandingInput): StandingLine[] {
   const out: StandingLine[] = [];
-  if (!i.isWon) return out;
+
+  // Before the win there is no contract, so the money lines below have nothing
+  // to say. The proposal does.
+  if (!i.isWon) {
+    const p = proposalLine(i.proposalStatus);
+    return p ? [p] : [];
+  }
 
   // The work order first: it is the one that blocks people rather than money.
   if (i.workOrderSent === null) {

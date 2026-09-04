@@ -72,7 +72,11 @@ export function ActivityRail({
 }) {
   const standingLines = standing ? dealStandingLines(standing) : [];
   const pct = standing ? billedPct(standing) : null;
-  const showStanding = !!standing && standing.isWon && (standingLines.length > 0 || pct !== null);
+  // NOT gated on isWon any more. dealStandingLines decides what a pre-sale deal
+  // has to say (the proposal's state) and returns nothing when there is truly
+  // nothing — gating here as well meant a bid showed a blank rail during the
+  // exact stretch Brendan wanted "proposal send" surfaced.
+  const showStanding = !!standing && (standingLines.length > 0 || pct !== null);
   return (
     <aside
       aria-label="Activity"
