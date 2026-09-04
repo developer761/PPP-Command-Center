@@ -1,3 +1,4 @@
+import { proposalLabel } from "@/lib/commercial/proposals/constants";
 /**
  * One chronology for a job, plus what is still ahead of it.
  *
@@ -238,7 +239,7 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
         id: `prop-sent:${p.id}`,
         kind: "proposal",
         at: p.sent_at,
-        title: `Proposal R${p.revision_number} sent`,
+        title: `${proposalLabel(p)} sent`,
       });
     }
     // Karan 2026-08-13: "it should show important updates, what's been
@@ -253,7 +254,7 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
         id: `prop-created:${p.id}`,
         kind: "proposal",
         at: p.created_at,
-        title: `Proposal R${p.revision_number} created`,
+        title: `${proposalLabel(p)} created`,
       });
     }
     if (p.approved_at) {
@@ -261,7 +262,7 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
         id: `prop-approved:${p.id}`,
         kind: "proposal",
         at: p.approved_at,
-        title: `Proposal R${p.revision_number} approved`,
+        title: `${proposalLabel(p)} approved`,
       });
     }
     // The waiting ones. An age on a live proposal is the whole point — a
@@ -272,7 +273,7 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
         id: `prop-pending:${p.id}`,
         kind: "proposal",
         at: p.updated_at,
-        title: `Proposal R${p.revision_number} sent for approval`,
+        title: `${proposalLabel(p)} sent for approval`,
         detail: `Waiting ${agoWords(p.updated_at, todayIso)} for sign-off.`,
       });
     }
@@ -281,7 +282,7 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
         id: `prop-approved-unsent:${p.id}`,
         kind: "proposal",
         at: p.approved_at,
-        title: `Proposal R${p.revision_number} approved, not sent`,
+        title: `${proposalLabel(p)} approved, not sent`,
         detail: `Signed off ${agoWords(p.approved_at, todayIso)} and still here.`,
       });
     }
@@ -290,7 +291,7 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
         id: `prop-awaiting:${p.id}`,
         kind: "proposal",
         at: p.sent_at,
-        title: `Proposal R${p.revision_number} with the GC`,
+        title: `${proposalLabel(p)} with the GC`,
         detail: `Sent ${agoWords(p.sent_at, todayIso)}. No answer yet.`,
       });
     }
@@ -299,7 +300,7 @@ export async function loadActivityEntries(oppId: string): Promise<ActivityEntry[
         id: `prop-${p.status}:${p.id}`,
         kind: "proposal",
         at: p.updated_at,
-        title: `Proposal R${p.revision_number} ${p.status}`,
+        title: `${proposalLabel(p)} ${p.status}`,
       });
     }
   }

@@ -1,3 +1,4 @@
+import { proposalLabel } from "@/lib/commercial/proposals/constants";
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
@@ -263,7 +264,7 @@ async function evaluateRule(
           const name = derivedOppName({ ...opp, title: opp.title ?? "" }, null);
           return {
             entityId: p.id,
-            title: `Proposal R${p.revision_number} — no response in ${rule.threshold_days}+ days`,
+            title: `${proposalLabel(p)} — no response in ${rule.threshold_days}+ days`,
             body: `${name} · sent ${fmtDate(p.sent_at)}.`,
             link: `/commercial/accounts/${opp.account_id}/deals/${opp.id}/proposal/${p.id}`,
           } as Match;

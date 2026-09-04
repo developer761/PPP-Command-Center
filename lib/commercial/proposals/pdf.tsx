@@ -23,6 +23,7 @@ import {
   tomcoDefaultIntro,
   proposalTotalLabel,
   proposalRevisionLabel,
+  proposalLabel,
 } from "./constants";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { documentCategoryLabel } from "@/lib/commercial/documents/categories";
@@ -1817,7 +1818,7 @@ export function ProposalPdfDocument({
 
   return (
     <Document
-      title={`Tomco Proposal R${proposal.revision_number}`}
+      title={`Tomco ${proposalLabel(proposal)}`}
       author="Tomco Painting"
       subject={proposal.header_json.project_name ?? "Proposal"}
     >
@@ -1832,7 +1833,8 @@ export function ProposalPdfDocument({
         <LogoBlock
           dateLabel={dateLabel}
           dealNumber={
-            proposal.header_json.proposal_number?.trim() || `R${proposal.revision_number}`
+            proposal.header_json.proposal_number?.trim() ||
+            proposalRevisionLabel(proposal)
           }
         />
         <SubmittedToBlock h={proposal.header_json} />

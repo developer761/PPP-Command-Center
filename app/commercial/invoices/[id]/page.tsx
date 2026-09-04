@@ -11,6 +11,7 @@
  *   6. Status history timeline
  */
 import Link from "next/link";
+import { proposalLabel } from "@/lib/commercial/proposals/constants";
 import { resolveTaxExemption } from "@/lib/commercial/tax/exemption";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
@@ -1178,7 +1179,7 @@ export async function InvoiceDetailView({
               <div className="mt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/60 px-3 py-1.5 text-[11.5px] text-ppp-charcoal-600">
                 <span className="inline-flex items-center gap-1 font-semibold text-ppp-charcoal-700">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-                  {linkedProposal ? proposalDisplayId(linkedProposal) || `R${linkedProposal.revision_number}` : "Linked proposal"}
+                  {linkedProposal ? proposalDisplayId(linkedProposal) || proposalLabel(linkedProposal) : "Linked proposal"}
                 </span>
                 {thisInvoiceProposalIndex >= 0 && proposalSiblings.length > 1 && (
                   <span>Progress invoice {thisInvoiceProposalIndex + 1} of {proposalSiblings.length}</span>

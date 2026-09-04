@@ -17,6 +17,7 @@ import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { proposalRecordId } from "@/lib/commercial/record-ids";
 import type { ProposalStatus } from "./constants";
+import { proposalLabel, proposalRevisionLabel } from "./constants";
 import {
   targetForProposalStatus,
   foldAutoAdvanceTargets,
@@ -2670,7 +2671,10 @@ export async function sendProposal(input: {
   const { uploadDocument } = await import("@/lib/commercial/documents/db");
   const gc = (proposal.header_json.gc_company ?? "Proposal").replace(/[^A-Za-z0-9._-]+/g, "_");
   const project = (proposal.header_json.project_name ?? "").replace(/[^A-Za-z0-9._-]+/g, "_");
-  const filename = [gc, project, `R${proposal.revision_number}`]
+  // No `R1` on the original. Brendan 2026-09-03 photographed exactly this
+  // filename: "Same here the attachment is R1." The header had been fixed; the
+  // filename still read the raw revision_number, one too high.
+  const filename = [gc, project, proposalRevisionLabel(proposal)]
     .filter(Boolean)
     .join("_") + ".pdf";
 
@@ -2681,7 +2685,7 @@ export async function sendProposal(input: {
     file_name: filename,
     size_bytes: pdfBuffer.length,
     mime_type: "application/pdf",
-    notes: `Proposal R${proposal.revision_number} snapshot — sent ${new Date().toLocaleDateString("en-US", { timeZone: "America/New_York" })}`,
+    notes: `${proposalLabel(proposal)} snapshot — sent ${new Date().toLocaleDateString("en-US", { timeZone: "America/New_York" })}`,
     data: new Uint8Array(pdfBuffer),
     uploaded_by_user_id: input.actor_user_id,
   });
@@ -2767,7 +2771,7 @@ export async function sendProposal(input: {
     target: "proposal",
     artifactAt: new Date().toISOString(),
     source: "auto_advance",
-    reason: `Proposal R${sentProposal.revision_number} sent`,
+    reason: `${proposalLabel(sentProposal)} sent`,
     actingUserId: input.actor_user_id,
   });
   if (!sendRes.moved && sendRes.reason === "error") {
@@ -2779,8 +2783,8 @@ export async function sendProposal(input: {
   // ── 4. Account timeline note ────────────────────────────────────
   const gcLabel = proposal.header_json.gc_company?.trim();
   const noteBody = gcLabel
-    ? `Proposal R${sentProposal.revision_number} sent to ${gcLabel}.`
-    : `Proposal R${sentProposal.revision_number} sent.`;
+    ? `${proposalLabel(sentProposal)} sent to ${gcLabel}.`
+    : `${proposalLabel(sentProposal)} sent.`;
   try {
     const { addAccountNote } = await import("@/lib/commercial/account-notes");
     await addAccountNote({

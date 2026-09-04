@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { proposalDisplayId, type CommercialProposal } from "@/lib/commercial/proposals/db";
-import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
+import { proposalStatusLabel, proposalLabel} from "@/lib/commercial/proposals/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 
 /**
@@ -73,7 +73,7 @@ export function DealProposalsSection({
       ) : (
         <ul className="divide-y divide-ppp-charcoal-50">
           {sorted.map((pr) => {
-            const num = proposalDisplayId(pr) || `R${pr.revision_number}`;
+            const num = proposalDisplayId(pr) || proposalLabel(pr);
             const status = proposalStatusLabel(pr.status);
             const tone =
               pr.status === "won"

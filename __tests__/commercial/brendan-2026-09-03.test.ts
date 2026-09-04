@@ -192,3 +192,72 @@ describe("the account page picks a named team", () => {
     expect(SRC).toContain("CommercialNewAccountTeamPicker");
   });
 });
+
+/**
+ * "The original should have no R1" — everywhere, not just on the header.
+ *
+ * The first pass fixed `proposalRevisionLabel` and `proposalRecordId`, which is
+ * what the proposal HEADER prints, and called the item done. Brendan had
+ * photographed three surfaces, and the third was the emailed attachment's
+ * FILENAME:
+ *
+ *   "Same here the attachment is R1."
+ *
+ * That path built its own string — `[gc, project, `R${revision_number}`]` — and
+ * so did about forty others: the PDF's document title, the activity feed, every
+ * approval notification, and every confirm dialog. All of them read one too
+ * high, so every original was "R1" somewhere.
+ *
+ * He had already predicted this: "maybe we didn t upate the exisiting ones or
+ * we didnt relaly fix it."
+ */
+describe("no surface calls the original R1", () => {
+  it("proposalLabel names the original without a revision", async () => {
+    const { proposalLabel, proposalRef, proposalRevisionLabel } = await import(
+      "@/lib/commercial/proposals/constants"
+    );
+    expect(proposalLabel({ revision_number: 1 })).toBe("Proposal");
+    expect(proposalLabel({ revision_number: 2 })).toBe("Proposal R1");
+    expect(proposalLabel({ revision_number: 3 })).toBe("Proposal R2");
+
+    // Mid-sentence, where an empty string would leave "Mark  WON?".
+    expect(proposalRef({ revision_number: 1 })).toBe("this proposal");
+    expect(proposalRef({ revision_number: 2 })).toBe("R1");
+
+    expect(proposalRevisionLabel({ revision_number: 1 })).toBe("");
+  });
+
+  it("no source file interpolates a raw revision_number into an R label", async () => {
+    // The CLASS, not the one site he happened to photograph. Karan's standing
+    // rule: told about one instance, sweep the platform for the same shape.
+    const { execSync } = await import("node:child_process");
+    const hits = execSync(
+      "grep -rn 'R\\${[a-zA-Z_.]*revision_number\\|R\\${[a-zA-Z_.]*revisionNumber' app lib components || true",
+      { encoding: "utf8" }
+    )
+      .split("\n")
+      .filter(Boolean)
+      // Submittals number from ZERO — `revision_number > 0 ? _Rev{n} : ""` is
+      // already right, and rewriting it would introduce the off-by-one this
+      // test exists to prevent.
+      .filter((l) => !l.includes("submittal"));
+
+    expect(
+      hits,
+      `these print R{revision_number} directly, so the ORIGINAL reads R1:\n${hits.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("the emailed attachment's filename carries no R on the original", async () => {
+    // The seam Brendan photographed. Asserted on the composed value rather than
+    // on the source line, so a rewrite of the surrounding code cannot fake it.
+    const { proposalRevisionLabel } = await import("@/lib/commercial/proposals/constants");
+    const name = (revision_number: number) =>
+      ["Alta", "115_Connetquot_Ave", proposalRevisionLabel({ revision_number })]
+        .filter(Boolean)
+        .join("_") + ".pdf";
+
+    expect(name(1)).toBe("Alta_115_Connetquot_Ave.pdf");
+    expect(name(2)).toBe("Alta_115_Connetquot_Ave_R1.pdf");
+  });
+});

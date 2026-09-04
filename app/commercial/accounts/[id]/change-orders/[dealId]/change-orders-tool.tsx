@@ -11,6 +11,7 @@
  * action taken on the standalone route hands you back to the inline view.
  */
 import { notFound, redirect } from "next/navigation";
+import { proposalLabel } from "@/lib/commercial/proposals/constants";
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { revalidatePath } from "next/cache";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
@@ -106,7 +107,7 @@ function signedAmountCents(rawAmount: string, direction: string): number | null 
 
 /** Human label for a proposal in the CO "which proposal" dropdown. */
 function proposalPickerLabel(p: CommercialProposal): string {
-  const num = proposalDisplayId(p) || `R${p.revision_number}`;
+  const num = proposalDisplayId(p) || proposalLabel(p);
   const status = p.status.charAt(0).toUpperCase() + p.status.slice(1);
   return `${num} · ${formatCentsFull(p.total_cents)} · ${status}`;
 }

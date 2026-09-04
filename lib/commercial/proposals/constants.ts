@@ -178,6 +178,39 @@ export function proposalRevisionLabel(proposal: { revision_number: number }): st
 }
 
 /**
+ * "Proposal" for the original, "Proposal R1" for the first revision.
+ *
+ * Brendan 2026-09-03, across three screenshots: "The first proposal is still
+ * listed as R1. Implying that there is one before it that it was revised. The
+ * original should have no R1 … Same here the attachment is R1."
+ *
+ * `proposalRevisionLabel` fixed what the PROPOSAL HEADER prints. It did not
+ * reach the ~40 other places that interpolate `revision_number` straight into
+ * a string — the emailed attachment's FILENAME among them, which is the one he
+ * photographed. Those all read one too high, so every original was "R1"
+ * somewhere.
+ *
+ * Use this anywhere a sentence or a filename names the document.
+ */
+export function proposalLabel(
+  proposal: { revision_number: number },
+  prefix = "Proposal"
+): string {
+  return [prefix, proposalRevisionLabel(proposal)].filter(Boolean).join(" ");
+}
+
+/**
+ * How to REFER to a proposal mid-sentence: "R1", or "this proposal" when it is
+ * the original and has no revision label of its own.
+ *
+ * For confirm dialogs — "Mark this proposal WON?" rather than the "Mark R1
+ * WON?" that implied a revision nobody made.
+ */
+export function proposalRef(proposal: { revision_number: number }): string {
+  return proposalRevisionLabel(proposal) || "this proposal";
+}
+
+/**
  * Is this proposal LOCKED against edits?
  *
  * Karan: "It will be locked once it's sent for approval." Two gates, both

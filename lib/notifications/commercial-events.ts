@@ -1,4 +1,5 @@
 import "server-only";
+import { proposalLabel } from "@/lib/commercial/proposals/constants";
 import { postCommercialSlack, slackEscape } from "@/lib/commercial/slack-notify";
 
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
@@ -1631,7 +1632,7 @@ export async function insertCommercialProposalSentNotifications(input: {
   const emailLink = appendBase(relativeLink);
   const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
   const money = formatMoneyCents(input.totalCents);
-  const revLabel = `R${input.revisionNumber}`;
+  const revLabel = proposalLabel({ revision_number: input.revisionNumber });
   const gcSuffix = input.gcCompany ? ` to ${input.gcCompany}` : "";
 
   // Slack posts BEFORE the recipient check, and outside it.
@@ -1642,7 +1643,7 @@ export async function insertCommercialProposalSentNotifications(input: {
   // Gating it on recipients would make the channel silently incomplete in the
   // one case nobody would think to check.
   await postCommercialSlack({
-    text: `*Proposal sent* — ${slackEscape(revLabel)} · ${money}${input.gcCompany ? ` to *${slackEscape(input.gcCompany)}*` : ""}`,
+    text: `*${slackEscape(revLabel)} sent* — ${money}${input.gcCompany ? ` to *${slackEscape(input.gcCompany)}*` : ""}`,
     context: `${slackEscape(input.oppTitle)} · sent by ${slackEscape(input.actorName)}`,
     url: relativeLink,
     urlLabel: "Open the proposal",
@@ -1651,14 +1652,14 @@ export async function insertCommercialProposalSentNotifications(input: {
 
   const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
   if (recipients.length === 0) return { fanout: 0 };
-  const title = `Proposal sent: ${revLabel} · ${money}`;
+  const title = `${revLabel} sent · ${money}`;
   const body = `${input.actorName} sent ${revLabel}${gcSuffix} on ${shortOppTitle}.`;
 
-  const subject = `Proposal ${revLabel} sent · ${money} · ${input.oppTitle}`;
+  const subject = `${revLabel} sent · ${money} · ${input.oppTitle}`;
   const text = [
     `Hi,`,
     ``,
-    `${input.actorName} sent proposal ${revLabel}${gcSuffix} on ${input.oppTitle}:`,
+    `${input.actorName} sent ${revLabel}${gcSuffix} on ${input.oppTitle}:`,
     `  Total: ${money}`,
     ``,
     `Open the proposal: ${emailLink}`,
@@ -1667,7 +1668,7 @@ export async function insertCommercialProposalSentNotifications(input: {
   ].join("\n");
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
   <p>Hi,</p>
-  <p><strong>${escape(input.actorName)}</strong> sent proposal <strong>${escape(revLabel)}</strong>${input.gcCompany ? ` to <strong>${escape(input.gcCompany)}</strong>` : ""} on <strong>${escape(input.oppTitle)}</strong>:</p>
+  <p><strong>${escape(input.actorName)}</strong> sent <strong>${escape(revLabel)}</strong>${input.gcCompany ? ` to <strong>${escape(input.gcCompany)}</strong>` : ""} on <strong>${escape(input.oppTitle)}</strong>:</p>
   <p style="margin:16px 0;padding:12px 16px;background:#f6f7f8;border-radius:8px;"><span style="color:#666;">Total:</span> <strong>${escape(money)}</strong></p>
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the proposal →</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
@@ -1868,17 +1869,17 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
   const emailLink = appendBase(relativeLink);
   const shortOppTitle = truncatePreview(oppTitle, BELL_TITLE_OPP_CAP);
   const money = formatMoneyCents(input.totalCents);
-  const revLabel = `R${input.revisionNumber}`;
+  const revLabel = proposalLabel({ revision_number: input.revisionNumber });
   const gcSuffix = input.gcCompany ? ` (${input.gcCompany})` : "";
   const requester = input.actorName || "Someone";
   const title = `Approval needed: ${revLabel} · ${money}`;
   const body = `${requester} is requesting approval on ${revLabel}${gcSuffix} · ${shortOppTitle}.`;
 
-  const subject = `Approval needed — proposal ${revLabel} · ${money} · ${oppTitle}`;
+  const subject = `Approval needed — ${revLabel} · ${money} · ${oppTitle}`;
   const text = [
     `Hi,`,
     ``,
-    `${requester} sent proposal ${revLabel}${gcSuffix} on ${oppTitle} for your approval:`,
+    `${requester} sent ${revLabel}${gcSuffix} on ${oppTitle} for your approval:`,
     `  Total: ${money}`,
     ``,
     `It can't be sent to the customer until you approve it.`,
@@ -1888,7 +1889,7 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
   ].join("\n");
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
   <p>Hi,</p>
-  <p><strong>${escape(requester)}</strong> sent proposal <strong>${escape(revLabel)}</strong>${input.gcCompany ? ` (<strong>${escape(input.gcCompany)}</strong>)` : ""} on <strong>${escape(oppTitle)}</strong> for your approval:</p>
+  <p><strong>${escape(requester)}</strong> sent <strong>${escape(revLabel)}</strong>${input.gcCompany ? ` (<strong>${escape(input.gcCompany)}</strong>)` : ""} on <strong>${escape(oppTitle)}</strong> for your approval:</p>
   <p style="margin:16px 0;padding:12px 16px;background:#f6f7f8;border-radius:8px;"><span style="color:#666;">Total:</span> <strong>${escape(money)}</strong></p>
   <p style="color:#92400e;">It can't be sent to the customer until you approve it.</p>
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b45309;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Review + approve →</a></p>
@@ -1964,7 +1965,7 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
   const relativeLink = `/commercial/accounts/${accountId}/deals/${input.opportunityId}/proposal/${input.proposalId}`;
   const emailLink = appendBase(relativeLink);
   const shortOppTitle = truncatePreview(oppTitle, BELL_TITLE_OPP_CAP);
-  const revLabel = `R${input.revisionNumber}`;
+  const revLabel = proposalLabel({ revision_number: input.revisionNumber });
   const approver = input.actorName || "An approver";
   const isApproved = input.decision === "approved";
   const noteForBell = input.note ? ` Note: ${truncatePreview(input.note, BELL_NOTE_CAP)}` : "";
@@ -1977,14 +1978,14 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
     : `${approver} sent ${revLabel} back on ${shortOppTitle}.${noteForBell}`;
 
   const subject = isApproved
-    ? `Proposal ${revLabel} approved — ready to send · ${oppTitle}`
-    : `Changes requested on proposal ${revLabel} · ${oppTitle}`;
+    ? `${revLabel} approved — ready to send · ${oppTitle}`
+    : `Changes requested on ${revLabel} · ${oppTitle}`;
   const text = [
     `Hi,`,
     ``,
     isApproved
-      ? `${approver} approved proposal ${revLabel} on ${oppTitle}. It's cleared to send to the customer.`
-      : `${approver} requested changes on proposal ${revLabel} on ${oppTitle} — it's back in draft.`,
+      ? `${approver} approved ${revLabel} on ${oppTitle}. It's cleared to send to the customer.`
+      : `${approver} requested changes on ${revLabel} on ${oppTitle} — it's back in draft.`,
     input.note ? `  Note: ${input.note}` : "",
     ``,
     input.forReceiver ? `View it: ${emailLink}` : isApproved ? `Send it: ${emailLink}` : `Make the edits: ${emailLink}`,
@@ -1996,7 +1997,7 @@ export async function insertCommercialProposalApprovalDecidedNotification(input:
   const accent = isApproved ? "#047857" : "#b45309";
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
   <p>Hi,</p>
-  <p><strong>${escape(approver)}</strong> ${isApproved ? "approved" : "requested changes on"} proposal <strong>${escape(revLabel)}</strong> on <strong>${escape(oppTitle)}</strong>${isApproved ? ". It's cleared to send to the customer." : " — it's back in draft."}</p>
+  <p><strong>${escape(approver)}</strong> ${isApproved ? "approved" : "requested changes on"} <strong>${escape(revLabel)}</strong> on <strong>${escape(oppTitle)}</strong>${isApproved ? ". It's cleared to send to the customer." : " — it's back in draft."}</p>
   ${input.note ? `<p style="margin:8px 0;padding:12px 16px;background:#fffbeb;border-left:4px solid #d97706;border-radius:8px;color:#444;word-break:break-word;"><em>${escape(input.note)}</em></p>` : ""}
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:${accent};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">${input.forReceiver ? "View →" : isApproved ? "Send it →" : "Make the edits →"}</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>

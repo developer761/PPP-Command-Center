@@ -67,6 +67,7 @@ import {
   proposalStatusLabel,
   proposalTotalLabel,
   proposalRevisionLabel,
+  proposalRef,
 } from "@/lib/commercial/proposals/constants";
 import { listProducts } from "@/lib/commercial/products/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
@@ -581,10 +582,10 @@ async function fileEstimateReportAction(formData: FormData) {
     parent_type: "opportunity",
     parent_id: dealId,
     category: "estimate_report",
-    file_name: `Estimating_Report_${project}_R${existing.revision_number}.pdf`,
+    file_name: [`Estimating_Report_${project}`, proposalRevisionLabel(existing)].filter(Boolean).join("_") + ".pdf",
     size_bytes: pdfBuffer.length,
     mime_type: "application/pdf",
-    notes: `Internal estimating report — R${existing.revision_number}. Shows price per item; not the customer copy.`,
+    notes: `Internal estimating report — ${proposalRef(existing)}. Shows price per item; not the customer copy.`,
     data: new Uint8Array(pdfBuffer),
     uploaded_by_user_id: userId,
   });
@@ -1622,7 +1623,7 @@ export default async function ProposalEditorPage({
           <Link
             href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${proposalId}`}
             className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
-            title={`Start R${proposal.revision_number + 1} as a fresh draft, copying all this revision's fields as a starting point. Use when the customer wants a revised quote.`}
+            title={`Start ${proposalRef({ revision_number: proposal.revision_number + 1 })} as a fresh draft, copying all this revision's fields as a starting point. Use when the customer wants a revised quote.`}
           >
             + New revision (R{proposal.revision_number + 1})
           </Link>
@@ -1632,7 +1633,7 @@ export default async function ProposalEditorPage({
             <form action={requestApprovalAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Send R${proposal.revision_number} for approval? A designated approver must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
+                message={`Send ${proposalRef(proposal)} for approval? A designated approver must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
                 pendingLabel="Requesting…"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
               >
@@ -1649,7 +1650,7 @@ export default async function ProposalEditorPage({
             <form action={withdrawAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Withdraw R${proposal.revision_number} from approval? It goes back to draft so you can edit it. You'll need to send it for approval again afterward.`}
+                message={`Withdraw ${proposalRef(proposal)} from approval? It goes back to draft so you can edit it. You'll need to send it for approval again afterward.`}
                 pendingLabel="Withdrawing…"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-300 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
               >
@@ -1666,7 +1667,7 @@ export default async function ProposalEditorPage({
               <form action={approveAction} className="inline-flex">
                 {hiddenIds}
                 <ConfirmSubmitButton
-                  message={`Approve R${proposal.revision_number}? This clears it to send to ${proposal.header_json.gc_company ?? "the GC"}. Whoever requested approval will be notified.`}
+                  message={`Approve ${proposalRef(proposal)}? This clears it to send to ${proposal.header_json.gc_company ?? "the GC"}. Whoever requested approval will be notified.`}
                   pendingLabel="Approving…"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
                 >
@@ -1732,7 +1733,7 @@ export default async function ProposalEditorPage({
               <form action={unlockAction} className="inline-flex">
                 {hiddenIds}
                 <ConfirmSubmitButton
-                  message={`Unlock R${proposal.revision_number} to edit? This invalidates the approval — it'll go back to draft and need a fresh approval before it can be sent.`}
+                  message={`Unlock ${proposalRef(proposal)} to edit? This invalidates the approval — it'll go back to draft and need a fresh approval before it can be sent.`}
                   pendingLabel="Unlocking…"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-300 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
                 >
@@ -1753,7 +1754,7 @@ export default async function ProposalEditorPage({
             <form action={reopenProposalActionForm} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Reopen R${proposal.revision_number}? Flips this proposal back to Sent AND (if the parent opportunity is still at Pre-Sale Closed) flips the opportunity back to Proposal · Sent. Use this if you marked ${proposal.status.toUpperCase()} by mistake.`}
+                message={`Reopen ${proposalRef(proposal)}? Flips this proposal back to Sent AND (if the parent opportunity is still at Pre-Sale Closed) flips the opportunity back to Proposal · Sent. Use this if you marked ${proposal.status.toUpperCase()} by mistake.`}
                 pendingLabel="Reopening…"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-surface text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
@@ -1770,7 +1771,7 @@ export default async function ProposalEditorPage({
             <form action={reopenExpiredAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Reopen R${proposal.revision_number} to edit? It goes back to draft so you can tweak it, get it approved again, and re-send. (Or use "+ New revision" to start fresh.)`}
+                message={`Reopen ${proposalRef(proposal)} to edit? It goes back to draft so you can tweak it, get it approved again, and re-send. (Or use "+ New revision" to start fresh.)`}
                 pendingLabel="Reopening…"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-surface text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
@@ -1799,7 +1800,7 @@ export default async function ProposalEditorPage({
                 {hiddenIds}
                 <input type="hidden" name="outcome" value="won" />
                 <ConfirmSubmitButton
-                  message={`Mark R${proposal.revision_number} WON? This also flips the opportunity to Pre-Sale Closed · Won. You'll be able to start the project next.`}
+                  message={`Mark ${proposalRef(proposal)} WON? This also flips the opportunity to Pre-Sale Closed · Won. You'll be able to start the project next.`}
                   pendingLabel="Marking won…"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 transition-colors shadow-sm min-h-[44px] disabled:opacity-50 touch-manipulation"
                 >
@@ -1813,7 +1814,7 @@ export default async function ProposalEditorPage({
                 {hiddenIds}
                 <input type="hidden" name="outcome" value="lost" />
                 <ConfirmSubmitButton
-                  message={`Mark R${proposal.revision_number} LOST? You'll be routed to the debrief page to capture the reason (competitor won / price / no response / etc.). This also flips the opportunity to Pre-Sale Closed · Lost.`}
+                  message={`Mark ${proposalRef(proposal)} LOST? You'll be routed to the debrief page to capture the reason (competitor won / price / no response / etc.). This also flips the opportunity to Pre-Sale Closed · Lost.`}
                   pendingLabel="Marking lost…"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-300 bg-surface text-rose-700 text-[13px] font-semibold hover:bg-rose-50 min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
                 >
@@ -2688,7 +2689,7 @@ export default async function ProposalEditorPage({
       <form action={deleteProposalAction} className="flex justify-center pt-2">
         {hiddenIds}
         <ConfirmSubmitButton
-          message={`Delete this proposal draft (R${proposal.revision_number})? Line items and overrides will be lost.`}
+          message={`Delete this proposal draft (${proposalRef(proposal)})? Line items and overrides will be lost.`}
           className="text-[12px] text-ppp-charcoal-400 hover:text-rose-700 inline-flex items-center gap-1.5 min-h-[44px] touch-manipulation disabled:opacity-50"
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

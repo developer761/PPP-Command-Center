@@ -8,6 +8,7 @@
  *   - Clean row hierarchy
  */
 import { Fragment } from "react";
+import { proposalLabel } from "@/lib/commercial/proposals/constants";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
@@ -147,7 +148,7 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
  *  per-deal revision as "R{n}" (single fallback used everywhere — matches the
  *  chips on the proposals + proposal-detail pages). */
 function proposalDisplayNumber(p: CommercialProposal): string {
-  return proposalDisplayId(p) || `R${p.revision_number}`;
+  return proposalDisplayId(p) || proposalLabel(p);
 }
 
 

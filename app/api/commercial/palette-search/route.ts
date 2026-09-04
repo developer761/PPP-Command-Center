@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { proposalLabel } from "@/lib/commercial/proposals/constants";
 import { proposalDisplayId } from "@/lib/commercial/proposals/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -264,7 +265,7 @@ export async function GET(request: Request) {
       kind: "proposal",
       id: pr.id,
       label,
-      hint: [propNo, `R${pr.revision_number}`, pr.status].filter(Boolean).join(" · "),
+      hint: [propNo, proposalLabel(pr), pr.status].filter(Boolean).join(" · "),
       href: `/commercial/accounts/${acctId}/deals/${pr.opportunity_id}/proposal/${pr.id}?back=/commercial/proposals`,
     });
   }

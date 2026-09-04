@@ -19,7 +19,7 @@ import AccountInlineCardForm from "@/components/commercial/account-inline-card";
 import { DateField } from "@/components/commercial/date-field";
 import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
 import { listTeams, setOwnerTeam, getOwnerTeam } from "@/lib/commercial/teams/db";
-import { proposalRevisionLabel } from "@/lib/commercial/proposals/constants";
+import { proposalRevisionLabel, proposalLabel, proposalRef} from "@/lib/commercial/proposals/constants";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
@@ -1248,7 +1248,7 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
         const remaining = Math.max(0, pr.total_cents - billed);
         return {
           id: pr.id,
-          label: `${proposalDisplayId(pr) || `R${pr.revision_number}`} · ${formatCentsFull(pr.total_cents)}${billed > 0 ? ` · ${formatCentsFull(remaining)} left` : ""} · ${pr.status}`,
+          label: `${proposalDisplayId(pr) || proposalLabel(pr)} · ${formatCentsFull(pr.total_cents)}${billed > 0 ? ` · ${formatCentsFull(remaining)} left` : ""} · ${pr.status}`,
           totalCents: pr.total_cents,
           remainingCents: remaining,
         };
@@ -4835,10 +4835,10 @@ async function AccountProposalsTab({
                                 className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 border-r border-ppp-charcoal-100 touch-manipulation"
                                 title={
                                   bumpLabel === "Reopen as R+1"
-                                    ? `Reopen R${r.revision_number} as a new R+1 draft — line items copy forward, parent deal returns to Estimating.`
-                                    : `Bump R${r.revision_number} forward as a new revision — becomes the current draft.`
+                                    ? `Reopen ${proposalRef(r)} as a new R+1 draft — line items copy forward, parent deal returns to Estimating.`
+                                    : `Bump ${proposalRef(r)} forward as a new revision — becomes the current draft.`
                                 }
-                                aria-label={`${bumpLabel}: use R${r.revision_number} as the base for a new revision`}
+                                aria-label={`${bumpLabel}: use ${proposalRef(r)} as the base for a new revision`}
                               >
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                                   <polyline points="9 18 15 12 9 6" />

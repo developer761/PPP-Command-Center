@@ -1,3 +1,4 @@
+import { proposalLabel } from "@/lib/commercial/proposals/constants";
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
@@ -190,7 +191,7 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
     const { addAccountNote } = await import("@/lib/commercial/account-notes");
     await addAccountNote({
       account_id: opp.account_id,
-      body: `Proposal R${proposal.revision_number} emailed to ${toEmail}.`,
+      body: `${proposalLabel(proposal)} emailed to ${toEmail}.`,
       kind: "auto_debrief",
       source_opportunity_id: opp.id,
       author_user_id: input.actor_user_id,
