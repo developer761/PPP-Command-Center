@@ -704,6 +704,11 @@ export type SnapshotWoli = {
   finishOther: string | null;
   finishFloor: string | null;
   colorNotes: string | null;
+  /** Standard `Description` — the scope notes the field team types on the quote
+   *  line. Frequently the ONLY record of which rooms a line item covers, since
+   *  PPP's reps add one line and list the rooms here. Multi-line, CRLF, and
+   *  sometimes junk ("sdfasdfs") — render it, never parse it. */
+  description: string | null;
   sortOrder: number;
   changeOrderRelated: boolean;
 };
@@ -1446,6 +1451,11 @@ export async function loadSalesforceSnapshot(
           "Status",
           "AreaLabel__c", "ProductName__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
           "of_Coats__c", "Product_Family__c", "SortOrder__c", "ColorNotes__c",
+            // Kate 2026-09-04: the field team's habit is ONE line item per quote
+            // with the actual rooms typed into its notes, so without Description
+            // an Account Manager or customer cannot tell what the job covers.
+            // Standard field, 73% populated in production, often multi-line.
+            "Description",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
           // Finish picklists per surface. Render-data.ts (the customer-form
           // path) has been pulling these reliably; previously dropped from the
@@ -1585,6 +1595,7 @@ export async function loadSalesforceSnapshot(
           finishOther: str(r, "FinishOther__c"),
           finishFloor: str(r, "FinishFloor__c"),
           colorNotes: str(r, "ColorNotes__c"),
+        description: str(r, "Description"),
           sortOrder: num(r, "SortOrder__c"),
         }));
       } catch (err) {

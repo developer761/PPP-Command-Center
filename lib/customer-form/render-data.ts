@@ -50,6 +50,11 @@ export type FormLineItem = {
     other: string | null;
   };
   existingNotes: string | null;
+  /** SF `Description` — the rep's scope notes on the quote line. PPP's field
+   *  team adds ONE line item and lists the actual rooms in here, so this is
+   *  often the only record of what the job covers (Kate 2026-09-04). Raw free
+   *  text: multi-line, CRLF, sometimes junk. Display it, never parse it. */
+  lineItemNotes: string | null;
   lastModifiedDate: string;          // ISO — used for drift detection on submit
 };
 
@@ -128,6 +133,10 @@ const WOLI_FIELDS = [
   "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
   "FinishWall__c", "FinishCeiling__c", "FinishTrim__c", "FinishOther__c", "FinishFloor__c",
   "ColorNotes__c", "SortOrder__c", "LastModifiedDate",
+  // Kate 2026-09-04 — the scope notes the rep typed on the quote line. PPP reps
+  // add ONE line item and list the actual rooms in here, so without it neither
+  // the Account Manager nor the customer can see what the job covers.
+  "Description",
 ];
 
 // HIDDEN_WOLI_STATUSES + isHiddenWoliStatus live in lib/customer-form/woli-status.ts
@@ -302,6 +311,8 @@ async function loadFormRenderDataInner(
             other: str("FinishOther__c"),
           },
           existingNotes: str("ColorNotes__c"),
+          /** The rep's own scope notes from the quote line (SF Description). */
+          lineItemNotes: str("Description"),
           lastModifiedDate: r.LastModifiedDate as string,
         };
       });

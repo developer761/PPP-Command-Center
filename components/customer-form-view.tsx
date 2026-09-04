@@ -48,6 +48,8 @@
  */
 
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import LineItemNotes from "@/components/line-item-notes";
+import { colorDeadlineNotice } from "@/lib/customer-form/deadline-notice";
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
 import { resolveSwatchHex } from "@/lib/customer-form/color-swatch";
 import { classifySurface, denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
@@ -323,6 +325,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // hides customer-only chrome. Only "internal" actually saves.
   const isStaffEntry = isPreview || isInternal;
   const editDeadline = formatEditDeadline(formData.scheduledStart, colorDeadline);
+  // Kate 2026-09-04 — one shared function with the email, so the two can never
+  // state different deadlines to the same customer.
+  const deadlineNotice = colorDeadlineNotice(colorDeadline);
   // Per-WO filtered Material Type values — exterior-only WOs hide interior
   // products, vice versa. Set form (not grouped) — the MaterialTypePicker
   // component handles its own grouping/collapsing/search internally. Memoized
@@ -881,6 +886,21 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             </p>
           </>
         )}
+        {/* Kate 2026-09-04 — the deadline, stated before anything else and to
+            EVERYONE, not just people who already submitted. The edit-window
+            copy below only renders when isEditing, so a first-time visitor —
+            the person who most needs to know a deadline exists — was never
+            told. Not shown to staff: PPP sets the deadline. */}
+        {!isStaffEntry && (
+          <div className="mt-4 text-xs sm:text-sm text-ppp-navy bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 leading-relaxed">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden
+              className="inline-block mr-1.5 -mt-0.5 text-ppp-orange-700">
+              <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+            </svg>
+            {deadlineNotice.text}
+          </div>
+        )}
         {isEditing && !isStaffEntry && (
           <div className="mt-4 text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
             You&apos;ve already submitted these colors — feel free to update anything below
@@ -1102,6 +1122,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             onSurfaceChange={(surface, patch) => updateSurfacePick(li.id, surface, patch)}
             onApplyToAll={(surface, pick) => applyColorToAll(li.id, surface, pick)}
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
+            isInternal={isInternal}
           />
         ))
       ) : formData.hiddenLineItemCount > 0 ? (
@@ -1321,12 +1342,15 @@ function LineItemSection({
   onSurfaceChange,
   onApplyToAll,
   onNotesChange,
+  isInternal = false,
 }: {
   index: number;
   lineItem: FormLineItem;
   state: LineItemState | undefined;
   token: string;
   canApplyToAll: boolean;
+  /** Staff view — the notes block takes the quieter neutral tone. */
+  isInternal?: boolean;
   onSurfaceChange: (surface: string, patch: Partial<SurfacePick>) => void;
   onApplyToAll: (surface: string, pick: SurfacePick) => void;
   onNotesChange: (notes: string) => void;
@@ -1431,6 +1455,14 @@ function LineItemSection({
             {hasNoSurfaces ? "No surfaces selected" : `Surfaces: ${surfaces.join(", ")}`}
           </span>
         </div>
+        {/* Kate 2026-09-04 — the rep's quote-line notes, directly beneath the
+            room heading (the spot she circled). Renders nothing when the line
+            has none, and only while the room is expanded: collapsed, the room
+            already shows its own one-line colour summary and a second dense
+            line there would bury it. */}
+        {!collapsed && (
+          <LineItemNotes notes={lineItem.lineItemNotes} tone={isInternal ? "internal" : "customer"} />
+        )}
         {collapsed && (
           <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-ppp-charcoal-700 bg-white border border-ppp-charcoal-100 rounded px-2 py-1">
             {filledOrSkipped && <span className="text-ppp-green">✓</span>}

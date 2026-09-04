@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MoneyInput } from "@/components/commercial/money-input";
 import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -188,7 +189,7 @@ export function DealInvoiceBuilder({
             </div>
             <div>
               <label htmlFor="dni-amount" className={LABEL_CLS}>Amount</label>
-              <input id="dni-amount" name="amount" required inputMode="decimal" value={flatAmount} onChange={(e) => setFlatAmount(e.target.value)} placeholder="0.00" className={INPUT_CLS} />
+              <MoneyInput id="dni-amount" name="amount" required value={flatAmount} onValueChange={setFlatAmount} placeholder="0.00" className={INPUT_CLS} />
             </div>
             <div>
               <span className={LABEL_CLS}>Due date</span>

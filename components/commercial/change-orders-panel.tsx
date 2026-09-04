@@ -10,6 +10,7 @@
  * state, clearer hierarchy.
  */
 import Link from "next/link";
+import { MoneyInput } from "@/components/commercial/money-input";
 import {
   listChangeOrders,
   liveInvoiceIds,
@@ -353,7 +354,7 @@ export async function ChangeOrdersPanel({
               <DirectionToggle defaultDirection={addAttemptFailed && (preserveAmount ?? "").trim().startsWith("-") ? "deduct" : "add"} />
               <div>
                 <label className={LABEL_CLS} htmlFor="co-amount">Amount</label>
-                <input id="co-amount" name="amount" required inputMode="decimal" defaultValue={addAttemptFailed ? (preserveAmount ?? "").replace(/^-/, "") : ""} className={INPUT_CLS} placeholder="1,200.00" />
+                <MoneyInput id="co-amount" name="amount" required defaultValue={addAttemptFailed ? (preserveAmount ?? "").replace(/^-/, "") : ""} className={INPUT_CLS} placeholder="1,200.00" />
                 <p className="text-[11px] text-ppp-charcoal-500 mt-1">Enter a positive amount — the toggle sets add vs deduct.</p>
               </div>
             </div>
@@ -396,7 +397,7 @@ export async function ChangeOrdersPanel({
                         <DirectionToggle defaultDirection={co.amount_cents < 0 ? "deduct" : "add"} />
                         <div>
                           <label className={LABEL_CLS} htmlFor={`edit-amount-${co.id}`}>Amount</label>
-                          <input id={`edit-amount-${co.id}`} name="amount" required inputMode="decimal" defaultValue={preserveAmount ?? (Math.abs(co.amount_cents) / 100).toFixed(2)} className={INPUT_CLS} />
+                          <MoneyInput id={`edit-amount-${co.id}`} name="amount" required defaultValue={preserveAmount ?? (Math.abs(co.amount_cents) / 100).toFixed(2)} className={INPUT_CLS} />
                           <p className="text-[11px] text-ppp-charcoal-500 mt-1">Positive amount — the toggle sets the sign.</p>
                         </div>
                       </div>

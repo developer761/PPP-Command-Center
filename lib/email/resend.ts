@@ -275,6 +275,10 @@ export async function sendCustomerFormInvite(input: {
   /** Sender's phone — shown in the email body. Free-form so admin can
    *  use whatever format ("(516) 555-1234" / "516.555.1234"). */
   senderPhone?: string | null;
+  /** `customer_form_tokens.color_deadline` — feeds {{color_deadline_notice}}
+   *  so the email states the SAME deadline the form shows, from one shared
+   *  function rather than two copies of the wording (Kate 2026-09-04). */
+  colorDeadline?: string | null;
 }): Promise<ResendSendResult> {
   // Lazy import so the rest of the module stays edge-runtime-friendly (the
   // templates loader pulls supabase-js which is server-only).
@@ -284,6 +288,7 @@ export async function sendCustomerFormInvite(input: {
     customerName: input.customerName,
     workOrderNumber: input.workOrderNumber,
     formUrl: input.formUrl,
+    colorDeadline: input.colorDeadline,
   });
 
   // Use customer's FIRST name only in the greeting (matches Katie's HTML

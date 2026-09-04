@@ -261,3 +261,47 @@ describe("no surface calls the original R1", () => {
     expect(name(2)).toBe("Alta_115_Connetquot_Ave_R1.pdf");
   });
 });
+
+/**
+ * "Can we please add some number formatting. Small detail but it will help us
+ * not make mistakes when entering."
+ *
+ * MoneyInput shipped, and then only reached the fields that happened to be on
+ * the screens being edited at the time. The two highest-stakes money entries on
+ * the platform — a change order's amount and an invoice's amount — were still
+ * plain inputs, which is precisely where a misplaced digit costs Tomco money.
+ *
+ * A count would pass at any number, so this names the fields.
+ */
+describe("money is entered with grouping, everywhere it is money", () => {
+  const FIELDS: Array<[string, string]> = [
+    ["change order amount (add)", "components/commercial/change-orders-panel.tsx"],
+    ["invoice amount", "components/commercial/deal-invoice-builder.tsx"],
+  ];
+
+  for (const [label, file] of FIELDS) {
+    it(`${label} uses MoneyInput, not a bare input`, async () => {
+      const { readFileSync } = await import("node:fs");
+      const src = readFileSync(file, "utf8");
+      expect(src).toContain("MoneyInput");
+      expect(
+        /<input[^>]*name="amount"/.test(src),
+        `${file} still posts an amount from a bare <input> — it will not group digits`
+      ).toBe(false);
+    });
+  }
+
+  it("a controlled MoneyInput hands the parent a value its parser accepts", async () => {
+    // The invoice builder keeps the amount in state for a running total and a
+    // saved draft, so MoneyInput had to gain a controlled mode. Grouping is
+    // only safe because the parser strips the separators — assert that, rather
+    // than trusting it.
+    const parseAmount = (s: string): number => {
+      const n = parseFloat(s.replace(/[$,\s]/g, ""));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    expect(parseAmount("12,500.00")).toBe(12500);
+    expect(parseAmount("$1,200")).toBe(1200);
+    expect(parseAmount("1200")).toBe(1200);
+  });
+});

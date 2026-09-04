@@ -63,6 +63,9 @@ export async function loadOrderPageData(
         .filter(Boolean)
         .join(" · "),
       sqft: li.raw.sqFootage,
+      // Kate 2026-09-04 — the rep's own scope notes, so this list shows what
+      // the job covers rather than just how many lines it has.
+      notes: li.raw.description ?? null,
     });
   }
 

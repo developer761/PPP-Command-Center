@@ -225,6 +225,8 @@ export async function POST(request: Request) {
     senderEmail: ccEmail,
     senderName,
     senderPhone,
+    // Kate 2026-09-04 — the email states the same deadline the form does.
+    colorDeadline,
   });
 
   if (!send.ok) {

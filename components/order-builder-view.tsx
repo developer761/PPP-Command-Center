@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import LineItemNotes from "@/components/line-item-notes";
 import MaterialTypePicker from "@/components/material-type-picker";
 import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pick-list";
 import {
@@ -45,6 +46,10 @@ export type SourceLine = {
   surfaces: string[];
   detail: string;
   sqft: number;
+  /** SF `Description` — the rep's scope notes on the quote line. PPP's field
+   *  team adds ONE line item and lists the real rooms here, so without it this
+   *  panel can read "1 line item" for a six-room job (Kate 2026-09-04). */
+  notes?: string | null;
 };
 
 export type PreviewColor = {
@@ -1003,6 +1008,8 @@ export default function OrderBuilderView({
                       {l.detail}
                       {l.sqft > 0 ? `${l.detail ? " · " : ""}${l.sqft.toLocaleString()} sq ft` : ""}
                     </div>
+                    {/* Kate 2026-09-04 — the rooms the rep actually listed. */}
+                    <LineItemNotes notes={l.notes} />
                   </li>
                 ))}
                 {sourceLines.length === 0 && (

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
+import { colorDeadlineNotice } from "@/lib/customer-form/deadline-notice";
 
 /**
  * Customer-form template system. Code-shipped defaults + DB-backed overrides
@@ -47,8 +48,12 @@ export const DEFAULT_TEMPLATES: Templates = {
     "Action needed: Pick your paint colors (WO #{{wo_number}})",
   email_intro:
     "Thanks for choosing {{ppp_brand}}! We're getting ready to start your paint job (Work Order #{{wo_number}}) and need a few quick details from you — your color choices for each room.",
+  // {{color_deadline_notice}} is always a full sentence (see
+  // lib/customer-form/deadline-notice.ts) — the SAME sentence the form itself
+  // shows, from one function, so the email and the page can never promise a
+  // customer two different dates. Kate 2026-09-04.
   email_outro:
-    "Once you submit, we'll order materials and confirm your start date. The link is unique to your job — please don't share it.\n\nIf you have questions or want to add anything, just reply to this email.",
+    "{{color_deadline_notice}}\n\nOnce you submit, we'll order materials and confirm your start date. The link is unique to your job — please don't share it.\n\nIf you have questions or want to add anything, just reply to this email.",
   email_signoff: "Thanks,\n{{ppp_brand}}",
 
   form_header_eyebrow: "Pick your paint colors",
@@ -169,6 +174,9 @@ export function buildVars(input: {
   customerName?: string | null;
   workOrderNumber?: string | null;
   formUrl?: string | null;
+  /** `customer_form_tokens.color_deadline` (YYYY-MM-DD) — the date the sender
+   *  promised, when they set one. Absent falls back to the start-date wording. */
+  colorDeadline?: string | null;
 }): Record<string, string> {
   const name = (input.customerName ?? "").trim();
   const first = name ? name.split(/\s+/)[0] : "there";
@@ -178,5 +186,6 @@ export function buildVars(input: {
     wo_number: (input.workOrderNumber ?? "").trim(),
     form_url: (input.formUrl ?? "").trim(),
     ppp_brand: "Precision Painting Plus",
+    color_deadline_notice: colorDeadlineNotice(input.colorDeadline).text,
   };
 }

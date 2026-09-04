@@ -40,6 +40,8 @@ function group(raw: string): string {
 export function MoneyInput({
   name,
   defaultValue,
+  value: controlledValue,
+  onValueChange,
   id,
   className,
   placeholder,
@@ -48,13 +50,26 @@ export function MoneyInput({
 }: {
   name: string;
   defaultValue?: string | number | null;
+  /**
+   * Controlled mode. Pass BOTH `value` and `onValueChange` when the parent
+   * needs the number as it is typed — a running total, or a draft persisted to
+   * localStorage. Omit both for the ordinary uncontrolled form field.
+   *
+   * Every parser on the receiving side already strips `$` and commas, so the
+   * grouped string is safe to hand back.
+   */
+  value?: string;
+  onValueChange?: (next: string) => void;
   id?: string;
   className?: string;
   placeholder?: string;
   required?: boolean;
   "aria-label"?: string;
 }) {
-  const [value, setValue] = useState(() => group(String(defaultValue ?? "")));
+  const [uncontrolled, setUncontrolled] = useState(() => group(String(defaultValue ?? "")));
+  const isControlled = controlledValue != null && onValueChange != null;
+  const value = isControlled ? controlledValue : uncontrolled;
+  const setValue = isControlled ? onValueChange : setUncontrolled;
   return (
     <input
       type="text"
