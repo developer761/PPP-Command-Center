@@ -106,6 +106,10 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
   const vars = buildVars({
     customerName: status.token.customer_name,
     workOrderNumber: status.token.work_order_number,
+    // The editor lists {{color_deadline_notice}} as usable in the FORM copy
+    // too, so it has to substitute here as well as in the email — advertising
+    // a variable that renders empty is worse than not offering it.
+    colorDeadline: status.token.color_deadline ?? null,
   });
   const copy = {
     headerEyebrow: render(templates.form_header_eyebrow, vars),
