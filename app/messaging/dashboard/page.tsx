@@ -51,8 +51,8 @@ export default async function MessagingDashboard({
         <ul className="divide-y divide-ppp-charcoal-100">
           {blockers.map((b) => (
             <li key={b.label} className="px-4 py-3 flex gap-3">
-              <span aria-hidden className={["mt-0.5 shrink-0 h-4 w-4 rounded-full border-2 flex items-center justify-center", b.done ? "border-ppp-green bg-ppp-green" : "border-ppp-charcoal-300"].join(" ")}>
-                {b.done && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>}
+              <span aria-hidden className={["mt-0.5 shrink-0 h-4 w-4 rounded-full border-2 flex items-center justify-center", b.done ? "border-ppp-green-700 bg-ppp-green-50 text-ppp-green-700" : "border-ppp-charcoal-300"].join(" ")}>
+                {b.done && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>}
               </span>
               <div className="min-w-0">
                 <p className={`text-[13px] font-semibold ${b.done ? "text-ppp-charcoal" : "text-ppp-charcoal-600"}`}>{b.label}</p>
