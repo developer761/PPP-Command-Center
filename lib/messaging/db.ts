@@ -515,3 +515,123 @@ export function humanDuration(mins: number | null): string {
   if (h < 24) return `${h}h ${mins % 60}m`;
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
+
+/* ─────────────────────── reporting console ───────────────────────── */
+
+import {
+  qualificationFunnel, workspaceHealth, speedSummary, agingConversations,
+  takeoverBreakdown, secondsBetween, type ConversationRow,
+} from "./metrics";
+
+export type ReportRange = "7d" | "30d" | "90d";
+
+const RANGE_DAYS: Record<ReportRange, number> = { "7d": 7, "30d": 30, "90d": 90 };
+
+/**
+ * Everything the console needs, in one pass.
+ *
+ * The previous period is fetched alongside the current one so every headline
+ * can say whether it is getting better or worse. A number with no direction is
+ * a number nobody acts on, which is most of what Hatch shows.
+ */
+export async function loadReporting(range: ReportRange = "30d", workspaceId?: string) {
+  const sb = messagingDb();
+  const days = RANGE_DAYS[range];
+  const now = new Date();
+  const from = new Date(now.getTime() - days * 86400_000);
+  const prevFrom = new Date(now.getTime() - days * 2 * 86400_000);
+
+  const select =
+    "id, state, outcome, qualification_stage, takeover_reason, created_at, ended_at, first_outbound_at, first_inbound_at, last_message_at, sms_sub_accounts(name)";
+
+  let q = sb.from("sms_conversations").select(select).gte("created_at", prevFrom.toISOString());
+  if (workspaceId) q = q.eq("workspace_id", workspaceId);
+  const { data, error } = await q;
+
+  const all = (data ?? []).map((r) => {
+    const ws = r.sms_sub_accounts as unknown as { name: string } | null;
+    return { ...r, workspace_name: ws?.name ?? "—" } as ConversationRow & { id: string; last_message_at: string | null };
+  });
+
+  const current = all.filter((r) => new Date(r.created_at) >= from);
+  const previous = all.filter((r) => new Date(r.created_at) < from);
+
+  const speedOf = (rows: ConversationRow[]) =>
+    speedSummary(rows.map((r) => secondsBetween(r.created_at, r.first_outbound_at)));
+
+  // Aging needs the live set regardless of the reporting window — a
+  // conversation from six weeks ago that is still waiting is still waiting.
+  let liveQ = sb
+    .from("sms_conversations")
+    .select("id, state, last_message_at, sms_sub_accounts(name)")
+    .neq("state", "ended");
+  if (workspaceId) liveQ = liveQ.eq("workspace_id", workspaceId);
+  const { data: live } = await liveQ;
+
+  const liveIds = (live ?? []).map((r) => r.id);
+  const { data: lastMsgs } = liveIds.length
+    ? await sb.from("sms_messages").select("conversation_id, direction, created_at")
+        .in("conversation_id", liveIds).order("created_at", { ascending: false })
+    : { data: [] };
+
+  const lastIn = new Map<string, string>(), lastOut = new Map<string, string>();
+  for (const m of lastMsgs ?? []) {
+    const map = m.direction === "inbound" ? lastIn : lastOut;
+    if (!map.has(m.conversation_id)) map.set(m.conversation_id, m.created_at);
+  }
+
+  const aging = agingConversations(
+    (live ?? []).map((r) => ({
+      id: r.id,
+      workspace: (r.sms_sub_accounts as unknown as { name: string } | null)?.name ?? "—",
+      state: r.state as string,
+      lastInboundAt: lastIn.get(r.id) ?? null,
+      lastOutboundAt: lastOut.get(r.id) ?? null,
+    })),
+    now
+  );
+
+  return {
+    error: error?.message ?? null,
+    range, days,
+    total: current.length,
+    previousTotal: previous.length,
+    funnel: qualificationFunnel(current),
+    health: workspaceHealth(current),
+    speed: speedOf(current),
+    previousSpeed: speedOf(previous),
+    takeovers: takeoverBreakdown(current),
+    aging,
+  };
+}
+
+/**
+ * Data integrity, checked rather than assumed.
+ *
+ * It took a manual analysis to discover 213 unmatched opt-outs and 55 people
+ * Salesforce still did not know about, over roughly two years. These are the
+ * same questions, asked every time the page loads.
+ */
+export async function integrityChecks() {
+  const sb = messagingDb();
+  const [{ count: unrouted }, { count: failedSends }, { count: staleClaims }, { count: numberless }] =
+    await Promise.all([
+      sb.from("sf_lead_inbound").select("*", { count: "exact", head: true }).eq("status", "triage"),
+      sb.from("sms_scheduled_actions").select("*", { count: "exact", head: true }).eq("state", "failed"),
+      sb.from("sms_scheduled_actions").select("*", { count: "exact", head: true })
+        .eq("state", "claimed").lt("claimed_at", new Date(Date.now() - 600_000).toISOString()),
+      sb.from("sms_sub_accounts").select("*", { count: "exact", head: true })
+        .eq("is_active", true).is("phone_e164", null),
+    ]);
+
+  const { count: suppressed } = await sb.from("sms_opt_outs")
+    .select("*", { count: "exact", head: true }).is("opted_in_at", null);
+
+  return {
+    unroutedLeads: unrouted ?? 0,
+    failedSends: failedSends ?? 0,
+    staleClaims: staleClaims ?? 0,
+    activeWithoutNumber: numberless ?? 0,
+    suppressedNumbers: suppressed ?? 0,
+  };
+}
