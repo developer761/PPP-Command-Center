@@ -99,9 +99,12 @@ export async function POST(req: Request) {
   if (decision.kind === "reject") {
     reportWarn({
       key: "sms_inbound_dropped",
-      message: `Dropped an inbound SMS: ${decision.reason}`,
+      // The CODE, not the reason. The reason names the offending number, and
+      // this goes to Slack — a customer's handset does not belong in a chat
+      // channel. The full reason still goes back to AWS in the response.
+      message: `Dropped an inbound SMS: ${decision.code}`,
       platform: "ppp_cc",
-      context: { reason: decision.reason, messageId: envelope.MessageId },
+      context: { code: decision.code, messageId: envelope.MessageId },
     });
     return NextResponse.json({ ok: true, dropped: decision.reason });
   }

@@ -1,4 +1,5 @@
-import { activeWorkspaces, messagingDb } from "@/lib/messaging/db";
+import Link from "next/link";
+import { messagingDb } from "@/lib/messaging/db";
 import { federalBound } from "@/lib/messaging/workspace-settings";
 import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-hours-form";
 
@@ -19,7 +20,7 @@ export default async function MessagingSettings({
 }) {
   const sp = await searchParams;
   const sb = messagingDb();
-  const [workspaces, bound] = await Promise.all([activeWorkspaces(), federalBound()]);
+  const bound = await federalBound();
 
   const { data } = await sb
     .from("sms_sub_accounts")
@@ -55,13 +56,13 @@ export default async function MessagingSettings({
 
       <nav className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
         {rows.map((r) => (
-          <a key={r.id} href={`/messaging/settings?ws=${r.id}`}
+          <Link key={r.id} href={`/messaging/settings?ws=${r.id}`}
             className={[
               "shrink-0 min-h-[36px] px-3 rounded-lg text-[12.5px] font-medium flex items-center whitespace-nowrap touch-manipulation",
               open === r.id ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600",
             ].join(" ")}>
             {r.name}
-          </a>
+          </Link>
         ))}
       </nav>
 
@@ -96,14 +97,14 @@ export default async function MessagingSettings({
         </section>
       ))}
 
-      <a href="/messaging/settings/opt-outs"
+      <Link href="/messaging/settings/opt-outs"
         className="block rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-3 touch-manipulation">
         <h2 className="font-semibold text-ppp-charcoal text-[14px]">Who we must not text</h2>
         <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
           Load Hatch&apos;s suppression list. This is checked before every send and
           has to be in before the first real message goes out.
         </p>
-      </a>
+      </Link>
 
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-3">
         <h2 className="font-semibold text-ppp-charcoal text-[14px]">Not on this page, on purpose</h2>

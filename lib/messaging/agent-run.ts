@@ -13,8 +13,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  validateAction, shouldEscalate, END_INTENTS, CONTINUE_INTENTS,
-  NURTURE_END_INTENTS, NURTURE_CONTINUE_INTENTS, intentsForTrack, FLOW_ORDER,
+  validateAction, shouldEscalate, intentsForTrack, FLOW_ORDER,
   type AgentAction, type ValidateContext, type Track,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";

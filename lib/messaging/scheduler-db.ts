@@ -37,7 +37,7 @@ export function schedulerDeps(): SchedulerDeps {
       if (!ws) return null;
 
       let body = "";
-      let agent = "campaign";
+      const agent = "campaign";
       if (a.campaign_step_id) {
         const { data: step } = await sb
           .from("sms_campaign_steps").select("body").eq("id", a.campaign_step_id).maybeSingle();

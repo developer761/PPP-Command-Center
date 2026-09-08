@@ -29,8 +29,19 @@ export type EumInbound = {
   mediaUrls?: string[];
 };
 
+/**
+ * Why a message was dropped, WITHOUT the value that caused it.
+ *
+ * The reason string names the offending number so a person debugging has
+ * something to go on, and that string was going straight into a Slack alert —
+ * which put a customer's handset into a chat channel. The code is what gets
+ * logged; the reason stays in the HTTP response, which only AWS ever reads.
+ */
+export type RejectCode =
+  | "bad_origination" | "bad_destination" | "empty_message" | "no_message_id";
+
 export type InboundDecision =
-  | { kind: "reject"; reason: string }
+  | { kind: "reject"; code: RejectCode; reason: string }
   | {
       kind: "accept";
       from: E164;
@@ -52,17 +63,17 @@ export function decideInbound(raw: EumInbound): InboundDecision {
   // Refuse rather than guess. A message we cannot attribute to a real handset
   // cannot be suppressed later either, so storing it half-known is worse than
   // not storing it.
-  if (!from) return { kind: "reject", reason: `origination number "${raw.originationNumber ?? ""}" is not a usable phone number` };
-  if (!to) return { kind: "reject", reason: `destination number "${raw.destinationNumber ?? ""}" is not a usable phone number` };
+  if (!from) return { kind: "reject", code: "bad_origination", reason: `origination number "${raw.originationNumber ?? ""}" is not a usable phone number` };
+  if (!to) return { kind: "reject", code: "bad_destination", reason: `destination number "${raw.destinationNumber ?? ""}" is not a usable phone number` };
 
   const body = (raw.messageBody ?? "").trim();
   const mediaCount = raw.mediaUrls?.length ?? 0;
-  if (!body && mediaCount === 0) return { kind: "reject", reason: "message has no text and no media" };
+  if (!body && mediaCount === 0) return { kind: "reject", code: "empty_message", reason: "message has no text and no media" };
 
   // The provider id is what makes this idempotent — SNS delivers at least
   // once, so the same reply can arrive twice.
   const providerId = raw.inboundMessageId?.trim();
-  if (!providerId) return { kind: "reject", reason: "no inbound message id, so a retry could not be recognised" };
+  if (!providerId) return { kind: "reject", code: "no_message_id", reason: "no inbound message id, so a retry could not be recognised" };
 
   // AWS reports the keyword it matched, but its list is not PPP's list, so our
   // own classifier is authoritative and AWS's is only a fallback for a body we
