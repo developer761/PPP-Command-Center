@@ -40,13 +40,25 @@ const clean = (v: string | null | undefined): string | null => {
   return t ? t : null;
 };
 
-/** Human-readable, because "+15167846046" in a text message reads like a
- *  machine wrote it. Falls back to what we were given if it will not parse. */
+/**
+ * Human-readable, because "+15167846046" in a text message reads like a
+ * machine wrote it.
+ *
+ * Dashed rather than "(516) 784-6046" for two reasons, and the second one is
+ * the real one. It matches how Emily actually writes it in the conversation
+ * Kate graded well: "Is 516-784-6046 and tomrvc@gmail.com the best contact".
+ * And Kate's tone rules ban parentheses, so the bracketed form would have put
+ * a rule violation into every contact confirmation we send.
+ *
+ * Falls back to what we were given if it will not parse.
+ */
 export function displayPhone(raw: string | null | undefined): string | null {
   const t = clean(raw);
   if (!t) return null;
   const e = toE164(t);
-  return e ? formatUs(e) : t;
+  if (!e) return t;
+  const d = e.replace(/^\+1/, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : formatUs(e);
 }
 
 export function knownFields(k: KnownCustomer | undefined): {

@@ -27,6 +27,13 @@ export type SimTurn = {
   escalate: boolean;
   error?: string;
   rejected?: string;
+  /** Rapport that broke a tone rule and was not sent, with the reason. Shown
+   *  rather than swallowed: a reply that reads oddly terse is confusing until
+   *  you know a sentence was removed from it, and that is exactly the kind of
+   *  thing somebody grading needs to see. */
+  droppedRapport?: string;
+  /** The intent produced no words at all and was handed to a person. */
+  saysNothing?: boolean;
 };
 
 export type SimResult =
@@ -179,6 +186,8 @@ export async function runSimTurn(input: {
       confidence: res.action.confidence,
       message: res.rendered,
       escalate: res.escalate,
+      droppedRapport: res.droppedRapport,
+      saysNothing: res.saysNothing,
     },
   };
 }

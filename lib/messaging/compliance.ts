@@ -89,10 +89,15 @@ export type QuietHours = { startHour: number; endHour: number };
 /** Clamp a configured window into the federal bound. A misconfigured
  *  workspace must not be able to authorise an illegal send. */
 export function clampToFederal(h: QuietHours): QuietHours {
-  return {
-    startHour: Math.max(h.startHour, FEDERAL_BOUND.startHour),
-    endHour: Math.min(h.endHour, FEDERAL_BOUND.endHour),
-  };
+  const startHour = Math.max(h.startHour, FEDERAL_BOUND.startHour);
+  const endHour = Math.min(h.endHour, FEDERAL_BOUND.endHour);
+  // A window that starts after it ends can never be open, so a stored row of
+  // 22 to 3 silently stopped a workspace sending anything and said nothing
+  // about why. Fall back to the federal window: still legal, still
+  // conservative, and visibly a default rather than a workspace that has
+  // quietly gone dark.
+  if (startHour >= endHour) return { ...FEDERAL_BOUND };
+  return { startHour, endHour };
 }
 
 /**
@@ -103,13 +108,31 @@ export function clampToFederal(h: QuietHours): QuietHours {
  * is UTC-5 in January and UTC-4 in July, and hand-rolling that means a
  * fortnight a year of sends an hour outside the window.
  */
-export function localHour(now: Date, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone, hour: "numeric", hour12: false,
-  }).formatToParts(now);
+/**
+ * The local hour, or null when the timezone is unusable.
+ *
+ * Intl throws a RangeError on a zone it does not know. That used to propagate
+ * out of the gate: a single workspace row with a typo in time_zone turned
+ * every send for that workspace into an unexplained exception which the
+ * scheduler recorded as a generic failure and retried forever. Returning null
+ * makes "we cannot tell what time it is there" a value the caller has to
+ * handle rather than a crash.
+ */
+export function localHour(now: Date, timeZone: string): number | null {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone, hour: "numeric", hour12: false,
+    }).formatToParts(now);
+  } catch {
+    return null;
+  }
   const h = parts.find((p) => p.type === "hour")?.value;
+  if (h === undefined) return null;
+  const n = Number(h);
+  if (!Number.isFinite(n)) return null;
   // Intl renders midnight as "24" in some ICU versions; normalise to 0.
-  return Number(h) % 24;
+  return n % 24;
 }
 
 /** Is `now` inside the sending window for this workspace? */
@@ -120,6 +143,9 @@ export function withinQuietHours(
 ): boolean {
   const { startHour, endHour } = clampToFederal(hours);
   const h = localHour(now, timeZone);
+  // No usable timezone means we cannot know whether this is a legal hour to
+  // text somebody. That is a refusal, not a guess.
+  if (h === null) return false;
   // Inclusive of the opening hour, exclusive of the closing one: at endHour
   // exactly, the window is shut. 20:00 is not "still 8pm-ish".
   return h >= startHour && h < endHour;

@@ -267,6 +267,16 @@ export default function Simulator({
                   <div className="rounded-xl bg-ppp-orange-50 px-3 py-2">
                     <p className="text-[12px] font-medium text-ppp-orange-700 leading-snug">{t.error}</p>
                     {t.rejected && <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">Blocked before sending: {t.rejected}</p>}
+                    {t.saysNothing && (
+                      <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">
+                        It had nothing to say, so it handed to a person.
+                      </p>
+                    )}
+                    {t.droppedRapport && (
+                      <p className="mt-1 text-[11px] text-ppp-charcoal-500 leading-snug">
+                        A sentence was removed before sending: {t.droppedRapport}.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <>

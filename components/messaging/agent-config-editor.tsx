@@ -44,6 +44,7 @@ export default function AgentConfigEditor({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const dirty =
     fields.some((f) => (vals[f.key] ?? "") !== f.value) ||
@@ -165,11 +166,32 @@ export default function AgentConfigEditor({
             className="min-h-[44px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold disabled:opacity-40 touch-manipulation">
             {busy ? "Saving…" : "Save"}
           </button>
-          {canClear && (
-            <button type="button" onClick={() => void clear()} disabled={busy}
+          {/* Two steps, because this is destructive and quiet about it:
+              removing New York's rules puts New York back on the default,
+              which answers "where are you based" with Pasadena. */}
+          {canClear && !confirmClear && (
+            <button type="button" onClick={() => setConfirmClear(true)} disabled={busy}
               className="min-h-[44px] px-4 rounded-xl border border-ppp-charcoal-200 bg-white text-[13px] font-semibold text-ppp-charcoal-600 touch-manipulation">
               Remove its own rules
             </button>
+          )}
+          {canClear && confirmClear && (
+            <div className="w-full rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 px-3 py-2.5">
+              <p className="text-[12.5px] text-ppp-orange-700 leading-relaxed">
+                This deletes everything {levelName} sets and puts it back on the
+                level above, including its office location and service area.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={() => void clear()} disabled={busy}
+                  className="min-h-[40px] px-3 rounded-lg bg-ppp-charcoal text-white text-[12.5px] font-semibold touch-manipulation">
+                  {busy ? "Removing…" : "Yes, remove them"}
+                </button>
+                <button type="button" onClick={() => setConfirmClear(false)}
+                  className="min-h-[40px] px-3 rounded-lg bg-white border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal touch-manipulation">
+                  Keep them
+                </button>
+              </div>
+            </div>
           )}
         </div>
         <p className="text-[11.5px] text-ppp-charcoal-400 leading-snug">

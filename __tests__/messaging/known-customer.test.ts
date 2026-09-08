@@ -26,7 +26,7 @@ describe("the bot must not ask for what it already has", () => {
     const p = buildSystemPrompt(CFG, [], "new_lead", KNOWN);
     expect(p).toMatch(/NEVER ask for it/);
     expect(p).toMatch(/never ask them to type it out/i);
-    expect(p).toContain("(516) 784-6046");
+    expect(p).toContain("516-784-6046");
   });
 
   it("says so even when we hold nothing else — we always have the handset", () => {
@@ -92,8 +92,10 @@ describe("the bot must not ask for what it already has", () => {
   });
 
   it("formats the number for a human, not as E.164", () => {
-    expect(displayPhone("+15167846046")).toBe("(516) 784-6046");
-    expect(knownFields({ phone: "+15167846046" }).phone).toBe("(516) 784-6046");
+    // Dashed, matching how Emily writes it in the conversation Kate graded
+    // well — and because parentheses are on Kate's banned list.
+    expect(displayPhone("+15167846046")).toBe("516-784-6046");
+    expect(knownFields({ phone: "+15167846046" }).phone).toBe("516-784-6046");
   });
 
   it("treats blank and whitespace as not known", () => {

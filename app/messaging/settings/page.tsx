@@ -65,6 +65,22 @@ export default async function MessagingSettings({
         ))}
       </nav>
 
+      {/* A ws that is not in the live list — stale bookmark, deactivated
+          workspace — showed the tab strip and then nothing at all, which reads
+          as a page that failed rather than a selection that no longer exists. */}
+      {rows.length === 0 && (
+        <section className="rounded-xl border border-ppp-charcoal-100 bg-white px-5 py-7 text-center">
+          <p className="text-[13px] text-ppp-charcoal-500">No workspaces are live, so there are no hours to set.</p>
+        </section>
+      )}
+      {rows.length > 0 && !rows.some((r) => r.id === open) && (
+        <section className="rounded-xl border border-ppp-charcoal-100 bg-white px-5 py-7 text-center">
+          <p className="text-[13px] text-ppp-charcoal-500 leading-relaxed">
+            That workspace is not live any more. Pick one above.
+          </p>
+        </section>
+      )}
+
       {rows.filter((r) => r.id === open).map((r) => (
         <section key={r.id} className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
           <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">

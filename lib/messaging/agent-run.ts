@@ -19,7 +19,7 @@ import {
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
-import { renderMessage } from "./render";
+import { renderMessage, SILENT_INTENTS } from "./render";
 
 const MODEL = "claude-opus-5";
 
@@ -43,7 +43,15 @@ export type AgentConfigForRun = {
 export type Turn = { role: "customer" | "assistant"; text: string };
 
 export type RunResult =
-  | { ok: true; action: AgentAction; escalate: boolean; rendered: string }
+  | {
+      ok: true; action: AgentAction; escalate: boolean; rendered: string;
+      /** The intent produced no words and is not one that stays silent on
+       *  purpose. Always escalates. */
+      saysNothing?: boolean;
+      /** Rapport that broke a tone rule and was not sent, with the reason —
+       *  surfaced rather than swallowed so grading can see it. */
+      droppedRapport?: string;
+    }
   | { ok: false; error: string; rejected?: string };
 
 /**
@@ -233,20 +241,35 @@ Choose the next action.`;
     });
     if (!v.ok) return { ok: false, error: "The reply was rejected before sending.", rejected: `${v.reason}: ${v.detail}` };
 
+    const rendered = renderMessage({
+      intent: v.action.intent,
+      freeText: v.action.freeText,
+      turn: history.length,
+      photos: opts.mediaCount ?? 0,
+      known: { address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope },
+    });
+
+    // An intent that renders to nothing, and is not one of the intents that
+    // deliberately says nothing, is a dropped turn: the customer asked
+    // something and gets silence.
+    //
+    // It is reachable. answer_question has no template of its own — the
+    // model's rapport IS the answer there — so rapport dropped by the tone
+    // filter leaves nothing at all to send. Escalating hands it to a person,
+    // which is the correct answer to "we have no idea what to say".
+    const saysNothing = !rendered && !SILENT_INTENTS.has(v.action.intent);
+
     return {
       ok: true,
       action: v.action,
-      escalate: shouldEscalate(v.action, { confidenceThreshold: cfg.confidence_threshold }),
+      escalate: saysNothing
+        || shouldEscalate(v.action, { confidenceThreshold: cfg.confidence_threshold }),
+      saysNothing,
+      droppedRapport: v.droppedRapport,
       // Rendered from the intent, NOT from the model's prose. This is the line
       // that used to read `v.action.freeText ?? ""`, which is why a correctly
       // chosen ask_project_details went out as "Hi there!".
-      rendered: renderMessage({
-        intent: v.action.intent,
-        freeText: v.action.freeText,
-        turn: history.length,
-        photos: opts.mediaCount ?? 0,
-        known: { address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope },
-      }),
+      rendered,
     };
   } catch (err) {
     // Typed first, so a rate limit reads differently from a bad request.
