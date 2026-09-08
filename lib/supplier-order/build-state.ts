@@ -40,7 +40,7 @@ export function emptyBuildPayload(): OrderBuildPayload {
   };
 }
 
-const UNITS: ReadonlySet<string> = new Set<PaintUnit>(["gal", "qt"]);
+const UNITS: ReadonlySet<string> = new Set<PaintUnit>(["gal", "qt", "bucket"]);
 
 /**
  * Coerce anything that came off the wire (or out of an older jsonb row) into a

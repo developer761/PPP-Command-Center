@@ -7,6 +7,8 @@ import {
   estimateOrderGallons,
   packageGallons,
   formatOrderQuantity,
+  formatBucketsCans,
+  addCustomItemsToTotal,
   COVERAGE_CONFIG,
   type RoomTakeoff,
 } from "@/lib/supplier-order/estimate-gallons";
@@ -292,5 +294,56 @@ describe("doors and accent walls", () => {
     const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
     expect(src).toMatch(/e\.accentWallReview &&/);
     expect(src).toMatch(/\{e\.defaultedNote\}/);
+  });
+});
+
+/**
+ * Katie item 8 — a hand-typed colour line can be a 5-gallon pail.
+ *
+ * Only on custom lines. An estimate already rolls into buckets on its own via
+ * packageGallons, so offering it there would be two ways to say one thing.
+ */
+describe("buckets on custom colour lines", () => {
+  it("a bucket counts as five gallons in the order total", () => {
+    const base = { buckets: 0, cans: 0, quarts: 0, sizedColors: 0, reviewColors: 0 };
+    const t = addCustomItemsToTotal(base, [{ qty: 2, unit: "bucket" }]);
+    // 2 pails = 10 gallons = 2 buckets + 0 cans
+    expect(t.buckets).toBe(2);
+    expect(t.cans).toBe(0);
+  });
+
+  it("mixes with gallons and quarts without losing either", () => {
+    const base = { buckets: 0, cans: 0, quarts: 0, sizedColors: 0, reviewColors: 0 };
+    const t = addCustomItemsToTotal(base, [
+      { qty: 1, unit: "bucket" },
+      { qty: 2, unit: "gal" },
+      { qty: 3, unit: "qt" },
+    ]);
+    expect(t.buckets * 5 + t.cans).toBe(7); // 5 + 2
+    expect(t.quarts).toBe(3);
+  });
+
+  it("reads as pails, not as a raw number", () => {
+    expect(formatBucketsCans(0, 2, "bucket")).toBe("2 buckets (×5 gal)");
+    expect(formatBucketsCans(0, 1, "bucket")).toBe("1 bucket (×5 gal)");
+  });
+
+  it("survives the round-trip through a stored override", () => {
+    // build-state must accept "bucket" or a saved order silently reverts to gal.
+    const src = readFileSync(join(process.cwd(), "lib/supplier-order/build-state.ts"), "utf8");
+    expect(src).toMatch(/"gal", "qt", "bucket"/);
+  });
+
+  it("the vendor email says gallons, not the word bucket", () => {
+    // "2 bucket — Behr 56" means nothing at a paint counter.
+    const src = readFileSync(join(process.cwd(), "lib/supplier-order/builder.ts"), "utf8");
+    expect(src).toMatch(/raw === "bucket" \? `x \$\{GALLONS_PER_BUCKET\} gal` : raw/);
+  });
+
+  it("the option is offered on custom lines only", () => {
+    const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+    expect(src).toMatch(/<option value="bucket">/);
+    // the estimate-line toggle stays two-way
+    expect(src).toMatch(/\(\["gal", "qt"\] as PaintUnit\[\]\)/);
   });
 });

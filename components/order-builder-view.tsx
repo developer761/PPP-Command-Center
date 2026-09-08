@@ -1169,6 +1169,10 @@ function CustomColorItems({
           >
             <option value="gal">gal</option>
             <option value="qt">qt</option>
+            {/* Katie item 8 — a hand-typed colour can be a 5-gallon pail. Not
+                offered on estimate lines: those already roll into buckets on
+                their own, so it would be two ways to say the same thing. */}
+            <option value="bucket">bucket (5 gal)</option>
           </select>
           <button
             type="button"

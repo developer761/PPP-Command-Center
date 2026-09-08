@@ -600,7 +600,17 @@ export function estimateOrderGallons(
  * stores its whole count in `cans` and leaves `buckets` at 0.
  */
 
-export type PaintUnit = "gal" | "qt";
+/**
+ * Container a line is ordered in.
+ *
+ * "bucket" is a 5-gallon pail (Katie item 8). It exists only for HAND-TYPED
+ * colour lines: a normal estimate already rolls into buckets on its own via
+ * packageGallons, so offering it there would be two ways to say the same thing.
+ */
+export type PaintUnit = "gal" | "qt" | "bucket";
+
+/** Gallons in a 5-gallon pail. */
+export const GALLONS_PER_BUCKET = 5;
 
 /** A worker-set quantity for one color line — overrides the estimate. */
 export type QuantityOverride = {
@@ -618,7 +628,9 @@ export function quantityKey(colorId: string, finish: string | null | undefined):
 
 /** Total container count for an override, in its own unit. */
 export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
-  return o.unit === "qt" ? o.cans : o.buckets * 5 + o.cans;
+  if (o.unit === "qt") return o.cans;
+  if (o.unit === "bucket") return o.cans * GALLONS_PER_BUCKET;
+  return o.buckets * GALLONS_PER_BUCKET + o.cans;
 }
 
 /** Re-package a raw container count into the shape its unit expects. Quarts
@@ -626,7 +638,9 @@ export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUn
 export function packageForUnit(total: number, unit: PaintUnit): { buckets: number; cans: number; unit: PaintUnit } {
   const t = Math.max(0, Math.floor(total));
   if (unit === "qt") return { buckets: 0, cans: t, unit };
-  return { buckets: Math.floor(t / 5), cans: t % 5, unit };
+  // A bucket count is already whole pails — `total` is gallons, so divide.
+  if (unit === "bucket") return { buckets: 0, cans: Math.floor(t / GALLONS_PER_BUCKET), unit };
+  return { buckets: Math.floor(t / GALLONS_PER_BUCKET), cans: t % GALLONS_PER_BUCKET, unit };
 }
 
 /** Apply the worker's typed quantities to the system estimates. An explicit
@@ -711,6 +725,7 @@ export function addCustomItemsToTotal(
     if (qty <= 0) continue;
     const unit = (it.unit || "gal").trim().toLowerCase();
     if (unit === "qt") quarts += qty;
+    else if (unit === "bucket") gallons += qty * GALLONS_PER_BUCKET;
     else if (unit === "gal") gallons += qty;
   }
   // Re-package the gallon side so added cans roll up into buckets the same way
@@ -728,6 +743,9 @@ export function addCustomItemsToTotal(
 /** "2 buckets (×5 gal) + 3 gal" / "5 gal" / "4 qt" / "—". */
 export function formatBucketsCans(buckets: number, cans: number, unit: PaintUnit = "gal"): string {
   if (unit === "qt") return cans > 0 ? `${cans} qt` : "—";
+  if (unit === "bucket") {
+    return cans > 0 ? `${cans} bucket${cans === 1 ? "" : "s"} (×${GALLONS_PER_BUCKET} gal)` : "—";
+  }
   const parts: string[] = [];
   if (buckets > 0) parts.push(`${buckets} bucket${buckets === 1 ? "" : "s"} (×5 gal)`);
   if (cans > 0) parts.push(`${cans} gal`);

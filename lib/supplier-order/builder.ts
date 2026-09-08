@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
@@ -891,7 +891,9 @@ export function formatOrderSummaryBlock(
     const label = c.label.trim();
     if (!label) continue;
     const qty = Math.max(1, Math.floor(c.qty || 1));
-    const unit = (c.unit || "gal").trim();
+    const raw = (c.unit || "gal").trim();
+    // A vendor reads "2 x 5 gal", not "2 bucket" (Katie item 8).
+    const unit = raw === "bucket" ? `x ${GALLONS_PER_BUCKET} gal` : raw;
     pushGrouped(NOT_SET, `  ${qty} ${unit} — ${label}`);
   }
 
