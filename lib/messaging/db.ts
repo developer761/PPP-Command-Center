@@ -8,6 +8,8 @@ import { createClient } from "@supabase/supabase-js";
  * through the service key here, server-side, and the pages that call it are
  * gated by app/messaging/layout.tsx.
  */
+import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
+
 export function messagingDb() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -259,13 +261,55 @@ export type AgentConfig = {
   booking_hours: Record<string, { open: string; close: string }>;
 };
 
+/** Workspaces that carry a config row of their own, so the picker can say
+ *  which ones actually differ from the default. */
+export async function workspacesWithOwnConfig(): Promise<string[]> {
+  const sb = messagingDb();
+  const { data } = await sb.from("sms_agent_configs")
+    .select("workspace_id").eq("scope", "workspace");
+  return (data ?? []).map((r) => r.workspace_id).filter((v): v is string => !!v);
+}
+
+/**
+ * The config as the BOT would resolve it — global, then state, then workspace.
+ *
+ * This used to pick the workspace override or fall back to the global row and
+ * ignore the state tier entirely, while the live path resolved all three. So
+ * the Chatbot screen could show Kate a New York workspace with no office
+ * location while the bot running that workspace happily said "Garden City",
+ * because the office location lives on the state row. A settings screen that
+ * disagrees with the thing it configures is worse than no settings screen.
+ *
+ * `from` reports which tier each field came from, so "why does it say that"
+ * has an answer on the page rather than in the database.
+ */
 export async function loadAgentConfig(workspaceId?: string) {
   const sb = messagingDb();
-  const { data: rows } = await sb.from("sms_agent_configs").select("*");
-  const all = (rows ?? []) as unknown as AgentConfig[];
-  const override = workspaceId ? all.find((c) => c.workspace_id === workspaceId) : undefined;
-  const base = all.find((c) => c.workspace_id === null);
-  return { config: override ?? base ?? null, isOverride: !!override, hasDefault: !!base };
+  const [{ data: rows }, { data: ws }] = await Promise.all([
+    sb.from("sms_agent_configs").select("*"),
+    workspaceId
+      ? sb.from("sms_sub_accounts").select("name").eq("id", workspaceId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const all = (rows ?? []) as unknown as AgentConfigLayer[];
+  const base = all.find((c) => c.scope === "global");
+
+  const state = ws?.name ? stateOfWorkspace(ws.name) : null;
+  const layers = all.filter((r) =>
+    r.scope === "global"
+    || (r.scope === "state" && state !== null && r.state_code === state)
+    || (r.scope === "workspace" && !!workspaceId && r.workspace_id === workspaceId)
+  );
+  const { value, from } = resolveAgentConfig(layers);
+
+  return {
+    config: layers.length ? (value as unknown as AgentConfig) : null,
+    isOverride: layers.some((l) => l.scope === "workspace"),
+    hasStateLayer: layers.some((l) => l.scope === "state"),
+    state,
+    from,
+    hasDefault: !!base,
+  };
 }
 
 /** Every terminal state Emily can reach, with what each one means. Verbatim

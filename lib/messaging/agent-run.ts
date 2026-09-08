@@ -17,6 +17,7 @@ import {
   type AgentAction, type ValidateContext,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
+import { renderMessage } from "./render";
 
 const MODEL = "claude-opus-5";
 
@@ -149,8 +150,12 @@ Choose the next action.`;
     const client = new Anthropic({ apiKey });
     const res = await client.messages.create({
       model: MODEL,
-      max_tokens: 2000,
-      thinking: { type: "adaptive" },
+      // Choosing one of eighteen intents and a line of rapport is a
+      // classification, not a reasoning problem. Adaptive thinking plus a
+      // 2000-token ceiling made every simulator turn a multi-second wait for a
+      // reply that is two sentences long, and the extra thinking changed the
+      // chosen intent in none of the cases that were checked.
+      max_tokens: 700,
       system: buildSystemPrompt(cfg, opts.hardNos ?? []),
       messages: [{ role: "user", content: prompt }],
       tools: [ACTION_TOOL],
@@ -181,7 +186,15 @@ Choose the next action.`;
       ok: true,
       action: v.action,
       escalate: shouldEscalate(v.action, { confidenceThreshold: cfg.confidence_threshold }),
-      rendered: v.action.freeText ?? "",
+      // Rendered from the intent, NOT from the model's prose. This is the line
+      // that used to read `v.action.freeText ?? ""`, which is why a correctly
+      // chosen ask_project_details went out as "Hi there!".
+      rendered: renderMessage({
+        intent: v.action.intent,
+        freeText: v.action.freeText,
+        turn: history.length,
+        photos: opts.mediaCount ?? 0,
+      }),
     };
   } catch (err) {
     // Typed first, so a rate limit reads differently from a bad request.

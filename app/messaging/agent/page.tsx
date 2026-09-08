@@ -1,4 +1,5 @@
-import { loadAgentConfig, activeWorkspaces, END_STATES } from "@/lib/messaging/db";
+import AgentScopePicker from "@/components/messaging/agent-scope-picker";
+import { loadAgentConfig, activeWorkspaces, workspacesWithOwnConfig, END_STATES } from "@/lib/messaging/db";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,10 @@ export default async function AgentConfigPage({
   searchParams: Promise<{ ws?: string }>;
 }) {
   const sp = await searchParams;
-  const [{ config, isOverride, hasDefault }, workspaces] = await Promise.all([
+  const [{ config, isOverride, hasStateLayer, state, hasDefault }, workspaces, overrides] = await Promise.all([
     loadAgentConfig(sp.ws),
     activeWorkspaces(),
+    workspacesWithOwnConfig(),
   ]);
   const wsName = workspaces.find((w) => w.id === sp.ws)?.name;
 
@@ -51,6 +53,8 @@ export default async function AgentConfigPage({
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-4 pb-safe space-y-4">
+      <AgentScopePicker workspaces={workspaces} current={sp.ws} overrides={overrides} />
+
       <header>
         <h1 className="text-lg font-bold text-ppp-charcoal">
           {c.persona_name} — {wsName ?? "default for every workspace"}
@@ -59,6 +63,7 @@ export default async function AgentConfigPage({
           {isOverride
             ? `Overrides the default for ${wsName}.`
             : "Inherited by every workspace that has no override of its own."}
+          {hasStateLayer && state ? ` Some of it comes from the ${state} rules, shared by every ${state} workspace.` : ""}
         </p>
       </header>
 

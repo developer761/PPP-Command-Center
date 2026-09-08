@@ -55,6 +55,13 @@ export default async function TrainingCoverage() {
           nothing else attached cannot teach any of them, so each example says
           which rules it demonstrates — and this is what is still missing.
         </p>
+        <p className="mt-2 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
+          Three ways to fill a gap: <strong>write one</strong> if you already
+          know what a good version says, <strong>grade an imported one</strong>
+          if Hatch has an example, or <strong>try it in the simulator</strong> —
+          that produces a test rather than an example, but it tells you whether
+          the bot gets the rule right at all.
+        </p>
       </header>
 
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -120,6 +127,23 @@ export default async function TrainingCoverage() {
                     {c.bad} example{c.bad === 1 ? "" : "s"} of getting this wrong, none of getting it right.
                   </p>
                 )}
+                {/* Somewhere to go. The first version named the gap and
+                    stopped, which is why the page read as a wall rather than
+                    a worklist. */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Link href={`/messaging/training/simulator?tag=${c.tag.key}`}
+                    className="inline-flex items-center min-h-[34px] px-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-medium text-ppp-charcoal touch-manipulation">
+                    Try it in the simulator
+                  </Link>
+                  <Link href={`/messaging/training/write?tag=${c.tag.key}`}
+                    className="inline-flex items-center min-h-[34px] px-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-medium text-ppp-charcoal touch-manipulation">
+                    Write one
+                  </Link>
+                  <Link href="/messaging/training/grade"
+                    className="inline-flex items-center min-h-[34px] px-2.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
+                    Grade imported
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>

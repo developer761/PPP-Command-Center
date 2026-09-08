@@ -5,7 +5,8 @@ import { messagingDb, activeWorkspaces } from "@/lib/messaging/db";
 
 export const dynamic = "force-dynamic";
 
-export default async function SimulatorPage() {
+export default async function SimulatorPage({ searchParams }: { searchParams: Promise<{ tag?: string }> }) {
+  const sp = await searchParams;
   const sb = messagingDb();
   const [status, workspaces, { data: tags }] = await Promise.all([
     simulatorStatus(),
@@ -36,6 +37,7 @@ export default async function SimulatorPage() {
         tags={tags ?? []}
         ready={status.ready}
         notReadyReason={status.reason}
+        initialTagKey={sp.tag ?? ""}
       />
     </main>
   );

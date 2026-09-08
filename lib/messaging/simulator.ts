@@ -12,6 +12,7 @@
  * other guard were removed.
  */
 import { messagingDb } from "./db";
+import { classifyInbound } from "./compliance";
 import { runAgentTurn, agentAvailable, type AgentConfigForRun, type Turn } from "./agent-run";
 import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
 
@@ -91,13 +92,47 @@ export async function runSimTurn(input: {
   /** The last thing the bot said asked the customer to PROVIDE something.
    *  Decides whether a reaction counts as an answer. */
   lastAskedForInfo?: boolean;
+  /** Photos attached. No file is needed — what the bot reasons about is that
+   *  photos EXIST, and normalizeInbound turns that into words. */
+  mediaCount?: number;
 }): Promise<SimResult> {
   const resolved = await configFor(input.workspaceId);
   if (!resolved) return { ok: false, error: "No agent configuration found." };
 
+  // STOP / HELP are decided BEFORE the model is asked anything.
+  //
+  // Karan, 2026-09-08: "it's not following the opt-out rules." It was not,
+  // and the reason is that opt-out lives in gatedSend, which the simulator is
+  // forbidden to call — simulator-safety.test.ts exists to keep the sandbox
+  // unable to reach a carrier. So the sandbox had no compliance behaviour at
+  // all and cheerfully carried on past STOP.
+  //
+  // Reading the same pure classifier the live path reads costs nothing and
+  // sends nothing. If it drifts from production behaviour, it drifts for both.
+  const keyword = classifyInbound(input.customerText);
+  if (keyword === "opt_out" || keyword === "help") {
+    const ordinal = input.history.length + 1;
+    return {
+      ok: true,
+      turn: {
+        ordinal,
+        customerText: input.customerText,
+        intent: keyword === "opt_out" ? "opted_out" : "help",
+        confidence: 1,
+        // The carrier answers both of these. The bot must not add to it, and
+        // must never send to this handset again.
+        message: keyword === "opt_out"
+          ? "(No reply is sent. The number is suppressed and nothing further can go out to it.)"
+          : "(No reply is sent. The carrier answers HELP itself.)",
+        escalate: false,
+      },
+    };
+  }
+
   const res = await runAgentTurn(resolved.cfg, input.history, input.customerText, {
     hardNos: resolved.hardNos,
     lastAskedForInfo: input.lastAskedForInfo,
+    mediaCount: input.mediaCount,
   });
 
   if (!res.ok) {

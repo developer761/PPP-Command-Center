@@ -7,7 +7,18 @@ type Graded = SimTurn & {
   verdict?: "good" | "acceptable" | "wrong";
   verdictNote?: string;
   expectedIntent?: string;
+  showNote?: boolean;
 };
+
+/**
+ * Feedback belongs to ONE reply.
+ *
+ * Karan: "responses 1-4 are good but response 5 is bad — we don't want to say
+ * this is bad and have it think the whole interaction is bad." So every reply
+ * carries its own verdict and its own note, and a note is available on a GOOD
+ * reply too: "fine, but word it like…" is the most useful feedback there is
+ * and the first version had nowhere to put it.
+ */
 
 /**
  * The sandbox.
@@ -23,24 +34,44 @@ export default function Simulator({
   tags,
   ready,
   notReadyReason,
+  initialTagKey = "",
 }: {
   workspaces: { id: string; name: string }[];
   tags: { key: string; label: string; what_to_look_for: string }[];
   ready: boolean;
   notReadyReason?: string;
+  /** Arrives from the coverage page, so a gap opens the sandbox already
+   *  pointed at the rule it is missing. */
+  initialTagKey?: string;
 }) {
   const [workspaceId, setWorkspaceId] = useState("");
   const [brief, setBrief] = useState("");
-  const [tagKey, setTagKey] = useState("");
+  const [tagKey, setTagKey] = useState(initialTagKey);
   const [turns, setTurns] = useState<Graded[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
+  const [photos, setPhotos] = useState(0);
 
   const selectedTag = tags.find((t) => t.key === tagKey);
 
-  const send = async () => {
-    if (!draft.trim() || busy) return;
+  /**
+   * React to the bot's last message, in the format a phone actually sends.
+   *
+   * iPhone sends `Liked "<the message>"` as ordinary SMS text — that string IS
+   * the reaction, and parsing it is what Hatch cannot do. Generating the real
+   * format here means the simulator exercises the real parser rather than a
+   * tidied-up version of it.
+   */
+  const react = (verb: string) => {
+    const last = [...turns].reverse().find((t) => t.message)?.message;
+    if (!last || busy) return;
+    void send(`${verb} "${last}"`);
+  };
+
+  const send = async (override?: string, media = 0) => {
+    const text = override ?? draft.trim();
+    if ((!text && media === 0) || busy) return;
     setBusy(true);
     try {
       const history = turns.flatMap((t) => [
@@ -50,8 +81,12 @@ export default function Simulator({
       // Whether the last thing the bot said asked for something decides
       // whether a reaction counts as an answer.
       const lastAskedForInfo = /^ask_/.test(turns[turns.length - 1]?.intent ?? "");
-      const res = await runSimTurn({ workspaceId: workspaceId || undefined, history, customerText: draft.trim(), lastAskedForInfo });
-      if (res.ok) { setTurns((t) => [...t, res.turn]); setDraft(""); }
+      const res = await runSimTurn({
+        workspaceId: workspaceId || undefined,
+        history, customerText: text, lastAskedForInfo,
+        mediaCount: media || photos,
+      });
+      if (res.ok) { setTurns((t) => [...t, res.turn]); setDraft(""); setPhotos(0); }
     } finally { setBusy(false); }
   };
 
@@ -183,7 +218,7 @@ export default function Simulator({
                   </>
                 )}
 
-                <div className="flex flex-wrap gap-1 pl-1 pb-1">
+                <div className="flex flex-wrap gap-1 pl-1">
                   {(["good", "acceptable", "wrong"] as const).map((v) => (
                     <button key={v} type="button" onClick={() => grade(i, { verdict: v })}
                       className={[
@@ -195,25 +230,81 @@ export default function Simulator({
                       {v === "good" ? "Good" : v === "acceptable" ? "Fine" : "Wrong"}
                     </button>
                   ))}
+                  {/* Available on every verdict. "Fine, but say it like this"
+                      is the most useful note there is, and it is not a
+                      complaint about the whole conversation. */}
+                  {t.verdict && !t.showNote && t.verdictNote === undefined && (
+                    <button type="button" onClick={() => grade(i, { showNote: true })}
+                      className="min-h-[30px] px-2 rounded-md text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
+                      + say why
+                    </button>
+                  )}
                 </div>
+
+                {(t.showNote || t.verdictNote !== undefined) && (
+                  <textarea
+                    value={t.verdictNote ?? ""}
+                    onChange={(e) => grade(i, { verdictNote: e.target.value })}
+                    rows={2}
+                    placeholder={
+                      t.verdict === "wrong"
+                        ? "We don't say this… / it should have asked for…"
+                        : "Fine, but word it like…"
+                    }
+                    className="w-full rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-base sm:text-[12px] placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30"
+                  />
+                )}
 
                 {t.verdict === "wrong" && (
                   <input value={t.expectedIntent ?? ""} onChange={(e) => grade(i, { expectedIntent: e.target.value })}
-                    placeholder="What should it have done?"
+                    placeholder="What should it have done instead?"
                     className="w-full rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 px-2.5 min-h-[36px] text-base sm:text-[12px] placeholder:text-ppp-orange-700/50 focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30" />
                 )}
               </div>
             ))}
           </div>
 
+          {/* What a real customer can send, and Hatch cannot read. */}
+          <div className="bg-white border-t border-ppp-charcoal-100 px-3 pt-2 pb-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-0.5">Send</span>
+              {["👍", "❤️", "😂", "👎", "❓"].map((e) => (
+                <button key={e} type="button" onClick={() => void send(e)} disabled={busy}
+                  aria-label={`Send ${e} on its own`}
+                  className="h-8 w-8 rounded-lg text-[15px] hover:bg-ppp-charcoal-50 touch-manipulation disabled:opacity-40">
+                  {e}
+                </button>
+              ))}
+              <button type="button" onClick={() => setPhotos((n) => (n >= 3 ? 0 : n + 1))} disabled={busy}
+                className={[
+                  "h-8 px-2 rounded-lg text-[11px] font-medium touch-manipulation disabled:opacity-40",
+                  photos > 0 ? "bg-ppp-charcoal text-white" : "text-ppp-charcoal-500 hover:bg-ppp-charcoal-50",
+                ].join(" ")}>
+                {photos > 0 ? `${photos} photo${photos === 1 ? "" : "s"}` : "📷 photo"}
+              </button>
+            </div>
+            {turns.some((t) => t.message) && (
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-0.5">React</span>
+                {["Liked", "Loved", "Questioned", "Disliked"].map((v) => (
+                  <button key={v} type="button" onClick={() => react(v)} disabled={busy}
+                    className="h-8 px-2 rounded-lg text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation disabled:opacity-40">
+                    {v}
+                  </button>
+                ))}
+                <span className="text-[10px] text-ppp-charcoal-400 ml-0.5">its last message</span>
+              </div>
+            )}
+          </div>
+
           {/* Composer */}
-          <div className="bg-white border-t border-ppp-charcoal-100 px-3 py-2.5 flex gap-2 items-end">
+          <div className="bg-white px-3 pb-2.5 pt-1 flex gap-2 items-end">
             <input value={draft} onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
               placeholder={turns.length ? "Reply as the customer…" : "Text the business…"}
               disabled={busy}
               className="flex-1 min-w-0 rounded-full border border-ppp-charcoal-200 px-3.5 min-h-[38px] text-base sm:text-[14px] placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-[#0b93f6]/30 disabled:bg-ppp-charcoal-50" />
-            <button type="button" onClick={() => void send()} disabled={busy || !draft.trim()}
+            <button type="button" onClick={() => void send()} disabled={busy || (!draft.trim() && photos === 0)}
               aria-label="Send as the customer"
               className="shrink-0 h-[38px] w-[38px] rounded-full bg-[#0b93f6] text-white flex items-center justify-center touch-manipulation disabled:bg-ppp-charcoal-200">
               {busy ? <span className="text-[11px]">…</span> : (
