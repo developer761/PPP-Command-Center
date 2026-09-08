@@ -6,7 +6,7 @@ import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQ
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
-import { extractMachineColorLines } from "@/lib/customer-form/notes";
+import { extractCustomerFreeText, extractMachineColorLines } from "@/lib/customer-form/notes";
 import { denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
 import type {
   SnapshotAccount,
@@ -1340,11 +1340,36 @@ export async function buildSupplierOrderDraft(
     for (const s of skippedSurfaces) colorNotesDefaultParts.push(`- ${s.roomLabel} · ${s.surface}`);
   }
   const colorNotesDefault = colorNotesDefaultParts.join("\n");
-  // R4.14: COLOR NOTES no longer goes on the vendor email. Kate: color notes
-  // exist to inform the ESTIMATOR, not the supplier — when something in them
-  // needs ordering, the estimator adds it as a custom color item, which does
-  // reach the email as a real line. Still computed above because the order
-  // screen renders it (and persists it), just not appended here.
+  // R4.14 vs Katie item 23 — a real disagreement, resolved narrowly.
+  //
+  // R4.14 (Kate): COLOR NOTES does not go on the vendor email. Colour notes
+  // inform the ESTIMATOR, and when something in them needs ordering the
+  // estimator adds a custom colour item, which reaches the email as a line.
+  //
+  // Katie, 2026-09-08, with WO 00316248 in hand: a rep put the entire exterior
+  // on ONE line item, wrote "see notes for colors" in the Description, and put
+  // the actual colours in Colour Notes — "Siding: HC-6 Windham Cream, Low
+  // Lustre. Trim: OC-95 Navajo White, Soft Gloss…". The vendor cannot fill that
+  // order without them.
+  //
+  // Both are right about different content, so only the CUSTOMER-FACING free
+  // text is sent: the colours a person wrote. The machine-written lines, the
+  // "Not painting:" list and the skipped surfaces stay internal — those are the
+  // estimator bookkeeping R4.14 was about, and a supplier has no use for them.
+  const vendorColorNotes = input.woliRows
+    .map((li) => {
+      const text = extractCustomerFreeText(li.colorNotes).trim();
+      if (!text) return "";
+      const label = (li.areaLabel ?? "").trim();
+      return label ? `${label}:\n${text}` : text;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+  if (vendorColorNotes) {
+    sections.push("");
+    sections.push("COLOR NOTES");
+    sections.push(vendorColorNotes);
+  }
   void colorNotesDefault;
   const extrasBlock = formatExtrasBlock(input.extras);
   if (extrasBlock) {

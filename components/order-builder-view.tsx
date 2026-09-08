@@ -56,6 +56,10 @@ export type SourceLine = {
    *  team adds ONE line item and lists the real rooms here, so without it this
    *  panel can read "1 line item" for a six-room job (Kate 2026-09-04). */
   notes?: string | null;
+  /** SF `ColorNotes__c`, free text only. The per-surface COLOURS — on a
+   *  work order where a rep puts the whole house on one line, Description
+   *  says "see notes for colors" and this is those notes (Katie item 23). */
+  colorNotes?: string | null;
 };
 
 export type PreviewColor = {
@@ -516,7 +520,10 @@ export default function OrderBuilderView({
                         : ""}
                     </div>
                     {/* Kate 2026-09-04 — the rooms the rep actually listed. */}
-                    <LineItemNotes notes={l.notes} />
+                    <LineItemNotes notes={l.notes} label="Scope" />
+                    {/* Katie item 23 — the colours themselves, labelled apart from the
+                        scope above so a reader can tell which is which. */}
+                    <LineItemNotes notes={l.colorNotes} label="Colours" />
                   </li>
                 ))}
                 {sourceLines.length === 0 && (

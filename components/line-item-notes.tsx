@@ -24,9 +24,14 @@ export default function LineItemNotes({
   notes,
   /** Slightly quieter presentation for the customer-facing form. */
   tone = "internal",
+  /** What this block IS. Two kinds of note can sit on one line — the rep's
+   *  scope (Description) and the per-surface colours (Colour Notes) — and a
+   *  reader has to be able to tell them apart. */
+  label = "Notes",
 }: {
   notes: string | null | undefined;
   tone?: "internal" | "customer";
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -60,7 +65,7 @@ export default function LineItemNotes({
         className="w-full flex items-start gap-2 text-left px-3 py-2 min-h-[44px] sm:min-h-0 touch-manipulation"
       >
         <span className="shrink-0 mt-0.5 text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
-          Notes
+          {label}
         </span>
         <span className="min-w-0 flex-1 text-[12px] leading-snug text-ppp-charcoal-700">
           {open ? (

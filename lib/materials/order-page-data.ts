@@ -5,6 +5,7 @@ import { loadDashboardData } from "@/lib/data-source";
 import { deriveOpenMaterialsWorkOrders, type OpenWorkOrderForMaterials } from "@/lib/salesforce/materials";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
+import { extractCustomerFreeText } from "@/lib/customer-form/notes";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { normalizeFulfillmentState, emptyFulfillmentState, type FulfillmentState } from "@/lib/supplier-order/fulfillment-state";
 import { capabilitiesFor } from "@/lib/auth/roles";
@@ -69,6 +70,12 @@ export async function loadOrderPageData(
       // Kate 2026-09-04 — the rep's own scope notes, so this list shows what
       // the job covers rather than just how many lines it has.
       notes: li.raw.description ?? null,
+      // Katie item 23 — the per-surface COLOURS. On a work order where a rep
+      // puts the whole house on one line, Description says "see notes for
+      // colors" and this is the notes. Free text, not our machine format:
+      // extractMachineColorLines returns nothing for it, which is exactly why
+      // none of it reached the order.
+      colorNotes: extractCustomerFreeText(li.raw.colorNotes) || null,
     });
   }
 
