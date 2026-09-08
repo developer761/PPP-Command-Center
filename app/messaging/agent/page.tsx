@@ -1,5 +1,6 @@
 import AgentScopePicker from "@/components/messaging/agent-scope-picker";
-import { loadAgentConfig, activeWorkspaces, workspacesWithOwnConfig, END_STATES } from "@/lib/messaging/db";
+import AgentConfigEditor from "@/components/messaging/agent-config-editor";
+import { loadAgentConfig, activeWorkspaces, workspacesWithOwnConfig, configuredStates, END_STATES } from "@/lib/messaging/db";
 
 export const dynamic = "force-dynamic";
 
@@ -25,14 +26,15 @@ const FLOW_LABEL: Record<string, string> = {
 export default async function AgentConfigPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ws?: string; track?: string }>;
+  searchParams: Promise<{ ws?: string; state?: string; track?: string }>;
 }) {
   const sp = await searchParams;
   const track = sp.track === "nurture" ? "nurture" : "new_lead";
-  const [{ config, isOverride, hasStateLayer, state, hasDefault }, workspaces, overrides] = await Promise.all([
-    loadAgentConfig(sp.ws, track),
+  const [{ config, own, from, isOverride, hasStateLayer, state, hasDefault }, workspaces, overrides, states] = await Promise.all([
+    loadAgentConfig(sp.ws, track, sp.state),
     activeWorkspaces(),
     workspacesWithOwnConfig(track),
+    configuredStates(track),
   ]);
   const wsName = workspaces.find((w) => w.id === sp.ws)?.name;
 
@@ -54,7 +56,7 @@ export default async function AgentConfigPage({
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-4 pb-safe space-y-4">
-      <AgentScopePicker workspaces={workspaces} current={sp.ws} overrides={overrides} track={track} />
+      <AgentScopePicker workspaces={workspaces} current={sp.ws} currentState={sp.state} states={states} overrides={overrides} track={track} />
 
       <header>
         <h1 className="text-lg font-bold text-ppp-charcoal">
@@ -129,6 +131,29 @@ export default async function AgentConfigPage({
         </p>
       </section>
 
+      <AgentConfigEditor
+        where={
+          sp.ws ? { scope: "workspace", workspaceId: sp.ws }
+            : sp.state ? { scope: "state", stateCode: sp.state }
+            : { scope: "global" }
+        }
+        track={track}
+        levelName={wsName ? `${wsName} only` : sp.state ? `Emily ${sp.state} — every ${sp.state} workspace` : "the default every workspace inherits"}
+        canClear={(!!sp.ws && isOverride) || !!sp.state}
+        threshold={Number(c.confidence_threshold ?? 0.95)}
+        maxTurns={Number(c.max_turns ?? 20)}
+        fields={[
+          { key: "persona_name", label: "Name", value: own?.persona_name ?? "", inherited: c.persona_name, from: from?.persona_name },
+          { key: "office_location", label: "Office location", value: own?.office_location ?? "", inherited: c.office_location, from: from?.office_location,
+            help: "Where we say the office is when somebody asks." },
+          { key: "service_area_note", label: "Service area", value: own?.service_area_note ?? "", inherited: c.service_area_note, from: from?.service_area_note },
+          { key: "services_included", label: "What we cover", long: true, value: own?.services_included ?? "", inherited: c.services_included, from: from?.services_included },
+          { key: "services_excluded", label: "What we do not cover", long: true, value: own?.services_excluded ?? "", inherited: c.services_excluded, from: from?.services_excluded },
+          { key: "offsite_rules", label: "Off-site quotes", long: true, value: own?.offsite_rules ?? "", inherited: c.offsite_rules, from: from?.offsite_rules },
+          { key: "tone_rules", label: "Tone", long: true, value: own?.tone_rules ?? "", inherited: c.tone_rules, from: from?.tone_rules },
+        ]}
+      />
+
       {[
         ["What we cover", c.services_included],
         ["What we do not cover", c.services_excluded],
@@ -141,15 +166,20 @@ export default async function AgentConfigPage({
         </section>
       ))}
 
-      {(c.office_location || c.service_area_note) && (
+      {/* Only when this level is genuinely still showing the CA-derived
+          default. The first version fired whenever a location existed at all,
+          so it went on warning that New York needed its own value long after
+          New York had one — Garden City, set on the state row. A warning that
+          is wrong is worse than no warning: people learn to scroll past it. */}
+      {from?.office_location === "global" && c.office_location && (
         <section className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 px-4 py-3">
-          <p className="text-[13px] font-semibold text-ppp-orange-700">Location answers need a per-workspace override</p>
+          <p className="text-[13px] font-semibold text-ppp-orange-700">Still answering with the default location</p>
           <p className="mt-1.5 text-[12.5px] text-ppp-orange-700/90 leading-relaxed">
-            The default says the office is in <strong>{c.office_location}</strong> and
-            that we serve <strong>{c.service_area_note}</strong>. Those came from the
-            CA LA campaign. A Nassau customer asking where the office is must not
-            hear Pasadena, so New York, New Jersey and Florida each need their own
-            values before going live.
+            This level has no location of its own, so it inherits the default —
+            office in <strong>{c.office_location}</strong>, serving{" "}
+            <strong>{c.service_area_note}</strong>. That came from the CA LA
+            campaign. Somebody here asking where the office is would be told
+            Pasadena, so set a location below before this one goes live.
           </p>
         </section>
       )}

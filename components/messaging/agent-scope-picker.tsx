@@ -11,10 +11,14 @@ import { useRouter } from "next/navigation";
  * so every one of them was unreachable without hand-editing the URL.
  */
 export default function AgentScopePicker({
-  workspaces, current, overrides, track,
+  workspaces, current, currentState, states, overrides, track,
 }: {
   workspaces: { id: string; name: string }[];
   current?: string;
+  /** The state layer being edited, if any. "Emily NY" is this tier: the main
+   *  Emily following New York's rules. */
+  currentState?: string;
+  states: string[];
   /** Which of the two conversations we are configuring. */
   track: "new_lead" | "nurture";
   /** Workspace ids that have a row of their own, marked so the list says which
@@ -23,13 +27,19 @@ export default function AgentScopePicker({
 }) {
   const router = useRouter();
 
-  const go = (ws: string | undefined, t: string) => {
+  const go = (opts: { ws?: string; state?: string; t?: string }) => {
     const p = new URLSearchParams();
-    if (ws) p.set("ws", ws);
+    if (opts.ws) p.set("ws", opts.ws);
+    else if (opts.state) p.set("state", opts.state);
+    const t = opts.t ?? track;
     if (t !== "new_lead") p.set("track", t);
     const q = p.toString();
     router.push(`/messaging/agent${q ? `?${q}` : ""}`);
   };
+
+  // One value for the select, so the three levels read as one choice rather
+  // than two controls that can contradict each other.
+  const selected = current ? `ws:${current}` : currentState ? `st:${currentState}` : "";
 
   return (
     <div className="space-y-3">
@@ -40,7 +50,7 @@ export default function AgentScopePicker({
         </span>
         <div className="flex gap-2">
           {([["new_lead", "New lead"], ["nurture", "Quote already sent"]] as const).map(([v, label]) => (
-            <button key={v} type="button" onClick={() => go(current, v)}
+            <button key={v} type="button" onClick={() => go({ ws: current, state: currentState, t: v })}
               aria-pressed={track === v}
               className={[
                 "flex-1 min-h-[44px] px-3 rounded-xl text-[13px] font-semibold border touch-manipulation",
@@ -59,19 +69,30 @@ export default function AgentScopePicker({
       </label>
       <select
         id="agent-scope"
-        value={current ?? ""}
+        value={selected}
         onChange={(e) => {
           const v = e.target.value;
-          go(v || undefined, track);
+          if (v.startsWith("ws:")) go({ ws: v.slice(3) });
+          else if (v.startsWith("st:")) go({ state: v.slice(3) });
+          else go({});
         }}
         className="w-full min-h-[44px] rounded-xl border border-ppp-charcoal-200 bg-white px-3 text-[14px] text-ppp-charcoal touch-manipulation"
       >
-        <option value="">The default — every workspace with no rules of its own</option>
-        {workspaces.map((w) => (
-          <option key={w.id} value={w.id}>
-            {w.name}{overrides.includes(w.id) ? " — has its own rules" : ""}
-          </option>
-        ))}
+        <option value="">Emily — the default every workspace inherits</option>
+        {states.length > 0 && (
+          <optgroup label="By state — the main Emily following that state's rules">
+            {states.map((st) => (
+              <option key={st} value={`st:${st}`}>Emily {st}</option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="One workspace only">
+          {workspaces.map((w) => (
+            <option key={w.id} value={`ws:${w.id}`}>
+              {w.name}{overrides.includes(w.id) ? " — has its own rules" : ""}
+            </option>
+          ))}
+        </optgroup>
       </select>
     </div>
     </div>

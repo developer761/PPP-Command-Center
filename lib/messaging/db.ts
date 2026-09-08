@@ -261,6 +261,14 @@ export type AgentConfig = {
   booking_hours: Record<string, { open: string; close: string }>;
 };
 
+/** States that have rules of their own — the "Emily NY" tier. */
+export async function configuredStates(track: string = "new_lead"): Promise<string[]> {
+  const sb = messagingDb();
+  const { data } = await sb.from("sms_agent_configs")
+    .select("state_code").eq("scope", "state").eq("track", track).order("state_code");
+  return (data ?? []).map((r) => r.state_code).filter((v): v is string => !!v);
+}
+
 /** Workspaces that carry a config row of their own, so the picker can say
  *  which ones actually differ from the default. */
 export async function workspacesWithOwnConfig(track: string = "new_lead"): Promise<string[]> {
@@ -283,7 +291,7 @@ export async function workspacesWithOwnConfig(track: string = "new_lead"): Promi
  * `from` reports which tier each field came from, so "why does it say that"
  * has an answer on the page rather than in the database.
  */
-export async function loadAgentConfig(workspaceId?: string, track: string = "new_lead") {
+export async function loadAgentConfig(workspaceId?: string, track: string = "new_lead", stateCode?: string) {
   const sb = messagingDb();
   const [{ data: rows }, { data: ws }] = await Promise.all([
     sb.from("sms_agent_configs").select("*"),
@@ -295,7 +303,9 @@ export async function loadAgentConfig(workspaceId?: string, track: string = "new
     .filter((c) => (c.track ?? "new_lead") === track);
   const base = all.find((c) => c.scope === "global");
 
-  const state = ws?.name ? stateOfWorkspace(ws.name) : null;
+  // An explicit state is being VIEWED directly ("Emily NY"); otherwise it is
+  // derived from the workspace being viewed.
+  const state = stateCode ?? (ws?.name ? stateOfWorkspace(ws.name) : null);
   const layers = all.filter((r) =>
     r.scope === "global"
     || (r.scope === "state" && state !== null && r.state_code === state)
@@ -303,8 +313,19 @@ export async function loadAgentConfig(workspaceId?: string, track: string = "new
   );
   const { value, from } = resolveAgentConfig(layers);
 
+  // The row for the tier being VIEWED, unresolved. The editor needs this
+  // rather than the resolved config: a box showing an inherited value looks
+  // identical to one that sets it, and saving would silently copy the parent's
+  // wording down a level where it can then never follow a change to it.
+  const own = workspaceId
+    ? all.find((r) => r.scope === "workspace" && r.workspace_id === workspaceId) ?? null
+    : stateCode
+      ? all.find((r) => r.scope === "state" && r.state_code === stateCode) ?? null
+      : all.find((r) => r.scope === "global") ?? null;
+
   return {
     config: layers.length ? (value as unknown as AgentConfig) : null,
+    own: own as unknown as AgentConfig | null,
     isOverride: layers.some((l) => l.scope === "workspace"),
     hasStateLayer: layers.some((l) => l.scope === "state"),
     state,
