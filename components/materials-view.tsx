@@ -80,6 +80,7 @@ import {
   type RoomSurface,
 } from "@/lib/supplier-order/estimate-gallons";
 import { capabilitiesFor } from "@/lib/auth/roles";
+import LineItemNotes from "@/components/line-item-notes";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
@@ -2338,6 +2339,11 @@ function LineItemRow({
               <span>{item.raw.wallSurfaceArea.toLocaleString()} sq ft wall</span>
             )}
           </div>
+
+          {/* Kate 2026-09-08 — the rep's quote-line notes, between the scope
+              caption and the sq ft box. This row is not inside a collapse toggle,
+              so the notes control owns its own click here. */}
+          <LineItemNotes notes={item.raw.description} />
 
           {/* Editable per-room sqft — Karan 2026-06-13. The PPP team rarely
               fills Sq_Footage__c in Salesforce (~77% of rooms empty per the

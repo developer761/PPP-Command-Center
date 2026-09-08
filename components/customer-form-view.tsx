@@ -1455,14 +1455,6 @@ function LineItemSection({
             {hasNoSurfaces ? "No surfaces selected" : `Surfaces: ${surfaces.join(", ")}`}
           </span>
         </div>
-        {/* Kate 2026-09-04 — the rep's quote-line notes, directly beneath the
-            room heading (the spot she circled). Renders nothing when the line
-            has none, and only while the room is expanded: collapsed, the room
-            already shows its own one-line colour summary and a second dense
-            line there would bury it. */}
-        {!collapsed && (
-          <LineItemNotes notes={lineItem.lineItemNotes} tone={isInternal ? "internal" : "customer"} />
-        )}
         {collapsed && (
           <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-ppp-charcoal-700 bg-white border border-ppp-charcoal-100 rounded px-2 py-1">
             {filledOrSkipped && <span className="text-ppp-green">✓</span>}
@@ -1471,6 +1463,17 @@ function LineItemSection({
           </div>
         )}
       </button>
+      {/* Kate 2026-09-08 — the notes sit OUTSIDE the header button now. They
+          were nested inside it: a <button> within a <button>, which is invalid
+          markup, and the outer toggle swallowed every click — so hitting the
+          notes chevron collapsed the whole room instead of opening the notes.
+          Here they are still directly under the room heading, and the two
+          controls no longer fight over the same click. */}
+      {!collapsed && (
+        <div className="px-5 sm:px-7 pt-4">
+          <LineItemNotes notes={lineItem.lineItemNotes} tone={isInternal ? "internal" : "customer"} />
+        </div>
+      )}
       {!collapsed && (
         <div className="p-5 sm:p-7 space-y-5">
           {/* Kate round-3 #33: nothing was scoped for this room in Salesforce,
