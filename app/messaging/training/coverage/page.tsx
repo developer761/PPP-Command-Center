@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { loadTrainingCoverage } from "@/lib/messaging/db";
+import { loadTrainingCoverage, loadRetrievalCorpus } from "@/lib/messaging/db";
+import { retrievalSummary } from "@/lib/messaging/retrieval";
 import { THIN_THRESHOLD } from "@/lib/messaging/training-coverage";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,8 @@ const STATUS: Record<string, { label: string; tone: "good" | "warn" | "bad" }> =
  * which is a list somebody can go and work through.
  */
 export default async function TrainingCoverage() {
+  const corpus = await loadRetrievalCorpus();
+  const drawing = retrievalSummary(corpus);
   const { coverage, summary, ungraded, gradedNoReason } = await loadTrainingCoverage();
 
   const bySection = new Map<string, typeof coverage>();
@@ -63,6 +66,44 @@ export default async function TrainingCoverage() {
           the bot gets the rule right at all.
         </p>
       </header>
+
+      {/* The loop, closed. Everything on this page was disconnected from the
+          bot until retrieval was wired in, so the first useful question is not
+          "what is missing" but "is any of it reaching the thing that answers
+          customers". */}
+      <section className={[
+        "rounded-xl border px-4 py-3",
+        drawing.usableGood === 0 ? "border-ppp-orange-100 bg-ppp-orange-50" : "border-ppp-charcoal-100 bg-white",
+      ].join(" ")}>
+        <h2 className={`text-[13px] font-semibold ${drawing.usableGood === 0 ? "text-ppp-orange-700" : "text-ppp-charcoal"}`}>
+          What the bot is drawing on right now
+        </h2>
+        {drawing.usableGood === 0 ? (
+          <p className="mt-1 text-[12.5px] text-ppp-orange-700/90 leading-relaxed">
+            {drawing.usableBad > 0
+              ? `${drawing.usableBad} conversation${drawing.usableBad === 1 ? "" : "s"} showing what NOT to do, and none showing what to do. It can be told to avoid a mistake, but it has never been shown a conversation worth copying.`
+              : "Nothing. No example has ever reached the bot, so it is answering from its instructions alone."}
+          </p>
+        ) : (
+          <p className="mt-1 text-[12.5px] text-ppp-charcoal-600 leading-relaxed">
+            <strong className="tabular-nums">{drawing.usableGood}</strong> good{" "}
+            {drawing.usableGood === 1 ? "conversation" : "conversations"} to follow and{" "}
+            <strong className="tabular-nums">{drawing.usableBad}</strong> to avoid. The most
+            relevant few are put in front of it on every turn.
+          </p>
+        )}
+        {drawing.unapprovedGood > 0 && (
+          <p className="mt-1.5 text-[12px] text-ppp-charcoal-500 leading-relaxed">
+            {drawing.unapprovedGood} graded good but not approved, so {drawing.unapprovedGood === 1 ? "it is" : "they are"} not
+            being used. Approving is what makes a good example something to copy.
+          </p>
+        )}
+        {drawing.unscrubbed > 0 && (
+          <p className="mt-1.5 text-[12px] text-ppp-charcoal-500 leading-relaxed">
+            {drawing.unscrubbed} held back for having no PII scrub. Those never reach a prompt.
+          </p>
+        )}
+      </section>
 
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {([

@@ -18,6 +18,7 @@ import {
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
+import { examplesPrompt, type Selection } from "./retrieval";
 import { renderMessage, SILENT_INTENTS } from "./render";
 
 const MODEL = "claude-opus-5";
@@ -60,7 +61,7 @@ export type RunResult =
  * tier meaningful: change the office location for New York and this prompt
  * changes for every New York workspace without an edit.
  */
-export function buildSystemPrompt(cfg: AgentConfigForRun, hardNos: string[], track: Track = "new_lead", known?: KnownCustomer): string {
+export function buildSystemPrompt(cfg: AgentConfigForRun, hardNos: string[], track: Track = "new_lead", known?: KnownCustomer, examples?: Selection): string {
   const flow = cfg.required_flow.map((f, i) => `${i + 1}. ${f.replace(/_/g, " ")}`).join("\n");
 
   // Nurture is talking to somebody who has already had an estimator in their
@@ -99,6 +100,8 @@ ${cfg.tone_rules ?? "Friendly, brief, one question at a time."}
 ${cfg.office_location ? `Our office is in ${cfg.office_location}.` : ""}
 ${cfg.service_area_note ? `Where we serve: ${cfg.service_area_note}` : ""}
 ${knownCustomerPrompt(known)}
+
+${examples ? examplesPrompt(examples) : ""}
 
 ${track === "new_lead" ? `BEFORE SWITCHING TO A PHONE QUOTE:
 Say so first. If the job is small enough, or they want somebody out the same
@@ -165,6 +168,9 @@ export async function runAgentTurn(
   opts: {
     hardNos?: string[]; mediaCount?: number; lastAskedForInfo?: boolean;
     track?: Track; known?: KnownCustomer;
+    /** Graded conversations to imitate and to avoid. Selected by the caller so
+     *  this stays testable without a database. */
+    examples?: Selection;
     /** How much of the required flow is done. Omit and the ordering check is
      *  skipped, which is right for a caller with no conversation to track. */
     stage?: number;
@@ -205,7 +211,7 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known),
+      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples),
       messages: [{ role: "user", content: prompt }],
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model

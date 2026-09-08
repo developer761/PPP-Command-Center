@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
  * gated by app/messaging/layout.tsx.
  */
 import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
+import type { CorpusExample } from "./retrieval";
 
 export function messagingDb() {
   return createClient(
@@ -252,6 +253,43 @@ export type AgentConfig = {
   max_turns: number;
   booking_hours: Record<string, { open: string; close: string }>;
 };
+
+/**
+ * The corpus, for retrieval.
+ *
+ * Deliberately narrow: only the columns a prompt can use, and only rows that
+ * have been through the PII scrubber. An unscrubbed transcript cannot reach a
+ * model even by accident, because it is filtered in the query rather than
+ * downstream of it.
+ */
+export async function loadRetrievalCorpus(): Promise<CorpusExample[]> {
+  const sb = messagingDb();
+  const [{ data: rows }, { data: links }] = await Promise.all([
+    sb.from("sms_training_examples")
+      .select("id, transcript, conduct, approved, pii_scrubbed, conduct_note")
+      .eq("pii_scrubbed", true),
+    sb.from("sms_training_example_tags").select("example_id, tag_key, note"),
+  ]);
+
+  const tagsOf = new Map<string, string[]>();
+  const noteOf = new Map<string, string>();
+  for (const l of links ?? []) {
+    const list = tagsOf.get(l.example_id) ?? [];
+    list.push(l.tag_key);
+    tagsOf.set(l.example_id, list);
+    if (l.note && !noteOf.has(l.example_id)) noteOf.set(l.example_id, l.note);
+  }
+
+  return (rows ?? []).map((r) => ({
+    id: r.id,
+    transcript: typeof r.transcript === "string" ? r.transcript : JSON.stringify(r.transcript),
+    conduct: r.conduct as CorpusExample["conduct"],
+    approved: r.approved,
+    piiScrubbed: r.pii_scrubbed,
+    note: r.conduct_note ?? noteOf.get(r.id) ?? null,
+    tags: tagsOf.get(r.id) ?? [],
+  }));
+}
 
 /** States that have rules of their own — the "Emily NY" tier. */
 export async function configuredStates(track: string = "new_lead"): Promise<string[]> {

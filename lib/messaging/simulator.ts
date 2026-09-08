@@ -13,6 +13,8 @@
  */
 import { messagingDb } from "./db";
 import { classifyInbound } from "./compliance";
+import { selectExamples } from "./retrieval";
+import { loadRetrievalCorpus } from "./db";
 import type { Track } from "./agent-output";
 import type { KnownCustomer } from "./known-customer";
 import { runAgentTurn, agentAvailable, type AgentConfigForRun, type Turn } from "./agent-run";
@@ -166,6 +168,13 @@ export async function runSimTurn(input: {
     track,
     known: input.known,
     stage: input.stage,
+    // The whole point of the corpus. Selected per turn, because which rule is
+    // live depends on where the conversation has got to.
+    examples: selectExamples(await loadRetrievalCorpus(), {
+      stage: input.stage,
+      mediaCount: input.mediaCount,
+      track,
+    }),
   });
 
   if (!res.ok) {
