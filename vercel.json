@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/warm-snapshot",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/messaging-tick",
+      "schedule": "* * * * *"
     }
   ]
 }
