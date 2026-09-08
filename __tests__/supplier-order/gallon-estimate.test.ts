@@ -49,21 +49,24 @@ const byColor = (rooms: RoomTakeoff[]) =>
   Object.fromEntries(estimateOrderGallons(rooms).map((e) => [e.colorId, e]));
 
 describe("what PPP actually orders", () => {
-  it("8x10x8 bedroom — 1 gallon of wall paint, nothing else", () => {
+  it("8x10x8 bedroom — 1 gallon of walls, ceiling and trim in quarts", () => {
     const e = byColor([room(8, 10, 8)]);
-    expect(e.wall.gallons).toBe(1);
-    // Under a gallon each: the crew carries these.
-    expect(e.ceil.gallons).toBe(0);
-    expect(e.trim.gallons).toBe(0);
-    const total = Object.values(e).reduce((n, x) => n + x.gallons, 0);
-    expect(total, "Karan: 2 gallons max for this room").toBeLessThanOrEqual(2);
+    expect(e.wall.cans).toBe(1);
+    // Absent unit means gallons — the estimator's existing convention.
+    expect(e.wall.unit ?? "gal").toBe("gal");
+    // Katie 2026-09-08: under a gallon is priced in QUARTS rather than dropped.
+    // It used to order nothing and read "from stock".
+    expect(e.ceil.unit).toBe("qt");
+    expect(e.ceil.cans).toBe(1);
+    expect(e.trim.unit).toBe("qt");
+    expect(e.trim.cans).toBe(1);
   });
 
-  it("15x20x8 living room — 2 wall + 1 ceiling", () => {
+  it("15x20x8 living room — 2 wall + 1 ceiling, trim a quart", () => {
     const e = byColor([room(15, 20, 8)]);
     expect(e.wall.gallons).toBe(2);
     expect(e.ceil.gallons).toBe(1);
-    expect(e.trim.gallons).toBe(0);
+    expect(e.trim.unit).toBe("qt");
   });
 
   it("a big room still rolls into a 5-gallon bucket", () => {
@@ -95,11 +98,36 @@ describe("the two constants that decide the order", () => {
   });
 });
 
-describe("a line that rounds to nothing says why", () => {
-  it("flags sizedToZero rather than rendering a bare dash", () => {
+describe("a line under a gallon is priced in quarts, not dropped", () => {
+  it("orders quarts where it used to order nothing", () => {
+    // Katie 2026-09-08: "I would also recommend having the option to order 1
+    // quart of this paint." Trim at 0.13 gal used to read "from stock" and
+    // reach the vendor as no line at all.
     const e = byColor([room(8, 10, 8)]);
-    expect(e.trim.sizedToZero).toBe(true);
-    expect(formatOrderQuantity(e.trim)).toBe("under 1 gal — from stock");
+    expect(e.trim.sizedToZero).toBe(false);
+    expect(formatOrderQuantity(e.trim)).toBe("1 qt");
+  });
+
+  it("three quarts becomes a gallon", () => {
+    // Katie: "if we're ordering 3qts, the price makes sense to just order 1
+    // gallon." Four quarts IS a gallon, so at three the tin is cheaper.
+    //
+    // A 5x7 hallway computes 0.81 gallons of wall paint — 3.2 quarts, which
+    // floors to exactly 3 and is the only size that exercises the threshold.
+    // The first version used a 15x20 ceiling, which is 1.54 gallons and never
+    // enters the quart path at all: it passed with the threshold set to 99.
+    // Labelled Hallway on purpose, so the bathroom rule does not answer first.
+    const e = byColor([room(5, 7, 8, { roomLabel: "Hallway" })]);
+    expect(e.wall.unit ?? "gal").toBe("gal");
+    expect(e.wall.cans).toBe(1);
+  });
+
+  it("two quarts stays quarts", () => {
+    // The other side of the threshold, or the rule above passes by ordering a
+    // gallon for everything under one.
+    const e = byColor([room(4, 5, 8, { roomLabel: "Hallway" })]);
+    expect(e.wall.unit).toBe("qt");
+    expect(e.wall.cans).toBeLessThan(3);
   });
 
   it("does not confuse it with a room that has no measurements", () => {
@@ -141,42 +169,56 @@ describe("room-type defaults", () => {
     }
   });
 
-  it("the kitchen cap does NOT touch the ceiling", () => {
-    // Cabinets do not cover the ceiling. Capping a big kitchen's ceiling at a
-    // gallon would leave the crew short — this caught a real bug mid-build.
+  it("a kitchen ceiling on its own colour is capped too", () => {
+    // Karan 2026-09-08: "Kitchen ceiling should also be capped at 1 gallon
+    // unless it's folded into all the other ceilings."
     const e = byColor([room(20, 25, 9, { roomLabel: "Kitchen" })]);
-    expect(e.ceil.gallons).toBeGreaterThan(1);
-    expect(e.ceil.defaultedNote).toBeNull();
+    expect(e.ceil.cans).toBe(1);
+    expect(e.ceil.unit).toBe("gal");
+    expect(e.ceil.defaultedNote).toMatch(/Kitchen/);
   });
 
-  it("a colour shared with a normal room is sized normally", () => {
-    // The living room dominates; capping at a gallon would leave them short.
-    const e = byColor([
+  it("bathroom trim is a quart, not a gallon", () => {
+    // Katie named walls and ceilings. A catch-all also swept up TRIM and
+    // ordered a gallon of it for a few feet of casing — caught by running it.
+    const e = byColor([room(5, 7, 8, { roomLabel: "Bathroom" })]);
+    expect(e.trim.unit).toBe("qt");
+    expect(e.wall.unit).toBe("gal");
+  });
+
+  it("a shared kitchen contributes HALF its wall area", () => {
+    // Katie 2026-09-08: "if the surface area from dimensions = 300sq ft, then
+    // it only adds 150sq ft" — the cabinets are still there when the colour
+    // runs on into the dining room.
+    const shared = [
       room(10, 12, 8, { roomLabel: "Kitchen", surfaces: [surf("walls", "Walls", "shared", "Shared")] }),
       room(15, 20, 8, { roomLabel: "Living Room", surfaces: [surf("walls", "Walls", "shared", "Shared")] }),
-    ]);
-    expect(e.shared.gallons).toBeGreaterThan(1);
-    expect(e.shared.defaultedNote).toBeNull();
+    ];
+    const withKitchen = byColor(shared).shared;
+    const livingOnly = byColor([shared[1]]).shared;
+    const kitchenOnly = byColor([{ ...shared[0], roomLabel: "Kitchen" }]).shared;
+
+    // Halved, so it adds LESS than the kitchen would alone...
+    expect(withKitchen.totalSqft - livingOnly.totalSqft).toBeLessThan(kitchenOnly.totalSqft);
+    // ...but more than nothing: the kitchen is still being painted.
+    expect(withKitchen.totalSqft).toBeGreaterThan(livingOnly.totalSqft);
+    expect(withKitchen.defaultedNote).toMatch(/half/i);
   });
 
-  it("a bathroom is ordered in quarts", () => {
+  it("bathroom walls are a gallon, the ceiling a quart", () => {
+    // Katie 2026-09-08 revised this: the maths gives three quarts for a 5x7,
+    // and four quarts IS a gallon, so the tin is cheaper.
     const e = byColor([room(5, 7, 8, { roomLabel: "Bathroom" })]);
-    expect(e.wall.unit).toBe("qt");
-    expect(e.wall.cans).toBe(3);
-    expect(formatOrderQuantity(e.wall)).toBe("3 qt");
-    expect(e.wall.defaultedNote).toMatch(/quarts/i);
+    expect(e.wall.unit).toBe("gal");
+    expect(e.wall.cans).toBe(1);
+    expect(e.ceil.unit).toBe("qt");
+    expect(e.ceil.cans).toBe(1);
   });
 
-  it("a bathroom never orders nothing", () => {
-    // A 2x3 water closet computes 0.92 quarts, which floors to ZERO — a room
-    // being painted with no paint on the order. The minimum is what stops that.
-    //
-    // Sized deliberately small: a 4x5 powder room already comes to 2 quarts on
-    // its own, so it passes with the minimum deleted and proves nothing. That
-    // first version of this test could not fail — verified.
+  it("even a tiny water closet gets paint", () => {
+    // A 2x3 computes well under a quart. It must never order nothing.
     const e = byColor([room(2, 3, 8, { roomLabel: "Powder Room" })]);
-    expect(e.wall.unit).toBe("qt");
-    expect(e.wall.cans).toBe(1);
+    expect(e.wall.cans).toBeGreaterThanOrEqual(1);
   });
 
   it("classifies the labels PPP actually types", () => {

@@ -70,6 +70,17 @@ export const COVERAGE_CONFIG = {
   // the crew short.
   kitchenDefaultGallons: 1,
   quartsPerGallon: 4,
+  // Katie 2026-09-08. A kitchen sharing a colour with another room is no longer
+  // sized at full area: the cabinets still cover half its wall. "If the surface
+  // area from dimensions = 300sq ft, then it only adds 150sq ft."
+  kitchenSharedAreaFactor: 0.5,
+  // Katie: "bathroom walls should be 1 gallon, bathroom ceilings are 1 quart."
+  bathroomWallGallons: 1,
+  bathroomCeilingQuarts: 1,
+  // Katie: "generally if we're ordering 3qts, the price makes sense to just
+  // order 1 gallon." Four quarts IS a gallon, so at three the tin is cheaper
+  // than the quarts and the crew gets more paint for less money.
+  quartsBecomeGallonAt: 3,
   // Packaging: individual cans up to this many gallons; switch to buckets above it.
   bucketThresholdGallons: 4,
   bucketSizeGallons: 5,
@@ -334,6 +345,10 @@ type Bucket = {
   /** Room types feeding this colour. A room-type default applies only when
    *  every one of them is that type — see kitchenDefaultGallons. */
   roomTypes: Set<"kitchen" | "bathroom" | "other">;
+  /** Wall area to REMOVE if this colour turns out to be shared with a normal
+   *  room — the kitchen half Katie asked for. Held separately because sharing
+   *  is only known once every room has contributed. */
+  kitchenSharedSqft: number;
   /** Which surface kinds this colour covers. The kitchen cap is about the WALL
    *  the cabinets stand against, so it must not touch a colour that also paints
    *  the ceiling — cabinets do not cover that, and a big kitchen ceiling capped
@@ -363,6 +378,7 @@ export function estimateOrderGallons(
         contributingRoomCount: 0,
         roomTypes: new Set(),
         kinds: new Set(),
+        kitchenSharedSqft: 0,
       };
       buckets.set(key, b);
     }
@@ -404,7 +420,16 @@ export function estimateOrderGallons(
       }
       if (s.kind !== "unsized") {
         b.kinds.add(s.kind);
+        // A kitchen sharing its colour contributes HALF its wall area (Katie
+        // 2026-09-08) — the cabinets are still there even when the colour runs
+        // on into the dining room. Applied to walls only: cabinets do not cover
+        // the ceiling. Whether the colour is actually shared is not known until
+        // every room has been walked, so the halved figure is accumulated
+        // separately and chosen at the end.
         b.totalSqft += sqft;
+        b.kitchenSharedSqft += s.kind === "walls" && classifyRoomType(room.roomLabel) === "kitchen"
+          ? sqft * (1 - cfg.kitchenSharedAreaFactor)
+          : 0;
         if (missing) b.anyMissingFloor = true;
       }
     }
@@ -415,38 +440,71 @@ export function estimateOrderGallons(
     // A bucket is "unsized" only if it had NO sizable coverage at all (every
     // surface was an unsizable one). If it also has real coverage, size it.
     const sizable = b.totalSqft > 0;
+    // The area we REPORT has to be the area we priced, or the sq ft on screen
+    // contradicts the gallons beside it — and Katie asked for that figure to be
+    // shown precisely so a worker can check one against the other.
+    let reportedSqft = b.totalSqft;
     let bucketsCount = 0;
     let cans = 0;
     let unit: PaintUnit | undefined;
     let defaultedNote: string | null = null;
     if (sizable) {
-      const rawGallons = (b.totalSqft / cfg.coverageSqftPerGallon) * (1 + cfg.bufferPct);
-      ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
-
-      // ROOM-TYPE DEFAULTS — only when EVERY room feeding this colour is the
-      // same special type. A wall colour shared with a normal room is sized
-      // normally, because that room dominates and a cap would leave the crew
-      // short. Both defaults are flagged rather than applied silently: they are
-      // rules of thumb standing in for data (a cabinet run) we do not have.
       const onlyType = b.roomTypes.size === 1 ? [...b.roomTypes][0] : null;
-      // Walls ONLY. A colour that also paints the kitchen ceiling is sized
-      // normally: the cabinets are irrelevant to it, and capping the pair at a
-      // gallon under-orders the ceiling of a big kitchen.
+      const shared = b.roomTypes.size > 1;
+      // Cabinets justify discounting the WALL. They do not cover the ceiling,
+      // so a colour that paints both is sized on its real area.
       const wallsOnly = b.kinds.size === 1 && b.kinds.has("walls");
-      if (onlyType === "kitchen" && wallsOnly) {
+      const ceilingOnly = b.kinds.size === 1 && b.kinds.has("ceiling");
+
+      // A shared kitchen contributes half its wall area (Katie 2026-09-08),
+      // rather than the all-or-nothing cap that applied before.
+      reportedSqft = shared ? b.totalSqft - b.kitchenSharedSqft : b.totalSqft;
+      const rawGallons = (reportedSqft / cfg.coverageSqftPerGallon) * (1 + cfg.bufferPct);
+      ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
+      if (shared && b.kitchenSharedSqft > 0) {
+        defaultedNote = "Kitchen shares this colour — its wall area counted at half for the cabinets. Please review.";
+      }
+
+      if (onlyType === "kitchen" && (wallsOnly || ceilingOnly)) {
+        // Kitchen on its own colour: one gallon, whatever the size. Karan
+        // extended this to the ceiling on 2026-09-08 — "unless it's folded into
+        // all the other ceilings", which is the `shared` branch above.
         bucketsCount = 0;
         cans = cfg.kitchenDefaultGallons;
+        unit = "gal";
         defaultedNote = `Kitchen — defaulted to ${cfg.kitchenDefaultGallons} gal because cabinets cover most of the wall. Please review.`;
-      } else if (onlyType === "bathroom") {
-        // Quarts, not gallons: a 5x7 bathroom is under a gallon, and rounding
-        // that DOWN would order nothing at all for a room being painted.
-        const quarts = Math.floor(rawGallons * cfg.quartsPerGallon);
+      } else if (onlyType === "bathroom" && ceilingOnly) {
         bucketsCount = 0;
-        cans = Math.max(1, quarts);
+        cans = cfg.bathroomCeilingQuarts;
         unit = "qt";
-        defaultedNote = "Bathroom — ordered in quarts. Please review.";
+        defaultedNote = `Bathroom ceiling — defaulted to ${cfg.bathroomCeilingQuarts} qt. Please review.`;
+      } else if (onlyType === "bathroom" && wallsOnly) {
+        // WALLS only. Katie named walls and ceilings; a catch-all here also
+        // swept up bathroom TRIM and ordered a gallon of it, which is absurd
+        // for a few feet of casing — trim falls through to the quart path below.
+        //
+        // Why a gallon and not the three quarts the maths gives: four quarts IS
+        // a gallon, so at three the tin is cheaper and the crew gets more paint.
+        bucketsCount = 0;
+        cans = cfg.bathroomWallGallons;
+        unit = "gal";
+        defaultedNote = `Bathroom — defaulted to ${cfg.bathroomWallGallons} gal. Please review.`;
+      } else if (bucketsCount === 0 && cans === 0) {
+        // UNDER A GALLON. This used to order nothing at all and read "from
+        // stock". Katie: "I would also recommend having the option to order 1
+        // quart of this paint." So it is priced in quarts instead of dropped —
+        // still the cheapest honest answer, but it reaches the vendor.
+        const quarts = Math.max(1, Math.floor(rawGallons * cfg.quartsPerGallon));
+        if (quarts >= cfg.quartsBecomeGallonAt) {
+          cans = 1;
+          unit = "gal";
+        } else {
+          cans = quarts;
+          unit = "qt";
+        }
       }
     }
+
     // manualOnly = EVERY contributing room had zero measurement data on SF, so
     // the math couldn't even attempt a sensible estimate. UI/email surfaces a
     // "MUST be filled manually" banner; gallons stay at 0. Karan 2026-06-09.
@@ -459,7 +517,7 @@ export function estimateOrderGallons(
       surfaces: Array.from(b.surfaces),
       rooms: Array.from(b.rooms),
       placements: Array.from(b.placements, ([surface, rooms]) => ({ surface, rooms: Array.from(rooms) })),
-      totalSqft: Math.round(b.totalSqft),
+      totalSqft: Math.round(reportedSqft),
       buckets: bucketsCount,
       cans,
       sizedToZero: sizable && bucketsCount === 0 && cans === 0,
