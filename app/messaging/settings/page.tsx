@@ -80,6 +80,15 @@ export default async function MessagingSettings({
         </section>
       ))}
 
+      <a href="/messaging/settings/opt-outs"
+        className="block rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-3 touch-manipulation">
+        <h2 className="font-semibold text-ppp-charcoal text-[14px]">Who we must not text</h2>
+        <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
+          Load Hatch&apos;s suppression list. This is checked before every send and
+          has to be in before the first real message goes out.
+        </p>
+      </a>
+
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-3">
         <h2 className="font-semibold text-ppp-charcoal text-[14px]">Not on this page, on purpose</h2>
         <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { loadReporting, readinessChecks, activeWorkspaces, type ReportRange } from "@/lib/messaging/db";
 import { humanSeconds } from "@/lib/messaging/metrics";
+import { transportChoice } from "@/lib/messaging/transport-config";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ export default async function MessagingDashboard({
     activeWorkspaces(),
   ]);
   const wsName = workspaces.find((w) => w.id === workspaceId)?.name;
+  const transport = transportChoice();
   const href = (extra: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
     const merged = { range, ws: workspaceId, ...extra };
@@ -62,8 +64,8 @@ export default async function MessagingDashboard({
     { done: ready.activeWorkspaces > 0, label: `${ready.activeWorkspaces} workspaces live`, detail: "NY, NJ and Florida — one timezone." },
     { done: ready.missingNumbers === 0, label: ready.missingNumbers === 0 ? "Every live workspace has a number" : `${ready.missingNumbers} live workspace(s) with no number`, detail: "Without one it cannot send from the local area code the customer replies to." },
     { done: ready.optOuts > 0, label: ready.optOuts > 0 ? `${ready.optOuts} numbers suppressed` : "Opt-out list not imported", detail: "Hard gate on the first send. Somebody who told Hatch to stop has told PPP to stop." },
-    { done: false, label: "Carrier not connected", detail: "Every send is recorded and none is delivered until this is done." },
-    { done: false, label: "Inbound replies not received", detail: "There is no webhook yet, so the agent never sees an answer. Everything downstream of a reply waits on this." },
+    { done: transport.live, label: transport.live ? "Carrier connected — messages are being delivered" : "Carrier not delivering", detail: transport.why },
+    { done: true, label: "Inbound replies can be received", detail: "POST /api/webhooks/sms-inbound, SNS-signature verified. Point the End User Messaging topic at it once the numbers exist." },
     { done: ready.cronSecret, label: ready.cronSecret ? "Scheduler authenticated" : "CRON_SECRET not set", detail: "The tick refuses to run without it rather than running open." },
     { done: ready.activeCampaigns > 0, label: ready.activeCampaigns > 0 ? `${ready.activeCampaigns} campaigns active` : "No campaigns active", detail: "Imported from Hatch, then editable under Automations." },
   ];
@@ -71,6 +73,18 @@ export default async function MessagingDashboard({
 
   return (
     <main className="max-w-5xl mx-auto px-4 py-4 pb-safe space-y-5">
+      {/* The single most important fact on the page, and the one somebody
+          testing must never have to guess at. */}
+      {!transport.live && (
+        <section className="rounded-xl border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-4 py-3">
+          <p className="text-[13px] font-semibold text-ppp-charcoal">Nothing is being delivered</p>
+          <p className="mt-1 text-[12.5px] text-ppp-charcoal-600 leading-relaxed">
+            {transport.why} Drafts are written down and the whole system runs
+            end to end — this is the state to test in.
+          </p>
+        </section>
+      )}
+
       <header className="space-y-2.5">
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="font-bold text-ppp-charcoal truncate">{wsName ?? "All workspaces"}</h1>
