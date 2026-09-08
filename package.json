@@ -13,6 +13,7 @@
     "smoke": "node scripts/smoke-pages.mjs",
     "check:enums": "node scripts/check-db-enums.mjs",
     "check:schema": "node scripts/check-schema-drift.mjs",
+    "verify:messaging": "node --experimental-strip-types --import ./scripts/ts-resolve-register.mjs scripts/verify-messaging-e2e.mjs",
     "verify": "node scripts/verify.mjs",
     "build:aia-template": "node scripts/build-aia-template.mjs"
   },
