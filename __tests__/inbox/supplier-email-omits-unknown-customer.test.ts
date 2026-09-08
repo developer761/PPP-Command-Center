@@ -20,7 +20,7 @@ import { DEFAULT_SUPPLIER_TEMPLATE, render } from "@/lib/supplier-order/template
  */
 describe("a supplier email never advertises a missing customer", () => {
   const base = {
-    po_number: "PPP-WO00316046",
+    po_number: "00316046",
     wo_number: "00316046",
     ppp_brand: "Precision Painting Plus",
     required_by_date: "Sep 5",
@@ -33,8 +33,9 @@ describe("a supplier email never advertises a missing customer", () => {
     const out = render(DEFAULT_SUPPLIER_TEMPLATE.subject, { ...base, customer_name: "" });
     expect(out).not.toMatch(/unknown/i);
     expect(out).not.toMatch(/—\s*\(/);
-    expect(out).toContain("PPP-WO00316046");
-    expect(out).toContain("WO 00316046");
+    // Katie item 15/16 (2026-09-08) made the PO the bare work-order number and
+    // dropped the trailing "(WO …)", which said the same thing twice.
+    expect(out).toContain(base.po_number);
   });
 
   it("still shows the customer when there IS one", () => {
@@ -45,14 +46,16 @@ describe("a supplier email never advertises a missing customer", () => {
   it("drops the whole 'Customer:' line rather than printing it blank", () => {
     const out = render(DEFAULT_SUPPLIER_TEMPLATE.intro, { ...base, customer_name: "" });
     expect(out).not.toMatch(/Customer:/);
+    expect(out).not.toMatch(/This order is for/);
     expect(out).not.toMatch(/unknown/i);
-    // the job is still identifiable
-    expect(out).toContain("Work Order: #00316046");
+    // the job is still identifiable — by its PO, which IS the work order number
+    expect(out).toContain(`PO Number: ${base.po_number}`);
   });
 
   it("keeps the Customer line when a name exists", () => {
     const out = render(DEFAULT_SUPPLIER_TEMPLATE.intro, { ...base, customer_name: "Jane Doe" });
-    expect(out).toContain("Customer: Jane Doe");
+    // Katie item 17: a sentence, not a labelled field.
+    expect(out).toContain("This order is for Jane Doe.");
   });
 
   it("the placeholder string is gone from the builder entirely", async () => {

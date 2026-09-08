@@ -33,23 +33,31 @@ export type SupplierEmailTemplate = {
 export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
   // The customer clause is CONDITIONAL: a work order with no Account resolved
   // used to mail the supplier "PPP Order PPP-WO00316046 — (unknown customer)
-  // (WO 00316046)". The PO and WO already identify the order, so when there is
-  // no customer the clause disappears instead of advertising a gap in our data.
+  // (WO 00316046)". The PO already identifies the order, so when there is no
+  // customer the clause disappears instead of advertising a gap in our data.
+  //
+  // The trailing "(WO …)" is gone with it — Katie item 16: the PO IS the work
+  // order number now, so printing both said the same thing twice.
   subject:
-    "PPP Order {{po_number}}{{#customer_name}} — {{customer_name}}{{/customer_name}} (WO {{wo_number}})",
+    "PPP Order {{po_number}}{{#customer_name}} — {{customer_name}}{{/customer_name}}",
   // R4.23: the vendor's own name came out of the greeting. They know who they
   // are; it read as mail-merge filler, and when supplier_settings held a
   // slightly different name than the account it was visibly wrong.
   greeting: "Hi there,",
+  // Katie items 16 + 18, 2026-09-08:
+  //   · "PO should = WO Number. Once the WO number is listed under PO, we can
+  //     remove the standalone WO line." The PO and the work order were the same
+  //     job printed twice; the Work Order line is gone.
+  //   · "Customer Number is our PPP account number" — that is the PPP Account
+  //     line, which was already here.
+  //   · "Deliver on … by 8AM", replacing "Required by".
   intro:
     "Please prepare the following order for {{ppp_brand}}.\n\n" +
     "{{#ppp_account_number}}PPP Account: {{ppp_account_number}}\n{{/ppp_account_number}}" +
     "PO Number: {{po_number}}\n" +
-    "Required by: {{required_by_date}}\n" +
-    "Fulfillment: {{fulfillment_block}}\n\n" +
-    "CUSTOMER + JOB\n" +
-    "{{#customer_name}}Customer: {{customer_name}}\n{{/customer_name}}" +
-    "Work Order: #{{wo_number}}\n",
+    "Deliver on: {{required_by_date}}, by {{delivery_time}}\n" +
+    "Fulfillment: {{fulfillment_block}}\n" +
+    "{{#customer_name}}\nThis order is for {{customer_name}}.\n{{/customer_name}}",
   // R4.28: "All replies route to our Command Center inbox." removed — it's an
   // internal detail the vendor has no use for, and it read like a warning.
   outro: "Reply to this email to confirm + provide delivery date / tracking info.\n",

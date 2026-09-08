@@ -63,6 +63,9 @@ export async function loadOrderPageData(
         .filter(Boolean)
         .join(" · "),
       sqft: li.raw.sqFootage,
+      // Katie item 13 — the paintable area, which is what the gallons come
+      // from. 0 when the rep never measured it, and then only floor shows.
+      wallSqft: li.raw.wallSurfaceArea ?? 0,
       // Kate 2026-09-04 — the rep's own scope notes, so this list shows what
       // the job covers rather than just how many lines it has.
       notes: li.raw.description ?? null,

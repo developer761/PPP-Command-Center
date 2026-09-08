@@ -45,7 +45,13 @@ export type SourceLine = {
   room: string;
   surfaces: string[];
   detail: string;
+  /** Floor area — Sq_Footage__c, i.e. width x length. */
   sqft: number;
+  /** PAINTABLE wall area — Wall_Surface_Area__c when the rep measured it,
+   *  else 0. Katie item 13 asked for both on the line: the floor area is
+   *  what Salesforce holds, but the WALL area is what the gallons are
+   *  computed from, and one figure alone leaves nothing to check. */
+  wallSqft: number;
   /** SF `Description` — the rep's scope notes on the quote line. PPP's field
    *  team adds ONE line item and lists the real rooms here, so without it this
    *  panel can read "1 line item" for a six-room job (Kate 2026-09-04). */
@@ -504,7 +510,10 @@ export default function OrderBuilderView({
                     )}
                     <div className="text-ppp-charcoal-500 mt-0.5">
                       {l.detail}
-                      {l.sqft > 0 ? `${l.detail ? " · " : ""}${l.sqft.toLocaleString()} sq ft` : ""}
+                      {l.sqft > 0 ? `${l.detail ? " · " : ""}${l.sqft.toLocaleString()} sq ft floor` : ""}
+                      {l.wallSqft > 0
+                        ? `${l.detail || l.sqft > 0 ? " · " : ""}${l.wallSqft.toLocaleString()} sq ft wall`
+                        : ""}
                     </div>
                     {/* Kate 2026-09-04 — the rooms the rep actually listed. */}
                     <LineItemNotes notes={l.notes} />

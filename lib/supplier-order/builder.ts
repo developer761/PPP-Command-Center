@@ -41,6 +41,9 @@ export type FulfillmentMethod = "delivery" | "pickup";
  * supplier_orders with this id so it surfaces in the Sent view + WO
  * progress alongside paint orders.
  */
+/** Katie item 18, 2026-09-08 — the hour a delivery is wanted by. */
+export const DEFAULT_DELIVERY_TIME = "8AM";
+
 export const GENERAL_SUPPLIES_ID = "__general__";
 
 /** Label shown to workers + included in the email. Override via env if PPP
@@ -301,9 +304,14 @@ export type SupplierOrderDraft = {
  * spaces, keeping it to just our WO number is best." Old format was
  * `PPP-WO00284666-ABO-000123` (16+ chars after PPP-WO). New format:
  *
- *   - First order on a WO  →  `PPP-WO00284666`
- *   - Second order same WO →  `PPP-WO00284666-2`
- *   - Third                →  `PPP-WO00284666-3`
+ *   - First order on a WO  →  `00284666`
+ *   - Second order same WO →  `00284666-2`
+ *   - Third                →  `00284666-3`
+ *
+ * Katie 2026-09-08 dropped the `PPP-WO` prefix as well: the PO number IS the
+ * work order number, which is why the standalone "Work Order:" line came off
+ * the email. Orders already placed keep their `PPP-WO…` numbers and both
+ * spellings are treated as taken, so numbering does not restart mid-job.
  *
  * Counter is across all suppliers on the WO (Aboffs first → suffix omitted;
  * Sunbelt second → -2). Workers + retailers see at-a-glance which WO an
@@ -343,7 +351,15 @@ export type SupplierOrderDraft = {
  * numbers in use — every status — and take the first free slot.
  */
 export async function nextPoNumber(workOrderId: string, woNumber: string): Promise<string> {
-  const base = `PPP-WO${woNumber}`;
+  // Katie item 15/16, 2026-09-08: "list it under PO number only, not PPP-WO,
+  // just the string of numbers", and "PO should = WO Number". So the PO IS the
+  // work order number, bare.
+  const base = woNumber;
+  // Orders placed under the OLD `PPP-WO…` format still hold their numbers, and
+  // they are the same job. Both spellings count as taken, so a second order on
+  // a work order that already has one becomes -2 rather than restarting at the
+  // bare number and reading like the first.
+  const legacyBase = `PPP-WO${woNumber}`;
   try {
     const sb = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -360,12 +376,12 @@ export async function nextPoNumber(workOrderId: string, woNumber: string): Promi
           .map((r) => (r.po_number ?? "").trim())
           .filter(Boolean)
       );
-      if (!taken.has(base)) return base;
+      if (!taken.has(base) && !taken.has(legacyBase)) return base;
       // Suffix upward past every number this WO has ever used. Bounded so a
       // corrupt table can't spin; the timestamp fallback below covers it.
       for (let n = 2; n <= 500; n++) {
         const candidate = `${base}-${n}`;
-        if (!taken.has(candidate)) return candidate;
+        if (!taken.has(candidate) && !taken.has(`${legacyBase}-${n}`)) return candidate;
       }
     }
     if (error) console.warn("[supplier-order] PO lookup failed:", error.message);
@@ -1195,6 +1211,10 @@ export async function buildSupplierOrderDraft(
     // omitted entirely. Workers should never see placeholders.
     ppp_account_number: settings.pppAccountNumber ?? "",
     po_number: poNumber,
+    // Katie item 18: "let's default to 8AM and let them update manually as
+    // needed." A per-supplier override lives in supplier_settings, so a
+    // vendor who cannot make 8 is changed once, not on every order.
+    delivery_time: DEFAULT_DELIVERY_TIME,
     customer_name: customerName,
     customer_first: customerFirst,
     wo_number: input.workOrder.workOrderNumber ?? "",

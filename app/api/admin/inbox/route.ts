@@ -160,8 +160,10 @@ export async function GET(request: Request) {
       .select("id, po_number")
       .in("id", orderIds);
     for (const o of orders ?? []) {
-      // PPP-WO00316046 / PPP-WO00314545-2 → 00316046
-      const m = /WO(\d+)/.exec(String(o.po_number ?? ""));
+      // Both PO formats: the bare number Katie asked for on 2026-09-08
+      // (00316046 / 00316046-2) and the legacy PPP-WO00316046 that orders
+      // already placed still carry.
+      const m = /(?:WO)?(\d{5,})/.exec(String(o.po_number ?? ""));
       if (m) woNumberByOrderId.set(o.id as string, m[1]);
     }
   }

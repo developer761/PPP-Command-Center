@@ -302,9 +302,24 @@ export async function POST(request: Request) {
   // to `PPP-WO123`. The DB lookup is exact-match so any false alpha mass-up
   // here just falls through to "unmatched" — no wrong thread.
   if (kind === "unmatched" && subject) {
-    const poMatch = subject.match(/PPP-WO[A-Z0-9]+(?:-[A-Z]+-\d+)?(?:-\d+)?/i);
+    // Legacy PPP-WO… first, then the bare number Katie moved us to on
+    // 2026-09-08. Order matters: a legacy subject contains digits too, and
+    // matching those first would truncate PPP-WO123-ABO-1 to "123".
+    //
+    // The bare pattern is anchored on "PPP Order " from our own subject line,
+    // because an unanchored run of digits in a REPLY body — a phone number, an
+    // invoice, a date — would match anything. The DB lookup is exact, so a
+    // wrong guess simply finds no row, but a wrong guess that DOES hit another
+    // order would thread a supplier's reply onto the wrong job.
+    const poMatch =
+      subject.match(/PPP-WO[A-Z0-9]+(?:-[A-Z]+-\d+)?(?:-\d+)?/i) ??
+      subject.match(/PPP Order\s+(\d{5,}(?:-\d+)?)/i);
     if (poMatch) {
-      const poNumber = poMatch[0];
+      // Group 1 when the bare-number pattern matched (its match includes the
+      // "PPP Order " anchor); group 0 for the legacy pattern, which has no
+      // capture. Taking [0] blindly threaded on "PPP Order 00316046" and would
+      // have found no row — a silent stop to supplier-reply threading.
+      const poNumber = poMatch[1] ?? poMatch[0];
       const { data: orderRow } = await sb
         .from("supplier_orders")
         .select("id, work_order_id")
