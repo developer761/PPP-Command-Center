@@ -138,7 +138,7 @@ export type AgentAction = {
 };
 
 export type ValidationResult =
-  | { ok: true; action: AgentAction }
+  | { ok: true; action: AgentAction; droppedRapport?: string }
   | { ok: false; reason: RejectReason; detail: string };
 
 export type RejectReason =
@@ -183,6 +183,70 @@ const OUT_OF_SCOPE = new RegExp(
   `${OUT_OF_SCOPE_SURFACES.source}|${OUT_OF_SCOPE_TRADES.source}`, "i"
 );
 
+/**
+ * Kate's tone rules, as code.
+ *
+ * These are graded differently from a price or an invented appointment, and
+ * the difference is deliberate. Quoting a price is a promise we cannot keep and
+ * the whole action is refused. An em dash is ugly. Refusing the turn over
+ * punctuation would escalate a conversation to a human because the model used
+ * the wrong hyphen, which is a worse outcome than the hyphen.
+ *
+ * So a style violation drops the RAPPORT and keeps the action. The template
+ * still carries the message, the conversation still moves, and the thing that
+ * broke the rule is simply not sent. Nothing is rewritten — text is either
+ * clean or dropped, because silently editing what a model wrote and sending it
+ * anyway is how you end up unable to explain a message.
+ */
+const BANNED_STYLE: { re: RegExp; why: string }[] = [
+  { re: /[—–]/, why: "em dash" },
+  { re: /\.\.\.|…/, why: "ellipsis" },
+  { re: /[()]/, why: "parentheses" },
+  { re: /\byep\b/i, why: '"Yep"' },
+  { re: /thanks for letting me know/i, why: '"Thanks for letting me know"' },
+];
+
+/** Longest run of words appearing verbatim in both strings. */
+function longestSharedRun(a: string, b: string): number {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+  const x = norm(a), y = norm(b);
+  if (!x.length || !y.length) return 0;
+  let best = 0;
+  const row = new Array<number>(y.length + 1).fill(0);
+  for (let i = 1; i <= x.length; i++) {
+    let prev = 0;
+    for (let j = 1; j <= y.length; j++) {
+      const tmp = row[j];
+      row[j] = x[i - 1] === y[j - 1] ? prev + 1 : 0;
+      if (row[j] > best) best = row[j];
+      prev = tmp;
+    }
+  }
+  return best;
+}
+
+/** Words repeated verbatim before it counts as echoing them back. Four is
+ *  short enough to catch "the exterior of my house" and long enough not to
+ *  fire on "for the estimate". */
+export const ECHO_WORDS = 5;
+
+export type RapportCheck = { ok: true } | { ok: false; why: string };
+
+export function checkRapport(text: string, customerText?: string): RapportCheck {
+  // One question at a time. The template asks the question; rapport that also
+  // asks one makes two, which is the rule Kate states first.
+  if (text.includes("?")) return { ok: false, why: "it asks a second question" };
+
+  for (const b of BANNED_STYLE) {
+    if (b.re.test(text)) return { ok: false, why: `it uses ${b.why}` };
+  }
+
+  if (customerText && longestSharedRun(text, customerText) >= ECHO_WORDS) {
+    return { ok: false, why: "it repeats the customer's own words back" };
+  }
+  return { ok: true };
+}
+
 export type ValidateContext = {
   /** Slots the system verified. An intent may only reference these. */
   verifiedSlots?: Record<string, unknown>;
@@ -196,6 +260,8 @@ export type ValidateContext = {
   /** Which known fields we hold. Drives both directions: confirm_* needs the
    *  value to exist, and ask_* is refused once it does. */
   knownFields?: Partial<Record<"name" | "phone" | "email" | "address" | "inquiryScope", boolean>>;
+  /** What the customer just said, so rapport can be checked for echoing it. */
+  customerText?: string;
   /** How much of the required flow is already done: 0 means nothing collected,
    *  4 means all of it. Undefined disables the ordering check, which is what
    *  every caller that does not track a conversation wants. */
@@ -274,7 +340,20 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     return { ok: false, reason: "invented_availability", detail: "action proposes times that were not supplied by the system" };
   }
 
-  return { ok: true, action: { intent: a.intent as Intent, freeText: text || undefined, slots: a.slots, confidence: a.confidence } };
+  // Style is the last check, and the only one that drops rapport rather than
+  // refusing the action.
+  let rapport = text || undefined;
+  let droppedRapport: string | undefined;
+  if (rapport) {
+    const style = checkRapport(rapport, ctx.customerText);
+    if (!style.ok) { droppedRapport = style.why; rapport = undefined; }
+  }
+
+  return {
+    ok: true,
+    action: { intent: a.intent as Intent, freeText: rapport, slots: a.slots, confidence: a.confidence },
+    droppedRapport,
+  };
 }
 
 /** Should this action send, or go to a human? */

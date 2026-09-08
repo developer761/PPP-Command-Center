@@ -224,6 +224,7 @@ Choose the next action.`;
       // Ordering only applies to the new-lead flow. Nurture has no collection
       // steps to keep in order.
       stage: track === "new_lead" ? opts.stage : undefined,
+      customerText: inbound.description,
       knownFields: {
         name: !!kf.name, phone: !!kf.phone, email: !!kf.email,
         address: !!kf.address, inquiryScope: !!kf.inquiryScope,
