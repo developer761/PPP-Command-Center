@@ -36,6 +36,7 @@ function estimate(over: Partial<GallonEstimate> = {}): GallonEstimate {
     buckets: 0,
     cans: 0,
     gallons: 0,
+    sizedToZero: false,
     needsMeasurement: true,
     unsized: false,
     manualOnly: true,

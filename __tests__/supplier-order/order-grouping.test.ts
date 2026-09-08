@@ -18,6 +18,7 @@ function est(over: Partial<GallonEstimate> = {}): GallonEstimate {
     surfaces: ["Walls"], rooms: ["Living Room"], totalSqft: 400,
     placements: [{ surface: "Walls", rooms: ["Living Room"] }],
     buckets: 1, cans: 0, gallons: 5,
+    sizedToZero: false,
     needsMeasurement: false, unsized: false, manualOnly: false, ...over,
   };
 }

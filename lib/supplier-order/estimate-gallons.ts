@@ -26,7 +26,16 @@
 /** All tunable constants in one place (Katie: "treat as named config, not
  *  magic numbers — PPP will tune per product / per SW vs BM"). */
 export const COVERAGE_CONFIG = {
-  defaultCoats: 2,
+  // 1.75, not 2 (Karan 2026-09-08). A second coat does not cost a full first
+  // coat's worth of paint — it goes onto a sealed, same-colour surface and
+  // spreads further. Costing it as 2.0 was the single biggest source of
+  // over-ordering: a 15x20 living room came out at 4 gallons of wall paint
+  // where the crew buys 3, and an 8x10 bedroom at 2 where they buy 1.
+  //
+  // An explicit of_Coats__c on the line still WINS — that is measured data
+  // about the job, not a default. This only changes what we assume when
+  // Salesforce is silent, which is the overwhelming majority of lines.
+  defaultCoats: 1.75,
   coverageSqftPerGallon: 375,
   bufferPct: 0.10,
   defaultHeightFt: 8,
@@ -117,6 +126,12 @@ export type GallonEstimate = {
   unit?: PaintUnit;
   /** Total gallon-equivalent (buckets×5 + cans) — for sorting / sanity. */
   gallons: number;
+  /** The maths produced REAL coverage but it rounded down to nothing — i.e.
+   *  under a gallon. Distinct from "no paint needed" and from "no data":
+   *  the surface IS being painted, PPP just takes it off the truck rather than
+   *  ordering it. Without this the line renders as a bare "—" and a worker
+   *  cannot tell which of the three it means. */
+  sizedToZero: boolean;
   /** A contributing room had no floor area → this is an UNDER-count. */
   needsMeasurement: boolean;
   /** Surface we can't size from the data (accent wall, cabinets, …). */
@@ -236,7 +251,21 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   };
 }
 
-/** Package raw gallons into 5-gal buckets + 1-gal cans (Katie's rule). */
+/**
+ * Package raw gallons into 5-gal buckets + 1-gal cans (Katie's rule).
+ *
+ * ROUNDS DOWN (Karan 2026-09-08). It rounded up, which on top of the 2.0-coat
+ * assumption meant a room needing 2.7 gallons was ordered 4. Rounding down
+ * costs at most a can of slack against a crew that already carries stock;
+ * rounding up cost a can on every single line of every order.
+ *
+ * A consequence worth stating, because it is the point rather than a side
+ * effect: a surface needing less than a gallon now orders NOTHING. Trim at
+ * 0.13 gallons and a small ceiling at 0.41 stop appearing on the vendor email
+ * at all, which is what PPP actually does — those come off the truck. Callers
+ * must therefore treat a zero as "from stock", not as "no paint needed", and
+ * `sizedToZero` on the estimate says so explicitly.
+ */
 export function packageGallons(rawGallons: number, cfg: CoverageConfig = COVERAGE_CONFIG): { buckets: number; cans: number } {
   let g = rawGallons;
   let buckets = 0;
@@ -244,7 +273,7 @@ export function packageGallons(rawGallons: number, cfg: CoverageConfig = COVERAG
     buckets += 1;
     g -= cfg.bucketSizeGallons;
   }
-  const cans = Math.ceil(Math.max(g, 0));
+  const cans = Math.floor(Math.max(g, 0));
   return { buckets, cans };
 }
 
@@ -358,6 +387,7 @@ export function estimateOrderGallons(
       totalSqft: Math.round(b.totalSqft),
       buckets: bucketsCount,
       cans,
+      sizedToZero: sizable && bucketsCount === 0 && cans === 0,
       gallons: bucketsCount * cfg.bucketSizeGallons + cans,
       // Mixed sized + unsized (e.g. same color on walls AND cabinets in a
       // room): the gallons cover only the sized surfaces, so the figure is an
@@ -534,6 +564,10 @@ export function formatOrderQuantity(e: GallonEstimate): string {
   if (e.excluded) return "not ordering";
   if (e.manualOnly) return "manual entry required";
   if (e.unsized) return "needs review";
+  // Checked BEFORE needsMeasurement: a line that rounded under a gallon is a
+  // stock item, not a data problem, and labelling it "needs measurement" would
+  // send a worker to re-measure a room that is measured fine.
+  if (e.sizedToZero) return "under 1 gal — from stock";
   if (e.buckets === 0 && e.cans === 0) return e.needsMeasurement ? "needs measurement" : "—";
   return formatBucketsCans(e.buckets, e.cans, e.unit ?? "gal");
 }
