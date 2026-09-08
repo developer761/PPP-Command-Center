@@ -28,6 +28,7 @@
  * what the level above says.
  */
 import { messagingDb } from "./db";
+import { assertMessagingAccess } from "./auth";
 
 /** Only these columns. Anything not listed cannot be written by this path. */
 const EDITABLE = [
@@ -52,6 +53,7 @@ export async function saveAgentConfig(input: {
   track: "new_lead" | "nurture";
   values: AgentConfigEdit;
 }): Promise<{ ok: true; created: boolean } | { ok: false; error: string }> {
+  await assertMessagingAccess();
   const { where, track, values } = input;
 
   const patch: Record<string, unknown> = {};
@@ -125,6 +127,7 @@ export async function clearAgentConfig(input: {
   where: Exclude<SaveScope, { scope: "global" }>;
   track: "new_lead" | "nurture";
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  await assertMessagingAccess();
   const sb = messagingDb();
   let q = sb.from("sms_agent_configs").delete()
     .eq("scope", input.where.scope).eq("track", input.track);

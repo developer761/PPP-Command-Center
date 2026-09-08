@@ -26,6 +26,16 @@ const PHONE_HEADERS = ["phone", "phone_number", "phonenumber", "mobile", "to", "
 const EMAIL_HEADERS = ["email", "email_address", "emailaddress", "e-mail"];
 const DATE_HEADERS  = ["opted_out_at", "opt_out_date", "date", "created_at", "timestamp", "unsubscribed_at"];
 
+/**
+ * Comfortably above Kate's 213, comfortably below a serverless timeout.
+ *
+ * Lives here rather than beside the importer because that file is
+ * "use server", and a server-action module may export ONLY async functions —
+ * a plain const there makes Next drop every export in the module, which the
+ * type checker cannot see and only the production build catches.
+ */
+export const MAX_IMPORT_ROWS = 2000;
+
 export type OptOutRow = {
   phone: string | null;
   email: string | null;

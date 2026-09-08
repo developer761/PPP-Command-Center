@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const writes: Record<string, unknown>[] = [];
+// The access check is asserted structurally in server-action-auth.test.ts and
+// as a policy in the messagingAccessDenied cases there. These tests are about
+// what the action does ONCE the caller is allowed in, so the guard is stubbed
+// rather than reimplemented — a test that had to build a request scope to
+// check a validation rule would stop being run.
+vi.mock("@/lib/messaging/auth", () => ({
+  assertMessagingAccess: async () => "test-user",
+  messagingAccessDenied: () => false,
+}));
+
 vi.mock("@/lib/messaging/db", () => {
   const api = {
     from: () => api, update: (p: Record<string, unknown>) => { writes.push(p); return api; },

@@ -17,6 +17,7 @@ import type { Track } from "./agent-output";
 import type { KnownCustomer } from "./known-customer";
 import { runAgentTurn, agentAvailable, type AgentConfigForRun, type Turn } from "./agent-run";
 import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
+import { assertMessagingAccess } from "./auth";
 
 export type SimTurn = {
   ordinal: number;
@@ -90,6 +91,7 @@ async function configFor(workspaceId?: string, track: Track = "new_lead"): Promi
 
 /** Whether the simulator can run at all, and why not if it cannot. */
 export async function simulatorStatus(): Promise<{ ready: boolean; reason?: string }> {
+  await assertMessagingAccess();
   if (!agentAvailable()) {
     return { ready: false, reason: "No Anthropic API key is set on this environment, so the bot cannot be asked anything." };
   }
@@ -118,6 +120,7 @@ export async function runSimTurn(input: {
    *  testing for — the bot asking for what it already has. */
   known?: KnownCustomer;
 }): Promise<SimResult> {
+  await assertMessagingAccess();
   const track: Track = input.track ?? "new_lead";
   const resolved = await configFor(input.workspaceId, track);
   if (!resolved) {
@@ -200,6 +203,7 @@ export async function saveScenario(input: {
   workspaceId?: string;
   turns: (SimTurn & { verdict?: "good" | "acceptable" | "wrong"; verdictNote?: string; expectedIntent?: string })[];
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  await assertMessagingAccess();
   const sb = messagingDb();
   const { data: scenario, error } = await sb.from("sms_scenarios").insert({
     name: input.name,

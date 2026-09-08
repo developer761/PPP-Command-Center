@@ -9,7 +9,8 @@
  * a list she cannot easily un-commit.
  */
 import { messagingDb } from "./db";
-import { buildOptOutPreview, toOptOutRecords } from "./optout-import";
+import { buildOptOutPreview, toOptOutRecords, MAX_IMPORT_ROWS } from "./optout-import";
+import { assertMessagingAccess } from "./auth";
 
 export type ImportOutcome = {
   ok: true;
@@ -19,9 +20,23 @@ export type ImportOutcome = {
 } | { ok: false; error: string };
 
 export async function importOptOuts(csv: string): Promise<ImportOutcome> {
+  await assertMessagingAccess();
   const preview = buildOptOutPreview(csv);
   const records = toOptOutRecords(preview);
   if (!records.length) return { ok: false, error: "Nothing in that file could be imported." };
+
+  // Inserts run one at a time so a duplicate cannot take the good rows down
+  // with it, which means a very large paste would run for minutes and be cut
+  // off by the platform partway through — a partial import with no way to tell
+  // how far it got. Kate's export is around 213 rows; this is well above that
+  // and well below a timeout. Refusing with a number is better than accepting
+  // and stopping silently.
+  if (records.length > MAX_IMPORT_ROWS) {
+    return {
+      ok: false,
+      error: `That file has ${records.length} rows to import and this handles ${MAX_IMPORT_ROWS} at a time. Split it and import the parts — already-suppressed rows are skipped, so overlapping is fine.`,
+    };
+  }
 
   const sb = messagingDb();
   let inserted = 0, alreadyPresent = 0;
@@ -51,6 +66,7 @@ export async function importOptOuts(csv: string): Promise<ImportOutcome> {
 
 /** How many numbers and addresses are suppressed right now. */
 export async function suppressionCount(): Promise<{ sms: number; email: number }> {
+  await assertMessagingAccess();
   const sb = messagingDb();
   const { data } = await sb.from("sms_opt_outs")
     .select("channel, phone_e164, email, opted_in_at");

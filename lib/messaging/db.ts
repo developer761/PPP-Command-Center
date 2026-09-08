@@ -581,8 +581,11 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
         for (const m of msgs) {
           if (m.direction === "inbound") { lastIn = m.created_at; continue; }
           if (m.sent_by_agent === name && lastIn) {
-            const s = secondsBetween(lastIn, m.created_at);
-            if (s != null && (responseSeconds == null || s < responseSeconds)) responseSeconds = s;
+            // The FIRST reply in the thread, not the fastest one. Taking the
+            // minimum meant somebody who left a customer waiting four hours and
+            // then answered a follow-up in ten seconds scored ten seconds —
+            // it measured their best moment rather than the customer's wait.
+            if (responseSeconds == null) responseSeconds = secondsBetween(lastIn, m.created_at);
             lastIn = null;
           }
         }

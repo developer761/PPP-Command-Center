@@ -27,6 +27,7 @@
  */
 import { messagingDb } from "./db";
 import { scrub, residualPii } from "./pii";
+import { assertMessagingAccess } from "./auth";
 
 export type AuthoredTurn = { who: "customer" | "agent"; text: string };
 
@@ -47,6 +48,7 @@ export async function saveAuthoredExample(input: {
   note?: string;
   outcome?: string | null;
 }): Promise<{ ok: true; id: string; scrubbed: string[] } | { ok: false; error: string }> {
+  await assertMessagingAccess();
   const turns = input.turns.filter((t) => t.text.trim());
   if (turns.length < 2) return { ok: false, error: "Write at least one message each way." };
   if (!turns.some((t) => t.who === "agent")) {
@@ -93,6 +95,7 @@ export async function saveAuthoredExample(input: {
 
 /** The rule list, for the picker. */
 export async function activeTags(): Promise<{ key: string; section: string; label: string; what_to_look_for: string }[]> {
+  await assertMessagingAccess();
   const sb = messagingDb();
   const { data } = await sb.from("sms_training_tags")
     .select("key, section, label, what_to_look_for")

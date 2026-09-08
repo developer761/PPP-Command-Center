@@ -11,6 +11,7 @@
  * tab. Two responsibilities in one file is how a guarantee quietly widens.
  */
 import { messagingDb } from "./db";
+import { assertMessagingAccess } from "./auth";
 
 
 export type GradeQueueItem = {
@@ -34,6 +35,7 @@ export async function nextToGrade(skipIds: string[] = []): Promise<{
   item: GradeQueueItem | null;
   remaining: number;
 }> {
+  await assertMessagingAccess();
   const sb = messagingDb();
   const { data: rows } = await sb
     .from("sms_training_examples")
@@ -67,6 +69,7 @@ export async function saveGrade(input: {
   note?: string;
   approve: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  await assertMessagingAccess();
   const sb = messagingDb();
 
   const { error } = await sb.from("sms_training_examples").update({

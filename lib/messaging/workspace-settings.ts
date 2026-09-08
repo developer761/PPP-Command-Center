@@ -24,6 +24,7 @@
  */
 import { messagingDb } from "./db";
 import { clampToFederal, FEDERAL_BOUND } from "./compliance";
+import { assertMessagingAccess } from "./auth";
 
 export type WorkspaceHours = {
   id: string;
@@ -50,6 +51,7 @@ export async function saveWorkspaceHours(input: {
   afterHoursAutoreply?: boolean;
   afterHoursMessage?: string;
 }): Promise<{ ok: true; clamped: boolean } | { ok: false; error: string }> {
+  await assertMessagingAccess();
   const start = HOUR(input.quietStart);
   const end = HOUR(input.quietEnd);
   if (Number.isNaN(start) || Number.isNaN(end)) {
@@ -96,5 +98,6 @@ export async function saveWorkspaceHours(input: {
 
 /** The bound, for the page to state rather than the page inventing it. */
 export async function federalBound(): Promise<{ startHour: number; endHour: number }> {
+  await assertMessagingAccess();
   return { ...FEDERAL_BOUND };
 }
