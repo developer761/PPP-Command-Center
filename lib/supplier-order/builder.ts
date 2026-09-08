@@ -684,6 +684,10 @@ function resolveLineItems(
         // a null/undefined/NaN/string field can't sneak past `> 0` (which
         // would silently evaluate false and suppress door faces on garbage).
         paintDoorFaces: typeof woli.numDoors === "number" && woli.numDoors > 0,
+        // Both Salesforce free-text fields, joined, so an accent wall mentioned
+        // in EITHER is spotted (Katie item 7). Scope tends to live in
+        // Description and the per-surface colours in Colour Notes.
+        notes: [woli.description, woli.colorNotes].filter(Boolean).join("\n") || null,
         surfaces: roomSurfaces,
       });
     }

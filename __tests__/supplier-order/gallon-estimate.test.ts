@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   classifyRoomType,
+  isDoorSurface,
   estimateOrderGallons,
   packageGallons,
   formatOrderQuantity,
@@ -230,5 +233,64 @@ describe("room-type defaults", () => {
     expect(classifyRoomType("Living Room")).toBeNull();
     expect(classifyRoomType("")).toBeNull();
     expect(classifyRoomType(null)).toBeNull();
+  });
+});
+
+/**
+ * Katie items 6 and 7.
+ */
+describe("doors and accent walls", () => {
+  const line = (label: string, kind: "walls" | "trim" | "unsized", surfaceLabel: string, colorId: string) =>
+    room(15, 20, 8, {
+      roomLabel: label,
+      surfaces: [surf(kind, surfaceLabel, colorId, colorId)],
+    });
+
+  it("a door-only line is a quart", () => {
+    const e = byColor([line("Hall", "trim", "Door", "door")]);
+    expect(e.door.unit).toBe("qt");
+  });
+
+  it("door CASING is trim, not a door", () => {
+    // Casing is trim around the opening, painted with the trim. Treating it as
+    // a door would drag a whole trim run into quarts.
+    expect(isDoorSurface("Door")).toBe(true);
+    expect(isDoorSurface("Door casing")).toBe(false);
+    expect(isDoorSurface("Door jamb")).toBe(false);
+    expect(isDoorSurface("Walls")).toBe(false);
+  });
+
+  it("an accent wall flags the WALLS line, not just the accent line", () => {
+    // The walls quantity is the one thrown off — part of that wall is now a
+    // different colour. Detecting per-colour flagged only the accent line.
+    const r = room(15, 20, 8, {
+      roomLabel: "Living Room",
+      surfaces: [surf("walls", "Walls", "wall", "Walls"), surf("unsized", "Accent Wall", "accent", "Accent")],
+    });
+    const e = byColor([r]);
+    expect(e.wall.accentWallReview).toBe(true);
+    expect(e.accent.accentWallReview).toBe(true);
+  });
+
+  it("an accent wall mentioned only in the notes still flags it", () => {
+    const r = room(15, 20, 8, {
+      roomLabel: "Living Room",
+      notes: "prep and paint - accent wall on the north side",
+      surfaces: [surf("walls", "Walls", "wall", "Walls")],
+    });
+    expect(byColor([r]).wall.accentWallReview).toBe(true);
+  });
+
+  it("a normal room is not flagged", () => {
+    const r = room(15, 20, 8, { roomLabel: "Living Room", notes: "prep and paint", surfaces: [surf("walls", "Walls", "wall", "Walls")] });
+    expect(byColor([r]).wall.accentWallReview).toBe(false);
+  });
+
+  it("both flags actually render on the order screen", () => {
+    // They were computed and shown nowhere — the kitchen "please review" note
+    // existed only in the data for four days.
+    const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+    expect(src).toMatch(/e\.accentWallReview &&/);
+    expect(src).toMatch(/\{e\.defaultedNote\}/);
   });
 });

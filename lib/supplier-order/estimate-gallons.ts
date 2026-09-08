@@ -123,6 +123,11 @@ export type RoomTakeoff = {
   coats: number;
   /** Door faces in scope for this room? (default off — casings always count). */
   paintDoorFaces: boolean;
+  /** The line's free text — Salesforce Description and Colour Notes, joined.
+   *  Read ONLY to spot an accent wall (Katie item 7): an accent wall is a
+   *  second colour over part of one wall, and nothing in the geometry can see
+   *  it, so the line is flagged for a person instead of silently sized. */
+  notes?: string | null;
   surfaces: RoomSurface[];
 };
 
@@ -152,6 +157,10 @@ export type GallonEstimate = {
   unit?: PaintUnit;
   /** Total gallon-equivalent (buckets×5 + cans) — for sorting / sanity. */
   gallons: number;
+  /** An accent wall is in scope for this colour. The geometry cannot see one —
+   *  it is a second colour over part of one wall — so the quantity is a guess
+   *  and a person is asked to look (Katie item 7). */
+  accentWallReview: boolean;
   /** Set when a ROOM-TYPE default replaced the computed figure — a kitchen
    *  capped to one gallon, a bathroom expressed in quarts. Reads as a sentence
    *  for the worker, and is deliberately never silent: these are rules of
@@ -203,6 +212,20 @@ export function classifySurface(label: string): PaintSurfaceKind {
  * Room types whose paint order is decided by what is IN the room rather than
  * by its dimensions. Returns null for everything else — the normal maths.
  */
+/** A door, as opposed to trim generally. Katie item 6: "door is a quart". */
+export function isDoorSurface(label: string | null | undefined): boolean {
+  const l = (label ?? "").toLowerCase();
+  // "Door casing" is trim around the opening, not the door itself — it is
+  // painted with the trim and must not drag a whole line into quarts.
+  if (l.includes("casing") || l.includes("jamb") || l.includes("frame")) return false;
+  return l.includes("door");
+}
+
+/** Katie item 7 — an accent wall anywhere in this colour's rooms. */
+export function mentionsAccentWall(text: string | null | undefined): boolean {
+  return /accent\s*wall/i.test(text ?? "");
+}
+
 export function classifyRoomType(label: string | null | undefined): "kitchen" | "bathroom" | null {
   const s = (label ?? "").toLowerCase();
   if (!s) return null;
@@ -345,6 +368,10 @@ type Bucket = {
   /** Room types feeding this colour. A room-type default applies only when
    *  every one of them is that type — see kitchenDefaultGallons. */
   roomTypes: Set<"kitchen" | "bathroom" | "other">;
+  /** Any contributing room mentions an accent wall, or paints one. */
+  accentWall: boolean;
+  /** Every surface on this colour is a door — Katie item 6, priced in quarts. */
+  doorsOnly: boolean;
   /** Wall area to REMOVE if this colour turns out to be shared with a normal
    *  room — the kitchen half Katie asked for. Held separately because sharing
    *  is only known once every room has contributed. */
@@ -379,6 +406,8 @@ export function estimateOrderGallons(
         roomTypes: new Set(),
         kinds: new Set(),
         kitchenSharedSqft: 0,
+        accentWall: false,
+        doorsOnly: true, // until a non-door surface joins
       };
       buckets.set(key, b);
     }
@@ -391,10 +420,19 @@ export function estimateOrderGallons(
     // we count "rooms contributing" cleanly (multiple surfaces of the same color
     // in one room = one room, not many).
     const seenThisRoom = new Set<Bucket>();
+    const roomHasAccent =
+      mentionsAccentWall(room.notes) ||
+      room.surfaces.some((x) => mentionsAccentWall(x.surfaceLabel));
     for (const s of room.surfaces) {
       if (!s.colorId) continue;
       const b = bucketFor(s);
       b.surfaces.add(s.surfaceLabel);
+      if (!isDoorSurface(s.surfaceLabel)) b.doorsOnly = false;
+      // Accent detection is per ROOM, not per colour. An accent wall is its own
+      // colour, so checking only this bucket's own surfaces flagged the accent
+      // line and left the WALLS line — the quantity actually thrown off, since
+      // part of that wall is now a different colour — unflagged.
+      if (roomHasAccent) b.accentWall = true;
       if (room.roomLabel) b.rooms.add(room.roomLabel);
       let placed = b.placements.get(s.surfaceLabel);
       if (!placed) {
@@ -489,6 +527,16 @@ export function estimateOrderGallons(
         cans = cfg.bathroomWallGallons;
         unit = "gal";
         defaultedNote = `Bathroom — defaulted to ${cfg.bathroomWallGallons} gal. Please review.`;
+      } else if (b.doorsOnly) {
+        // Katie item 6: "door is a quart — we need to utilise quarts, not
+        // always gallons." A door is a few square feet; rounding it up to a
+        // full gallon is the same waste the whole review was about.
+        const quarts = Math.max(1, Math.floor(rawGallons * cfg.quartsPerGallon));
+        if (quarts >= cfg.quartsBecomeGallonAt) {
+          bucketsCount = 0; cans = 1; unit = "gal";
+        } else {
+          bucketsCount = 0; cans = quarts; unit = "qt";
+        }
       } else if (bucketsCount === 0 && cans === 0) {
         // UNDER A GALLON. This used to order nothing at all and read "from
         // stock". Katie: "I would also recommend having the option to order 1
@@ -521,6 +569,7 @@ export function estimateOrderGallons(
       buckets: bucketsCount,
       cans,
       sizedToZero: sizable && bucketsCount === 0 && cans === 0,
+      accentWallReview: b.accentWall,
       unit,
       defaultedNote,
       gallons: bucketsCount * cfg.bucketSizeGallons + cans,

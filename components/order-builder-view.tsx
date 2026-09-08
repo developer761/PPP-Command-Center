@@ -758,6 +758,23 @@ export default function OrderBuilderView({
                         ⚠ a room is unmeasured — this may be low
                       </p>
                     )}
+                    {/* Katie item 7 — an accent wall is a second colour over
+                        part of one wall. Nothing in the geometry can see it, so
+                        the quantity beside it is a guess. RED, and above the
+                        defaulted note: this is the one that needs a person. */}
+                    {e.accentWallReview && (
+                      <p className="text-[10px] font-semibold text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded px-1.5 py-1 mt-1 text-right">
+                        ⚠ accent wall on this line — check the quantity
+                      </p>
+                    )}
+                    {/* The kitchen / bathroom / shared-kitchen rules of thumb.
+                        These were being computed and never shown, so a worker
+                        saw a number with no hint that it was a default. */}
+                    {e.defaultedNote && (
+                      <p className="text-[10px] text-ppp-charcoal-500 mt-1 text-right leading-snug">
+                        {e.defaultedNote}
+                      </p>
+                    )}
                   </li>
                 );
               })}

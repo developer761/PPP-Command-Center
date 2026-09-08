@@ -1616,6 +1616,7 @@ function JobDetailImpl({
           // room-facing door faces are in scope. Mirrors builder.ts:435 so
           // the WO-card chip can't disagree with the email.
           paintDoorFaces: li.raw.numDoors > 0,
+          notes: [li.raw.description, li.raw.colorNotes].filter(Boolean).join("\n") || null,
           surfaces,
         });
       }

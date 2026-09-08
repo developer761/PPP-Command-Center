@@ -20,6 +20,7 @@ function est(over: Partial<GallonEstimate> = {}): GallonEstimate {
     buckets: 1, cans: 0, gallons: 5,
     sizedToZero: false,
       defaultedNote: null,
+      accentWallReview: false,
     needsMeasurement: false, unsized: false, manualOnly: false, ...over,
   };
 }

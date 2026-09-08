@@ -33,6 +33,7 @@ const est = (o: Partial<GallonEstimate>): GallonEstimate => ({
   totalSqft: 400, buckets: 0, cans: 3, gallons: 3,
   sizedToZero: false,
       defaultedNote: null,
+      accentWallReview: false,
   needsMeasurement: false, unsized: false, manualOnly: false, ...o,
 });
 
