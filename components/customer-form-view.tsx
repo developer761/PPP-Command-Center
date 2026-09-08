@@ -181,7 +181,7 @@ const FINISH_OPTIONS = [
 // surface override dropdown all stay in lockstep. Adding a product = one
 // entry in that file. Picker is filtered per-WO (interior-only WOs hide
 // exterior products and vice versa) — Katie 2026-06-05.
-import { filterMaterialTypesForWorkOrder, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
+import { filterMaterialTypesForWorkOrder, finishOptionsFor, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
 import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
@@ -197,6 +197,14 @@ function defaultFinishForSurface(surface: string): string {
   if (s.includes("ceiling")) return "Flat";
   if (s.includes("trim") || s.includes("door") || s.includes("window")) return "Semi-Gloss";
   if (s.includes("floor")) return "Satin";
+  // Katie item 19, 2026-09-08 — a REAR DECK fell through this chain to
+  // "Eggshell", and stain does not come in eggshell. Exterior woodwork is
+  // stained or solid-coated depending on the product, which we do not know at
+  // this point, so it defaults to NOTHING and the person chooses. An empty box
+  // is a smaller cost than an order a supplier cannot fill.
+  if (s.includes("deck") || s.includes("fence") || s.includes("railing") || s.includes("siding")) {
+    return "";
+  }
   return "Eggshell";
 }
 
@@ -1123,6 +1131,11 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             onApplyToAll={(surface, pick) => applyColorToAll(li.id, surface, pick)}
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
             isInternal={isInternal}
+            materialType={
+              /^exterior/i.test(li.productFamily ?? "")
+                ? materialTypeExterior || materialType
+                : materialType
+            }
           />
         ))
       ) : formData.hiddenLineItemCount > 0 ? (
@@ -1343,7 +1356,11 @@ function LineItemSection({
   onApplyToAll,
   onNotesChange,
   isInternal = false,
+  materialType,
 }: {
+  /** The product line for THIS line item — the exterior answer on an exterior
+   *  line, the job line otherwise. Feeds the finish list (Katie item 19). */
+  materialType?: string | null;
   index: number;
   lineItem: FormLineItem;
   state: LineItemState | undefined;
@@ -1527,8 +1544,12 @@ function SurfaceRow({
   canApplyToAll,
   onChange,
   onApplyToAll,
+  materialType,
 }: {
   surface: string;
+  /** The product line in play. Katie item 19: stain is sold by opacity, not by
+   *  sheen, so the interior sheens must not be offered against one. */
+  materialType?: string | null;
   /** Room heading, used only to disambiguate the row for screen readers. */
   roomLabel: string;
   pick: SurfacePick;
@@ -1637,7 +1658,7 @@ function SurfaceRow({
                   A default is auto-filled on pick, so this empty option only
                   appears if the customer deliberately clears it. */}
               <option value="">{pick.colorId ? "Choose a finish…" : "Finish (optional)"}</option>
-              {FINISH_OPTIONS.map((f) => (
+              {finishOptionsFor(FINISH_OPTIONS, materialType).map((f) => (
                 <option key={f} value={f}>{f}</option>
               ))}
             </select>

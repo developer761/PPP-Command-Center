@@ -423,3 +423,31 @@ export function materialTypeForVendor(value: string | null | undefined): string 
   if (v.startsWith(OTHER_PREFIX)) return otherValueText(v);
   return v;
 }
+
+/**
+ * Finishes a given product can actually be bought in.
+ *
+ * Katie item 19, 2026-09-08: "one of the items was rear deck and it defaulted
+ * as eggshell, and stain doesn't come in eggshell."
+ *
+ * Stain is sold by opacity, not by sheen — the interior sheens are not
+ * available in it at any price, so offering them produces an order a supplier
+ * cannot fill. This REMOVES the impossible options rather than inventing PPP's
+ * stain vocabulary: the real list of stain products and their finishes is
+ * coming from Jason (item 21), and guessing it here would be a worse error than
+ * the one being fixed.
+ */
+const INTERIOR_ONLY_SHEENS: ReadonlySet<string> = new Set(["Flat", "Matte", "Eggshell"]);
+
+/** True when this product line is a stain rather than a paint. */
+export function isStainProduct(materialType: string | null | undefined): boolean {
+  return /\bstain(s|ed|ing)?\b/i.test(materialType ?? "");
+}
+
+export function finishOptionsFor(
+  allOptions: readonly string[],
+  materialType: string | null | undefined
+): string[] {
+  if (!isStainProduct(materialType)) return [...allOptions];
+  return allOptions.filter((f) => !INTERIOR_ONLY_SHEENS.has(f));
+}
