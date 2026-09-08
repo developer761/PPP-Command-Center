@@ -55,6 +55,21 @@ export const COVERAGE_CONFIG = {
   trimWidthFt: 0.25,
   // Door FACE area (single-sided), added to trim only when door faces are in scope.
   doorFaceSqft: 20,
+  // ROOM-TYPE DEFAULTS (Karan 2026-09-08). Two rooms where the geometry lies:
+  //
+  //   Kitchen  — cabinets, appliances and backsplash cover most of the wall the
+  //              perimeter says is there, so a kitchen is "usually one gallon"
+  //              regardless of size. We do not know the cabinet run, so rather
+  //              than invent one the estimate is DEFAULTED and flagged for a
+  //              human, which is honest about being a rule of thumb.
+  //   Bathroom — small enough that a 5x7 is quarts, not gallons.
+  //
+  // Both apply ONLY when every room feeding that colour is of the type. A wall
+  // colour shared between the kitchen and the living room is sized normally,
+  // because the living room dominates and capping it at a gallon would leave
+  // the crew short.
+  kitchenDefaultGallons: 1,
+  quartsPerGallon: 4,
   // Packaging: individual cans up to this many gallons; switch to buckets above it.
   bucketThresholdGallons: 4,
   bucketSizeGallons: 5,
@@ -126,6 +141,12 @@ export type GallonEstimate = {
   unit?: PaintUnit;
   /** Total gallon-equivalent (buckets×5 + cans) — for sorting / sanity. */
   gallons: number;
+  /** Set when a ROOM-TYPE default replaced the computed figure — a kitchen
+   *  capped to one gallon, a bathroom expressed in quarts. Reads as a sentence
+   *  for the worker, and is deliberately never silent: these are rules of
+   *  thumb standing in for data we do not have (the cabinet run), so a person
+   *  is asked to confirm rather than told a number. */
+  defaultedNote: string | null;
   /** The maths produced REAL coverage but it rounded down to nothing — i.e.
    *  under a gallon. Distinct from "no paint needed" and from "no data":
    *  the surface IS being painted, PPP just takes it off the truck rather than
@@ -165,6 +186,22 @@ export function classifySurface(label: string): PaintSurfaceKind {
   if (s.includes("floor")) return "floor";
   if (s.includes("wall")) return "walls";
   return "unsized";
+}
+
+/**
+ * Room types whose paint order is decided by what is IN the room rather than
+ * by its dimensions. Returns null for everything else — the normal maths.
+ */
+export function classifyRoomType(label: string | null | undefined): "kitchen" | "bathroom" | null {
+  const s = (label ?? "").toLowerCase();
+  if (!s) return null;
+  // "Kitchenette" counts; "Butler's pantry" deliberately does not — it is
+  // shelving, not a cabinet wall, and PPP paints it like a normal room.
+  if (s.includes("kitchen")) return "kitchen";
+  if (s.includes("bath") || s.includes("powder room") || s.includes("ensuite") || s.includes("en-suite")) {
+    return "bathroom";
+  }
+  return null;
 }
 
 type RoomCoverage = {
@@ -294,6 +331,14 @@ type Bucket = {
    *  strong "MUST be filled manually" banner. Karan 2026-06-09. */
   allRoomsNoData: boolean;
   contributingRoomCount: number;
+  /** Room types feeding this colour. A room-type default applies only when
+   *  every one of them is that type — see kitchenDefaultGallons. */
+  roomTypes: Set<"kitchen" | "bathroom" | "other">;
+  /** Which surface kinds this colour covers. The kitchen cap is about the WALL
+   *  the cabinets stand against, so it must not touch a colour that also paints
+   *  the ceiling — cabinets do not cover that, and a big kitchen ceiling capped
+   *  at one gallon would leave the crew short. */
+  kinds: Set<PaintSurfaceKind>;
 };
 
 /**
@@ -316,6 +361,8 @@ export function estimateOrderGallons(
         surfaces: new Set(), rooms: new Set(), placements: new Map(), totalSqft: 0, anyMissingFloor: false, unsized: false,
         allRoomsNoData: true, // assume yes until a measured room contributes
         contributingRoomCount: 0,
+        roomTypes: new Set(),
+        kinds: new Set(),
       };
       buckets.set(key, b);
     }
@@ -341,6 +388,7 @@ export function estimateOrderGallons(
       if (room.roomLabel) placed.add(room.roomLabel);
       if (!seenThisRoom.has(b)) {
         b.contributingRoomCount += 1;
+        b.roomTypes.add(classifyRoomType(room.roomLabel) ?? "other");
         // If ANY contributing room has real data, the bucket isn't manualOnly.
         if (!cov.noDataAtAll) b.allRoomsNoData = false;
         seenThisRoom.add(b);
@@ -355,6 +403,7 @@ export function estimateOrderGallons(
         case "unsized": b.unsized = true;   break; // can't size — flag, no sqft
       }
       if (s.kind !== "unsized") {
+        b.kinds.add(s.kind);
         b.totalSqft += sqft;
         if (missing) b.anyMissingFloor = true;
       }
@@ -368,9 +417,35 @@ export function estimateOrderGallons(
     const sizable = b.totalSqft > 0;
     let bucketsCount = 0;
     let cans = 0;
+    let unit: PaintUnit | undefined;
+    let defaultedNote: string | null = null;
     if (sizable) {
       const rawGallons = (b.totalSqft / cfg.coverageSqftPerGallon) * (1 + cfg.bufferPct);
       ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
+
+      // ROOM-TYPE DEFAULTS — only when EVERY room feeding this colour is the
+      // same special type. A wall colour shared with a normal room is sized
+      // normally, because that room dominates and a cap would leave the crew
+      // short. Both defaults are flagged rather than applied silently: they are
+      // rules of thumb standing in for data (a cabinet run) we do not have.
+      const onlyType = b.roomTypes.size === 1 ? [...b.roomTypes][0] : null;
+      // Walls ONLY. A colour that also paints the kitchen ceiling is sized
+      // normally: the cabinets are irrelevant to it, and capping the pair at a
+      // gallon under-orders the ceiling of a big kitchen.
+      const wallsOnly = b.kinds.size === 1 && b.kinds.has("walls");
+      if (onlyType === "kitchen" && wallsOnly) {
+        bucketsCount = 0;
+        cans = cfg.kitchenDefaultGallons;
+        defaultedNote = `Kitchen — defaulted to ${cfg.kitchenDefaultGallons} gal because cabinets cover most of the wall. Please review.`;
+      } else if (onlyType === "bathroom") {
+        // Quarts, not gallons: a 5x7 bathroom is under a gallon, and rounding
+        // that DOWN would order nothing at all for a room being painted.
+        const quarts = Math.floor(rawGallons * cfg.quartsPerGallon);
+        bucketsCount = 0;
+        cans = Math.max(1, quarts);
+        unit = "qt";
+        defaultedNote = "Bathroom — ordered in quarts. Please review.";
+      }
     }
     // manualOnly = EVERY contributing room had zero measurement data on SF, so
     // the math couldn't even attempt a sensible estimate. UI/email surfaces a
@@ -388,6 +463,8 @@ export function estimateOrderGallons(
       buckets: bucketsCount,
       cans,
       sizedToZero: sizable && bucketsCount === 0 && cans === 0,
+      unit,
+      defaultedNote,
       gallons: bucketsCount * cfg.bucketSizeGallons + cans,
       // Mixed sized + unsized (e.g. same color on walls AND cabinets in a
       // room): the gallons cover only the sized surfaces, so the figure is an

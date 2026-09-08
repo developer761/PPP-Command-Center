@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  classifyRoomType,
   estimateOrderGallons,
   packageGallons,
   formatOrderQuantity,
@@ -113,5 +114,79 @@ describe("a line that rounds to nothing says why", () => {
   it("a real order is not flagged", () => {
     const e = byColor([room(15, 20, 8)]);
     expect(e.wall.sizedToZero).toBe(false);
+  });
+});
+
+/**
+ * ROOM-TYPE DEFAULTS (Karan 2026-09-08):
+ *   "kitchen or things like that is usually only one gallon because of taking
+ *    account cabinets (usually default to one gallon)"
+ *   "bathrooms is usually quarts (5x7 bathroom quarts)"
+ *   "so things were manually defaulting ... like Kitchen is manually defaulted
+ *    to 1 gallon, please review"
+ *
+ * Both stand in for data we do not have — the cabinet run — so both are FLAGGED
+ * rather than applied silently.
+ */
+describe("room-type defaults", () => {
+  const kitchen = (w: number, l: number, colorId = "wall") =>
+    room(w, l, 8, { roomLabel: "Kitchen", surfaces: [surf("walls", "Walls", colorId, "Wall colour")] });
+
+  it("a kitchen defaults to one gallon of wall paint, whatever its size", () => {
+    for (const [w, l] of [[10, 12], [20, 25], [8, 9]] as const) {
+      const e = byColor([kitchen(w, l)]);
+      expect(e.wall.gallons, `${w}x${l} kitchen`).toBe(1);
+      expect(e.wall.defaultedNote).toMatch(/Kitchen/);
+      expect(e.wall.defaultedNote).toMatch(/review/i);
+    }
+  });
+
+  it("the kitchen cap does NOT touch the ceiling", () => {
+    // Cabinets do not cover the ceiling. Capping a big kitchen's ceiling at a
+    // gallon would leave the crew short — this caught a real bug mid-build.
+    const e = byColor([room(20, 25, 9, { roomLabel: "Kitchen" })]);
+    expect(e.ceil.gallons).toBeGreaterThan(1);
+    expect(e.ceil.defaultedNote).toBeNull();
+  });
+
+  it("a colour shared with a normal room is sized normally", () => {
+    // The living room dominates; capping at a gallon would leave them short.
+    const e = byColor([
+      room(10, 12, 8, { roomLabel: "Kitchen", surfaces: [surf("walls", "Walls", "shared", "Shared")] }),
+      room(15, 20, 8, { roomLabel: "Living Room", surfaces: [surf("walls", "Walls", "shared", "Shared")] }),
+    ]);
+    expect(e.shared.gallons).toBeGreaterThan(1);
+    expect(e.shared.defaultedNote).toBeNull();
+  });
+
+  it("a bathroom is ordered in quarts", () => {
+    const e = byColor([room(5, 7, 8, { roomLabel: "Bathroom" })]);
+    expect(e.wall.unit).toBe("qt");
+    expect(e.wall.cans).toBe(3);
+    expect(formatOrderQuantity(e.wall)).toBe("3 qt");
+    expect(e.wall.defaultedNote).toMatch(/quarts/i);
+  });
+
+  it("a bathroom never orders nothing", () => {
+    // A 2x3 water closet computes 0.92 quarts, which floors to ZERO — a room
+    // being painted with no paint on the order. The minimum is what stops that.
+    //
+    // Sized deliberately small: a 4x5 powder room already comes to 2 quarts on
+    // its own, so it passes with the minimum deleted and proves nothing. That
+    // first version of this test could not fail — verified.
+    const e = byColor([room(2, 3, 8, { roomLabel: "Powder Room" })]);
+    expect(e.wall.unit).toBe("qt");
+    expect(e.wall.cans).toBe(1);
+  });
+
+  it("classifies the labels PPP actually types", () => {
+    expect(classifyRoomType("Kitchen")).toBe("kitchen");
+    expect(classifyRoomType("Kitchenette")).toBe("kitchen");
+    expect(classifyRoomType("Master Bathroom")).toBe("bathroom");
+    expect(classifyRoomType("Powder Room")).toBe("bathroom");
+    expect(classifyRoomType("Ensuite")).toBe("bathroom");
+    expect(classifyRoomType("Living Room")).toBeNull();
+    expect(classifyRoomType("")).toBeNull();
+    expect(classifyRoomType(null)).toBeNull();
   });
 });
