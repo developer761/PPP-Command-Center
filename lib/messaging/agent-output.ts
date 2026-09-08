@@ -27,11 +27,60 @@ export const END_INTENTS = [
 export const CONTINUE_INTENTS = [
   "ask_project_details", "ask_address", "ask_contact", "ask_availability",
   "acknowledge", "answer_question", "offer_offsite_quote", "escalate",
+  // Confirming is a different act from asking, and Kate graded the difference
+  // twice. These read a value we already hold back to the customer; they are
+  // only offered when that value exists.
+  "confirm_scope", "confirm_address", "confirm_contact",
 ] as const;
+
+/** Which known field an intent reads back, and which ask it replaces. */
+export const CONFIRM_REQUIRES: Record<string, "inquiryScope" | "address" | "email"> = {
+  confirm_scope: "inquiryScope",
+  confirm_address: "address",
+  confirm_contact: "email",
+};
+
+/** The ask that is forbidden once we hold the value. */
+export const ASK_SUPERSEDED_BY: Record<string, "inquiryScope" | "address" | "phone"> = {
+  ask_project_details: "inquiryScope",
+  ask_address: "address",
+};
+
+/**
+ * Nurture: the quote already went out and the job is to get a decision.
+ *
+ * A separate vocabulary rather than more entries on the new-lead list, because
+ * the wrong intent is the failure mode here. A nurture conversation must never
+ * be able to choose ask_address — the customer has already had an estimator
+ * standing in the room, and asking again is the clearest possible proof that
+ * nobody is reading. Restricting the enum makes that impossible rather than
+ * discouraged.
+ */
+export const NURTURE_CONTINUE_INTENTS = [
+  "nurture_check_in", "ask_for_decision", "ask_check_back",
+  "offer_estimator_call", "acknowledge", "answer_question", "escalate",
+] as const;
+
+export const NURTURE_END_INTENTS = [
+  "accepted", "schedule_follow_up", "lost", "bailout", "phone_pricing",
+  "transferred", "bot_suspected", "msg_liked_loved", "discard",
+] as const;
+
+export type Track = "new_lead" | "nurture";
+
+/** The only intents this track may choose. */
+export function intentsForTrack(track: Track): readonly string[] {
+  return track === "nurture"
+    ? [...NURTURE_END_INTENTS, ...NURTURE_CONTINUE_INTENTS]
+    : [...END_INTENTS, ...CONTINUE_INTENTS];
+}
 
 export type EndIntent = (typeof END_INTENTS)[number];
 export type ContinueIntent = (typeof CONTINUE_INTENTS)[number];
-export type Intent = EndIntent | ContinueIntent;
+export type NurtureIntent =
+  | (typeof NURTURE_END_INTENTS)[number]
+  | (typeof NURTURE_CONTINUE_INTENTS)[number];
+export type Intent = EndIntent | ContinueIntent | NurtureIntent;
 
 export type AgentAction = {
   intent: Intent;
@@ -94,6 +143,12 @@ export type ValidateContext = {
   hardNoPhrases?: string[];
   /** Below this the action escalates instead of sending. */
   confidenceThreshold?: number;
+  /** Which vocabulary applies. Defaults to new_lead, which is what every
+   *  caller meant before nurture existed. */
+  track?: Track;
+  /** Which known fields we hold. Drives both directions: confirm_* needs the
+   *  value to exist, and ask_* is refused once it does. */
+  knownFields?: Partial<Record<"name" | "phone" | "email" | "address" | "inquiryScope", boolean>>;
 };
 
 export function validateAction(raw: unknown, ctx: ValidateContext = {}): ValidationResult {
@@ -102,9 +157,25 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   }
   const a = raw as Partial<AgentAction>;
 
-  const all: readonly string[] = [...END_INTENTS, ...CONTINUE_INTENTS];
+  const all: readonly string[] = intentsForTrack(ctx.track ?? "new_lead");
   if (typeof a.intent !== "string" || !all.includes(a.intent)) {
     return { ok: false, reason: "unknown_intent", detail: `intent "${String(a.intent)}" is not one of the allowed set` };
+  }
+
+  // Confirming something we do not have would invent it.
+  const needs = CONFIRM_REQUIRES[a.intent];
+  if (needs && ctx.knownFields && !ctx.knownFields[needs]) {
+    return { ok: false, reason: "unknown_intent", detail: `${a.intent} needs a known ${needs} and there is none on file` };
+  }
+  // Asking for something we already hold. Kate: "asked customer for phone
+  // number + to type out phone number" — the reason that reached her was a
+  // prompt instruction, which the model ignored. This is not an instruction.
+  const supersededBy = ASK_SUPERSEDED_BY[a.intent];
+  if (supersededBy && ctx.knownFields?.[supersededBy]) {
+    return {
+      ok: false, reason: "unknown_intent",
+      detail: `${a.intent} was chosen but ${supersededBy} is already on file — read it back instead of asking`,
+    };
   }
 
   if (typeof a.confidence !== "number" || Number.isNaN(a.confidence) || a.confidence < 0 || a.confidence > 1) {

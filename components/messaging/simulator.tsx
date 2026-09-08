@@ -52,7 +52,11 @@ export default function Simulator({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [photos, setPhotos] = useState(0);
+  const [track, setTrack] = useState<"new_lead" | "nurture">("new_lead");
+  const [known, setKnown] = useState({ name: "", phone: "", email: "", address: "", inquiryScope: "" });
+  const [showKnown, setShowKnown] = useState(false);
 
+  const filledKnown = Object.values(known).filter((v) => v.trim()).length;
   const selectedTag = tags.find((t) => t.key === tagKey);
 
   /**
@@ -85,6 +89,8 @@ export default function Simulator({
         workspaceId: workspaceId || undefined,
         history, customerText: text, lastAskedForInfo,
         mediaCount: media || photos,
+        track,
+        known,
       });
       if (res.ok) { setTurns((t) => [...t, res.turn]); setDraft(""); setPhotos(0); }
     } finally { setBusy(false); }
@@ -115,6 +121,26 @@ export default function Simulator({
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
         <h2 className="px-4 py-2.5 border-b border-ppp-charcoal-100 font-semibold text-ppp-charcoal text-[14px]">Set the scene</h2>
         <div className="px-4 py-3 space-y-3">
+          {/* Which conversation. Testing a quote follow-up against the
+              new-lead rules is how you get a bot asking a customer who has
+              already had an estimator in their house for their address. */}
+          <div>
+            <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">Which conversation</span>
+            <div className="flex gap-2">
+              {([["new_lead", "New lead"], ["nurture", "Quote already sent"]] as const).map(([v, label]) => (
+                <button key={v} type="button" onClick={() => setTrack(v)}
+                  aria-pressed={track === v}
+                  className={[
+                    "flex-1 min-h-[44px] px-3 rounded-xl text-[13px] font-semibold border touch-manipulation",
+                    track === v
+                      ? "bg-ppp-charcoal text-white border-ppp-charcoal"
+                      : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",
+                  ].join(" ")}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
               <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">Answer as</span>
@@ -133,6 +159,50 @@ export default function Simulator({
               </select>
             </label>
           </div>
+          {/* Kate: "In Hatch we had the ability to add inquiry details, customer
+              contact information, etc. to the Customer Data section when
+              sandbox testing." Without it the sandbox cannot reproduce the bug
+              she graded four conversations down for. */}
+          <div className="rounded-lg border border-ppp-charcoal-100">
+            <button type="button" onClick={() => setShowKnown((v) => !v)}
+              aria-expanded={showKnown}
+              className="w-full min-h-[44px] px-3 flex items-center justify-between text-left touch-manipulation">
+              <span className="text-[12px] font-medium text-ppp-charcoal-600">
+                What we already know about them
+                {filledKnown > 0 && (
+                  <span className="ml-1.5 text-[11px] text-ppp-charcoal-400">{filledKnown} on file</span>
+                )}
+              </span>
+              <span className="text-[12px] text-ppp-charcoal-400">{showKnown ? "Hide" : "Add"}</span>
+            </button>
+            {showKnown && (
+              <div className="px-3 pb-3 space-y-2">
+                <p className="text-[12px] text-ppp-charcoal-500 leading-relaxed">
+                  Anything filled in here, the bot is forbidden to ask for — it
+                  can only read it back. Leave a field blank to test what happens
+                  when we genuinely do not have it.
+                </p>
+                {([
+                  ["name", "Name", "Jeremy Saxe"],
+                  ["phone", "Texting them on", "516-784-6046"],
+                  ["email", "Email", "tom@example.com"],
+                  ["address", "Address", "166 S Park Ave, Rockville Centre, NY 11570"],
+                  ["inquiryScope", "What the enquiry said", "1500sqft Cape Cod, cedar shake cleaned and scraped, 2 coats exterior"],
+                ] as const).map(([k, label, placeholder]) => (
+                  <label key={k} className="block">
+                    <span className="block text-[11px] font-medium text-ppp-charcoal-500 mb-0.5">{label}</span>
+                    <input
+                      value={known[k]}
+                      onChange={(e) => setKnown((p) => ({ ...p, [k]: e.target.value }))}
+                      placeholder={placeholder}
+                      className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[40px] text-base sm:text-[13px] focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30"
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
           {selectedTag && (
             <p className="text-[12.5px] text-ppp-charcoal-600 leading-relaxed bg-ppp-charcoal-50 rounded-lg px-3 py-2">
               {selectedTag.what_to_look_for}

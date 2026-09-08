@@ -14,9 +14,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   validateAction, shouldEscalate, END_INTENTS, CONTINUE_INTENTS,
-  type AgentAction, type ValidateContext,
+  NURTURE_END_INTENTS, NURTURE_CONTINUE_INTENTS, intentsForTrack,
+  type AgentAction, type ValidateContext, type Track,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
+import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
 import { renderMessage } from "./render";
 
 const MODEL = "claude-opus-5";
@@ -51,14 +53,29 @@ export type RunResult =
  * tier meaningful: change the office location for New York and this prompt
  * changes for every New York workspace without an edit.
  */
-export function buildSystemPrompt(cfg: AgentConfigForRun, hardNos: string[]): string {
+export function buildSystemPrompt(cfg: AgentConfigForRun, hardNos: string[], track: Track = "new_lead", known?: KnownCustomer): string {
   const flow = cfg.required_flow.map((f, i) => `${i + 1}. ${f.replace(/_/g, " ")}`).join("\n");
-  return `You are ${cfg.persona_name}, ${cfg.persona_role} at Precision Painting Plus. You are texting somebody who asked for a free estimate.
+
+  // Nurture is talking to somebody who has already had an estimator in their
+  // home. Everything the new-lead prompt exists to collect, they have already
+  // given — so the opening paragraph has to change, not just the tone.
+  const opening = track === "nurture"
+    ? `You are ${cfg.persona_name}, ${cfg.persona_role} at Precision Painting Plus. You are texting a customer who has ALREADY received a written quote from us.
+
+They are not a lead. An estimator has already visited or already priced the work, and they have the number in writing. Your job is to see whether they have questions, and to find out where they stand. You never quote a price, never re-quote, never discount and never offer an appointment time — the estimator owns the number and the office owns the calendar.
+
+NEVER ask for anything they have already given: not the address, not the scope of work, not their contact details. Asking again is the clearest possible sign that nobody is reading.
+
+WHERE THE CONVERSATION IS TRYING TO GET, in order:
+${flow}`
+    : `You are ${cfg.persona_name}, ${cfg.persona_role} at Precision Painting Plus. You are texting somebody who asked for a free estimate.
 
 Your job is to confirm what they need, check it is work we do and an area we cover, and get them ready for an estimator. You never quote a price and you never offer an appointment time — the office does both.
 
 COLLECT IN THIS ORDER, and do not reorder or skip:
-${flow}
+${flow}`;
+
+  return `${opening}
 
 WHAT WE DO:
 ${cfg.services_included ?? "Interior and exterior painting."}
@@ -74,6 +91,14 @@ ${cfg.tone_rules ?? "Friendly, brief, one question at a time."}
 
 ${cfg.office_location ? `Our office is in ${cfg.office_location}.` : ""}
 ${cfg.service_area_note ? `Where we serve: ${cfg.service_area_note}` : ""}
+${knownCustomerPrompt(known)}
+
+${track === "new_lead" ? `BEFORE SWITCHING TO A PHONE QUOTE:
+Say so first. If the job is small enough, or they want somebody out the same
+day, we quote it over the phone instead of visiting — but tell them that is
+what is happening and why, and confirm their contact details before you do.
+Kate graded two conversations bad for moving to a phone quote with no warning.
+` : ""}
 ${hardNos.length ? `\nNEVER, under any circumstances:\n${hardNos.map((h) => `- ${h}`).join("\n")}` : ""}
 
 You reply by choosing an intent and filling its slots. You never write the
@@ -93,7 +118,8 @@ it up costs far less than a wrong answer to a customer.`;
  * strict: true requires additionalProperties: false and an explicit required
  * list, so every field the model may return is declared here and nowhere else.
  */
-const ACTION_TOOL = {
+function actionTool(track: Track): Anthropic.Tool {
+  return {
   name: "choose_action",
   description:
     "Choose the next action in the conversation. This is the ONLY way to respond — you never write the message that is sent to the customer.",
@@ -103,7 +129,9 @@ const ACTION_TOOL = {
     properties: {
       intent: {
         type: "string",
-        enum: [...END_INTENTS, ...CONTINUE_INTENTS],
+        // Restricted to the track. A nurture conversation has no ask_address
+        // to choose, which is a stronger guarantee than telling it not to.
+        enum: [...intentsForTrack(track)],
         description: "What to do next.",
       },
       freeText: {
@@ -120,16 +148,22 @@ const ACTION_TOOL = {
     required: ["intent", "freeText", "confidence", "reasoning"],
     additionalProperties: false,
   },
-};
+  };
+}
 
 export async function runAgentTurn(
   cfg: AgentConfigForRun,
   history: Turn[],
   inboundRaw: string,
-  opts: { hardNos?: string[]; mediaCount?: number; lastAskedForInfo?: boolean; ctx?: ValidateContext } = {}
+  opts: {
+    hardNos?: string[]; mediaCount?: number; lastAskedForInfo?: boolean;
+    track?: Track; known?: KnownCustomer; ctx?: ValidateContext;
+  } = {}
 ): Promise<RunResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { ok: false, error: "No Anthropic API key is configured on this environment." };
+  const track: Track = opts.track ?? "new_lead";
+  const kf = knownFields(opts.known);
 
   // Reactions, emoji and photos become words before the model sees them.
   // Hatch cannot read any of these, which is why a thumbs-up derails it.
@@ -156,9 +190,9 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(cfg, opts.hardNos ?? []),
+      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known),
       messages: [{ role: "user", content: prompt }],
-      tools: [ACTION_TOOL],
+      tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model
       // replies with prose instead of choosing an action.
       tool_choice: { type: "tool", name: "choose_action" },
@@ -178,6 +212,11 @@ Choose the next action.`;
     const v = validateAction(parsed, {
       confidenceThreshold: cfg.confidence_threshold,
       hardNoPhrases: opts.hardNos,
+      track,
+      knownFields: {
+        name: !!kf.name, phone: !!kf.phone, email: !!kf.email,
+        address: !!kf.address, inquiryScope: !!kf.inquiryScope,
+      },
       ...opts.ctx,
     });
     if (!v.ok) return { ok: false, error: "The reply was rejected before sending.", rejected: `${v.reason}: ${v.detail}` };
@@ -194,6 +233,7 @@ Choose the next action.`;
         freeText: v.action.freeText,
         turn: history.length,
         photos: opts.mediaCount ?? 0,
+        known: { address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope },
       }),
     };
   } catch (err) {

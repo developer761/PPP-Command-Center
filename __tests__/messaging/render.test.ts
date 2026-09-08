@@ -70,10 +70,22 @@ describe("rendering an intent into words", () => {
 
   /** A new intent with no words is an empty text message to a customer. */
   it("has words for every non-silent intent", () => {
+    // confirm_* read a value back, so they are given one. Without it they
+    // correctly render nothing rather than a message containing "{address}".
+    const known = {
+      address: "1 Test St, Garden City, NY 11530",
+      phone: "(516) 555-0100", email: "test@example.com", scope: "interior painting",
+    };
     for (const intent of ALL) {
       if (SILENT_INTENTS.has(intent)) continue;
       if (intent === "answer_question") continue; // the rapport IS the answer
-      expect(renderMessage({ intent }).length, intent).toBeGreaterThan(0);
+      expect(renderMessage({ intent, known }).length, intent).toBeGreaterThan(0);
+    }
+  });
+
+  it("renders nothing for a confirm_* intent with no value to confirm", () => {
+    for (const intent of ["confirm_address", "confirm_contact", "confirm_scope"] as const) {
+      expect(renderMessage({ intent }), intent).toBe("");
     }
   });
 

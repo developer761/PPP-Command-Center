@@ -56,6 +56,22 @@ const SAYS: Record<Intent, string[]> = {
     "What sort of days work for you to have someone take a look?",
   ],
 
+  // — Reading back what we already have —
+  // Wording lifted from the two conversations Kate graded well, so the good
+  // behaviour that already happens by luck happens every time instead.
+  confirm_address: [
+    "Is {address} the correct address for the estimate?",
+    "Just to confirm — is {address} the right address for the project?",
+  ],
+  confirm_contact: [
+    "Is {phone} and {email} the best contact for your appointment and quote details?",
+    "Are {phone} and {email} still the best way to reach you about the estimate?",
+  ],
+  confirm_scope: [
+    "Just to confirm, you're looking for: {scope} — is that right?",
+    "So we have this down as: {scope}. Have I got that right?",
+  ],
+
   // — Keeping it moving —
   // Never empty. An acknowledge that renders to "" is a turn where the
   // customer said something and got silence back — the test caught this on the
@@ -69,6 +85,31 @@ const SAYS: Record<Intent, string[]> = {
   escalate: [
     "Let me get one of our team on this — someone will follow up with you shortly.",
     "I'll pass this to our office so somebody can help properly. They'll be in touch soon.",
+  ],
+
+  // — Nurture: the quote is out, the job is a decision —
+  // Wording adapted from PPP's live Quote Sent campaign rather than invented.
+  // No name or estimator is interpolated: those would be slots, and a template
+  // that greets the wrong person by name is worse than one that greets nobody.
+  nurture_check_in: [
+    "Hope all is well! Just a friendly check-in to see whether you had any questions about the quote we sent over, or have made any decisions yet. Let us know when you get a chance.",
+    "Checking in on the quote we sent across — any questions come up, or any thoughts on how you'd like to move forward?",
+  ],
+  ask_for_decision: [
+    "Have you had a chance to look things over and make a decision?",
+    "Any thoughts yet on whether you'd like to move ahead?",
+  ],
+  ask_check_back: [
+    "When would be a good time to check back in with you?",
+    "No rush at all — when would you like us to follow up?",
+  ],
+  offer_estimator_call: [
+    "I can have your estimator give you a call to walk through the details — would that help?",
+    "Happy to have the estimator who visited get in touch so you can go through it with them directly. Want me to arrange that?",
+  ],
+  accepted: [
+    "That's great to hear! I'll let the office know so they can get you booked in.",
+    "Wonderful — I'll pass this straight to the office and they'll be in touch to get you on the schedule.",
   ],
 
   // — Endings that still say something —
@@ -118,11 +159,32 @@ export type RenderInput = {
    *  Hatch cannot see them at all, and ignoring a photo somebody just sent is
    *  the most obvious way to look like a bot. */
   photos?: number;
+  /** Values the system holds, for the confirm_* intents to read back. These
+   *  are system data, not model output — interpolating them keeps the
+   *  guarantee that nothing the model wrote reaches the customer unfiltered. */
+  known?: { address?: string | null; phone?: string | null; email?: string | null; scope?: string | null };
 };
 
 export function renderMessage(input: RenderInput): string {
   const variants = SAYS[input.intent] ?? [""];
-  const pick = variants[(input.turn ?? 0) % variants.length] ?? "";
+  let pick = variants[(input.turn ?? 0) % variants.length] ?? "";
+
+  // Substitute verified values. A template whose value is missing must not go
+  // out with "{address}" in it — validateAction refuses that intent, but the
+  // renderer is the last line and says nothing rather than something broken.
+  if (pick.includes("{")) {
+    const v: Record<string, string | null | undefined> = {
+      address: input.known?.address, phone: input.known?.phone,
+      email: input.known?.email, scope: input.known?.scope,
+    };
+    let missing = false;
+    pick = pick.replace(/\{(\w+)\}/g, (_m, key: string) => {
+      const val = v[key];
+      if (!val) { missing = true; return ""; }
+      return val;
+    });
+    if (missing) return "";
+  }
 
   if (SILENT_INTENTS.has(input.intent)) return "";
 

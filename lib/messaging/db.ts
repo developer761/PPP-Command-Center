@@ -263,10 +263,10 @@ export type AgentConfig = {
 
 /** Workspaces that carry a config row of their own, so the picker can say
  *  which ones actually differ from the default. */
-export async function workspacesWithOwnConfig(): Promise<string[]> {
+export async function workspacesWithOwnConfig(track: string = "new_lead"): Promise<string[]> {
   const sb = messagingDb();
   const { data } = await sb.from("sms_agent_configs")
-    .select("workspace_id").eq("scope", "workspace");
+    .select("workspace_id").eq("scope", "workspace").eq("track", track);
   return (data ?? []).map((r) => r.workspace_id).filter((v): v is string => !!v);
 }
 
@@ -283,7 +283,7 @@ export async function workspacesWithOwnConfig(): Promise<string[]> {
  * `from` reports which tier each field came from, so "why does it say that"
  * has an answer on the page rather than in the database.
  */
-export async function loadAgentConfig(workspaceId?: string) {
+export async function loadAgentConfig(workspaceId?: string, track: string = "new_lead") {
   const sb = messagingDb();
   const [{ data: rows }, { data: ws }] = await Promise.all([
     sb.from("sms_agent_configs").select("*"),
@@ -291,7 +291,8 @@ export async function loadAgentConfig(workspaceId?: string) {
       ? sb.from("sms_sub_accounts").select("name").eq("id", workspaceId).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
-  const all = (rows ?? []) as unknown as AgentConfigLayer[];
+  const all = ((rows ?? []) as unknown as AgentConfigLayer[])
+    .filter((c) => (c.track ?? "new_lead") === track);
   const base = all.find((c) => c.scope === "global");
 
   const state = ws?.name ? stateOfWorkspace(ws.name) : null;

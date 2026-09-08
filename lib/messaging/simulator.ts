@@ -13,6 +13,8 @@
  */
 import { messagingDb } from "./db";
 import { classifyInbound } from "./compliance";
+import type { Track } from "./agent-output";
+import type { KnownCustomer } from "./known-customer";
 import { runAgentTurn, agentAvailable, type AgentConfigForRun, type Turn } from "./agent-run";
 import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
 
@@ -36,7 +38,7 @@ export type SimResult =
  * then workspace. Using the same resolver is the point: if Kate tests as a New
  * York workspace, she is testing the New York prompt, Garden City and all.
  */
-async function configFor(workspaceId?: string): Promise<{ cfg: AgentConfigForRun; hardNos: string[] } | null> {
+async function configFor(workspaceId?: string, track: Track = "new_lead"): Promise<{ cfg: AgentConfigForRun; hardNos: string[] } | null> {
   const sb = messagingDb();
   const [{ data: rows }, { data: ws }] = await Promise.all([
     sb.from("sms_agent_configs").select("*"),
@@ -46,9 +48,13 @@ async function configFor(workspaceId?: string): Promise<{ cfg: AgentConfigForRun
 
   const state = ws?.name ? stateOfWorkspace(ws.name) : null;
   const layers = (rows as AgentConfigLayer[]).filter((r) =>
-    r.scope === "global"
+    // Track first. A nurture conversation resolving the new-lead global row
+    // would inherit the collect-the-address flow, which is the exact mistake
+    // this track exists to prevent.
+    (r.track ?? "new_lead") === track
+    && (r.scope === "global"
     || (r.scope === "state" && state !== null && r.state_code === state)
-    || (r.scope === "workspace" && workspaceId && r.workspace_id === workspaceId)
+    || (r.scope === "workspace" && workspaceId && r.workspace_id === workspaceId))
   );
   const { value } = resolveAgentConfig(layers);
 
@@ -95,9 +101,21 @@ export async function runSimTurn(input: {
   /** Photos attached. No file is needed — what the bot reasons about is that
    *  photos EXIST, and normalizeInbound turns that into words. */
   mediaCount?: number;
+  /** New lead, or following up a quote already sent. */
+  track?: Track;
+  /** What the system already holds about this customer. Kate asked for this
+   *  directly: Hatch let her fill a "Customer Data" section when sandbox
+   *  testing, and without it the sandbox cannot reproduce the bug she is
+   *  testing for — the bot asking for what it already has. */
+  known?: KnownCustomer;
 }): Promise<SimResult> {
-  const resolved = await configFor(input.workspaceId);
-  if (!resolved) return { ok: false, error: "No agent configuration found." };
+  const track: Track = input.track ?? "new_lead";
+  const resolved = await configFor(input.workspaceId, track);
+  if (!resolved) {
+    return { ok: false, error: track === "nurture"
+      ? "No nurture configuration found — run migration 196 to seed it."
+      : "No agent configuration found." };
+  }
 
   // STOP / HELP are decided BEFORE the model is asked anything.
   //
@@ -133,6 +151,8 @@ export async function runSimTurn(input: {
     hardNos: resolved.hardNos,
     lastAskedForInfo: input.lastAskedForInfo,
     mediaCount: input.mediaCount,
+    track,
+    known: input.known,
   });
 
   if (!res.ok) {

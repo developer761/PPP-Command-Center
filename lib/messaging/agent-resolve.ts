@@ -16,6 +16,9 @@
 export type ConfigScope = "global" | "state" | "workspace";
 
 export type AgentConfigLayer = {
+  /** new_lead | nurture. Not a resolution tier — a separate dimension. A
+   *  workspace resolves its three tiers WITHIN one track. */
+  track?: string | null;
   scope: ConfigScope;
   state_code?: string | null;
   workspace_id?: string | null;

@@ -25,13 +25,14 @@ const FLOW_LABEL: Record<string, string> = {
 export default async function AgentConfigPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ws?: string }>;
+  searchParams: Promise<{ ws?: string; track?: string }>;
 }) {
   const sp = await searchParams;
+  const track = sp.track === "nurture" ? "nurture" : "new_lead";
   const [{ config, isOverride, hasStateLayer, state, hasDefault }, workspaces, overrides] = await Promise.all([
-    loadAgentConfig(sp.ws),
+    loadAgentConfig(sp.ws, track),
     activeWorkspaces(),
-    workspacesWithOwnConfig(),
+    workspacesWithOwnConfig(track),
   ]);
   const wsName = workspaces.find((w) => w.id === sp.ws)?.name;
 
@@ -53,7 +54,7 @@ export default async function AgentConfigPage({
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-4 pb-safe space-y-4">
-      <AgentScopePicker workspaces={workspaces} current={sp.ws} overrides={overrides} />
+      <AgentScopePicker workspaces={workspaces} current={sp.ws} overrides={overrides} track={track} />
 
       <header>
         <h1 className="text-lg font-bold text-ppp-charcoal">
