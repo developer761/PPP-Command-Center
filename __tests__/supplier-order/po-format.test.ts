@@ -82,8 +82,27 @@ describe("the email stops printing the job twice", () => {
     expect(t).not.toMatch(/Required by:/);
   });
 
-  it("the PPP account number stays — that is Katie's customer number", () => {
-    expect(t).toMatch(/PPP Account: \{\{ppp_account_number\}\}/);
+  it("the PPP account number is NOT on the email", () => {
+    // Karan 2026-09-08: the PO is the work order number and that is the only
+    // reference a vendor needs. Kept as a template VARIABLE so a supplier who
+    // does need it can have it added per-template in Settings.
+    expect(t).not.toMatch(/PPP Account: \{\{ppp_account_number\}\}/);
+  });
+
+  it("only ONE identifier reaches the vendor", () => {
+    // Two traps here, both hit on the way to this line:
+    //   · `intro:` appears in the TYPE declaration as well as the template, so
+    //     slicing from the first match measured the doc comment;
+    //   · the comments explaining the removal say "PPP Account" themselves, so
+    //     an unstripped slice reads the prose and reports the line as present.
+    const tpl = t.slice(t.indexOf("DEFAULT_SUPPLIER_TEMPLATE"));
+    const intro = tpl
+      .slice(tpl.indexOf("intro:"), tpl.indexOf("outro:"))
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]*\/\/.*$/gm, "");
+    expect(intro).toMatch(/PO Number: \{\{po_number\}\}/);
+    expect(intro).not.toMatch(/Work Order/);
+    expect(intro).not.toMatch(/PPP Account/);
   });
 
   it("the customer reads as a sentence, not a field", () => {

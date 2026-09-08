@@ -25,11 +25,14 @@ export type SupplierEmailTemplate = {
  *  even before admin has customized per-supplier copy.
  *
  *  Conditional blocks use the Mustache-style `{{#var}}…{{/var}}` syntax —
- *  the block renders only when the variable resolves to a non-empty string.
- *  PPP Account number is optional (admin sets it once per supplier in
- *  settings, or never if the supplier doesn't need it). When unset, the
- *  entire line is OMITTED from the email rather than rendered as a blank
- *  "PPP Account: " — workers should never see placeholders. */
+ *  the block renders only when the variable resolves to a non-empty string, so
+ *  an optional field is OMITTED rather than rendered as a blank label. Nobody
+ *  should ever be shown a placeholder.
+ *
+ *  `ppp_account_number` is still substituted and can be added back per-supplier
+ *  in Settings, but it is no longer in the default body: Karan 2026-09-08, the
+ *  PO number is the work order number and that is the only reference a vendor
+ *  needs from us. */
 export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
   // The customer clause is CONDITIONAL: a work order with no Account resolved
   // used to mail the supplier "PPP Order PPP-WO00316046 — (unknown customer)
@@ -48,12 +51,19 @@ export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
   //   · "PO should = WO Number. Once the WO number is listed under PO, we can
   //     remove the standalone WO line." The PO and the work order were the same
   //     job printed twice; the Work Order line is gone.
-  //   · "Customer Number is our PPP account number" — that is the PPP Account
-  //     line, which was already here.
+  //   · The PPP Account line was kept at first on Katie's "Customer Number is
+  //     our PPP account number", then dropped by Karan on the same day: the PO
+  //     already identifies the order and a second reference is noise.
   //   · "Deliver on … by 8AM", replacing "Required by".
   intro:
     "Please prepare the following order for {{ppp_brand}}.\n\n" +
-    "{{#ppp_account_number}}PPP Account: {{ppp_account_number}}\n{{/ppp_account_number}}" +
+    // Karan 2026-09-08: the PPP Account line is OUT. The PO is the work order
+    // number and that is the only reference a vendor needs from us — the
+    // account number was a second identifier for the same order.
+    //
+    // `ppp_account_number` stays available as a template variable, so a
+    // supplier who does need it can have it added back per-template in
+    // Settings without a code change.
     "PO Number: {{po_number}}\n" +
     "Deliver on: {{required_by_date}}, by {{delivery_time}}\n" +
     "Fulfillment: {{fulfillment_block}}\n" +
