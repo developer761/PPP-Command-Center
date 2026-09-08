@@ -207,13 +207,19 @@ export async function readinessChecks() {
  *  above every New York inbox. Grouping by region is the one place worth
  *  diverging: "which of my regions needs me" should not be a scan. */
 function regionOf(name: string): string {
+  // Account management FIRST, or the rule below it silently wins. "AM - SoFlo"
+  // matched the /SoFlo/ branch and grouped under Florida while "AM - NY" and
+  // "AM - NJ" grouped under Account management — three workspaces doing the
+  // same job, split across two places, contradicting the very intent stated
+  // where `order` is defined ("AM workspaces are a different job from lead
+  // inboxes, so they sit in their own group"). Karan audit 2026-09-08.
+  if (/^AM - /i.test(name)) return "Account management";
   if (/^NY |^NYC |LI |Queens|Wstch/i.test(name)) return "New York";
   if (/^NJ /i.test(name)) return "New Jersey";
   if (/^FL |SoFlo/i.test(name)) return "Florida";
   if (/^CT |WC CT/i.test(name)) return "Connecticut";
   if (/^CA /i.test(name)) return "California";
   if (/^CO /i.test(name)) return "Colorado";
-  if (/^AM - /i.test(name)) return "Account management";
   return "Other";
 }
 
@@ -227,7 +233,7 @@ export async function sidebarWorkspaces() {
   for (const c of convs ?? []) unread.set(c.workspace_id, (unread.get(c.workspace_id) ?? 0) + 1);
   // AM workspaces are a different job from lead inboxes, so they sit in their
   // own group at the end rather than interleaved by state.
-  const order = ["New York", "New Jersey", "Florida", "Connecticut", "California", "Colorado", "Account management", "Other"];
+  const order = ["New York", "New Jersey", "Florida", "Connecticut", "California", "Colorado", "Texas", "North Carolina", "Louisiana", "Account management", "Other"];
   return (ws ?? [])
     .map((w) => ({ id: w.id, name: w.name, region: regionOf(w.name), unread: unread.get(w.id) ?? 0 }))
     .sort((a, b) => order.indexOf(a.region) - order.indexOf(b.region) || a.name.localeCompare(b.name));
