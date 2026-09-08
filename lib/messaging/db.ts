@@ -641,3 +641,41 @@ export async function integrityChecks() {
     suppressedNumbers: suppressed ?? 0,
   };
 }
+
+/* ─────────────────────── training coverage ───────────────────────── */
+
+import { tagCoverage, coverageSummary, type TagDef, type TaggedExample } from "./training-coverage";
+
+export async function loadTrainingCoverage() {
+  const sb = messagingDb();
+  const [{ data: tags }, { data: examples }, { data: links }] = await Promise.all([
+    sb.from("sms_training_tags").select("*").eq("is_active", true).order("sort_order"),
+    sb.from("sms_training_examples").select("id, conduct, approved, pii_scrubbed"),
+    sb.from("sms_training_example_tags").select("example_id, tag_key"),
+  ]);
+
+  const byExample = new Map<string, string[]>();
+  for (const l of links ?? []) {
+    const list = byExample.get(l.example_id) ?? [];
+    list.push(l.tag_key);
+    byExample.set(l.example_id, list);
+  }
+
+  const tagged: TaggedExample[] = (examples ?? []).map((e) => ({
+    id: e.id,
+    conduct: e.conduct as TaggedExample["conduct"],
+    approved: e.approved,
+    pii_scrubbed: e.pii_scrubbed,
+    tags: byExample.get(e.id) ?? [],
+  }));
+
+  const coverage = tagCoverage((tags ?? []) as TagDef[], tagged);
+  return {
+    tags: (tags ?? []) as TagDef[],
+    coverage,
+    summary: coverageSummary(coverage),
+    examples: tagged,
+    ungraded: tagged.filter((e) => !e.conduct).length,
+    gradedNoReason: tagged.filter((e) => e.conduct && e.tags.length === 0).length,
+  };
+}

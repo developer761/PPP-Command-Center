@@ -21,6 +21,11 @@ export default async function TrainingPage() {
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-4 pb-safe space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <Link href="/messaging/training/import" className="inline-flex items-center min-h-[40px] px-3.5 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold touch-manipulation">Import conversations</Link>
+        <Link href="/messaging/training/coverage" className="inline-flex items-center min-h-[40px] px-3.5 rounded-xl border border-ppp-charcoal-200 bg-white text-[13px] font-semibold text-ppp-charcoal touch-manipulation">What it covers</Link>
+      </div>
+
       <header>
         <h1 className="text-lg font-bold text-ppp-charcoal">Training corpus</h1>
         <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
