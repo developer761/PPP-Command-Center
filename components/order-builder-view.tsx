@@ -473,6 +473,51 @@ export default function OrderBuilderView({
         )}
       </div>
 
+          <section id="preview" className="scroll-mt-4">
+            {/* Katie item 9, 2026-09-08: "line items should be all the way at the
+                top for material ordering and don't have it as a dropdown."
+            
+                This REVERSES R4.18, which collapsed the panel and put it last, on
+                the grounds that an expanded copy of the source data pushed the
+                buy-list off the first screen. The office's answer is that the
+                source data is what they check the buy-list AGAINST, so it has to
+                be visible before the numbers rather than after them. */}
+            <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
+                <span>
+                  <span className="block text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
+                    Source data (Salesforce)
+                  </span>
+                  <span className="block text-sm font-semibold text-ppp-charcoal">
+                    Line items on this WO
+                    <span className="ml-1.5 font-normal text-ppp-charcoal-500">({sourceLines.length})</span>
+                  </span>
+                </span>
+              </div>
+              <ul className="divide-y divide-ppp-charcoal-100">
+                {sourceLines.map((l) => (
+                  <li key={l.id} className="px-4 py-2.5 text-xs">
+                    {/* Kate round-3 #14: room AND surface identify the line. */}
+                    <div className="font-semibold text-ppp-charcoal">{l.room}</div>
+                    {l.surfaces.length > 0 && (
+                      <div className="text-[11px] text-ppp-blue-700 mt-0.5">{l.surfaces.join(" · ")}</div>
+                    )}
+                    <div className="text-ppp-charcoal-500 mt-0.5">
+                      {l.detail}
+                      {l.sqft > 0 ? `${l.detail ? " · " : ""}${l.sqft.toLocaleString()} sq ft` : ""}
+                    </div>
+                    {/* Kate 2026-09-04 — the rooms the rep actually listed. */}
+                    <LineItemNotes notes={l.notes} />
+                  </li>
+                ))}
+                {sourceLines.length === 0 && (
+                  <li className="px-4 py-4 text-xs text-ppp-charcoal-500 italic">No line items on this work order.</li>
+                )}
+              </ul>
+            </div>
+
+          </section>
+
       {/* ── Step 1: vendor. Inline pick list, not a pop-up (#18/#21). ─────── */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-3 flex-wrap">
@@ -996,46 +1041,6 @@ export default function OrderBuilderView({
           {/* R4.17: the "Supplier → color → where it goes" panel was removed —
               it restated the buy-list above with a different grouping, and the
               two disagreed whenever the buy-list changed. */}
-          <section id="preview" className="scroll-mt-4">
-            {/* R4.18: collapsed by default. This is reference data an estimator
-                opens to check a number, not something they read on every order —
-                expanded it pushed the actual buy-list off the first screen. */}
-            <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
-              <summary className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] cursor-pointer list-none flex items-center justify-between gap-2 min-h-[44px] touch-manipulation">
-                <span>
-                  <span className="block text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
-                    Source data (Salesforce)
-                  </span>
-                  <span className="block text-sm font-semibold text-ppp-charcoal">
-                    Line items on this WO
-                    <span className="ml-1.5 font-normal text-ppp-charcoal-500">({sourceLines.length})</span>
-                  </span>
-                </span>
-                <span aria-hidden className="shrink-0 text-ppp-charcoal-400 transition-transform group-open:rotate-180">▾</span>
-              </summary>
-              <ul className="divide-y divide-ppp-charcoal-100">
-                {sourceLines.map((l) => (
-                  <li key={l.id} className="px-4 py-2.5 text-xs">
-                    {/* Kate round-3 #14: room AND surface identify the line. */}
-                    <div className="font-semibold text-ppp-charcoal">{l.room}</div>
-                    {l.surfaces.length > 0 && (
-                      <div className="text-[11px] text-ppp-blue-700 mt-0.5">{l.surfaces.join(" · ")}</div>
-                    )}
-                    <div className="text-ppp-charcoal-500 mt-0.5">
-                      {l.detail}
-                      {l.sqft > 0 ? `${l.detail ? " · " : ""}${l.sqft.toLocaleString()} sq ft` : ""}
-                    </div>
-                    {/* Kate 2026-09-04 — the rooms the rep actually listed. */}
-                    <LineItemNotes notes={l.notes} />
-                  </li>
-                ))}
-                {sourceLines.length === 0 && (
-                  <li className="px-4 py-4 text-xs text-ppp-charcoal-500 italic">No line items on this work order.</li>
-                )}
-              </ul>
-            </details>
-
-          </section>
 
       {/* Sticky advance bar */}
       {supplier && (
