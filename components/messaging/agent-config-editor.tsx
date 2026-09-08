@@ -79,7 +79,8 @@ export default function AgentConfigEditor({
         <h2 className="font-semibold text-ppp-charcoal text-[14px]">Editing {levelName}</h2>
         <p className="mt-0.5 text-[12px] text-ppp-charcoal-500 leading-relaxed">
           Saved changes apply to the next message. There is no deploy step.
-          Clearing a box means inherit from the level above, not blank.
+          An empty box means this level follows the one above it — so to give
+          this level its own version, start from what it inherits and edit that.
         </p>
       </div>
 
@@ -101,9 +102,35 @@ export default function AgentConfigEditor({
               />
             )}
             {!(vals[f.key] ?? "").trim() && f.inherited && (
-              <span className="mt-1 block text-[11.5px] text-ppp-charcoal-500 leading-snug">
-                Inherits{f.from ? ` from ${f.from}` : ""}: {f.inherited}
-              </span>
+              <div className="mt-1.5 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50 px-3 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-[11.5px] font-medium text-ppp-charcoal-500">
+                    Empty, so it uses{f.from && f.from !== "global" ? ` the ${f.from} version` : " the default"}:
+                  </span>
+                  {/* Giving one state its own exclusions means starting from
+                      the shared list and changing a line, not retyping four
+                      paragraphs from memory. Without this the realistic path
+                      was copy-paste out of another browser tab. */}
+                  <button type="button"
+                    onClick={() => setVals((p) => ({ ...p, [f.key]: f.inherited ?? "" }))}
+                    className="shrink-0 min-h-[28px] px-2 rounded-md border border-ppp-charcoal-200 bg-white text-[11px] font-semibold text-ppp-charcoal touch-manipulation">
+                    Start from this
+                  </button>
+                </div>
+                <p className={[
+                  "mt-1 text-[11.5px] text-ppp-charcoal-500 leading-relaxed whitespace-pre-wrap",
+                  f.long ? "max-h-32 overflow-y-auto" : "",
+                ].join(" ")}>
+                  {f.inherited}
+                </p>
+              </div>
+            )}
+            {(vals[f.key] ?? "").trim() && f.inherited && (vals[f.key] ?? "") !== f.value && (
+              <button type="button"
+                onClick={() => setVals((p) => ({ ...p, [f.key]: "" }))}
+                className="mt-1 min-h-[28px] text-[11.5px] font-medium text-ppp-charcoal-500 underline touch-manipulation">
+                Clear it and go back to inheriting
+              </button>
             )}
             {f.help && <span className="mt-1 block text-[11.5px] text-ppp-charcoal-400 leading-snug">{f.help}</span>}
           </label>

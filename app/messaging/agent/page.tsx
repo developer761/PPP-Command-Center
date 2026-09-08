@@ -154,24 +154,17 @@ export default async function AgentConfigPage({
         ]}
       />
 
-      {[
-        ["What we cover", c.services_included],
-        ["What we do not cover", c.services_excluded],
-        ["Off-site quotes", c.offsite_rules],
-        ["Tone", c.tone_rules],
-      ].filter(([, body]) => !!body).map(([title, body]) => (
-        <section key={title as string} className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
-          <h2 className="px-4 py-2.5 border-b border-ppp-charcoal-100 font-semibold text-ppp-charcoal text-[14px]">{title}</h2>
-          <p className="px-4 py-3 text-[13px] text-ppp-charcoal-600 leading-relaxed whitespace-pre-wrap">{body}</p>
-        </section>
-      ))}
+      {/* The read-only copies of these four lived here and are gone: the
+          editor above shows the same fields, so the page rendered each of
+          them twice and Karan read the lower one and asked for it to be made
+          editable. It already was, forty lines up. */}
 
       {/* Only when this level is genuinely still showing the CA-derived
           default. The first version fired whenever a location existed at all,
           so it went on warning that New York needed its own value long after
           New York had one — Garden City, set on the state row. A warning that
           is wrong is worse than no warning: people learn to scroll past it. */}
-      {from?.office_location === "global" && c.office_location && (
+      {(sp.ws || sp.state) && from?.office_location === "global" && c.office_location && (
         <section className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 px-4 py-3">
           <p className="text-[13px] font-semibold text-ppp-orange-700">Still answering with the default location</p>
           <p className="mt-1.5 text-[12.5px] text-ppp-orange-700/90 leading-relaxed">
