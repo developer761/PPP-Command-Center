@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { trainingStats } from "@/lib/messaging/db";
 
 export const dynamic = "force-dynamic";
@@ -110,7 +111,29 @@ export default async function TrainingPage() {
             BOOKED. They are different signals and the import stores them in
             different columns.
           </p>
+          {/* The answer is the FIRST step of the import screen, so link straight
+              there rather than describing where to go. */}
+          <Link
+            href="/messaging/training/import"
+            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-ppp-navy px-4 py-2.5 min-h-[44px] text-[13px] font-semibold text-white hover:bg-ppp-navy/90 transition-colors touch-manipulation"
+          >
+            Answer that and import
+            <span aria-hidden>&rarr;</span>
+          </Link>
         </section>
+      )}
+      {/* Once rows exist the blocker card disappears, but the way IN must
+          not go with it — importing is not a one-time act. */}
+      {s.total > 0 && (
+        <div className="flex justify-end">
+          <Link
+            href="/messaging/training/import"
+            className="inline-flex items-center gap-2 rounded-lg border border-ppp-charcoal-200 px-4 py-2.5 min-h-[44px] text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 transition-colors touch-manipulation"
+          >
+            Import more conversations
+            <span aria-hidden>&rarr;</span>
+          </Link>
+        </div>
       )}
     </main>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export type SidebarWorkspace = {
   id: string;
@@ -31,7 +32,25 @@ const NAV = [
  * New York inbox and makes "which of my regions has something waiting" a
  * scanning exercise. Here they are grouped by region with the region's unread
  * total on the header, so the answer is available without reading the list.
+ *
+ * COLLAPSIBLE, since Karan 2026-09-08: "NY should collapse all its workplaces
+ * underneath it, same with New Jersey." With 32 workspaces the flat-but-grouped
+ * list is still longer than the rail, so the Florida group is off-screen while
+ * you are reading New York. Collapsing a region you are not working in is what
+ * makes the grouping pay off.
+ *
+ * Two rules the collapse has to respect:
+ *   · the region holding the ACTIVE workspace always opens, so a page load or a
+ *     deep link never hides the thing you are looking at inside a closed group;
+ *   · a region with unread messages is not collapsed by default — the whole
+ *     point of the header count is that unread work is visible without
+ *     hunting, and defaulting it shut would undo that.
+ *
+ * The open/closed set persists in localStorage, because a rail that forgets its
+ * shape on every navigation is worse than one that never collapsed.
  */
+
+const COLLAPSE_KEY = "ppp.messaging.collapsedRegions";
 export default function MessagingSidebar({
   workspaces,
   onNavigate,
@@ -49,6 +68,39 @@ export default function MessagingSidebar({
     list.push(w);
     byRegion.set(w.region, list);
   }
+
+  // null until the stored set is read, so the first paint doesn't flash every
+  // region open and then snap shut.
+  const [collapsed, setCollapsed] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COLLAPSE_KEY);
+      setCollapsed(new Set(raw ? (JSON.parse(raw) as string[]) : []));
+    } catch {
+      setCollapsed(new Set());
+    }
+  }, []);
+
+  const toggleRegion = (region: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(region)) next.delete(region);
+      else next.add(region);
+      try {
+        window.localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]));
+      } catch {
+        // Private browsing / quota — the rail still works, it just forgets.
+      }
+      return next;
+    });
+  };
+
+  /** A region is open unless explicitly collapsed — and never closed when it
+   *  holds the active workspace, which would hide the page you are on. */
+  const isOpen = (region: string, list: SidebarWorkspace[]) => {
+    if (list.some((w) => w.id === activeWs)) return true;
+    return !(collapsed?.has(region) ?? false);
+  };
 
   return (
     <div className="flex h-full flex-col bg-white">
@@ -106,19 +158,41 @@ export default function MessagingSidebar({
 
         {[...byRegion.entries()].map(([region, list]) => {
           const unread = list.reduce((n, w) => n + w.unread, 0);
+          const open = isOpen(region, list);
           return (
             <div key={region} className="mt-3">
-              <div className="px-2.5 pb-1 flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
-                  {region}
-                </span>
-                {unread > 0 && (
-                  <span className="text-[10px] font-bold text-ppp-orange-700 bg-ppp-orange-50 rounded-full px-1.5 py-0.5 tabular-nums">
-                    {unread}
+              {/* The header IS the toggle. A separate chevron would be a 14px
+                  target beside a 200px non-target; on a phone the row you can
+                  actually hit should be the row that acts. */}
+              <button
+                type="button"
+                onClick={() => toggleRegion(region)}
+                aria-expanded={open}
+                className="w-full px-2.5 py-1 min-h-[32px] flex items-center justify-between gap-2 rounded-lg hover:bg-ppp-charcoal-50 transition-colors touch-manipulation"
+              >
+                <span className="flex items-center gap-1 min-w-0">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden
+                    className={`shrink-0 text-ppp-charcoal-400 transition-transform ${open ? "" : "-rotate-90"}`}>
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 truncate">
+                    {region}
                   </span>
-                )}
-              </div>
-              {list.map((w) => {
+                </span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {/* Collapsed, the count is the only clue how much is hidden. */}
+                  {!open && (
+                    <span className="text-[10px] font-mono text-ppp-charcoal-300 tabular-nums">{list.length}</span>
+                  )}
+                  {unread > 0 && (
+                    <span className="text-[10px] font-bold text-ppp-orange-700 bg-ppp-orange-50 rounded-full px-1.5 py-0.5 tabular-nums">
+                      {unread}
+                    </span>
+                  )}
+                </span>
+              </button>
+              {open && list.map((w) => {
                 const on = activeWs === w.id;
                 return (
                   <Link
