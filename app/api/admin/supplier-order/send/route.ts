@@ -8,7 +8,7 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
 import { sendEmail } from "@/lib/email/resend";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { isValidMaterialTypeValue } from "@/lib/customer-form/material-types";
 
 /**
  * Sends a supplier order via Resend + persists a `supplier_orders` row.
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
     for (const [colorKey, mt] of Object.entries(body.materialTypeOverrides)) {
       if (typeof mt !== "string") continue;
       if (!mt.trim()) continue; // empty = cleared, no-op (handled at builder)
-      if (!VALID_MATERIAL_TYPE_VALUES.has(mt)) {
+      if (!isValidMaterialTypeValue(mt)) {
         invalid.push(`${colorKey}=${mt}`);
       }
     }

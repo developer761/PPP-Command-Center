@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
 import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
-import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, paintLineFromValue } from "@/lib/customer-form/material-types";
+import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { extractMachineColorLines } from "@/lib/customer-form/notes";
 import { denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
@@ -843,7 +843,12 @@ export function formatOrderSummaryBlock(
   // header) or whether the job is mixed (per-line prefix, no header).
   const effective = estimates.map((e) => {
     const key = `${e.colorId}::${e.finish ?? ""}`;
-    return materialTypeOverrides?.get(key) ?? materialType ?? null;
+    const raw = materialTypeOverrides?.get(key) ?? materialType ?? null;
+    // Katie item 11 — an "Other: Behr Premium Plus" value prints the
+    // product alone; the prefix is our bookkeeping. A bare "Other" with
+    // nothing typed resolves to null, so the line groups under [NOT SET]
+    // rather than telling a vendor the product line is "Other".
+    return materialTypeForVendor(raw) || null;
   });
   // Only lines that will actually be ordered decide whether the job has one
   // shared paint line or a mix — otherwise an excluded colour on a different

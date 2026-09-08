@@ -133,6 +133,16 @@ export function paintLineFromValue(value: string | null | undefined): string {
  *  guard. Accepts BOTH the line-only vocabulary and the legacy line+finish
  *  values, so reshaping the picker can't reject a work order that was filled
  *  in last month. Generated once at module load so the lookup is O(1). */
+export function isValidMaterialTypeValue(value: string): boolean {
+  // A deliberate "Other: <product>" is valid however it is spelled — that is
+  // the whole point of the free-text option. Everything else must be a known
+  // value, so a tampered payload still cannot inject an arbitrary product.
+  if (value.startsWith(OTHER_PREFIX) && value.slice(OTHER_PREFIX.length).trim().length > 0) {
+    return true;
+  }
+  return VALID_MATERIAL_TYPE_VALUES.has(value);
+}
+
 export const VALID_MATERIAL_TYPE_VALUES: ReadonlySet<string> = new Set([
   ...MATERIAL_TYPES.map((m) => m.value),
   ...PAINT_LINES.map((l) => l.value),
@@ -366,4 +376,50 @@ export function salesforceLineFor(
   const ext = (exteriorLine ?? "").trim();
   if (int && ext) return { chosen: int, dropped: ext };
   return { chosen: int || ext || null, dropped: null };
+}
+
+/**
+ * "Other" as a paint line, with the product a worker actually typed.
+ *
+ * Katie item 11, 2026-09-08: "Other should always let me manually put stuff in,
+ * it should never default as Other." Picking Other used to store the literal
+ * word, and that is what reached the vendor — a paint counter cannot fill an
+ * order for "Other".
+ *
+ * Stored as `Other: Behr Premium Plus`. The prefix is what lets the submit
+ * guard tell a deliberate free-text entry from a tampered value: the guard
+ * checks membership in VALID_MATERIAL_TYPE_VALUES, so a bare hand-typed product
+ * would be rejected outright.
+ */
+export const OTHER_PREFIX = "Other: ";
+
+export function makeOtherValue(text: string): string {
+  return `${OTHER_PREFIX}${text.trim()}`;
+}
+
+/** True for "Other" itself and for any "Other: …" free-text value. */
+export function isOtherValue(value: string | null | undefined): boolean {
+  const v = (value ?? "").trim();
+  return v === "Other" || v.startsWith(OTHER_PREFIX);
+}
+
+/** The product a worker typed, or "" when they picked Other and typed nothing. */
+export function otherValueText(value: string | null | undefined): string {
+  const v = (value ?? "").trim();
+  return v.startsWith(OTHER_PREFIX) ? v.slice(OTHER_PREFIX.length).trim() : "";
+}
+
+/**
+ * What a VENDOR should read for this product line.
+ *
+ * An "Other: …" value prints the typed product alone — the prefix is our
+ * bookkeeping, not something a supplier needs to see. Everything else prints
+ * as-is. Returns "" for a bare "Other" with nothing typed, so the caller omits
+ * the line rather than printing a placeholder.
+ */
+export function materialTypeForVendor(value: string | null | undefined): string {
+  const v = (value ?? "").trim();
+  if (v === "Other") return "";
+  if (v.startsWith(OTHER_PREFIX)) return otherValueText(v);
+  return v;
 }

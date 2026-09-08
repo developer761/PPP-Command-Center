@@ -51,14 +51,27 @@ describe("the draft reports the lines the email will use", () => {
 });
 
 describe("the order screen shows them", () => {
-  it("names the line the email will use instead of warning it is unset", () => {
-    expect(V).toMatch(/!payload\.mainMaterialType && currentDraft\?\.resolvedMaterialType/);
-    // The orange warning survives ONLY when there is genuinely no line.
-    expect(V).toMatch(/!payload\.mainMaterialType && !currentDraft\?\.resolvedMaterialType/);
+  it("names the line the email will use instead of leaving the box blank", () => {
+    // Katie item 14 (2026-09-08) removed the job-level "Default paint product
+    // line" control, and the job-level "Using X from this work order" note went
+    // with it — there is no job-level answer to report any more.
+    //
+    // R5.3's actual requirement survives PER LINE, which is where the product
+    // now lives: each picker's placeholder names the line the builder resolved
+    // for that colour, so the screen still cannot show an empty box over an
+    // email that carries an answer.
+    expect(V).toMatch(/currentDraft\?\.resolvedMaterialTypeOverrides\?\.\[key\]/);
+    expect(V).toMatch(/\(from the job\)/);
   });
 
   it("explains the exterior line on a mixed job", () => {
-    expect(V).toMatch(/currentDraft\?\.exteriorMaterialType &&/);
+    // Also per line now. The builder writes the exterior answer into
+    // derivedMaterialTypeOverrides for the colours that are exterior, and that
+    // map is what feeds each picker's placeholder — so a mixed job still shows
+    // its exterior line, against the colours it applies to rather than as a
+    // job-wide footnote.
+    expect(B).toMatch(/derivedMaterialTypeOverrides\.set\(key, exteriorLine\)/);
+    expect(V).toMatch(/currentDraft\?\.resolvedMaterialTypeOverrides\?\.\[key\]/);
   });
 
   it("names a derived per-colour line rather than calling it the default", () => {

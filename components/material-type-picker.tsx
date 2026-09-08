@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { PAINT_LINES, type MaterialType } from "@/lib/customer-form/material-types";
+import { isOtherValue, otherValueText, makeOtherValue, PAINT_LINES, type MaterialType } from "@/lib/customer-form/material-types";
 
 /**
  * Material Type picker — paint product-line dropdown for both the customer
@@ -389,6 +389,21 @@ export default function MaterialTypePicker({
                   </div>
                 );
               })
+            )}
+            {/* Katie item 11, 2026-09-08: "Other should always let me manually put
+                stuff in." Picking Other used to store the literal word, and that is
+                what reached the vendor — a paint counter cannot fill an order for
+                "Other". The typed product is stored as "Other: <product>" so the
+                submit guard can tell a deliberate entry from a tampered value. */}
+            {isOtherValue(value) && (
+              <input
+                type="text"
+                value={otherValueText(value)}
+                onChange={(ev) => onChange(ev.target.value.trim() ? makeOtherValue(ev.target.value) : "Other")}
+                placeholder="Which product?"
+                aria-label="Product line — type the product"
+                className="mt-1.5 w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              />
             )}
           </div>
         </div>,

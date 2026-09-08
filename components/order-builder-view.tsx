@@ -569,53 +569,15 @@ export default function OrderBuilderView({
 
       {supplier && (
         <>
-          {/* ── Paint line (moved here from the order page — #17/#18) ─────── */}
-          <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-ppp-charcoal">Default paint product line</h2>
-                <p className="text-[11px] text-ppp-charcoal-500">
-                  Applies to every color — override per color below if the job mixes lines.
-                </p>
-              </div>
-              <div className="w-full sm:w-auto sm:ml-auto max-w-[260px]">
-                <MaterialTypePicker
-                  id="main-material-type"
-                  value={payload.mainMaterialType}
-                  onChange={(v) => patch({ mainMaterialType: v })}
-                  placeholder="— pick a paint line —"
-                  allowClear
-                  availableValues={lineMaterialValues}
-                />
-              </div>
-            </div>
-            {/* R5.3 — the email resolves a line from the work order even when
-                this screen's own payload is empty, and the screen used to deny
-                it: an orange "not set" warning above an email that carried the
-                line. Show what will actually be sent. */}
-            {!payload.mainMaterialType && currentDraft?.resolvedMaterialType && (
-              <p className="mt-2 text-[11px] text-ppp-charcoal-600 bg-[var(--color-surface-muted)] border border-ppp-charcoal-100 rounded-lg px-3 py-2">
-                Using <strong className="text-ppp-charcoal">{currentDraft.resolvedMaterialType}</strong>{" "}
-                from this work order. Pick above to override it for this order.
-              </p>
-            )}
-            {!payload.mainMaterialType && !currentDraft?.resolvedMaterialType && (
-              <p className="mt-2 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
-                ⚠ Paint line not set — pick one here.
-              </p>
-            )}
-            {/* R5.3 — a mixed job gets two answers on the entry form, and both
-                belong here. The exterior line isn't a second default: it lands
-                on the colours that are exterior, which is what the rows below
-                show. Saying so beats an unexplained per-line value. */}
-            {currentDraft?.exteriorMaterialType && (
-              <p className="mt-2 text-[11px] text-ppp-charcoal-600 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2">
-                This job has exterior work too —{" "}
-                <strong className="text-ppp-charcoal">{currentDraft.exteriorMaterialType}</strong>{" "}
-                is applied to the exterior colours below. Interior colours use the default above.
-              </p>
-            )}
-          </section>
+          {/* Katie item 14, 2026-09-08: "get rid of default from the top of the
+              form" — the single "Default paint product line" selector is gone.
+              Each colour carries its own product line below, which is what the
+              vendor email prints per line. A job that mixes Ultra Spec and Regal
+              had one control claiming to speak for both.
+          
+              `mainMaterialType` stays in the payload: orders already saved carry
+              one, and the builder still honours it as a fallback so a stored
+              order does not silently change what it sends. Nothing SETS it now. */}
 
           {/* ── Manual-quantity banner (#06 grammar, #19 wording) ─────────── */}
           {needQty.length > 0 && (

@@ -5,7 +5,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
 import { normalizeBuildPayload, emptyBuildPayload } from "@/lib/supplier-order/build-state";
-import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { isValidMaterialTypeValue } from "@/lib/customer-form/material-types";
 
 /**
  * The committed order-building state for one (work order, supplier).
@@ -140,7 +140,7 @@ export async function PUT(request: Request) {
   // unknown paint line in saved state and only blow up at send time.
   const badLines = [payload.mainMaterialType, ...Object.values(payload.materialTypeOverrides)]
     .filter((v) => v && v.trim())
-    .filter((v) => !VALID_MATERIAL_TYPE_VALUES.has(v));
+    .filter((v) => !isValidMaterialTypeValue(v));
   if (badLines.length > 0) {
     return NextResponse.json(
       {
