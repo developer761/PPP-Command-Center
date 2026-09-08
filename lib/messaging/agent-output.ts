@@ -33,6 +33,52 @@ export const CONTINUE_INTENTS = [
   "confirm_scope", "confirm_address", "confirm_contact",
 ] as const;
 
+/**
+ * The required order, as a rule rather than a request.
+ *
+ * "Project details, then full address, then contact information, then
+ * appointment availability. The order is the rule. Even when an off-site quote
+ * replaces the appointment, the first three are still collected and never
+ * reordered." — PPP's prompt, and previously only PPP's prompt: the model was
+ * asked to keep the order and nothing checked that it had. Kate's graded
+ * conversations show it skipping and reordering, which is what a preference
+ * gets you.
+ *
+ * Index is the stage the conversation must already have reached. Asking for
+ * availability while we still have no address is refused outright.
+ */
+export const FLOW_ORDER = [
+  ["ask_project_details", "confirm_scope"],
+  ["ask_address", "confirm_address"],
+  ["ask_contact", "confirm_contact"],
+  ["ask_availability"],
+] as const;
+
+/** Every intent that participates in the ordered flow. */
+const FLOW_INTENTS = new Set<string>(FLOW_ORDER.flatMap((g) => [...g]));
+
+/** Which stage an intent belongs to, or -1 if it is not part of the flow. */
+export function stageOfIntent(intent: string): number {
+  return FLOW_ORDER.findIndex((g) => (g as readonly string[]).includes(intent));
+}
+
+/**
+ * How far the flow has got, from the intents already used.
+ *
+ * Asking for something counts as completing that step: in a live conversation
+ * the customer's reply is the next inbound, and a step the bot asked twice is
+ * a different bug than a step it skipped.
+ */
+export function stageFromIntents(intents: (string | null | undefined)[]): number {
+  let stage = 0;
+  for (const i of intents) {
+    if (!i) continue;
+    const s = stageOfIntent(i);
+    if (s >= 0) stage = Math.max(stage, s + 1);
+  }
+  return Math.min(stage, FLOW_ORDER.length);
+}
+
 /** Which known field an intent reads back, and which ask it replaces. */
 export const CONFIRM_REQUIRES: Record<string, "inquiryScope" | "address" | "email"> = {
   confirm_scope: "inquiryScope",
@@ -96,6 +142,7 @@ export type ValidationResult =
   | { ok: false; reason: RejectReason; detail: string };
 
 export type RejectReason =
+  | "out_of_order"
   | "unknown_intent"
   | "confidence_out_of_range"
   | "commitment_in_free_text"
@@ -149,6 +196,10 @@ export type ValidateContext = {
   /** Which known fields we hold. Drives both directions: confirm_* needs the
    *  value to exist, and ask_* is refused once it does. */
   knownFields?: Partial<Record<"name" | "phone" | "email" | "address" | "inquiryScope", boolean>>;
+  /** How much of the required flow is already done: 0 means nothing collected,
+   *  4 means all of it. Undefined disables the ordering check, which is what
+   *  every caller that does not track a conversation wants. */
+  stage?: number;
 };
 
 export function validateAction(raw: unknown, ctx: ValidateContext = {}): ValidationResult {
@@ -160,6 +211,17 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   const all: readonly string[] = intentsForTrack(ctx.track ?? "new_lead");
   if (typeof a.intent !== "string" || !all.includes(a.intent)) {
     return { ok: false, reason: "unknown_intent", detail: `intent "${String(a.intent)}" is not one of the allowed set` };
+  }
+
+  // The required order. Out of order is refused, not discouraged.
+  if (ctx.stage !== undefined && FLOW_INTENTS.has(a.intent)) {
+    const want = stageOfIntent(a.intent);
+    if (want > ctx.stage) {
+      return {
+        ok: false, reason: "out_of_order",
+        detail: `${a.intent} belongs to step ${want + 1} but only ${ctx.stage} of the required information has been collected`,
+      };
+    }
   }
 
   // Confirming something we do not have would invent it.

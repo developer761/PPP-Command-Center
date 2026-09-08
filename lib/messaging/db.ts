@@ -155,34 +155,26 @@ export type AgentStats = {
   takeOverPct: number;
 };
 
-export async function agentStats(): Promise<AgentStats[]> {
-  const sb = messagingDb();
-  const { data } = await sb
-    .from("sms_conversations")
-    .select("state, outcome, sms_sub_accounts(name)");
-  const by = new Map<string, { active: number; completed: number; success: number; drop: number; take: number }>();
-  for (const r of data ?? []) {
-    const ws = (r.sms_sub_accounts as unknown as { name: string } | null)?.name ?? "—";
-    const e = by.get(ws) ?? { active: 0, completed: 0, success: 0, drop: 0, take: 0 };
-    if (r.state !== "ended") e.active++;
-    else {
-      e.completed++;
-      if (r.outcome === "success") e.success++;
-      if (r.outcome === "lost" || r.outcome === "discard") e.drop++;
-      if (r.outcome === "transferred") e.take++;
-    }
-    by.set(ws, e);
-  }
-  const pct = (n: number, d: number) => (d === 0 ? 0 : Math.round((n / d) * 1000) / 10);
-  return [...by.entries()]
-    .map(([workspace, e]) => ({
-      workspace, active: e.active, completed: e.completed,
-      successPct: pct(e.success, e.completed),
-      dropOffPct: pct(e.drop, e.completed),
-      takeOverPct: pct(e.take, e.completed),
-    }))
-    .sort((a, b) => b.completed - a.completed || a.workspace.localeCompare(b.workspace));
-}
+/* agentStats and humanAgentStats lived here and are gone. They were a second
+ * implementation of the dashboard's two tables, and they disagreed with the
+ * first: success excluded phone_pricing, which PPP's own end states define as
+ * a success, and take-over counted only outcome='transferred', missing every
+ * conversation a person is still holding. Both now come from agentPerformance
+ * and humanPerformance in metrics.ts, which are pure and have tests. */
+
+export type ReportRow = {
+  id: string;
+  customer_phone: string;
+  customer_name: string | null;
+  agent: string | null;
+  workspace_name: string;
+  started_at: string | null;
+  last_message_at: string | null;
+  durationMins: number | null;
+  outcome: string | null;
+};
+
+export const REPORT_PAGE_SIZE = 25;
 
 export async function readinessChecks() {
   const sb = messagingDb();
@@ -466,88 +458,6 @@ export type HumanAgentStats = {
   avgResponseMins: number | null;
 };
 
-export async function humanAgentStats(workspaceId?: string): Promise<HumanAgentStats[]> {
-  const sb = messagingDb();
-  let cq = sb.from("sms_conversations").select("id, outcome, assigned_user_id, state");
-  if (workspaceId) cq = cq.eq("workspace_id", workspaceId);
-  const { data: convs } = await cq;
-  const rows = (convs ?? []).filter((c) => c.assigned_user_id);
-  if (!rows.length) return [];
-
-  const { data: msgs } = await sb
-    .from("sms_messages")
-    .select("conversation_id, direction, created_at, sent_by_user_id")
-    .in("conversation_id", rows.map((r) => r.id))
-    .order("created_at", { ascending: true });
-
-  // Response time = inbound message -> the next outbound in that thread. The
-  // number Hatch reports, and the one that actually predicts conversion.
-  const gaps = new Map<string, number[]>();
-  const byConv = new Map<string, typeof msgs>();
-  for (const m of msgs ?? []) {
-    const list = byConv.get(m.conversation_id) ?? [];
-    list.push(m); byConv.set(m.conversation_id, list);
-  }
-  for (const [convId, list] of byConv) {
-    const owner = rows.find((r) => r.id === convId)?.assigned_user_id as string | undefined;
-    if (!owner) continue;
-    let pending: string | null = null;
-    for (const m of list ?? []) {
-      if (m.direction === "inbound") pending = m.created_at;
-      else if (pending) {
-        const mins = (new Date(m.created_at).getTime() - new Date(pending).getTime()) / 60000;
-        const g = gaps.get(owner) ?? []; g.push(mins); gaps.set(owner, g);
-        pending = null;
-      }
-    }
-  }
-
-  const by = new Map<string, { total: number; success: number }>();
-  for (const r of rows) {
-    const k = r.assigned_user_id as string;
-    const e = by.get(k) ?? { total: 0, success: 0 };
-    e.total++;
-    if (r.outcome === "success") e.success++;
-    by.set(k, e);
-  }
-
-  return [...by.entries()].map(([id, e]) => {
-    const g = gaps.get(id) ?? [];
-    return {
-      name: id,
-      conversations: e.total,
-      successPct: e.total ? Math.round((e.success / e.total) * 1000) / 10 : 0,
-      textConversations: e.total,
-      avgResponseMins: g.length ? Math.round(g.reduce((a, b) => a + b, 0) / g.length) : null,
-    };
-  }).sort((a, b) => b.conversations - a.conversations);
-}
-
-/* ─────────────────────── conversations report ────────────────────── */
-
-export type ReportRow = {
-  id: string;
-  customer_phone: string;
-  customer_name: string | null;
-  agent: string | null;
-  workspace_name: string;
-  started_at: string | null;
-  last_message_at: string | null;
-  durationMins: number | null;
-  outcome: string | null;
-};
-
-export const REPORT_PAGE_SIZE = 25;
-
-/**
- * Hatch's flat conversations report: Contact, Agent, Date, Workspace, Duration,
- * Disposition, paginated 25 at a time.
- *
- * Duration is first message to last, which is what Hatch appears to show — its
- * rows read "22m", "2h 13m", "4d 6h". Note that a long duration is not a bad
- * sign here: a conversation that ran four days is one where the customer kept
- * replying, and Hatch's own human-agent averages sit in days.
- */
 export async function loadReport(opts: {
   workspaceId?: string; outcome?: string; page?: number;
 }) {
@@ -592,7 +502,7 @@ export function humanDuration(mins: number | null): string {
 
 import {
   qualificationFunnel, workspaceHealth, speedSummary, agingConversations,
-  takeoverBreakdown, secondsBetween, type ConversationRow,
+  takeoverBreakdown, agentPerformance, humanPerformance, secondsBetween, type ConversationRow,
 } from "./metrics";
 
 export type ReportRange = "7d" | "30d" | "90d";
@@ -614,7 +524,7 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   const prevFrom = new Date(now.getTime() - days * 2 * 86400_000);
 
   const select =
-    "id, state, outcome, qualification_stage, takeover_reason, created_at, ended_at, first_outbound_at, first_inbound_at, last_message_at, sms_sub_accounts(name)";
+    "id, state, outcome, qualification_stage, takeover_reason, created_at, ended_at, first_outbound_at, first_inbound_at, last_message_at, campaign_version_id, sms_sub_accounts(name), sms_campaign_versions(sms_campaigns(name))";
 
   let q = sb.from("sms_conversations").select(select).gte("created_at", prevFrom.toISOString());
   if (workspaceId) q = q.eq("workspace_id", workspaceId);
@@ -622,11 +532,67 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
 
   const all = (data ?? []).map((r) => {
     const ws = r.sms_sub_accounts as unknown as { name: string } | null;
-    return { ...r, workspace_name: ws?.name ?? "—" } as ConversationRow & { id: string; last_message_at: string | null };
+    // Hatch calls this the Trigger — the campaign that started the
+    // conversation. Null until campaigns are loaded, and shown as such rather
+    // than invented.
+    const cv = r.sms_campaign_versions as unknown as { sms_campaigns: { name: string } | null } | null;
+    return {
+      ...r,
+      workspace_name: ws?.name ?? "—",
+      trigger: cv?.sms_campaigns?.name ?? null,
+    } as ConversationRow & { id: string; last_message_at: string | null; trigger: string | null };
   });
 
   const current = all.filter((r) => new Date(r.created_at) >= from);
   const previous = all.filter((r) => new Date(r.created_at) < from);
+
+  // Who replied, and how fast. Names come from the message rather than the
+  // conversation: a thread can pass through more than one person, and crediting
+  // all of it to whoever it was last assigned to would flatter them.
+  const currentIds = all.filter((r) => new Date(r.created_at) >= from).map((r) => r.id);
+  const { data: humanMsgs } = currentIds.length
+    ? await sb.from("sms_messages")
+        .select("conversation_id, direction, sent_by_agent, created_at")
+        .in("conversation_id", currentIds)
+        .order("created_at")
+    : { data: [] as { conversation_id: string; direction: string; sent_by_agent: string | null; created_at: string }[] };
+
+  const humanRowsRaw: {
+    name: string; outcome: string | null; state: string;
+    createdAt: string; endedAt: string | null; responseSeconds: number | null;
+  }[] = [];
+  {
+    const byConv = new Map<string, typeof humanMsgs>();
+    for (const m of humanMsgs ?? []) {
+      const list = byConv.get(m.conversation_id) ?? [];
+      list.push(m);
+      byConv.set(m.conversation_id, list);
+    }
+    for (const c of all) {
+      const msgs = byConv.get(c.id) ?? [];
+      const people = new Set(
+        msgs.filter((m) => m.direction === "outbound" && m.sent_by_agent).map((m) => m.sent_by_agent!)
+      );
+      for (const name of people) {
+        // Time from the customer's last message to this person's first reply
+        // after it — the number the office actually feels.
+        let lastIn: string | null = null;
+        let responseSeconds: number | null = null;
+        for (const m of msgs) {
+          if (m.direction === "inbound") { lastIn = m.created_at; continue; }
+          if (m.sent_by_agent === name && lastIn) {
+            const s = secondsBetween(lastIn, m.created_at);
+            if (s != null && (responseSeconds == null || s < responseSeconds)) responseSeconds = s;
+            lastIn = null;
+          }
+        }
+        humanRowsRaw.push({
+          name, outcome: c.outcome, state: c.state,
+          createdAt: c.created_at, endedAt: c.ended_at, responseSeconds,
+        });
+      }
+    }
+  }
 
   const speedOf = (rows: ConversationRow[]) =>
     speedSummary(rows.map((r) => secondsBetween(r.created_at, r.first_outbound_at)));
@@ -674,6 +640,8 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
     previousSpeed: speedOf(previous),
     takeovers: takeoverBreakdown(current),
     aging,
+    agents: agentPerformance(current),
+    people: humanPerformance(humanRowsRaw),
   };
 }
 

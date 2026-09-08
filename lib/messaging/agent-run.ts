@@ -14,7 +14,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   validateAction, shouldEscalate, END_INTENTS, CONTINUE_INTENTS,
-  NURTURE_END_INTENTS, NURTURE_CONTINUE_INTENTS, intentsForTrack,
+  NURTURE_END_INTENTS, NURTURE_CONTINUE_INTENTS, intentsForTrack, FLOW_ORDER,
   type AgentAction, type ValidateContext, type Track,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
@@ -157,7 +157,11 @@ export async function runAgentTurn(
   inboundRaw: string,
   opts: {
     hardNos?: string[]; mediaCount?: number; lastAskedForInfo?: boolean;
-    track?: Track; known?: KnownCustomer; ctx?: ValidateContext;
+    track?: Track; known?: KnownCustomer;
+    /** How much of the required flow is done. Omit and the ordering check is
+     *  skipped, which is right for a caller with no conversation to track. */
+    stage?: number;
+    ctx?: ValidateContext;
   } = {}
 ): Promise<RunResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -174,7 +178,11 @@ export async function runAgentTurn(
     .map((t) => `${t.role === "customer" ? "Customer" : cfg.persona_name}: ${t.text}`)
     .join("\n");
 
-  const prompt = `${transcript ? `Conversation so far:\n${transcript}\n\n` : ""}The customer has just sent:
+  const stageLine = track === "new_lead" && opts.stage !== undefined
+    ? `\nWhere you are in the required order: ${opts.stage} of ${FLOW_ORDER.length} collected. The next thing to ask for is step ${Math.min(opts.stage + 1, FLOW_ORDER.length)}. Anything later than that will be refused.\n`
+    : "";
+
+  const prompt = `${transcript ? `Conversation so far:\n${transcript}\n\n` : ""}${stageLine}The customer has just sent:
 ${inbound.description}
 ${reaction.guidance ? `\nHow to treat that: ${reaction.guidance}` : ""}
 
@@ -213,6 +221,9 @@ Choose the next action.`;
       confidenceThreshold: cfg.confidence_threshold,
       hardNoPhrases: opts.hardNos,
       track,
+      // Ordering only applies to the new-lead flow. Nurture has no collection
+      // steps to keep in order.
+      stage: track === "new_lead" ? opts.stage : undefined,
       knownFields: {
         name: !!kf.name, phone: !!kf.phone, email: !!kf.email,
         address: !!kf.address, inquiryScope: !!kf.inquiryScope,

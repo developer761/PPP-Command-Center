@@ -221,3 +221,119 @@ export function humanSeconds(s: number | null): string {
   if (s < 86400) { const h = Math.floor(s / 3600); const m = Math.round((s % 3600) / 60); return m ? `${h}h ${m}m` : `${h}h`; }
   return `${Math.floor(s / 86400)}d`;
 }
+
+
+/* ──────────────────── the two tables Hatch shows ───────────────────── */
+
+/**
+ * Per-workspace agent performance, in Hatch's own columns.
+ *
+ * Deliberately the same shape as the table Kate reads today — Active,
+ * Completed, Success, Drop Off, Take Over, Trigger — because the parallel run
+ * only proves anything if the two can be compared line for line. Renaming a
+ * column here would mean somebody doing arithmetic in their head to check
+ * whether we are doing better or worse.
+ *
+ * The percentages are of COMPLETED, not of everything. A conversation still
+ * running has not succeeded or dropped off yet, and counting it as a failure
+ * makes a busy workspace look worse than a dead one.
+ */
+export type AgentRow = {
+  agent: string;
+  workspace: string;
+  active: number;
+  completed: number;
+  successPct: number;
+  dropOffPct: number;
+  takeOverPct: number;
+  trigger: string | null;
+};
+
+const ACTIVE_STATES = new Set(["ai_active", "awaiting_customer", "human_active"]);
+/** Ended without getting what we needed and without a person stepping in. */
+const DROP_OFF_OUTCOMES = new Set(["lost", "discard", "bailout", "area_not_serviced"]);
+const SUCCESS_OUTCOMES = new Set(["success", "phone_pricing"]);
+
+export function agentPerformance(
+  rows: (ConversationRow & { agent?: string | null; trigger?: string | null; tookOver?: boolean })[]
+): AgentRow[] {
+  const by = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const key = `${r.agent ?? "Emily"}\u0000${r.workspace_name}`;
+    const list = by.get(key) ?? [];
+    list.push(r);
+    by.set(key, list);
+  }
+
+  return [...by.entries()]
+    .map(([key, list]) => {
+      const [agent, workspace] = key.split("\u0000");
+      const active = list.filter((r) => ACTIVE_STATES.has(r.state)).length;
+      const done = list.filter((r) => r.state === "ended");
+      const completed = done.length;
+      return {
+        agent, workspace, active, completed,
+        successPct: pct(done.filter((r) => r.outcome && SUCCESS_OUTCOMES.has(r.outcome)).length, completed),
+        dropOffPct: pct(done.filter((r) => r.outcome && DROP_OFF_OUTCOMES.has(r.outcome)).length, completed),
+        // Take-over is counted across everything, not just completed: a
+        // conversation a person is still holding is the clearest case of one.
+        takeOverPct: pct(list.filter((r) => r.tookOver || r.takeover_reason || r.state === "human_active").length, list.length),
+        trigger: list.find((r) => r.trigger)?.trigger ?? null,
+      };
+    })
+    .sort((a, b) => (b.active + b.completed) - (a.active + a.completed));
+}
+
+/**
+ * Per-person performance.
+ *
+ * Voice columns are deliberately absent. PPP's Hatch report has Calls and
+ * Avg. Duration next to these and they are always the same number for text-only
+ * staff; we do not do voice, so a column that can only ever say "-" is noise
+ * pretending to be parity.
+ */
+export type HumanRow = {
+  name: string;
+  conversations: number;
+  successPct: number;
+  medianHandleSeconds: number | null;
+  medianResponseSeconds: number | null;
+};
+
+export function humanPerformance(
+  rows: {
+    name: string; outcome: string | null; state: string;
+    createdAt: string; endedAt: string | null;
+    /** Seconds between the customer's message and this person's reply. */
+    responseSeconds: number | null;
+  }[]
+): HumanRow[] {
+  const by = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const list = by.get(r.name) ?? [];
+    list.push(r);
+    by.set(r.name, list);
+  }
+
+  return [...by.entries()]
+    .map(([name, list]) => {
+      const done = list.filter((r) => r.state === "ended");
+      const handled = done
+        .map((r) => secondsBetween(r.createdAt, r.endedAt))
+        .filter((v): v is number => v != null);
+      const responses = list
+        .map((r) => r.responseSeconds)
+        .filter((v): v is number => v != null);
+      return {
+        name,
+        conversations: list.length,
+        successPct: pct(done.filter((r) => r.outcome && SUCCESS_OUTCOMES.has(r.outcome)).length, done.length),
+        // Median, not mean. One conversation left open over a weekend drags an
+        // average into uselessness, and Hatch's "4d 2h" columns are exactly
+        // that number.
+        medianHandleSeconds: median(handled),
+        medianResponseSeconds: median(responses),
+      };
+    })
+    .sort((a, b) => b.conversations - a.conversations);
+}

@@ -103,6 +103,8 @@ export async function runSimTurn(input: {
   mediaCount?: number;
   /** New lead, or following up a quote already sent. */
   track?: Track;
+  /** How much of the required flow is already done. */
+  stage?: number;
   /** What the system already holds about this customer. Kate asked for this
    *  directly: Hatch let her fill a "Customer Data" section when sandbox
    *  testing, and without it the sandbox cannot reproduce the bug she is
@@ -153,6 +155,7 @@ export async function runSimTurn(input: {
     mediaCount: input.mediaCount,
     track,
     known: input.known,
+    stage: input.stage,
   });
 
   if (!res.ok) {

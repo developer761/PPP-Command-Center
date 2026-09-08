@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { stageFromIntents } from "@/lib/messaging/agent-output";
 import { runSimTurn, saveScenario, type SimTurn } from "@/lib/messaging/simulator";
 
 type Graded = SimTurn & {
@@ -91,6 +92,10 @@ export default function Simulator({
         mediaCount: media || photos,
         track,
         known,
+        // The order is a rule, so the sandbox has to enforce it too — a
+        // simulator that lets the bot skip a step is testing a bot we will
+        // never run.
+        stage: stageFromIntents(turns.map((t) => t.intent)),
       });
       if (res.ok) { setTurns((t) => [...t, res.turn]); setDraft(""); setPhotos(0); }
     } finally { setBusy(false); }
