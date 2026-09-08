@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import LineItemNotes from "@/components/line-item-notes";
+import { groupExtras } from "@/lib/supplier-order/extras-groups";
 import MaterialTypePicker from "@/components/material-type-picker";
 import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pick-list";
 import {
@@ -414,6 +415,21 @@ export default function OrderBuilderView({
       extras: cur.extras.map((e) =>
         e.extraId === extraId ? { ...e, qty: Math.max(1, Math.min(99, Math.floor(qty || 1))) } : e
       ),
+    }));
+  };
+
+  /**
+   * Karan, materials meeting: "caulk — we'll order individual tubes or a whole
+   * case." A case is a different SKU at the counter, not a quantity of tubes,
+   * so it is the UNIT that changes rather than the number. The persisted extra
+   * already carries its own unit, so nothing downstream needs to learn a new
+   * shape: the vendor email prints "2 case — DAP Alex Plus" instead of
+   * "2 tube".
+   */
+  const setExtraUnit = (extraId: string, unit: string) => {
+    setPayload((cur) => ({
+      ...cur,
+      extras: cur.extras.map((e) => (e.extraId === extraId ? { ...e, unit } : e)),
     }));
   };
 
@@ -911,7 +927,16 @@ export default function OrderBuilderView({
               className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue mb-3"
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
-              {filteredCatalog.map((c) => {
+              {groupExtras(filteredCatalog).map(({ group, items }) => (
+                <div key={group} className="col-span-full">
+                  {/* Karan, materials meeting: "extras organize — caulk should be
+                      stacked, rolls etc." One flat list put the four caulks apart
+                      from each other. */}
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mt-2 mb-1 first:mt-0">
+                    {group}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {items.map((c) => {
                 const sel = selectedExtras.find((e) => e.extraId === c.id);
                 return (
                   <div
@@ -947,6 +972,21 @@ export default function OrderBuilderView({
                         >
                           +
                         </button>
+                      {/* Caulk is bought loose or by the case, and a case is a different
+                          SKU at the counter — not a count of tubes. Only offered where the
+                          catalogue unit is a tube; nothing else PPP orders comes by the
+                          case. Karan, materials meeting. */}
+                      {c.unit === "tube" && (
+                        <select
+                          value={sel.unit}
+                          onChange={(ev) => setExtraUnit(c.id, ev.target.value)}
+                          aria-label={`Unit for ${c.name}`}
+                          className="shrink-0 text-[10px] border border-ppp-blue-100 rounded bg-white px-1 py-1 min-h-[44px] sm:min-h-0 touch-manipulation"
+                        >
+                          <option value="tube">tube</option>
+                          <option value="case">case</option>
+                        </select>
+                      )}
                       </div>
                     ) : (
                       <span className="text-[10px] text-ppp-charcoal-500 shrink-0">
@@ -955,7 +995,10 @@ export default function OrderBuilderView({
                     )}
                   </div>
                 );
-              })}
+                    })}
+                  </div>
+                </div>
+              ))}
               {filteredCatalog.length === 0 && (
                 <div className="col-span-full text-xs text-ppp-charcoal-500 italic py-3 text-center">No matches.</div>
               )}
