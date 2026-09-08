@@ -58,16 +58,45 @@ describe("region groups collapse", () => {
 });
 
 describe("the Training page can reach the import screen", () => {
-  it("links there while the corpus is empty — where the question is asked", () => {
-    expect(code(training)).toMatch(/href="\/messaging\/training\/import"/);
+  // These originally matched the JSX form href="…". The Training page was
+  // later rebuilt around a data-driven nav — the link is now an object
+  // property, href: "…" — and all three failed while the feature still
+  // worked. Asserting on source SHAPE rather than on the requirement is the
+  // trap the repo already learned once; these now assert the requirement.
+
+  it("links there — where the conduct-vs-outcome question gets asked", () => {
+    expect(code(training)).toContain("/messaging/training/import");
   });
 
-  it("keeps a way in AFTER rows exist", () => {
-    // The blocker card disappears at total > 0; the entry point must not.
+  it("the entry point is UNCONDITIONAL, not hidden once rows exist", () => {
+    // Originally: at least two links, because a blocker card carrying one of
+    // them disappeared at total > 0. One permanent entry answers that better
+    // than two conditional ones.
+    //
+    // My first rewrite of this checked for no "s.total" within 400 characters
+    // before the link — and failed, because a DIFFERENT nav entry's label
+    // mentions s.total. Proximity in source text is not structure. So this
+    // asserts the structure directly: the nav maps the job list with nothing
+    // gating it.
     const body = code(training);
-    const links = body.match(/href="\/messaging\/training\/import"/g) ?? [];
-    expect(links.length).toBeGreaterThanOrEqual(2);
-    expect(body).toMatch(/s\.total > 0 &&/);
+    expect(body).toMatch(/<nav[^>]*>\s*\{jobs\.map\(/);
+    const jobsArray = body.slice(body.indexOf("const jobs = ["), body.indexOf("</nav>"));
+    expect(jobsArray).toContain("/messaging/training/import");
+  });
+
+  it("every training job is reachable from the landing page", () => {
+    // The complaint that started this was "i cant get to the question
+    // answering page". Widened so a future rebuild cannot silently drop any of
+    // them, not just import.
+    const body = code(training);
+    for (const href of [
+      "/messaging/training/import",
+      "/messaging/training/grade",
+      "/messaging/training/simulator",
+      "/messaging/training/coverage",
+    ]) {
+      expect(body, href).toContain(href);
+    }
   });
 
   it("the import screen actually asks the conduct-vs-outcome question", () => {

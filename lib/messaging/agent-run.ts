@@ -80,17 +80,45 @@ message that is sent. If you are unsure, choose "escalate" — a person picking
 it up costs far less than a wrong answer to a customer.`;
 }
 
-const ACTION_SCHEMA = {
-  type: "object" as const,
-  properties: {
-    intent: { type: "string", enum: [...END_INTENTS, ...CONTINUE_INTENTS] },
-    freeText: { type: "string", description: "Optional short rapport only. Never a price, a time, or a commitment." },
-    slots: { type: "object", additionalProperties: true },
-    confidence: { type: "number", minimum: 0, maximum: 1 },
-    reasoning: { type: "string", description: "One sentence on why this intent." },
+/**
+ * The action, as a TOOL rather than an output format.
+ *
+ * "Choose what to do next" is literally a tool call, and strict tool use gives
+ * the same schema guarantee as structured outputs with no extra dependency —
+ * the first cut used output_config with a hand-written json_schema shape and
+ * the API returned a 400. A tool definition is a shape both sides already
+ * agree on.
+ *
+ * strict: true requires additionalProperties: false and an explicit required
+ * list, so every field the model may return is declared here and nowhere else.
+ */
+const ACTION_TOOL = {
+  name: "choose_action",
+  description:
+    "Choose the next action in the conversation. This is the ONLY way to respond — you never write the message that is sent to the customer.",
+  strict: true,
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      intent: {
+        type: "string",
+        enum: [...END_INTENTS, ...CONTINUE_INTENTS],
+        description: "What to do next.",
+      },
+      freeText: {
+        type: "string",
+        description:
+          "Short rapport only, or empty. Never a price, never a specific time, never a commitment.",
+      },
+      confidence: {
+        type: "number",
+        description: "0 to 1. Be honest — below the threshold this hands to a person, which is cheap.",
+      },
+      reasoning: { type: "string", description: "One sentence on why this intent." },
+    },
+    required: ["intent", "freeText", "confidence", "reasoning"],
+    additionalProperties: false,
   },
-  required: ["intent", "confidence"],
-  additionalProperties: false,
 };
 
 export async function runAgentTurn(
@@ -125,20 +153,21 @@ Choose the next action.`;
       thinking: { type: "adaptive" },
       system: buildSystemPrompt(cfg, opts.hardNos ?? []),
       messages: [{ role: "user", content: prompt }],
-      output_config: { format: { type: "json_schema", schema: ACTION_SCHEMA } },
+      tools: [ACTION_TOOL],
+      // One tool, and it must be used. There is no path where the model
+      // replies with prose instead of choosing an action.
+      tool_choice: { type: "tool", name: "choose_action" },
     });
 
-    const text = res.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return { ok: false, error: "The model did not return usable JSON." };
+    const call = res.content.find(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "choose_action"
+    );
+    if (!call) {
+      return { ok: false, error: "The model replied without choosing an action." };
     }
+    // tool_use.input is already parsed. Never string-match it — escaping
+    // differs between models.
+    const parsed: unknown = call.input;
 
     // The post-filter. Even with a constrained schema, freeText is free text.
     const v = validateAction(parsed, {
@@ -156,9 +185,12 @@ Choose the next action.`;
     };
   } catch (err) {
     // Typed first, so a rate limit reads differently from a bad request.
+    // Carry the API's own message through. The first version reported only
+    // "Anthropic API error 400", which is unactionable — the 400 that shipped
+    // took a round trip to diagnose because the reason had been discarded.
     if (err instanceof Anthropic.RateLimitError) return { ok: false, error: "Rate limited — try again shortly." };
     if (err instanceof Anthropic.AuthenticationError) return { ok: false, error: "The Anthropic API key was rejected." };
-    if (err instanceof Anthropic.APIError) return { ok: false, error: `Anthropic API error ${err.status}.` };
+    if (err instanceof Anthropic.APIError) return { ok: false, error: `Anthropic API error ${err.status}: ${err.message}` };
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
