@@ -180,7 +180,13 @@ export function reactionResponse(
 
   return {
     treatAs: "confirmation",
-    guidance: 'The last message was informational, so the reaction confirms it. Reply "Got it." and end as Msg Liked/Loved.',
+    // It used to say to reply "Got it." — but Msg Liked/Loved is a SILENT
+    // ending: the renderer sends nothing for it. So the model was told to do
+    // one thing and the system did another, and following the instruction
+    // literally meant picking an intent that discards the reply. Answering a
+    // like with a text is also just one more message to somebody who was
+    // signing off, which is the reason the ending is silent in the first place.
+    guidance: 'The last message was informational and the reaction agrees with it. Nothing needs saying: end as Msg Liked/Loved.',
   };
 }
 

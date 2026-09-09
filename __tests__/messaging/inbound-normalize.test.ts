@@ -126,10 +126,21 @@ describe("reactionResponse — Emily's rule, and the bug it prevents", () => {
     expect(r.guidance).toContain('Do not say "Got it"');
   });
 
-  it("a reaction to an INFORMATIONAL message confirms it", () => {
+  /**
+   * The guidance used to say to reply "Got it.", and this test held it there.
+   * Msg Liked/Loved is a SILENT ending — the renderer sends nothing for it —
+   * so the model was told to do one thing and the system did another, and
+   * following the instruction literally meant choosing an intent that discards
+   * the reply. Answering a like with a text is also one more message to
+   * somebody who was signing off.
+   */
+  it("a reaction to an INFORMATIONAL message confirms it, and needs no reply", () => {
     const r = reactionResponse(likedInfo, false);
     expect(r.treatAs).toBe("confirmation");
-    expect(r.guidance).toContain("Got it.");
+    expect(r.guidance).toMatch(/Msg Liked\/Loved/);
+    expect(r.guidance).toMatch(/nothing needs saying/i);
+    // Must not instruct a reply the chosen ending would throw away.
+    expect(r.guidance).not.toContain('Reply "Got it."');
   });
 
   it("a NEGATIVE reaction is never a confirmation, whatever it followed", () => {
