@@ -357,7 +357,50 @@ export default function OrderBuilderView({
 
   // Only ever the draft built for the CURRENTLY selected vendor.
   const currentDraft = supplier && draft?.forSupplierId === supplier.accountId ? draft.data : null;
-  const estimates = currentDraft?.gallonEstimates ?? [];
+  const rawEstimates = currentDraft?.gallonEstimates ?? [];
+
+  /**
+   * The buy-list in an order a person can follow.
+   *
+   * Karan 2026-09-09: "living room walls and accent walls should always be
+   * close to each other… try using logic to always organize this page." The
+   * list came out in whatever order the estimator's colour map happened to
+   * produce, so the Living Room's walls sat at the top and its accent wall
+   * nine rows down — the two lines you most need to read together.
+   *
+   * Sorted by ROOM in the order Salesforce lists them (so the buy-list walks
+   * the job the same way the source panel above it does), then by surface in
+   * the order a room is actually painted. No headings: Karan asked for order,
+   * not more chrome, and a heading per room would repeat the room name that is
+   * already on every line.
+   *
+   * A colour spanning rooms (trim across the living room and bathroom) sorts by
+   * its FIRST room, so it sits with that room rather than floating.
+   */
+  const estimates = useMemo(() => {
+    const roomRank = new Map(sourceLines.map((l, i) => [l.room, i]));
+    const SURFACE_ORDER = ["walls", "accent", "ceiling", "trim", "door", "cabinet", "closet", "floor"];
+    const surfaceRank = (label: string) => {
+      const l = label.toLowerCase();
+      const i = SURFACE_ORDER.findIndex((k) => l.includes(k));
+      return i === -1 ? SURFACE_ORDER.length : i;
+    };
+    const firstRoom = (e: GallonEstimate) => {
+      const rooms = e.placements?.length ? e.placements.flatMap((pl) => pl.rooms) : e.rooms;
+      const ranks = rooms.map((r) => roomRank.get(r) ?? Number.MAX_SAFE_INTEGER);
+      return ranks.length ? Math.min(...ranks) : Number.MAX_SAFE_INTEGER;
+    };
+    const firstSurface = (e: GallonEstimate) => {
+      const s = e.placements?.length ? e.placements.map((pl) => pl.surface) : e.surfaces;
+      return s.length ? Math.min(...s.map(surfaceRank)) : SURFACE_ORDER.length;
+    };
+    return [...rawEstimates].sort(
+      (a, b) =>
+        firstRoom(a) - firstRoom(b) ||
+        firstSurface(a) - firstSurface(b) ||
+        a.colorName.localeCompare(b.colorName)
+    );
+  }, [rawEstimates, sourceLines]);
 
   /* ── Paint-line options ────────────────────────────────────────────────── */
   const lineMaterialValues = useMemo<ReadonlySet<string>>(() => {
@@ -745,11 +788,19 @@ export default function OrderBuilderView({
                               if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
                               else if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft floor`;
                             } else if (kind === "trim") {
-                              // Perimeter is sparse in Salesforce. When it is missing the estimator
-                              // derives 4x root(floor), so show that and SAY it is derived rather
-                              // than showing nothing or implying it was measured.
-                              if (src.perimeterLf > 0) measure = `${Math.round(src.perimeterLf).toLocaleString()} lin ft`;
-                              else if (src.sqft > 0) measure = `~${Math.round(4 * Math.sqrt(src.sqft))} lin ft (derived)`;
+                              // A DOOR is not the room's perimeter. classifySurface
+                              // groups doors with trim — right for the gallon maths,
+                              // wrong here: "Door — Kitchen · 48 lin ft" reads as a
+                              // measurement of the door and is actually the length of
+                              // the walls around it. Better to show nothing than a
+                              // number that means something else.
+                              if (/door|window|cabinet/i.test(surface)) {
+                                measure = "";
+                              } else if (src.perimeterLf > 0) {
+                                measure = `${Math.round(src.perimeterLf).toLocaleString()} lin ft`;
+                              } else if (src.sqft > 0) {
+                                measure = `~${Math.round(4 * Math.sqrt(src.sqft))} lin ft (derived)`;
+                              }
                             }
                             return measure ? { room, surface, measure } : null;
                           }).filter(Boolean) as Array<{ room: string; surface: string; measure: string }>;
