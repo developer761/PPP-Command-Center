@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { selectExamples, examplesPrompt, relevantTags, situationFrom, type CorpusExample } from "@/lib/messaging/retrieval";
 import { buildSystemPrompt, type AgentConfigForRun } from "@/lib/messaging/agent-run";
+import { normalizeInbound } from "@/lib/messaging/inbound-normalize";
 
 const ex = (o: Partial<CorpusExample>): CorpusExample => ({
   id: "1", transcript: "Customer: hi\nEmily: what are you looking to have painted?",
@@ -254,5 +255,39 @@ describe("reading the situation out of the message", () => {
     for (const t of ["natural_voice", "brief_ack", "no_invented_time", "ended_correctly"]) {
       expect(tags, t).toContain(t);
     }
+  });
+});
+
+/**
+ * An iPhone reaction arrives as `Liked "<our message>"`. Scanning the raw
+ * string reads OUR sentence and attributes it to the customer.
+ */
+describe("situations are read from the customer's words, not ours", () => {
+  const scan = (raw: string) => {
+    const n = normalizeInbound(raw, 0);
+    return situationFrom(n.text ?? (n.kind === "text" ? raw : ""), {});
+  };
+
+  it("does not attribute our own words to the customer", () => {
+    // We asked "are you a real person" — they only liked it.
+    const s = scan('Liked "Are you a real person we should speak to, and how much of the house?"');
+    expect(s.asksIfBot).toBe(false);
+    expect(s.wantsQuoteOnly).toBe(false);
+  });
+
+  it("still hears the customer when they genuinely ask", () => {
+    expect(scan("wait, are you a bot?").asksIfBot).toBe(true);
+    expect(scan("can you call me back").asksForCall).toBe(true);
+    expect(scan("just after a rough price").wantsQuoteOnly).toBe(true);
+  });
+
+  it("reads the words when a reaction carries some of their own", () => {
+    const s = scan('Liked "the quote" — can you call me about it');
+    expect(s.asksForCall).toBe(true);
+  });
+
+  it("stays quiet on an ordinary message", () => {
+    const s = scan("I want the kitchen and hallway done");
+    expect(Object.values(s).every((v) => !v)).toBe(true);
   });
 });
