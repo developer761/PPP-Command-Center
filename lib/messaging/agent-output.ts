@@ -357,9 +357,40 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
 }
 
 /** Should this action send, or go to a human? */
+/**
+ * Intents where being wrong costs almost nothing.
+ *
+ * Asking a lead what they want painted is not a decision — if the model is
+ * unsure it is still the right next question, and there is no commitment in it
+ * to get wrong. Everything else stays on the strict threshold.
+ */
+const LOW_STAKES = new Set<string>([
+  "ask_project_details", "ask_address", "ask_contact", "ask_availability",
+  "confirm_scope", "confirm_address", "confirm_contact",
+  "acknowledge", "nurture_check_in", "ask_for_decision", "ask_check_back",
+]);
+
+/** Below this even a routine question is not worth sending. */
+export const LOW_STAKES_FLOOR = 0.5;
+
+/**
+ * Whether a person has to take this over.
+ *
+ * A flat 0.95 escalated everything. The model reports about 0.90 on a textbook
+ * opening question, so the very first turn of every conversation handed to a
+ * human — which is not a cautious bot, it is a broken one, and it would have
+ * buried the office on day one while teaching Kate that the system does not
+ * work.
+ *
+ * The threshold is about CONSEQUENCE, not correctness. Quoting, ending a
+ * conversation, answering a question about scope and offering an off-site
+ * quote all commit PPP to something, so they keep the strict setting Kate
+ * chose. Asking what someone wants painted commits to nothing.
+ */
 export function shouldEscalate(action: AgentAction, ctx: ValidateContext = {}): boolean {
   if (action.intent === "escalate") return true;
-  const threshold = ctx.confidenceThreshold ?? 0.95;
+  const strict = ctx.confidenceThreshold ?? 0.95;
+  const threshold = LOW_STAKES.has(action.intent) ? Math.min(strict, LOW_STAKES_FLOOR) : strict;
   return action.confidence < threshold;
 }
 

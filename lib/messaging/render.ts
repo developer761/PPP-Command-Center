@@ -178,6 +178,25 @@ export function clip(v: string | null | undefined, max = MAX_QUOTED): string | n
  *  to help — what's the project?" reads like two people talking. */
 const BARE_GREETING = /^(hi|hey|hello|hi there|good morning|good afternoon)[!.,]*$/i;
 
+/**
+ * The opt-out disclosure.
+ *
+ * PPP's own campaign message carries "Reply END to stop texts." and ours
+ * carried nothing at all — the very first thing a stranger receives from an
+ * automated system has to tell them how to make it stop. That is a TCPA
+ * requirement, not a courtesy, and it was missing from every outbound message
+ * this system could produce.
+ *
+ * STOP rather than END because STOP is the carrier-level standard every
+ * handset and aggregator honours. classifyInbound already accepts both, plus
+ * QUIT, CANCEL and UNSUBSCRIBE, so nothing a customer reasonably types is
+ * missed.
+ *
+ * FIRST MESSAGE ONLY. Repeating it on every text is what makes a thread read
+ * like spam, and the obligation attaches to the start of the conversation.
+ */
+export const OPT_OUT_DISCLOSURE = "Reply STOP to opt out.";
+
 export type RenderInput = {
   intent: Intent;
   /** The model's rapport, already post-filtered by validateAction. */
@@ -189,6 +208,9 @@ export type RenderInput = {
    *  Hatch cannot see them at all, and ignoring a photo somebody just sent is
    *  the most obvious way to look like a bot. */
   photos?: number;
+  /** True when this is the first thing we have ever sent this person, which
+   *  is the message that must carry the opt-out disclosure. */
+  isFirstOutbound?: boolean;
   /** Values the system holds, for the confirm_* intents to read back. These
    *  are system data, not model output — interpolating them keeps the
    *  guarantee that nothing the model wrote reaches the customer unfiltered. */
@@ -237,6 +259,11 @@ export function renderMessage(input: RenderInput): string {
   }
   if (pick) parts.push(pick);
 
-  // An answer_question with nothing to say is a dropped turn, not a message.
-  return parts.join(" ").replace(/\s+/g, " ").trim();
+  const body = parts.join(" ").replace(/\s+/g, " ").trim();
+  // Nothing to say means nothing to send, and a disclosure on its own is not a
+  // message — appending it to an empty body would turn a dropped turn into a
+  // bare "Reply STOP to opt out."
+  if (!body) return "";
+
+  return input.isFirstOutbound ? `${body} ${OPT_OUT_DISCLOSURE}` : body;
 }

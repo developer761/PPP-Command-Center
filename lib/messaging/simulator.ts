@@ -124,7 +124,13 @@ export async function runSimTurn(input: {
 }): Promise<SimResult> {
   await assertMessagingAccess();
   const track: Track = input.track ?? "new_lead";
-  const resolved = await configFor(input.workspaceId, track);
+  // Both round trips at once. They were sequential, so every turn paid for the
+  // config lookup and the corpus load one after the other before the model was
+  // even asked anything.
+  const [resolved, corpus] = await Promise.all([
+    configFor(input.workspaceId, track),
+    loadRetrievalCorpus(),
+  ]);
   if (!resolved) {
     return { ok: false, error: track === "nurture"
       ? "No nurture configuration found — run migration 196 to seed it."
@@ -170,7 +176,7 @@ export async function runSimTurn(input: {
     stage: input.stage,
     // The whole point of the corpus. Selected per turn, because which rule is
     // live depends on where the conversation has got to.
-    examples: selectExamples(await loadRetrievalCorpus(), {
+    examples: selectExamples(corpus, {
       stage: input.stage,
       mediaCount: input.mediaCount,
       track,

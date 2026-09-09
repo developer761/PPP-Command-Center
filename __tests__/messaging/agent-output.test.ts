@@ -147,17 +147,44 @@ describe("validateAction — Kate's hard nos", () => {
 });
 
 describe("shouldEscalate", () => {
-  it("escalates below the threshold", () => {
-    expect(shouldEscalate({ intent: "acknowledge", confidence: 0.8 }, { confidenceThreshold: 0.95 })).toBe(true);
-    expect(shouldEscalate({ intent: "acknowledge", confidence: 0.97 }, { confidenceThreshold: 0.95 })).toBe(false);
+  it("escalates a consequential intent below the threshold", () => {
+    // answer_question commits PPP to a statement about scope, so it stays on
+    // the strict setting.
+    expect(shouldEscalate({ intent: "answer_question", confidence: 0.8 }, { confidenceThreshold: 0.95 })).toBe(true);
+    expect(shouldEscalate({ intent: "answer_question", confidence: 0.97 }, { confidenceThreshold: 0.95 })).toBe(false);
+  });
+
+  /**
+   * The bug this tiering exists for. A flat 0.95 escalated a textbook opening
+   * question — the model reports about 0.90 on one — so the FIRST turn of
+   * every conversation handed to a human. That is not a cautious bot, it is a
+   * broken one, and it would have buried the office on day one.
+   */
+  it("does not escalate a routine question the model is merely 90% sure of", () => {
+    expect(shouldEscalate({ intent: "ask_project_details", confidence: 0.9 }, { confidenceThreshold: 0.95 })).toBe(false);
+  });
+
+  it("still escalates a routine question when the model is genuinely lost", () => {
+    expect(shouldEscalate({ intent: "ask_project_details", confidence: 0.3 }, { confidenceThreshold: 0.95 })).toBe(true);
+  });
+
+  it("keeps every ending on the strict threshold", () => {
+    for (const intent of ["success", "lost", "phone_pricing", "area_not_serviced", "offer_offsite_quote"] as const) {
+      expect(shouldEscalate({ intent, confidence: 0.9 }, { confidenceThreshold: 0.95 }), intent).toBe(true);
+    }
+  });
+
+  it("never loosens a threshold that is already looser than the floor", () => {
+    // A workspace that has earned 0.3 does not get raised back to 0.5.
+    expect(shouldEscalate({ intent: "ask_address", confidence: 0.35 }, { confidenceThreshold: 0.3 })).toBe(false);
   });
 
   it("always escalates an explicit escalate intent, however confident", () => {
     expect(shouldEscalate({ intent: "escalate", confidence: 1 })).toBe(true);
   });
 
-  it("defaults to the strict 0.95 when no threshold is given", () => {
+  it("defaults to the strict 0.95 for a consequential intent when none is given", () => {
     // Starts strict and comes down as it earns it, not the other way round.
-    expect(shouldEscalate({ intent: "acknowledge", confidence: 0.94 })).toBe(true);
+    expect(shouldEscalate({ intent: "answer_question", confidence: 0.94 })).toBe(true);
   });
 });
