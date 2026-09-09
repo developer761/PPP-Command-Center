@@ -71,7 +71,7 @@ export default async function ReportsOverviewPage() {
   // year while the estimator report defaults to the FISCAL year: with a
   // non-January FY start the card's win rate and the page's disagreed, with
   // nothing on screen to explain why.
-  const laborRange = laborRange(LABOR_DEFAULT);
+  const laborWindow = laborRange(LABOR_DEFAULT);
   const estimatorFy = await fiscalYearStartMonth();
   const estRange = estimatorRange(ESTIMATOR_DEFAULT, estimatorFy);
   const estYearLabel = estRange.label;
@@ -102,7 +102,7 @@ export default async function ReportsOverviewPage() {
       settle("AR aging", getArAging(), EMPTY_AGING),
       settle("Win/loss", getWinLossSummary(quarter), EMPTY_WIN_LOSS),
       settle("Geography", getGeographyReport(), EMPTY_GEO),
-      settle("Labor", getLaborReport(laborRange), EMPTY_LABOR),
+      settle("Labor", getLaborReport(laborWindow), EMPTY_LABOR),
       settle("Estimator", getEstimatorReport(estRange), EMPTY_ESTIMATOR),
       settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH),
       // Year to date, matching that report's own default preset.
