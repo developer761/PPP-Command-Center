@@ -161,8 +161,8 @@ export type BuildSupplierOrderInput = {
    *  computation. */
   quantityOverrides?: Record<string, QuantityOverride>;
   /** Kate round-3 #28: worker-typed COLOR lines (stain, venetian plaster,
-   *  colour matches — anything that isn't in the paint catalogue). Rendered as
-   *  real order lines alongside the picked colours, not buried in notes. */
+   *  color matches — anything that isn't in the paint catalogue). Rendered as
+   *  real order lines alongside the picked colors, not buried in notes. */
   customColorItems?: CustomColorItem[];
   /** Kate round-3 #29: who the supplier should call about this order. */
   contactName?: string | null;
@@ -171,7 +171,7 @@ export type BuildSupplierOrderInput = {
   contactEmail?: string | null;
 };
 
-/** A worker-typed colour line — one free-text field carrying colour + finish,
+/** A worker-typed color line — one free-text field carrying color + finish,
  *  plus a quantity and unit like any other line (Kate round-3 #28). */
 export type CustomColorItem = {
   id: string;
@@ -272,7 +272,7 @@ export type SupplierOrderDraft = {
    *  can show the same thing it is previewing.
    *
    *  On a mixed job the entry form correctly asks twice, and the email applies
-   *  the exterior answer to the colours that are exterior (R4.3) — but none of
+   *  the exterior answer to the colors that are exterior (R4.3) — but none of
    *  that was visible on the order screen, which knew only its own saved
    *  payload. Kate's report was that "neither answer reaches the order screen";
    *  the answers were reaching the vendor, just not the person sending them.
@@ -282,7 +282,7 @@ export type SupplierOrderDraft = {
    *  disagree. Which of the three sources wins is a separate question (R5.2,
    *  held) and is untouched here. */
   resolvedMaterialType: string | null;
-  /** Effective per-colour lines keyed `${colorId}::${finish ?? ""}` — the
+  /** Effective per-color lines keyed `${colorId}::${finish ?? ""}` — the
    *  estimator's explicit overrides plus the exterior defaults derived from the
    *  job's scopes. */
   resolvedMaterialTypeOverrides: Record<string, string>;
@@ -462,7 +462,7 @@ function resolveLineItems(
   lineItems: SupplierOrderLineItem[];
   rooms: RoomTakeoff[];
   skippedSurfaces: Array<{ roomLabel: string; surface: string }>;
-  /** `${colorId}::${finish}` → the scope(s) that colour is painted on. */
+  /** `${colorId}::${finish}` → the scope(s) that color is painted on. */
   scopesByColorKey: Map<string, Set<"interior" | "exterior">>;
 } {
   const out: SupplierOrderLineItem[] = [];
@@ -471,10 +471,10 @@ function resolveLineItems(
   // so the rollup counts only colors actually being ordered here.
   const rooms: RoomTakeoff[] = [];
   const skipped: Array<{ roomLabel: string; surface: string }> = [];
-  // R4.3 — which scope(s) each colour is used on, so an exterior colour can
+  // R4.3 — which scope(s) each color is used on, so an exterior color can
   // default to the EXTERIOR paint line. Kate tied this to the round-2 ask that
   // the line default to the AM's Internal Entry pick: with two picks, sending
-  // only the interior one would put exterior colours on an interior product —
+  // only the interior one would put exterior colors on an interior product —
   // the exact thing splitting the picker was meant to prevent.
   const scopesByColorKey = new Map<string, Set<"interior" | "exterior">>();
   const customerByLineId = new Map<string, CustomerSubmittedPayload["lineItems"][number]>();
@@ -520,9 +520,9 @@ function resolveLineItems(
     const roomSurfaces: RoomSurface[] = [];
 
     // Each slot carries the WOLI's OWN finish (FinishWall__c etc.), not just its
-    // colour. Without it, a rep who enters colours directly in Salesforce — no
+    // color. Without it, a rep who enters colors directly in Salesforce — no
     // customer form involved — produced order lines with no sheen at all, and
-    // two sheens of one colour MERGED into a single line, because the estimator
+    // two sheens of one color MERGED into a single line, because the estimator
     // buckets on `colorId::finish`. Simply White Eggshell on the walls and
     // Simply White Semigloss on the trim became "4 gal — Simply White · Walls,
     // Trim": the vendor mixes one sheen for a two-sheen job, and the merge
@@ -545,7 +545,7 @@ function resolveLineItems(
     // Kate's report was that "Kitchen: Customer selected "Don't paint this
     // surface" on Cabinets." reached Salesforce and Rooms & Colors but never
     // reached Order Materials. This is why — and the same gap put the shared
-    // ColorOther__c colour on the order under the label "Other" instead of
+    // ColorOther__c color on the order under the label "Other" instead of
     // "Door", which is what the estimator actually needs to read.
     //
     // So walk the customer's OWN surfaces for anything the field list can't
@@ -565,7 +565,7 @@ function resolveLineItems(
         existingFinish: pick.finish ?? null,
       });
     }
-    // With the real orphan surfaces now carrying their own colours, the shared
+    // With the real orphan surfaces now carrying their own colors, the shared
     // "Other" slot would double-count them — ColorOther__c holds a copy of
     // whichever one Salesforce could fit. Drop it when the customer named the
     // surfaces themselves.
@@ -702,7 +702,7 @@ function resolveLineItems(
         paintDoorFaces: typeof woli.numDoors === "number" && woli.numDoors > 0,
         // Both Salesforce free-text fields, joined, so an accent wall mentioned
         // in EITHER is spotted (Katie item 7). Scope tends to live in
-        // Description and the per-surface colours in Colour Notes.
+        // Description and the per-surface colors in Color Notes.
         notes: [woli.description, woli.colorNotes].filter(Boolean).join("\n") || null,
         surfaces: roomSurfaces,
       });
@@ -807,7 +807,7 @@ function formatAddressBlock(address: DeliveryAddress): string {
  *  When set, the line shows the override as a tag prefix; the job-level header
  *  is dropped if NOT every color shares the same value (mixed-product job). */
 /** " — Living Room, Bathroom · Walls" for one order line (Kate round-3 #25).
- *  Rooms are capped so a colour used in a dozen rooms doesn't blow the line
+ *  Rooms are capped so a color used in a dozen rooms doesn't blow the line
  *  width; the count keeps it honest rather than silently truncating. */
 function formatPlacementSuffix(rooms: string[], surfaces: string[]): string {
   const cleanRooms = rooms.map((r) => r.trim()).filter(Boolean);
@@ -832,7 +832,7 @@ export function formatOrderSummaryBlock(
   if (estimates.length === 0 && customColorItems.length === 0) {
     return "(no colors picked yet — customer has not submitted the color form)";
   }
-  // Every colour zeroed out and nothing typed by hand: there is no paint on
+  // Every color zeroed out and nothing typed by hand: there is no paint on
   // this order. Say so plainly rather than emitting a header over an empty
   // list, which reads to a vendor like the message got truncated.
   if (estimates.every((e) => e.excluded) && customColorItems.length === 0) {
@@ -851,7 +851,7 @@ export function formatOrderSummaryBlock(
     return materialTypeForVendor(raw) || null;
   });
   // Only lines that will actually be ordered decide whether the job has one
-  // shared paint line or a mix — otherwise an excluded colour on a different
+  // shared paint line or a mix — otherwise an excluded color on a different
   // product line makes the header read "mixed — see each line below" when
   // every remaining line shares one.
   const orderedEffective = effective.filter((_, i) => !estimates[i].excluded);
@@ -881,7 +881,7 @@ export function formatOrderSummaryBlock(
 
   for (let i = 0; i < estimates.length; i++) {
     const e = estimates[i];
-    // The worker set this colour to zero — PPP is not buying it. It has to
+    // The worker set this color to zero — PPP is not buying it. It has to
     // vanish from the vendor's order, not appear as a "to confirm" placeholder,
     // which is what a zero used to render as. It still shows in the builder UI
     // as "not ordering" so the decision is visible and reversible.
@@ -892,7 +892,7 @@ export function formatOrderSummaryBlock(
     // produced "1421 Bistro Blue 1421".
     const label = formatColorLabel(e.colorName, e.colorCode);
     // Finish stays. Kate's R4.30 mock-up omits it, but the estimator buckets on
-    // `colorId::finish` precisely because two sheens of one colour are two
+    // `colorId::finish` precisely because two sheens of one color are two
     // different SKUs — dropping it would have a vendor mix one sheen for a
     // two-sheen job. R4.25 asked only for room and surface to come off.
     const finish = e.finish ? ` · ${e.finish}` : "";
@@ -917,7 +917,7 @@ export function formatOrderSummaryBlock(
     const productSeg = anyLineSet ? `${mt || NOT_SET} — ` : "";
     pushGrouped("", `  ${qty} — ${productSeg}${label}${finish}`);
   }
-  // Kate round-3 #28: worker-typed colour lines (stain, plaster, colour
+  // Kate round-3 #28: worker-typed color lines (stain, plaster, color
   // matches) are real order lines, not a note the vendor has to interpret.
   // They carry no product line, so they belong under [NOT SET] — which is
   // exactly where Kate's R4.32 example puts "Behr 56 Semigloss".
@@ -932,14 +932,14 @@ export function formatOrderSummaryBlock(
     pushGrouped("", `  ${qty} ${unit} — ${anyLineSet ? `${NOT_SET} — ` : ""}${label}`);
   }
 
-  // FLAT list, one line per colour, each naming its own product (Karan
+  // FLAT list, one line per color, each naming its own product (Karan
   // 2026-09-09). The grouping machinery above still collects the rows, it
   // just has a single bucket now — which keeps the ordering stable and
-  // leaves the custom-colour lines where they were, at the end.
+  // leaves the custom-color lines where they were, at the end.
   const lines: string[] = [];
   for (const g of groupOrder) lines.push(...groups.get(g)!);
   // Job total line — a quick cross-check for purchasing ("grab this many total").
-  // Custom colour lines count toward the total — they're real order lines.
+  // Custom color lines count toward the total — they're real order lines.
   // R4.30: the job TOTAL line was removed. It restated the arithmetic the
   // vendor does anyway, and every time the per-line rules changed (excluded
   // colors, quarts, custom items) it was another place that could disagree
@@ -1160,13 +1160,13 @@ export async function buildSupplierOrderDraft(
       ""
     ) || null;
 
-  // R4.3 — the AM's EXTERIOR pick, applied to the colours that are actually
+  // R4.3 — the AM's EXTERIOR pick, applied to the colors that are actually
   // exterior. Kate tied the split picker to the round-2 ask that the line
   // default to the AM's Internal Entry pick; with two picks, carrying only the
-  // interior one would put exterior colours on an interior product, which is
+  // interior one would put exterior colors on an interior product, which is
   // the exact failure splitting the picker was meant to prevent.
   //
-  // Written as per-colour overrides rather than a second job-level default,
+  // Written as per-color overrides rather than a second job-level default,
   // because that's the shape the rest of the order already speaks: the builder
   // renders them per line and the vendor email groups by line (R4.30), so an
   // interior/exterior job arrives as two clearly separated groups.
@@ -1183,7 +1183,7 @@ export async function buildSupplierOrderDraft(
       const key = `${e.colorId}::${e.finish ?? ""}`;
       if (derivedMaterialTypeOverrides.has(key)) continue;
       const scopes = scopesByColorKey.get(key);
-      // Only a colour used EXCLUSIVELY on exterior work. One used on both is
+      // Only a color used EXCLUSIVELY on exterior work. One used on both is
       // ambiguous, and guessing there would be worse than leaving the job
       // default in place for the estimator to correct.
       if (scopes && scopes.size === 1 && scopes.has("exterior")) {
@@ -1255,7 +1255,7 @@ export async function buildSupplierOrderDraft(
     extras_block: formatExtrasBlock(input.extras),
     special_instructions: input.specialInstructions?.trim() ?? "",
     ppp_brand: "Precision Painting Plus",
-    // Kate round-3 #29: the supplier had no way to reach anyone. If a colour is
+    // Kate round-3 #29: the supplier had no way to reach anyone. If a color is
     // unavailable or a quantity looks wrong they need a number to call, and it
     // should be whoever is placing the order.
     contact_name: (input.contactName ?? "").trim(),
@@ -1324,9 +1324,9 @@ export async function buildSupplierOrderDraft(
   // (`input.colorNotes`), that wins.
   const colorNotesDefaultParts: string[] = [];
   if (customerGlobalNotes) colorNotesDefaultParts.push(customerGlobalNotes);
-  // Kate round-3 #16: the colours Salesforce keeps in ColorNotes__c — orphaned
+  // Kate round-3 #16: the colors Salesforce keeps in ColorNotes__c — orphaned
   // surfaces (a line with Cabinets AND Door has nowhere else to put them) and
-  // non-BM/SW colours. Without this they are absent from the order lines AND
+  // non-BM/SW colors. Without this they are absent from the order lines AND
   // from the email, so the vendor never learns about them at all.
   for (const li of input.woliRows) {
     const machineLines = extractMachineColorLines(li.colorNotes);
@@ -1349,18 +1349,18 @@ export async function buildSupplierOrderDraft(
   const colorNotesDefault = colorNotesDefaultParts.join("\n");
   // R4.14 vs Katie item 23 — a real disagreement, resolved narrowly.
   //
-  // R4.14 (Kate): COLOR NOTES does not go on the vendor email. Colour notes
+  // R4.14 (Kate): COLOR NOTES does not go on the vendor email. Color notes
   // inform the ESTIMATOR, and when something in them needs ordering the
-  // estimator adds a custom colour item, which reaches the email as a line.
+  // estimator adds a custom color item, which reaches the email as a line.
   //
   // Katie, 2026-09-08, with WO 00316248 in hand: a rep put the entire exterior
   // on ONE line item, wrote "see notes for colors" in the Description, and put
-  // the actual colours in Colour Notes — "Siding: HC-6 Windham Cream, Low
+  // the actual colors in Color Notes — "Siding: HC-6 Windham Cream, Low
   // Lustre. Trim: OC-95 Navajo White, Soft Gloss…". The vendor cannot fill that
   // order without them.
   //
   // Both are right about different content, so only the CUSTOMER-FACING free
-  // text is sent: the colours a person wrote. The machine-written lines, the
+  // text is sent: the colors a person wrote. The machine-written lines, the
   // "Not painting:" list and the skipped surfaces stay internal — those are the
   // estimator bookkeeping R4.14 was about, and a supplier has no use for them.
   const vendorColorNotes = input.woliRows

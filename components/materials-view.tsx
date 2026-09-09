@@ -370,7 +370,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
    * filter set onto the work-order list so a WO can be found the same way a
    * message can."
    *
-   * Same three groups and the same colour separation, but the vocabulary is the
+   * Same three groups and the same color separation, but the vocabulary is the
    * work order's rather than the message's — the statuses here are pipeline
    * stages ("ready to order"), not delivery states, because that's what someone
    * is actually looking for on this page.
@@ -438,7 +438,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         });
 
     // R4.4 — status / date, applied after the text search. The sender filter
-    // was removed in R5.4: it matched the staffer who sent the COLOUR FORM,
+    // was removed in R5.4: it matched the staffer who sent the COLOR FORM,
     // which says nothing about the work order itself, so most rows had no
     // sender at all and picking one emptied the list. It answers a question
     // about a message, which is what Mail Hub is for.
@@ -1073,7 +1073,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   </button>
                 )}
               </div>
-              {/* R4.4 — the same filter set as Mail Hub, grouped and colour-
+              {/* R4.4 — the same filter set as Mail Hub, grouped and color-
                   separated the same way (Kate's round-3 #11 layout): sender,
                   then status, then the date controls as one set. The vocabulary
                   is the work order's rather than the message's, because the
@@ -1551,7 +1551,7 @@ function JobDetailImpl({
   // from parent-built indexes. Empty when not in snapshot (vendor WO or
   // stale account) — admin types manually. O(1) via Map vs the prior
   // O(N accounts) .find() per render.
-  // R4.9/R4.10: a retained pick stores a colour ID, so recovering its swatch
+  // R4.9/R4.10: a retained pick stores a color ID, so recovering its swatch
   // needs the catalog. ~5k rows — indexed once per job, not per surface chip.
   const paintColorsById = useMemo(
     () => new Map(snapshot.paintColors.map((c) => [c.id, c])),
@@ -1853,7 +1853,7 @@ function JobDetailImpl({
               <span className="leading-snug">
                 <strong className="text-ppp-orange-700">
                   {/* Kate round-3 #06: the noun was pluralised but the verb
-                      wasn't, so a single colour read "1 color need a manual
+                      wasn't, so a single color read "1 color need a manual
                       quantity." Both agree now. */}
                   {noEstimate
                     ? "No square footage on Salesforce — fill in gallons manually."
@@ -2202,27 +2202,27 @@ function LineItemRow({
 
   // R4.9 / R4.10 — the customer's own picks, kept verbatim in the Command
   // Center, are the source of truth here. Salesforce cannot represent this room
-  // faithfully: it has four colour fields plus ONE shared ColorOther__c, so any
+  // faithfully: it has four color fields plus ONE shared ColorOther__c, so any
   // room with two "orphan" surfaces (Cabinets AND Door) is lossy the moment
   // it's written. Two different wrong answers came out of reading it back:
   //
   //   Symptom A (WO 00306643 · Bathroom) — two orphans, so ColorOther__c is
-  //     left blank on purpose and both colours go to Color Notes as text.
+  //     left blank on purpose and both colors go to Color Notes as text.
   //     Every orphan chip read that blank field: "Cabinets —", "Door —".
   //   Symptom B (WO 00308360 · Kitchen) — one orphan skipped, one picked. The
-  //     Door's colour legitimately occupies the shared slot, and every orphan
+  //     Door's color legitimately occupies the shared slot, and every orphan
   //     chip read it, so Super White was painted onto Cabinets too — a surface
   //     the customer had explicitly opted OUT of.
   //
   // Neither is recoverable from Salesforce. The retained payload has each
-  // surface with its own colour, finish and skip flag, so use it and stop
+  // surface with its own color, finish and skip flag, so use it and stop
   // reverse-engineering. Salesforce stays the fallback for line items nobody
-  // used the form on — a rep entering colours directly still renders.
+  // used the form on — a rep entering colors directly still renders.
   const retainedBySurface = new Map(
     (retainedPicks ?? []).filter(pickIsAnswered).map((p) => [p.surface.toLowerCase(), p])
   );
   // Parsing Color Notes remains the last resort: a submission from before the
-  // payload was retained has nowhere else to keep its orphan colours.
+  // payload was retained has nowhere else to keep its orphan colors.
   const notesBySurface = new Map(
     parseMachineColorLines(item.raw.colorNotes).map((p) => [p.surface.toLowerCase(), p])
   );
@@ -2232,7 +2232,7 @@ function LineItemRow({
     surface: string;
     color: SnapshotPaintColor | null;
     finish: string | null;
-    /** Colour known by name/code only — no linked PaintColor record, so no hex. */
+    /** Color known by name/code only — no linked PaintColor record, so no hex. */
     derived?: { name: string; code: string | null } | null;
     /** Customer chose "Don't paint this surface". */
     skipped?: boolean;
@@ -2247,7 +2247,7 @@ function LineItemRow({
    *
    * This distinction matters more than it looks. Preferring the payload
    * everywhere would fix Kate's two symptoms and quietly break a case that
-   * works today: a rep correcting a colour directly in Salesforce AFTER the
+   * works today: a rep correcting a color directly in Salesforce AFTER the
    * customer submitted. Their edit would stop showing, with no error and no
    * clue why — a worse bug than the one being fixed, on a more common path.
    *
@@ -2256,10 +2256,10 @@ function LineItemRow({
    *     "don't paint this", so a blank field is indistinguishable from
    *     "nobody has picked yet";
    *   - the room has 2+ orphan surfaces — one shared ColorOther__c cannot
-   *     hold two colours, so whatever is in it is at best half the answer.
+   *     hold two colors, so whatever is in it is at best half the answer.
    *
    * Everything else — all four standard surfaces, and a lone orphan whose
-   * colour fits in ColorOther__c — keeps reading Salesforce, which is lossless
+   * color fits in ColorOther__c — keeps reading Salesforce, which is lossless
    * for them and lets a later correction through.
    */
   const salesforceCanHold = (surface: string): boolean => {
@@ -2281,7 +2281,7 @@ function LineItemRow({
     if (own) {
       // Prefer the catalog record (it carries the hex for the swatch) but fall
       // back to the name/code the customer's submission recorded, which is all
-      // we have for a colour that has since left the catalog.
+      // we have for a color that has since left the catalog.
       const catalog = own.colorId ? paintColorsById.get(own.colorId) ?? null : null;
       return catalog
         ? { label, surface, color: catalog, finish: own.finish }
@@ -2600,11 +2600,11 @@ function ColorChip({
   surface: string;
   color: SnapshotPaintColor | null;
   finish: string | null;
-  /** Recovered from Color Notes rather than a Salesforce colour lookup —
+  /** Recovered from Color Notes rather than a Salesforce color lookup —
    *  name and code only, no hex, no catalog record behind it. */
   derived?: { name: string; code: string | null } | null;
   /** Customer chose "Don't paint this surface" (R4.10). Distinct from "no
-   *  colour picked yet" — this is an answer, and the crew needs to see it. */
+   *  color picked yet" — this is an answer, and the crew needs to see it. */
   skipped?: boolean;
 }) {
   // Strict hex validation — only #RGB, #RRGGBB, #RRGGBBAA shapes render.
@@ -2613,7 +2613,7 @@ function ColorChip({
   const validHex =
     color?.hexValue && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color.hexValue);
   const displayName = color?.name ?? derived?.name ?? null;
-  // R4.24: PPP's colour names usually already carry the code ("1421 Bistro
+  // R4.24: PPP's color names usually already carry the code ("1421 Bistro
   // Blue"), and sometimes ARE the code ("Super White"). Kate asked for the
   // de-duplication on the page render as well as the email.
   const rawCode = color?.code ?? derived?.code ?? null;
@@ -2703,7 +2703,7 @@ function StatCard({
  * Stage badge on every WO card in the left rail.
  *
  * Kate, batch 6: "the tag on work orders is Submitted no matter where the work
- * order is in the order progression." It only modelled the colour-form half —
+ * order is in the order progression." It only modelled the color-form half —
  * sent, opened, submitted, expired — and stopped there, so a job whose paint
  * was ordered last week and delivered yesterday still read "Submitted".
  *
@@ -3086,7 +3086,7 @@ function SendColorFormButton({
   workOrderId: string;
   accountName: string | null;
   /** Kate round-3 #07 — the work order's REAL StartDate, used to default the
-   *  colour deadline. Deliberately not the Desired-Start / Close-Date fallback
+   *  color deadline. Deliberately not the Desired-Start / Close-Date fallback
    *  chain: that chain is what produced deadlines already in the past. */
   startDate?: string | null;
   /** Customer email from Account.PersonEmail (pre-fills the input).
@@ -3099,7 +3099,7 @@ function SendColorFormButton({
   const [open, setOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState(defaultEmail ?? "");
   const [customerName, setCustomerName] = useState(accountName ?? "");
-  // Kate round-3 #07: the sender sets the colour deadline. Defaults to the WO
+  // Kate round-3 #07: the sender sets the color deadline. Defaults to the WO
   // start date when there is one AND it hasn't passed; otherwise blank — 68% of
   // work orders at this stage have no start date, and guessing produced the
   // expired deadlines customers were being shown.
@@ -3316,7 +3316,7 @@ function SendColorFormButton({
                     className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                   />
                 </div>
-                {/* Kate round-3 #07: the sender decides the colour deadline.
+                {/* Kate round-3 #07: the sender decides the color deadline.
                     It used to be derived — Start Date → Desired Start → the
                     Opportunity's Close Date — and that last fallback is a
                     quoting projection, so it was routinely already in the past

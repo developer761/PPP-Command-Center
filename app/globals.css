@@ -180,9 +180,9 @@ body {
 [data-theme="dark"] {
   /* ── Dark theme v4 (Karan 2026-07-29) — rich near-black, NO red ──
    * Vercel/Linear/shadcn-style: near-pure-black page, softly-elevated zinc
-   * cards, hairline borders, off-white text. The primary ACTION colour is an
+   * cards, hairline borders, off-white text. The primary ACTION color is an
    * INDIGO in dark (Karan: the brand red read wrong on dark — drop it, use a
-   * different colour). Status accents stay quietly desaturated.
+   * different color). Status accents stay quietly desaturated.
    * Neutral ramp: 50 = darkest surface … 900 = lightest text. */
   --color-ppp-charcoal-50:  #1b1b1f;
   --color-ppp-charcoal-100: #34343c;   /* borders — visible, so cards/columns don't blend */
@@ -294,7 +294,7 @@ body {
   --color-rose-800: #d9b5ba;
   --color-rose-900: #e8d3d5;
 
-  /* Teal — muted. The ONE status colour with no dark mapping.
+  /* Teal — muted. The ONE status color with no dark mapping.
      `almost_done` is painted bg-teal-500 / bg-teal-50 text-teal-700 on the
      Field Ops calendar and the status board, and teal was the only family in
      that set the dark theme never remapped — so every sibling status
@@ -539,7 +539,7 @@ select:not([multiple]):not([size]):not(.appearance-none) {
   cursor: pointer;
 }
 
-/* The chevron is a baked-in stroke colour, so it needs its own dark variant —
+/* The chevron is a baked-in stroke color, so it needs its own dark variant —
    #6b7280 on a near-black surface reads as smudge. */
 [data-theme="dark"] select:not([multiple]):not([size]):not(.appearance-none) {
   background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2214%22%20height%3D%2214%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23a1a1aa%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%2F%3E%3C%2Fsvg%3E");

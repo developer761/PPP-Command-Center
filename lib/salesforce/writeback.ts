@@ -180,7 +180,7 @@ export async function writeSf(
     retryCount: attempts - 1,
     durationMs: Date.now() - t0,
   });
-  // ── Kate R6.1 ── Every Salesforce rejection, not just the colour writeback.
+  // ── Kate R6.1 ── Every Salesforce rejection, not just the color writeback.
   //
   // Wired HERE rather than at each call site on purpose: the follow-up date, the
   // paint product lines, Colors Received and anything added later all funnel

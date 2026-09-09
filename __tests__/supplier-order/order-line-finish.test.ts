@@ -15,7 +15,7 @@ import type { GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
  * reason before "fixing" it.
  *
  * R4.25 asked only for ROOM and SURFACE to come off the lines. Sheen is not
- * placement detail — it's part of the SKU. Two sheens of one colour are two
+ * placement detail — it's part of the SKU. Two sheens of one color are two
  * different products, which is exactly why the estimator buckets on
  * `colorId::finish`. So on a job with Bistro Blue eggshell on the walls and
  * semi-gloss on the trim, dropping the finish produces:
@@ -25,7 +25,7 @@ import type { GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
  *
  * Two identical lines, different quantities, no way to tell them apart — an
  * order the vendor cannot fill without ringing back. Her mock-up used a
- * distinct colour per line, so it never surfaced this case.
+ * distinct color per line, so it never surfaced this case.
  */
 const est = (o: Partial<GallonEstimate>): GallonEstimate => ({
   colorId: "c1", colorName: "1421 Bistro Blue", colorCode: "1421", finish: "Eggshell",
@@ -38,7 +38,7 @@ const est = (o: Partial<GallonEstimate>): GallonEstimate => ({
 });
 
 describe("order lines keep the finish", () => {
-  it("distinguishes two sheens of the same colour", () => {
+  it("distinguishes two sheens of the same color", () => {
     const block = formatOrderSummaryBlock(
       [
         est({ finish: "Eggshell", cans: 3, gallons: 3 }),

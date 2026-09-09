@@ -4,17 +4,17 @@ import { join } from "node:path";
 import { extractCustomerFreeText, extractMachineColorLines } from "@/lib/customer-form/notes";
 
 /**
- * Katie item 23 — "colour notes never reach the order", the biggest single gap
+ * Katie item 23 — "color notes never reach the order", the biggest single gap
  * on the list.
  *
  * WO 00316248, checked against production: a rep put the ENTIRE exterior on one
  * line item, wrote "see notes for colors" in Description, and put the actual
- * colours in Colour Notes. The vendor cannot fill that order without them.
+ * colors in Color Notes. The vendor cannot fill that order without them.
  *
  * This REVERSES R4.14, which removed COLOR NOTES from the vendor email on the
- * grounds that colour notes inform the estimator, not the supplier. Both are
+ * grounds that color notes inform the estimator, not the supplier. Both are
  * right about different content, so only the customer-facing FREE TEXT is sent
- * — the colours a person wrote. Machine-written lines, the "Not painting:" list
+ * — the colors a person wrote. Machine-written lines, the "Not painting:" list
  * and skipped surfaces stay internal, which is the bookkeeping R4.14 meant.
  */
 const ROOT = join(__dirname, "..", "..");
@@ -29,13 +29,13 @@ const REAL = [
 
 describe("why it never came through", () => {
   it("the machine parser finds nothing in a rep's free text", () => {
-    // This is the whole bug. The order path read colour notes through
+    // This is the whole bug. The order path read color notes through
     // extractMachineColorLines, which only understands OUR written format, so a
-    // hand-typed colour list was invisible to it.
+    // hand-typed color list was invisible to it.
     expect(extractMachineColorLines(REAL)).toEqual([]);
   });
 
-  it("the free-text parser finds the colours", () => {
+  it("the free-text parser finds the colors", () => {
     const t = extractCustomerFreeText(REAL);
     expect(t).toContain("HC-6 Windham Cream");
     expect(t).toContain("Soft Gloss");
@@ -43,15 +43,15 @@ describe("why it never came through", () => {
   });
 });
 
-describe("the colours reach both surfaces", () => {
+describe("the colors reach both surfaces", () => {
   it("the order screen carries them, apart from the scope", () => {
     const data = read("lib/materials/order-page-data.ts");
     expect(data).toMatch(/colorNotes: extractCustomerFreeText\(li\.raw\.colorNotes\)/);
-    // Two DIFFERENT things on one line — the scope and the colours — so each is
+    // Two DIFFERENT things on one line — the scope and the colors — so each is
     // labelled. Unlabelled, a reader cannot tell which is which.
     const view = read("components/order-builder-view.tsx");
     expect(view).toMatch(/label="Scope"/);
-    expect(view).toMatch(/label="Colours"/);
+    expect(view).toMatch(/label="Colors"/);
   });
 
   it("the vendor email carries them", () => {
@@ -69,7 +69,7 @@ describe("the colours reach both surfaces", () => {
     expect(b).not.toMatch(/sections\.push\(colorNotesDefault\)/);
   });
 
-  it("nothing is sent when a line has no colour notes", () => {
+  it("nothing is sent when a line has no color notes", () => {
     // An empty "COLOR NOTES" header reads to a vendor like a truncated message.
     expect(extractCustomerFreeText(null).trim()).toBe("");
     expect(extractCustomerFreeText("").trim()).toBe("");

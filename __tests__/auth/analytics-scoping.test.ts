@@ -7,7 +7,7 @@ import { capabilitiesFor, homeHrefFor, USER_ROLE_VALUES } from "@/lib/auth/roles
  * R4.1 — "the only tabs an account manager should see are the tabs under
  * Operations Tools."
  *
- * An AM is an operations role: they run colour forms and materials for every
+ * An AM is an operations role: they run color forms and materials for every
  * job. Revenue, margin and rep-performance surfaces aren't theirs. A REP keeps
  * them, because their own numbers are the reason they log in and those pages
  * are already scoped to their own work orders.

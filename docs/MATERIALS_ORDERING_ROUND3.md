@@ -69,7 +69,7 @@ Anchor files:
 - ✅ **22 · Bug** — Manual quantities reset when extras/fulfillment/product line change; product line then missing from the email; extras added after quantities don't reach the email. Root cause above.
 - ✅ **23 · Bug** — Per-color product-line override either omitted from the email, or listed but quantities fall back to "(PPP to confirm quantities)".
 - ✅ **24 · Bug** ↻R2#15 — AM's Internal Entry product line doesn't reach the order form (picklist arrives empty). Shape may change with #09.
-- ✅ **25 · Layout** — "Order — what to buy": show room(s) + surface per color line. Same colour used in two rooms currently collapses to one line reading just "Walls". Pairs with #15.
+- ✅ **25 · Layout** — "Order — what to buy": show room(s) + surface per color line. Same color used in two rooms currently collapses to one line reading just "Walls". Pairs with #15.
 - ✅ **26 · Bug** — With no sq ft, + climbs the TOTAL while the line still reads "manual entry required". Root cause above.
 - ✅ **27 · Layout** ↻R2#21 — Per-line unit selection: gallon **and quart** (~1/5 of containers bought are quarts/pints). Not built in round 2.
 - ✅ **28 · Process** ↻R2#24 — Split "Add custom item" into custom **sundry** item (exists) and custom **color** item (new; between "Order — what to buy" and Color Notes; one typeable field, help text "Color and finish — e.g. Color Match: Behr 56, eggshell"; qty + unit like any line). Unblocks the rest of R2#24: Customer Notes + "customer is not painting" move out of the email body into Color Notes.

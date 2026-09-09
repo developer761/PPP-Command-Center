@@ -88,7 +88,7 @@ export function digestWindow(cadence: DigestCadence, todayYmd = etTodayIso()): {
     return { fromYmd: todayYmd, toYmd: todayYmd, label: "today" };
   }
   if (cadence === "weekly") {
-    // Monday-to-today, the same week the payroll and labour reports use. Two
+    // Monday-to-today, the same week the payroll and labor reports use. Two
     // definitions of "this week" in one platform is how a Sunday shift lands in
     // different weeks on different screens.
     return { fromYmd: weekStartOf(todayYmd), toYmd: todayYmd, label: "this week" };

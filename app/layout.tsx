@@ -67,8 +67,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   // PPP navy. This was #1e3a8a — a stock Tailwind blue that appears nowhere in
-  // the brand — which tinted the phone's status bar a colour the product
-  // doesn't use. Matches the manifest so the chrome is one colour.
+  // the brand — which tinted the phone's status bar a color the product
+  // doesn't use. Matches the manifest so the chrome is one color.
   themeColor: "#172B4D",
   // Installed apps run edge-to-edge; without this, content can sit under the
   // home indicator on a notched iPhone. Panes that pin controls to the bottom

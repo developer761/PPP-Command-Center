@@ -30,7 +30,7 @@ import {
 const surf = (kind: RoomTakeoff["surfaces"][number]["kind"], label: string, colorId: string, colorName: string) =>
   ({ kind, surfaceLabel: label, colorId, colorName, colorCode: null, finish: null });
 
-/** A room with real geometry and the three usual surfaces, each its own colour. */
+/** A room with real geometry and the three usual surfaces, each its own color. */
 function room(w: number, l: number, h: number, over: Partial<RoomTakeoff> = {}): RoomTakeoff {
   return {
     woliId: "woli-1",
@@ -43,7 +43,7 @@ function room(w: number, l: number, h: number, over: Partial<RoomTakeoff> = {}):
     coats: 0,
     paintDoorFaces: false,
     surfaces: [
-      surf("walls", "Walls", "wall", "Wall colour"),
+      surf("walls", "Walls", "wall", "Wall color"),
       surf("ceiling", "Ceiling", "ceil", "Ceiling white"),
       surf("trim", "Trim", "trim", "Trim white"),
     ],
@@ -178,7 +178,7 @@ describe("a line under a gallon is priced in quarts, not dropped", () => {
  */
 describe("room-type defaults", () => {
   const kitchen = (w: number, l: number, colorId = "wall") =>
-    room(w, l, 8, { roomLabel: "Kitchen", surfaces: [surf("walls", "Walls", colorId, "Wall colour")] });
+    room(w, l, 8, { roomLabel: "Kitchen", surfaces: [surf("walls", "Walls", colorId, "Wall color")] });
 
   it("a kitchen defaults to one gallon of wall paint, whatever its size", () => {
     for (const [w, l] of [[10, 12], [20, 25], [8, 9]] as const) {
@@ -189,7 +189,7 @@ describe("room-type defaults", () => {
     }
   });
 
-  it("a kitchen ceiling on its own colour is capped too", () => {
+  it("a kitchen ceiling on its own color is capped too", () => {
     // Karan 2026-09-08: "Kitchen ceiling should also be capped at 1 gallon
     // unless it's folded into all the other ceilings."
     const e = byColor([room(20, 25, 9, { roomLabel: "Kitchen" })]);
@@ -208,7 +208,7 @@ describe("room-type defaults", () => {
 
   it("a shared kitchen contributes HALF its wall area", () => {
     // Katie 2026-09-08: "if the surface area from dimensions = 300sq ft, then
-    // it only adds 150sq ft" — the cabinets are still there when the colour
+    // it only adds 150sq ft" — the cabinets are still there when the color
     // runs on into the dining room.
     const shared = [
       room(10, 12, 8, { roomLabel: "Kitchen", surfaces: [surf("walls", "Walls", "shared", "Shared")] }),
@@ -279,7 +279,7 @@ describe("doors and accent walls", () => {
 
   it("an accent wall flags the WALLS line, not just the accent line", () => {
     // The walls quantity is the one thrown off — part of that wall is now a
-    // different colour. Detecting per-colour flagged only the accent line.
+    // different color. Detecting per-color flagged only the accent line.
     const r = room(15, 20, 8, {
       roomLabel: "Living Room",
       surfaces: [surf("walls", "Walls", "wall", "Walls"), surf("unsized", "Accent Wall", "accent", "Accent")],
@@ -313,12 +313,12 @@ describe("doors and accent walls", () => {
 });
 
 /**
- * Katie item 8 — a hand-typed colour line can be a 5-gallon pail.
+ * Katie item 8 — a hand-typed color line can be a 5-gallon pail.
  *
  * Only on custom lines. An estimate already rolls into buckets on its own via
  * packageGallons, so offering it there would be two ways to say one thing.
  */
-describe("buckets on custom colour lines", () => {
+describe("buckets on custom color lines", () => {
   it("a bucket counts as five gallons in the order total", () => {
     const base = { buckets: 0, cans: 0, quarts: 0, sizedColors: 0, reviewColors: 0 };
     const t = addCustomItemsToTotal(base, [{ qty: 2, unit: "bucket" }]);
@@ -356,7 +356,7 @@ describe("buckets on custom colour lines", () => {
   });
 
   it("custom lines offer it outright", () => {
-    // A hand-typed colour has no computed quantity to reason about, so the
+    // A hand-typed color has no computed quantity to reason about, so the
     // pail is just another container choice.
     const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
     expect(src).toMatch(/<option value="bucket">/);

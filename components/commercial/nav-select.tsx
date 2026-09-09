@@ -13,7 +13,7 @@ import { FILTER_SELECT_CLS, SELECT_BG_STYLE_COMPACT } from "@/lib/commercial/for
  * table it filters (Karan, 2026-08-19: *"its all like spread out and
  * cumbersome"*). Collapsed to labelled dropdowns it is one line, and the
  * current value of every dimension is readable at a glance instead of being
- * inferred from which chip is coloured in.
+ * inferred from which chip is colored in.
  *
  * The chrome comes from `FILTER_SELECT_CLS`, NOT from classes written here.
  * That module exists because Karan has flagged the OS's grey dropdown four

@@ -5,7 +5,7 @@ import { capabilitiesFor, USER_ROLE_VALUES, type UserRole } from "@/lib/auth/rol
 
 /**
  * Kate 2026-09-01: "materials ordering should be available to all but Account
- * Management", and (same day) field users must be able to enter colours.
+ * Management", and (same day) field users must be able to enter colors.
  *
  * The reason this file exists rather than a plain matrix test: BOTH of those
  * asks were shipped by editing `capabilitiesFor()` alone, and BOTH were still
@@ -38,7 +38,7 @@ describe("materials capability matrix", () => {
   };
 
   for (const role of USER_ROLE_VALUES) {
-    it(`${role}: ordering=${rows[role].order}, colours=${rows[role].colors}`, () => {
+    it(`${role}: ordering=${rows[role].order}, colors=${rows[role].colors}`, () => {
       const caps = capabilitiesFor(role);
       expect(caps.canOrderMaterials).toBe(rows[role].order);
       expect(caps.canEnterColors).toBe(rows[role].colors);

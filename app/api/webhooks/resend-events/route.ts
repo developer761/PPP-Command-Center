@@ -251,7 +251,7 @@ export async function POST(request: Request) {
     if (t) {
       void alertMaterialsFailure({
         kind: "color_form_bounced",
-        summary: `The customer never received the colour form — Resend reported "${status}". The job is waiting on colours.`,
+        summary: `The customer never received the color form — Resend reported "${status}". The job is waiting on colors.`,
         workOrder: (t.work_order_number as string | null) ?? null,
         detail: {
           "Customer": (t.customer_name as string | null) ?? null,
@@ -266,7 +266,7 @@ export async function POST(request: Request) {
       // outside the flows that record a message id.
       void alertMaterialsFailure({
         kind: "unexpected_error",
-        summary: `An email ${status} but matched no supplier order or colour form.`,
+        summary: `An email ${status} but matched no supplier order or color form.`,
         detail: { "Resend id": emailId, "Event": eventType },
       });
     }

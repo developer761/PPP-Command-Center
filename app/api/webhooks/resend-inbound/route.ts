@@ -32,7 +32,7 @@ import { reportError, reportWarn } from "@/lib/observability";
  *
  * WHY THE ARCHIVE IMPORT IS LAZY (2026-09-03)
  * This endpoint is SHARED: it carries residential supplier-order and
- * colour-form replies as well as the Commercial BCC archive. It was returning
+ * color-form replies as well as the Commercial BCC archive. It was returning
  * 500 to every request in production — GET included, where the identical-shape
  * sibling /api/webhooks/resend-events returns a clean 405 — which is the
  * signature of a module that fails to LOAD, not a handler that fails to run.

@@ -2756,9 +2756,9 @@ function LineItemsTable({
                 check, no second action to keep in step with this one. */}
             {r.is_labor ? (
               // Labor rows don't offer it: the add form already refuses
-              // labour-as-an-alternate (`is_labor && !is_alternate`), and the
+              // labor-as-an-alternate (`is_labor && !is_alternate`), and the
               // hidden field preserves whatever the row already holds so saving
-              // a labour row can't silently change its bucket.
+              // a labor row can't silently change its bucket.
               <input type="hidden" name="is_alternate" value={r.is_alternate ? "on" : ""} />
             ) : (
             <label className="flex items-center gap-2 text-[12px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] sm:min-h-0">

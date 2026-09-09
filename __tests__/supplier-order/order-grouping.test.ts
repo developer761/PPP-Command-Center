@@ -67,7 +67,7 @@ describe("vendor order block", () => {
     expect(block).toContain("1421 Bistro Blue");
   });
 
-  it("doesn't print the colour code twice (R4.24)", () => {
+  it("doesn't print the color code twice (R4.24)", () => {
     const block = formatOrderSummaryBlock([
       est(),
       est({ colorId: "c3", colorName: "Super White", colorCode: "Super White", finish: "Semi-Gloss" }),
@@ -81,7 +81,7 @@ describe("vendor order block", () => {
     expect(block).not.toContain("Living Room");
     expect(block).not.toContain("Bathroom");
     expect(block).not.toContain("Walls");
-    // Finish is load-bearing — two sheens of one colour are two SKUs, and the
+    // Finish is load-bearing — two sheens of one color are two SKUs, and the
     // estimator buckets on colorId::finish precisely for that reason.
     expect(block).toContain("Eggshell");
   });

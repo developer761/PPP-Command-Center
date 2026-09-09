@@ -10,7 +10,7 @@ import { PRODUCT_LINES_MAX, formatProductLines } from "@/lib/customer-form/produ
  * The formatter truncates against a constant, so that constant is a standing
  * assumption about a field somebody else can change in Salesforce. Pinning it
  * here means a change shows up as a failing test rather than as STRING_TOO_LONG
- * on a customer's submit — which would take the colours down too, since they
+ * on a customer's submit — which would take the colors down too, since they
  * ride the same batch.
  *
  * /api/admin/paint-line-check compares the live field against this same

@@ -9,12 +9,12 @@ import { isAdminEmail } from "@/lib/auth/admin";
  * The ONE auth preamble for a report export route.
  *
  * Was copy-pasted into every export route — four near-identical blocks, one of
- * which is the difference between a sales rep downloading the labour cost of
+ * which is the difference between a sales rep downloading the labor cost of
  * every crew member and not. Centralising it means a new export can't ship with
  * a subtly weaker check than the last one.
  *
  * `people: true` additionally requires admin / account manager, matching the
- * gate the labour and estimator PAGES already enforce — otherwise the export
+ * gate the labor and estimator PAGES already enforce — otherwise the export
  * URL is a way around the page's own redirect.
  */
 export type ExportGuardResult =

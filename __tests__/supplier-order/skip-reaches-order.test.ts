@@ -40,9 +40,9 @@ describe("a skipped orphan surface reaches the order", () => {
     expect(code).toMatch(/if \(pick\.skipped\) \{\s*skipped\.push\(\{ roomLabel, surface: pick\.surface \}\);/);
   });
 
-  it("still records the skip when the room's other orphan HAS a colour", () => {
+  it("still records the skip when the room's other orphan HAS a color", () => {
     // The Kitchen case exactly: Cabinets skipped, Door picked. The skip branch
-    // must come before the colour check, or a room with any coloured orphan
+    // must come before the color check, or a room with any colored orphan
     // would swallow the skip.
     const loop = code.slice(code.indexOf("for (const [key, pick] of customerSurfaces)"));
     const skipAt = loop.indexOf("pick.skipped");

@@ -39,7 +39,7 @@ describe("Product_Lines__c formatting (Kate R6.2)", () => {
   });
 
   it("never exceeds the Salesforce text limit", () => {
-    // STRING_TOO_LONG would reject the whole batch, taking the colours with it.
+    // STRING_TOO_LONG would reject the whole batch, taking the colors with it.
     const out = formatProductLines({ interior: "X".repeat(400), exterior: "Y".repeat(400) });
     expect(out.length).toBeLessThanOrEqual(PRODUCT_LINES_MAX);
   });

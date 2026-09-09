@@ -62,16 +62,16 @@ export default async function ReportsOverviewPage() {
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
 
   const quarter = currentQuarterRange();
-  // The labour card summarises the CURRENT MONTH, matching the report page's
+  // The labor card summarises the CURRENT MONTH, matching the report page's
   // own default, so the number on the card is the number you land on.
-  const labourToday = etTodayIso();
+  const laborToday = etTodayIso();
   // Each card summarises the window its report OPENS on, resolved through the
   // report's own preset function — so the number on the card is the number you
   // land on. These were hand-rolled here, and the estimator one was a CALENDAR
   // year while the estimator report defaults to the FISCAL year: with a
   // non-January FY start the card's win rate and the page's disagreed, with
   // nothing on screen to explain why.
-  const labourRange = laborRange(LABOR_DEFAULT);
+  const laborRange = laborRange(LABOR_DEFAULT);
   const estimatorFy = await fiscalYearStartMonth();
   const estRange = estimatorRange(ESTIMATOR_DEFAULT, estimatorFy);
   const estYearLabel = estRange.label;
@@ -102,7 +102,7 @@ export default async function ReportsOverviewPage() {
       settle("AR aging", getArAging(), EMPTY_AGING),
       settle("Win/loss", getWinLossSummary(quarter), EMPTY_WIN_LOSS),
       settle("Geography", getGeographyReport(), EMPTY_GEO),
-      settle("Labour", getLaborReport(labourRange), EMPTY_LABOR),
+      settle("Labor", getLaborReport(laborRange), EMPTY_LABOR),
       settle("Estimator", getEstimatorReport(estRange), EMPTY_ESTIMATOR),
       settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH),
       // Year to date, matching that report's own default preset.
@@ -233,12 +233,12 @@ export default async function ReportsOverviewPage() {
     {
       href: "/commercial/reports/labor",
       group: "delivery" as const,
-      title: "Labour & payroll",
+      title: "Labor & payroll",
       blurb: "Approved crew hours and cost, by person and by job.",
       icon: <><path d="M9 21V9a3 3 0 0 1 6 0v12" /><path d="M3 21h18 M5 21V11l7-5 7 5v10" /></>,
       primary: { label: "Hours (this month)", value: `${labor.totalHours.toLocaleString("en-US", { maximumFractionDigits: 0 })}h`, tone: "navy" },
       secondary: {
-        label: labor.unratedHours > 0 ? "Unpriced hours" : "Labour cost",
+        label: labor.unratedHours > 0 ? "Unpriced hours" : "Labor cost",
         value: labor.unratedHours > 0
           ? `${labor.unratedHours.toLocaleString("en-US", { maximumFractionDigits: 0 })}h`
           : formatCentsCompact(labor.totalCostCents),

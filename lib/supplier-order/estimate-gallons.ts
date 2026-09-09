@@ -27,7 +27,7 @@
  *  magic numbers — PPP will tune per product / per SW vs BM"). */
 export const COVERAGE_CONFIG = {
   // 1.75, not 2 (Karan 2026-09-08). A second coat does not cost a full first
-  // coat's worth of paint — it goes onto a sealed, same-colour surface and
+  // coat's worth of paint — it goes onto a sealed, same-color surface and
   // spreads further. Costing it as 2.0 was the single biggest source of
   // over-ordering: a 15x20 living room came out at 4 gallons of wall paint
   // where the crew buys 3, and an 8x10 bedroom at 2 where they buy 1.
@@ -64,13 +64,13 @@ export const COVERAGE_CONFIG = {
   //              human, which is honest about being a rule of thumb.
   //   Bathroom — small enough that a 5x7 is quarts, not gallons.
   //
-  // Both apply ONLY when every room feeding that colour is of the type. A wall
-  // colour shared between the kitchen and the living room is sized normally,
+  // Both apply ONLY when every room feeding that color is of the type. A wall
+  // color shared between the kitchen and the living room is sized normally,
   // because the living room dominates and capping it at a gallon would leave
   // the crew short.
   kitchenDefaultGallons: 1,
   quartsPerGallon: 4,
-  // Katie 2026-09-08. A kitchen sharing a colour with another room is no longer
+  // Katie 2026-09-08. A kitchen sharing a color with another room is no longer
   // sized at full area: the cabinets still cover half its wall. "If the surface
   // area from dimensions = 300sq ft, then it only adds 150sq ft."
   kitchenSharedAreaFactor: 0.5,
@@ -123,9 +123,9 @@ export type RoomTakeoff = {
   coats: number;
   /** Door faces in scope for this room? (default off — casings always count). */
   paintDoorFaces: boolean;
-  /** The line's free text — Salesforce Description and Colour Notes, joined.
+  /** The line's free text — Salesforce Description and Color Notes, joined.
    *  Read ONLY to spot an accent wall (Katie item 7): an accent wall is a
-   *  second colour over part of one wall, and nothing in the geometry can see
+   *  second color over part of one wall, and nothing in the geometry can see
    *  it, so the line is flagged for a person instead of silently sized. */
   notes?: string | null;
   surfaces: RoomSurface[];
@@ -141,7 +141,7 @@ export type GallonEstimate = {
   rooms: string[];
   /** R4.19: which rooms each surface covers, so the order screen can render
    *  "Walls — Kitchen, Bathroom · Ceiling — Kitchen". `surfaces` and `rooms`
-   *  are flat lists that lost the pairing: a colour on the kitchen walls and
+   *  are flat lists that lost the pairing: a color on the kitchen walls and
    *  the bathroom ceiling read "Kitchen, Bathroom · Walls, Ceiling", which
    *  implies four combinations and names none of them. */
   placements: Array<{ surface: string; rooms: string[] }>;
@@ -157,8 +157,8 @@ export type GallonEstimate = {
   unit?: PaintUnit;
   /** Total gallon-equivalent (buckets×5 + cans) — for sorting / sanity. */
   gallons: number;
-  /** An accent wall is in scope for this colour. The geometry cannot see one —
-   *  it is a second colour over part of one wall — so the quantity is a guess
+  /** An accent wall is in scope for this color. The geometry cannot see one —
+   *  it is a second color over part of one wall — so the quantity is a guess
    *  and a person is asked to look (Katie item 7). */
   accentWallReview: boolean;
   /** Set when a ROOM-TYPE default replaced the computed figure — a kitchen
@@ -185,7 +185,7 @@ export type GallonEstimate = {
   manualOnly: boolean;
   /** The worker explicitly set this line to zero — "we're not buying this one".
    *  Distinct from an unsized/zero ESTIMATE, which means "we don't know yet".
-   *  Without the distinction, decrementing a colour to 0 didn't remove it: the
+   *  Without the distinction, decrementing a color to 0 didn't remove it: the
    *  vendor was emailed `___ — White Dove (PPP to confirm quantity)` for paint
    *  PPP had deliberately decided not to order, and the builder row nagged
    *  "⚠️ set qty" as though the worker had made a mistake. Only
@@ -221,7 +221,7 @@ export function isDoorSurface(label: string | null | undefined): boolean {
   return l.includes("door");
 }
 
-/** Katie item 7 — an accent wall anywhere in this colour's rooms. */
+/** Katie item 7 — an accent wall anywhere in this color's rooms. */
 export function mentionsAccentWall(text: string | null | undefined): boolean {
   return /accent\s*wall/i.test(text ?? "");
 }
@@ -370,19 +370,19 @@ type Bucket = {
    *  strong "MUST be filled manually" banner. Karan 2026-06-09. */
   allRoomsNoData: boolean;
   contributingRoomCount: number;
-  /** Room types feeding this colour. A room-type default applies only when
+  /** Room types feeding this color. A room-type default applies only when
    *  every one of them is that type — see kitchenDefaultGallons. */
   roomTypes: Set<"kitchen" | "bathroom" | "other">;
   /** Any contributing room mentions an accent wall, or paints one. */
   accentWall: boolean;
-  /** Every surface on this colour is a door — Katie item 6, priced in quarts. */
+  /** Every surface on this color is a door — Katie item 6, priced in quarts. */
   doorsOnly: boolean;
-  /** Wall area to REMOVE if this colour turns out to be shared with a normal
+  /** Wall area to REMOVE if this color turns out to be shared with a normal
    *  room — the kitchen half Katie asked for. Held separately because sharing
    *  is only known once every room has contributed. */
   kitchenSharedSqft: number;
-  /** Which surface kinds this colour covers. The kitchen cap is about the WALL
-   *  the cabinets stand against, so it must not touch a colour that also paints
+  /** Which surface kinds this color covers. The kitchen cap is about the WALL
+   *  the cabinets stand against, so it must not touch a color that also paints
    *  the ceiling — cabinets do not cover that, and a big kitchen ceiling capped
    *  at one gallon would leave the crew short. */
   kinds: Set<PaintSurfaceKind>;
@@ -433,10 +433,10 @@ export function estimateOrderGallons(
       const b = bucketFor(s);
       b.surfaces.add(s.surfaceLabel);
       if (!isDoorSurface(s.surfaceLabel)) b.doorsOnly = false;
-      // Accent detection is per ROOM, not per colour. An accent wall is its own
-      // colour, so checking only this bucket's own surfaces flagged the accent
+      // Accent detection is per ROOM, not per color. An accent wall is its own
+      // color, so checking only this bucket's own surfaces flagged the accent
       // line and left the WALLS line — the quantity actually thrown off, since
-      // part of that wall is now a different colour — unflagged.
+      // part of that wall is now a different color — unflagged.
       if (roomHasAccent) b.accentWall = true;
       if (room.roomLabel) b.rooms.add(room.roomLabel);
       let placed = b.placements.get(s.surfaceLabel);
@@ -463,10 +463,10 @@ export function estimateOrderGallons(
       }
       if (s.kind !== "unsized") {
         b.kinds.add(s.kind);
-        // A kitchen sharing its colour contributes HALF its wall area (Katie
-        // 2026-09-08) — the cabinets are still there even when the colour runs
+        // A kitchen sharing its color contributes HALF its wall area (Katie
+        // 2026-09-08) — the cabinets are still there even when the color runs
         // on into the dining room. Applied to walls only: cabinets do not cover
-        // the ceiling. Whether the colour is actually shared is not known until
+        // the ceiling. Whether the color is actually shared is not known until
         // every room has been walked, so the halved figure is accumulated
         // separately and chosen at the end.
         b.totalSqft += sqft;
@@ -495,7 +495,7 @@ export function estimateOrderGallons(
       const onlyType = b.roomTypes.size === 1 ? [...b.roomTypes][0] : null;
       const shared = b.roomTypes.size > 1;
       // Cabinets justify discounting the WALL. They do not cover the ceiling,
-      // so a colour that paints both is sized on its real area.
+      // so a color that paints both is sized on its real area.
       const wallsOnly = b.kinds.size === 1 && b.kinds.has("walls");
       const ceilingOnly = b.kinds.size === 1 && b.kinds.has("ceiling");
 
@@ -505,11 +505,11 @@ export function estimateOrderGallons(
       const rawGallons = (reportedSqft / cfg.coverageSqftPerGallon) * (1 + cfg.bufferPct);
       ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
       if (shared && b.kitchenSharedSqft > 0) {
-        defaultedNote = "Kitchen shares this colour — its wall area counted at half for the cabinets. Please review.";
+        defaultedNote = "Kitchen shares this color — its wall area counted at half for the cabinets. Please review.";
       }
 
       if (onlyType === "kitchen" && (wallsOnly || ceilingOnly)) {
-        // Kitchen on its own colour: one gallon, whatever the size. Karan
+        // Kitchen on its own color: one gallon, whatever the size. Karan
         // extended this to the ceiling on 2026-09-08 — "unless it's folded into
         // all the other ceilings", which is the `shared` branch above.
         bucketsCount = 0;
@@ -609,7 +609,7 @@ export function estimateOrderGallons(
  * Container a line is ordered in.
  *
  * "bucket" is a 5-gallon pail (Katie item 8). It exists only for HAND-TYPED
- * colour lines: a normal estimate already rolls into buckets on its own via
+ * color lines: a normal estimate already rolls into buckets on its own via
  * packageGallons, so offering it there would be two ways to say the same thing.
  */
 export type PaintUnit = "gal" | "qt" | "bucket";
@@ -692,7 +692,7 @@ export function summarizeOrder(estimates: GallonEstimate[]): {
 } {
   let buckets = 0, cans = 0, quarts = 0, sizedColors = 0, reviewColors = 0;
   for (const e of estimates) {
-    // A deliberately-excluded colour is neither ordered nor outstanding — it
+    // A deliberately-excluded color is neither ordered nor outstanding — it
     // must not inflate "(+ N to confirm)" on the vendor email's TOTAL line.
     if (e.excluded) continue;
     if (e.buckets > 0 || e.cans > 0) {
@@ -711,7 +711,7 @@ export function summarizeOrder(estimates: GallonEstimate[]): {
 }
 
 /**
- * Fold worker-typed colour lines (Kate round-3 #28) into an order total.
+ * Fold worker-typed color lines (Kate round-3 #28) into an order total.
  *
  * They render as real order lines, so they have to count toward TOTAL —
  * otherwise the vendor cross-checks the total against the lines and it doesn't

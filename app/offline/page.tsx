@@ -12,7 +12,7 @@ export default function OfflinePage() {
         <div className="text-4xl mb-3" aria-hidden>📶</div>
         <h1 className="font-condensed text-xl font-bold text-ppp-navy">No signal here</h1>
         <p className="text-sm text-ppp-charcoal-600 mt-2 leading-relaxed">
-          The Command Center needs a connection to load work orders and colours.
+          The Command Center needs a connection to load work orders and colors.
         </p>
         <div className="mt-5 text-left bg-white border border-ppp-charcoal-100 rounded-xl p-4">
           <div className="text-[11px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-2">

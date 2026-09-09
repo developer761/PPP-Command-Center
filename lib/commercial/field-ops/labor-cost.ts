@@ -30,7 +30,7 @@ import { etTodayIso } from "@/lib/date-et";
 // overview.ts, which counts both as approved hours — otherwise a deal's labor
 // cost would vanish the moment payroll runs its export.
 const SETTLED_STATUSES = ["approved", "exported"] as const;
-/** Exported so the Labour report counts the same entries the deal P&L does —
+/** Exported so the Labor report counts the same entries the deal P&L does —
  *  one definition of "this hour is a settled cost", not two. */
 export { SETTLED_STATUSES };
 

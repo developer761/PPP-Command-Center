@@ -4,16 +4,16 @@
  * "The tag on work orders is Submitted no matter where the work order is in the
  * order progression."
  *
- * It was right, as far as it went: the badge only ever modelled the COLOUR FORM
+ * It was right, as far as it went: the badge only ever modelled the COLOR FORM
  * lifecycle — sent, opened, submitted, expired — and stopped there. Everything
- * after the customer picks colours is the SUPPLIER ORDER lifecycle, which the
+ * after the customer picks colors is the SUPPLIER ORDER lifecycle, which the
  * card already carried and the badge simply ignored. So a job whose paint was
  * ordered a week ago and delivered yesterday still read "Submitted", and the
  * rail could not be scanned for what actually needed doing.
  *
  * Two phases, and the emoji says which you are in:
  *
- *   🎨 Sent · 🎨 Opened · 🎨 Submitted     — getting colours out of the customer
+ *   🎨 Sent · 🎨 Opened · 🎨 Submitted     — getting colors out of the customer
  *   🚛 Ordered · 🚛 Canceled · 🚛 Delivered — getting paint out of the vendor
  */
 
@@ -55,7 +55,7 @@ export function deriveWoStage(
   if (p.supplierCancelledAt) return "cancelled";
   if (p.supplierSentAt) return "ordered";
 
-  // ── Colour-form phase ──
+  // ── Color-form phase ──
   if (p.formSubmittedAt || formStatus?.status === "submitted") return "submitted";
   // Expired sits ABOVE opened/sent because it is the one that needs an action —
   // resend — while the other two are simply waiting. It sits BELOW submitted
@@ -76,7 +76,7 @@ export type StageBadge = { label: string; title: string; tone: "green" | "blue" 
 export const STAGE_BADGES: Record<Exclude<WoStage, "none">, StageBadge> = {
   sent: {
     label: "🎨 Sent",
-    title: "Colour form emailed — waiting on the customer",
+    title: "Color form emailed — waiting on the customer",
     tone: "charcoal",
   },
   opened: {
@@ -86,7 +86,7 @@ export const STAGE_BADGES: Record<Exclude<WoStage, "none">, StageBadge> = {
   },
   submitted: {
     label: "🎨 Submitted",
-    title: "Customer submitted colours — ready to order materials",
+    title: "Customer submitted colors — ready to order materials",
     tone: "green",
   },
   expired: {

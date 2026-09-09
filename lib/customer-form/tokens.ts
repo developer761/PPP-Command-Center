@@ -41,7 +41,7 @@ export type CustomerFormToken = {
   woli_snapshot_at: string | null;
   customer_ip: string | null;
   customer_user_agent: string | null;
-  /** Kate round-3 #07 — the colour deadline the sender promised the customer
+  /** Kate round-3 #07 — the color deadline the sender promised the customer
    *  (YYYY-MM-DD). Null when nobody set one; the form then shows no date
    *  rather than a derived one that's already passed. Migration 147. */
   color_deadline?: string | null;
@@ -84,7 +84,7 @@ export async function createToken(input: {
    *  email or creating real submission state. Migration 015 added the column. */
   kind?: string | null;
   /** Kate round-3 #07: the date the sender is telling the customer their
-   *  colours are needed by (YYYY-MM-DD). Optional — blank is a valid answer
+   *  colors are needed by (YYYY-MM-DD). Optional — blank is a valid answer
    *  when nobody has committed to a date yet. */
   colorDeadline?: string | null;
 }): Promise<{ token: string } | { error: string }> {
@@ -115,7 +115,7 @@ export async function createToken(input: {
   // This used to drop `kind` and `color_deadline` together whenever EITHER was
   // missing, which is a nasty failure: with migration 147 pending, a PREVIEW
   // token would insert with kind=null — i.e. as a real customer token. The
-  // preview form would then write real colours to Salesforce and count as a
+  // preview form would then write real colors to Salesforce and count as a
   // genuine submission. Never widen a fallback beyond the column that failed.
   const OPTIONAL_COLUMNS = ["color_deadline", "kind"] as const;
   const missingColumn = (msg: string, code?: string): string | null => {
@@ -343,16 +343,16 @@ export async function markWoliSnapshotTime(token: string): Promise<void> {
 }
 
 /**
- * The most recent SUBMITTED colour payload for a work order, from any token.
+ * The most recent SUBMITTED color payload for a work order, from any token.
  *
  * Kate round-3 #10: "Push the information into Salesforce, but keep it stored
  * in the Command Center exactly as it was entered."
  *
  * The problem this solves: when a line has more surfaces than Salesforce has
- * colour fields (say Walls, Ceiling, Cabinets AND Door), the overflow is
+ * color fields (say Walls, Ceiling, Cabinets AND Door), the overflow is
  * written to Color Notes and the shared Other slot is deliberately left blank —
  * we can't tell which orphan it would refer to. The form then re-read
- * Salesforce and showed Cabinets and Door as empty, so the colours looked lost
+ * Salesforce and showed Cabinets and Door as empty, so the colors looked lost
  * even though they'd been entered and pushed.
  *
  * They were never lost: submitted_payload holds exactly what was entered. This
@@ -361,7 +361,7 @@ export async function markWoliSnapshotTime(token: string): Promise<void> {
  * from Salesforce's lossy projection.
  *
  * Deliberately per WORK ORDER, not per token — a re-sent form is a new token
- * row, and that is precisely the case where the colours went missing.
+ * row, and that is precisely the case where the colors went missing.
  */
 export async function getLatestSubmittedPayload(
   workOrderId: string

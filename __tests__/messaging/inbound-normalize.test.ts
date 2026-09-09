@@ -30,10 +30,10 @@ describe("iPhone reactions", () => {
   });
 
   it("does NOT treat a sentence starting with a verb as a reaction", () => {
-    // "Liked the colour you picked" is a customer talking. Swallowing it and
+    // "Liked the color you picked" is a customer talking. Swallowing it and
     // replying "Got it." would drop what they actually said.
     for (const s of [
-      "Liked the colour you suggested",
+      "Liked the color you suggested",
       "Loved working with your team last time",
       "Questioned whether we need primer",
     ]) {

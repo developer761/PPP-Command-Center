@@ -112,7 +112,7 @@ describe("the database accepts every role the app can produce", () => {
 describe("field users can enter colors (Kate, 2026-09-01)", () => {
   it("every role can enter colors and send the color form", () => {
     // "the field users should be able to enter colors + send the color form."
-    // Colour capture is field work — the rep is standing in the customer's
+    // Color capture is field work — the rep is standing in the customer's
     // hallway — and gating it to office roles meant the person actually WITH
     // the customer had to ask someone else to send the form.
     for (const role of USER_ROLE_VALUES) {
@@ -150,7 +150,7 @@ describe("field users can enter colors (Kate, 2026-09-01)", () => {
     expect(guarded.length).toBeGreaterThanOrEqual(7);
     for (const f of guarded) {
       const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-      expect(src, `${f} re-derives the colour gate`).not.toMatch(/isAdmin \|\| isAccountManager/);
+      expect(src, `${f} re-derives the color gate`).not.toMatch(/isAdmin \|\| isAccountManager/);
     }
   });
 });

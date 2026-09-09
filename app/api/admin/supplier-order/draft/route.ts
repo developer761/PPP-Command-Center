@@ -263,7 +263,7 @@ export async function POST(request: Request) {
     materialType: body.materialType, // Kate #16: estimator's main paint line
     colorNotes: body.colorNotes, // Kate #25: editable Color Notes
     materialTypeOverrides: body.materialTypeOverrides,
-    // Kate round-3 #18/#22/#23/#26: committed quantities + worker-typed colour
+    // Kate round-3 #18/#22/#23/#26: committed quantities + worker-typed color
     // lines render straight into the email instead of being patched in after.
     quantityOverrides: body.quantityOverrides,
     customColorItems: body.customColorItems,

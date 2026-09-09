@@ -20,7 +20,7 @@ import { AI_NOTE_MARK } from "@/lib/commercial/reports/receivables-row-notes";
 const KIND_META: Record<ReceivableRow["kind"], { label: string; cls: string }> = {
   invoice: { label: "Invoice", cls: "bg-ppp-blue-50 text-ppp-blue-800 border-ppp-blue-200" },
   aia: { label: "AIA", cls: "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200" },
-  // Grey, never red: retention isn't late, it's held to close-out. Colouring it
+  // Grey, never red: retention isn't late, it's held to close-out. Coloring it
   // like an overdue invoice would make every progress-billed job look sick.
   retainage: { label: "Retention", cls: "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200" },
 };

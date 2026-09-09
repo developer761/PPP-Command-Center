@@ -65,7 +65,7 @@ describe("applyQuantityOverrides", () => {
     expect(formatOrderQuantity(out)).toBe("manual entry required");
   });
 
-  it("keys by colour AND finish so two finishes of one colour stay separate", () => {
+  it("keys by color AND finish so two finishes of one color stay separate", () => {
     const egg = estimate({ finish: "Eggshell" });
     const semi = estimate({ finish: "Semi-Gloss" });
     const out = applyQuantityOverrides(
@@ -145,7 +145,7 @@ describe("normalizeBuildPayload (#18)", () => {
     expect(p.quantities.k.unit).toBe("gal");
   });
 
-  it("drops extras and colour items with no name", () => {
+  it("drops extras and color items with no name", () => {
     const p = normalizeBuildPayload({
       extras: [{ extraId: "e1", name: "  ", unit: "each", qty: 1 }, { extraId: "", name: "Tape", unit: "each", qty: 1 }],
       customColorItems: [{ id: "c", label: "   ", qty: 1, unit: "gal" }],
@@ -154,7 +154,7 @@ describe("normalizeBuildPayload (#18)", () => {
     expect(p.customColorItems).toEqual([]);
   });
 
-  it("keeps a valid custom colour item and clamps its quantity", () => {
+  it("keeps a valid custom color item and clamps its quantity", () => {
     const p = normalizeBuildPayload({
       customColorItems: [{ id: "c1", label: "Color Match: Behr 56, eggshell", qty: 0, unit: "qt" }],
     });

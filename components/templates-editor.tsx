@@ -118,7 +118,7 @@ const KNOWN_VARIABLES = new Set([
   "wo_number",
   "form_url",
   "ppp_brand",
-  // Kate 2026-09-04 — the whole colour-deadline sentence, computed from the
+  // Kate 2026-09-04 — the whole color-deadline sentence, computed from the
   // token's color_deadline. Registered here or the typo linter would flag our
   // OWN default email_outro as a misspelling.
   "color_deadline_notice",

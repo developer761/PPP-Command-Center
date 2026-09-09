@@ -616,7 +616,7 @@ to its correct field in order (no shift — the classic CSV-removal trap avoided
 ## F · Reports — the decisions (Karan, 2026-08-12)
 
 Six reports exist: AR aging, geography, job costs, pipeline, revenue, win/loss.
-None of them has a PERSON in it, and nothing reads Field Ops' labour data.
+None of them has a PERSON in it, and nothing reads Field Ops' labor data.
 
 **Fiscal year: January (calendar).** So the hardcoded calendar quarters in
 `currentQuarterRange` are correct today. `fiscal_year_start_month` is still
@@ -630,7 +630,7 @@ data is the one thing here that could land badly, so it stays scoped.
 
 **Build order (Karan picked all four):**
 
-1. **Labour & payroll** — hours by job, by person, by week; crew cost against
+1. **Labor & payroll** — hours by job, by person, by week; crew cost against
    the job's budget. Field Ops holds all of it and no report reads it.
 2. **Estimator / proposal performance** — bids sent, win rate, and average
    turnaround from RFP received to proposal sent. The "how is Kim doing"
@@ -642,7 +642,7 @@ data is the one thing here that could land badly, so it stays scoped.
 
 ---
 
-## ✅ VERIFY — Reports F1: Labour & payroll (`9ebde92`). CLEAN, no miss.
+## ✅ VERIFY — Reports F1: Labor & payroll (`9ebde92`). CLEAN, no miss.
 New report (hours + cost by person / job / week). Verified the things that make a report trustworthy:
 - **RBAC is server-side.** `labor/page.tsx` is a pure server component; the by-person half is gated by
   `canSeePeople = role admin|account_manager` and only conditionally RENDERED — the report is never passed to a

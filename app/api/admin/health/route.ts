@@ -166,7 +166,7 @@ export async function GET() {
           ? `Set, but it is not a Slack webhook URL (${hook.length} characters, expected https://hooks.slack.com/...). Alerts will fall through to email.`
           : fallback > 0
             ? `Not set — materials failures are being emailed to ${fallback} ops recipient${fallback === 1 ? "" : "s"} instead of posted to Slack.`
-            : "Not set, and no ops email recipients either — a failed supplier order or bounced colour form would tell NOBODY.",
+            : "Not set, and no ops email recipients either — a failed supplier order or bounced color form would tell NOBODY.",
       group: "platform",
       fix: "Create an incoming webhook for the paint/materials channel in Slack, then add PPP_MATERIALS_SLACK_WEBHOOK in Vercel → Settings → Environment Variables and redeploy.",
     });

@@ -7,7 +7,7 @@ import { join } from "node:path";
  *
  * The obvious fix — "the retained payload is the truth, always" — fixes Kate's
  * two symptoms and silently breaks something that works today: a rep correcting
- * a colour directly in Salesforce AFTER the customer submitted would stop
+ * a color directly in Salesforce AFTER the customer submitted would stop
  * showing, with no error and no clue why. That's a worse bug than the one being
  * fixed, on a more common path.
  *
@@ -34,12 +34,12 @@ describe("Rooms & Colors source precedence", () => {
     const skipLine = buildSlot.indexOf("own?.skipped");
     const sfWinsLine = buildSlot.indexOf("salesforceCanHold(surface) && sfColor");
     expect(skipLine).toBeGreaterThan(-1);
-    // The skip check must come FIRST, or the shared slot's colour wins over it.
+    // The skip check must come FIRST, or the shared slot's color wins over it.
     expect(skipLine).toBeLessThan(sfWinsLine);
   });
 
   it("falls back to the payload when Salesforce could not hold the answer", () => {
-    // 2+ orphans: ColorOther__c is deliberately blank and both colours went to
+    // 2+ orphans: ColorOther__c is deliberately blank and both colors went to
     // Color Notes (WO 00306643's Bathroom).
     const payloadBranch = buildSlot.indexOf("if (own) {");
     expect(payloadBranch).toBeGreaterThan(buildSlot.indexOf("salesforceCanHold(surface) && sfColor"));

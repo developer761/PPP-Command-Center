@@ -30,7 +30,7 @@ export type OrderPageData = {
 };
 
 // STANDARD_SURFACES is imported, not redeclared — the Rooms & Colors list and
-// this page must classify surfaces identically or a colour shows in one and
+// this page must classify surfaces identically or a color shows in one and
 // vanishes from the other.
 
 export async function loadOrderPageData(
@@ -71,7 +71,7 @@ export async function loadOrderPageData(
       // Kate 2026-09-04 — the rep's own scope notes, so this list shows what
       // the job covers rather than just how many lines it has.
       notes: li.raw.description ?? null,
-      // Katie item 23 — the per-surface COLOURS. On a work order where a rep
+      // Katie item 23 — the per-surface COLORS. On a work order where a rep
       // puts the whole house on one line, Description says "see notes for
       // colors" and this is the notes. Free text, not our machine format:
       // extractMachineColorLines returns nothing for it, which is exactly why

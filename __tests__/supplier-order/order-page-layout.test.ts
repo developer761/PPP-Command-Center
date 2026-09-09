@@ -31,7 +31,7 @@ describe("the order page opens on the Salesforce line items", () => {
 
   it("and above the buy-list it is checked against", () => {
     const lineItems = code.indexOf("Line items on this WO");
-    // The per-colour quantity rows — the thing an estimator verifies.
+    // The per-color quantity rows — the thing an estimator verifies.
     const buyList = code.indexOf("formatOrderQuantity(e)");
     expect(buyList).toBeGreaterThan(-1);
     expect(lineItems).toBeLessThan(buyList);

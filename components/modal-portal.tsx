@@ -26,7 +26,7 @@ import { createPortal } from "react-dom";
  *
  * THEME: `data-theme` sits on a wrapper `div` (see app/commercial/layout.tsx),
  * not on `<html>`. Portalling straight to `document.body` would drop the
- * overlay out of that scope and render a dark-mode dialog in light colours, so
+ * overlay out of that scope and render a dark-mode dialog in light colors, so
  * the nearest ancestor's theme is mirrored onto the portal container.
  */
 export default function ModalPortal({ children }: { children: React.ReactNode }) {

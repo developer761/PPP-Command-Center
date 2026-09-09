@@ -52,7 +52,7 @@ describe("extractCustomerFreeText — pre-fill only shows the customer's own tex
  * has to drop the header too when what follows is ours.
  */
 describe("extractCustomerFreeText — round-3 #31 room headers", () => {
-  it("drops a room header + orphan colour lines when there is no customer note", () => {
+  it("drops a room header + orphan color lines when there is no customer note", () => {
     const raw = [
       "Dining Room:",
       "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
@@ -63,7 +63,7 @@ describe("extractCustomerFreeText — round-3 #31 room headers", () => {
 
   it("keeps the customer's note and drops the header block around it", () => {
     // The shape the submit route actually writes: ONE header, then the orphan
-    // colours, then the customer's own words.
+    // colors, then the customer's own words.
     const raw = [
       "Dining Room:",
       "Cabinets: HC-15 Henderson Buff (HC-15) — Semi-Gloss",
@@ -199,7 +199,7 @@ describe("orphan surface list is derived, not duplicated", () => {
     }
   });
 
-  it("does not claim a STANDARD surface — those have their own colour fields", () => {
+  it("does not claim a STANDARD surface — those have their own color fields", () => {
     for (const surface of STANDARD_SURFACES) {
       const line = `${surface}: 2108-50 Silver Fox (2108-50) — Eggshell`;
       expect(extractMachineColorLines(line)).toEqual([]);

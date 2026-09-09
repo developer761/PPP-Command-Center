@@ -11,7 +11,7 @@ import {
 
 /**
  * The customer form holds everything in React state, so one refresh wipes a
- * 12-room house of colour picks. The worst path is the drift 409: the app tells
+ * 12-room house of color picks. The worst path is the drift 409: the app tells
  * the customer "please reload the form", which is precisely the action that
  * destroys their work.
  *

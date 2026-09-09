@@ -149,7 +149,7 @@ describe("the CSV keeps them in separate columns", () => {
   const csv = receivablesCsv(report);
 
   it("has a column for each", () => {
-    // A spreadsheet has no italics and no colour — the only way to keep them
+    // A spreadsheet has no italics and no color — the only way to keep them
     // apart is two headers.
     expect(csv).toContain(`"Notes"`);
     expect(csv).toContain(`"${AI_NOTE_MARK} AI read"`);

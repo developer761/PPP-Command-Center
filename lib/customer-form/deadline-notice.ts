@@ -1,5 +1,5 @@
 /**
- * The colour deadline sentence the customer reads — on the form and in the
+ * The color deadline sentence the customer reads — on the form and in the
  * email, from ONE function so the two can never drift.
  *
  * Kate, 2026-09-04, gave the wording exactly:

@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { WoProgress } from "@/lib/wo-progress/types";
 
 /**
- * Who did what on a work order's colour form (Kate round-3 #02 + #03).
+ * Who did what on a work order's color form (Kate round-3 #02 + #03).
  *
  * THIS FILE EXISTS BECAUSE THE LOGIC DRIFTED ONCE ALREADY. Round-2 #04 asked
  * for AM attribution on the progress bar; it was implemented in
@@ -14,7 +14,7 @@ import type { WoProgress } from "@/lib/wo-progress/types";
  * "Customer Submitted" and the fix looked done from the code but not from the
  * screen. Both loaders now call this, so there is one implementation.
  *
- * The rule: an INTERNAL token is PPP staff entering colours on the customer's
+ * The rule: an INTERNAL token is PPP staff entering colors on the customer's
  * behalf, so every event on it belongs to that staffer. A normal token is the
  * customer's, so opens and submits are theirs even though a staffer sent it.
  */

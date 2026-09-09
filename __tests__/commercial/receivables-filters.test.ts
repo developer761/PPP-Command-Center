@@ -162,7 +162,7 @@ describe("activity periods", () => {
     expect(weekStartOf("2026-08-23")).toBe("2026-08-17");
   });
 
-  it("labour gained week windows and they stay ordered", () => {
+  it("labor gained week windows and they stay ordered", () => {
     expect(LABOR_PRESETS.map((p) => p.key)).toContain("this_week");
     expect(LABOR_PRESETS.map((p) => p.key)).toContain("last_week");
     const lw = laborRange("last_week");

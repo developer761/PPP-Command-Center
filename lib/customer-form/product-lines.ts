@@ -54,7 +54,7 @@ export function formatProductLines(sel: ProductLineSelection): string {
   const out = parts.join(" | ");
   // A line name long enough to overflow means something is wrong upstream, but
   // truncating beats STRING_TOO_LONG rejecting the whole write — which would
-  // take the colours down with it, since they share one batch.
+  // take the colors down with it, since they share one batch.
   return out.length <= PRODUCT_LINES_MAX ? out : out.slice(0, PRODUCT_LINES_MAX);
 }
 

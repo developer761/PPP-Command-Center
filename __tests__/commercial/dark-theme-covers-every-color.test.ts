@@ -3,21 +3,21 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Every colour family the UI paints with must exist in the dark theme.
+ * Every color family the UI paints with must exist in the dark theme.
  *
  * Tailwind's stock palette is defined once, for light. The dark theme works by
  * REDEFINING those same `--color-<family>-<step>` variables, so a family nobody
  * remembered to redefine silently keeps its light value — and renders at full
  * light-mode saturation against a near-black surface.
  *
- * That is not hypothetical. `teal` was the only status colour with no dark
+ * That is not hypothetical. `teal` was the only status color with no dark
  * mapping, so on the Field Ops calendar and status board every sibling status
  * (emerald · amber · rose) desaturated correctly while "Almost done" kept
  * Tailwind's stock #14b8a6 and glowed. Nothing failed; it just looked wrong,
  * on the one theme nobody screenshots.
  *
  * Reads the stylesheet and the markup rather than a hand-kept list, so adding a
- * new accent colour to a component fails HERE rather than in dark mode.
+ * new accent color to a component fails HERE rather than in dark mode.
  */
 
 const CSS = readFileSync("app/globals.css", "utf8");
@@ -68,12 +68,12 @@ const STOCK = [
   "green", "blue", "yellow", "slate", "zinc", "stone",
 ];
 
-describe("the dark theme covers every colour the UI paints with", () => {
+describe("the dark theme covers every color the UI paints with", () => {
   const dark = darkBlock();
   // ONLY surfaces that can actually render dark.
   //
   // `data-theme` is set in app/commercial/layout.tsx and nowhere else, so the
-  // residential app under /dashboard never goes dark and its colours cannot be
+  // residential app under /dashboard never goes dark and its colors cannot be
   // wrong for a reason this test would catch. Scanning it flagged a `red` in
   // components/materials-view.tsx — a real unmapped family, on a surface with
   // no dark mode to be unmapped in.
@@ -103,7 +103,7 @@ describe("the dark theme covers every colour the UI paints with", () => {
     }
   }
 
-  it("finds the colours actually in use (guards the test itself)", () => {
+  it("finds the colors actually in use (guards the test itself)", () => {
     // If this ever reads zero families the assertions below become vacuous —
     // a check that cannot fail is worse than no check.
     expect(used.size).toBeGreaterThan(2);

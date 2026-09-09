@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const money = (c: number) => (c / 100).toFixed(2);
 const hrs = (h: number) => h.toFixed(2);
 
-/** Labour & payroll. Admin / account manager only — this is per-person pay. */
+/** Labor & payroll. Admin / account manager only — this is per-person pay. */
 export async function GET(req: NextRequest) {
   const guard = await guardExport({ people: true });
   if (!guard.ok) return guard.response;
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   const L: string[] = [];
   const row = (...cells: (string | number)[]) => L.push(cells.map(csv).join(","));
 
-  row("Labour & payroll", range.label, `${range.fromYmd} to ${range.toYmd}`);
+  row("Labor & payroll", range.label, `${range.fromYmd} to ${range.toYmd}`);
   row("");
   row("Total hours", hrs(r.totalHours));
   row("Total cost", money(r.totalCostCents));
@@ -52,5 +52,5 @@ export async function GET(req: NextRequest) {
   row("Week starting", "Hours", "Cost");
   for (const w of r.weeks) row(w.weekStart, hrs(w.hours), money(w.costCents));
 
-  return csvResponse(L.join("\r\n") + "\r\n", `Labour_${range.fromYmd}_to_${range.toYmd}.csv`, "Labour — hours and cost", range.label);
+  return csvResponse(L.join("\r\n") + "\r\n", `Labor_${range.fromYmd}_to_${range.toYmd}.csv`, "Labor — hours and cost", range.label);
 }

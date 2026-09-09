@@ -15,7 +15,7 @@ import { join } from "node:path";
  *   .neq("kind","preview")            → 18 rows
  *   .or("kind.is.null,kind.neq.preview") → 53 rows
  *
- * The visible effect was that after sending a colour form the work-order page
+ * The visible effect was that after sending a color form the work-order page
  * still said "not sent", the progress bar never advanced, and Send Reminder
  * never appeared. It survived three review rounds because internal-entry
  * tokens (kind='internal') DO have a value and behaved correctly — so every

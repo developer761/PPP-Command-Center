@@ -115,7 +115,7 @@ type Props = {
   isEditing?: boolean;
   /** Prior picks to seed the form with when re-editing. */
   priorSubmission?: PriorSubmission;
-  /** Kate round-3 #07 — the colour deadline the sender set on this token
+  /** Kate round-3 #07 — the color deadline the sender set on this token
    *  (YYYY-MM-DD). Wins over the derived start-date chain; null means the
    *  customer is shown no date at all rather than an expired one. */
   colorDeadline?: string | null;
@@ -1387,7 +1387,7 @@ function LineItemSection({
   const showFamilyCaption = !!rawFamily && !title.toLowerCase().includes(rawFamily.toLowerCase());
   // Kate round-3 #33: when Salesforce has no surfaces on this line, we render
   // NO surfaces. This used to fall back to ["Walls"], which invented a surface
-  // nobody had scoped and asked the customer to pick a colour for it — a colour
+  // nobody had scoped and asked the customer to pick a color for it — a color
   // that then had nowhere valid to be written. Round 2 blocked SENDING a form
   // in this state but left the form itself fabricating the surface, so anyone
   // holding an already-sent link (or using Internal Entry) still saw it.
@@ -1424,7 +1424,7 @@ function LineItemSection({
 
   // NO overflow-hidden on this card. It was clipping the room header's tinted
   // background to the rounded corners — but an overflow:hidden ancestor also
-  // clips absolutely-positioned descendants, and the colour-suggestion dropdown
+  // clips absolutely-positioned descendants, and the color-suggestion dropdown
   // is one. About a third of the results were sheared off flat inside the card,
   // on the customer-facing form. The header carries its own rounded top corners
   // instead, which achieves the same visual.
@@ -1847,10 +1847,10 @@ function ColorPicker({
             setOpen(true);
           }}
           onKeyDown={(e) => {
-            // The colour search sits INSIDE the form, which has a submit
+            // The color search sits INSIDE the form, which has a submit
             // button — so HTML implicit submission fires the real submit
             // handler on Enter. Mobile keyboards label that key "Go", and
-            // typing a colour then pressing it would submit the whole form
+            // typing a color then pressing it would submit the whole form
             // mid-entry: the customer lands on the thank-you screen with
             // half their rooms blank, and the materials order goes out on
             // partial picks. Validation can't catch it — a partly-filled

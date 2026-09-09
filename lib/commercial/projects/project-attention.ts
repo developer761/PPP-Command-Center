@@ -232,7 +232,7 @@ export type SpineToolState =
  *
  *  `na` (doesn't apply to this job — e.g. AIA on an invoice-billed job) maps to
  *  "todo" here deliberately: the spine has three states and adding a fourth
- *  would break the one colour rule for a case the spine doesn't distinguish.
+ *  would break the one color rule for a case the spine doesn't distinguish.
  *  The delivery STRIP is where not-applicable is shown, because that's where it
  *  was being miscounted as unstarted work. */
 function toolSpineState(t: SpineToolState): SpineState {

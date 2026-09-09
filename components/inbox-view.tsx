@@ -151,7 +151,7 @@ export default function InboxView() {
   // and a DATE DIMENSION (sent / opened / submitted / expired / last-activity /
   // follow-up) crossed with a PRESET (today / yesterday / last-7 / this-month /
   // custom range). One model that covers every example query Katie listed.
-  // Kate round-3 #11: the Status list only described colour forms, so a
+  // Kate round-3 #11: the Status list only described color forms, so a
   // supplier order could never be filtered by where it had got to. Grouped by
   // what the status is ABOUT, and "delivered" split into its two very different
   // meanings — the email arrived vs the paint arrived.
@@ -263,7 +263,7 @@ export default function InboxView() {
           case "email_delivered": return m.deliveryStatus === "delivered";
           case "bounced": return m.deliveryStatus === "bounced" || m.deliveryStatus === "soft_bounce";
           case "acknowledged": return !!m.acknowledged;
-          // "Awaiting acknowledgement" is a supplier-order question — a colour
+          // "Awaiting acknowledgement" is a supplier-order question — a color
           // form is never waiting on a supplier, so it must not match here.
           case "awaiting_ack": return m.kind === "supplier_order" && !m.acknowledged;
           case "materials_delivered": return !!m.delivered;

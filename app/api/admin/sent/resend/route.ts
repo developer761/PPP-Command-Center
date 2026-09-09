@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     // being handed out by /api/admin/sent. Seeing something is not the same
     // permission as re-sending it.
     //
-    // Colour forms follow canEnterColors (admin or AM); supplier orders follow
+    // Color forms follow canEnterColors (admin or AM); supplier orders follow
     // canOrderMaterials (admin only). Enforced per-branch below, because the
     // two kinds genuinely differ.
     const caps = capabilitiesFor(normalizeRole(viewer.role, viewer.isAdmin));
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "invalid_id_format" }, { status: 400 });
     }
 
-    // Re-sending a colour form emails a customer; re-sending a supplier order
+    // Re-sending a color form emails a customer; re-sending a supplier order
     // emails a vendor a purchase order. Different blast radius, different
     // capability — a rep can do neither, an AM can do the first only.
     if (kindTag === "form" && !caps.canEnterColors) {

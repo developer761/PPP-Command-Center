@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     customerName?: string;
     subjectOverride?: string;
     introOverride?: string;
-    /** Kate round-3 #07 — the colour deadline the sender is promising
+    /** Kate round-3 #07 — the color deadline the sender is promising
      *  (YYYY-MM-DD). Optional; blank is valid. */
     colorDeadline?: string;
   };
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
 
   const customerName = body.customerName?.trim() || wo.accountName || null;
 
-  // Kate round-3 #07: the sender's colour deadline. Validated here so a
+  // Kate round-3 #07: the sender's color deadline. Validated here so a
   // malformed or past value can never reach the customer — the whole point of
   // the field is that the old derived date was routinely already expired.
   const rawDeadline = body.colorDeadline?.trim() || "";

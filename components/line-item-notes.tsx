@@ -13,7 +13,7 @@ import { useState } from "react";
  * COLLAPSED BY DEFAULT, deliberately. In production 73% of line items carry a
  * Description, the median is ~90 characters but the longest is 3,125, and the
  * content ranges from a real room list to "sdfasdfs". Expanded by default, a
- * long one would push the colour pickers — the thing the customer is here to
+ * long one would push the color pickers — the thing the customer is here to
  * do — below the fold on a phone. Collapsed, the first line still shows, which
  * is where the rooms almost always are.
  *
@@ -25,7 +25,7 @@ export default function LineItemNotes({
   /** Slightly quieter presentation for the customer-facing form. */
   tone = "internal",
   /** What this block IS. Two kinds of note can sit on one line — the rep's
-   *  scope (Description) and the per-surface colours (Colour Notes) — and a
+   *  scope (Description) and the per-surface colors (Color Notes) — and a
    *  reader has to be able to tell them apart. */
   label = "Notes",
 }: {

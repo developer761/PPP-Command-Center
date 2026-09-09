@@ -5,7 +5,7 @@ import { join } from "node:path";
 /**
  * Dark mode inverts by REDEFINING tokens, not by restyling call sites. That
  * only works if every token in a family gets a dark value — miss one and it
- * silently keeps its light-mode colour while the tokens around it flip.
+ * silently keeps its light-mode color while the tokens around it flip.
  *
  * That's what happened to ppp-orange and ppp-green: they had no dark values at
  * all. `bg-ppp-orange-50` stayed #fdefe5 on a near-black page, and the banners

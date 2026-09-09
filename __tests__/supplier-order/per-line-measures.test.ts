@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { classifySurface } from "@/lib/supplier-order/estimate-gallons";
 
 /**
- * Karan 2026-09-09: "for each colour we should have it here so we don't keep
+ * Karan 2026-09-09: "for each color we should have it here so we don't keep
  * having to scroll up" — then, precisely: ceiling square footage, wall surface
  * area, trim linear feet.
  *

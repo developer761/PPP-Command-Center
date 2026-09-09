@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 /**
- * The week bucket on the Labour report.
+ * The week bucket on the Labor report.
  *
  * Payroll weeks run Monday–Sunday. Every timezone bug on this platform started
  * by treating a DATE column as an instant, so this is deliberately pure string

@@ -21,7 +21,7 @@ describe("every failure Kate named reaches Slack", () => {
     expect(src).toMatch(/supplier_order_bounced/);
   });
 
-  it("a bounced colour form alerts — the job sits waiting on colours", () => {
+  it("a bounced color form alerts — the job sits waiting on colors", () => {
     const src = read("app/api/webhooks/resend-events/route.ts");
     expect(src).toMatch(/color_form_bounced/);
   });

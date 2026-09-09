@@ -68,7 +68,7 @@ export async function GET(request: Request) {
     // The formatter truncates against a CONSTANT. Verified as 255 on 2026-08-27,
     // but a field converted to a Long Text Area, or shortened, would leave that
     // constant stale — over-long writes rejected with STRING_TOO_LONG, taking
-    // the colours down with them since they share one batch. Compare, don't
+    // the colors down with them since they share one batch. Compare, don't
     // just print both and leave a human to notice.
     if (target && typeof target.length === "number" && target.length !== PRODUCT_LINES_MAX) {
       problems.push(

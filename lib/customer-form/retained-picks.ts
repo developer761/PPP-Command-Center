@@ -1,5 +1,5 @@
 /**
- * The customer's colour picks, exactly as they entered them (R4.9 / R4.10).
+ * The customer's color picks, exactly as they entered them (R4.9 / R4.10).
  *
  * Salesforce can only hold four surfaces per line item — Walls, Ceiling, Trim,
  * Floor — plus ONE shared `ColorOther__c`. Everything else on the Surfaces
@@ -8,7 +8,7 @@
  * is lossy by construction:
  *
  *   WO 00306643 · Bathroom — Walls;Ceiling;Cabinets;Door
- *     ColorOther__c = null, both colours pushed into ColorNotes__c as text.
+ *     ColorOther__c = null, both colors pushed into ColorNotes__c as text.
  *     Reading SF back gave "Cabinets —" and "Door —": blank.
  *
  *   WO 00308360 · Kitchen — Walls;Cabinets;Door
@@ -19,13 +19,13 @@
  * Neither is recoverable from Salesforce, so we stop trying. The Command Center
  * already retains the submitted payload verbatim in
  * `customer_form_tokens.submitted_payload`, and it carries every surface with
- * its own colour, finish and skip flag. That is the source of truth for display
+ * its own color, finish and skip flag. That is the source of truth for display
  * and for ordering; the Salesforce write stays exactly as it is (Kate: "push
  * the information into Salesforce, but keep it stored in the Command Center
  * exactly as it was entered").
  *
  * Salesforce remains the fallback for line items nobody used the form on — a
- * rep typing colours straight into Salesforce still renders correctly.
+ * rep typing colors straight into Salesforce still renders correctly.
  */
 
 export type RetainedPick = {
@@ -95,9 +95,9 @@ export function retainedPicksByLine(
 /**
  * Has the customer answered for this surface at all?
  *
- * A retained pick with no colour and no skip is an unanswered surface, which
+ * A retained pick with no color and no skip is an unanswered surface, which
  * must NOT suppress the Salesforce fallback — otherwise a rep who filled a
- * colour in directly after a partial customer submission would see it vanish.
+ * color in directly after a partial customer submission would see it vanish.
  */
 export function pickIsAnswered(p: RetainedPick): boolean {
   return p.skipped || !!p.colorId;

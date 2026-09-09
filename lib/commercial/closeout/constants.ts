@@ -54,7 +54,7 @@ export const CLOSEOUT_ITEM_KINDS = [
   "punchlist_signoff",
   "coi",
   // Stephanie 2026-08-13: "Add finish schedule." For a painting contractor
-  // this IS the close-out record — product, colour, sheen, room — and it is
+  // this IS the close-out record — product, color, sheen, room — and it is
   // what an owner needs two years later to touch up a wall. Migration 142
   // widens the DB CHECK to match; a kind added here alone is offered on
   // screen and rejected at save.

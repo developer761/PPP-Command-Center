@@ -9,7 +9,7 @@
  *   · a picker offering a value the database's CHECK rejects
  *   · a PDF that quietly grew to two pages
  *   · a page that 500s only with real data
- *   · a colour the dark theme never remapped
+ *   · a color the dark theme never remapped
  *
  * Every one of those shipped past a green suite. So the suite is one LAYER,
  * not the answer, and the layers above it need a database and a running server.

@@ -85,7 +85,7 @@ describe("salesforceLineFor", () => {
  * Kate: "both lines need to be available in the Order Materials / line-item
  * picker." That picker is driven by filterMaterialTypesForWorkOrder (via the
  * draft's allowedMaterialTypeValues), which returns the UNION on a mixed job —
- * correct there, because the order screen expresses a mix through per-colour
+ * correct there, because the order screen expresses a mix through per-color
  * overrides rather than two defaults, and the vendor email now groups the lines
  * (R4.32). Asserted so the two surfaces can't drift into disagreeing about
  * which lines exist on a job.

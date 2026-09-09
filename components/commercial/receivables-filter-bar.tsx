@@ -13,7 +13,7 @@ import type { ReceivableKind } from "@/lib/commercial/reports/receivables";
  * and cumbersome"*). Four filter dimensions is too many for chips: they can
  * only show one dimension per row, so the bar grows with every dimension while
  * saying less, because "what is the current Type?" means scanning a row for
- * whichever pill is coloured in.
+ * whichever pill is colored in.
  *
  * As labelled dropdowns each dimension states its own current value in place,
  * the whole bar is one wrapping row, and adding a fifth dimension costs no

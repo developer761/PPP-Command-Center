@@ -3106,13 +3106,13 @@ function StageChip({
     !(columnKey === "rfp" && sub_status === "rfp");
   // Current-stage "you are here" pill.
   //
-  // Was emerald for post-sale rows, which INVERTED Karan's one colour rule:
+  // Was emerald for post-sale rows, which INVERTED Karan's one color rule:
   // green means DONE everywhere else on the platform, so a job at In Progress
   // read "Pre-Const(grey) → In Progress(solid green) → Billing(grey)" — the
   // finished stage looking un-started and the in-flight stage looking
   // complete. Click into the same deal and the chevron bar said the opposite.
   //
-  // Amber is the rule's in-progress colour, and it carries "you are here" on
+  // Amber is the rule's in-progress color, and it carries "you are here" on
   // its own; the lane is already conveyed by the labels and the aria-label, so
   // it no longer needs its own hue.
   const currentPillCls = "bg-amber-400 text-ppp-charcoal-900 border-amber-500 shadow-sm";
@@ -3222,7 +3222,7 @@ function StatusPill({
   // amber, won → emerald, lost/no-bid → rose, neutral/early → charcoal). The
   // pill LABEL keeps the stages distinct where they share a tone.
   // One shared tone (was a dead v1 map whose keys barely intersect the live
-  // enum, so "Won", "Lost" and "Sent" all rendered the same grey — the colour
+  // enum, so "Won", "Lost" and "Sent" all rendered the same grey — the color
   // channel carried no information at all).
   const { cls } = statusPillTone(status, subStatus);
   return (

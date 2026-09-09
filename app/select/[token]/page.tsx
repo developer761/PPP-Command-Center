@@ -75,9 +75,9 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
   //
   // Without the fallback, a re-sent form (a brand-new token) had no prior
   // submission and fell back to reading Salesforce — which is lossy for lines
-  // carrying more surfaces than SF has colour fields. Cabinets and Door had
+  // carrying more surfaces than SF has color fields. Cabinets and Door had
   // gone to Color Notes and the shared Other slot was left blank, so the form
-  // showed them empty and the colours looked deleted. They were always in
+  // showed them empty and the colors looked deleted. They were always in
   // submitted_payload; we just weren't reading it.
   const ownPayload =
     isEditing && status.token.submitted_payload

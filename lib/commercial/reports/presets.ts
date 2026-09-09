@@ -92,7 +92,7 @@ export function cashFlowRange(preset: CashFlowPreset): RangeResult {
   }
 }
 
-// ─────────────────────────── Labour ───────────────────────────
+// ─────────────────────────── Labor ───────────────────────────
 
 export type LaborPreset = "this_week" | "last_week" | "this_month" | "last_month" | "last_90" | "this_year";
 
@@ -249,7 +249,7 @@ export const ACTIVITY_PRESETS: { key: ActivityPreset; label: string }[] = [
 export const ACTIVITY_DEFAULT: ActivityPreset = "all";
 
 /** Monday of the ET week containing a YYYY-MM-DD. Matches the payroll week
- *  already used by the labour report — two different "weeks" in one platform
+ *  already used by the labor report — two different "weeks" in one platform
  *  would make a Sunday shift land in different weeks on different screens. */
 export function weekStartOf(ymd: string): string {
   const [y, m, d] = ymd.split("-").map(Number);

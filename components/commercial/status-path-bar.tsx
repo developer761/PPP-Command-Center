@@ -404,7 +404,7 @@ export function StatusPathBar({
           // work, and pre-con on a small job is a phone call nobody logs a
           // status for. Skipping remains meaningful on the SALE row above,
           // where never having been Estimating is a real process fact — and
-          // Karan's one colour rule (green done / amber in-progress / grey not
+          // Karan's one color rule (green done / amber in-progress / grey not
           // started) has no fourth state anyway.
           skipped={[]}
           // AUDIT: the comment said "nothing is current yet" and then passed

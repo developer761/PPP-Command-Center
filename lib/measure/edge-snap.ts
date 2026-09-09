@@ -130,7 +130,7 @@ export function grayWindow(
     for (let x = 0; x < w; x++) {
       const i = ((y0 + y) * srcW + (x0 + x)) * 4;
       // Rec. 601 luma — matches how the eye weights the channels, so a
-      // colour-only boundary (carpet against skirting) still registers.
+      // color-only boundary (carpet against skirting) still registers.
       gray[y * w + x] = (rgba[i] * 299 + rgba[i + 1] * 587 + rgba[i + 2] * 114) / 1000;
     }
   }

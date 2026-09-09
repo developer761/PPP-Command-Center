@@ -649,7 +649,7 @@ export async function cascadeRestoreJobsForOwner(
       .in("id", ids);
     // Put the crew back on the calendar. Only FUTURE shifts were cancelled, so
     // only future shifts come back — reviving a past cancelled shift would
-    // invent labour that never happened.
+    // invent labor that never happened.
     const { data: revived } = await sb
       .from("commercial_assignments")
       .select("employee_id, work_date")

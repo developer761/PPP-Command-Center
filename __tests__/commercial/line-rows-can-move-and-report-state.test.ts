@@ -27,8 +27,8 @@ describe('"Is there a way to convert an alternate into part of the scope?"', () 
     expect(EDITOR).toContain('is_alternate: formData.get("is_alternate") === "on"');
   });
 
-  it("is not offered on labour rows", () => {
-    // The add form already refuses labour-as-an-alternate (`is_labor &&
+  it("is not offered on labor rows", () => {
+    // The add form already refuses labor-as-an-alternate (`is_labor &&
     // !is_alternate`); the edit row must not quietly allow what create forbids.
     expect(EDITOR).toContain("{r.is_labor ? (");
   });

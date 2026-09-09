@@ -373,7 +373,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         // "Final" is worth saying on a closed job — but only when it IS final.
         // dealMargin marks a margin provisional when something is missing (crew
         // hours with no cost rate, nothing billed yet), and a closed job with
-        // unrated labour does not have a final margin no matter what the status
+        // unrated labor does not have a final margin no matter what the status
         // column says. Calling it one is how a wrong number gets quoted.
         label: i.marginProvisional ? (i.marginLabel ?? "Margin so far") : "Final margin",
         value: `${i.grossMarginPct}%`,

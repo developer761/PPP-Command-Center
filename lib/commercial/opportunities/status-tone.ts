@@ -1,5 +1,5 @@
 /**
- * The ONE status → colour map for a deal.
+ * The ONE status → color map for a deal.
  *
  * There were five of these. Two were dead v1 maps keyed on statuses that no
  * longer exist (`won`, `lost`, `inquiry`, `negotiating`, `on_hold`…), whose
@@ -30,8 +30,8 @@ export function statusPillTone(
   if (status === "pre_sale_closed" && sub_status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
   if (status === "won") return { cls: "bg-ppp-navy-50 text-ppp-navy-700 border-ppp-navy-200" };
   if (status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
-  // 2026-07-28 colour audit: semantic palette only (cc-brand red is the action
-  // colour, never a status). Active stage → ppp-blue, working/attention →
+  // 2026-07-28 color audit: semantic palette only (cc-brand red is the action
+  // color, never a status). Active stage → ppp-blue, working/attention →
   // amber, done → emerald, lost → rose, early → charcoal. Labels distinguish
   // stages that share a tone.
   if (status === "pre_construction") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };

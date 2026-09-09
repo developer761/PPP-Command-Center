@@ -4,18 +4,18 @@ import { join } from "node:path";
 
 /**
  * The platform-switch button is a GHOST row — transparent, hairline border,
- * colour only on hover — and it renders in BOTH sidebars, so it renders inside
+ * color only on hover — and it renders in BOTH sidebars, so it renders inside
  * the commercial dark subtree too. Four states have to stay legible: label at
  * rest and label on hover, each in light and dark.
  *
  * Neither existing dark-theme test covers it, which I confirmed rather than
  * assumed (both stay green with the dark forest tokens deleted):
- *   · dark-theme-covers-every-colour  checks STOCK Tailwind families only;
+ *   · dark-theme-covers-every-color  checks STOCK Tailwind families only;
  *     brand `ppp-*` / `cc-*` are excluded as "handled by their own tokens".
  *   · dark-theme-token-coverage       checks surface tints paired with body
  *     text, not a control's own hover pairing.
  *
- * It asserts the colour MATHS, not class names. Every wrong choice here looked
+ * It asserts the color MATHS, not class names. Every wrong choice here looked
  * right in review: emerald-600 under white was 3.77:1, and cc-brand-600 on its
  * own -50 tint is 2.70:1 in dark. Both read as perfectly ordinary Tailwind.
  */

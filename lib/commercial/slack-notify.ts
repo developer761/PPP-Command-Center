@@ -35,7 +35,7 @@ export type SlackEvent = {
   url?: string | null;
   /** Button label. Defaults to "Open". */
   urlLabel?: string;
-  /** Left colour bar: what kind of moment this is. */
+  /** Left color bar: what kind of moment this is. */
   tone?: "needs_action" | "good" | "bad" | "neutral";
 };
 

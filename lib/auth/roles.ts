@@ -96,7 +96,7 @@ export type Capabilities = {
    * admin is the only holder.
    *
    * The AM keeps seeing the button, greyed, with a reason (#5) — the role runs
-   * colour forms for every job, so silently hiding the control would read as a
+   * color forms for every job, so silently hiding the control would read as a
    * broken page rather than a deliberate boundary.
    */
   canOrderMaterials: boolean;
@@ -104,7 +104,7 @@ export type Capabilities = {
    * Enter customer colors: Internal Entry + Send Color Form.
    *
    * EVERY role, since Kate 2026-09-01: "the field users should be able to enter
-   * colors + send the color form." Colour capture is field work — the rep is
+   * colors + send the color form." Color capture is field work — the rep is
    * standing in the customer's hallway — and gating it to office roles meant
    * the person actually with the customer had to ask someone else to send the
    * form.
@@ -121,7 +121,7 @@ export type Capabilities = {
    *
    * NOT the account manager. Kate: "the only tabs an account manager should
    * see are the tabs under Operations Tools." An AM is an operations role —
-   * they run colour forms and materials for every job — and the revenue,
+   * they run color forms and materials for every job — and the revenue,
    * margin and rep-performance surfaces aren't theirs.
    *
    * A REP keeps them: their whole reason for logging in is their own numbers,

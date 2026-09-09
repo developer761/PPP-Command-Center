@@ -13,10 +13,10 @@ import { join } from "node:path";
  * NEITHER navy (3.85) nor white (3.66) — so the conventional "darken on hover"
  * walks a compliant resting state straight into a dead zone, and the usual
  * escape (white on the dark states, navy on the light one) flips the label
- * colour mid-press on every primary button.
+ * color mid-press on every primary button.
  *
  * So: navy on the brand fill, and hover/active go LIGHTER. Contrast improves as
- * you interact instead of collapsing, one text colour holds throughout, and
+ * you interact instead of collapsing, one text color holds throughout, and
  * #2BAAE1 stays exactly the 2023 brand-deck primary at rest — which is what
  * anyone actually looks at.
  *
@@ -39,7 +39,7 @@ const DARK_OVERRIDES = parse(css.slice(SPLIT));
 /**
  * Dark REDEFINES the ramp, and in the 600-800 range it inverts the meaning:
  * a dark fill in light becomes a light FOREGROUND in dark. So any class that
- * hardcodes one text colour against those tokens is theme-dependent by
+ * hardcodes one text color against those tokens is theme-dependent by
  * construction, and a check that reads only the light block cannot see it.
  *
  * That gap shipped two defects. `hover:bg-ppp-blue-400` measured 5.93 in light
@@ -104,7 +104,7 @@ describe("brand fills never carry white text", () => {
 });
 
 describe("the hover ramp stays out of the dead zone", () => {
-  it("blue-600 really is unusable with either text colour", () => {
+  it("blue-600 really is unusable with either text color", () => {
     // The fact that justifies lightening rather than darkening. If a future
     // palette change fixes blue-600, the ramp choice can be revisited.
     const mid = TOKENS["--color-ppp-blue-600"];
@@ -207,7 +207,7 @@ describe("the hover ramp stays out of the dead zone", () => {
     //
     // The PPP orange ramp is NOT monotonic — 100 is pale, 200 and 300 are dark
     // browns, 800 and 900 are pale again — so "a low number is light" reasoning
-    // silently picks an unreadable colour. text-ppp-orange-200 on black is
+    // silently picks an unreadable color. text-ppp-orange-200 on black is
     // 1.64:1; it looked plausible and shipped past every other assertion here.
     const bad: string[] = [];
     for (const f of FILES) {
@@ -235,7 +235,7 @@ describe("the hover ramp stays out of the dead zone", () => {
     expect(bad, "this text is unreadable on the scrim it sits on").toEqual([]);
   });
 
-  it("every ppp colour utility refers to a token that actually exists", () => {
+  it("every ppp color utility refers to a token that actually exists", () => {
     // Tailwind generates a utility only for tokens declared in `@theme`. Eight
     // brand tokens (orange 200/300/400/800/900, green 200/300/800) are declared
     // ONLY inside the [data-theme="dark"] rule, which is far below @theme — so

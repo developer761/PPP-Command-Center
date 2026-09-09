@@ -46,8 +46,8 @@ const DOT: Record<DeliveryTool["status"], string> = {
   done: "bg-emerald-500",
   active: "bg-amber-400",
   todo: "bg-ppp-charcoal-300",
-  // Hollow, so it reads as "nothing to do here" rather than a fourth colour
-  // competing with green/amber/grey. The one colour rule stays three colours.
+  // Hollow, so it reads as "nothing to do here" rather than a fourth color
+  // competing with green/amber/grey. The one color rule stays three colors.
   na: "bg-transparent border border-ppp-charcoal-200",
 };
 

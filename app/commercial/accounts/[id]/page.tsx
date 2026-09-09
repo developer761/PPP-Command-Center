@@ -973,9 +973,9 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
   // (Proposal = hot/brand, Estimating = blue, earlier = neutral).
   // Matches `statusPillTone` on this same page, which they used to contradict:
   // Proposal was RED here and blue there, Estimating blue here and amber there.
-  // Red is the ACTION colour platform-wide and never a status — that rule is
+  // Red is the ACTION color platform-wide and never a status — that rule is
   // written into statusPillTone and was being broken twenty rows above it.
-  // ONE source for a status's colour — `statusPillTone`, which reads the
+  // ONE source for a status's color — `statusPillTone`, which reads the
   // sub-status too. Hand-aligning two maps closed the cases anyone had noticed
   // and left the rest: `proposal·follow_up` was blue here and amber there,
   // `qualifying·rfp` charcoal here and blue there, on the same account.
@@ -4373,7 +4373,7 @@ function AccountOpportunityRow({
  *  Sub-status choice picks the tone when the parent status is ambiguous
  *  (e.g. Pre-Sale/Closed is either won emerald or lost rose). */
 /**
- * The pipeline block's stripe/bar tones, derived from the ONE status→colour
+ * The pipeline block's stripe/bar tones, derived from the ONE status→color
  * map rather than a parallel copy of it.
  */
 function pipelineBlockTone(
@@ -4383,7 +4383,7 @@ function pipelineBlockTone(
   const pill = statusPillTone(status, subStatus).cls;
   // Written out in full on purpose: Tailwind generates classes by scanning the
   // source, so a composed `bg-${family}-500` produces NO class at all — it type
-  // -checks, it builds, and the stripe renders colourless.
+  // -checks, it builds, and the stripe renders colorless.
   const byFamily: Record<string, { solid: string; text: string }> = {
     amber: { solid: "bg-amber-500", text: "text-amber-800" },
     rose: { solid: "bg-rose-500", text: "text-rose-700" },

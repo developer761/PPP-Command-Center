@@ -60,7 +60,7 @@ describe("the seeded checklist reflects what a painter actually closes out", () 
 
   it("seeds the finish schedule", () => {
     // For a painting contractor this IS the close-out record: product,
-    // colour, sheen, room.
+    // color, sheen, room.
     expect(seeded).toContain("finish_schedule");
   });
 

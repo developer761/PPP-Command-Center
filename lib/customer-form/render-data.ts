@@ -341,7 +341,7 @@ async function loadFormRenderDataInner(
     //
     // Kate round-3 #07: the Opportunity CloseDate used to be the last fallback,
     // and it is the wrong kind of date — a projection PPP sets when the deal is
-    // quoted, so by the time a colour form goes out it's routinely in the past.
+    // quoted, so by the time a color form goes out it's routinely in the past.
     // It drove both the link expiry and the "you can update until …" copy, which
     // is why customers were regularly told their window had already closed.
     // With it gone, a work order with no real start date simply has no anchor:

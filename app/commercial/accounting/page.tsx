@@ -852,7 +852,7 @@ export default async function AccountingPage({
               sub="materials and subs paid out"
             />
             <Tile
-              label="Unpriced labour"
+              label="Unpriced labor"
               value={
                 jobCosts.totals.laborUnratedHours > 0
                   ? `${jobCosts.totals.laborUnratedHours.toLocaleString("en-US", { maximumFractionDigits: 0 })}h`
@@ -1062,11 +1062,11 @@ export default async function AccountingPage({
             />
           </div>
 
-          {/* Crew labour is a COST, not a transaction — no payment row exists
+          {/* Crew labor is a COST, not a transaction — no payment row exists
               for it — so it is absent here rather than invented. Said once,
               where somebody would otherwise go looking for it. */}
           <p className="text-[11px] text-ppp-charcoal-400">
-            Crew labour isn&rsquo;t listed: it&rsquo;s costed from approved hours, not paid as a
+            Crew labor isn&rsquo;t listed: it&rsquo;s costed from approved hours, not paid as a
             recorded transaction. It&rsquo;s in{" "}
             <Link href={href("costs")} className="font-semibold text-cc-brand-700 hover:underline">Job costs</Link>.
           </p>

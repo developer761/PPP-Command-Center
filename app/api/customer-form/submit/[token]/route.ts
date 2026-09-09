@@ -466,7 +466,7 @@ export async function POST(
     // the header rather than inventing one.
     //
     // The header is written ONCE, after the body is assembled — emitting it per
-    // section repeated "Dining Room:" for a room that had both orphan colours
+    // section repeated "Dining Room:" for a room that had both orphan colors
     // and a customer note.
     const roomLabel = (freshLi.areaLabel ?? "").trim();
     const noteLines: string[] = [];
@@ -560,12 +560,12 @@ export async function POST(
   // WorkOrder.ColorsReceived__c is a live operational boolean: 1,937 work
   // orders carry it today, and Katie's team reads it to know a job is ready to
   // order materials for. The Command Center is the thing that KNOWS when
-  // colours arrive, and it was never setting it — WO 00306643 had a customer
+  // colors arrive, and it was never setting it — WO 00306643 had a customer
   // submission sitting in the Command Center while Salesforce still said
   // "colors not received".
   //
-  // Set only when at least one real colour landed on a line item: a notes-only
-  // submission (exterior jobs with no room breakdown) hasn't received colours.
+  // Set only when at least one real color landed on a line item: a notes-only
+  // submission (exterior jobs with no room breakdown) hasn't received colors.
   // Never set it back to false — a human may have set it for reasons we can't
   // see, and this is an "it happened" flag, not a mirror of our state.
   const COLOR_FIELDS = ["ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c"];

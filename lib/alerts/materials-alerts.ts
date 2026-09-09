@@ -9,7 +9,7 @@
  * WHY NOT `lib/observability.ts`. That module is deliberately PII-safe — UUID
  * prefixes, kind labels, generic counts — because it pages on infrastructure
  * faults where the identity of the record does not change the response. These
- * alerts are the opposite: the ONLY useful thing about "a colour form bounced"
+ * alerts are the opposite: the ONLY useful thing about "a color form bounced"
  * is which customer, on which job. An alert Kate cannot act on is noise she
  * will learn to ignore, which is worse than no alert. It also posts to the
  * COMMERCIAL incident channel, and routing residential materials failures there
@@ -50,7 +50,7 @@ export type MaterialsAlert = {
 const LABEL: Record<MaterialsAlertKind, string> = {
   supplier_order_bounced: "Supplier order email bounced",
   supplier_order_send_failed: "Supplier order failed to send",
-  color_form_bounced: "Colour form email bounced",
+  color_form_bounced: "Color form email bounced",
   salesforce_write_rejected: "Salesforce rejected a write",
   alert_delivery_failed: "An alert could not be delivered",
   unexpected_error: "Unexpected failure",
@@ -66,7 +66,7 @@ const NEXT_STEP: Record<MaterialsAlertKind, string> = {
   supplier_order_send_failed:
     "Nothing reached the vendor. The person sending saw the error; nobody else was told. Re-send once the cause is clear.",
   color_form_bounced:
-    "The customer never got the form and the job is waiting on colours. Confirm the address and re-send from the work order.",
+    "The customer never got the form and the job is waiting on colors. Confirm the address and re-send from the work order.",
   salesforce_write_rejected:
     "The hub saved it, Salesforce did not. Check the field and value below — the two are now out of step.",
   alert_delivery_failed:

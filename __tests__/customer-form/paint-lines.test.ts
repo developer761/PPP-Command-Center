@@ -13,7 +13,7 @@ import {
  * Kate round-3 #08 + #09.
  *
  * #09: the product-line picker lists LINES only. The finish is captured per
- * surface when colours are entered, so carrying it here asked the same question
+ * surface when colors are entered, so carrying it here asked the same question
  * twice and let the two answers disagree.
  *
  * #08: primers are Extras on the order screen, never a topcoat line. Round 2

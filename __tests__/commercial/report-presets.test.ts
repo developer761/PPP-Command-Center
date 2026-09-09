@@ -64,7 +64,7 @@ describe("window semantics", () => {
     expect(cashFlowRange("last_12m").fromYmd < cashFlowRange("last_6m").fromYmd).toBe(true);
   });
 
-  it("labour: last month is a complete calendar month", () => {
+  it("labor: last month is a complete calendar month", () => {
     const r = laborRange("last_month");
     expect(r.fromYmd.endsWith("-01")).toBe(true);
     expect(r.fromYmd.slice(0, 7)).toBe(r.toYmd.slice(0, 7));

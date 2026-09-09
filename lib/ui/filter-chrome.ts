@@ -32,7 +32,7 @@
 export const FILTER_SEL =
   "flex-1 min-w-0 sm:flex-none rounded-lg border border-ppp-charcoal-200 px-2 py-1.5 text-base sm:text-[12px] text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue-400 min-h-[44px] sm:min-h-[36px]";
 
-/** The tinted group wrappers. Colour separates the three groups so the row
+/** The tinted group wrappers. Color separates the three groups so the row
  *  reads as three decisions rather than one run of six dropdowns.
  *
  *  Full-width flex on phones, inline-flex from `sm` up — see the note above. */

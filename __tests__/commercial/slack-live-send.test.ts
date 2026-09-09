@@ -17,7 +17,7 @@ import { postCommercialSlack, commercialSlackConfigured } from "@/lib/commercial
  */
 describe("live Slack send", () => {
   it.skipIf(!commercialSlackConfigured())("posts a sample of each message the channel will get", async () => {
-    // The three shapes, so the formatting, colour bar and button can all be
+    // The three shapes, so the formatting, color bar and button can all be
     // judged at a glance rather than waiting for a real proposal to happen.
     await postCommercialSlack({
       text: "*Approval needed* — R2 · $30,000.00 for *Alta Construction East Inc.*",

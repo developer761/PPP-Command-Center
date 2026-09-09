@@ -23,6 +23,10 @@ export type Profile = {
   role?: string | null;
   /** How the account signs in: 'google' (SSO) or 'password' (admin-provisioned). */
   auth_provider?: string | null;
+  /** The number a supplier rings about this person's material orders
+   *  (migration 145). Optional at the type level for the same reason as
+   *  `role` — a row read before the migration ran must not throw. */
+  phone?: string | null;
   /** Display name for provisioned users who have no SF mapping. */
   full_name?: string | null;
   is_active: boolean;

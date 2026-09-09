@@ -9,7 +9,7 @@ import {
 } from "@/lib/commercial/field-ops/labor-cost";
 
 /**
- * Labour & payroll, across every job — the first report with a PERSON in it.
+ * Labor & payroll, across every job — the first report with a PERSON in it.
  *
  * Field Ops has held all of this since it shipped and no report read it, so
  * the only way to answer "where did the hours go last month" was to open jobs
@@ -21,7 +21,7 @@ import {
  *  - **Settled entries only** (`approved` / `exported`). A submitted or
  *    questioned entry is not yet a cost. Same constant the deal P&L uses.
  *  - **W-2 only.** Subs and 1099s clock in the same table, but their cost is
- *    logged manually as a Subcontract-labour purchase. Counting both would
+ *    logged manually as a Subcontract-labor purchase. Counting both would
  *    double them here and diverge from payroll, which is W-2 only.
  *  - **Effective-dated rates.** A raise last month does not restate a job
  *    worked before it, so each entry is priced at the rate in force on its own
@@ -130,7 +130,7 @@ export async function getLaborReport(range: {
 
   const emps = (empRows ?? []) as { id: string; display_name: string | null; worker_type: string }[];
   const nameById = new Map(emps.map((e) => [e.id, e.display_name?.trim() || "Unnamed"]));
-  // W-2 only — see the header. A sub's cost lives in Subcontract-labour
+  // W-2 only — see the header. A sub's cost lives in Subcontract-labor
   // purchases, and counting them here would double it.
   const w2 = new Set(emps.filter((e) => e.worker_type === "w2").map((e) => e.id));
 
@@ -218,7 +218,7 @@ export async function getLaborReport(range: {
     jobs: [...byJob.values()]
       .map(({ crew, ...j }) => ({ ...j, hours: round1(j.hours), unratedHours: round1(j.unratedHours), crewCount: crew.size }))
       .sort((a, b) => b.costCents - a.costCents || b.hours - a.hours),
-    // Oldest week first — a labour trend reads left to right.
+    // Oldest week first — a labor trend reads left to right.
     weeks: [...byWeek.values()]
       .map((w) => ({ ...w, hours: round1(w.hours) }))
       .sort((a, b) => a.weekStart.localeCompare(b.weekStart)),

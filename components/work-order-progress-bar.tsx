@@ -129,7 +129,7 @@ function formatStepTime(iso: string | null): string {
   return `${dateStr} ${timeStr}`;
 }
 
-// Each dot's text colour is decided by what actually clears WCAG AA on its own
+// Each dot's text color is decided by what actually clears WCAG AA on its own
 // fill, not by picking one for consistency:
 //   green  #8DC442 + navy  = 6.79:1   (white would be 2.08 — the worst pairing
 //                                      in the palette)
@@ -175,7 +175,7 @@ export default function WorkOrderProgressBar({
 }) {
   const states = computeStates(progress);
 
-  // Kate round-2 #04 / round-3 #02: when an AM entered colours via Internal
+  // Kate round-2 #04 / round-3 #02: when an AM entered colors via Internal
   // Entry, the Opened/Submitted stages carry THEIR name — "Amy Submitted", not
   // "Customer Submitted". Each stage is named independently now, because an AM
   // can open a form without having submitted it yet; keying both labels off

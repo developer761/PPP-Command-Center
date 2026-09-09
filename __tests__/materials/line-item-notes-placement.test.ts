@@ -6,7 +6,7 @@ import { join } from "node:path";
  * Kate, 2026-09-08: "The dropdown here collapses the entire line item instead
  * of opening the notes."
  *
- * LineItemNotes renders its own <button>. On the colour form it had been placed
+ * LineItemNotes renders its own <button>. On the color form it had been placed
  * INSIDE the room's collapse toggle — a button within a button, which is
  * invalid markup and, more to the point, means the outer control receives every
  * click. Pressing the notes chevron collapsed the whole room.
@@ -63,7 +63,7 @@ describe("the notes control is never inside another clickable", () => {
   });
 
   it("reaches all three surfaces Kate asked for", () => {
-    // colour forms (internal + customer), Rooms & colors, and the order page.
+    // color forms (internal + customer), Rooms & colors, and the order page.
     for (const f of CONSUMERS) {
       expect(strip(readFileSync(join(ROOT, f), "utf8")), f).toContain("<LineItemNotes");
     }

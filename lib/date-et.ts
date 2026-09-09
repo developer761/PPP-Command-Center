@@ -64,7 +64,7 @@ export function isPastEt(dateIso: string): boolean {
  * (`relativeAgo`, `daysSinceIso`, and two inline versions), each flooring a
  * raw UTC subtraction. A DST week is 23 or 25 hours, so the floor lands a day
  * early at the boundary — which is small on a label and not small on a
- * threshold, where "idle 14 days" is a colour change and "overdue N days" goes
+ * threshold, where "idle 14 days" is a color change and "overdue N days" goes
  * into an email somebody reads.
  *
  * Counting calendar dates instead of dividing elapsed milliseconds removes the

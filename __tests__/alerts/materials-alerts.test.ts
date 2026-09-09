@@ -4,7 +4,7 @@ import { buildAlertText, buildSlackPayload } from "@/lib/alerts/materials-alerts
 describe("what an alert says (Kate R6.1)", () => {
   const alert = {
     kind: "color_form_bounced" as const,
-    summary: "The customer never received the colour form.",
+    summary: "The customer never received the color form.",
     workOrder: "00306643",
     detail: { Customer: "M. Whitfield", "Sent to": "m@example.com", Empty: null },
   };
@@ -30,7 +30,7 @@ describe("what an alert says (Kate R6.1)", () => {
     const order = buildAlertText({ kind: "supplier_order_bounced", summary: "x" });
     const form = buildAlertText({ kind: "color_form_bounced", summary: "x" });
     expect(order).toContain("vendor");
-    expect(form).toContain("waiting on colours");
+    expect(form).toContain("waiting on colors");
     expect(order).not.toBe(form);
   });
 

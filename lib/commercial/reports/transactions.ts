@@ -28,8 +28,8 @@ import { safeNowMs } from "@/lib/commercial/now";
  *     information without three round trips, and it makes NET per month
  *     possible — which none of his reports can show.
  *
- *  2. Labour is NOT in it. His "Labor Payments Out" is a transaction record;
- *     here, crew labour is COMPUTED (approved hours × cost rate) and no payment
+ *  2. Labor is NOT in it. His "Labor Payments Out" is a transaction record;
+ *     here, crew labor is COMPUTED (approved hours × cost rate) and no payment
  *     row exists. Listing a derived figure in a ledger of real transactions
  *     would be inventing money movement, so it is excluded and said out loud
  *     rather than quietly folded in. Job costs is where that number lives.

@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import { parseMachineColorLines } from "@/lib/customer-form/notes";
 
 /**
- * When a room has 2+ surfaces with no dedicated Salesforce colour field
- * (Cabinets AND Closet), the submit route puts their colours in
+ * When a room has 2+ surfaces with no dedicated Salesforce color field
+ * (Cabinets AND Closet), the submit route puts their colors in
  * ColorNotes__c and leaves the single shared ColorOther__c blank — one field
- * can't hold two colours. Every screen that showed those surfaces read only
- * that blank field, so the room displayed as having no colours picked and the
+ * can't hold two colors. Every screen that showed those surfaces read only
+ * that blank field, so the room displayed as having no colors picked and the
  * team chased the customer for what they'd already sent.
  *
  * These assert the parser against the exact strings the writer produces.
@@ -20,15 +20,15 @@ describe("parseMachineColorLines", () => {
     ]);
   });
 
-  it("handles a colour with no code", () => {
+  it("handles a color with no code", () => {
     expect(parseMachineColorLines("Cabinets: Custom Match — Eggshell")).toEqual([
       { surface: "Cabinets", colorName: "Custom Match", colorCode: null, finish: "Eggshell" },
     ]);
   });
 
-  it("keeps a parenthetical that isn't a colour code attached to the name", () => {
+  it("keeps a parenthetical that isn't a color code attached to the name", () => {
     // The code pattern caps at 15 chars precisely so descriptive parentheticals
-    // aren't mistaken for codes and silently stripped off the colour name.
+    // aren't mistaken for codes and silently stripped off the color name.
     const [p] = parseMachineColorLines("Cabinets: White (matched to existing trim) — Satin");
     expect(p.colorName).toBe("White (matched to existing trim)");
     expect(p.colorCode).toBeNull();
@@ -43,8 +43,8 @@ describe("parseMachineColorLines", () => {
 
   it("ignores the crew's own typed notes", () => {
     // A rep typing "Cabinets: needs sanding before paint" matches the surface
-    // prefix exactly. Treating it as a colour would put "needs sanding before
-    // paint" on screen as the colour name — and into a vendor's order.
+    // prefix exactly. Treating it as a color would put "needs sanding before
+    // paint" on screen as the color name — and into a vendor's order.
     expect(parseMachineColorLines("Cabinets: needs sanding before paint")).toEqual([]);
   });
 

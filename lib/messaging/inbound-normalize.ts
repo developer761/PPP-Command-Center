@@ -80,7 +80,7 @@ export function normalizeInbound(raw: string, mediaCount = 0): NormalizedInbound
   for (const { re, verb, sentiment } of IPHONE_VERBS) {
     if (!re.test(body)) continue;
     const rest = body.replace(re, "");
-    // The quotes matter. "Liked the colour you picked" is a sentence, not a
+    // The quotes matter. "Liked the color you picked" is a sentence, not a
     // reaction — without requiring the quoted target we would swallow it and
     // reply "Got it." to a customer who was talking to us.
     const quoted = /^[“"']([\s\S]*)[”"']$/.exec(rest.trim());

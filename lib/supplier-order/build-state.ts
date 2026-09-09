@@ -15,15 +15,15 @@ import type { CustomColorItem, SupplierOrderExtra } from "@/lib/supplier-order/b
  * draft and wiped the worker's typed quantities.
  */
 export type OrderBuildPayload = {
-  /** Job-level paint line. Every colour defaults to it. */
+  /** Job-level paint line. Every color defaults to it. */
   mainMaterialType: string;
-  /** Per-colour paint-line overrides, keyed `${colorId}::${finish ?? ""}`. */
+  /** Per-color paint-line overrides, keyed `${colorId}::${finish ?? ""}`. */
   materialTypeOverrides: Record<string, string>;
-  /** Per-colour quantities the worker typed, same key shape. */
+  /** Per-color quantities the worker typed, same key shape. */
   quantities: Record<string, QuantityOverride>;
   /** Catalogue extras + primers + custom sundry items. */
   extras: SupplierOrderExtra[];
-  /** Worker-typed colour lines — stain, plaster, colour matches (#28). */
+  /** Worker-typed color lines — stain, plaster, color matches (#28). */
   customColorItems: CustomColorItem[];
   /** Edited Color Notes; null = use the builder's default. */
   colorNotes: string | null;

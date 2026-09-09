@@ -9,7 +9,7 @@ import {
 import { formatOrderSummaryBlock } from "@/lib/supplier-order/builder";
 
 /**
- * Setting a colour's quantity to zero means "we're not buying this one" —
+ * Setting a color's quantity to zero means "we're not buying this one" —
  * usually because PPP already has it on the shelf.
  *
  * Before this, a zero was indistinguishable from an unsized estimate, so the
@@ -17,7 +17,7 @@ import { formatOrderSummaryBlock } from "@/lib/supplier-order/builder";
  * emailed `___ — White Dove OC-17 (PPP to confirm quantity)`, i.e. a request to
  * price paint PPP had explicitly decided not to order, and the builder row
  * nagged "⚠️ set qty" as though the worker had left a field blank. There was no
- * way to remove a colour from an order at all.
+ * way to remove a color from an order at all.
  */
 
 function estimate(over: Partial<GallonEstimate> = {}): GallonEstimate {
@@ -45,7 +45,7 @@ function estimate(over: Partial<GallonEstimate> = {}): GallonEstimate {
 
 const key = quantityKey("c1", "eggshell");
 
-describe("excluding a colour from an order", () => {
+describe("excluding a color from an order", () => {
   it("marks an explicit zero as excluded, not as a gap", () => {
     const [e] = applyQuantityOverrides(
       [estimate()],
@@ -74,21 +74,21 @@ describe("excluding a colour from an order", () => {
     expect(formatOrderQuantity(e)).toBe("manual entry required");
   });
 
-  it("keeps an excluded colour out of the order total's 'to confirm' count", () => {
+  it("keeps an excluded color out of the order total's 'to confirm' count", () => {
     const excluded = applyQuantityOverrides(
       [estimate()],
       new Map([[key, { buckets: 0, cans: 0, unit: "gal" as const }]])
     );
     const t = summarizeOrder(excluded);
     // Neither ordered nor outstanding. Counting it as `reviewColors` would put
-    // "(+ 1 to confirm)" on the vendor email's TOTAL line for a colour that
+    // "(+ 1 to confirm)" on the vendor email's TOTAL line for a color that
     // isn't on the order.
     expect(t.reviewColors).toBe(0);
     expect(t.sizedColors).toBe(0);
     expect(t.buckets + t.cans + t.quarts).toBe(0);
   });
 
-  it("still counts a genuinely unsized colour as needing confirmation", () => {
+  it("still counts a genuinely unsized color as needing confirmation", () => {
     const t = summarizeOrder([estimate({ buckets: 0, cans: 0, gallons: 0, manualOnly: true })]);
     expect(t.reviewColors).toBe(1);
   });
@@ -100,7 +100,7 @@ describe("vendor email paint block", () => {
   const stardust = estimate({ colorId: "c2", colorName: "Stardust", colorCode: "2108-40", finish: "satin", rooms: ["Bedroom"] });
   const key2 = quantityKey("c2", "satin");
 
-  it("omits an excluded colour entirely", () => {
+  it("omits an excluded color entirely", () => {
     const lines = applyQuantityOverrides(
       [estimate(), stardust],
       new Map([[key, { buckets: 0, cans: 0, unit: "gal" as const }]])
@@ -113,7 +113,7 @@ describe("vendor email paint block", () => {
     expect(block).not.toContain("TBD");
   });
 
-  it("still shows the placeholder for a colour nobody has sized", () => {
+  it("still shows the placeholder for a color nobody has sized", () => {
     const block = formatOrderSummaryBlock([estimate({ buckets: 0, cans: 0, gallons: 0, manualOnly: true })], null);
     expect(block).toContain("White Dove");
     // R4.27: "___ (PPP to confirm quantity)" → "TBD". Kate flagged that the
@@ -122,7 +122,7 @@ describe("vendor email paint block", () => {
     expect(block).not.toContain("___");
   });
 
-  it("says so plainly when every colour was excluded", () => {
+  it("says so plainly when every color was excluded", () => {
     const lines = applyQuantityOverrides(
       [estimate()],
       new Map([[key, { buckets: 0, cans: 0, unit: "gal" as const }]])
@@ -132,10 +132,10 @@ describe("vendor email paint block", () => {
     expect(block).toContain("no paint on this order");
   });
 
-  it("an excluded colour's product does not reach the email", () => {
+  it("an excluded color's product does not reach the email", () => {
     // R4.32 phrased this as "must not create a group". Grouping was replaced on
     // 2026-09-09 by a product on every line (Karan), so the test is now about the
-    // LINE: a colour the worker zeroed out is not being bought, and neither its
+    // LINE: a color the worker zeroed out is not being bought, and neither its
     // quantity nor its product should appear.
     const overrides = new Map([[key, { buckets: 0, cans: 0, unit: "gal" as const }]]);
     const lines = applyQuantityOverrides([estimate(), stardust], overrides);

@@ -7,7 +7,7 @@ import { join } from "node:path";
  * asks twice, but neither answer reaches the order screen."
  *
  * The answers WERE reaching the vendor. R4.3 made the email apply the exterior
- * line to the colours that are exterior, and the job line resolves from the
+ * line to the colors that are exterior, and the job line resolves from the
  * work order even when the order screen's own saved payload is empty. What was
  * missing is that none of it was visible to the person doing the sending — the
  * screen knew only its own payload, so it showed an empty dropdown and an
@@ -31,7 +31,7 @@ describe("the draft reports the lines the email will use", () => {
     expect(B).toMatch(/resolvedMaterialType: materialType,/);
   });
 
-  it("returns the per-colour lines, including the derived exterior ones", () => {
+  it("returns the per-color lines, including the derived exterior ones", () => {
     // Same map the email renders from, so the screen cannot disagree with it.
     expect(B).toMatch(/resolvedMaterialTypeOverrides: Object\.fromEntries\(derivedMaterialTypeOverrides\)/);
   });
@@ -58,7 +58,7 @@ describe("the order screen shows them", () => {
     //
     // R5.3's actual requirement survives PER LINE, which is where the product
     // now lives: each picker's placeholder names the line the builder resolved
-    // for that colour, so the screen still cannot show an empty box over an
+    // for that color, so the screen still cannot show an empty box over an
     // email that carries an answer.
     expect(V).toMatch(/currentDraft\?\.resolvedMaterialTypeOverrides\?\.\[key\]/);
     expect(V).toMatch(/\(from the job\)/);
@@ -66,15 +66,15 @@ describe("the order screen shows them", () => {
 
   it("explains the exterior line on a mixed job", () => {
     // Also per line now. The builder writes the exterior answer into
-    // derivedMaterialTypeOverrides for the colours that are exterior, and that
+    // derivedMaterialTypeOverrides for the colors that are exterior, and that
     // map is what feeds each picker's placeholder — so a mixed job still shows
-    // its exterior line, against the colours it applies to rather than as a
+    // its exterior line, against the colors it applies to rather than as a
     // job-wide footnote.
     expect(B).toMatch(/derivedMaterialTypeOverrides\.set\(key, exteriorLine\)/);
     expect(V).toMatch(/currentDraft\?\.resolvedMaterialTypeOverrides\?\.\[key\]/);
   });
 
-  it("names a derived per-colour line rather than calling it the default", () => {
+  it("names a derived per-color line rather than calling it the default", () => {
     // "— use default —" was wrong twice: it isn't the default, and it hid that
     // the email had an answer the screen didn't.
     expect(V).toMatch(/resolvedMaterialTypeOverrides\?\.\[key\]/);

@@ -26,7 +26,7 @@ export function extractCustomerFreeText(raw: string | null | undefined): string 
   const idx = s.indexOf("Customer notes:");
   if (idx !== -1) return s.slice(idx + "Customer notes:".length).trim();
   // No wrapper. This is either crew-written free-text (show as-is) or an
-  // orphan-colour preamble with no customer note attached — which must NOT be
+  // orphan-color preamble with no customer note attached — which must NOT be
   // handed back to the customer as if they'd typed it. Kate round-3 #31 gave
   // those lines a room header, so strip the header too when everything under
   // it is machine-generated.
@@ -44,7 +44,7 @@ export function extractCustomerFreeText(raw: string | null | undefined): string 
  * rewrites ColorNotes__c without it and destroys the rep's words.
  *
  * So the line must also carry a machine fingerprint: the " — <finish>" suffix
- * the submit route writes, or a parenthesised colour code. Anything else is
+ * the submit route writes, or a parenthesised color code. Anything else is
  * treated as human text and kept. Erring toward keeping is deliberate: a
  * duplicated machine line in a textarea is cosmetic, an erased crew note is
  * data loss.
@@ -86,7 +86,7 @@ function stripOrphanColorPreamble(text: string): string {
 }
 
 /**
- * The inverse of {@link extractCustomerFreeText}: the MACHINE-written colour
+ * The inverse of {@link extractCustomerFreeText}: the MACHINE-written color
  * records in a WorkOrderLineItem's ColorNotes__c, without the customer's own
  * words and without the "don't paint" lines.
  *
@@ -95,9 +95,9 @@ function stripOrphanColorPreamble(text: string): string {
  * colors. Anyone previewing the order is missing part of it."
  *
  * That matters more than a display gap. When a line carries two or more
- * surfaces with no dedicated Salesforce colour field (Cabinets AND Door), the
- * colours go to Color Notes and the shared Other slot is deliberately left
- * blank — so those colours are absent from the order's line items and would
+ * surfaces with no dedicated Salesforce color field (Cabinets AND Door), the
+ * colors go to Color Notes and the shared Other slot is deliberately left
+ * blank — so those colors are absent from the order's line items and would
  * never reach the vendor. Pulling them back out here puts them in the order's
  * Color Notes, which does go in the email.
  *
@@ -117,21 +117,21 @@ export function extractMachineColorLines(raw: string | null | undefined): string
     // Keep ONLY lines carrying a machine fingerprint. Exact complement of what
     // extractCustomerFreeText strips, so a rep's typed "Cabinets: needs
     // sanding" is treated as human text in both directions — kept on the form,
-    // and not pushed into the vendor's order as if it were a colour.
+    // and not pushed into the vendor's order as if it were a color.
     .filter((l) => ORPHAN_LINE_RE.test(l));
 }
 
 /**
- * Parse the machine colour lines back into structured surface → colour records.
+ * Parse the machine color lines back into structured surface → color records.
  *
  * The submit route writes one line per orphan surface in the 2+ case:
  *
  *     Cabinets: White Dove (OC-17) — Satin
  *
  * and deliberately leaves ColorOther__c blank, because a single Salesforce
- * field can't hold two colours. Every reader that shows orphan surfaces was
+ * field can't hold two colors. Every reader that shows orphan surfaces was
  * sourcing them from that blank field, so a room where the customer picked
- * Cabinets AND Wainscoting displayed both as having no colour at all — and the
+ * Cabinets AND Wainscoting displayed both as having no color at all — and the
  * team chased the customer for something they'd already provided.
  *
  * Kept in this file, immediately under the writer's format, because a parser
@@ -153,7 +153,7 @@ export function parseMachineColorLines(raw: string | null | undefined): ParsedOr
     let rest = line.slice(sep + 1).trim();
     if (!surface || !rest) continue;
 
-    // Finish is the LAST " — " segment. Split from the right: a colour name can
+    // Finish is the LAST " — " segment. Split from the right: a color name can
     // legitimately contain an em dash, the finish suffix is always terminal.
     let finish: string | null = null;
     const dash = rest.lastIndexOf(" — ");

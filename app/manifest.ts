@@ -4,7 +4,7 @@ import type { MetadataRoute } from "next";
  * Installable-app manifest.
  *
  * The people this matters for are crews on a phone in someone's house: the
- * measure tool, the colour form, the work-order page. "Add to Home Screen"
+ * measure tool, the color form, the work-order page. "Add to Home Screen"
  * turns those into a tap on an icon rather than a bookmark inside Safari, and
  * `display: standalone` drops the browser chrome — which is roughly 90px of
  * vertical space back on a small screen, on pages where the action lives at the
@@ -21,7 +21,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "PPP Command Center",
     short_name: "PPP Hub",
     description:
-      "Precision Painting Plus operations — work orders, room measurement, colour selections and materials ordering.",
+      "Precision Painting Plus operations — work orders, room measurement, color selections and materials ordering.",
     start_url: "/dashboard/materials",
     scope: "/",
     display: "standalone",

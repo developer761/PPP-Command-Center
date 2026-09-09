@@ -7,9 +7,9 @@ import { join } from "node:path";
  * product line "default to the AM's Internal Entry pick".
  *
  * With TWO picks, carrying only the interior one to the order would put
- * exterior colours on an interior product — the exact failure splitting the
- * picker was meant to prevent. So the exterior pick is applied to the colours
- * that are actually exterior, as per-colour overrides: that's the shape the
+ * exterior colors on an interior product — the exact failure splitting the
+ * picker was meant to prevent. So the exterior pick is applied to the colors
+ * that are actually exterior, as per-color overrides: that's the shape the
  * rest of the order already speaks (the builder renders them per line and the
  * vendor email groups by line, R4.32), so a mixed job arrives as two clearly
  * separated groups.
@@ -22,15 +22,15 @@ describe("the exterior paint line reaches the order", () => {
     expect(code).toMatch(/customerSubmittedPayload\?\.materialTypeExterior/);
   });
 
-  it("tags each colour with the scope it is painted on", () => {
+  it("tags each color with the scope it is painted on", () => {
     expect(code).toContain("scopesByColorKey");
     // Scope comes from the LINE ITEM's product name, not the work order's
     // type — a mixed WO has no single type to read.
     expect(code).toMatch(/lineItemProductNames:\s*\[woli\.productName\]/);
   });
 
-  it("applies it only to colours used EXCLUSIVELY on exterior work", () => {
-    // A colour on both scopes is ambiguous; guessing there is worse than
+  it("applies it only to colors used EXCLUSIVELY on exterior work", () => {
+    // A color on both scopes is ambiguous; guessing there is worse than
     // leaving the job default for the estimator to correct.
     expect(code).toMatch(/scopes\.size === 1 && scopes\.has\("exterior"\)/);
   });
@@ -43,7 +43,7 @@ describe("the exterior paint line reaches the order", () => {
   });
 
   it("feeds the same map to the vendor email", () => {
-    // Two maps would let the screen and the email disagree about a colour's line.
+    // Two maps would let the screen and the email disagree about a color's line.
     expect(code).toMatch(/materialTypeOverridesMap =\s*derivedMaterialTypeOverrides\.size > 0 \? derivedMaterialTypeOverrides : undefined/);
   });
 });

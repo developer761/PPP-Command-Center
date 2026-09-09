@@ -26,16 +26,16 @@ import { emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/
  * ORDER BUILDING — stage one of the Order Materials split (Kate round-3 #18).
  *
  * Everything that decides WHAT TO BUY lives here: the vendor, the paint line,
- * quantities, colour notes, extras and worker-typed colour lines. When the
+ * quantities, color notes, extras and worker-typed color lines. When the
  * worker advances, the payload is committed to `supplier_order_builds` and the
  * fulfilment page reads it back — it has no way to change any of it.
  *
  * That separation is the fix for a whole class of bugs Kate reported. In the
  * old single modal, every input change re-fetched the draft and the refetch
  * cleared the typed quantities, so adding an extra silently reverted the
- * numbers (#22), a per-colour paint line arrived with "(PPP to confirm
+ * numbers (#22), a per-color paint line arrived with "(PPP to confirm
  * quantities)" (#23), and the per-line row and the total disagreed about
- * whether a colour still needed a manual quantity (#26).
+ * whether a color still needed a manual quantity (#26).
  *
  * It is also a real page rather than an overlay, which is what fixes the scroll
  * trap (#21) and the tab-switch data loss (#20 — the work-order page runs a
@@ -62,7 +62,7 @@ export type SourceLine = {
    *  team adds ONE line item and lists the real rooms here, so without it this
    *  panel can read "1 line item" for a six-room job (Kate 2026-09-04). */
   notes?: string | null;
-  /** SF `ColorNotes__c`, free text only. The per-surface COLOURS — on a
+  /** SF `ColorNotes__c`, free text only. The per-surface COLORS — on a
    *  work order where a rep puts the whole house on one line, Description
    *  says "see notes for colors" and this is those notes (Katie item 23). */
   colorNotes?: string | null;
@@ -73,7 +73,7 @@ export type PreviewColor = {
   name: string;
   code: string | null;
   hex: string | null;
-  /** Where this colour goes — room + surface, not a generic "Area" (#15). */
+  /** Where this color goes — room + surface, not a generic "Area" (#15). */
   placements: Array<{ room: string; surface: string }>;
 };
 
@@ -147,7 +147,7 @@ export default function OrderBuilderView({
   );
   const [payload, setPayload] = useState<OrderBuildPayload>(initialPayload ?? emptyBuildPayload());
   // The draft is stamped with the supplier it was built FOR. Without that, the
-  // moment you switch vendors you keep seeing the previous vendor's colours and
+  // moment you switch vendors you keep seeing the previous vendor's colors and
   // quantities until the refetch lands — briefly on a fast connection, visibly
   // on a slow one, and it looks like the vendor change didn't take.
   const [draft, setDraft] = useState<{ forSupplierId: string; data: Draft } | null>(null);
@@ -364,7 +364,7 @@ export default function OrderBuilderView({
    *
    * Karan 2026-09-09: "living room walls and accent walls should always be
    * close to each other… try using logic to always organize this page." The
-   * list came out in whatever order the estimator's colour map happened to
+   * list came out in whatever order the estimator's color map happened to
    * produce, so the Living Room's walls sat at the top and its accent wall
    * nine rows down — the two lines you most need to read together.
    *
@@ -374,7 +374,7 @@ export default function OrderBuilderView({
    * not more chrome, and a heading per room would repeat the room name that is
    * already on every line.
    *
-   * A colour spanning rooms (trim across the living room and bathroom) sorts by
+   * A color spanning rooms (trim across the living room and bathroom) sorts by
    * its FIRST room, so it sits with that room rather than floating.
    */
   const estimates = useMemo(() => {
@@ -527,14 +527,14 @@ export default function OrderBuilderView({
     return q ? catalog.filter((c) => c.name.toLowerCase().includes(q)) : catalog;
   }, [catalog, extrasSearch]);
 
-  // Matches the vendor email exactly — custom colour lines included (#28).
+  // Matches the vendor email exactly — custom color lines included (#28).
   const totals = addCustomItemsToTotal(summarizeOrder(estimates), payload.customColorItems);
   // A line still needs a human number when the estimator couldn't size it AND
   // the worker hasn't typed one. Because the server already folded the typed
   // quantities in, this is simply "what's left" — no second calculation to
   // disagree with the rows (#26).
   const needQty = estimates.filter(
-    // A colour the worker zeroed out on purpose is answered, not outstanding.
+    // A color the worker zeroed out on purpose is answered, not outstanding.
     (e) => !e.excluded && (e.manualOnly || (e.buckets === 0 && e.cans === 0))
   );
 
@@ -600,9 +600,9 @@ export default function OrderBuilderView({
                     </div>
                     {/* Kate 2026-09-04 — the rooms the rep actually listed. */}
                     <LineItemNotes notes={l.notes} label="Scope" />
-                    {/* Katie item 23 — the colours themselves, labelled apart from the
+                    {/* Katie item 23 — the colors themselves, labelled apart from the
                         scope above so a reader can tell which is which. */}
-                    <LineItemNotes notes={l.colorNotes} label="Colours" />
+                    <LineItemNotes notes={l.colorNotes} label="Colors" />
                   </li>
                 ))}
                 {sourceLines.length === 0 && (
@@ -657,7 +657,7 @@ export default function OrderBuilderView({
         <>
           {/* Katie item 14, 2026-09-08: "get rid of default from the top of the
               form" — the single "Default paint product line" selector is gone.
-              Each colour carries its own product line below, which is what the
+              Each color carries its own product line below, which is what the
               vendor email prints per line. A job that mixes Ultra Spec and Regal
               had one control claiming to speak for both.
           
@@ -719,7 +719,7 @@ export default function OrderBuilderView({
                 // reversible via "reset to estimate". A placeholder zero is the
                 // estimator saying "I couldn't size this" — a gap, shown as a
                 // warning. Collapsing them made the deliberate choice look like
-                // an unfinished field and still shipped the colour to the vendor.
+                // an unfinished field and still shipped the color to the vendor.
                 const isExcluded = !!e.excluded;
                 const isPlaceholder = !isExcluded && (e.manualOnly || (e.buckets === 0 && e.cans === 0));
                 return (
@@ -738,7 +738,7 @@ export default function OrderBuilderView({
                           {e.colorCode && <span className="text-ppp-charcoal-400 ml-1">{e.colorCode}</span>}
                           {e.finish && <span className="text-ppp-charcoal-500"> · {e.finish}</span>}
                         </div>
-                        {/* Kate round-3 #25: room(s) AND surface, so a colour used
+                        {/* Kate round-3 #25: room(s) AND surface, so a color used
                             in two rooms can't collapse into one nameless line. */}
                         {/* R4.19: all the rooms then all the surfaces in one
                             run made it impossible to tell which surface went
@@ -764,14 +764,14 @@ export default function OrderBuilderView({
                           ) : (
                             "Room not named in Salesforce"
                           )}
-                        {/* Karan 2026-09-09: "for each colour we should have it here so we
+                        {/* Karan 2026-09-09: "for each color we should have it here so we
                             don't keep having to scroll up", and then: ceiling square footage,
                             wall surface area, trim linear feet.
                         
                             Each surface gets the measure that actually governs it. Showing floor
                             area against a trim line is noise — trim is priced off the perimeter,
                             and a reader checking the quantity needs the number the maths used.
-                            Repeated per room, because a colour can span several and one combined
+                            Repeated per room, because a color can span several and one combined
                             figure hides which room is which. */}
                         {(() => {
                           const rows = (e.placements?.length
@@ -896,7 +896,7 @@ export default function OrderBuilderView({
                             value={payload.materialTypeOverrides[key] ?? ""}
                             onChange={(v) => setLineFor(e, v)}
                             // R5.3: when the builder has already decided a line
-                            // for this colour — the exterior answer on a mixed
+                            // for this color — the exterior answer on a mixed
                             // job — name it, rather than showing an empty box over an
                             // email that already carries an answer.
                             //
@@ -921,7 +921,7 @@ export default function OrderBuilderView({
                         ⚠ a room is unmeasured — this may be low
                       </p>
                     )}
-                    {/* Katie item 7 — an accent wall is a second colour over
+                    {/* Katie item 7 — an accent wall is a second color over
                         part of one wall. Nothing in the geometry can see it, so
                         the quantity beside it is a guess. RED, and above the
                         defaulted note: this is the one that needs a person. */}
@@ -944,7 +944,7 @@ export default function OrderBuilderView({
             </ul>
           </section>
 
-          {/* ── Custom colour item (#28) ──────────────────────────────────── */}
+          {/* ── Custom color item (#28) ──────────────────────────────────── */}
           <CustomColorItems
             items={payload.customColorItems}
             onChange={(customColorItems) => patch({ customColorItems })}
@@ -956,7 +956,7 @@ export default function OrderBuilderView({
               Color Notes
             </label>
             <p className="text-[11px] text-ppp-charcoal-500 mb-2">
-              Colours and finishes for surfaces that don&apos;t map to a standard field, non-BM/SW
+              Colors and finishes for surfaces that don&apos;t map to a standard field, non-BM/SW
               colors, and anything the customer said. For the estimator — this
               does NOT go to the vendor. If something in here needs buying, add
               it as a custom color item above.
@@ -1181,7 +1181,7 @@ export default function OrderBuilderView({
           page's "Preview Materials Order" button links to #preview, and while
           this lived inside {supplier && …} that anchor simply didn't exist in
           the DOM until a vendor was picked — the link scrolled nowhere and
-          dropped the user on a vendor picker instead. Looking at the colours
+          dropped the user on a vendor picker instead. Looking at the colors
           is a read-only act; it shouldn't require choosing a store first. */}
           {/* R4.17: the "Supplier → color → where it goes" panel was removed —
               it restated the buy-list above with a different grouping, and the
@@ -1230,9 +1230,9 @@ export default function OrderBuilderView({
 
 
 /**
- * Kate round-3 #28 — the COLOUR half of "Add custom item".
+ * Kate round-3 #28 — the COLOR half of "Add custom item".
  *
- * Deliberately one free-text field rather than a colour picker plus a finish
+ * Deliberately one free-text field rather than a color picker plus a finish
  * dropdown: it has to cover stain, venetian plaster and specialty coatings as
  * well as paint, and Kate asked for the prompt to live in the field itself.
  * Sits between the buy-list and Color Notes so someone reading down the notes
@@ -1319,7 +1319,7 @@ function CustomColorItems({
           >
             <option value="gal">gal</option>
             <option value="qt">qt</option>
-            {/* Katie item 8 — a hand-typed colour can be a 5-gallon pail. Not
+            {/* Katie item 8 — a hand-typed color can be a 5-gallon pail. Not
                 offered on estimate lines: those already roll into buckets on
                 their own, so it would be two ways to say the same thing. */}
             <option value="bucket">bucket (5 gal)</option>
@@ -1339,7 +1339,7 @@ function CustomColorItems({
 }
 
 /** The sundry half of "Add custom item" — unchanged behaviour, now clearly
- *  labelled as sundries so it reads as the pair to the colour item above. */
+ *  labelled as sundries so it reads as the pair to the color item above. */
 function CustomSundryItem({ onAdd }: { onAdd: (name: string, qty: number, unit: string) => void }) {
   const [name, setName] = useState("");
   const [qty, setQty] = useState("1");

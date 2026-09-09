@@ -10,7 +10,7 @@ import { LABOR_PRESETS, LABOR_DEFAULT, laborRange, resolvePreset, type LaborPres
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 
 /**
- * Labour & payroll — the first report with a PERSON in it.
+ * Labor & payroll — the first report with a PERSON in it.
  *
  * Field Ops has held every hour since it shipped and no report read it, so
  * "where did the crew go last month" meant opening jobs one at a time.
@@ -56,10 +56,10 @@ export default async function LaborReportPage({
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-ppp-charcoal">Labour &amp; payroll</h2>
+          <h2 className="text-lg font-bold text-ppp-charcoal">Labor &amp; payroll</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">
             Approved crew hours and what they cost, across every job. In-house (W-2) time only —
-            subs are logged as Subcontract labour on a job&rsquo;s costs, so counting them here would
+            subs are logged as Subcontract labor on a job&rsquo;s costs, so counting them here would
             double them. Rates are effective-dated, so a raise doesn&rsquo;t restate an older job.
           </p>
         </div>
@@ -84,7 +84,7 @@ export default async function LaborReportPage({
             download is the window you have selected, and pairing them makes
             that obvious. */}
         <span className="ml-auto">
-          {/* The labour CSV is per-person pay, so the route gates it to admin /
+          {/* The labor CSV is per-person pay, so the route gates it to admin /
               account manager. This page does NOT redirect a rep (it just hides
               names), so without matching the gate here a rep would click Export
               and get a raw JSON 403. Disabled with a reason instead. */}
@@ -92,7 +92,7 @@ export default async function LaborReportPage({
             href="/api/commercial/reports/labor/export"
             preset={preset}
             disabled={!canSeePeople || (report.people.length === 0 && report.jobs.length === 0)}
-            disabledHint={!canSeePeople ? "The labour export includes per-person pay — admins and account managers only" : "Nothing to export yet"}
+            disabledHint={!canSeePeople ? "The labor export includes per-person pay — admins and account managers only" : "Nothing to export yet"}
           />
         </span>
       </div>
@@ -112,7 +112,7 @@ export default async function LaborReportPage({
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Kpi label="Crew hours" value={hrs(report.totalHours)} />
-            <Kpi label="Labour cost" value={formatCentsFull(report.totalCostCents)} tone="brand" />
+            <Kpi label="Labor cost" value={formatCentsFull(report.totalCostCents)} tone="brand" />
             <Kpi label="Jobs worked" value={String(report.jobs.length)} />
             <Kpi
               label="Avg $/hour"
@@ -130,7 +130,7 @@ export default async function LaborReportPage({
           {report.unratedHours > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
               <p className="text-[12.5px] font-semibold text-amber-900">
-                {hrs(report.unratedHours)} worked with no cost rate on file — the labour cost above is short by
+                {hrs(report.unratedHours)} worked with no cost rate on file — the labor cost above is short by
                 whatever those hours were worth.
               </p>
               <p className="text-[11.5px] text-amber-800 mt-0.5">

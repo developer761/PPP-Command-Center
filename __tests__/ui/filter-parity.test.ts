@@ -43,7 +43,7 @@ describe("the two filter rows share their chrome", () => {
 
   it("only Mail Hub has a sender filter", () => {
     // R5.4 — the Materials list had one briefly (R4.4, when Kate asked for "the
-    // same filter set"). It matched whoever sent the COLOUR FORM, which says
+    // same filter set"). It matched whoever sent the COLOR FORM, which says
     // nothing about the work order, so most rows had no sender and choosing one
     // emptied the list. Sender is a question about a message; Mail Hub keeps it.
     expect(inbox, "Mail Hub should still filter by sender").toMatch(/>Sender</);

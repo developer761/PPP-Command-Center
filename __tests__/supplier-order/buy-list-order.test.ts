@@ -7,10 +7,10 @@ import { join } from "node:path";
  * should always be close to each other… try using logic to always organize
  * this page."
  *
- * The buy-list came out in whatever order the estimator's colour map produced.
+ * The buy-list came out in whatever order the estimator's color map produced.
  * On his order the Living Room's WALLS were the first line and its ACCENT WALL
  * was the ninth — the two lines you most need to read together, because the
- * accent is a second colour over part of the wall the first line prices.
+ * accent is a second color over part of the wall the first line prices.
  */
 const view = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
 
@@ -51,7 +51,7 @@ describe("the buy-list walks the job in a readable order", () => {
     expect(view).toMatch(/sourceLines\.map\(\(l, i\) => \[l\.room, i\]\)/);
   });
 
-  it("a colour spanning rooms sorts with its FIRST room", () => {
+  it("a color spanning rooms sorts with its FIRST room", () => {
     // Trim across the living room and bathroom belongs with the living room,
     // not floating between the two.
     expect(view).toMatch(/Math\.min\(\.\.\.ranks\)/);

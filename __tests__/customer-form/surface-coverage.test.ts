@@ -9,7 +9,7 @@ import { STANDARD_SURFACES, ORPHAN_SURFACES, classifySurface } from "@/lib/custo
  * That safety is conditional. The submit route silently skips any surface it
  * classifies as "unknown" — so if someone adds a picklist value in Salesforce
  * and doesn't add it here, the form will happily show the surface, the customer
- * will pick a colour for it, and the submit will drop it on the floor with no
+ * will pick a color for it, and the submit will drop it on the floor with no
  * error on either end. This test is the tripwire for that.
  */
 const SF_PICKLIST = [

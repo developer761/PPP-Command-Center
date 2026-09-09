@@ -15,7 +15,7 @@ All three are entangled with work that IS shipped, so the boundary matters.
 hub owns the paint line.
 
 **The case for it, in PPP's own terms:** Salesforce holds one line per work
-order. The hub holds a default *plus* per-colour-and-finish overrides, *plus*
+order. The hub holds a default *plus* per-color-and-finish overrides, *plus*
 both lines on a mixed job — so the hub's model cannot round-trip through the
 Salesforce field. And the Salesforce value isn't sitting empty: it's the
 estimator's pick carried over from the quote, so every write overwrites their

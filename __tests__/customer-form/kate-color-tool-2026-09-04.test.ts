@@ -5,7 +5,7 @@ import { colorDeadlineNotice } from "@/lib/customer-form/deadline-notice";
 import { DEFAULT_TEMPLATES, buildVars, render } from "@/lib/customer-form/templates";
 
 /**
- * Kate, 2026-09-04 — two asks on the colour tool.
+ * Kate, 2026-09-04 — two asks on the color tool.
  *
  *  1. Show the Salesforce line-item notes per room. "The field team's typical
  *     behavior is adding one line item to a Quote, then adding multiple rooms
@@ -120,7 +120,7 @@ describe("line-item notes reach every surface Kate named", () => {
     expect(read("lib/materials/order-page-data.ts")).toMatch(/notes: li\.raw\.description/);
   });
 
-  it("it is COLLAPSED by default — the colour pickers stay above the fold", () => {
+  it("it is COLLAPSED by default — the color pickers stay above the fold", () => {
     const c = read("components/line-item-notes.tsx");
     expect(c).toMatch(/useState\(false\)/);
     // and renders nothing at all when empty (27% of lines have no Description)

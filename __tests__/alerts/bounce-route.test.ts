@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * Drives the REAL webhook handler, with only Supabase and the alert dispatcher
  * stubbed.
  *
- * Why not against the live database: every supplier order and colour form in
+ * Why not against the live database: every supplier order and color form in
  * production is currently `delivered`, so replaying a bounce at any of them
  * would flip a live job to "bounced" — wrong data on a real job, to prove a
  * test point. The column NAMES are verified separately against the live tables
@@ -94,7 +94,7 @@ describe("a bounced supplier order reaches Slack with something Kate can act on"
     expect(String(a.detail.Reason)).toContain("550");
   });
 
-  it("a bounced colour form reads customer_email, not sent_to_email", async () => {
+  it("a bounced color form reads customer_email, not sent_to_email", async () => {
     // The exact bug this had once: `sent_to_email` exists on supplier_orders and
     // NOT on customer_form_tokens. Selecting it errored, the handler returns 200
     // by design so Resend stops retrying, and the alert silently never fired.
@@ -106,7 +106,7 @@ describe("a bounced supplier order reaches Slack with something Kate can act on"
     const a = alertMaterialsFailure.mock.calls[0][0];
     expect(a.kind).toBe("color_form_bounced");
     expect(a.detail["Sent to"]).toBe("m@example.com");
-    expect(a.summary).toContain("waiting on colours");
+    expect(a.summary).toContain("waiting on colors");
   });
 
   it("still alerts when a bounce matches nothing", async () => {

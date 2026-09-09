@@ -2,16 +2,16 @@ import { describe, it, expect } from "vitest";
 import { retainedPicksByLine, pickIsAnswered } from "@/lib/customer-form/retained-picks";
 
 /**
- * R4.9 / R4.10. Salesforce has four colour fields per line item plus ONE shared
+ * R4.9 / R4.10. Salesforce has four color fields per line item plus ONE shared
  * ColorOther__c, so a room with two "orphan" surfaces is lossy the moment it's
  * written — and reading it back produced two different wrong answers, both of
  * which Kate hit on real work orders:
  *
  *   WO 00306643 · Bathroom (Walls;Ceiling;Cabinets;Door) — two orphans, so
- *     ColorOther__c is deliberately blank and both colours go to Color Notes.
+ *     ColorOther__c is deliberately blank and both colors go to Color Notes.
  *     Every orphan chip read that blank field and rendered "—".
  *   WO 00308360 · Kitchen (Walls;Cabinets;Door) — Cabinets SKIPPED, Door
- *     picked. ColorOther__c holds the Door's colour, and every orphan chip read
+ *     picked. ColorOther__c holds the Door's color, and every orphan chip read
  *     it, painting Super White onto a surface the customer opted out of.
  *
  * The payloads below are the real ones, copied from production.
@@ -41,12 +41,12 @@ const KITCHEN = {
 };
 
 describe("retainedPicksByLine", () => {
-  it("keeps both orphan colours that Salesforce couldn't hold (Symptom A)", () => {
+  it("keeps both orphan colors that Salesforce couldn't hold (Symptom A)", () => {
     const picks = retainedPicksByLine(BATHROOM).get("1WLWj00000234qjOAA")!;
     const bySurface = new Map(picks.map((p) => [p.surface, p]));
     expect(bySurface.get("Cabinets")?.colorName).toBe("HC-15 Henderson Buff");
     expect(bySurface.get("Door")?.colorName).toBe("2108-40 Stardust");
-    // Different colours — the whole point. ColorOther__c can hold only one.
+    // Different colors — the whole point. ColorOther__c can hold only one.
     expect(bySurface.get("Cabinets")?.colorId).not.toBe(bySurface.get("Door")?.colorId);
   });
 
@@ -62,7 +62,7 @@ describe("retainedPicksByLine", () => {
   });
 
   it("treats an untouched surface as unanswered so Salesforce can still fill it", () => {
-    // A rep who types a colour into Salesforce after a partial submission must
+    // A rep who types a color into Salesforce after a partial submission must
     // not have it hidden by an empty pick.
     expect(pickIsAnswered({ surface: "Trim", colorId: null, colorName: null, colorCode: null, finish: null, skipped: false })).toBe(false);
   });

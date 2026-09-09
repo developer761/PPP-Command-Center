@@ -34,7 +34,7 @@ function ageLabel(r: ReceivableRow): string {
 
 export function receivablesCsv(report: ReceivablesReport, filterLabel?: string | null): string {
   // TWO note columns, not one merged cell. A spreadsheet has no italics and no
-  // colour, so the only way to keep the office's words distinguishable from the
+  // color, so the only way to keep the office's words distinguishable from the
   // drafted read is to give each its own column and header.
   const header = ["Job", "GC", "Type", "Reference", "Billed / open", "Status", "Notes", `${AI_NOTE_MARK} AI read`];
   const line = (r: ReceivableRow) =>

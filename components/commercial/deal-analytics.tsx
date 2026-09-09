@@ -70,8 +70,8 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
     [
       ["Materials", a.costsByCategory.materials, "brand"],
       ["Subcontractors", a.costsByCategory.subcontractor, "amber"],
-      ["Subcontract labour", a.costsByCategory.labor, "blue"],
-      ["Crew labour", a.crewLaborCents, "emerald"],
+      ["Subcontract labor", a.costsByCategory.labor, "blue"],
+      ["Crew labor", a.crewLaborCents, "emerald"],
       ["Equipment", a.costsByCategory.equipment, "navy"],
       ["Permits", a.costsByCategory.permit, "neutral"],
       ["Other", a.costsByCategory.other, "neutral"],
@@ -201,7 +201,7 @@ export function DealAnalytics({ a }: { a: DealAnalytics }) {
       {a.unratedHours > 0 && (
         <p className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[12px] text-amber-900">
           <strong className="font-semibold">{a.unratedHours}h</strong> of approved crew time has no cost
-          rate on file. Labour cost is short by whatever those hours were worth, so the margin above is
+          rate on file. Labor cost is short by whatever those hours were worth, so the margin above is
           that much <strong className="font-semibold">too high</strong>.
         </p>
       )}

@@ -60,9 +60,9 @@ export default function PlatformSwitcher({
     }
   };
 
-  // GHOST ROW, not a colour block (Karan 2026-09-01, after a solid emerald and
+  // GHOST ROW, not a color block (Karan 2026-09-01, after a solid emerald and
   // then a solid forest both read too heavy): transparent, hairline border,
-  // muted label — the same visual weight as the nav items above it. Colour
+  // muted label — the same visual weight as the nav items above it. Color
   // arrives only on hover.
   //
   // The resting styles are all neutral charcoal tokens, which already invert

@@ -93,7 +93,7 @@ export async function getMaterialsPageAuxData(
   opts: {
     /** Pull `submitted_payload` too. Off by default: it's a fat JSON column and
      *  the browse list asks for ~460 work orders at once, while the only screen
-     *  that renders per-surface colours (Rooms & Colors) exists solely on the
+     *  that renders per-surface colors (Rooms & Colors) exists solely on the
      *  focused work-order page, which asks for one. */
     includeRetainedPicks?: boolean;
   } = {},
@@ -149,7 +149,7 @@ export async function getMaterialsPageAuxData(
       // `kind` is nullable with no default, and EVERY real customer invite is
       // written with kind = null. PostgREST turns .neq into `kind <> 'preview'`,
       // which evaluates to NULL for a NULL row — not TRUE — so every genuine
-      // sent colour form was filtered out of this query. Measured against
+      // sent color form was filtered out of this query. Measured against
       // production: 35 of 90 tokens invisible. The consequence was that after
       // sending a form the badge still read "not sent", the progress bar never
       // advanced, and Send Reminder never appeared — only internal-entry

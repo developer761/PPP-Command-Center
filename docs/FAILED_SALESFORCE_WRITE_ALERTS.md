@@ -15,7 +15,7 @@ Trigger: `writesFailedInfo` is set after the write batch in
 a thrown batch (connection dead, OAuth token expired) — an earlier version only
 caught the first, so an expired token failed silently.
 
-It fires for **every** kind of colour submission: a customer submitting their
+It fires for **every** kind of color submission: a customer submitting their
 own form, an AM doing Internal Entry, and a re-edit. Internal entry matters
 particularly: the routine "your form was submitted" notification is deliberately
 suppressed there — an AM doesn't need an email saying they submitted their own
@@ -48,7 +48,7 @@ warning rather than an OK.
 - What failed, in plain terms: *"3 of 14 writes were rejected for the Smith job
   (WO #00306643). It is saved in the Command Center, but Salesforce does not
   have it."*
-- **Everything that was entered** — every room, surface, colour, finish and
+- **Everything that was entered** — every room, surface, color, finish and
   note. This is the point of the email: the work is recoverable without
   starting over.
 - What Salesforce actually said (error code + message), plus the three usual

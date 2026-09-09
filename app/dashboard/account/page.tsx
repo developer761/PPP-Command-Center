@@ -5,6 +5,7 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { normalizeRole, roleLabel } from "@/lib/auth/roles";
 import PageHeader from "@/components/page-header";
 import ChangePasswordForm from "@/components/change-password-form";
+import AccountPhoneForm from "@/components/account-phone-form";
 
 /**
  * Account settings — the signed-in user's own profile + password change.
@@ -29,7 +30,7 @@ export default async function AccountPage() {
     <div className="animate-fade-up">
       <PageHeader
         title="Account settings"
-        subtitle="Your profile and password."
+        subtitle="Your profile, contact number and password."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -43,6 +44,14 @@ export default async function AccountPage() {
             <Row label="Role" value={roleLabel(role)} />
             <Row label="Sign-in method" value={provider} />
           </dl>
+
+          {/* Karan 2026-09-09 — the number a supplier rings about your orders.
+              profiles.phone has been read by the order flow since migration 145
+              and printed on the vendor email, but nothing ever wrote to it, so
+              it was blank for everyone. */}
+          <div className="mt-5 pt-5 border-t border-ppp-charcoal-100">
+            <AccountPhoneForm initial={(profile?.phone as string | null) ?? null} />
+          </div>
         </section>
 
         <section className="rounded-xl border border-ppp-charcoal-100 bg-white p-5">
