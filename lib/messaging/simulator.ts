@@ -186,7 +186,15 @@ export async function runSimTurn(input: {
       track,
       // Which examples are worth showing depends on what the customer actually
       // sent, not only on how far the flow has got.
-      ...situationFrom(input.customerText, {
+      // The CUSTOMER's own words, not the raw string.
+      //
+      // An iPhone reaction arrives as `Liked "<our message>"`, so scanning the
+      // raw text reads OUR sentence and attributes it to them: a customer who
+      // liked a message containing the phrase "real person" was recorded as
+      // asking whether they were talking to a bot, and got examples about it.
+      // normalizeInbound strips the wrapping; for a bare reaction there is no
+      // text of their own, which is the correct thing to scan.
+      ...situationFrom(inboundShape.text ?? (inboundShape.kind === "text" ? input.customerText : ""), {
         mediaCount: input.mediaCount,
         isReaction: inboundShape.kind === "reaction" || inboundShape.kind === "emoji_only",
         isNegative: inboundShape.reaction?.sentiment === "negative",
