@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/cron/messaging-tick",
-      "schedule": "* * * * *"
+      "schedule": "0 7 * * *"
     }
   ]
 }
