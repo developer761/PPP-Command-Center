@@ -112,7 +112,14 @@ export async function POST(request: Request) {
         if (!viewer.effectiveUserId) {
           return NextResponse.json({ error: "token_not_found" }, { status: 404 });
         }
-        const snapshot = await loadSalesforceSnapshot();
+        // Ownership check only — it reads workOrders and nothing else, and
+        // `thin` skips quotes/quotas/transactions/reviews/cases/leads WITHOUT
+        // touching the work-order query, so coverage is identical. The full
+        // snapshot's cache key has no shared row, which meant this scope check
+        // could trigger a live Salesforce rebuild on a rep's Resend click.
+        // Deliberately NOT the materials bundle: that holds only the 502 open
+        // paint jobs, so resending on a closed WO would 404 a legitimate rep.
+        const snapshot = await loadSalesforceSnapshot({ thin: true });
         const ownsWo = snapshot.workOrders.some(
           (w) => w.id === row.work_order_id && w.ownerId === viewer.effectiveUserId
         );
@@ -248,7 +255,8 @@ export async function POST(request: Request) {
       if (!viewer.effectiveUserId) {
         return NextResponse.json({ error: "order_not_found" }, { status: 404 });
       }
-      const snapshot = await loadSalesforceSnapshot();
+      // Same ownership check, same reasoning as above.
+      const snapshot = await loadSalesforceSnapshot({ thin: true });
       const ownsWo = snapshot.workOrders.some(
         (w) => w.id === order.work_order_id && w.ownerId === viewer.effectiveUserId
       );
