@@ -96,6 +96,21 @@ type Draft = {
   noColorsPicked: boolean;
 };
 
+/**
+ * How long to wait after the payload settles before rebuilding the draft.
+ *
+ * Karan 2026-09-09: "when I add like a gallon there's a small delay to it."
+ * Every +/- click lands in that effect's dependency list, and the request
+ * behind it rebuilds the whole vendor email off a Salesforce snapshot. At
+ * 150ms, someone stepping a quantity fires one of those between each press.
+ *
+ * The NUMBER has always been instant — it reads local payload state. What lags
+ * is `estimates`, which comes back from this response, so the list re-renders
+ * underneath the click. Waiting longer means one rebuild after the stepping
+ * stops rather than a queue of them.
+ */
+const DRAFT_DEBOUNCE_MS = 600;
+
 type ExtraCatalogItem = {
   id: string;
   name: string;
@@ -327,7 +342,7 @@ export default function OrderBuilderView({
       } finally {
         if (!cancelled) setLoadingDraft(false);
       }
-    }, 150);
+    }, DRAFT_DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(t); };
   }, [
     workOrderId,
@@ -789,7 +804,13 @@ export default function OrderBuilderView({
                     <div className="mt-2 flex items-center justify-end gap-3 flex-wrap">
                       {/* Kate round-3 #27: gallons or quarts, per line. */}
                       <div className="inline-flex rounded-lg border border-ppp-charcoal-100 overflow-hidden" role="group" aria-label={`Unit for ${e.colorName}`}>
-                        {(["gal", "qt"] as PaintUnit[]).map((u) => (
+                        {/* Bucket appears once a line reaches five gallons (Karan 2026-09-09).
+                            Offering it below that would let someone order a pail for two
+                            gallons of paint; hiding it entirely is what forced the silent
+                            auto-conversion this replaces. */}
+                        {(((unit === "gal" && total >= 5) || unit === "bucket"
+                           ? ["gal", "qt", "bucket"]
+                           : ["gal", "qt"]) as PaintUnit[]).map((u) => (
                           <button
                             key={u}
                             type="button"
@@ -801,7 +822,7 @@ export default function OrderBuilderView({
                                 : "bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
                             }`}
                           >
-                            {u === "gal" ? "Gallon" : "Quart"}
+                            {u === "gal" ? "Gallon" : u === "qt" ? "Quart" : "Bucket"}
                           </button>
                         ))}
                       </div>

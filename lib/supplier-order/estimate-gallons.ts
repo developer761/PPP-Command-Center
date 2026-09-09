@@ -338,14 +338,19 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
  * `sizedToZero` on the estimate says so explicitly.
  */
 export function packageGallons(rawGallons: number, cfg: CoverageConfig = COVERAGE_CONFIG): { buckets: number; cans: number } {
-  let g = rawGallons;
-  let buckets = 0;
-  while (g > cfg.bucketThresholdGallons) {
-    buckets += 1;
-    g -= cfg.bucketSizeGallons;
-  }
-  const cans = Math.floor(Math.max(g, 0));
-  return { buckets, cans };
+  // NO automatic bucketing (Karan 2026-09-09: "if I have 5 gallons it shouldn't
+  // automatically [convert] — instead when we add 5 gallons it gives us another
+  // option for bucket next to Gallon/Quart").
+  //
+  // Five gallons and a five-gallon pail are not the same purchase: the pail is
+  // cheaper per gallon but it is one container, and whether that suits the job
+  // is the estimator's call, not arithmetic. Rolling it up silently made the
+  // decision for them and put "1 bucket" on a vendor email nobody had chosen.
+  //
+  // The unit toggle offers Bucket once a line reaches five gallons, and
+  // packageForUnit does the conversion when they pick it.
+  void cfg;
+  return { buckets: 0, cans: Math.floor(Math.max(rawGallons, 0)) };
 }
 
 type Bucket = {

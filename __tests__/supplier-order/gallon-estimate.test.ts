@@ -6,6 +6,7 @@ import {
   isDoorSurface,
   estimateOrderGallons,
   packageGallons,
+  packageForUnit,
   formatOrderQuantity,
   formatBucketsCans,
   addCustomItemsToTotal,
@@ -74,10 +75,24 @@ describe("what PPP actually orders", () => {
     expect(e.trim.unit).toBe("qt");
   });
 
-  it("a big room still rolls into a 5-gallon bucket", () => {
-    // The bucket threshold must survive the rounding change: >4 gal buys a pail.
+  it("a big room stays in gallons — the pail is the estimator's call", () => {
+    // Karan 2026-09-09 removed automatic bucketing. Five gallons and a
+    // five-gallon pail are not the same purchase: the pail is cheaper per
+    // gallon but it is one container, and whether that suits the job is a
+    // person's decision. The unit toggle offers Bucket at five and up.
     const e = byColor([room(30, 40, 10)]);
-    expect(e.wall.buckets).toBeGreaterThanOrEqual(1);
+    expect(e.wall.buckets).toBe(0);
+    expect(e.wall.cans).toBeGreaterThanOrEqual(5);
+  });
+
+  it("packageGallons never buckets on its own", () => {
+    expect(packageGallons(12)).toEqual({ buckets: 0, cans: 12 });
+    expect(packageGallons(5)).toEqual({ buckets: 0, cans: 5 });
+  });
+
+  it("...but packageForUnit still converts when a person picks Bucket", () => {
+    // 10 gallons chosen as pails is 2 pails.
+    expect(packageForUnit(10, "bucket")).toEqual({ buckets: 0, cans: 2, unit: "bucket" });
   });
 });
 
@@ -340,10 +355,61 @@ describe("buckets on custom colour lines", () => {
     expect(src).toMatch(/raw === "bucket" \? `x \$\{GALLONS_PER_BUCKET\} gal` : raw/);
   });
 
-  it("the option is offered on custom lines only", () => {
+  it("custom lines offer it outright", () => {
+    // A hand-typed colour has no computed quantity to reason about, so the
+    // pail is just another container choice.
     const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
     expect(src).toMatch(/<option value="bucket">/);
-    // the estimate-line toggle stays two-way
-    expect(src).toMatch(/\(\["gal", "qt"\] as PaintUnit\[\]\)/);
+  });
+
+  it("estimate lines offer it CONDITIONALLY, from five gallons", () => {
+    // This changed on 2026-09-09. Buckets used to be custom-lines-only because
+    // the estimator rolled them up on its own; now it does not, so the choice
+    // has to exist on an estimate line too — but only where a pail makes sense.
+    const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+    expect(src).toMatch(/\["gal", "qt", "bucket"\]/);
+    expect(src).toMatch(/unit === "gal" && total >= 5/);
+  });
+});
+
+/**
+ * Karan 2026-09-09, on the order screen:
+ *   "if I have 5 gallons it shouldn't automatically [convert] — instead when we
+ *    add 5 gallons it gives us another option for bucket next to Gallon/Quart"
+ *   "when I add like a gallon there's a small delay to it"
+ */
+describe("buckets are chosen, not computed", () => {
+  const view = () => readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+
+  it("the Bucket option appears only at five gallons and up", () => {
+    // Below five it would let someone order a pail for two gallons of paint.
+    expect(view()).toMatch(/unit === "gal" && total >= 5/);
+  });
+
+  it("and only from gallons — five QUARTS is not a pail", () => {
+    // 5 qt is 1.25 gal. Offering Bucket there converts to nothing.
+    const v = view();
+    const gate = v.slice(v.indexOf("Bucket appears once a line"), v.indexOf("as PaintUnit[]"));
+    expect(gate).toMatch(/unit === "gal"/);
+  });
+
+  it("a line already on Bucket keeps the option even if it drops below five", () => {
+    // Otherwise the control the worker is using vanishes under them.
+    expect(view()).toMatch(/\|\| unit === "bucket"/);
+  });
+
+  it("the toggle names it", () => {
+    expect(view()).toMatch(/u === "gal" \? "Gallon" : u === "qt" \? "Quart" : "Bucket"/);
+  });
+});
+
+describe("stepping a quantity does not queue server rebuilds", () => {
+  it("the draft rebuild waits for the stepping to stop", () => {
+    const v = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+    const m = /const DRAFT_DEBOUNCE_MS = (\d+);/.exec(v);
+    expect(m, "no debounce constant").toBeTruthy();
+    // 150ms fired a Salesforce-backed rebuild between presses.
+    expect(Number(m![1])).toBeGreaterThanOrEqual(400);
+    expect(v).toMatch(/\}, DRAFT_DEBOUNCE_MS\);/);
   });
 });
