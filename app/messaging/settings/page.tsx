@@ -5,6 +5,9 @@ import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-h
 
 export const dynamic = "force-dynamic";
 
+/** 20 reads as eight in the evening to nobody outside a database. */
+const clock = (h: number) => `${((h + 11) % 12) + 1}:00 ${h < 12 ? "AM" : "PM"}`;
+
 /**
  * Hours, timezone and after-hours behaviour, per workspace.
  *
@@ -89,7 +92,7 @@ export default async function MessagingSettings({
             <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
               {r.time_zone ?? "No timezone set"}
               {r.quiet_hours_start != null && r.quiet_hours_end != null
-                ? ` · sends ${r.quiet_hours_start}:00–${r.quiet_hours_end}:00`
+                ? ` · sends ${clock(r.quiet_hours_start)} to ${clock(r.quiet_hours_end)}`
                 : " · using the default window"}
             </p>
           </div>

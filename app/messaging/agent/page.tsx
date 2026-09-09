@@ -1,6 +1,8 @@
 import AgentScopePicker from "@/components/messaging/agent-scope-picker";
 import AgentConfigEditor from "@/components/messaging/agent-config-editor";
-import { loadAgentConfig, activeWorkspaces, workspacesWithOwnConfig, configuredStates, END_STATES } from "@/lib/messaging/db";
+import WorkspaceServices from "@/components/messaging/workspace-services";
+import { resolveServices } from "@/lib/messaging/services";
+import { loadAgentConfig, activeWorkspaces, workspacesWithOwnConfig, configuredStates, loadWorkspaceServices, END_STATES } from "@/lib/messaging/db";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +32,12 @@ export default async function AgentConfigPage({
 }) {
   const sp = await searchParams;
   const track = sp.track === "nurture" ? "nurture" : "new_lead";
-  const [{ config, own, from, isOverride, hasStateLayer, state, hasDefault }, workspaces, overrides, states] = await Promise.all([
+  const [{ config, own, from, isOverride, hasStateLayer, state, hasDefault }, workspaces, overrides, states, svc] = await Promise.all([
     loadAgentConfig(sp.ws, track, sp.state),
     activeWorkspaces(),
     workspacesWithOwnConfig(track),
     configuredStates(track),
+    loadWorkspaceServices(sp.ws),
   ]);
   const wsName = workspaces.find((w) => w.id === sp.ws)?.name;
 
@@ -57,6 +60,14 @@ export default async function AgentConfigPage({
   return (
     <main className="max-w-3xl mx-auto px-4 py-4 pb-safe space-y-4">
       <AgentScopePicker workspaces={workspaces} current={sp.ws} currentState={sp.state} states={states} overrides={overrides} track={track} />
+
+      {sp.ws && wsName && svc.services.length > 0 && (
+        <WorkspaceServices
+          workspaceId={sp.ws}
+          workspaceName={wsName}
+          services={resolveServices(svc.services, svc.exceptions)}
+        />
+      )}
 
       <header>
         <h1 className="text-lg font-bold text-ppp-charcoal">

@@ -14,8 +14,9 @@
 import { messagingDb } from "./db";
 import { classifyInbound } from "./compliance";
 import { selectExamples, situationFrom } from "./retrieval";
+import { resolveServices } from "./services";
 import { normalizeInbound } from "./inbound-normalize";
-import { loadRetrievalCorpus } from "./db";
+import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import type { Track } from "./agent-output";
 import type { KnownCustomer } from "./known-customer";
 import { runAgentTurn, agentAvailable, type AgentConfigForRun, type Turn } from "./agent-run";
@@ -131,9 +132,10 @@ export async function runSimTurn(input: {
   // config lookup and the corpus load one after the other before the model was
   // even asked anything.
   const inboundShape = normalizeInbound(input.customerText, input.mediaCount ?? 0);
-  const [resolved, corpus] = await Promise.all([
+  const [resolved, corpus, svc] = await Promise.all([
     configFor(input.workspaceId, track),
     loadRetrievalCorpus(),
+    loadWorkspaceServices(input.workspaceId),
   ]);
   if (!resolved) {
     return { ok: false, error: track === "nurture"
@@ -177,6 +179,7 @@ export async function runSimTurn(input: {
     mediaCount: input.mediaCount,
     track,
     known: input.known,
+    services: resolveServices(svc.services, svc.exceptions),
     stage: input.stage,
     lastIntent: input.lastIntent,
     // The whole point of the corpus. Selected per turn, because which rule is

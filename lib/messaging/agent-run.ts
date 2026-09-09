@@ -19,6 +19,7 @@ import {
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
 import { examplesPrompt, type Selection } from "./retrieval";
+import { servicesPrompt, type ResolvedService } from "./services";
 import { renderMessage, SILENT_INTENTS } from "./render";
 
 const MODEL = "claude-opus-5";
@@ -61,7 +62,7 @@ export type RunResult =
  * tier meaningful: change the office location for New York and this prompt
  * changes for every New York workspace without an edit.
  */
-export function buildSystemPrompt(cfg: AgentConfigForRun, hardNos: string[], track: Track = "new_lead", known?: KnownCustomer, examples?: Selection): string {
+export function buildSystemPrompt(cfg: AgentConfigForRun, hardNos: string[], track: Track = "new_lead", known?: KnownCustomer, examples?: Selection, services?: ResolvedService[]): string {
   const flow = cfg.required_flow.map((f, i) => `${i + 1}. ${f.replace(/_/g, " ")}`).join("\n");
 
   // Nurture is talking to somebody who has already had an estimator in their
@@ -85,8 +86,9 @@ ${flow}`;
 
   return `${opening}
 
-WHAT WE DO:
-${cfg.services_included ?? "Interior and exterior painting."}
+${services?.length ? servicesPrompt(services) : `WHAT WE DO:\n${cfg.services_included ?? "Interior and exterior painting."}`}
+
+${services?.length && cfg.services_included ? `MORE DETAIL ON WHAT THAT COVERS:\n${cfg.services_included}\nWhere this disagrees with the list above, the list above wins.` : ""}
 
 WHAT WE DO NOT DO:
 ${cfg.services_excluded ?? "Anything that is not painting."}
@@ -171,6 +173,8 @@ export async function runAgentTurn(
     /** Graded conversations to imitate and to avoid. Selected by the caller so
      *  this stays testable without a database. */
     examples?: Selection;
+    /** What this workspace covers, already resolved. */
+    services?: ResolvedService[];
     /** How much of the required flow is done. Omit and the ordering check is
      *  skipped, which is right for a caller with no conversation to track. */
     stage?: number;
@@ -214,7 +218,7 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples),
+      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services),
       messages: [{ role: "user", content: prompt }],
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model

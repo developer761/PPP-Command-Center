@@ -86,7 +86,7 @@ export default function OptOutImportForm() {
               {problems.length > 5 && (
                 <li>
                   <button type="button" onClick={() => setShowAll((v) => !v)}
-                    className="w-full min-h-[40px] text-[12px] font-medium text-ppp-orange-700 touch-manipulation min-h-[44px] sm:min-h-0">
+                    className="w-full min-h-[44px] text-[12px] font-medium text-ppp-orange-700 touch-manipulation ">
                     {showAll ? "Show fewer" : `Show all ${problems.length}`}
                   </button>
                 </li>

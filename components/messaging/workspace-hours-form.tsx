@@ -17,6 +17,23 @@ export type Row = {
 
 const hh = (h: number) => `${((h + 11) % 12) + 1}${h < 12 ? "am" : "pm"}`;
 
+/**
+ * Hours people can actually pick.
+ *
+ * Karan: "make it 9-5 like that, how we should enter it, not 9-20, that's
+ * confusing." Storage stays 0-23 because that is what the compliance check
+ * uses; only the way it is asked for changes. The options stop at the federal
+ * bound, so an illegal window cannot be chosen at all rather than being
+ * silently narrowed later.
+ */
+const clock = (h: number) => `${((h + 11) % 12) + 1}:00 ${h < 12 ? "AM" : "PM"}`;
+
+function hourOptions(from: number, to: number) {
+  const out: { value: number; label: string }[] = [];
+  for (let h = from; h <= to; h++) out.push({ value: h, label: clock(h) });
+  return out;
+}
+
 export default function WorkspaceHoursForm({
   row, bound,
 }: {
@@ -24,8 +41,11 @@ export default function WorkspaceHoursForm({
   bound: { startHour: number; endHour: number };
 }) {
   const router = useRouter();
-  const [start, setStart] = useState(row.quiet_hours_start?.toString() ?? "");
-  const [end, setEnd] = useState(row.quiet_hours_end?.toString() ?? "");
+  // Default to the standard window rather than blank: a select with no value
+  // shows the first option while storing nothing, which reads as "9am" and
+  // saves null.
+  const [start, setStart] = useState(String(row.quiet_hours_start ?? 9));
+  const [end, setEnd] = useState(String(row.quiet_hours_end ?? 20));
   const [tz, setTz] = useState(row.time_zone ?? "");
   const [weekends, setWeekends] = useState(!!row.send_on_weekends);
   const [autoreply, setAutoreply] = useState(!!row.after_hours_autoreply);
@@ -56,20 +76,31 @@ export default function WorkspaceHoursForm({
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
           <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">Start sending at</span>
-          <input value={start} onChange={(e) => setStart(e.target.value)} inputMode="numeric" placeholder="9"
-            className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px]" />
+          <select value={start} onChange={(e) => setStart(e.target.value)}
+            className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px] bg-white">
+            {hourOptions(bound.startHour, bound.endHour - 1).map((o) => (
+              <option key={o.value} value={String(o.value)}>{o.label}</option>
+            ))}
+          </select>
         </label>
         <label className="block">
           <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">Stop sending at</span>
-          <input value={end} onChange={(e) => setEnd(e.target.value)} inputMode="numeric" placeholder="20"
-            className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px]" />
+          <select value={end} onChange={(e) => setEnd(e.target.value)}
+            className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px] bg-white">
+            {hourOptions(bound.startHour + 1, bound.endHour).map((o) => (
+              <option key={o.value} value={String(o.value)}>{o.label}</option>
+            ))}
+          </select>
         </label>
       </div>
+      <p className="text-[12px] text-ppp-charcoal-600 leading-relaxed">
+        Currently <strong>{clock(Number(start))} to {clock(Number(end))}</strong>,
+        in this workspace&apos;s own timezone.
+      </p>
       <p className="text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
-        24-hour clock, in the workspace&apos;s own timezone. Federal law bounds this
-        to {hh(bound.startHour)}–{hh(bound.endHour)} whatever is set here, and
-        that bound is applied when the message is sent, not when this is saved —
-        so a wider window here does not widen anything.
+        The list stops at {clock(bound.startHour)} and {clock(bound.endHour)}
+        because federal law does, and that bound is applied when the message is
+        sent rather than when this is saved.
       </p>
 
       <label className="block">

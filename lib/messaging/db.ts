@@ -10,6 +10,7 @@ import { createClient } from "@supabase/supabase-js";
  */
 import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
 import type { CorpusExample } from "./retrieval";
+import type { Service, ServiceException } from "./services";
 
 export function messagingDb() {
   return createClient(
@@ -289,6 +290,35 @@ export async function loadRetrievalCorpus(): Promise<CorpusExample[]> {
     note: r.conduct_note ?? noteOf.get(r.id) ?? null,
     tags: tagsOf.get(r.id) ?? [],
   }));
+}
+
+/**
+ * The service list, and this workspace's exceptions to it.
+ *
+ * Returns the exceptions rather than a resolved answer so the resolution stays
+ * in a pure function with tests, and so a screen can show which toggles differ
+ * from the default rather than only the outcome.
+ */
+export async function loadWorkspaceServices(workspaceId?: string): Promise<{
+  services: Service[];
+  exceptions: ServiceException[];
+}> {
+  const sb = messagingDb();
+  const [{ data: services }, { data: ex }] = await Promise.all([
+    sb.from("sms_services").select("key, label, phrase, covered_by_default, sort_order")
+      .eq("is_active", true).order("sort_order"),
+    workspaceId
+      ? sb.from("sms_workspace_services").select("service_key, covered").eq("workspace_id", workspaceId)
+      : Promise.resolve({ data: [] as { service_key: string; covered: boolean }[] }),
+  ]);
+
+  return {
+    services: (services ?? []).map((r) => ({
+      key: r.key, label: r.label, phrase: r.phrase,
+      coveredByDefault: r.covered_by_default, sortOrder: r.sort_order,
+    })),
+    exceptions: (ex ?? []).map((r) => ({ serviceKey: r.service_key, covered: r.covered })),
+  };
 }
 
 /** States that have rules of their own — the "Emily NY" tier. */

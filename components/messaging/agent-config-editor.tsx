@@ -183,11 +183,11 @@ export default function AgentConfigEditor({
               </p>
               <div className="mt-2 flex gap-2">
                 <button type="button" onClick={() => void clear()} disabled={busy}
-                  className="min-h-[40px] px-3 rounded-lg bg-ppp-charcoal text-white text-[12.5px] font-semibold touch-manipulation min-h-[44px] sm:min-h-0">
+                  className="min-h-[44px] px-3 rounded-lg bg-ppp-charcoal text-white text-[12.5px] font-semibold touch-manipulation ">
                   {busy ? "Removing…" : "Yes, remove them"}
                 </button>
                 <button type="button" onClick={() => setConfirmClear(false)}
-                  className="min-h-[40px] px-3 rounded-lg bg-white border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal touch-manipulation min-h-[44px] sm:min-h-0">
+                  className="min-h-[44px] px-3 rounded-lg bg-white border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal touch-manipulation ">
                   Keep them
                 </button>
               </div>
