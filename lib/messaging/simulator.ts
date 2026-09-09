@@ -116,6 +116,8 @@ export async function runSimTurn(input: {
   track?: Track;
   /** How much of the required flow is already done. */
   stage?: number;
+  /** What the bot said last, so a negative reaction is not answered with it. */
+  lastIntent?: string;
   /** What the system already holds about this customer. Kate asked for this
    *  directly: Hatch let her fill a "Customer Data" section when sandbox
    *  testing, and without it the sandbox cannot reproduce the bug she is
@@ -174,6 +176,7 @@ export async function runSimTurn(input: {
     track,
     known: input.known,
     stage: input.stage,
+    lastIntent: input.lastIntent,
     // The whole point of the corpus. Selected per turn, because which rule is
     // live depends on where the conversation has got to.
     examples: selectExamples(corpus, {

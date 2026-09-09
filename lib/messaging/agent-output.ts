@@ -27,6 +27,11 @@ export const END_INTENTS = [
 export const CONTINUE_INTENTS = [
   "ask_project_details", "ask_address", "ask_contact", "ask_availability",
   "acknowledge", "answer_question", "offer_offsite_quote", "escalate",
+  // Something landed badly. Without this the only outlets for a customer who
+  // reacted negatively were re-asking the same question or escalating, so it
+  // re-asked — and the renderer's variant rotation made a repeat look like a
+  // rephrase while being the same question.
+  "acknowledge_negative",
   // Confirming is a different act from asking, and Kate graded the difference
   // twice. These read a value we already hold back to the customer; they are
   // only offered when that value exists.
@@ -104,7 +109,8 @@ export const ASK_SUPERSEDED_BY: Record<string, "inquiryScope" | "address" | "pho
  */
 export const NURTURE_CONTINUE_INTENTS = [
   "nurture_check_in", "ask_for_decision", "ask_check_back",
-  "offer_estimator_call", "acknowledge", "answer_question", "escalate",
+  "offer_estimator_call", "acknowledge", "acknowledge_negative",
+  "answer_question", "escalate",
 ] as const;
 
 export const NURTURE_END_INTENTS = [
@@ -142,6 +148,7 @@ export type ValidationResult =
   | { ok: false; reason: RejectReason; detail: string };
 
 export type RejectReason =
+  | "repeated_after_negative"
   | "out_of_order"
   | "unknown_intent"
   | "confidence_out_of_range"
@@ -262,6 +269,10 @@ export type ValidateContext = {
   knownFields?: Partial<Record<"name" | "phone" | "email" | "address" | "inquiryScope", boolean>>;
   /** What the customer just said, so rapport can be checked for echoing it. */
   customerText?: string;
+  /** The customer reacted negatively to the previous message. */
+  negativeReaction?: boolean;
+  /** What we said last, so the same thing is not said straight back. */
+  lastIntent?: string;
   /** How much of the required flow is already done: 0 means nothing collected,
    *  4 means all of it. Undefined disables the ordering check, which is what
    *  every caller that does not track a conversation wants. */
@@ -277,6 +288,19 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   const all: readonly string[] = intentsForTrack(ctx.track ?? "new_lead");
   if (typeof a.intent !== "string" || !all.includes(a.intent)) {
     return { ok: false, reason: "unknown_intent", detail: `intent "${String(a.intent)}" is not one of the allowed set` };
+  }
+
+  // Asking the same thing again after somebody reacted badly to it.
+  //
+  // Karan sent a thumbs-down and got the same question reworded. Rewording is
+  // not a different action: if the customer disliked being asked, asking again
+  // is the failure, however it is phrased. The model has acknowledge_negative
+  // and escalate available and has to use one of them.
+  if (ctx.negativeReaction && ctx.lastIntent && a.intent === ctx.lastIntent) {
+    return {
+      ok: false, reason: "repeated_after_negative",
+      detail: `the customer reacted negatively to ${ctx.lastIntent} and this repeats it`,
+    };
   }
 
   // The required order. Out of order is refused, not discouraged.

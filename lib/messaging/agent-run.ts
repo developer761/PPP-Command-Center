@@ -174,6 +174,9 @@ export async function runAgentTurn(
     /** How much of the required flow is done. Omit and the ordering check is
      *  skipped, which is right for a caller with no conversation to track. */
     stage?: number;
+    /** The intent behind our previous message, so a negative reaction cannot
+     *  be answered by saying the same thing again. */
+    lastIntent?: string;
     ctx?: ValidateContext;
   } = {}
 ): Promise<RunResult> {
@@ -238,6 +241,9 @@ Choose the next action.`;
       // steps to keep in order.
       stage: track === "new_lead" ? opts.stage : undefined,
       customerText: inbound.description,
+      negativeReaction: inbound.reaction?.sentiment === "negative",
+      // The last thing WE said. Only meaningful when they reacted to it.
+      lastIntent: opts.lastIntent,
       knownFields: {
         name: !!kf.name, phone: !!kf.phone, email: !!kf.email,
         address: !!kf.address, inquiryScope: !!kf.inquiryScope,

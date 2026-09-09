@@ -78,6 +78,13 @@ const SAYS: Record<Intent, string[]> = {
   // first run, with an empty first variant.
   acknowledge: ["Got it, thank you.", "Perfect, thanks.", "Great, thank you."],
   answer_question: [""],
+  // Reads as a person noticing, then handing them the wheel. Deliberately does
+  // NOT re-ask: the point is to stop doing the thing they disliked.
+  acknowledge_negative: [
+    "Sorry about that. What would work better for you?",
+    "Apologies, I did not mean to make this harder. How would you rather do this?",
+    "Understood, let me not push on that. What would you prefer?",
+  ],
   offer_offsite_quote: [
     "Since you're not able to be at the property, we can put together an off-site quote from photos and measurements instead. Would that work?",
     "No problem, we can do this as an off-site quote using photos rather than a visit. Want to go that route?",

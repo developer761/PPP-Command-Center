@@ -57,7 +57,13 @@ const EMOJI_SENTIMENT: { chars: string[]; sentiment: ReactionSentiment; word: st
   { chars: ["👍", "👌", "🙌", "✅", "☑️", "🆗"], sentiment: "positive", word: "thumbs up" },
   { chars: ["❤️", "♥️", "😍", "🥰", "💯"], sentiment: "positive", word: "a heart" },
   { chars: ["😂", "🤣", "😄", "😊", "🙂"], sentiment: "positive", word: "a smile" },
-  { chars: ["👎", "😡", "🙄", "😤"], sentiment: "negative", word: "thumbs down" },
+  // Split, because these do not mean the same thing and the model is being
+  // told what the customer actually sent. An angry face reported as "thumbs
+  // down" is a false statement about the conversation, and anger and mild
+  // irritation call for different replies.
+  { chars: ["👎"], sentiment: "negative", word: "thumbs down" },
+  { chars: ["😡", "🤬", "😠"], sentiment: "negative", word: "an angry face" },
+  { chars: ["🙄", "😤"], sentiment: "negative", word: "an exasperated face" },
   { chars: ["❓", "❔", "🤔"], sentiment: "questioning", word: "a question mark" },
 ];
 

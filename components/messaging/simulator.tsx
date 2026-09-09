@@ -96,6 +96,7 @@ export default function Simulator({
         // simulator that lets the bot skip a step is testing a bot we will
         // never run.
         stage: stageFromIntents(turns.map((t) => t.intent)),
+        lastIntent: [...turns].reverse().find((t) => t.intent)?.intent ?? undefined,
       });
       if (res.ok) { setTurns((t) => [...t, res.turn]); setDraft(""); setPhotos(0); }
     } finally { setBusy(false); }
