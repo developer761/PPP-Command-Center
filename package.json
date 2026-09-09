@@ -16,7 +16,8 @@
     "verify:messaging": "node --experimental-strip-types --import ./scripts/ts-resolve-register.mjs scripts/verify-messaging-e2e.mjs",
     "verify": "node scripts/verify.mjs && npm run verify:inbound",
     "build:aia-template": "node scripts/build-aia-template.mjs",
-    "verify:inbound": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-inbound-e2e.mjs"
+    "verify:inbound": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-inbound-e2e.mjs",
+    "check:sf-fields": "node scripts/check-sf-fields.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

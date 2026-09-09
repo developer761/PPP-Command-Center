@@ -89,6 +89,8 @@ let lastGenFetchAt = 0;
 // burns ~300-500ms per cold load for no new information. Reset on process
 // restart so a redeploy after a schema migration picks up the new fields.
 let cachedWoliExtraFields: string[] | null = null;
+/** Lower-cased User field names, from one cached describe. See usersPromise. */
+let cachedUserFields: Set<string> | null = null;
 
 /**
  * Cached SObject describe() results — speed pass 2026-06-29.
@@ -193,6 +195,7 @@ export async function clearSalesforceCache() {
   cachedOppDescribe = null;
   cachedWoDescribe = null;
   cachedWoliExtraFields = null;
+  cachedUserFields = null;
   // Also invalidate the SHARED snapshot cache — otherwise a manual refresh or a
   // post-writeback invalidation would just re-read the stale blob and mask the
   // fresh data. And bump the global generation counter so OTHER serverless
@@ -1116,26 +1119,47 @@ export async function loadSalesforceSnapshot(
 
     const usersPromise: Promise<{ records: SfUserRow[] }> = (async () => {
       const baseFields = "Id, Name, FirstName, LastName, Email, IsActive, CreatedDate, UserType, Profile.Name, UserRole.Name, Department";
-      const richFields = `${baseFields}, Gross_Margin_Goal_Percent__c, Self_Gen_Sales_Goal_Percent__c, Quarterly_Draw__c`;
+      // ASK FIRST, don't fail-and-fall-back. None of these three exist on User
+      // in this org (verified against describe 2026-09-09: User has no
+      // margin / goal / draw / quota field under any name), so the "rich"
+      // query failed on EVERY snapshot rebuild and silently degraded to base —
+      // meaning KPI 2 (GM vs target) and KPI 9 (CFY draw) have never had a
+      // source. The warn went to a log nobody reads.
+      //
+      // Probing the schema instead of guessing costs one cached describe,
+      // removes a guaranteed-failing round trip from the cold path, and
+      // self-heals the day PPP actually creates the fields.
+      const OPTIONAL_USER_FIELDS = [
+        "Gross_Margin_Goal_Percent__c",
+        "Self_Gen_Sales_Goal_Percent__c",
+        "Quarterly_Draw__c",
+      ];
+      let present: string[] = [];
       try {
-        return await conn.query<SfUserRow>(`
-          SELECT ${richFields}
-          FROM User
-          WHERE IsActive = true
-          LIMIT 500
-        `);
+        if (!cachedUserFields) {
+          const d = (await conn.sobject("User").describe()) as unknown as SfDescribeMeta;
+          cachedUserFields = new Set(d.fields.map((f) => f.name.toLowerCase()));
+        }
+        present = OPTIONAL_USER_FIELDS.filter((f) => cachedUserFields!.has(f.toLowerCase()));
+        if (present.length !== OPTIONAL_USER_FIELDS.length) {
+          const absent = OPTIONAL_USER_FIELDS.filter((f) => !present.includes(f));
+          console.warn(
+            `[SF] User is missing ${absent.length} scorecard field(s): ${absent.join(", ")}. ` +
+              `The KPIs that read them will be blank — this is a Salesforce schema gap, not a bug.`
+          );
+        }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Common: INVALID_FIELD / INSUFFICIENT_ACCESS on the new fields. Both
-        // are non-fatal — we just don't get GM target / draw for KPI 2/9.
-        console.warn(`[SF] User rich-fields query failed (falling back to base): ${msg}`);
-        return await conn.query<SfUserRow>(`
-          SELECT ${baseFields}
-          FROM User
-          WHERE IsActive = true
-          LIMIT 500
-        `);
+        // Describe unavailable — ask for base only rather than risk the whole
+        // user query on fields we could not confirm.
+        console.warn(`[SF] User describe failed, using base fields: ${err instanceof Error ? err.message : String(err)}`);
       }
+      const fields = present.length ? `${baseFields}, ${present.join(", ")}` : baseFields;
+      return await conn.query<SfUserRow>(`
+        SELECT ${fields}
+        FROM User
+        WHERE IsActive = true
+        LIMIT 500
+      `);
     })();
 
     // At PPP scale (89k+ opps), pulling extra fields per row blows up payload

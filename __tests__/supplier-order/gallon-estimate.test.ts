@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { draftDelayMs } from "@/lib/supplier-order/draft-timing";
 import {
   classifyRoomType,
   isDoorSurface,
@@ -93,6 +94,8 @@ describe("what PPP actually orders", () => {
   it("...but packageForUnit still converts when a person picks Bucket", () => {
     // 10 gallons chosen as pails is 2 pails.
     expect(packageForUnit(10, "bucket")).toEqual({ buckets: 0, cans: 2, unit: "bucket" });
+    // ...and picking Gallon leaves them loose, same as packageGallons.
+    expect(packageForUnit(10, "gal")).toEqual({ buckets: 0, cans: 10, unit: "gal" });
   });
 });
 
@@ -404,12 +407,13 @@ describe("buckets are chosen, not computed", () => {
 });
 
 describe("stepping a quantity does not queue server rebuilds", () => {
-  it("the draft rebuild waits for the stepping to stop", () => {
-    const v = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
-    const m = /const DRAFT_DEBOUNCE_MS = (\d+);/.exec(v);
-    expect(m, "no debounce constant").toBeTruthy();
+  it("coalesces repeated presses", () => {
     // 150ms fired a Salesforce-backed rebuild between presses.
-    expect(Number(m![1])).toBeGreaterThanOrEqual(400);
-    expect(v).toMatch(/\}, DRAFT_DEBOUNCE_MS\);/);
+    expect(draftDelayMs(false)).toBeGreaterThanOrEqual(400);
+  });
+
+  it("but does not charge that wait to the first draft", () => {
+    // Nothing to coalesce yet — this delay was pure dead time on page open.
+    expect(draftDelayMs(true)).toBe(0);
   });
 });

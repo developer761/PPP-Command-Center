@@ -638,14 +638,21 @@ export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUn
   return o.buckets * GALLONS_PER_BUCKET + o.cans;
 }
 
-/** Re-package a raw container count into the shape its unit expects. Quarts
- *  stay loose; gallons roll up into 5-gal buckets. */
+/** Re-package a raw container count into the shape its unit expects.
+ *
+ *  Every unit stays LOOSE — nothing rolls up on its own. Karan 2026-09-09:
+ *  "if I have 5 gallons it shouldn't automatically [bucket] — instead when we
+ *  add 5 gallons it gives us another option for bucket next to Gallon Quart."
+ *  Bucketing is now something a person PICKS, never something the system does
+ *  behind them; `packageGallons` already stopped doing it and this was the
+ *  other half, still turning a plain 6-gal order into "1 bucket + 1 gal" in
+ *  the vendor's email. */
 export function packageForUnit(total: number, unit: PaintUnit): { buckets: number; cans: number; unit: PaintUnit } {
   const t = Math.max(0, Math.floor(total));
   if (unit === "qt") return { buckets: 0, cans: t, unit };
   // A bucket count is already whole pails — `total` is gallons, so divide.
   if (unit === "bucket") return { buckets: 0, cans: Math.floor(t / GALLONS_PER_BUCKET), unit };
-  return { buckets: Math.floor(t / GALLONS_PER_BUCKET), cans: t % GALLONS_PER_BUCKET, unit };
+  return { buckets: 0, cans: t, unit };
 }
 
 /** Apply the worker's typed quantities to the system estimates. An explicit
@@ -669,13 +676,20 @@ export function applyQuantityOverrides(
     // payload should not be able to order 10,000 gallons of paint.
     const buckets = Math.max(0, Math.min(99, Math.floor(Number(o.buckets) || 0)));
     const cans = Math.max(0, Math.min(99, Math.floor(Number(o.cans) || 0)));
-    const unit: PaintUnit = o.unit === "qt" ? "qt" : "gal";
+    // "bucket" used to fall through to "gal" here, which silently reinterpreted
+    // the count: a worker picking 1 BUCKET (5 gal) had "1 gal" sent to the
+    // vendor — a 5x under-order, on the exact control Karan asked for. The
+    // unit is the worker's decision; carry it through untouched.
+    const unit: PaintUnit = o.unit === "qt" ? "qt" : o.unit === "bucket" ? "bucket" : "gal";
     return {
       ...e,
-      buckets: unit === "qt" ? 0 : buckets,
+      buckets: unit === "gal" ? buckets : 0,
       cans,
       unit,
-      gallons: unit === "qt" ? 0 : buckets * 5 + cans,
+      gallons:
+        unit === "qt" ? 0
+        : unit === "bucket" ? cans * GALLONS_PER_BUCKET
+        : buckets * GALLONS_PER_BUCKET + cans,
       // An explicitly-typed quantity is an answer, not a gap.
       manualOnly: false,
       unsized: false,

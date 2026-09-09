@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LineItemNotes from "@/components/line-item-notes";
 import { groupExtras } from "@/lib/supplier-order/extras-groups";
 import MaterialTypePicker from "@/components/material-type-picker";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, PAINT_LINE_VALUES } from "@/lib/customer-form/material-types";
 import { emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
+import { draftDelayMs } from "@/lib/supplier-order/draft-timing";
 
 /**
  * ORDER BUILDING — stage one of the Order Materials split (Kate round-3 #18).
@@ -109,7 +110,8 @@ type Draft = {
  * underneath the click. Waiting longer means one rebuild after the stepping
  * stops rather than a queue of them.
  */
-const DRAFT_DEBOUNCE_MS = 600;
+// Debounce policy lives in lib/supplier-order/draft-timing.ts so it is
+// testable by behaviour rather than by grepping this file.
 
 type ExtraCatalogItem = {
   id: string;
@@ -152,6 +154,8 @@ export default function OrderBuilderView({
   // on a slow one, and it looks like the vendor change didn't take.
   const [draft, setDraft] = useState<{ forSupplierId: string; data: Draft } | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
+  /** Which vendor we have already fetched a first draft for — see the effect. */
+  const firstDraftDone = useRef<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<ExtraCatalogItem[]>([]);
   const [extrasSearch, setExtrasSearch] = useState("");
@@ -304,7 +308,15 @@ export default function OrderBuilderView({
     // a stale draft can't leak into the UI after the vendor is changed.
     if (!supplier) return;
     let cancelled = false;
+    // The debounce exists to coalesce typing, but it was also charged to the
+    // FIRST load — so opening the builder sat on an empty panel for 600ms
+    // before the request even left the browser, on top of the round trip.
+    // Karan 2026-09-09: "to pop up the build your order when getting onto this
+    // page… takes like 5 seconds." Nothing to coalesce on the first draft for
+    // a vendor, so fire it immediately and debounce only the edits after it.
+    const isFirstForSupplier = firstDraftDone.current !== supplier.accountId;
     const t = setTimeout(async () => {
+      firstDraftDone.current = supplier.accountId;
       setLoadingDraft(true);
       setDraftError(null);
       try {
@@ -342,7 +354,7 @@ export default function OrderBuilderView({
       } finally {
         if (!cancelled) setLoadingDraft(false);
       }
-    }, DRAFT_DEBOUNCE_MS);
+    }, draftDelayMs(isFirstForSupplier));
     return () => { cancelled = true; clearTimeout(t); };
   }, [
     workOrderId,
@@ -713,7 +725,20 @@ export default function OrderBuilderView({
                 const key = quantityKey(e.colorId, e.finish);
                 const override = payload.quantities[key];
                 const unit: PaintUnit = override?.unit ?? e.unit ?? "gal";
-                const total = overrideTotal({ buckets: e.buckets, cans: e.cans, unit });
+                // Read the worker's OWN number when they have set one, rather
+                // than waiting for the server to echo it back. Karan
+                // 2026-09-09: "when I add like a gallon there's a small delay."
+                // The click already wrote `override`; the row was still reading
+                // `e`, which only updates a debounce + round trip later — so
+                // the number visibly lagged the button.
+                //
+                // This does not fork the maths: `applyQuantityOverrides` folds
+                // the very same override server-side, so the value shown now is
+                // the value that comes back. The server stays the source of
+                // truth for everything derived (totals, packaging, the email).
+                const total = override
+                  ? overrideTotal(override)
+                  : overrideTotal({ buckets: e.buckets, cans: e.cans, unit });
                 // Two very different zeros. `excluded` is the worker saying
                 // "don't buy this one" — a decision, shown neutrally and
                 // reversible via "reset to estimate". A placeholder zero is the

@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
-import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
+import { loadMaterialsBundle } from "@/lib/salesforce/queries";
 import {
   buildSupplierOrderDraft,
   GENERAL_SUPPLIES_ID,
@@ -127,9 +127,22 @@ export async function POST(request: Request) {
   // Snapshot fetch can throw on cold cache + SF outage. Catch + return JSON
   // so the modal can show "Couldn't reach Salesforce — try again" instead
   // of the generic "Couldn't build draft" that masks the root cause.
-  let snapshot: Awaited<ReturnType<typeof loadSalesforceSnapshot>>;
+  // SPEED (Karan 2026-09-09: "when I add like a gallon there's a small delay").
+  // This route runs on EVERY quantity change, and it used to pull the FULL
+  // snapshot — 89k opportunities, a cache key with no shared row, so a cold
+  // instance rebuilt it live from Salesforce. Measured: 18.6s.
+  //
+  // It reads exactly four collections: workOrders, accounts, woLineItems,
+  // paintColors. The 0.48MB materials bundle has all four and is kept warm by
+  // the same cron. Verified before switching, against the live caches:
+  //   · openable jobs whose account resolves — identical (0 regressions; the
+  //     315 that miss are outside SF's top-5000-by-revenue pull either way)
+  //   · paint colors referenced by those line items — 39 of 39 present
+  //   · suppliers — never came from the snapshot at all; they are Stores and
+  //     resolve from supplier_settings below
+  let snapshot: Awaited<ReturnType<typeof loadMaterialsBundle>>;
   try {
-    snapshot = await loadSalesforceSnapshot();
+    snapshot = await loadMaterialsBundle();
   } catch (err) {
     console.warn("[supplier-order/draft] snapshot load failed:", err);
     return NextResponse.json({

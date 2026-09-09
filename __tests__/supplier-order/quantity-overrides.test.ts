@@ -83,8 +83,27 @@ describe("applyQuantityOverrides", () => {
 });
 
 describe("units (#27)", () => {
-  it("packages gallons into 5-gal buckets", () => {
-    expect(packageForUnit(12, "gal")).toEqual({ buckets: 2, cans: 2, unit: "gal" });
+  it("leaves gallons LOOSE — bucketing is a choice, never automatic", () => {
+    // Karan 2026-09-09: "if I have 5 gallons it shouldn't automatically
+    // [bucket]". This used to return { buckets: 2, cans: 2 }, so a plain
+    // 12-gallon order reached the vendor as "2 buckets (x5 gal) + 2 gal".
+    expect(packageForUnit(12, "gal")).toEqual({ buckets: 0, cans: 12, unit: "gal" });
+    expect(packageForUnit(5, "gal")).toEqual({ buckets: 0, cans: 5, unit: "gal" });
+  });
+
+  it("carries a picked BUCKET through to the vendor as 5 gallons, not 1", () => {
+    // The control Karan asked for ("when we add 5 gallons it gives us another
+    // option for bucket") was writing unit:"bucket", and the server collapsed
+    // anything that was not "qt" into "gal" — so cans:1 meaning ONE PAIL was
+    // re-read as one gallon. Five times short, silently, in the vendor email.
+    const picked = packageForUnit(10, "bucket");
+    expect(picked).toEqual({ buckets: 0, cans: 2, unit: "bucket" });
+
+    const [r] = applyQuantityOverrides([estimate()], new Map([[quantityKey(estimate().colorId, estimate().finish), picked]]));
+    expect(r.unit).toBe("bucket");
+    expect(r.cans).toBe(2);
+    expect(r.gallons).toBe(10);
+    expect(formatBucketsCans(r.buckets, r.cans, r.unit)).toBe("2 buckets (×5 gal)");
   });
 
   it("keeps quarts loose — there is no 5-quart bucket", () => {
