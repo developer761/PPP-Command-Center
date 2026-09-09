@@ -265,14 +265,20 @@ export default function OrderFulfillmentView({
     [draft]
   );
 
-  // Pickup default: supplier-level setting, or an NYC delivery address. The
-  // worker's own choice always wins once they've touched the toggle.
-  useEffect(() => {
-    if (!draft) return;
-    if ((draft.pickupDefault || isNycDelivery) && !adminTouchedFulfillment.current && fulfillment !== "pickup") {
-      setFulfillment("pickup");
-    }
-  }, [draft, isNycDelivery, fulfillment]);
+  // DELIVERY TO THE CUSTOMER IS THE DEFAULT, always (Karan 2026-09-09).
+  //
+  // This used to flip itself to Pickup when the supplier was marked
+  // pickup-default OR the delivery address was in the five boroughs. The NYC
+  // rule is the one that bit: most of PPP's work is in the boroughs, so the
+  // page opened on Pickup for the majority of orders while item 10 on Katie's
+  // list said delivery was the default. I checked `fulfillmentMethod:
+  // "delivery"` in the order BUILDER and called it done — that is the
+  // delivery-vs-pickup method on step 1, not the destination here.
+  //
+  // Nothing switches the toggle now. A supplier that genuinely does not deliver
+  // gets a HINT instead: switching for the worker made the decision invisible,
+  // and the order still went out as pickup when they had not asked for it.
+  const suggestPickup = Boolean(draft && (draft.pickupDefault || isNycDelivery));
 
 
   const bodyToSend = editedBody ?? draft?.body ?? "";
@@ -473,9 +479,24 @@ export default function OrderFulfillmentView({
             selected={fulfillment === "pickup"}
             onSelect={() => { adminTouchedFulfillment.current = true; setFulfillment("pickup"); }}
             title="Pickup at supplier"
-            description="PPP staff will pick up"
+            description={
+              suggestPickup
+                ? "PPP staff will pick up — this one is usually a pickup"
+                : "PPP staff will pick up"
+            }
           />
         </div>
+        {/* A HINT, not a switch. This used to flip the toggle itself when the
+            supplier was pickup-default or the address was in the boroughs, so
+            orders went out as pickup that nobody had chosen. Karan 2026-09-09:
+            delivery to the customer is the default, always. */}
+        {suggestPickup && fulfillment === "delivery" && (
+          <p className="mt-2 text-[11px] text-ppp-charcoal-500">
+            {draft?.pickupDefault
+              ? "This vendor is usually a pickup — switch above if that is the plan."
+              : "City address — these often go as a pickup. Switch above if that is the plan."}
+          </p>
+        )}
 
         {fulfillment === "pickup" && (
           <PickupLocationPicker

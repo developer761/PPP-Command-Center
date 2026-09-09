@@ -56,7 +56,13 @@ export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
   //     already identifies the order and a second reference is noise.
   //   · "Deliver on … by 8AM", replacing "Required by".
   intro:
-    "Please prepare the following order for {{ppp_brand}}.\n\n" +
+    // Karan 2026-09-09: the account number belongs IN the sentence, not on its
+    // own labelled line. He removed the standalone "PPP Account: 12345" row on
+    // 2026-09-08 as a second identifier for the same order — but the number
+    // still has to reach the supplier, because it is how they know the order is
+    // PPP's. Conditional, so a vendor with no account on file reads a clean
+    // sentence rather than an empty bracket.
+    "Please prepare the following order for {{ppp_brand}}{{#ppp_account_number}} (account {{ppp_account_number}}){{/ppp_account_number}}.\n\n" +
     // Karan 2026-09-08: the PPP Account line is OUT. The PO is the work order
     // number and that is the only reference a vendor needs from us — the
     // account number was a second identifier for the same order.

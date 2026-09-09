@@ -132,15 +132,22 @@ describe("vendor email paint block", () => {
     expect(block).toContain("no paint on this order");
   });
 
-  it("does not group under an excluded line's product (R4.32)", () => {
+  it("an excluded colour's product does not reach the email", () => {
+    // R4.32 phrased this as "must not create a group". Grouping was replaced on
+    // 2026-09-09 by a product on every line (Karan), so the test is now about the
+    // LINE: a colour the worker zeroed out is not being bought, and neither its
+    // quantity nor its product should appear.
     const overrides = new Map([[key, { buckets: 0, cans: 0, unit: "gal" as const }]]);
     const lines = applyQuantityOverrides([estimate(), stardust], overrides);
     const block = formatOrderSummaryBlock(lines, null, new Map([
-      [`c1::eggshell`, "Aura Interior"],   // excluded — must not create a group
+      [`c1::eggshell`, "Aura Interior"],   // excluded — must not appear at all
       [`c2::satin`, "Regal Select Interior"],
     ]));
-    expect(block).toContain("REGAL SELECT INTERIOR");
-    expect(block).not.toContain("AURA");
+    // The surviving line names its own product.
+    expect(block).toContain("Regal Select Interior");
+    // The excluded one is gone entirely — product included.
+    expect(block).not.toContain("Aura");
+    // And nothing is left unaccounted for.
     expect(block).not.toContain("[NOT SET]");
   });
 });

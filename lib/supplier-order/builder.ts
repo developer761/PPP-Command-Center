@@ -902,7 +902,20 @@ export function formatOrderSummaryBlock(
     // R4.27: "___ (PPP to confirm quantity)" → "TBD". Kate flagged that "___"
     // is easy to miss, and the parenthetical restated it at length.
     const qty = manualPlaceholder ? "TBD" : formatOrderQuantity(e);
-    pushGrouped(mt || NOT_SET, `  ${qty} — ${label}${finish}`);
+    // Karan 2026-09-09: "next to each line we want the product line for
+    // each line of the email — we don't want it grouped, each individual
+    // line to have Regal Select or Ultra Spec."
+    //
+    // REVERSES R4.32, which grouped rows under a product heading. Kate's
+    // reason for that heading holds and is kept: a row with no product
+    // must not look identical to one that has a product, so an unset line
+    // carries [NOT SET] itself rather than relying on a heading above it.
+    // When NOBODY set a product anywhere, the segment is omitted entirely
+    // rather than stamping [NOT SET] onto all ten lines — that is the same
+    // noise the original rule avoided, and the warning under the list
+    // already says the order has no product line at all.
+    const productSeg = anyLineSet ? `${mt || NOT_SET} — ` : "";
+    pushGrouped("", `  ${qty} — ${productSeg}${label}${finish}`);
   }
   // Kate round-3 #28: worker-typed colour lines (stain, plaster, colour
   // matches) are real order lines, not a note the vendor has to interpret.
@@ -915,22 +928,16 @@ export function formatOrderSummaryBlock(
     const raw = (c.unit || "gal").trim();
     // A vendor reads "2 x 5 gal", not "2 bucket" (Katie item 8).
     const unit = raw === "bucket" ? `x ${GALLONS_PER_BUCKET} gal` : raw;
-    pushGrouped(NOT_SET, `  ${qty} ${unit} — ${label}`);
+    // Hand-typed lines carry no product line by definition.
+    pushGrouped("", `  ${qty} ${unit} — ${anyLineSet ? `${NOT_SET} — ` : ""}${label}`);
   }
 
+  // FLAT list, one line per colour, each naming its own product (Karan
+  // 2026-09-09). The grouping machinery above still collects the rows, it
+  // just has a single bucket now — which keeps the ordering stable and
+  // leaves the custom-colour lines where they were, at the end.
   const lines: string[] = [];
-  if (!anyLineSet) {
-    // Nothing to group by — a flat list, as before.
-    for (const g of groupOrder) lines.push(...groups.get(g)!);
-  } else {
-    // [NOT SET] last: it reads as the exception, not as a peer heading.
-    const ordered = [...groupOrder.filter((g) => g !== NOT_SET), ...(groups.has(NOT_SET) ? [NOT_SET] : [])];
-    ordered.forEach((g, idx) => {
-      if (idx > 0) lines.push("");
-      lines.push(`  ${g === NOT_SET ? NOT_SET : g.toUpperCase()}`);
-      lines.push(...groups.get(g)!);
-    });
-  }
+  for (const g of groupOrder) lines.push(...groups.get(g)!);
   // Job total line — a quick cross-check for purchasing ("grab this many total").
   // Custom colour lines count toward the total — they're real order lines.
   // R4.30: the job TOTAL line was removed. It restated the arithmetic the

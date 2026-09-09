@@ -26,7 +26,14 @@ function est(over: Partial<GallonEstimate> = {}): GallonEstimate {
 }
 
 describe("vendor order block", () => {
-  it("groups by product line, with [NOT SET] last", () => {
+  it("names the product on EVERY line, not once per group", () => {
+    // Karan 2026-09-09: "next to each line we want the product line for each line
+    // of the email — we don't want it grouped."
+    //
+    // REVERSES R4.32, which replaced a per-row prefix with a heading. The
+    // requirement underneath it survives: a row with no product must not look
+    // identical to one that has a product, so an unset line carries [NOT SET]
+    // itself rather than relying on a heading further up the email.
     const estimates = [
       est(),
       est({ colorId: "c2", colorName: "HC-14 Princeton Gold", colorCode: "HC-14", finish: "Eggshell", buckets: 0, cans: 3, gallons: 3 }),
@@ -35,23 +42,21 @@ describe("vendor order block", () => {
     const block = formatOrderSummaryBlock(estimates, null, new Map([
       ["c1::Eggshell", "Regal Select"],
       ["c2::Eggshell", "Aura"],
-      // c3 deliberately unset
     ]));
-    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    const rows = block.split("\n").map((x) => x.trim()).filter(Boolean);
 
-    expect(lines).toContain("REGAL SELECT");
-    expect(lines).toContain("AURA");
-    expect(lines).toContain("[NOT SET]");
-    // [NOT SET] is the exception, so it sorts last however the groups appear.
-    expect(lines.indexOf("[NOT SET]")).toBe(Math.max(
-      lines.indexOf("REGAL SELECT"), lines.indexOf("AURA"), lines.indexOf("[NOT SET]")
-    ));
-    // Each colour sits under its own heading.
-    expect(lines[lines.indexOf("REGAL SELECT") + 1]).toContain("1421 Bistro Blue");
-    expect(lines[lines.indexOf("AURA") + 1]).toContain("HC-14 Princeton Gold");
-    expect(lines[lines.indexOf("[NOT SET]") + 1]).toContain("Super White");
-    // R4.32 replaced the per-row prefix.
-    expect(block).not.toContain("[Regal Select]");
+    expect(rows).not.toContain("REGAL SELECT");
+    expect(rows).not.toContain("AURA");
+
+    const bistro = rows.find((x) => x.includes("1421 Bistro Blue"))!;
+    const gold = rows.find((x) => x.includes("HC-14 Princeton Gold"))!;
+    const white = rows.find((x) => x.includes("Super White"))!;
+    expect(bistro).toContain("Regal Select");
+    expect(gold).toContain("Aura");
+
+    // An unset line says so ON the line — R4.32's real point.
+    expect(white).toContain("[NOT SET]");
+    expect(white).not.toContain("Regal Select");
   });
 
   it("stays a flat list when no product line is set anywhere", () => {
