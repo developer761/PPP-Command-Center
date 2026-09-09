@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { selectExamples, examplesPrompt, relevantTags, type CorpusExample } from "@/lib/messaging/retrieval";
+import { selectExamples, examplesPrompt, relevantTags, situationFrom, type CorpusExample } from "@/lib/messaging/retrieval";
 import { buildSystemPrompt, type AgentConfigForRun } from "@/lib/messaging/agent-run";
 
 const ex = (o: Partial<CorpusExample>): CorpusExample => ({
@@ -37,9 +37,18 @@ describe("choosing which examples the model sees", () => {
     expect(sel.bad).toHaveLength(1);
   });
 
-  it("ignores an example with no bearing on the current turn", () => {
-    const sel = selectExamples([ex({ tags: ["handled_language"] })], { stage: 0 });
-    expect(sel.good).toHaveLength(0);
+  /**
+   * This used to assert the opposite — that an example matching nothing was
+   * excluded — and that assertion was the bug written down. Excluding them
+   * meant thirteen of the twenty-five tags could never reach the model at all.
+   * Irrelevant examples are now RANKED LAST, not dropped.
+   */
+  it("ranks an unrelated example last rather than dropping it", () => {
+    const sel = selectExamples([
+      ex({ id: "unrelated", tags: ["handled_language"] }),
+      ex({ id: "relevant", tags: ["flow_details"] }),
+    ], { stage: 0 });
+    expect(sel.good.map((e) => e.id)).toEqual(["relevant", "unrelated"]);
   });
 
   it("picks the rule that is live at this step of the flow", () => {
@@ -154,5 +163,96 @@ describe("what the model is actually told", () => {
     const p = buildSystemPrompt(cfg, [], "new_lead", {}, { good: [ex({})], bad: [] });
     expect(p).toMatch(/HOW THIS HAS BEEN DONE WELL/);
     expect(p).toContain("what are you looking to have painted?");
+  });
+});
+
+/**
+ * Relevance is scored on tags, so an example whose tags never come up in any
+ * detectable situation was invisible for ever: graded, counted as covered on
+ * the training page, and never once shown to the model. Thirteen of the
+ * twenty-five tags were in that state — including every awkward-situation one,
+ * which is exactly the material Kate is being asked to send.
+ */
+describe("no example is permanently invisible", () => {
+  const ex2 = (o: Partial<CorpusExample>): CorpusExample => ({
+    id: "x", transcript: "Customer: hi\nEmily: hello",
+    conduct: "good", approved: true, piiScrubbed: true, note: null, tags: [], ...o,
+  });
+
+  it("shows a good example even when nothing about it matches the situation", () => {
+    const sel = selectExamples([ex2({ tags: ["handled_language"] })], { stage: 0 });
+    expect(sel.good).toHaveLength(1);
+  });
+
+  it("shows a graded mistake that matches nothing either", () => {
+    const sel = selectExamples(
+      [ex2({ conduct: "bad", approved: false, tags: ["handled_multi_property"] })],
+      { stage: 0 }
+    );
+    expect(sel.bad).toHaveLength(1);
+  });
+
+  it("still prefers a relevant example over an irrelevant one", () => {
+    const sel = selectExamples([
+      ex2({ id: "far", tags: ["handled_language"] }),
+      ex2({ id: "near", tags: ["flow_details", "one_question"] }),
+    ], { stage: 0 }, { maxGood: 1 });
+    expect(sel.good[0].id).toBe("near");
+  });
+
+  it("does not let the fallback smuggle in an unapproved good example", () => {
+    const sel = selectExamples([ex2({ approved: false, tags: ["handled_language"] })], { stage: 0 });
+    expect(sel.good).toHaveLength(0);
+  });
+
+  it("does not let the fallback smuggle in an unscrubbed one", () => {
+    const sel = selectExamples([ex2({ piiScrubbed: false, tags: ["handled_language"] })], { stage: 0 });
+    expect(sel.good).toHaveLength(0);
+    expect(sel.bad).toHaveLength(0);
+  });
+
+  it("still respects the character budget when topping up", () => {
+    const big = Array.from({ length: 5 }, (_, i) =>
+      ex2({ id: `b${i}`, tags: ["handled_language"], transcript: "x".repeat(3000) }));
+    const sel = selectExamples(big, { stage: 0 }, { maxChars: 4000 });
+    const total = sel.good.reduce((n, e) => n + e.transcript.length, 0);
+    expect(total).toBeLessThanOrEqual(4000);
+  });
+});
+
+describe("reading the situation out of the message", () => {
+  it("spots someone asking whether they are talking to a machine", () => {
+    expect(relevantTags({ stage: 0, ...situationFrom("wait, is this a bot?") })).toContain("handled_bot_q");
+  });
+
+  it("spots a request to be phoned", () => {
+    expect(relevantTags({ stage: 0, ...situationFrom("can you call me instead") })).toContain("handled_callback");
+  });
+
+  it("spots someone asking whether we cover them", () => {
+    expect(relevantTags({ stage: 0, ...situationFrom("do you cover Nassau?") })).toContain("area_checked");
+  });
+
+  it("spots someone who only wants a number", () => {
+    const tags = relevantTags({ stage: 0, ...situationFrom("just after a ballpark price") });
+    expect(tags).toContain("offsite_required");
+  });
+
+  it("brings up handling a negative reaction when one happens", () => {
+    expect(relevantTags({ stage: 0, isNegative: true })).toContain("handled_negative");
+  });
+
+  it("does not fire on ordinary messages", () => {
+    const tags = relevantTags({ stage: 0, ...situationFrom("I want my kitchen painted") });
+    for (const t of ["handled_bot_q", "handled_callback", "area_checked", "handled_negative"]) {
+      expect(tags, t).not.toContain(t);
+    }
+  });
+
+  it("treats tone and endings as relevant on every turn", () => {
+    const tags = relevantTags({ stage: 2 });
+    for (const t of ["natural_voice", "brief_ack", "no_invented_time", "ended_correctly"]) {
+      expect(tags, t).toContain(t);
+    }
   });
 });

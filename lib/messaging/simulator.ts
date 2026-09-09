@@ -13,7 +13,8 @@
  */
 import { messagingDb } from "./db";
 import { classifyInbound } from "./compliance";
-import { selectExamples } from "./retrieval";
+import { selectExamples, situationFrom } from "./retrieval";
+import { normalizeInbound } from "./inbound-normalize";
 import { loadRetrievalCorpus } from "./db";
 import type { Track } from "./agent-output";
 import type { KnownCustomer } from "./known-customer";
@@ -129,6 +130,7 @@ export async function runSimTurn(input: {
   // Both round trips at once. They were sequential, so every turn paid for the
   // config lookup and the corpus load one after the other before the model was
   // even asked anything.
+  const inboundShape = normalizeInbound(input.customerText, input.mediaCount ?? 0);
   const [resolved, corpus] = await Promise.all([
     configFor(input.workspaceId, track),
     loadRetrievalCorpus(),
@@ -181,8 +183,14 @@ export async function runSimTurn(input: {
     // live depends on where the conversation has got to.
     examples: selectExamples(corpus, {
       stage: input.stage,
-      mediaCount: input.mediaCount,
       track,
+      // Which examples are worth showing depends on what the customer actually
+      // sent, not only on how far the flow has got.
+      ...situationFrom(input.customerText, {
+        mediaCount: input.mediaCount,
+        isReaction: inboundShape.kind === "reaction" || inboundShape.kind === "emoji_only",
+        isNegative: inboundShape.reaction?.sentiment === "negative",
+      }),
     }),
   });
 
