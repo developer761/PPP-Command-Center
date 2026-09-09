@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/resend";
+import { isTransportFailure } from "@/lib/salesforce/writeback";
 
 /**
  * "Salesforce rejected this — here's exactly what you entered."
@@ -117,6 +118,106 @@ function renderEntered(rooms: EnteredRoom[], globalNotes?: string | null): strin
   return blocks.join("") || `<div style="font-size:13px;color:#5b6b7c">(nothing recorded)</div>`;
 }
 
+/**
+ * Build the alert's subject/html/text. Pure and exported so a test can assert
+ * on the DELIVERED WORDS rather than on this file's source — the bug this
+ * fixes was entirely in the wording, and a source grep would not have caught
+ * the plain-text half saying the opposite of the HTML half.
+ */
+export function renderSfFailureAlert(
+  input: SfFailureAlertInput
+): { subject: string; html: string; text: string } {
+  const woLabel = input.workOrderNumber ? `WO #${input.workOrderNumber}` : input.workOrderId.slice(-6);
+  const customer = input.customerName?.trim() || "this customer";
+  const noun = input.kind === "order" ? "materials order" : "colors";
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://hub.precisionpaintingplus.net";
+  const woUrl = `${baseUrl}/dashboard/materials/${encodeURIComponent(input.workOrderId)}`;
+
+  // Katie, 2026-09-09, WO #00317112: this email told her Salesforce "does not
+  // have it" and to re-enter. In fact the colors HAD saved — only the
+  // ColorsReceived__c flag on the WorkOrder failed. A partial failure is the
+  // COMMON shape here (one WOLI write + one WO write), so a blanket "does not
+  // have it" sends ops to redo work that already landed.
+  const isPartial = input.failedCount > 0 && input.failedCount < input.attemptedCount;
+  const okCount = input.attemptedCount - input.failedCount;
+
+  // The same alert said "the integration user is missing Edit permission /
+  // a validation rule is blocking" — none of which applied: Supabase had
+  // timed out and Salesforce was never contacted.
+  const isTransport = isTransportFailure(
+    `${input.errorCode ?? ""} ${input.errorMessage ?? ""}`
+  );
+  const causes = isTransport
+    ? "This was a connection timeout, not a Salesforce rejection — nothing is misconfigured and Salesforce was never reached. Re-submitting should just work."
+    : "Common causes: the integration user is missing Edit permission, Field Service Lightning has the record locked, or a validation rule is blocking the update.";
+
+  const statusLine = isPartial
+    ? `The other ${okCount === 1 ? "write" : `${okCount} writes`} went through, so part of this IS in Salesforce already.`
+    : "It is saved in the Command Center, but Salesforce does not have it.";
+
+  const advice = isPartial
+    ? "Everything that was entered is below. <strong>Check Salesforce before re-entering</strong> &mdash; some of this already saved, and re-entering all of it would duplicate work that is already done."
+    : "Everything that was entered is below so nothing is lost &mdash; you can re-enter it without starting from scratch.";
+
+  const html = `
+<div style="font-family:Roboto,Helvetica,Arial,sans-serif;max-width:640px;color:#172B4D">
+  <div style="background:#FDECE6;border:1px solid #F5C2AE;border-radius:10px;padding:14px 16px;margin-bottom:18px">
+    <div style="font-weight:700;color:#B8420F">Salesforce didn&rsquo;t accept this ${esc(noun)} entry</div>
+    <div style="font-size:13px;color:#B8420F;margin-top:4px">
+      ${input.failedCount} of ${input.attemptedCount} write${input.attemptedCount === 1 ? "" : "s"} ${input.failedCount === 1 ? "was" : "were"} rejected for ${esc(customer)} (${esc(woLabel)}).
+      ${statusLine}
+    </div>
+  </div>
+
+  <p style="font-size:14px;line-height:1.5">${advice}</p>
+
+  <div style="border:1px solid #E3E8EE;border-radius:10px;padding:14px 16px;margin:16px 0">
+    ${renderEntered(input.entered, input.globalNotes)}
+  </div>
+
+  <div style="font-size:12px;color:#5b6b7c;border-top:1px solid #E3E8EE;padding-top:12px">
+    <div><strong>What Salesforce said:</strong> ${esc(input.errorCode ?? "UNKNOWN")} — ${esc(input.errorMessage ?? "(no message)")}</div>
+    <div style="margin-top:6px">${esc(causes)}</div>
+  </div>
+
+  <p style="margin-top:18px">
+    <a href="${woUrl}" style="background:#2BAAE1;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;font-size:14px;display:inline-block">
+      Open the work order
+    </a>
+  </p>
+</div>`.trim();
+
+  const text = [
+    `Salesforce didn't accept this ${noun} entry.`,
+    `${input.failedCount} of ${input.attemptedCount} write${input.attemptedCount === 1 ? "" : "s"} rejected — ${customer} (${woLabel}).`,
+    isPartial
+      ? `The other ${okCount === 1 ? "write" : `${okCount} writes`} SUCCEEDED — part of this is already in Salesforce. Check before re-entering.`
+      : `Saved in the Command Center, but NOT in Salesforce.`,
+    ``,
+    `What Salesforce said: ${input.errorCode ?? "UNKNOWN"} — ${input.errorMessage ?? "(no message)"}`,
+    causes,
+    ``,
+    `What was entered:`,
+    ...input.entered.flatMap((r) => [
+      `  ${r.room}`,
+      ...r.surfaces
+        .filter((s) => s.color || s.finish)
+        .map((s) => `    ${s.surface}: ${s.color ?? "—"}${s.finish ? ` · ${s.finish}` : ""}`),
+      ...(r.notes ? [`    Notes: ${r.notes}`] : []),
+    ]),
+    ...(input.globalNotes?.trim() ? [``, `Project notes: ${input.globalNotes.trim()}`] : []),
+    ``,
+    woUrl,
+  ].join("\n");
+
+  return {
+    subject: `⚠ Salesforce rejected ${noun} for ${customer} — ${woLabel}`,
+    html,
+    text,
+  };
+}
+
 export async function alertSalesforceWriteFailure(input: SfFailureAlertInput): Promise<void> {
   try {
     const saverEmail = input.saverUserId ? await resolveUserEmail(input.saverUserId) : null;
@@ -129,73 +230,8 @@ export async function alertSalesforceWriteFailure(input: SfFailureAlertInput): P
       return;
     }
 
-    const woLabel = input.workOrderNumber ? `WO #${input.workOrderNumber}` : input.workOrderId.slice(-6);
-    const customer = input.customerName?.trim() || "this customer";
-    const noun = input.kind === "order" ? "materials order" : "colors";
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://hub.precisionpaintingplus.net";
-    const woUrl = `${baseUrl}/dashboard/materials/${encodeURIComponent(input.workOrderId)}`;
-
-    const html = `
-<div style="font-family:Roboto,Helvetica,Arial,sans-serif;max-width:640px;color:#172B4D">
-  <div style="background:#FDECE6;border:1px solid #F5C2AE;border-radius:10px;padding:14px 16px;margin-bottom:18px">
-    <div style="font-weight:700;color:#B8420F">Salesforce didn&rsquo;t accept this ${esc(noun)} entry</div>
-    <div style="font-size:13px;color:#B8420F;margin-top:4px">
-      ${input.failedCount} of ${input.attemptedCount} write${input.attemptedCount === 1 ? "" : "s"} were rejected for ${esc(customer)} (${esc(woLabel)}).
-      It is saved in the Command Center, but Salesforce does not have it.
-    </div>
-  </div>
-
-  <p style="font-size:14px;line-height:1.5">
-    Everything that was entered is below so nothing is lost — you can re-enter it
-    without starting from scratch.
-  </p>
-
-  <div style="border:1px solid #E3E8EE;border-radius:10px;padding:14px 16px;margin:16px 0">
-    ${renderEntered(input.entered, input.globalNotes)}
-  </div>
-
-  <div style="font-size:12px;color:#5b6b7c;border-top:1px solid #E3E8EE;padding-top:12px">
-    <div><strong>What Salesforce said:</strong> ${esc(input.errorCode ?? "UNKNOWN")} — ${esc(input.errorMessage ?? "(no message)")}</div>
-    <div style="margin-top:6px">
-      Common causes: the integration user is missing Edit permission, Field Service Lightning
-      has the record locked, or a validation rule is blocking the update.
-    </div>
-  </div>
-
-  <p style="margin-top:18px">
-    <a href="${woUrl}" style="background:#2BAAE1;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600;font-size:14px;display:inline-block">
-      Open the work order
-    </a>
-  </p>
-</div>`.trim();
-
-    const text = [
-      `Salesforce didn't accept this ${noun} entry.`,
-      `${input.failedCount} of ${input.attemptedCount} writes rejected — ${customer} (${woLabel}).`,
-      `Saved in the Command Center, but NOT in Salesforce.`,
-      ``,
-      `What Salesforce said: ${input.errorCode ?? "UNKNOWN"} — ${input.errorMessage ?? "(no message)"}`,
-      ``,
-      `What was entered:`,
-      ...input.entered.flatMap((r) => [
-        `  ${r.room}`,
-        ...r.surfaces
-          .filter((s) => s.color || s.finish)
-          .map((s) => `    ${s.surface}: ${s.color ?? "—"}${s.finish ? ` · ${s.finish}` : ""}`),
-        ...(r.notes ? [`    Notes: ${r.notes}`] : []),
-      ]),
-      ...(input.globalNotes?.trim() ? [``, `Project notes: ${input.globalNotes.trim()}`] : []),
-      ``,
-      woUrl,
-    ].join("\n");
-
-    await sendEmail({
-      to,
-      subject: `⚠ Salesforce rejected ${noun} for ${customer} — ${woLabel}`,
-      html,
-      text,
-    });
+    const { subject, html, text } = renderSfFailureAlert(input);
+    await sendEmail({ to, subject, html, text });
   } catch (err) {
     // Never let the alert break the request that triggered it.
     console.error("[sf-failure-alert] could not send:", err);

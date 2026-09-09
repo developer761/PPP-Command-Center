@@ -46,6 +46,19 @@ function adminClient() {
 }
 
 /**
+ * Did the write fail because we could not TALK to something, rather than
+ * because Salesforce rejected us?
+ *
+ * Exported so it is tested by behaviour on real error strings rather than by
+ * grepping this file — a source-text assertion here would survive a rewrite
+ * that broke the classification.
+ */
+export function isTransportFailure(message: string): boolean {
+  return /timeout|timed out|gateway|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|network|\b50[234]\b/i
+    .test(message);
+}
+
+/**
  * Write a single SF record with retry + audit + cache invalidation.
  *
  * Retry policy: 3 attempts, exponential backoff (250ms, 750ms, 2250ms). Only
@@ -87,6 +100,13 @@ export async function writeSf(
     const errorCode =
       (err as { errorCode?: string })?.errorCode ??
       "SF_CLIENT_INIT_FAILED";
+    // Katie, 2026-09-09, WO #00317112: this alert told her to reconnect
+    // Salesforce. Salesforce was fine — Supabase had timed out reading the
+    // stored credentials. Reconnecting would have been wasted work on a
+    // healthy integration, so name the layer that actually failed.
+    const guidance = isTransportFailure(message)
+      ? "This is a transport failure reading the stored credentials, NOT a Salesforce problem — Salesforce was never contacted. Nothing is misconfigured; re-submit and it should go through. Do NOT reconnect Salesforce."
+      : "Likely cause: expired OAuth refresh token or disconnected integration. Reconnect Salesforce on /dashboard/integrations.";
     await logAudit({
       sObject: attempt.sObject,
       recordId: attempt.recordId,
@@ -97,7 +117,7 @@ export async function writeSf(
       triggeredByToken: ctx.triggeredByToken ?? null,
       succeeded: false,
       errorCode,
-      errorMessage: `Salesforce connection failed before write could be attempted: ${message}. Likely cause: expired OAuth refresh token or disconnected integration. Reconnect Salesforce on /dashboard/integrations.`,
+      errorMessage: `Salesforce connection failed before write could be attempted: ${message}. ${guidance}`,
       retryCount: 0,
       durationMs: Date.now() - t0,
     });

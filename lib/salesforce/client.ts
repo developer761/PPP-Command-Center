@@ -144,29 +144,96 @@ export async function storeSalesforceCredentials({
       .upsert({ ...row, updated_by: storedBy }, { onConflict: "key" });
     if (error) throw new Error(`Failed to store ${row.key}: ${error.message}`);
   }
+  // A fresh dance invalidates both caches — otherwise the old refresh token
+  // would keep being used for up to the TTL.
+  clearSalesforceCredentialsCache();
+  _lastGoodCreds = null;
+  clearSalesforceAccessTokenCache();
 }
 
+export type StoredSalesforceCredentials = {
+  refreshToken: string;
+  instanceUrl: string;
+  connectedAt: string;
+};
+
+/**
+ * Credentials cache + last-known-good fallback.
+ *
+ * INCIDENT 2026-09-09 (Katie, WO #00317112): a colors writeback died with
+ * `SF_CLIENT_INIT_FAILED — Failed to read SF credentials: Gateway Timeout`.
+ * Salesforce was fine. SUPABASE blipped. Every one of the 23 getSalesforceClient()
+ * call sites re-read `system_credentials` on EVERY call — even when the access
+ * token was already cached and no credential was needed — so a single transient
+ * 504 on a table read failed a customer's colors write. One of the two writes in
+ * that request had already landed, which is the worst shape: a half-written job.
+ *
+ * These values change only when an admin re-runs the OAuth dance, so re-reading
+ * them per request bought nothing and cost a hard dependency on Supabase being
+ * up at that instant. Now: cached for the TTL, retried on transient failure,
+ * and — if Supabase is still unreachable — the last known good value is used
+ * rather than throwing away the user's work.
+ */
+const CREDS_TTL_MS = 10 * 60 * 1000;
+const CREDS_READ_ATTEMPTS = 3;
+let _cachedCreds: { creds: StoredSalesforceCredentials | null; expiresAt: number } | null = null;
+/** Survives TTL expiry — the parachute for a Supabase outage. Never expires. */
+let _lastGoodCreds: StoredSalesforceCredentials | null = null;
+
+/** Drop the cache so the next read re-fetches. Called after a fresh OAuth dance. */
+export function clearSalesforceCredentialsCache(): void {
+  _cachedCreds = null;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** Read the stored Salesforce credentials. Returns null if the OAuth dance hasn't been run yet. */
-export async function getStoredSalesforceCredentials(): Promise<
-  { refreshToken: string; instanceUrl: string; connectedAt: string } | null
-> {
+export async function getStoredSalesforceCredentials(): Promise<StoredSalesforceCredentials | null> {
+  const now = Date.now();
+  if (_cachedCreds && _cachedCreds.expiresAt > now) return _cachedCreds.creds;
+
   const sb = getSupabaseServiceClient();
-  const { data, error } = await sb
-    .from("system_credentials")
-    .select("key, value")
-    .in("key", ["sf_refresh_token", "sf_instance_url", "sf_connected_at"]);
+  let lastErr = "";
 
-  if (error) throw new Error(`Failed to read SF credentials: ${error.message}`);
-  if (!data) return null;
+  for (let attempt = 1; attempt <= CREDS_READ_ATTEMPTS; attempt++) {
+    const { data, error } = await sb
+      .from("system_credentials")
+      .select("key, value")
+      .in("key", ["sf_refresh_token", "sf_instance_url", "sf_connected_at"]);
 
-  const map = Object.fromEntries(data.map((r) => [r.key, r.value]));
-  if (!map.sf_refresh_token || !map.sf_instance_url) return null;
+    if (!error) {
+      if (!data) return null;
+      const map = Object.fromEntries(data.map((r) => [r.key, r.value]));
+      if (!map.sf_refresh_token || !map.sf_instance_url) {
+        // Genuinely not connected — cache the null so we don't hammer the table.
+        _cachedCreds = { creds: null, expiresAt: Date.now() + CREDS_TTL_MS };
+        return null;
+      }
+      const creds: StoredSalesforceCredentials = {
+        refreshToken: map.sf_refresh_token,
+        instanceUrl: map.sf_instance_url,
+        connectedAt: map.sf_connected_at ?? "",
+      };
+      _cachedCreds = { creds, expiresAt: Date.now() + CREDS_TTL_MS };
+      _lastGoodCreds = creds;
+      return creds;
+    }
 
-  return {
-    refreshToken: map.sf_refresh_token,
-    instanceUrl: map.sf_instance_url,
-    connectedAt: map.sf_connected_at ?? "",
-  };
+    lastErr = error.message;
+    if (attempt < CREDS_READ_ATTEMPTS) await sleep(150 * attempt);
+  }
+
+  // Every attempt failed. If we have ever read these successfully on this
+  // instance, use them: they do not change between OAuth dances, and losing a
+  // customer's write to a transient table read is strictly worse than using a
+  // value that is almost certainly still correct.
+  if (_lastGoodCreds) {
+    console.warn(
+      `[SF] credential read failed ${CREDS_READ_ATTEMPTS}x (${lastErr}) — using last known good credentials`
+    );
+    return _lastGoodCreds;
+  }
+  throw new Error(`Failed to read SF credentials: ${lastErr}`);
 }
 
 /**

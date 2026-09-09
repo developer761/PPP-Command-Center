@@ -1228,10 +1228,10 @@ export async function loadSalesforceSnapshot(
       try {
         // Phase 2 added: PersonEmail / Phone / BillingStreet / BillingCity /
         // BillingState / BillingPostalCode. PersonEmail is the SF-standard
-        // field for Person Account customers (PPP's model). If PPP's org
-        // actually uses business Accounts in some cases, the field is null
-        // for those rows — we'll fall back at consumer level via a Contact
-        // lookup later. Phone is included as a secondary delivery-contact.
+        // field for Person Account customers; PPP's org is business Accounts,
+        // so it is null in practice and Phone carries the delivery contact.
+        // Every name here MUST exist on Account — one invalid field fails the
+        // entire SELECT and the fallback strips the addresses too.
         const ACCT_FIELDS = `
           Id, Name, Type, Service_Territory__c, Region__c, Geo_Zone__c, County__c,
           LeadGroup__c, Account_Manager__c, Primary_Contact__c,
@@ -1239,7 +1239,7 @@ export async function loadSalesforceSnapshot(
           Total_Won_Oppties__c, Total_Lost_Oppties__c, Number_Open_Oppties__c,
           VendorBMRetailer__c, VendorBMAutoSubmit__c, Key_Relationship__c,
           Last_Appointment__c, LastWorkOrderCompleted__c,
-          PersonEmail, Email__c, Phone,
+          PersonEmail, Phone,
           BillingStreet, BillingCity, BillingState, BillingPostalCode
         `.replace(/\s+/g, " ").trim();
         const records: Array<Record<string, unknown>> = [];
@@ -1351,12 +1351,13 @@ export async function loadSalesforceSnapshot(
           // Phase 2 — customer contact + address fields. When the rich query
           // fell back to the base SELECT, these keys won't be present on the
           // record → safe `?? null` resolves to null. PersonEmail is the
-          // Person-Account-model field; Email__c is the Business-Account
-          // free-text fallback. Prefer the populated one; some PPP customers
-          // are on each model.
-          email: ((a.PersonEmail as string | null)?.trim() || null)
-            ?? ((a.Email__c as string | null)?.trim() || null)
-            ?? null,
+          // Person-Account-model field. There is NO Email__c on Account in
+          // this org — it was selected here for years and, being invalid,
+          // failed the WHOLE rich SELECT, so the catch below silently
+          // degraded every account to the base field list. That is why no
+          // account carried a billing address: 89,057 of 92,076 have one in
+          // Salesforce and the snapshot reported zero. See the warn below.
+          email: (a.PersonEmail as string | null)?.trim() || null,
           phone: (a.Phone as string | null) ?? null,
           billingStreet: (a.BillingStreet as string | null) ?? null,
           billingCity: (a.BillingCity as string | null) ?? null,
