@@ -2396,11 +2396,17 @@ function LineItemRow({
         </div>
       )}
 
-      {item.raw.colorNotes && (
-        <div className="mt-2.5 text-[11px] text-ppp-charcoal-500 italic">
-          Notes: {item.raw.colorNotes}
-        </div>
-      )}
+      {/* Kate 2026-09-09: "in the Rooms & colors section, the text is one big
+          paragraph" — it shows correctly in Salesforce and in the color form.
+          This rendered the raw string into a <div>, and HTML collapses newlines
+          into spaces, so a ten-room list arrived as one unreadable block. The
+          value itself was never damaged: the line item behind her example holds
+          50 newlines. LineItemNotes is the component that already solved this
+          (whitespace-pre-line + collapse/expand) and sits four lines up for the
+          rep's scope notes; the colors note simply never got it. `label` is why
+          that prop exists — two kinds of note on one line have to be tellable
+          apart. */}
+      <LineItemNotes notes={item.raw.colorNotes} label="Colors" />
     </li>
   );
 }

@@ -92,6 +92,12 @@ export function normalizeFinishToSf(finish: string | null | undefined): string |
       return "Gloss";
     case "semi-gloss":
       return "Semigloss";
+    // Exterior sheens — verified against the live FinishWall__c picklist
+    // (restricted = true), where both are ACTIVE values spelled exactly so.
+    case "low lustre":
+      return "Low Lustre";
+    case "soft gloss":
+      return "Soft Gloss";
     // High-Gloss + legacy combined labels have no SF picklist value.
     default:
       return null;
@@ -125,6 +131,12 @@ export function denormalizeFinishFromSf(sfFinish: string | null | undefined): st
     case "high-gloss":
     case "highgloss":
       return "High-Gloss";
+    case "low lustre":
+    case "lowlustre":
+      return "Low Lustre";
+    case "soft gloss":
+    case "softgloss":
+      return "Soft Gloss";
     default:
       return null;
   }

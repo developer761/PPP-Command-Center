@@ -104,6 +104,10 @@ const VALID_FINISHES = new Set([
   "Semi-Gloss",
   "Gloss",
   "High-Gloss",
+  // Exterior sheens (Kate 2026-09-09). Already active on Salesforce's
+  // restricted Finish*__c picklists; the app just never offered them.
+  "Low Lustre",
+  "Soft Gloss",
   "Gloss / High-Gloss",
 ]);
 

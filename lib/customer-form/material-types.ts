@@ -439,6 +439,38 @@ export function materialTypeForVendor(value: string | null | undefined): string 
  */
 const INTERIOR_ONLY_SHEENS: ReadonlySet<string> = new Set(["Flat", "Matte", "Eggshell"]);
 
+/**
+ * Sheens that only exist on exterior product lines.
+ *
+ * Kate 2026-09-09: "the team need Low Lustre and Soft Gloss as available
+ * finishes for exterior line items." Both were already ACTIVE values on
+ * Salesforce's FinishWall__c / FinishCeiling__c / FinishTrim__c / FinishFloor__c
+ * restricted picklists — the app simply never offered them, so an estimator
+ * ordering Ultra Spec Exterior Soft Gloss had no way to say so. They are kept
+ * OFF the interior list because that is where they would be wrong: BM sells
+ * them on the exterior range only.
+ */
+const EXTERIOR_ONLY_SHEENS: readonly string[] = ["Low Lustre", "Soft Gloss"];
+
+/**
+ * True when this product line is sold as an exterior product.
+ *
+ * Checks the RAW value before `paintLineFromValue`, which deliberately
+ * collapses to the short line vocabulary — "Ultra Spec Exterior Soft Gloss"
+ * becomes "Ultra Spec", whose category is "any", and the exterior-ness is
+ * exactly the information that collapse throws away.
+ */
+export function isExteriorProduct(materialType: string | null | undefined): boolean {
+  const raw = (materialType ?? "").trim();
+  if (!raw) return false;
+  const lookup = (v: string) =>
+    MATERIAL_TYPES.find((m) => m.value === v) ?? PAINT_LINES.find((m) => m.value === v);
+  if (lookup(raw)?.category === "exterior") return true;
+  // A scoped value the picker built ("Ultra Spec Exterior") names its own side.
+  if (/\bexterior\b/i.test(raw)) return true;
+  return lookup(paintLineFromValue(raw))?.category === "exterior";
+}
+
 /** True when this product line is a stain rather than a paint. */
 export function isStainProduct(materialType: string | null | undefined): boolean {
   return /\bstain(s|ed|ing)?\b/i.test(materialType ?? "");
@@ -448,6 +480,11 @@ export function finishOptionsFor(
   allOptions: readonly string[],
   materialType: string | null | undefined
 ): string[] {
-  if (!isStainProduct(materialType)) return [...allOptions];
-  return allOptions.filter((f) => !INTERIOR_ONLY_SHEENS.has(f));
+  // Exterior lines gain the two exterior sheens (Kate 2026-09-09). Appended
+  // rather than folded into the base list so interior jobs are unaffected.
+  const base = isExteriorProduct(materialType)
+    ? [...allOptions, ...EXTERIOR_ONLY_SHEENS.filter((f) => !allOptions.includes(f))]
+    : [...allOptions];
+  if (!isStainProduct(materialType)) return base;
+  return base.filter((f) => !INTERIOR_ONLY_SHEENS.has(f));
 }
