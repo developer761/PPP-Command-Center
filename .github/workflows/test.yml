@@ -1,4 +1,4 @@
-name: Vitest
+name: Types + Vitest
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -21,6 +21,20 @@ jobs:
           cache: "npm"
 
       - run: npm ci --no-audit --no-fund
+
+      # Type-check BEFORE the tests, and never skip it on failure.
+      #
+      # 2026-09-09: a broken commit went green here and was caught only by the
+      # Vercel build, which failed and refused to deploy. The break was a
+      # variable shadowing the function it calls — `const laborRange =
+      # laborRange(...)` — a compile error and a throw on the Reports page.
+      #
+      # vitest is deliberately pure-logic: no DOM, no database, no build. It
+      # structurally cannot see a type error, so a red build looked green in
+      # GitHub and the only signal was a failed deployment nobody was watching.
+      # Vercel already type-checks; this just moves the alarm to where people
+      # look, before the deploy rather than after.
+      - run: npx tsc --noEmit
 
       - run: npm run test
         env:
