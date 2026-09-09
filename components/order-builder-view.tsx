@@ -9,6 +9,7 @@ import MaterialTypePicker from "@/components/material-type-picker";
 import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pick-list";
 import {
   formatOrderQuantity,
+  classifySurface,
   formatOrderTotal,
   summarizeOrder,
   addCustomItemsToTotal,
@@ -53,6 +54,10 @@ export type SourceLine = {
    *  what Salesforce holds, but the WALL area is what the gallons are
    *  computed from, and one figure alone leaves nothing to check. */
   wallSqft: number;
+  /** Perimeter in linear feet — the measure that matters for TRIM, the way
+   *  wall area matters for walls and floor area for a ceiling. 0 when the
+   *  rep never captured it, and the estimator then derives 4x root(floor). */
+  perimeterLf: number;
   /** SF `Description` — the rep's scope notes on the quote line. PPP's field
    *  team adds ONE line item and lists the real rooms here, so without it this
    *  panel can read "1 line item" for a six-room job (Kate 2026-09-04). */
@@ -701,6 +706,50 @@ export default function OrderBuilderView({
                           ) : (
                             "Room not named in Salesforce"
                           )}
+                        {/* Karan 2026-09-09: "for each colour we should have it here so we
+                            don't keep having to scroll up", and then: ceiling square footage,
+                            wall surface area, trim linear feet.
+                        
+                            Each surface gets the measure that actually governs it. Showing floor
+                            area against a trim line is noise — trim is priced off the perimeter,
+                            and a reader checking the quantity needs the number the maths used.
+                            Repeated per room, because a colour can span several and one combined
+                            figure hides which room is which. */}
+                        {(() => {
+                          const rows = (e.placements?.length
+                            ? e.placements.flatMap((pl) => pl.rooms.map((room) => ({ room, surface: pl.surface })))
+                            : e.rooms.map((room) => ({ room, surface: "" }))) ?? [];
+                          const measures = rows.map(({ room, surface }) => {
+                            const src = sourceLines.find((l) => l.room === room);
+                            if (!src) return null;
+                            const kind = classifySurface(surface);
+                            let measure = "";
+                            if (kind === "ceiling" || kind === "floor") {
+                              if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft`;
+                            } else if (kind === "walls") {
+                              if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
+                              else if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft floor`;
+                            } else if (kind === "trim") {
+                              // Perimeter is sparse in Salesforce. When it is missing the estimator
+                              // derives 4x root(floor), so show that and SAY it is derived rather
+                              // than showing nothing or implying it was measured.
+                              if (src.perimeterLf > 0) measure = `${Math.round(src.perimeterLf).toLocaleString()} lin ft`;
+                              else if (src.sqft > 0) measure = `~${Math.round(4 * Math.sqrt(src.sqft))} lin ft (derived)`;
+                            }
+                            return measure ? { room, surface, measure } : null;
+                          }).filter(Boolean) as Array<{ room: string; surface: string; measure: string }>;
+                          if (measures.length === 0) return null;
+                          return (
+                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-ppp-charcoal-500">
+                              {measures.map((m, i) => (
+                                <span key={`${m.room}-${m.surface}-${i}`}>
+                                  <span className="text-ppp-charcoal-600">{m.room}</span>
+                                  {m.surface ? ` ${m.surface.toLowerCase()}` : ""} {m.measure}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                         </div>
                       </div>
 
@@ -760,7 +809,7 @@ export default function OrderBuilderView({
                         <button
                           type="button"
                           onClick={() => resetQuantity(e)}
-                          className="text-[10px] text-ppp-blue-700 hover:underline px-1 py-1"
+                          className="text-[10px] text-ppp-blue-700 hover:underline px-1 py-1 min-h-[44px] sm:min-h-0 touch-manipulation"
                         >
                           reset to estimate
                         </button>
@@ -776,13 +825,16 @@ export default function OrderBuilderView({
                             onChange={(v) => setLineFor(e, v)}
                             // R5.3: when the builder has already decided a line
                             // for this colour — the exterior answer on a mixed
-                            // job — name it. "— use default —" was wrong twice
-                            // over: it isn't the default, and it hid the fact
-                            // that the email had an answer this screen didn't.
+                            // job — name it, rather than showing an empty box over an
+                            // email that already carries an answer.
+                            //
+                            // The fallback is NOT "use default" any more: item 14 removed
+                            // the job-level default selector, so that phrase pointed at a
+                            // control that no longer exists.
                             placeholder={
                               currentDraft?.resolvedMaterialTypeOverrides?.[key]
                                 ? `${currentDraft.resolvedMaterialTypeOverrides[key]} (from the job)`
-                                : "— use default —"
+                                : "— pick a product —"
                             }
                             compact
                             allowClear
@@ -892,7 +944,7 @@ export default function OrderBuilderView({
                             aria-label={`Decrease ${p.value}`}
                             disabled={sel.qty <= 1}
                             onClick={() => setExtraQty(id, sel.qty - 1)}
-                            className="h-9 w-9 sm:h-7 sm:w-7 rounded text-ppp-charcoal hover:bg-white disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none touch-manipulation"
+                            className="h-11 w-11 sm:h-9 sm:w-9 sm:h-7 sm:w-7 rounded text-ppp-charcoal hover:bg-white disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none touch-manipulation"
                           >
                             −
                           </button>
@@ -904,7 +956,7 @@ export default function OrderBuilderView({
                             aria-label={`Increase ${p.value}`}
                             disabled={sel.qty >= 99}
                             onClick={() => setExtraQty(id, sel.qty + 1)}
-                            className="h-9 w-9 sm:h-7 sm:w-7 rounded text-ppp-charcoal hover:bg-white disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none touch-manipulation"
+                            className="h-11 w-11 sm:h-9 sm:w-9 sm:h-7 sm:w-7 rounded text-ppp-charcoal hover:bg-white disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none touch-manipulation"
                           >
                             +
                           </button>
@@ -981,7 +1033,7 @@ export default function OrderBuilderView({
                           value={sel.unit}
                           onChange={(ev) => setExtraUnit(c.id, ev.target.value)}
                           aria-label={`Unit for ${c.name}`}
-                          className="shrink-0 text-[10px] border border-ppp-blue-100 rounded bg-white px-1 py-1 min-h-[44px] sm:min-h-0 touch-manipulation"
+                          className="shrink-0 text-base sm:text-[10px] border border-ppp-blue-100 rounded bg-white px-1 py-1 min-h-[44px] sm:min-h-0 touch-manipulation"
                         >
                           <option value="tube">tube</option>
                           <option value="case">case</option>
@@ -1191,7 +1243,7 @@ function CustomColorItems({
             value={unit}
             onChange={(e) => setUnit(e.target.value as PaintUnit)}
             aria-label="Unit"
-            className="px-2 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+            className="px-2 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             <option value="gal">gal</option>
             <option value="qt">qt</option>
@@ -1204,7 +1256,7 @@ function CustomColorItems({
             type="button"
             onClick={add}
             disabled={!label.trim()}
-            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
           >
             Add
           </button>
@@ -1271,7 +1323,7 @@ function CustomSundryItem({ onAdd }: { onAdd: (name: string, qty: number, unit: 
             type="button"
             onClick={add}
             disabled={!name.trim()}
-            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
           >
             Add
           </button>

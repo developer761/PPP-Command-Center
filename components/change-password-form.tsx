@@ -70,7 +70,7 @@ export default function ChangePasswordForm() {
             value={pw}
             onChange={(e) => setPw(e.target.value)}
             autoComplete="new-password"
-            className="w-full rounded-lg border border-ppp-charcoal-200 pl-3 pr-10 py-2.5 text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
+            className="w-full rounded-lg border border-ppp-charcoal-200 pl-3 pr-10 py-2.5 text-base sm:text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
           />
           <button
             type="button"
@@ -96,7 +96,7 @@ export default function ChangePasswordForm() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           autoComplete="new-password"
-          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
+          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2.5 text-base sm:text-sm focus:border-ppp-blue focus:ring-1 focus:ring-ppp-blue outline-none min-h-[44px]"
         />
       </div>
       <button

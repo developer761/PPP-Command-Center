@@ -336,7 +336,7 @@ function KindMenu({
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search types…"
-                className="w-full px-2.5 py-2 text-[13px] rounded-lg border border-ppp-charcoal-200 focus:outline-none focus:ring-2 focus:ring-ppp-charcoal-300/40"
+                className="w-full px-2.5 py-2 text-base sm:text-[13px] rounded-lg border border-ppp-charcoal-200 focus:outline-none focus:ring-2 focus:ring-ppp-charcoal-300/40"
               />
             </div>
           )}

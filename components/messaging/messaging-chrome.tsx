@@ -49,7 +49,7 @@ export default function MessagingChrome({
             type="button"
             aria-label="Close menu"
             onClick={() => setOpen(false)}
-            className="lg:hidden fixed inset-0 z-40 bg-ppp-charcoal/40 backdrop-blur-sm"
+            className="lg:hidden fixed inset-0 z-40 bg-ppp-charcoal/40 backdrop-blur-sm min-h-[44px] sm:min-h-0 touch-manipulation"
           />
           <aside className="lg:hidden fixed inset-y-0 left-0 z-50 w-[min(84vw,300px)] flex flex-col shadow-2xl">
             <MessagingSidebar workspaces={workspaces} onNavigate={() => setOpen(false)} />

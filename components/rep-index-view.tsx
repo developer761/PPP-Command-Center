@@ -320,7 +320,7 @@ export default function RepIndexView({ bundle }: Props) {
           <button
             type="button"
             onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
-            className="px-3 py-2 text-xs font-medium border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50/50 transition-colors"
+            className="px-3 py-2 text-xs font-medium border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50/50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
             title={`Currently ${sortDir === "desc" ? "high → low" : "low → high"} — click to toggle`}
           >
             {sortDir === "desc" ? "↓ Desc" : "↑ Asc"}

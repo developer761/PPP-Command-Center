@@ -163,7 +163,7 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
         <button
           type="button"
           onClick={() => void load()}
-          className="shrink-0 px-3 py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors"
+          className="shrink-0 px-3 py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
         >
           Retry
         </button>

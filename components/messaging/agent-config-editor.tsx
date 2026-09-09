@@ -114,7 +114,7 @@ export default function AgentConfigEditor({
                       was copy-paste out of another browser tab. */}
                   <button type="button"
                     onClick={() => setVals((p) => ({ ...p, [f.key]: f.inherited ?? "" }))}
-                    className="shrink-0 min-h-[28px] px-2 rounded-md border border-ppp-charcoal-200 bg-white text-[11px] font-semibold text-ppp-charcoal touch-manipulation">
+                    className="shrink-0 min-h-[28px] px-2 rounded-md border border-ppp-charcoal-200 bg-white text-[11px] font-semibold text-ppp-charcoal touch-manipulation min-h-[44px] sm:min-h-0">
                     Start from this
                   </button>
                 </div>
@@ -129,7 +129,7 @@ export default function AgentConfigEditor({
             {(vals[f.key] ?? "").trim() && f.inherited && (vals[f.key] ?? "") !== f.value && (
               <button type="button"
                 onClick={() => setVals((p) => ({ ...p, [f.key]: "" }))}
-                className="mt-1 min-h-[28px] text-[11.5px] font-medium text-ppp-charcoal-500 underline touch-manipulation">
+                className="mt-1 min-h-[28px] text-[11.5px] font-medium text-ppp-charcoal-500 underline touch-manipulation min-h-[44px] sm:min-h-0">
                 Clear it and go back to inheriting
               </button>
             )}
@@ -183,11 +183,11 @@ export default function AgentConfigEditor({
               </p>
               <div className="mt-2 flex gap-2">
                 <button type="button" onClick={() => void clear()} disabled={busy}
-                  className="min-h-[40px] px-3 rounded-lg bg-ppp-charcoal text-white text-[12.5px] font-semibold touch-manipulation">
+                  className="min-h-[40px] px-3 rounded-lg bg-ppp-charcoal text-white text-[12.5px] font-semibold touch-manipulation min-h-[44px] sm:min-h-0">
                   {busy ? "Removing…" : "Yes, remove them"}
                 </button>
                 <button type="button" onClick={() => setConfirmClear(false)}
-                  className="min-h-[40px] px-3 rounded-lg bg-white border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal touch-manipulation">
+                  className="min-h-[40px] px-3 rounded-lg bg-white border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal touch-manipulation min-h-[44px] sm:min-h-0">
                   Keep them
                 </button>
               </div>

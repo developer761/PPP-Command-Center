@@ -155,7 +155,7 @@ export default async function IntegrationsPage({
                 <form action="/api/admin/sf-refresh-cache" method="POST">
                   <button
                     type="submit"
-                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40 transition-colors"
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
                     title="Bust the 5-min snapshot cache and re-fetch from Salesforce"
                   >
                     Refresh data

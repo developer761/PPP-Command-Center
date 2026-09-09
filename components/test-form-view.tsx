@@ -232,7 +232,7 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
             type="button"
             onClick={onPreview}
             disabled={!inputUsable || loading !== null}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             {loading === "preview" ? "Opening…" : "Preview (no email, no SF writes)"}
           </button>
@@ -240,7 +240,7 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
             type="button"
             onClick={onSend}
             disabled={!inputUsable || loading !== null}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-ppp-blue/30"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-ppp-blue/30 min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             {loading === "send" ? "Sending…" : "Send real form (writes to SF if WO is on allowlist)"}
           </button>

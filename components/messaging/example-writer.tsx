@@ -165,7 +165,7 @@ export default function ExampleWriter({ tags, initialTagKey }: { tags: Tag[]; in
                 {turns.length > 2 && (
                   <button type="button" onClick={() => removeTurn(i)}
                     aria-label={`Remove message ${i + 1}`}
-                    className="min-h-[32px] px-2 text-[12px] font-medium text-ppp-charcoal-400 hover:text-ppp-charcoal touch-manipulation">
+                    className="min-h-[32px] px-2 text-[12px] font-medium text-ppp-charcoal-400 hover:text-ppp-charcoal touch-manipulation min-h-[44px] sm:min-h-0">
                     Remove
                   </button>
                 )}

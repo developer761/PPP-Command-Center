@@ -90,7 +90,7 @@ export default function Grader({
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[12px] text-ppp-charcoal-500">{remaining} left</span>
         <button type="button" onClick={() => void advance([...skipped, item.id])}
-          className="min-h-[36px] px-3 rounded-lg text-[12.5px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
+          className="min-h-[36px] px-3 rounded-lg text-[12.5px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation min-h-[44px] sm:min-h-0">
           Skip this one
         </button>
       </div>

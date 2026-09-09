@@ -1066,7 +1066,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       // new query without tapping the field again.
                       searchInputRef.current?.focus();
                     }}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm rounded hover:bg-ppp-charcoal-50 transition-colors"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-11 w-11 sm:h-8 sm:w-8 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm rounded hover:bg-ppp-charcoal-50 transition-colors touch-manipulation"
                     aria-label="Clear search"
                   >
                     ✕
@@ -1196,7 +1196,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     value={sortMode}
                     onChange={(e) => setSortMode(e.target.value as SortMode)}
                     disabled={dateSort !== "off"}
-                    className="font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 text-base sm:text-inherit focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors disabled:text-ppp-charcoal-400 disabled:cursor-not-allowed disabled:hover:text-ppp-charcoal-400"
+                    className="font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 text-base sm:text-inherit focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors disabled:text-ppp-charcoal-400 disabled:cursor-not-allowed disabled:hover:text-ppp-charcoal-400 min-h-[44px] sm:min-h-0 touch-manipulation"
                   >
                     {SORT_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -1410,7 +1410,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                         window.scrollTo({ top: 0, behavior: "smooth" });
                       }
                     }}
-                    className="lg:hidden inline-flex items-center gap-1.5 px-3 py-2 -ml-1 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 touch-manipulation"
+                    className="lg:hidden inline-flex items-center gap-1.5 px-3 py-2 -ml-1 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 touch-manipulation min-h-[44px] sm:min-h-0"
                     aria-label="Back to work orders list"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -3045,7 +3045,7 @@ function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; init
           type="button"
           onClick={save}
           disabled={saving || !dirty}
-          className="inline-flex items-center px-3 py-1.5 min-h-[40px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center px-3 py-1.5 min-h-[40px] rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0 touch-manipulation"
         >
           {saving ? "Saving…" : "Save"}
         </button>
@@ -3053,7 +3053,7 @@ function FollowUpDateField({ workOrderId, initial }: { workOrderId: string; init
           <button
             type="button"
             onClick={() => { setValue(""); setError(null); setWarning(null); }}
-            className="text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal-700 px-1 min-h-[40px]"
+            className="text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal-700 px-1 min-h-[40px] min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             Clear
           </button>
@@ -3267,7 +3267,7 @@ function SendColorFormButton({
                 onClick={reset}
                 disabled={sending}
                 aria-label="Close"
-                className="shrink-0 h-9 w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors flex items-center justify-center disabled:opacity-50 touch-manipulation"
+                className="shrink-0 h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors flex items-center justify-center disabled:opacity-50 touch-manipulation"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M6 6l12 12 M18 6l-12 12" />
@@ -3403,7 +3403,7 @@ function SendColorFormButton({
                           // user can long-press the link above to copy.
                         }
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ppp-charcoal-100 bg-white text-xs font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ppp-charcoal-100 bg-white text-xs font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <rect x="9" y="9" width="13" height="13" rx="2" />

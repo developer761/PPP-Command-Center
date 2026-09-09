@@ -88,7 +88,7 @@ export default function InfoDot({ text }: { text: string }) {
         title={text}
         aria-label={`What this means: ${text}`}
         aria-expanded={open}
-        className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-ppp-charcoal-200 text-[9px] font-bold text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 hover:text-ppp-charcoal transition-colors"
+        className="inline-flex items-center justify-center h-11 w-11 sm:h-4 sm:w-4 rounded-full border border-ppp-charcoal-200 text-[9px] font-bold text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 hover:text-ppp-charcoal transition-colors touch-manipulation"
       >
         ?
       </button>

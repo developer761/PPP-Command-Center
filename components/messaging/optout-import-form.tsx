@@ -51,7 +51,7 @@ export default function OptOutImportForm() {
         <textarea
           value={text} onChange={(e) => setText(e.target.value)} rows={6}
           placeholder="phone,email,opted_out_at"
-          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 font-mono text-[12px] leading-relaxed resize-y"
+          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 font-mono text-base sm:text-[12px] leading-relaxed resize-y"
         />
       </label>
 
@@ -86,7 +86,7 @@ export default function OptOutImportForm() {
               {problems.length > 5 && (
                 <li>
                   <button type="button" onClick={() => setShowAll((v) => !v)}
-                    className="w-full min-h-[40px] text-[12px] font-medium text-ppp-orange-700 touch-manipulation">
+                    className="w-full min-h-[40px] text-[12px] font-medium text-ppp-orange-700 touch-manipulation min-h-[44px] sm:min-h-0">
                     {showAll ? "Show fewer" : `Show all ${problems.length}`}
                   </button>
                 </li>

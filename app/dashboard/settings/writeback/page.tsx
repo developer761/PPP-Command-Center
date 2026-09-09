@@ -433,7 +433,7 @@ export default async function WritebackSettingsPage({ searchParams }: { searchPa
               placeholder="0WOWj000007AwUvOAK"
               required
               autoComplete="off"
-              className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
+              className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
             />
           </label>
           <label className="flex flex-col gap-1 min-w-0">
@@ -445,7 +445,7 @@ export default async function WritebackSettingsPage({ searchParams }: { searchPa
               placeholder="Katie's test — 2026-07-08"
               maxLength={200}
               autoComplete="off"
-              className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
+              className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
             />
           </label>
           <button
@@ -472,7 +472,7 @@ export default async function WritebackSettingsPage({ searchParams }: { searchPa
               placeholder={"0WOWj000007AwUvOAK\n0WOWj000007FEmbOAG\n0WOWj000007FHfdOAG"}
               autoComplete="off"
               spellCheck={false}
-              className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
               <label className="flex flex-col gap-1 min-w-0">
@@ -484,7 +484,7 @@ export default async function WritebackSettingsPage({ searchParams }: { searchPa
                   placeholder="Katie batch — 2026-07-09"
                   maxLength={200}
                   autoComplete="off"
-                  className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
+                  className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
                 />
               </label>
               <button
@@ -537,7 +537,7 @@ export default async function WritebackSettingsPage({ searchParams }: { searchPa
                         <input type="hidden" name="work_order_id" value={row.workOrderId} />
                         <button
                           type="submit"
-                          className="inline-flex items-center gap-1 text-[12px] font-semibold text-rose-700 hover:text-rose-900 hover:underline px-2 py-1 min-h-[36px]"
+                          className="inline-flex items-center gap-1 text-[12px] font-semibold text-rose-700 hover:text-rose-900 hover:underline px-2 py-1 min-h-[36px] min-h-[44px] sm:min-h-0 touch-manipulation"
                         >
                           Remove
                         </button>

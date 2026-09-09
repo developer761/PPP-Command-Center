@@ -303,7 +303,7 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
             void loadIndex();
             setTimeout(() => inputRef.current?.focus(), 0);
           }}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-ppp-charcoal-500 bg-ppp-charcoal-50/60 hover:bg-ppp-charcoal-50 border border-ppp-charcoal-100 rounded-lg transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-ppp-charcoal-500 bg-ppp-charcoal-50/60 hover:bg-ppp-charcoal-50 border border-ppp-charcoal-100 rounded-lg transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
         >
           <IconSearch />
           <span className="hidden sm:inline truncate">Search reps, customers, work orders…</span>

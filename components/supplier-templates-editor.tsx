@@ -145,7 +145,7 @@ export default function SupplierTemplatesEditor() {
         <button
           type="button"
           onClick={() => void loadList()}
-          className="shrink-0 px-3 py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors"
+          className="shrink-0 px-3 py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
         >
           Retry
         </button>
@@ -173,7 +173,7 @@ export default function SupplierTemplatesEditor() {
           <button
             type="button"
             onClick={() => void loadList()}
-            className="shrink-0 px-2.5 py-0.5 rounded-lg border border-ppp-orange-100 bg-white text-[11px] font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors"
+            className="shrink-0 px-2.5 py-0.5 rounded-lg border border-ppp-orange-100 bg-white text-[11px] font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             Retry
           </button>
@@ -414,7 +414,7 @@ function SupplierTemplateRow({
                     type="text"
                     value={draft[f.key]}
                     onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
+                    className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
                   />
                 )}
                 <p className="text-[11px] text-ppp-charcoal-500 mt-1">{f.help}</p>
@@ -440,7 +440,7 @@ function SupplierTemplateRow({
                 type="button"
                 onClick={handleSave}
                 disabled={!isDirty || saving}
-                className="px-4 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0 touch-manipulation"
               >
                 {saving ? "Saving…" : "Save"}
               </button>

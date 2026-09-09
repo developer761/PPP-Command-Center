@@ -1616,7 +1616,7 @@ function SurfaceRow({
           type="button"
           onClick={toggleSkip}
           aria-label={pick.skipped ? `Add a color for ${rowContext}` : `Skip ${rowContext}`}
-          className="text-[11px] text-ppp-charcoal-500 hover:text-ppp-blue underline-offset-2 hover:underline transition-colors sm:hidden px-3 py-2 -my-2 -mr-1"
+          className="text-[11px] text-ppp-charcoal-500 hover:text-ppp-blue underline-offset-2 hover:underline transition-colors sm:hidden px-3 py-2 -my-2 -mr-1 min-h-[44px] sm:min-h-0 touch-manipulation"
         >
           {pick.skipped ? "Add color" : "Skip this"}
         </button>

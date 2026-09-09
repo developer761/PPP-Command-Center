@@ -76,7 +76,7 @@ export default function AgentScopePicker({
           else if (v.startsWith("st:")) go({ state: v.slice(3) });
           else go({});
         }}
-        className="w-full min-h-[44px] rounded-xl border border-ppp-charcoal-200 bg-white px-3 text-[14px] text-ppp-charcoal touch-manipulation"
+        className="w-full min-h-[44px] rounded-xl border border-ppp-charcoal-200 bg-white px-3 text-base sm:text-[14px] text-ppp-charcoal touch-manipulation"
       >
         <option value="">Emily — the default every workspace inherits</option>
         {states.length > 0 && (

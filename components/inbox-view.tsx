@@ -400,7 +400,7 @@ export default function InboxView() {
           <button
             type="button"
             onClick={clearWoFilter}
-            className="shrink-0 px-2.5 py-0.5 rounded-lg border border-ppp-blue-100 bg-white text-[11px] font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 transition-colors"
+            className="shrink-0 px-2.5 py-0.5 rounded-lg border border-ppp-blue-100 bg-white text-[11px] font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             Show all mail
           </button>
@@ -481,7 +481,7 @@ export default function InboxView() {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="shrink-0 px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 active:bg-ppp-orange-100 transition-colors touch-manipulation"
+                className="shrink-0 px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 active:bg-ppp-orange-100 transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
               >
                 Retry
               </button>
@@ -624,7 +624,7 @@ export default function InboxView() {
                   </div>
 
                   {active && (
-                    <button type="button" onClick={clearAll} className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px]">Clear all</button>
+                    <button type="button" onClick={clearAll} className="text-[12px] font-medium text-ppp-blue-700 hover:underline px-1 min-h-[36px] min-h-[44px] sm:min-h-0 touch-manipulation">Clear all</button>
                   )}
                 </div>
               </div>
@@ -643,7 +643,7 @@ export default function InboxView() {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="shrink-0 px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 active:bg-ppp-orange-100 transition-colors touch-manipulation"
+                className="shrink-0 px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 active:bg-ppp-orange-100 transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
               >
                 Retry
               </button>
@@ -782,7 +782,7 @@ function MessageRow({
             <button
               type="button"
               onClick={onArchive}
-              className="px-3 py-2 sm:py-1.5 rounded-lg border border-ppp-charcoal-100 text-xs font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation"
+              className="px-3 py-2 sm:py-1.5 rounded-lg border border-ppp-charcoal-100 text-xs font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
             >
               Archive
             </button>
@@ -1033,7 +1033,7 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
               type="button"
               onClick={handleResend}
               disabled={resending}
-              className="px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-xs sm:text-[11px] font-semibold text-ppp-orange-700 hover:bg-ppp-orange-100 active:bg-ppp-orange-100 disabled:opacity-60 transition-colors touch-manipulation"
+              className="px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-xs sm:text-[11px] font-semibold text-ppp-orange-700 hover:bg-ppp-orange-100 active:bg-ppp-orange-100 disabled:opacity-60 transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
             >
               {resending ? "Re-sending…" : resendResult?.ok ? "Re-sent ✓" : "Re-send"}
             </button>

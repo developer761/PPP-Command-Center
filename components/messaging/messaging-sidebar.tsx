@@ -169,7 +169,7 @@ export default function MessagingSidebar({
                 type="button"
                 onClick={() => toggleRegion(region)}
                 aria-expanded={open}
-                className="w-full px-2.5 py-1 min-h-[32px] flex items-center justify-between gap-2 rounded-lg hover:bg-ppp-charcoal-50 transition-colors touch-manipulation"
+                className="w-full px-2.5 py-1 min-h-[32px] flex items-center justify-between gap-2 rounded-lg hover:bg-ppp-charcoal-50 transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
               >
                 <span className="flex items-center gap-1 min-w-0">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"

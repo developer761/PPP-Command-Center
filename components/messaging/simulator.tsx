@@ -320,7 +320,7 @@ export default function Simulator({
                       complaint about the whole conversation. */}
                   {t.verdict && !t.showNote && t.verdictNote === undefined && (
                     <button type="button" onClick={() => grade(i, { showNote: true })}
-                      className="min-h-[30px] px-2 rounded-md text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
+                      className="min-h-[30px] px-2 rounded-md text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation min-h-[44px] sm:min-h-0">
                       + say why
                     </button>
                   )}
@@ -356,7 +356,7 @@ export default function Simulator({
               {["👍", "❤️", "😂", "👎", "❓"].map((e) => (
                 <button key={e} type="button" onClick={() => void send(e)} disabled={busy}
                   aria-label={`Send ${e} on its own`}
-                  className="h-8 w-8 rounded-lg text-[15px] hover:bg-ppp-charcoal-50 touch-manipulation disabled:opacity-40">
+                  className="h-11 w-11 sm:h-8 sm:w-8 rounded-lg text-[15px] hover:bg-ppp-charcoal-50 touch-manipulation disabled:opacity-40">
                   {e}
                 </button>
               ))}
@@ -373,7 +373,7 @@ export default function Simulator({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-0.5">React</span>
                 {["Liked", "Loved", "Questioned", "Disliked"].map((v) => (
                   <button key={v} type="button" onClick={() => react(v)} disabled={busy}
-                    className="h-8 px-2 rounded-lg text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation disabled:opacity-40">
+                    className="h-8 px-2 rounded-lg text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation disabled:opacity-40 min-h-[44px] sm:min-h-0">
                     {v}
                   </button>
                 ))}
@@ -391,7 +391,7 @@ export default function Simulator({
               className="flex-1 min-w-0 rounded-full border border-ppp-charcoal-200 px-3.5 min-h-[38px] text-base sm:text-[14px] placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-[#0b93f6]/30 disabled:bg-ppp-charcoal-50" />
             <button type="button" onClick={() => void send()} disabled={busy || (!draft.trim() && photos === 0)}
               aria-label="Send as the customer"
-              className="shrink-0 h-[38px] w-[38px] rounded-full bg-[#0b93f6] text-white flex items-center justify-center touch-manipulation disabled:bg-ppp-charcoal-200">
+              className="shrink-0 h-[38px] w-[38px] rounded-full bg-[#0b93f6] text-white flex items-center justify-center touch-manipulation disabled:bg-ppp-charcoal-200 min-h-[44px] sm:min-h-0">
               {busy ? <span className="text-[11px]">…</span> : (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 19V5 M5 12l7-7 7 7" /></svg>
               )}

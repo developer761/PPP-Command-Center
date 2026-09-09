@@ -125,7 +125,7 @@ export default function SupplierSettingsEditor() {
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-xs font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue transition-colors shadow-sm"
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-xs font-semibold hover:bg-ppp-blue-300 active:bg-ppp-blue transition-colors shadow-sm min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
@@ -223,7 +223,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
               Shows up in the supplier picker for workers right after you save.
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="shrink-0 h-9 w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 flex items-center justify-center">
+          <button type="button" onClick={onClose} aria-label="Close" className="shrink-0 h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 flex items-center justify-center touch-manipulation">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 6l12 12 M18 6l-12 12" />
             </svg>
@@ -276,7 +276,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-2 text-xs font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal disabled:opacity-50"
+            className="px-3 py-2 text-xs font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal disabled:opacity-50 min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             Cancel
           </button>
@@ -284,7 +284,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
             type="button"
             onClick={submit}
             disabled={!valid || saving}
-            className="px-4 py-2 text-xs font-semibold rounded-lg bg-ppp-blue text-ppp-navy hover:bg-ppp-blue-300 disabled:bg-ppp-charcoal-200 disabled:text-ppp-charcoal-500 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-ppp-blue text-ppp-navy hover:bg-ppp-blue-300 disabled:bg-ppp-charcoal-200 disabled:text-ppp-charcoal-500 disabled:cursor-not-allowed transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             {saving ? "Saving…" : "Add supplier"}
           </button>
@@ -427,7 +427,7 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
               value={orderEmail}
               onChange={(e) => setOrderEmail(e.target.value)}
               placeholder={`orders@${candidate.supplierName.toLowerCase().replace(/[^a-z]/g, "")}.com`}
-              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
             />
           </Field>
 
@@ -440,7 +440,7 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
               placeholder="e.g. 12345678 (PPP's contractor number)"
-              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
             />
           </Field>
 
@@ -456,19 +456,19 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
                     value={loc.name}
                     onChange={(e) => updatePickupLocation(idx, { name: e.target.value })}
                     placeholder="Branch name (e.g. Smithtown)"
-                    className="px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                    className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                   />
                   <input
                     type="text"
                     value={loc.address}
                     onChange={(e) => updatePickupLocation(idx, { address: e.target.value })}
                     placeholder="123 Main St, Smithtown NY 11787"
-                    className="px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                    className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                   />
                   <button
                     type="button"
                     onClick={() => removePickupLocation(idx)}
-                    className="px-2 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-orange-50 hover:text-ppp-orange-700 hover:border-ppp-orange-100 transition-colors text-xs"
+                    className="px-2 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-orange-50 hover:text-ppp-orange-700 hover:border-ppp-orange-100 transition-colors text-xs min-h-[44px] sm:min-h-0 touch-manipulation"
                   >
                     Remove
                   </button>
@@ -516,7 +516,7 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="(212) 555-0123"
-                className="mt-2 w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                className="mt-2 w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
               />
             )}
           </Field>
@@ -553,7 +553,7 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
               type="button"
               onClick={handleSave}
               disabled={!isDirty || saving}
-              className="px-4 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0 touch-manipulation"
             >
               {saving ? "Saving…" : "Save"}
             </button>
