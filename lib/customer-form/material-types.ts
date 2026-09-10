@@ -85,7 +85,7 @@ export const MATERIAL_TYPES: ReadonlyArray<MaterialType> = [
   // also accepted vocabulary for work orders already carrying it, so renaming
   // "Ultra Spec Exterior Primer" would make existing jobs fail validation. He
   // clarified it as the MASONRY primer; both names now resolve.
-  { value: "Ultra Spec Masonry Primer", group: "Benjamin Moore — Primer", category: "exterior" },
+  { value: "Ultra Spec Exterior Masonry Primer", group: "Benjamin Moore — Primer", category: "exterior" },
   { value: "Ultra Spec Interior Latex Primer", group: "Benjamin Moore — Primer", category: "interior" },
   // "Bin primer (interior and exterior shellac based)".
   { value: "BIN Primer", group: "Benjamin Moore — Primer", category: "any" },
