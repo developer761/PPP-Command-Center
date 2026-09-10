@@ -8,7 +8,7 @@ import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
 import { insertCustomerFormSubmittedNotification } from "@/lib/notifications/insert";
-import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { ALL_FINISH_VALUES, VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
 import { formatProductLines } from "@/lib/customer-form/product-lines";
 import { alertSalesforceWriteFailure } from "@/lib/customer-form/sf-failure-alert";
 import {
@@ -91,25 +91,12 @@ type SubmitPayload = {
  * would otherwise land verbatim in ColorNotes__c and the crew would paint
  * with the wrong sheen.
  */
-const VALID_FINISHES = new Set([
-  // Katie 2026-06-03: Flat and Matte are distinct sheens on different
-  // products; same for Gloss vs High-Gloss. Keep the legacy combined values
-  // accepted so any in-flight form a customer was filling out before the
-  // split doesn't fail server-side validation on submit.
-  "Flat",
-  "Matte",
-  "Flat / Matte",
-  "Eggshell",
-  "Satin",
-  "Semi-Gloss",
-  "Gloss",
-  "High-Gloss",
-  // Exterior sheens (Kate 2026-09-09). Already active on Salesforce's
-  // restricted Finish*__c picklists; the app just never offered them.
-  "Low Lustre",
-  "Soft Gloss",
-  "Gloss / High-Gloss",
-]);
+// Computed from the product lists themselves (lib/customer-form/material-types)
+// rather than hand-typed here. This list and the picker drifted apart the day
+// per-product finishes landed: Jason's answers put "Pearl" and "Velvet" in the
+// dropdown while this set still rejected them, so a customer choosing either
+// got a 400 telling them their own valid choice was invalid.
+const VALID_FINISHES = ALL_FINISH_VALUES;
 
 /**
  * Sanitize a customer-supplied delivery-address field. Customer input lands
@@ -369,6 +356,22 @@ export async function POST(
     // Kate round-2 #09: surfaces the customer explicitly chose NOT to paint —
     // recorded as a note in ColorNotes__c so the crew knows it was deliberate.
     const skippedSurfaces: string[] = [];
+    /**
+     * Finishes the customer picked that Salesforce has no picklist value for.
+     *
+     * Finish*__c are RESTRICTED picklists and we cannot add to them — the
+     * integration user is on a Read Only profile with no CustomizeApplication,
+     * so a value Salesforce does not already hold simply cannot be written.
+     * Until an admin adds them, the choice would vanish from Salesforce
+     * entirely: the vendor order is unaffected (it reads the customer's own
+     * pick), but anyone reading the work order in Salesforce would see a color
+     * with no finish and no indication one was ever chosen.
+     *
+     * Every stain opacity is in this bucket (Transparent … Solid), plus
+     * "Velvet" and "High-Gloss". So it is recorded in ColorNotes__c, which is
+     * free text. Lossy-but-visible beats silent.
+     */
+    const unstorableFinishes: string[] = [];
 
     for (const s of surfaces) {
       // Per-element shape guard — a malformed surface element (null, or
@@ -409,7 +412,11 @@ export async function POST(
         // (High-Gloss) — never guess. Write the value when we have one; on
         // re-edit also write null so a stale prior finish gets cleared.
         if (sfFinish !== null) fields[std.finish] = sfFinish;
-        else if (isReedit) fields[std.finish] = null;
+        else {
+          if (isReedit) fields[std.finish] = null;
+          // No picklist value for it — keep it in the notes rather than lose it.
+          if (s.finish) unstorableFinishes.push(`${s.surface} — ${s.finish}`);
+        }
       } else if (isOrphan) {
         orphanPicks.push({
           surface: s.surface,
@@ -476,6 +483,11 @@ export async function POST(
     const noteLines: string[] = [];
     if (orphanNoteParts.length > 0) {
       noteLines.push(...orphanNoteParts);
+    }
+    if (unstorableFinishes.length > 0) {
+      if (noteLines.length > 0) noteLines.push("");
+      noteLines.push("Finish not available in the Salesforce list — recorded here:");
+      for (const f of unstorableFinishes) noteLines.push(`  ${f}`);
     }
     // Kate #09: record each "Don't paint this surface" pick as an explicit note.
     for (const surf of skippedSurfaces) {

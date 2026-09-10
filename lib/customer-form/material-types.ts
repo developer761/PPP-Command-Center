@@ -20,6 +20,29 @@
 
 export type MaterialTypeCategory = "interior" | "exterior" | "any";
 
+/**
+ * The seven generic sheens, offered when a product declares no list of its own.
+ *
+ * Lived in customer-form-view.tsx as FINISH_OPTIONS while the server kept its
+ * own hand-typed VALID_FINISHES. Two lists, maintained by hand, that had to
+ * agree: on 2026-09-09 they stopped, because Jason's answers added Pearl and
+ * Velvet to the picker and the server still rejected both with a 400. Now the
+ * picker and the validator are computed from the SAME source.
+ */
+export const BASE_FINISHES: readonly string[] = [
+  "Flat",
+  "Matte",
+  "Eggshell",
+  "Satin",
+  "Semi-Gloss",
+  "Gloss",
+  "High-Gloss",
+];
+
+/** Legacy combined labels — kept accepted so a form filled in before the
+ *  Flat/Matte and Gloss/High-Gloss splits still submits. */
+const LEGACY_FINISHES: readonly string[] = ["Flat / Matte", "Gloss / High-Gloss"];
+
 /** Finishes a product is sold in, split when the interior and exterior
  *  versions of the same line differ (all three Sherwin Williams grades do). */
 export type FinishesByScope = {
@@ -58,6 +81,14 @@ export const MATERIAL_TYPES: ReadonlyArray<MaterialType> = [
   { value: "Ultra Spec Exterior Primer", group: "Benjamin Moore — Primer", category: "exterior" },
   { value: "Coverstain Primer", group: "Benjamin Moore — Primer", category: "any" },
   { value: "Stix Primer", group: "Benjamin Moore — Primer", category: "any" },
+  // Jason §4, 2026-09-09. These are ADDITIONS, not renames: every value here is
+  // also accepted vocabulary for work orders already carrying it, so renaming
+  // "Ultra Spec Exterior Primer" would make existing jobs fail validation. He
+  // clarified it as the MASONRY primer; both names now resolve.
+  { value: "Ultra Spec Masonry Primer", group: "Benjamin Moore — Primer", category: "exterior" },
+  { value: "Ultra Spec Interior Latex Primer", group: "Benjamin Moore — Primer", category: "interior" },
+  // "Bin primer (interior and exterior shellac based)".
+  { value: "BIN Primer", group: "Benjamin Moore — Primer", category: "any" },
   // Benjamin Moore — Interior (finish-specific per Katie's spreadsheet)
   { value: "Ultra Spec Interior Flat", group: "Benjamin Moore — Interior", category: "interior" },
   { value: "Ultra Spec Interior Eggshell", group: "Benjamin Moore — Interior", category: "interior" },
@@ -179,10 +210,69 @@ export const PAINT_LINES: ReadonlyArray<MaterialType> = [
       exterior: ["Flat", "Low Lustre", "Satin", "Gloss", "High-Gloss"],
     },
   },
+    // ── Stains (Jason §3, 2026-09-09) ────────────────────────────────────────
+  // "There is no stain product in the system anywhere. This is what caused the
+  // rear-deck error." A stain is sold by OPACITY, not by sheen, so its opacity
+  // list goes in `finishes` — the per-product machinery does not care what the
+  // options mean, only that this product is sold in exactly these.
+  //
+  // Base (water vs oil) is carried by the PRODUCT rather than mixed into the
+  // opacity list, because that is how it is bought and because Jason's one
+  // exception is a base rule: "all can be water based or oil with exception of
+  // solid which is water only" — so Solid simply does not appear on the oil
+  // product. It also keeps the dropdown at five short options, not nine
+  // hyphenated ones, which matters for the crews using this.
+  {
+    value: "Woodluxe Water-Based Stain", group: "Stains — Exterior", category: "exterior",
+    finishes: ["Transparent", "Translucent", "Semi-Transparent", "Semi-Solid", "Solid"],
+  },
+  {
+    value: "Woodluxe Oil-Based Stain", group: "Stains — Exterior", category: "exterior",
+    // No Solid — Jason: solid is water only.
+    finishes: ["Transparent", "Translucent", "Semi-Transparent", "Semi-Solid"],
+  },
+  {
+    value: "SW SuperDeck Stain", group: "Stains — Exterior", category: "exterior",
+    // "Sw super deck exterior stain similar to woodluxe." Same opacity ladder;
+    // he did not split its base, so it is left un-split rather than invented.
+    finishes: ["Transparent", "Translucent", "Semi-Transparent", "Semi-Solid", "Solid"],
+  },
+  {
+    value: "Minwax Stain", group: "Stains — Interior", category: "interior",
+    // "Interior = minwax or old masters typically all semi transparent — the
+    // finish comes from the clear you put on top, usually poly or spar
+    // varnish." So the stain offers one opacity; the sheen belongs to a
+    // topcoat product PPP has not given us yet.
+    finishes: ["Semi-Transparent"],
+  },
+  {
+    value: "Old Masters Stain", group: "Stains — Interior", category: "interior",
+    finishes: ["Semi-Transparent"],
+  },
   { value: "Other", group: "Other", category: "any" },
 ];
 
 export const PAINT_LINE_VALUES: ReadonlySet<string> = new Set(PAINT_LINES.map((l) => l.value));
+
+/**
+ * Every finish value the app can legitimately produce — the union of the
+ * generic sheens, every per-product list (both scopes), and the legacy labels.
+ *
+ * The submit route validates against THIS, so adding a finish to a product can
+ * never again be rejected by a server list somebody forgot to update. That is
+ * not hypothetical: it happened the same day the per-product lists landed.
+ */
+export const ALL_FINISH_VALUES: ReadonlySet<string> = new Set([
+  ...BASE_FINISHES,
+  ...LEGACY_FINISHES,
+  ...[...PAINT_LINES, ...MATERIAL_TYPES].flatMap((m) => {
+    const f = m.finishes;
+    if (!f) return [];
+    if (Array.isArray(f)) return [...f];
+    const scoped = f as FinishesByScope;
+    return [...(scoped.interior ?? []), ...(scoped.exterior ?? [])];
+  }),
+]);
 
 /**
  * Collapse a stored value to its paint line.
@@ -533,6 +623,11 @@ const INTERIOR_ONLY_SHEENS: ReadonlySet<string> = new Set(["Flat", "Matte", "Egg
  */
 const EXTERIOR_ONLY_SHEENS: readonly string[] = ["Low Lustre", "Soft Gloss"];
 
+/** Sheens Jason struck off the EXTERIOR list (§1). They stay on interior. */
+const INTERIOR_ONLY_EXTERIOR_DROPS: ReadonlySet<string> = new Set([
+  "Matte", "Eggshell", "Semi-Gloss", "High-Gloss",
+]);
+
 /**
  * True when this product line is sold as an exterior product.
  *
@@ -603,8 +698,14 @@ export function finishOptionsFor(
   }
 
   // ── Fallback for products Jason did not list ──────────────────────────────
-  const base = isExteriorProduct(materialType)
-    ? [...allOptions, ...EXTERIOR_ONLY_SHEENS.filter((f) => !allOptions.includes(f))]
+  // §1 is a rule about EXTERIOR generally, not about one product: "Finishes we
+  // should add: low lustre, soft gloss. Finishes we should remove: matte,
+  // eggshell, semi gloss, high gloss." Removal is exterior-only — his own §6
+  // interior answers keep all three — so an exterior product with no list of
+  // its own gets the exterior vocabulary rather than the interior one plus two.
+  const base = isExteriorProduct(materialType) || scope === "exterior"
+    ? [...allOptions.filter((f) => !INTERIOR_ONLY_EXTERIOR_DROPS.has(f)),
+       ...EXTERIOR_ONLY_SHEENS.filter((f) => !allOptions.includes(f))]
     : [...allOptions];
   if (!isStainProduct(materialType)) return base;
   return base.filter((f) => !INTERIOR_ONLY_SHEENS.has(f));

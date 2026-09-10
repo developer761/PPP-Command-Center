@@ -98,6 +98,16 @@ export function normalizeFinishToSf(finish: string | null | undefined): string |
       return "Low Lustre";
     case "soft gloss":
       return "Soft Gloss";
+    // Also live values on the restricted picklist. "Pearl" arrived with
+    // Jason's §6 answer (Regal Select and Ben are sold in satin/pearl) and was
+    // being routed to the notes as unstorable — Salesforce has held it all
+    // along, the mapping simply did not list it.
+    case "pearl":
+      return "Pearl";
+    case "bath & spa (aura)":
+      return "Bath & Spa (Aura)";
+    case "kitchen & bath (regal)":
+      return "Kitchen & Bath (Regal)";
     // High-Gloss + legacy combined labels have no SF picklist value.
     default:
       return null;
@@ -134,6 +144,12 @@ export function denormalizeFinishFromSf(sfFinish: string | null | undefined): st
     case "low lustre":
     case "lowlustre":
       return "Low Lustre";
+    case "pearl":
+      return "Pearl";
+    case "bath & spa (aura)":
+      return "Bath & Spa (Aura)";
+    case "kitchen & bath (regal)":
+      return "Kitchen & Bath (Regal)";
     case "soft gloss":
     case "softgloss":
       return "Soft Gloss";

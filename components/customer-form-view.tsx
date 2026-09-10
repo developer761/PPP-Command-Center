@@ -166,22 +166,14 @@ type LineItemState = {
 // Ultra Spec ships them as distinct SKUs), and conflating them caused vendor
 // confusion on the supplier email ("which one do I mix?"). Order matters —
 // listed flattest-to-glossiest so customers can scan.
-const FINISH_OPTIONS = [
-  "Flat",
-  "Matte",
-  "Eggshell",
-  "Satin",
-  "Semi-Gloss",
-  "Gloss",
-  "High-Gloss",
-];
+const FINISH_OPTIONS = BASE_FINISHES;
 
 // Material Type picklist is now sourced from lib/customer-form/material-types
 // so the customer picker, the server-side allowlist, and the admin per-
 // surface override dropdown all stay in lockstep. Adding a product = one
 // entry in that file. Picker is filtered per-WO (interior-only WOs hide
 // exterior products and vice versa) — Katie 2026-06-05.
-import { filterMaterialTypesForWorkOrder, finishOptionsFor, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
+import { BASE_FINISHES, filterMaterialTypesForWorkOrder, finishOptionsFor, isStainProduct, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
 import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
@@ -192,6 +184,31 @@ import MaterialTypePicker from "@/components/material-type-picker";
  * Closet/Shelves): ceilings flat, woodwork semi-gloss, floors satin, the
  * rest eggshell.
  */
+/**
+ * Auto-fill a finish when a color is picked, WITHOUT offering one the product
+ * is not sold in.
+ *
+ * The surface-based defaults below are sheens. On a stain they are all wrong —
+ * which is the rear-deck bug by a second route: item 19 only blanked the
+ * default for deck/fence/railing/siding SURFACES, so a stain applied to any
+ * other surface still auto-filled "Eggshell" or "Semi-Gloss".
+ *
+ * Now the product decides. Sole option → fill it (Mooregard is Low Lustre and
+ * nothing else; Minwax is Semi-Transparent and nothing else — a tap PPP's
+ * crews should not have to make). Otherwise the surface default, but only if
+ * the product actually sells it. Anything else, blank, and a person chooses.
+ */
+function defaultFinishFor(
+  surface: string,
+  materialType?: string | null,
+  scope?: "interior" | "exterior" | null
+): string {
+  const options = finishOptionsFor(BASE_FINISHES, materialType, scope);
+  if (options.length === 1) return options[0];
+  const preferred = defaultFinishForSurface(surface);
+  return preferred && options.includes(preferred) ? preferred : "";
+}
+
 function defaultFinishForSurface(surface: string): string {
   const s = surface.toLowerCase();
   if (s.includes("ceiling")) return "Flat";
@@ -671,7 +688,21 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       setApplyToast(`Every other room's ${surface.toLowerCase()} is already set or skipped — nothing to fill.`);
       return;
     }
-    const finish = pick.finish ?? defaultFinishForSurface(surface);
+    // The finish is resolved PER TARGET, not once for the whole sweep. "Apply
+    // to all" can cross an interior line and an exterior one, and those are
+    // different products with different finishes — copying the source's
+    // "Soft Gloss" onto an interior Regal Select writes a finish that product
+    // is not sold in, which is the same wrong-finish failure item 19 was about.
+    const finishForLine = (li: FormLineItem): string => {
+      const mt = /^exterior/i.test(li.productFamily ?? "")
+        ? materialTypeExterior || materialType
+        : materialType;
+      const sc = /^exterior/i.test(li.productFamily ?? "") ? "exterior" : "interior";
+      const options = finishOptionsFor(BASE_FINISHES, mt, sc);
+      if (pick.finish && options.includes(pick.finish)) return pick.finish;
+      return defaultFinishFor(surface, mt, sc);
+    };
+    const finishByLine = new Map(targets.map((li) => [li.id, finishForLine(li)]));
     const targetIds = new Set(targets.map((li) => li.id));
     setState((prev) => {
       const next = { ...prev };
@@ -686,7 +717,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               colorName: pick.colorName,
               colorCode: pick.colorCode,
               colorHex: pick.colorHex,
-              finish,
+              finish: finishByLine.get(id) ?? "",
             },
           },
         };
@@ -1599,7 +1630,7 @@ function SurfaceRow({
   // doesn't linger on an empty surface.
   const handleColorPick = (patch: Partial<SurfacePick>) => {
     if (patch.colorId) {
-      onChange({ finish: pick.finish ?? defaultFinishForSurface(surface), ...patch });
+      onChange({ finish: pick.finish ?? defaultFinishFor(surface, materialType, scope), ...patch });
     } else if (patch.colorId === null) {
       onChange({ ...patch, finish: null });
     } else {
@@ -1674,7 +1705,16 @@ function SurfaceRow({
               {/* When a color is picked, finish is REQUIRED (Katie 2026-05-29).
                   A default is auto-filled on pick, so this empty option only
                   appears if the customer deliberately clears it. */}
-              <option value="">{pick.colorId ? "Choose a finish…" : "Finish (optional)"}</option>
+              {/* A stain is sold by OPACITY, not sheen (Katie item 19, and
+                  Jason §3 gave the ladder: transparent → solid). Calling that
+                  list "Finish" asks the customer a question the words do not
+                  match. The options already came from the product; the label
+                  should too. */}
+              <option value="">
+                {isStainProduct(materialType)
+                  ? (pick.colorId ? "Choose an opacity…" : "Opacity (optional)")
+                  : (pick.colorId ? "Choose a finish…" : "Finish (optional)")}
+              </option>
               {finishOptionsFor(FINISH_OPTIONS, materialType, scope).map((f) => (
                 <option key={f} value={f}>{f}</option>
               ))}
