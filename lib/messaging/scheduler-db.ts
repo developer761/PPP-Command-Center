@@ -5,6 +5,7 @@
  * the database, so every branch stays testable without one.
  */
 import { messagingDb } from "./db";
+import { gateDeps } from "./gate-deps";
 import { gatedSend, type GateResult, type SendRequest } from "./gate";
 import type { E164 } from "./phone";
 import type { DueAction, SchedulerDeps } from "./scheduler";
@@ -52,37 +53,10 @@ export function schedulerDeps(): SchedulerDeps {
     },
 
     async send(req: SendRequest): Promise<GateResult> {
-      return gatedSend(req, {
-        async isSuppressed(target, channel) {
-          // Check the identifier for the channel we are about to use. 92 of the
-          // 213 failed Hatch opt-outs came in over email, and a sequence that
-          // sends both would otherwise keep emailing somebody who unsubscribed.
-          if (channel === "email") {
-            if (!target.email) return true; // no address = nothing we may send to
-            const { data } = await sb
-              .from("sms_opt_outs").select("id")
-              .ilike("email", target.email).is("opted_in_at", null).maybeSingle();
-            return !!data;
-          }
-          if (!target.phone) return true;
-          const { data } = await sb
-            .from("sms_opt_outs").select("id")
-            .eq("phone_e164", target.phone).is("opted_in_at", null).maybeSingle();
-          return !!data;
-        },
-        async sentToday(to) {
-          // Across every agent and workspace — the cap belongs to the handset.
-          const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-          const { data } = await sb
-            .from("sms_conversations").select("id").eq("customer_phone", to);
-          const ids = (data ?? []).map((c) => c.id);
-          if (!ids.length) return 0;
-          const { count } = await sb
-            .from("sms_messages").select("id", { count: "exact", head: true })
-            .in("conversation_id", ids).eq("direction", "outbound").gte("created_at", since);
-          return count ?? 0;
-        },
-      });
+      // Deps live in gate-deps.ts because the draft-review screen sends too,
+      // and two copies of the suppression lookup is how the email half quietly
+      // stops being checked on one path.
+      return gatedSend(req, gateDeps(sb));
     },
 
     async markSent(a, providerId, body) {
