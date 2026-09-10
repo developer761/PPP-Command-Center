@@ -20,6 +20,13 @@
 
 export type MaterialTypeCategory = "interior" | "exterior" | "any";
 
+/** Finishes a product is sold in, split when the interior and exterior
+ *  versions of the same line differ (all three Sherwin Williams grades do). */
+export type FinishesByScope = {
+  interior?: readonly string[];
+  exterior?: readonly string[];
+};
+
 export type MaterialType = {
   /** Value sent to SF / stored on the token / written to WorkOrder.MaterialType__c. */
   value: string;
@@ -28,6 +35,14 @@ export type MaterialType = {
   /** Determines whether this product shows up for interior, exterior, or
    *  both kinds of work. "any" = always shows (use for "Other"). */
   category: MaterialTypeCategory;
+  /**
+   * The finishes this product is ACTUALLY sold in (Jason, 2026-09-09).
+   *
+   * Before this, every product offered the same seven sheens, which is how a
+   * rear deck got ordered in eggshell. Absent = fall back to the generic list;
+   * present = this is the whole truth for that product.
+   */
+  finishes?: readonly string[] | FinishesByScope;
 };
 
 // Katie's expanded list shipped 2026-06-10 ("Products Short List
@@ -88,16 +103,82 @@ export const MATERIAL_TYPES: ReadonlyArray<MaterialType> = [
  * will stick. Flagged for Katie.
  */
 export const PAINT_LINES: ReadonlyArray<MaterialType> = [
-  { value: "Ultra Spec", group: "Benjamin Moore", category: "any" },
-  { value: "Regal Select", group: "Benjamin Moore", category: "interior" },
-  { value: "Ben", group: "Benjamin Moore", category: "interior" },
-  { value: "Aura", group: "Benjamin Moore", category: "any" },
-  { value: "Mooreglo", group: "Benjamin Moore — Exterior", category: "exterior" },
-  { value: "Mooregard", group: "Benjamin Moore — Exterior", category: "exterior" },
-  { value: "Moore Life", group: "Benjamin Moore — Exterior", category: "exterior" },
-  { value: "SW Emerald", group: "Sherwin Williams", category: "any" },
-  { value: "SW Duration", group: "Sherwin Williams", category: "any" },
-  { value: "SW Super Paint", group: "Sherwin Williams", category: "any" },
+  // Finishes per product from Jason's completed sheet, 2026-09-09. His rule for
+  // EXTERIOR overall: add Low Lustre + Soft Gloss, drop Matte / Eggshell /
+  // Semi-Gloss / High-Gloss. That removal is exterior-only — his own interior
+  // answers (§6) keep matte, eggshell and semigloss — so the exterior lists
+  // below simply never contain them.
+  {
+    value: "Ultra Spec", group: "Benjamin Moore", category: "any",
+    // §6: "Ultra spec satin" was missing from the interior line.
+    finishes: {
+      interior: ["Flat", "Eggshell", "Satin", "Semi-Gloss"],
+      exterior: ["Low Lustre", "Satin", "Soft Gloss"],
+    },
+  },
+  {
+    value: "Regal Select", group: "Benjamin Moore", category: "interior",
+    // §6: "Regal select satin/pearl". Stays INTERIOR — Jason's exterior answer
+    // is a DIFFERENT product ("Regal select high build"), listed below, so
+    // widening this one would put it on exterior jobs it is not sold for.
+    finishes: ["Flat", "Matte", "Eggshell", "Satin", "Pearl", "Semi-Gloss"],
+  },
+  {
+    value: "Ben", group: "Benjamin Moore", category: "interior",
+    // §6: "Ben matte, eggshell, satin/pearl, semigloss".
+    finishes: ["Matte", "Eggshell", "Satin", "Pearl", "Semi-Gloss"],
+  },
+  {
+    value: "Aura", group: "Benjamin Moore", category: "any",
+    // Bath & Spa is a Salesforce finish value in its own right, which is how
+    // the old "Aura Bath & Spa Matte" product encoded the same thing.
+    finishes: {
+      interior: ["Matte", "Eggshell", "Satin", "Semi-Gloss", "Bath & Spa (Aura)"],
+      exterior: ["Low Lustre", "Satin", "Soft Gloss"],
+    },
+  },
+  { value: "Mooreglo", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Soft Gloss"] },
+  { value: "Mooregard", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Low Lustre"] },
+  { value: "Moore Life", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Flat"] },
+  // §2 "Missing from this list: Regal select high build in flat, low lustre,
+  // soft gloss."
+  {
+    value: "Regal Select High Build", group: "Benjamin Moore — Exterior", category: "exterior",
+    finishes: ["Flat", "Low Lustre", "Soft Gloss"],
+  },
+  // §5 — all three SW grades are sold in BOTH scopes with DIFFERENT sheens,
+  // which is why they were wrong as a single "any" list.
+  {
+    value: "SW Emerald", group: "Sherwin Williams", category: "any",
+    finishes: {
+      interior: ["Flat", "Matte", "Satin", "Semi-Gloss"],
+      exterior: ["Flat", "Satin", "Gloss"],
+    },
+  },
+  {
+    value: "SW Emerald Urethane Trim/Cabinets", group: "Sherwin Williams", category: "interior",
+    finishes: ["Satin", "Semi-Gloss", "Gloss"],
+  },
+  {
+    value: "SW Duration", group: "Sherwin Williams", category: "any",
+    finishes: {
+      interior: ["Flat", "Matte", "Satin", "Semi-Gloss"],
+      exterior: ["Flat", "Low Lustre", "Satin", "Gloss"],
+    },
+  },
+  {
+    value: "SW Super Paint", group: "Sherwin Williams", category: "any",
+    // ⚠ "Velvet" (interior) and "High-Gloss" (exterior) are NOT values on
+    // Salesforce's restricted Finish*__c picklists. Kept because Jason is the
+    // authority on what PPP paints with and hiding a real sheen makes the
+    // picker wrong — but until Katie adds them in Salesforce, choosing one
+    // saves the color and drops the sheen. `npm run check:sf-picklists` names
+    // them on every run so this cannot go quiet.
+    finishes: {
+      interior: ["Flat", "Satin", "Velvet", "Semi-Gloss"],
+      exterior: ["Flat", "Low Lustre", "Satin", "Gloss", "High-Gloss"],
+    },
+  },
   { value: "Other", group: "Other", category: "any" },
 ];
 
@@ -476,12 +557,52 @@ export function isStainProduct(materialType: string | null | undefined): boolean
   return /\bstain(s|ed|ing)?\b/i.test(materialType ?? "");
 }
 
+/** The product entry for a value, raw first then collapsed to its line. */
+function productFor(materialType: string | null | undefined): MaterialType | undefined {
+  const raw = (materialType ?? "").trim();
+  if (!raw) return undefined;
+  const find = (v: string) =>
+    PAINT_LINES.find((m) => m.value === v) ?? MATERIAL_TYPES.find((m) => m.value === v);
+  return find(raw) ?? find(paintLineFromValue(raw));
+}
+
+/**
+ * Finishes to offer for a product.
+ *
+ * Jason's sheet (2026-09-09) gave the real per-product lists, so a product that
+ * declares its finishes is authoritative — that is the whole point of asking:
+ * "each product will only offer the finishes you list for it, so a stain can
+ * never be ordered in eggshell again."
+ *
+ * `scope` matters because all three Sherwin Williams grades are sold in both
+ * interior and exterior versions with DIFFERENT sheens (SW Duration is matte
+ * inside and low lustre outside). Without it they were one merged list that was
+ * wrong for both.
+ *
+ * Products with no declared list fall back to the previous generic behaviour,
+ * so an unanswered product keeps working rather than losing every option.
+ */
 export function finishOptionsFor(
   allOptions: readonly string[],
-  materialType: string | null | undefined
+  materialType: string | null | undefined,
+  scope?: "interior" | "exterior" | null
 ): string[] {
-  // Exterior lines gain the two exterior sheens (Kate 2026-09-09). Appended
-  // rather than folded into the base list so interior jobs are unaffected.
+  const product = productFor(materialType);
+  const declared = product?.finishes;
+  if (declared) {
+    if (Array.isArray(declared)) return [...declared];
+    const byScope = declared as FinishesByScope;
+    const wanted = scope === "exterior" ? byScope.exterior : scope === "interior" ? byScope.interior : null;
+    if (wanted) return [...wanted];
+    // No scope signal. Default to INTERIOR, which is the rule this file already
+    // applies in materialTypeToSf: "Interior is the overwhelming majority of
+    // PPP's work, so it's the safer default." Offering the union instead would
+    // put Low Lustre on an ordinary interior job, and a wrong sheen becomes a
+    // wrong order rather than a wrong dropdown.
+    return [...(byScope.interior ?? byScope.exterior ?? allOptions)];
+  }
+
+  // ── Fallback for products Jason did not list ──────────────────────────────
   const base = isExteriorProduct(materialType)
     ? [...allOptions, ...EXTERIOR_ONLY_SHEENS.filter((f) => !allOptions.includes(f))]
     : [...allOptions];

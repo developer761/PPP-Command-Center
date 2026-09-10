@@ -1136,6 +1136,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                 ? materialTypeExterior || materialType
                 : materialType
             }
+            scope={/^exterior/i.test(li.productFamily ?? "") ? "exterior" : "interior"}
           />
         ))
       ) : formData.hiddenLineItemCount > 0 ? (
@@ -1357,10 +1358,15 @@ function LineItemSection({
   onNotesChange,
   isInternal = false,
   materialType,
+  scope,
 }: {
   /** The product line for THIS line item — the exterior answer on an exterior
    *  line, the job line otherwise. Feeds the finish list (Katie item 19). */
   materialType?: string | null;
+  /** Which side this line is on. All three Sherwin Williams grades are sold in
+   *  interior AND exterior versions with different sheens (Jason 2026-09-09),
+   *  so the finish list cannot be chosen without it. */
+  scope?: "interior" | "exterior" | null;
   index: number;
   lineItem: FormLineItem;
   state: LineItemState | undefined;
@@ -1513,6 +1519,14 @@ function LineItemSection({
               canApplyToAll={canApplyToAll}
               onChange={(patch) => onSurfaceChange(surface, patch)}
               onApplyToAll={() => onApplyToAll(surface, state.picks[surface] ?? emptyPick())}
+              // NOT forwarded before today. LineItemSection accepted
+              // materialType and dropped it here, so SurfaceRow's
+              // finishOptionsFor call always received undefined — which means
+              // Katie's item-19 fix (stain is sold by opacity, never offer it
+              // in eggshell) shipped, passed its unit tests, and never reached
+              // the screen. Every per-product finish rule dies at this line.
+              materialType={materialType}
+              scope={scope}
             />
           ))}
           <div>
@@ -1545,11 +1559,14 @@ function SurfaceRow({
   onChange,
   onApplyToAll,
   materialType,
+  scope,
 }: {
   surface: string;
   /** The product line in play. Katie item 19: stain is sold by opacity, not by
    *  sheen, so the interior sheens must not be offered against one. */
   materialType?: string | null;
+  /** Which side of the job this surface is on — picks the right finish list. */
+  scope?: "interior" | "exterior" | null;
   /** Room heading, used only to disambiguate the row for screen readers. */
   roomLabel: string;
   pick: SurfacePick;
@@ -1658,7 +1675,7 @@ function SurfaceRow({
                   A default is auto-filled on pick, so this empty option only
                   appears if the customer deliberately clears it. */}
               <option value="">{pick.colorId ? "Choose a finish…" : "Finish (optional)"}</option>
-              {finishOptionsFor(FINISH_OPTIONS, materialType).map((f) => (
+              {finishOptionsFor(FINISH_OPTIONS, materialType, scope).map((f) => (
                 <option key={f} value={f}>{f}</option>
               ))}
             </select>

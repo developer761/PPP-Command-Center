@@ -35,7 +35,10 @@ describe("stain does not offer interior sheens", () => {
   });
 
   it("leaves paint untouched", () => {
-    expect(finishOptionsFor(ALL, "Ultra Spec")).toEqual(ALL);
+    // Ultra Spec now declares its own finishes (Jason 2026-09-09), so it is no
+    // longer the generic list — interior is the no-scope default.
+    expect(finishOptionsFor(ALL, "Ultra Spec")).toEqual(["Flat", "Eggshell", "Satin", "Semi-Gloss"]);
+    expect(finishOptionsFor(ALL, "Ultra Spec", "exterior")).toEqual(["Low Lustre", "Satin", "Soft Gloss"]);
     expect(finishOptionsFor(ALL, null)).toEqual(ALL);
     expect(finishOptionsFor(ALL, "")).toEqual(ALL);
   });
@@ -57,8 +60,29 @@ describe("a rear deck no longer defaults to eggshell", () => {
     expect(view).toMatch(/s\.includes\("railing"\)/);
   });
 
-  it("the finish dropdown is filtered by the product", () => {
-    expect(view).toMatch(/finishOptionsFor\(FINISH_OPTIONS, materialType\)/);
+  it("the product actually REACHES the finish dropdown", () => {
+    // This test used to assert that the call `finishOptionsFor(FINISH_OPTIONS,
+    // materialType)` appeared in the file. It did appear — and `materialType`
+    // was `undefined` every single time, because <SurfaceRow> was rendered
+    // without the prop. LineItemSection accepted materialType and dropped it.
+    // So the filtering shipped, this test stayed green, and the dropdown went
+    // on offering eggshell for a stain. Asserting a call exists says nothing
+    // about what is passed to it.
+    //
+    // Check the SEAM instead: read the <SurfaceRow ...> element and require it
+    // to be handed both props. Still structural — a unit suite with no DOM
+    // cannot render this — but it fails on the actual defect rather than on a
+    // rename.
+    const open = view.indexOf("<SurfaceRow");
+    expect(open, "<SurfaceRow> not found").toBeGreaterThan(-1);
+    const close = view.indexOf("/>", open);
+    expect(close, "unterminated <SurfaceRow>").toBeGreaterThan(open);
+    const element = view.slice(open, close);
+
+    expect(element, "SurfaceRow must be given materialType").toMatch(/\bmaterialType=\{/);
+    expect(element, "SurfaceRow must be given scope").toMatch(/\bscope=\{/);
+    // ...and only one SurfaceRow exists, so checking the first is checking all.
+    expect(view.split("<SurfaceRow").length - 1).toBe(1);
   });
 
   it("an exterior line uses the EXTERIOR product line", () => {

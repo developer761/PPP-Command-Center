@@ -21,10 +21,15 @@ describe("exterior sheens", () => {
     expect(out).toContain("Soft Gloss");
   });
 
-  it("offers them on the other exterior lines too", () => {
-    for (const line of ["Mooreglo", "Mooregard", "Moore Life", "Ultra Spec Exterior Low Sheen"]) {
+  it("offers exactly what Jason said each exterior product is sold in", () => {
+    // 2026-09-09: he narrowed these to ONE sheen each. That is the point of
+    // the exercise — before this every product offered all seven.
+    expect(finishOptionsFor(BASE, "Mooreglo")).toEqual(["Soft Gloss"]);
+    expect(finishOptionsFor(BASE, "Mooregard")).toEqual(["Low Lustre"]);
+    expect(finishOptionsFor(BASE, "Moore Life")).toEqual(["Flat"]);
+    expect(finishOptionsFor(BASE, "Regal Select High Build")).toEqual(["Flat", "Low Lustre", "Soft Gloss"]);
+    for (const line of ["Mooreglo", "Mooregard", "Moore Life", "Regal Select High Build"]) {
       expect(isExteriorProduct(line), line).toBe(true);
-      expect(finishOptionsFor(BASE, line), line).toContain("Low Lustre");
     }
   });
 
@@ -57,8 +62,17 @@ describe("exterior sheens", () => {
     // maps to null is written as an EMPTY finish — the color lands, the sheen
     // vanishes, and nobody is told. "High-Gloss" is the known, deliberate
     // exception (no SF picklist value exists for it).
-    const offered = finishOptionsFor(BASE, "Mooreglo");
-    const dropped = offered.filter((f) => normalizeFinishToSf(f) === null);
-    expect(dropped).toEqual(["High-Gloss"]);
+    // Mooreglo is Soft Gloss only now, so nothing is lost there.
+    expect(finishOptionsFor(BASE, "Mooreglo").filter((f) => normalizeFinishToSf(f) === null)).toEqual([]);
+
+    // SW Super Paint is the one that still loses a sheen, in BOTH scopes, and
+    // it is not a mapping bug: neither value exists on Salesforce's restricted
+    // picklist. Pinned so the day Katie adds them, this test says so.
+    expect(
+      finishOptionsFor(BASE, "SW Super Paint", "interior").filter((f) => normalizeFinishToSf(f) === null)
+    ).toEqual(["Velvet"]);
+    expect(
+      finishOptionsFor(BASE, "SW Super Paint", "exterior").filter((f) => normalizeFinishToSf(f) === null)
+    ).toEqual(["High-Gloss"]);
   });
 });

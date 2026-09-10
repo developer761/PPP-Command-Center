@@ -15,7 +15,7 @@
 import { createClient } from "@supabase/supabase-js";
 import jsforce from "jsforce";
 import { readFileSync } from "node:fs";
-import { finishOptionsFor } from "../lib/customer-form/material-types.ts";
+import { finishOptionsFor, PAINT_LINES } from "../lib/customer-form/material-types.ts";
 import { normalizeFinishToSf } from "../lib/customer-form/surface-mapping.ts";
 
 const env = Object.fromEntries(
@@ -26,12 +26,19 @@ const env = Object.fromEntries(
 
 // Mirrors FINISH_OPTIONS in components/customer-form-view.tsx.
 const BASE = ["Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss", "Gloss", "High-Gloss"];
-// One product per branch of finishOptionsFor: exterior, interior, "any", stain, none.
+/**
+ * Every product the picker can show, in every scope it can show it — a product
+ * whose interior and exterior lists differ has to be checked BOTH ways or the
+ * unstorable value hides in the branch that was not walked. SW Super Paint is
+ * exactly that: "Velvet" only appears interior, "High-Gloss" only exterior.
+ */
+const SCOPES = [null, "interior", "exterior"];
 const PRODUCTS = [
-  "Mooreglo",
+  ...PAINT_LINES.map((l) => l.value),
+  // Legacy finish-bearing values still valid on older work orders.
   "Ultra Spec Exterior Soft Gloss",
-  "Regal Select",
-  "Ultra Spec",
+  "Aura Bath & Spa Matte",
+  // The stain branch, which is why any of this exists (Katie item 19).
   "Arborcoat Semi-Transparent Stain",
   null,
 ];
@@ -58,7 +65,10 @@ let checked = 0, rejected = 0, unwritten = 0;
 const problems = [];
 
 for (const product of PRODUCTS) {
-  const offered = finishOptionsFor(BASE, product);
+ for (const scope of SCOPES) {
+  const offered = finishOptionsFor(BASE, product, scope);
+  // Skip the scoped repeat when it adds nothing (product has one flat list).
+  if (scope !== null && offered.join("|") === finishOptionsFor(BASE, product, null).join("|")) continue;
   const notes = [];
   for (const label of offered) {
     checked++;
@@ -77,8 +87,10 @@ for (const product of PRODUCTS) {
       problems.push(`${product ?? "(no product)"}: ${label} → "${sfValue}" not on ${rejects.map((r) => r.name).join(", ")}`);
     }
   }
-  console.log(`  ${String(product ?? "(no product)").padEnd(34)} ${String(offered.length).padStart(2)} offered${notes.length ? "" : "   ✓"}`);
+  const label = `${product ?? "(no product)"}${scope ? ` [${scope}]` : ""}`;
+  console.log(`  ${label.padEnd(42)} ${String(offered.length).padStart(2)} offered${notes.length ? "" : "   ✓"}`);
   for (const n of notes) console.log(`       · ${n}`);
+ }
 }
 
 console.log(`\n  CHECKED ${checked} picker option(s) against ${finishFields.length} live restricted picklist(s).`);
