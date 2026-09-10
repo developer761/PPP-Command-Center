@@ -3,12 +3,24 @@
 import { useState } from "react";
 import { stageFromIntents } from "@/lib/messaging/agent-output";
 import { runSimTurn, saveScenario, type SimTurn } from "@/lib/messaging/simulator";
+import { exportScenarioToTraining, scenarioAsSheet } from "@/lib/messaging/scenario-export";
+import type { AuditSheet } from "@/lib/messaging/audit-sheet";
 
 type Graded = SimTurn & {
   verdict?: "good" | "acceptable" | "wrong";
   verdictNote?: string;
   expectedIntent?: string;
   showNote?: boolean;
+  /**
+   * Kate's two axes, kept independent.
+   *
+   * Her audit sheet lists the SAME turn under "Where it fell short" and "Good
+   * Turns" — T3 fired the off-site quote immediately, which is right, and said
+   * it clumsily. A single verdict cannot express that, so a turn carries both.
+   */
+  didWell?: string;
+  shortfall?: string;
+  shouldHave?: string;
 };
 
 /**
@@ -54,6 +66,9 @@ export default function Simulator({
   const [saved, setSaved] = useState<string | null>(null);
   const [photos, setPhotos] = useState(0);
   const [track, setTrack] = useState<"new_lead" | "nurture">("new_lead");
+  const [overall, setOverall] = useState<"good" | "mid" | "bad" | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
   const [known, setKnown] = useState({ name: "", phone: "", email: "", address: "", inquiryScope: "" });
   const [showKnown, setShowKnown] = useState(false);
 
@@ -113,6 +128,46 @@ export default function Simulator({
   };
 
   const allGraded = turns.length > 0 && turns.every((t) => t.verdict);
+
+  /** This run in Kate's sheet shape, so both directions use one format. */
+  const asSheet = (): AuditSheet => ({
+    title: selectedTag ? `${selectedTag.label} — sandbox run` : "Sandbox run",
+    overall,
+    turns: turns.flatMap((t, i) => [
+      { ordinal: i * 2 + 1, speaker: "CUSTOMER", channel: "SMS" as const, text: t.customerText },
+      {
+        ordinal: i * 2 + 2, speaker: "AI (Emily)", channel: "SMS" as const, text: t.message,
+        didWell: t.didWell?.trim() ? { code: null, why: t.didWell.trim() } : null,
+        shortfall: t.shortfall?.trim()
+          ? { code: null, what: t.shortfall.trim(), shouldHave: t.shouldHave?.trim() || null }
+          : null,
+      },
+    ]),
+  });
+
+  const sendToTraining = async () => {
+    setExporting(true); setExportNote(null);
+    try {
+      const res = await exportScenarioToTraining({ sheet: asSheet(), tagKeys: tagKey ? [tagKey] : [] });
+      setExportNote(res.ok
+        ? `Sent to training${res.redacted.length ? ` (redacted ${res.redacted.join(", ")})` : ""}. It is marked as a sandbox run for ever, so it can never be mistaken for a real conversation.`
+        : res.error);
+    } finally { setExporting(false); }
+  };
+
+  const download = async (as: "sheet" | "csv") => {
+    setExporting(true); setExportNote(null);
+    try {
+      const res = await scenarioAsSheet({ sheet: asSheet(), as });
+      if (!res.ok) { setExportNote(res.error); return; }
+      const url = URL.createObjectURL(new Blob([res.body], { type: "text/plain;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = res.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportNote(`Downloaded ${res.filename}.`);
+    } finally { setExporting(false); }
+  };
 
   if (!ready) {
     return (
@@ -377,18 +432,51 @@ export default function Simulator({
                   )}
                 </div>
 
-                {(t.showNote || t.verdictNote !== undefined) && (
-                  <textarea
-                    value={t.verdictNote ?? ""}
-                    onChange={(e) => grade(i, { verdictNote: e.target.value })}
-                    rows={2}
-                    placeholder={
-                      t.verdict === "wrong"
-                        ? "We don't say this… / it should have asked for…"
-                        : "Fine, but word it like…"
-                    }
-                    className="w-full rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-base sm:text-[12px] placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30"
-                  />
+                {(t.showNote || t.verdictNote !== undefined || t.didWell || t.shortfall) && (
+                  <div className="space-y-1.5">
+                    <label className="block">
+                      <span className="block text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
+                        What it got right
+                      </span>
+                      <textarea
+                        value={t.didWell ?? ""}
+                        onChange={(e) => grade(i, { didWell: e.target.value })}
+                        rows={2}
+                        placeholder="Offsite fired straight away when they asked the price"
+                        className="mt-0.5 w-full rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-base sm:text-[12px] placeholder:text-ppp-charcoal-300 focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="block text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
+                        Where it fell short
+                      </span>
+                      <textarea
+                        value={t.shortfall ?? ""}
+                        onChange={(e) => grade(i, { shortfall: e.target.value })}
+                        rows={2}
+                        placeholder="Said the same thing twice in one sentence"
+                        className="mt-0.5 w-full rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-base sm:text-[12px] placeholder:text-ppp-charcoal-300 focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30"
+                      />
+                    </label>
+                    {(t.shortfall ?? "").trim() && (
+                      <label className="block">
+                        <span className="block text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
+                          Should have
+                        </span>
+                        <textarea
+                          value={t.shouldHave ?? ""}
+                          onChange={(e) => grade(i, { shouldHave: e.target.value })}
+                          rows={2}
+                          placeholder="kept it short and natural"
+                          className="mt-0.5 w-full rounded-lg border border-ppp-charcoal-200 px-2.5 py-1.5 text-base sm:text-[12px] placeholder:text-ppp-charcoal-300 focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30"
+                        />
+                        <span className="mt-0.5 block text-[10.5px] text-ppp-charcoal-400 leading-snug">
+                          The most useful thing on the sheet. A correction teaches;
+                          a complaint only marks something as bad.
+                        </span>
+                      </label>
+                    )}
+                  </div>
                 )}
 
                 {t.verdict === "wrong" && (
@@ -470,6 +558,52 @@ export default function Simulator({
           </button>
           {!allGraded && <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500">Grade every reply first.</p>}
           {saved && <p className="mt-1.5 text-[12px] text-ppp-charcoal-600">{saved}</p>}
+
+          {/* Karan's idea, and it resolves the tension rather than ignoring it.
+              Migration 195 forbids a sandbox run SILENTLY becoming training
+              data. An explicit export is a different act: a person read it and
+              decided. Marked as simulated for ever either way. */}
+          <div className="mt-4 pt-3 border-t border-ppp-charcoal-100">
+            <p className="text-[12px] font-medium text-ppp-charcoal-600">How did the whole thing go?</p>
+            <div className="mt-1.5 flex gap-1.5">
+              {([["good", "Good"], ["mid", "Mid"], ["bad", "Bad"]] as const).map(([v, label]) => (
+                <button key={v} type="button" onClick={() => setOverall(v)} aria-pressed={overall === v}
+                  className={[
+                    "min-h-[40px] px-3 rounded-lg text-[12.5px] font-medium border touch-manipulation",
+                    overall === v ? "bg-ppp-charcoal text-white border-ppp-charcoal" : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-600",
+                  ].join(" ")}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              <button type="button" onClick={() => void sendToTraining()} disabled={exporting || !overall || !tagKey}
+                className="min-h-[44px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold disabled:opacity-40 touch-manipulation">
+                {exporting ? "Working…" : "Send to training"}
+              </button>
+              <button type="button" onClick={() => void download("sheet")} disabled={exporting}
+                className="min-h-[44px] px-3 rounded-xl border border-ppp-charcoal-200 bg-white text-[12.5px] font-semibold text-ppp-charcoal-600 touch-manipulation">
+                Download as a sheet
+              </button>
+              <button type="button" onClick={() => void download("csv")} disabled={exporting}
+                className="min-h-[44px] px-3 rounded-xl border border-ppp-charcoal-200 bg-white text-[12.5px] font-semibold text-ppp-charcoal-600 touch-manipulation">
+                CSV
+              </button>
+            </div>
+            {(!overall || !tagKey) && (
+              <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
+                {!overall && "Say how it went"}{!overall && !tagKey && ", and "}
+                {!tagKey && "pick which rule it shows at the top"} before sending it to training —
+                an untagged example counts towards the total and teaches none of Emily&apos;s rules.
+              </p>
+            )}
+            {exportNote && <p className="mt-1.5 text-[12px] text-ppp-charcoal-600 leading-relaxed">{exportNote}</p>}
+            <p className="mt-2 text-[11px] text-ppp-charcoal-400 leading-snug">
+              Downloads use Kate&apos;s audit sheet layout, so a run from here and
+              a conversation she audited are the same shape.
+            </p>
+          </div>
         </section>
       )}
     </div>
