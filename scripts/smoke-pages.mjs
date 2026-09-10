@@ -65,7 +65,12 @@ async function cleanup() {
 try {
   await admin.from("profiles").insert({
     user_id: uid, email, full_name: "Smoke Probe", role: "admin", is_admin: true,
-    is_active: true, has_new_platform_access: true, has_command_center_access: false,
+    // BOTH platforms. This said has_command_center_access: false, because the
+    // smoke was written for Commercial — so `staticPages()` walked only
+    // app/commercial and every /dashboard page 307'd to /commercial. "All 73
+    // pages returned 200" was true and covered NONE of the residential
+    // Command Center, which is the side being launched.
+    is_active: true, has_new_platform_access: true, has_command_center_access: true,
     auth_provider: "password",
   });
 
@@ -109,7 +114,32 @@ try {
       .limit(1),
   ]);
 
-  const paths = [...staticPages()];
+  // Materials ordering — the residential flow, and until 2026-09-09 NOT ONE of
+  // its pages was in this list. 73 green pages said nothing about the surface
+  // being launched. A real (work order, supplier) pair comes from a committed
+  // build so the order screens render with data rather than a not-found.
+  const { data: build } = await admin
+    .from("supplier_order_builds")
+    .select("work_order_id, supplier_account_id")
+    .not("work_order_id", "is", null)
+    .limit(1);
+
+  const paths = [
+    ...staticPages(),                              // /commercial/*
+    ...staticPages("app/dashboard", "/dashboard"), // residential Command Center
+  ];
+  if (build?.[0]) {
+    const wo = encodeURIComponent(build[0].work_order_id);
+    const sup = encodeURIComponent(build[0].supplier_account_id);
+    paths.push(
+      `/dashboard/materials/${wo}`,
+      `/dashboard/materials/${wo}/order`,
+      `/dashboard/materials/${wo}/order/${sup}`,
+    );
+  } else {
+    // Never let a missing fixture read as coverage.
+    console.log("  ⚠ no supplier_order_builds row — the 3 order pages were NOT smoke-tested");
+  }
   if (acc?.[0]) paths.push(`/commercial/accounts/${acc[0].id}`, `/commercial/accounts/${acc[0].id}/edit`);
   if (inv?.[0]) paths.push(`/commercial/invoices/${inv[0].id}`);
   if (opp?.[0]) {
@@ -124,13 +154,18 @@ try {
   let bad = 0;
   for (const p of paths) {
     let code = "ERR";
+    let where = "";
     try {
       const res = await fetch(BASE + p, { headers: { cookie }, redirect: "manual" });
       code = String(res.status);
+      // A bare "307" says a page bounced but not WHERE, and the destination is
+      // the whole diagnosis — /choose-platform is an access gate, /?error= is a
+      // deactivated account, / is no session at all.
+      if (code !== "200") where = res.headers.get("location") ?? "";
     } catch (e) {
       code = "DOWN";
     }
-    if (code !== "200") { console.log(`  ${code}  ${p}`); bad++; }
+    if (code !== "200") { console.log(`  ${code}  ${p}${where ? `  →  ${where}` : ""}`); bad++; }
   }
   console.log(bad === 0
     ? `✅ all ${paths.length} pages returned 200`
