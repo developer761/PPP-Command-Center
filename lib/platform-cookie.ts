@@ -25,7 +25,7 @@ export const ALL_PLATFORMS: readonly Platform[] = ["command_center", "new_platfo
 export const PLATFORM_LABEL: Record<Platform, string> = {
   command_center: "PPP Command Center",
   new_platform: "Commercial Command Center",
-  messaging: "Messaging",
+  messaging: "Connect Hub",
 };
 
 /** Where each platform opens. The residential home is role-aware at the

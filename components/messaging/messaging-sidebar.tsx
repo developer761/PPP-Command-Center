@@ -114,7 +114,7 @@ export default function MessagingSidebar({
           <p className="font-bold text-[14px] text-ppp-charcoal leading-tight truncate">
             Precision Painting Plus
           </p>
-          <p className="text-[11px] text-ppp-charcoal-400 leading-tight">Messaging</p>
+          <p className="text-[11px] text-ppp-charcoal-400 leading-tight">Connect Hub</p>
         </div>
       </div>
 

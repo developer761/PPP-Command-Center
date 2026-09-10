@@ -73,7 +73,7 @@ export default function MessagingChrome({
                 <path d="M3 6h18 M3 12h18 M3 18h18" />
               </svg>
             </button>
-            <span className="font-bold text-ppp-charcoal truncate">Messaging</span>
+            <span className="font-bold text-ppp-charcoal truncate">Connect Hub</span>
             <Link
               href="/choose-platform"
               aria-label="Switch platform"

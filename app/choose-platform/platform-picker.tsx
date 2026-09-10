@@ -153,7 +153,7 @@ export default function PlatformPicker({ email }: { email: string }) {
                   Building
                 </span>
               </div>
-              <h2 className="text-lg font-bold text-ppp-charcoal mb-1">Messaging</h2>
+              <h2 className="text-lg font-bold text-ppp-charcoal mb-1">Connect Hub</h2>
               <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
                 Lead nurture, follow-ups, coordination and post-job surveys over SMS.
                 Replaces Hatch.

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { loadCampaign } from "@/lib/messaging/db";
 import { describeAudience, timingOf, campaignWarnings } from "@/lib/messaging/campaign-view";
-import CampaignPreview from "@/components/messaging/campaign-preview";
+import CampaignEditor from "@/components/messaging/campaign-editor";
 import type { Rule } from "@/lib/messaging/rules";
 import type { CampaignStep } from "@/lib/messaging/campaign-schedule";
 
@@ -160,35 +160,24 @@ export default async function Automations({
         </div>
       </section>
 
-      <CampaignPreview
-        steps={asSteps.map((s) => ({
-          ordinal: s.ordinal, channel: s.channel, body: s.body,
-          subject: s.subject, timing: timingOf(s),
-        }))}
+      <CampaignEditor
+        versionId={version?.id ?? null}
+        published={published}
+        steps={asSteps.map((s) => {
+          const row = steps.find((x) => x.ordinal === s.ordinal)!;
+          return {
+            id: row.id, ordinal: s.ordinal,
+            scheduleMode: s.scheduleMode, delayMinutes: s.delayMinutes,
+            dayOffset: s.dayOffset, timeOfDay: s.timeOfDay,
+            channel: s.channel, body: s.body, subject: s.subject,
+            timing: timingOf(s),
+          };
+        })}
         workspaces={live.map((w) => ({ id: w.id, name: w.name, phone_e164: w.phone_e164 }))}
+        workflows={workflows.map((w) => ({
+          id: w.id, workspaceId: w.workspace_id, name: w.name, isActive: w.is_active,
+        }))}
       />
-
-      <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
-          <h2 className="font-semibold text-ppp-charcoal text-[14px]">Where it runs</h2>
-        </div>
-        <ul className="divide-y divide-ppp-charcoal-100">
-          {workflows.map((w) => {
-            const ws = workspaces.find((x) => x.id === w.workspace_id);
-            return (
-              <li key={w.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
-                <span className="text-[13px] text-ppp-charcoal truncate">{ws?.name ?? w.name}</span>
-                <span className={[
-                  "shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold",
-                  w.is_active ? "bg-ppp-green-50 text-ppp-green-700" : "bg-ppp-charcoal-100 text-ppp-charcoal-500",
-                ].join(" ")}>
-                  {w.is_active ? "on" : "off"}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
 
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-3">
         <h2 className="font-semibold text-ppp-charcoal text-[14px]">Not on this page, on purpose</h2>
