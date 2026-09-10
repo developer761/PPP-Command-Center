@@ -102,9 +102,9 @@ export const MATERIAL_TYPES: ReadonlyArray<MaterialType> = [
   { value: "Ultra Spec Exterior Low Sheen", group: "Benjamin Moore — Exterior", category: "exterior" },
   { value: "Ultra Spec Exterior Satin", group: "Benjamin Moore — Exterior", category: "exterior" },
   { value: "Ultra Spec Exterior Soft Gloss", group: "Benjamin Moore — Exterior", category: "exterior" },
-  { value: "Mooreglo", group: "Benjamin Moore — Exterior", category: "exterior" },
-  { value: "Mooregard", group: "Benjamin Moore — Exterior", category: "exterior" },
-  { value: "Moore Life", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "Mooreglo", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Soft Gloss"] },
+  { value: "Mooregard", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Low Lustre"] },
+  { value: "Moore Life", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Flat"] },
   // Sherwin Williams — kept until Katie sends an SW finish breakdown
   { value: "SW Emerald", group: "Sherwin Williams", category: "any" },
   { value: "SW Duration", group: "Sherwin Williams", category: "any" },
@@ -168,9 +168,19 @@ export const PAINT_LINES: ReadonlyArray<MaterialType> = [
       exterior: ["Low Lustre", "Satin", "Soft Gloss"],
     },
   },
-  { value: "Mooreglo", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Soft Gloss"] },
-  { value: "Mooregard", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Low Lustre"] },
-  { value: "Moore Life", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Flat"] },
+  // Jason's Short List, 2026-09-10: "rename mooreglo soft gloss / rename
+  // mooreguard low lustre / rename moorlife flat". His spelling, and his call —
+  // these are named the way the supplier lists them. Each still declares the
+  // single finish it is sold in, so the name and the finish agree by
+  // construction rather than by anyone remembering to keep them in step.
+  //
+  // The OLD values are NOT deleted: they remain in MATERIAL_TYPES, now carrying
+  // the same finish list, so a work order already saying "Mooregard" still
+  // validates AND still offers only Low Lustre instead of dropping to the
+  // generic exterior list.
+  { value: "Mooreglo Soft Gloss", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Soft Gloss"] },
+  { value: "Mooreguard Low Lustre", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Low Lustre"] },
+  { value: "Moorlife Flat", group: "Benjamin Moore — Exterior", category: "exterior", finishes: ["Flat"] },
   // §2 "Missing from this list: Regal select high build in flat, low lustre,
   // soft gloss."
   {

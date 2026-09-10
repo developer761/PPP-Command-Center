@@ -22,16 +22,16 @@ describe("paintLineListsFor", () => {
     expect(flat(l.interior)).toContain("Regal Select");
     expect(flat(l.interior)).toContain("Ben");
     // Exterior-only lines must not appear.
-    expect(flat(l.interior)).not.toContain("Mooreglo");
-    expect(flat(l.interior)).not.toContain("Moore Life");
+    expect(flat(l.interior)).not.toContain("Mooreglo Soft Gloss");
+    expect(flat(l.interior)).not.toContain("Moorlife Flat");
   });
 
   it("shows only the exterior list on an exterior-only job", () => {
     const l = paintLineListsFor(exteriorJob);
     expect(l.interior).toBeNull();
     expect(l.isSplit).toBe(false);
-    expect(flat(l.exterior)).toContain("Mooreglo");
-    expect(flat(l.exterior)).toContain("Mooregard");
+    expect(flat(l.exterior)).toContain("Mooreglo Soft Gloss");
+    expect(flat(l.exterior)).toContain("Mooreguard Low Lustre");
     // Interior-only lines must not appear.
     expect(flat(l.exterior)).not.toContain("Regal Select");
     expect(flat(l.exterior)).not.toContain("Ben");
@@ -41,8 +41,8 @@ describe("paintLineListsFor", () => {
     const l = paintLineListsFor(mixedJob);
     expect(l.isSplit).toBe(true);
     expect(flat(l.interior)).toContain("Regal Select");
-    expect(flat(l.exterior)).toContain("Mooreglo");
-    expect(flat(l.interior)).not.toContain("Mooreglo");
+    expect(flat(l.exterior)).toContain("Mooreglo Soft Gloss");
+    expect(flat(l.interior)).not.toContain("Mooreglo Soft Gloss");
     expect(flat(l.exterior)).not.toContain("Regal Select");
   });
 
@@ -66,7 +66,7 @@ describe("paintLineListsFor", () => {
 describe("salesforceLineFor", () => {
   it("passes a single choice straight through", () => {
     expect(salesforceLineFor("Regal Select", null)).toEqual({ chosen: "Regal Select", dropped: null });
-    expect(salesforceLineFor(null, "Mooreglo")).toEqual({ chosen: "Mooreglo", dropped: null });
+    expect(salesforceLineFor(null, "Mooreglo Soft Gloss")).toEqual({ chosen: "Mooreglo Soft Gloss", dropped: null });
     expect(salesforceLineFor("", "  ")).toEqual({ chosen: null, dropped: null });
   });
 
@@ -74,9 +74,9 @@ describe("salesforceLineFor", () => {
     // MaterialType__c is ONE restricted picklist per work order, so a job with
     // both lines can't be represented. Interior wins (the bulk of PPP's work)
     // and the caller surfaces what didn't fit.
-    expect(salesforceLineFor("Regal Select", "Mooreglo")).toEqual({
+    expect(salesforceLineFor("Regal Select", "Mooreglo Soft Gloss")).toEqual({
       chosen: "Regal Select",
-      dropped: "Mooreglo",
+      dropped: "Mooreglo Soft Gloss",
     });
   });
 });

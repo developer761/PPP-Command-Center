@@ -27,16 +27,41 @@ describe("paint line picklist (#09)", () => {
     }
   });
 
-  it("carries no finish in any line value", () => {
-    const finishes = ["Flat", "Matte", "Eggshell", "Semi Gloss", "Satin", "Low Sheen", "Soft Gloss"];
+  it("never lets a line's NAME disagree with the finishes it offers", () => {
+    // This used to forbid any finish word in a line value outright (Kate R4.9:
+    // "the finish is already captured at the surface level; carrying it here
+    // asks the same question twice and lets the two answers disagree").
+    //
+    // Jason's Short List (2026-09-10) asks for the opposite on three exterior
+    // products — "rename mooreglo soft gloss", "mooreguard low lustre",
+    // "moorlife flat" — because that is how the supplier lists them. Karan
+    // decided in Jason's favour on 2026-09-10.
+    //
+    // Kate's REASON still stands, so it is what is guarded now: a name may
+    // carry a finish, but only if that is exactly the finish the product is
+    // sold in. The two answers then cannot disagree, which was the whole point.
+    const FINISHES = ["Flat", "Matte", "Eggshell", "Semi Gloss", "Semi-Gloss",
+                      "Satin", "Pearl", "Low Sheen", "Low Lustre", "Soft Gloss", "Gloss"];
+    let named = 0;
     for (const line of PAINT_LINES) {
-      for (const finish of finishes) {
-        expect(
-          line.value.includes(finish),
-          `"${line.value}" still names a finish — the finish belongs on the surface`
-        ).toBe(false);
-      }
+      const inName = FINISHES.filter((f) => line.value.includes(f));
+      if (inName.length === 0) continue;
+      named++;
+      const declared = line.finishes;
+      expect(declared, `"${line.value}" names a finish but declares none`).toBeTruthy();
+      expect(
+        Array.isArray(declared),
+        `"${line.value}" names a finish, so it must be sold in exactly one`
+      ).toBe(true);
+      const list = declared as readonly string[];
+      expect(list.length, `"${line.value}" names a finish but offers ${list.length}`).toBe(1);
+      expect(
+        line.value.includes(list[0]),
+        `"${line.value}" offers ${list[0]} — the name says something else`
+      ).toBe(true);
     }
+    // Prove it measured something: the three renamed exterior products.
+    expect(named).toBeGreaterThanOrEqual(3);
   });
 
   it("contains no primers (#08)", () => {
@@ -68,9 +93,9 @@ describe("paintLineFromValue", () => {
   });
 
   it("distinguishes lines that share a prefix", () => {
-    // "Moore Life" and "Mooreglo" both begin "Moore".
-    expect(paintLineFromValue("Moore Life")).toBe("Moore Life");
-    expect(paintLineFromValue("Mooreglo")).toBe("Mooreglo");
+    // "Moorlife Flat" and "Mooreglo Soft Gloss" both begin "Moore".
+    expect(paintLineFromValue("Moorlife Flat")).toBe("Moorlife Flat");
+    expect(paintLineFromValue("Mooreglo Soft Gloss")).toBe("Mooreglo Soft Gloss");
   });
 
   it("leaves an unrecognised Salesforce value alone rather than blanking it", () => {
@@ -103,13 +128,13 @@ describe("per-work-order filtering", () => {
     const options = filterMaterialTypesForWorkOrder({ workTypeName: "Interior Painting" })
       .flatMap((g) => g.options);
     expect(options).toContain("Regal Select");
-    expect(options).not.toContain("Mooreglo");
+    expect(options).not.toContain("Mooreglo Soft Gloss");
   });
 
   it("hides interior-only lines on an exterior job", () => {
     const options = filterMaterialTypesForWorkOrder({ workTypeName: "Exterior Painting" })
       .flatMap((g) => g.options);
-    expect(options).toContain("Mooreglo");
+    expect(options).toContain("Mooreglo Soft Gloss");
     expect(options).not.toContain("Ben");
   });
 
