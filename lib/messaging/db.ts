@@ -267,7 +267,7 @@ export async function loadRetrievalCorpus(): Promise<CorpusExample[]> {
   const sb = messagingDb();
   const [{ data: rows }, { data: links }] = await Promise.all([
     sb.from("sms_training_examples")
-      .select("id, transcript, conduct, approved, pii_scrubbed, conduct_note")
+      .select("id, transcript, conduct, approved, pii_scrubbed, conduct_note, source")
       .eq("pii_scrubbed", true),
     sb.from("sms_training_example_tags").select("example_id, tag_key, note"),
   ]);
@@ -283,6 +283,7 @@ export async function loadRetrievalCorpus(): Promise<CorpusExample[]> {
 
   return (rows ?? []).map((r) => ({
     id: r.id,
+    source: r.source,
     transcript: typeof r.transcript === "string" ? r.transcript : JSON.stringify(r.transcript),
     conduct: r.conduct as CorpusExample["conduct"],
     approved: r.approved,

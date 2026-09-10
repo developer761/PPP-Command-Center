@@ -35,7 +35,7 @@ export function schedulerDeps(): SchedulerDeps {
     async resolve(a) {
       const { data } = await sb
         .from("sms_conversations")
-        .select("state, customer_phone, customer_name, customer_email, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .select("state, customer_phone, customer_name, customer_email, sms_sub_accounts(id, name, phone_e164, reply_to_email, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id)
         .maybeSingle();
       if (!data) return null;
@@ -46,12 +46,14 @@ export function schedulerDeps(): SchedulerDeps {
       if (!ws) return null;
 
       let body = "";
+      let subject: string | null = null;
       let channel: "sms" | "email" = "sms";
       const agent = "campaign";
       if (a.campaign_step_id) {
         const { data: step } = await sb
-          .from("sms_campaign_steps").select("body, channel").eq("id", a.campaign_step_id).maybeSingle();
+          .from("sms_campaign_steps").select("body, channel, subject").eq("id", a.campaign_step_id).maybeSingle();
         body = step?.body ?? "";
+        subject = step?.subject ?? null;
         // An email step sent as an SMS would blast a subject line and newlines
         // at a phone number.
         channel = (step?.channel as "sms" | "email") ?? "sms";
@@ -72,6 +74,14 @@ export function schedulerDeps(): SchedulerDeps {
         conversationState: data.state as string,
         channel,
         toEmail: data.customer_email as string | null,
+        // The workspace's own address if it has one, otherwise the shared
+        // sender. NO workspace has one configured today, so every email
+        // currently comes from the same place — worth knowing before anybody
+        // switches email on.
+        fromEmail: (ws as unknown as { reply_to_email?: string | null }).reply_to_email
+          || process.env.RESEND_FROM_ADDRESS
+          || null,
+        subject,
       };
     },
 

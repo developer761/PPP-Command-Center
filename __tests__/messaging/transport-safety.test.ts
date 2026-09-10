@@ -62,8 +62,20 @@ describe("nothing sends by accident", () => {
 
   it("goes live only when both switches and every credential are set", () => {
     Object.assign(process.env, FULL);
-    expect(activeTransport()).toBeInstanceOf(EndUserMessagingTransport);
+    // Asserting BEHAVIOUR rather than the class: activeTransport now returns a
+    // wrapper that routes SMS and email separately, and a test pinned to the
+    // concrete class would have failed for a reason that has nothing to do
+    // with whether anything can actually send.
     expect(transportChoice().live).toBe(true);
+    expect(activeTransport()).not.toBeInstanceOf(LoggingTransport);
+  });
+
+  it("still reaches the real carrier when it is live", async () => {
+    Object.assign(process.env, FULL);
+    const t = activeTransport();
+    // The AWS adapter throws without a real endpoint; the fake never would.
+    // That difference is the thing worth asserting.
+    await expect(t.send("+15167885933" as never, "+15163448418" as never, "x")).rejects.toBeTruthy();
   });
 });
 

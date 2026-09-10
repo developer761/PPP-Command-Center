@@ -47,6 +47,8 @@ export type SchedulerDeps = {
      *  subject line and newlines at a phone number. */
     channel?: "sms" | "email";
     toEmail?: string | null;
+    fromEmail?: string | null;
+    subject?: string | null;
   } | null>;
   send(req: SendRequest): Promise<GateResult>;
   markSent(a: DueAction, providerId: string, body: string): Promise<void>;
@@ -89,6 +91,8 @@ export function classifyRefusal(r: Extract<GateResult, { ok: false }>): "cancel"
     case "no_email_address":
     case "empty_body":
     case "unresolved_merge_field":
+    case "no_sender_address":
+    case "channel_not_supported":
       // Retrying cannot fix any of these. Surface them instead of hiding them
       // in a queue — a placeholder nobody defined needs somebody to define it.
       return "fail";
@@ -161,6 +165,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
     result = await deps.send({
       workspace: ctx.workspace, to: ctx.to, body: ctx.body,
       channel: ctx.channel ?? "sms", toEmail: ctx.toEmail ?? null,
+      fromEmail: ctx.fromEmail ?? null, subject: ctx.subject ?? null,
       agent: ctx.agent, now: deps.now,
     });
   } catch (err) {

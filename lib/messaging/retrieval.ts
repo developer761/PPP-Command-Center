@@ -31,6 +31,8 @@ import type { Track } from "./agent-output";
 
 export type CorpusExample = {
   id: string;
+  /** Where it came from. 'simulated' is a sandbox run somebody exported. */
+  source?: string | null;
   transcript: string;
   conduct: "good" | "mixed" | "bad" | null;
   approved: boolean;
@@ -150,10 +152,21 @@ export function selectExamples(
   const safe = corpus.filter((e) => e.piiScrubbed && e.transcript.trim());
 
   const score = (e: CorpusExample) => e.tags.filter((t) => wanted.has(t)).length;
+  // A REAL conversation outranks a simulated one at equal relevance.
+  //
+  // Migration 195's worry was that training on invented customers teaches the
+  // bot to handle an imagination. Exported sandbox runs are allowed here —
+  // somebody read them and decided — but they sorted identically to real ones,
+  // so a corpus with a handful of exports could crowd out actual customer
+  // conversations. Real first, always.
+  const isReal = (e: CorpusExample) => e.source !== "simulated";
   // Most relevant first; among equals, the ones carrying a written reason,
   // because a reason is what makes an example teach rather than decorate.
   const rank = (a: CorpusExample, b: CorpusExample) =>
-    score(b) - score(a) || Number(!!b.note) - Number(!!a.note) || a.id.localeCompare(b.id);
+    score(b) - score(a)
+    || Number(isReal(b)) - Number(isReal(a))
+    || Number(!!b.note) - Number(!!a.note)
+    || a.id.localeCompare(b.id);
 
   const good = safe
     .filter((e) => e.conduct === "good" && e.approved && score(e) > 0)

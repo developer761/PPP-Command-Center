@@ -15,12 +15,27 @@
  * path.test.ts fails the build if any other file imports this module's sender.
  */
 import type { E164 } from "./phone";
+import { randomUUID } from "crypto";
 import { signRequest, amzDate } from "./aws-sigv4";
-import { transportChoice } from "./transport-config";
+import { transportChoice, emailChoice } from "./transport-config";
 
 export type SendResult = { providerId: string };
 
+export type EmailSend = {
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+};
+
 export interface MessageTransport {
+  /**
+   * Send an email. Optional, because a transport that only does SMS is a
+   * legitimate thing to be — and a campaign with an email step reaching an
+   * SMS-only transport should be REFUSED rather than quietly downgraded to a
+   * text, which is what happens if this is faked.
+   */
+  sendEmail?(input: EmailSend): Promise<SendResult>;
   /** `from` is the workspace's own number — the local area code the customer
    *  sees and replies to. Routing depends on it being the real one. */
   send(from: E164, to: E164, body: string): Promise<SendResult>;
@@ -36,6 +51,12 @@ export interface MessageTransport {
  */
 export class LoggingTransport implements MessageTransport {
   readonly sent: Array<{ from: string; to: string; body: string; at: Date }> = [];
+  readonly emails: Array<EmailSend & { at: Date }> = [];
+
+  async sendEmail(input: EmailSend): Promise<SendResult> {
+    this.emails.push({ ...input, at: new Date() });
+    return { providerId: `logging-email-${this.emails.length}` };
+  }
 
   async send(from: E164, to: E164, body: string): Promise<SendResult> {
     const at = new Date();
@@ -137,6 +158,36 @@ export class EndUserMessagingTransport implements MessageTransport {
 }
 
 /**
+ * Email, through the same Resend account the rest of the app uses.
+ *
+ * Wrapping lib/email/resend.ts rather than a second HTTP client: the from
+ * address, the API key and the error shape are all already decided there, and
+ * a messaging-specific copy would drift from it the first time somebody
+ * changed a sending domain.
+ */
+export class ResendEmailTransport implements MessageTransport {
+  async send(): Promise<SendResult> {
+    // Deliberately not implemented. This is the EMAIL transport; asking it for
+    // an SMS is a routing bug, and returning a fake id would hide it.
+    throw new Error("this transport sends email, not SMS");
+  }
+
+  async sendEmail(input: EmailSend): Promise<SendResult> {
+    const { sendEmail } = await import("@/lib/email/resend");
+    const res = await sendEmail({
+      to: input.to, subject: input.subject, text: input.body, from: input.from,
+    });
+    if (!res.ok) throw new Error(`email failed: ${res.error}`);
+    // Resend can accept a send and return no id. lib/email/resend.ts warns
+    // against persisting a sentinel because two of them collide — and
+    // provider_id here carries a UNIQUE index, so `resend-${Date.now()}` would
+    // have done exactly that for two sends in the same millisecond. A random
+    // id cannot collide and is visibly ours rather than the provider's.
+    return { providerId: res.id ?? `local-${randomUUID()}` };
+  }
+}
+
+/**
  * The live transport, or the fake.
  *
  * TWO switches, and that is deliberate. Credentials being present is not
@@ -151,13 +202,43 @@ export class EndUserMessagingTransport implements MessageTransport {
  * without risking a single message. That is the resting state, and it is what
  * Kate will be testing against.
  */
+/**
+ * Both channels, from one object.
+ *
+ * The gate asks whichever it needs. An SMS-only fake with no sendEmail causes
+ * the gate to REFUSE an email step rather than send it as a text, which is the
+ * behaviour worth having while email is off.
+ */
+class SplitTransport implements MessageTransport {
+  // Written out, NOT as constructor parameter properties. verify-messaging-e2e
+  // runs this file through node's strip-only TypeScript mode, which does not
+  // support them — the same mistake as EndUserMessagingTransport twenty lines
+  // up, made again in the class directly below the comment explaining it.
+  private readonly sms: MessageTransport;
+  private readonly email: MessageTransport | null;
+  readonly sendEmail?: (input: EmailSend) => Promise<SendResult>;
+
+  constructor(sms: MessageTransport, email: MessageTransport | null) {
+    this.sms = sms;
+    this.email = email;
+    // Left undefined when there is no email transport, so the gate REFUSES an
+    // email step rather than finding a method that cannot deliver.
+    if (email) this.sendEmail = (input: EmailSend) => email.sendEmail!(input);
+  }
+
+  send(from: E164, to: E164, body: string) { return this.sms.send(from, to, body); }
+}
+
 export function activeTransport(): MessageTransport {
   const choice = transportChoice();
   // Incomplete or switched-off configuration returns the fake rather than
   // throwing. A queue worker that crashes retries forever and looks like an
   // outage; one that records and does not deliver looks exactly like shadow
   // mode, which is the safe direction to fail in.
-  if (!choice.live) return new LoggingTransport();
-  return new EndUserMessagingTransport(choice.aws);
+  const email = emailChoice().live ? new ResendEmailTransport() : null;
+  // The fake does email too, so shadow mode records both channels rather than
+  // losing the email half.
+  if (!choice.live) return email ? new SplitTransport(new LoggingTransport(), email) : new LoggingTransport();
+  return new SplitTransport(new EndUserMessagingTransport(choice.aws), email);
 }
 

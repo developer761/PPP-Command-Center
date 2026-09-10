@@ -97,6 +97,10 @@ export function refusalText(reason: string): string {
     case "empty_body":          return "There is nothing to send.";
     case "unresolved_merge_field":
       return "The message still has a blank in it that nobody filled in, so it was not sent.";
+    case "no_sender_address":
+      return "There is no address for this to be sent FROM, so it was not sent.";
+    case "channel_not_supported":
+      return "This is an email and email sending is not switched on, so it was not sent.";
     default:                    return `The send was refused: ${reason}.`;
   }
 }

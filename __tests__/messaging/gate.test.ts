@@ -144,7 +144,15 @@ describe("gatedSend — no agent gets an exemption", () => {
 });
 
 describe("gatedSend — email is a separate suppression list", () => {
-  const EMAIL = { channel: "email" as const, toEmail: "person@example.com" };
+  // fromEmail is required now. An email with nowhere to come FROM is refused
+  // rather than sent from whatever the provider defaults to, and these tests
+  // are about SUPPRESSION, so they supply one.
+  const EMAIL = {
+    channel: "email" as const,
+    toEmail: "person@example.com",
+    fromEmail: "hello@precisionpaintingplus.net",
+    subject: "Your free estimate",
+  };
 
   it("sends an email step when the address is not suppressed", async () => {
     const d = deps();

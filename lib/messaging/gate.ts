@@ -106,6 +106,12 @@ export type SendRequest = {
   to: E164;
   /** Required when channel is "email". */
   toEmail?: string | null;
+  /** Who an email comes FROM. No workspace has one configured yet, so this is
+   *  refused rather than defaulted — a customer receiving PPP mail from an
+   *  unexpected address is a deliverability and a trust problem. */
+  fromEmail?: string | null;
+  /** Email subject. */
+  subject?: string | null;
   channel?: SendChannel;
   body: string;
   /** Which agent asked. Recorded, and used for nothing else — no agent gets an
@@ -122,7 +128,9 @@ export type GateRefusal =
   | "no_workspace_number"
   | "no_email_address"   // an email step with nowhere to send it
   | "empty_body"
-  | "unresolved_merge_field"  // "Call us at {{workspace_phone}}" must never send;
+  | "unresolved_merge_field"  // "Call us at {{workspace_phone}}" must never send
+  | "no_sender_address"       // nowhere for an email to come FROM
+  | "channel_not_supported"   // an email step reaching an SMS-only transport;
 
 export type GateResult =
   /** `body` is what was ACTUALLY sent, which may differ from what was asked:
@@ -198,6 +206,28 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   //
   // Deliberately after every refusal above: a message that is not going out
   // does not need a disclosure appended to it first.
+  // EMAIL goes out a different door.
+  //
+  // It used to fall through to transport.send, which takes a phone number —
+  // so an email step in a campaign would have been blasted at a handset,
+  // subject line and paragraph breaks and all.
+  if (channel === "email") {
+    const to = req.toEmail!;
+    const from = req.fromEmail?.trim() || null;
+    if (!from) return { ok: false, reason: "no_sender_address" };
+
+    const transport = deps.transport ?? activeTransport();
+    if (!transport.sendEmail) {
+      // Refused rather than downgraded. Quietly sending an email as a text is
+      // worse than not sending it.
+      return { ok: false, reason: "channel_not_supported" };
+    }
+    const { providerId } = await transport.sendEmail({
+      from, to, subject: req.subject?.trim() || "Precision Painting Plus", body,
+    });
+    return { ok: true, providerId, body };
+  }
+
   let outgoing = body;
   if (channel === "sms" && deps.hasEverSent) {
     const seenBefore = await deps.hasEverSent(to);

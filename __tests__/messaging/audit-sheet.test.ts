@@ -69,6 +69,22 @@ describe("Kate's audit sheet", () => {
     expect(conductFor("bad")).toBe("bad");
     expect(conductFor(null)).toBeNull();
   });
+
+  it("does not care about capitalisation or stray spaces", () => {
+    expect(conductFor(" MID ")).toBe("mixed");
+    expect(conductFor("Good")).toBe("good");
+  });
+
+  /**
+   * It used to pass anything through, so a stray word in her sheet reached a
+   * column with a CHECK constraint and failed at insert, where nobody could
+   * explain it.
+   */
+  it("refuses a rating it does not understand", () => {
+    expect(conductFor("excellent")).toBeNull();
+    expect(conductFor("nonsense")).toBeNull();
+    expect(conductFor(7)).toBeNull();
+  });
 });
 
 describe("the same conversation as a spreadsheet", () => {
@@ -79,6 +95,20 @@ describe("the same conversation as a spreadsheet", () => {
     expect(lines[0]).toContain("should_have");
     expect(lines[3]).toContain("A21 | Misc Awkward/mild");
     expect(lines[3]).toContain("kept it short and natural");
+  });
+
+  /**
+   * RFC 4180 allows a newline inside a quoted field and half the tools that
+   * open a CSV do not. The seeded email body has several, so her export would
+   * have arrived looking mangled in Excel.
+   */
+  it("keeps one row per turn even when a message has line breaks", () => {
+    const csv = formatAuditCsv({
+      overall: "good",
+      turns: [{ ordinal: 1, speaker: "CAMPAIGN", channel: "EMAIL", text: "Hello,\n\nThanks for reaching out.\n\nPPP" }],
+    });
+    expect(csv.split("\n")).toHaveLength(2);
+    expect(csv).toContain("Thanks for reaching out.");
   });
 
   it("escapes a quote inside a message rather than breaking the row", () => {

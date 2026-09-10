@@ -106,7 +106,10 @@ export function formatAuditSheet(sheet: AuditSheet): string {
 
 /** One row per turn, for a spreadsheet rather than a document. */
 export function formatAuditCsv(sheet: AuditSheet): string {
-  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  // Newlines collapsed rather than quoted. RFC 4180 allows them inside a
+  // quoted field, and half the tools that open a CSV do not — the seeded email
+  // body has several, so Kate's export would arrive looking mangled in Excel.
+  const esc = (v: string) => `"${v.replace(/\r?\n/g, "  ").replace(/"/g, '""')}"`;
   const rows = [
     ["turn", "speaker", "channel", "message", "overall", "fell_short_code", "fell_short", "should_have", "good_code", "did_well"]
       .map(esc).join(","),
@@ -139,9 +142,15 @@ export function transcriptOnly(sheet: AuditSheet): string {
  * rather than asking her to change her sheet is the right direction for that
  * to travel.
  */
-export function conductFor(overall: AuditSheet["overall"]): "good" | "mixed" | "bad" | null {
-  if (overall === "mid") return "mixed";
-  return overall;
+export function conductFor(overall: unknown): "good" | "mixed" | "bad" | null {
+  const v = String(overall ?? "").trim().toLowerCase();
+  if (v === "mid" || v === "mixed") return "mixed";
+  if (v === "good") return "good";
+  if (v === "bad") return "bad";
+  // Anything else is not a rating this understands. Returning null makes the
+  // caller refuse with a sentence; passing it through reached a column with a
+  // CHECK constraint and failed there, where nobody could explain it.
+  return null;
 }
 
 /** Every note on the sheet, as one reason a corpus row can carry. */

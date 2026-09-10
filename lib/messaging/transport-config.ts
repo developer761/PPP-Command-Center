@@ -32,6 +32,27 @@ export type TransportChoice =
  * including somebody wiring up an unrelated feature. Delivery needs
  * SMS_LIVE_SENDING to be exactly "true" AS WELL AS a configured carrier.
  */
+/**
+ * Whether EMAIL is being delivered, on its own switch.
+ *
+ * Separate from SMS deliberately. Turning on texting must not silently start
+ * emailing people as well — they are different channels, different volumes and
+ * different opt-outs, and one switch for both is how a campaign nobody meant
+ * to run goes out over a channel nobody was watching.
+ */
+export function emailChoice(env: NodeJS.ProcessEnv = process.env): { live: boolean; why: string } {
+  if (env.EMAIL_LIVE_SENDING !== "true") {
+    return { live: false, why: "Email sending is switched off. Steps are recorded and nothing is delivered." };
+  }
+  if (!env.RESEND_API_KEY) {
+    return { live: false, why: "No Resend API key, so email steps are recorded only." };
+  }
+  if (!env.RESEND_FROM_ADDRESS) {
+    return { live: false, why: "No sending address is configured, so email steps are recorded only." };
+  }
+  return { live: true, why: "Emails are being delivered." };
+}
+
 export function transportChoice(env: NodeJS.ProcessEnv = process.env): TransportChoice {
   if (env.SMS_LIVE_SENDING !== "true") {
     return { live: false, why: "Live sending is switched off. Everything is recorded and nothing is delivered." };

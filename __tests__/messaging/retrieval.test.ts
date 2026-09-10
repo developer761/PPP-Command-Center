@@ -291,3 +291,48 @@ describe("situations are read from the customer's words, not ours", () => {
     expect(Object.values(s).every((v) => !v)).toBe(true);
   });
 });
+
+/**
+ * Migration 195's worry was that training on invented customers teaches the
+ * bot to handle an imagination. Exported sandbox runs are allowed — somebody
+ * read them and decided — but they sorted identically to real conversations,
+ * so a handful of exports could crowd out actual customer ones.
+ */
+describe("a real conversation outranks a simulated one", () => {
+  const e = (o: Partial<CorpusExample>): CorpusExample => ({
+    id: "x", transcript: "Customer: hi\nEmily: hello",
+    conduct: "good", approved: true, piiScrubbed: true, note: null,
+    tags: ["flow_details"], ...o,
+  });
+
+  it("puts the real one first at equal relevance", () => {
+    const sel = selectExamples([
+      e({ id: "sim", source: "simulated" }),
+      e({ id: "real", source: "hatch" }),
+    ], { stage: 0 }, { maxGood: 2 });
+    expect(sel.good.map((x) => x.id)).toEqual(["real", "sim"]);
+  });
+
+  it("still uses a simulated one when it is the only thing that fits", () => {
+    const sel = selectExamples([e({ id: "sim", source: "simulated" })], { stage: 0 });
+    expect(sel.good.map((x) => x.id)).toEqual(["sim"]);
+  });
+
+  it("does not let a simulated example win on relevance alone being equal", () => {
+    // Relevance still comes first — a far more relevant simulated example
+    // beats a barely relevant real one, which is the right order.
+    const sel = selectExamples([
+      e({ id: "sim", source: "simulated", tags: ["flow_details", "one_question", "price_refused"] }),
+      e({ id: "real", source: "hatch", tags: ["flow_details"] }),
+    ], { stage: 0 }, { maxGood: 1 });
+    expect(sel.good[0].id).toBe("sim");
+  });
+
+  it("treats an example with no source recorded as real", () => {
+    const sel = selectExamples([
+      e({ id: "unknown", source: null }),
+      e({ id: "sim", source: "simulated" }),
+    ], { stage: 0 }, { maxGood: 2 });
+    expect(sel.good[0].id).toBe("unknown");
+  });
+});
