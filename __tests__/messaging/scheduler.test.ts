@@ -168,9 +168,67 @@ describe("runDueActions — one bad row must not stop the tick", () => {
     // A tick that processed nothing and a tick that failed everything must not
     // look alike to whatever is watching.
     const quiet = await runDueActions(deps({ claimDue: async () => [] }));
-    expect(quiet).toEqual({ claimed: 0, sent: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 });
+    expect(quiet).toEqual({ claimed: 0, sent: 0, drafted: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 });
     const broken = await runDueActions(deps({ send: async () => ({ ok: false, reason: "no_workspace_number" }) }));
     expect(broken.claimed).toBe(1);
     expect(broken.failed).toBe(1);
+  });
+});
+
+/**
+ * An agent turn produces a REPLY, not a campaign step. While autosend is off
+ * that reply goes to a person, so it must never reach the carrier on this path
+ * — the gate runs when the human presses send.
+ */
+describe("agent turns are drafted, not sent", () => {
+  const agentAction = { id: "a1", conversation_id: "c1", campaign_step_id: null, action: "agent_turn", attempts: 0 };
+
+  it("writes a draft and never calls send", async () => {
+    let sendCalled = false;
+    const d = deps({
+      claimDue: async () => [agentAction],
+      send: async () => { sendCalled = true; return { ok: true, providerId: "p" }; },
+      draftReply: async () => ({ kind: "drafted" as const }),
+    });
+    const out = await runDueActions(d);
+    expect(out.drafted).toBe(1);
+    expect(out.sent).toBe(0);
+    // The whole point: no carrier is involved in producing a draft.
+    expect(sendCalled).toBe(false);
+  });
+
+  it("cancels rather than sending when the worker cannot run agent turns", async () => {
+    let sendCalled = false;
+    const d = deps({
+      claimDue: async () => [agentAction],
+      send: async () => { sendCalled = true; return { ok: true, providerId: "p" }; },
+      draftReply: undefined,
+    });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(1);
+    expect(sendCalled).toBe(false);
+  });
+
+  it("cancels when there is nothing worth drafting", async () => {
+    const out = await runDueActions(deps({
+      claimDue: async () => [agentAction],
+      draftReply: async () => ({ kind: "skipped" as const, reason: "conversation has ended" }),
+    }));
+    expect(out.cancelled).toBe(1);
+    expect(out.drafted).toBe(0);
+  });
+
+  it("retries a draft that threw, rather than losing the turn", async () => {
+    const out = await runDueActions(deps({
+      claimDue: async () => [agentAction],
+      draftReply: async () => { throw new Error("model timed out"); },
+    }));
+    expect(out.rescheduled).toBe(1);
+  });
+
+  it("still sends a campaign step normally", async () => {
+    const out = await runDueActions(deps({ draftReply: async () => ({ kind: "drafted" as const }) }));
+    expect(out.sent).toBe(1);
+    expect(out.drafted).toBe(0);
   });
 });

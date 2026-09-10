@@ -6,6 +6,12 @@
  */
 import { messagingDb } from "./db";
 import { gateDeps } from "./gate-deps";
+import { agentConfigFor } from "./agent-config-for";
+import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
+import { runAgentTurn } from "./agent-run";
+import { stageFromIntents } from "./agent-output";
+import { resolveServices } from "./services";
+import { selectExamples } from "./retrieval";
 import { gatedSend, type GateResult, type SendRequest } from "./gate";
 import type { E164 } from "./phone";
 import type { DueAction, SchedulerDeps } from "./scheduler";
@@ -57,6 +63,87 @@ export function schedulerDeps(): SchedulerDeps {
       // and two copies of the suppression lookup is how the email half quietly
       // stops being checked on one path.
       return gatedSend(req, gateDeps(sb));
+    },
+
+    /**
+     * Run the agent against a real conversation and park the reply.
+     *
+     * THE FIRST TIME THE AGENT TOUCHES A REAL CUSTOMER THREAD. Everything
+     * before this ran it in the sandbox only. It resolves the same config, the
+     * same per-workspace services and the same corpus a simulator turn does,
+     * because a bot that behaves differently in testing than in production is
+     * a bot nobody has actually tested.
+     */
+    async draftReply(a: DueAction) {
+      const { data: conv } = await sb
+        .from("sms_conversations")
+        .select("id, state, customer_phone, customer_name, customer_email, workspace_id, sms_sub_accounts(id, name, autosend_enabled)")
+        .eq("id", a.conversation_id).maybeSingle();
+      if (!conv) return { kind: "skipped" as const, reason: "conversation no longer exists" };
+      if (conv.state === "ended") return { kind: "skipped" as const, reason: "conversation has ended" };
+
+      const ws = conv.sms_sub_accounts as unknown as { id: string; name: string; autosend_enabled: boolean } | null;
+      if (!ws) return { kind: "skipped" as const, reason: "conversation has no workspace" };
+
+      // One pending draft per conversation is a database rule; checking here
+      // turns a constraint violation into a clean skip.
+      const { data: existing } = await sb.from("sms_drafts")
+        .select("id").eq("conversation_id", conv.id).eq("state", "pending").maybeSingle();
+      if (existing) return { kind: "skipped" as const, reason: "a reply is already waiting for review" };
+
+      const { data: msgs } = await sb.from("sms_messages")
+        .select("id, direction, body, created_at")
+        .eq("conversation_id", conv.id).order("created_at");
+      const history = (msgs ?? []).map((m) => ({
+        role: (m.direction === "inbound" ? "customer" : "assistant") as "customer" | "assistant",
+        text: m.body,
+      }));
+      const lastInbound = [...(msgs ?? [])].reverse().find((m) => m.direction === "inbound");
+      if (!lastInbound) return { kind: "skipped" as const, reason: "nothing to reply to" };
+
+      // Everything the sandbox resolves, resolved the same way.
+      const [cfg, corpus, svc] = await Promise.all([
+        agentConfigFor(conv.workspace_id),
+        loadRetrievalCorpus(),
+        loadWorkspaceServices(conv.workspace_id),
+      ]);
+      if (!cfg) return { kind: "skipped" as const, reason: "no agent configuration" };
+
+      const priorIntents = (await sb.from("sms_drafts")
+        .select("intent").eq("conversation_id", conv.id).order("created_at")).data ?? [];
+
+      const res = await runAgentTurn(cfg.cfg, history.slice(0, -1), lastInbound.body, {
+        hardNos: cfg.hardNos,
+        stage: stageFromIntents(priorIntents.map((p) => p.intent)),
+        lastIntent: priorIntents[priorIntents.length - 1]?.intent ?? undefined,
+        known: {
+          name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
+        },
+        services: resolveServices(svc.services, svc.exceptions),
+        examples: selectExamples(corpus, { stage: stageFromIntents(priorIntents.map((p) => p.intent)) }),
+      });
+
+      if (!res.ok) return { kind: "skipped" as const, reason: res.rejected ?? res.error };
+      if (!res.rendered.trim()) return { kind: "skipped" as const, reason: "the agent had nothing to say" };
+
+      // Autosend is off everywhere and is earned per workspace after a clean
+      // run. Until then every reply waits for a person, which is the entire
+      // safety model for the first weeks.
+      const reason = res.escalate
+        ? "escalated"
+        : ws.autosend_enabled ? "low_confidence" : "autosend_off";
+
+      const { error } = await sb.from("sms_drafts").insert({
+        conversation_id: conv.id,
+        answers_message_id: lastInbound.id,
+        intent: res.action.intent,
+        confidence: res.action.confidence,
+        reasoning: res.droppedRapport ? `A sentence was removed: ${res.droppedRapport}` : null,
+        body: res.rendered,
+        review_reason: reason,
+      });
+      if (error) throw new Error(`could not write the draft: ${error.message}`);
+      return { kind: "drafted" as const };
     },
 
     async markSent(a, providerId, body) {

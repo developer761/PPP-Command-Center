@@ -15,12 +15,12 @@ import { messagingDb } from "./db";
 import { classifyInbound } from "./compliance";
 import { selectExamples, situationFrom } from "./retrieval";
 import { resolveServices } from "./services";
+import { agentConfigFor } from "./agent-config-for";
 import { normalizeInbound } from "./inbound-normalize";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import type { Track } from "./agent-output";
 import type { KnownCustomer } from "./known-customer";
-import { runAgentTurn, agentAvailable, type AgentConfigForRun, type Turn } from "./agent-run";
-import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
+import { runAgentTurn, agentAvailable, type Turn } from "./agent-run";
 import { assertMessagingAccess } from "./auth";
 
 export type SimTurn = {
@@ -45,53 +45,6 @@ export type SimResult =
   | { ok: true; turn: SimTurn }
   | { ok: false; error: string };
 
-/**
- * Resolve the config the way a live conversation would — global, then state,
- * then workspace. Using the same resolver is the point: if Kate tests as a New
- * York workspace, she is testing the New York prompt, Garden City and all.
- */
-async function configFor(workspaceId?: string, track: Track = "new_lead"): Promise<{ cfg: AgentConfigForRun; hardNos: string[] } | null> {
-  const sb = messagingDb();
-  const [{ data: rows }, { data: ws }] = await Promise.all([
-    sb.from("sms_agent_configs").select("*"),
-    workspaceId ? sb.from("sms_sub_accounts").select("name").eq("id", workspaceId).maybeSingle() : Promise.resolve({ data: null }),
-  ]);
-  if (!rows?.length) return null;
-
-  const state = ws?.name ? stateOfWorkspace(ws.name) : null;
-  const layers = (rows as AgentConfigLayer[]).filter((r) =>
-    // Track first. A nurture conversation resolving the new-lead global row
-    // would inherit the collect-the-address flow, which is the exact mistake
-    // this track exists to prevent.
-    (r.track ?? "new_lead") === track
-    && (r.scope === "global"
-    || (r.scope === "state" && state !== null && r.state_code === state)
-    || (r.scope === "workspace" && workspaceId && r.workspace_id === workspaceId))
-  );
-  const { value } = resolveAgentConfig(layers);
-
-  const { data: nos } = await sb.from("sms_hard_nos")
-    .select("rule, state_code").eq("is_active", true);
-  const hardNos = (nos ?? [])
-    .filter((n) => !n.state_code || n.state_code === state)
-    .map((n) => n.rule);
-
-  return {
-    cfg: {
-      persona_name: value.persona_name ?? "Emily",
-      persona_role: value.persona_role ?? "the team's assistant",
-      required_flow: value.required_flow ?? ["project_details", "full_address", "contact_information", "appointment_availability"],
-      services_included: value.services_included ?? null,
-      services_excluded: value.services_excluded ?? null,
-      offsite_rules: value.offsite_rules ?? null,
-      tone_rules: value.tone_rules ?? null,
-      office_location: value.office_location ?? null,
-      service_area_note: value.service_area_note ?? null,
-      confidence_threshold: Number(value.confidence_threshold ?? 0.95),
-    },
-    hardNos,
-  };
-}
 
 /** Whether the simulator can run at all, and why not if it cannot. */
 export async function simulatorStatus(): Promise<{ ready: boolean; reason?: string }> {
@@ -99,7 +52,7 @@ export async function simulatorStatus(): Promise<{ ready: boolean; reason?: stri
   if (!agentAvailable()) {
     return { ready: false, reason: "No Anthropic API key is set on this environment, so the bot cannot be asked anything." };
   }
-  const cfg = await configFor();
+  const cfg = await agentConfigFor();
   if (!cfg) return { ready: false, reason: "No agent configuration has been seeded yet — run migration 185." };
   return { ready: true };
 }
@@ -133,7 +86,7 @@ export async function runSimTurn(input: {
   // even asked anything.
   const inboundShape = normalizeInbound(input.customerText, input.mediaCount ?? 0);
   const [resolved, corpus, svc] = await Promise.all([
-    configFor(input.workspaceId, track),
+    agentConfigFor(input.workspaceId, track),
     loadRetrievalCorpus(),
     loadWorkspaceServices(input.workspaceId),
   ]);

@@ -27,6 +27,7 @@ export type DueAction = {
 
 export type ActionOutcome =
   | { kind: "sent"; providerId: string }
+  | { kind: "drafted" }
   | { kind: "rescheduled"; at: Date; reason: string }
   | { kind: "cancelled"; reason: string }
   | { kind: "failed"; reason: string }
@@ -48,6 +49,16 @@ export type SchedulerDeps = {
   reschedule(a: DueAction, at: Date, reason: string): Promise<void>;
   cancel(a: DueAction, reason: string): Promise<void>;
   fail(a: DueAction, reason: string): Promise<void>;
+  /**
+   * Run the agent for this conversation and park the reply for a person.
+   *
+   * A separate dep rather than a branch inside send, because drafting and
+   * sending are different acts with different failure modes: a draft that
+   * cannot be written is a bug, while a send that is refused is often the
+   * system working. Optional so a caller that only drains campaign steps —
+   * every existing test — does not have to supply one.
+   */
+  draftReply?(a: DueAction): Promise<{ kind: "drafted" } | { kind: "skipped"; reason: string }>;
   now?: Date;
 };
 
@@ -100,6 +111,35 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
     return { kind: "cancelled", reason };
   }
 
+  // An agent turn produces a REPLY, not a campaign step. While autosend is off
+  // that reply goes to a person rather than a carrier, so it never reaches the
+  // gate on this path — the gate runs when the human presses send.
+  if (a.action === "agent_turn") {
+    if (!deps.draftReply) {
+      const reason = "this worker cannot run agent turns";
+      await deps.cancel(a, reason);
+      return { kind: "cancelled", reason };
+    }
+    try {
+      const out = await deps.draftReply(a);
+      if (out.kind === "drafted") {
+        await deps.markSent(a, "drafted", "");
+        return { kind: "drafted" };
+      }
+      await deps.cancel(a, out.reason);
+      return { kind: "cancelled", reason: out.reason };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      if (a.attempts >= MAX_ATTEMPTS) {
+        await deps.fail(a, reason);
+        return { kind: "failed", reason };
+      }
+      const at = new Date((deps.now ?? new Date()).getTime() + backoffMs(a.attempts));
+      await deps.reschedule(a, at, reason);
+      return { kind: "rescheduled", at, reason };
+    }
+  }
+
   let result: GateResult;
   try {
     result = await deps.send({
@@ -146,6 +186,8 @@ export function backoffMs(attempts: number): number {
 }
 
 export type TickSummary = {
+  /** Replies written and waiting for a person. */
+  drafted: number;
   claimed: number;
   sent: number;
   rescheduled: number;
@@ -158,12 +200,13 @@ export type TickSummary = {
  *  processed nothing and a tick that failed everything must not look alike. */
 export async function runDueActions(deps: SchedulerDeps, limit = 50): Promise<TickSummary> {
   const claimed = await deps.claimDue(limit);
-  const s: TickSummary = { claimed: claimed.length, sent: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
+  const s: TickSummary = { claimed: claimed.length, sent: 0, drafted: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
   for (const a of claimed) {
     // One bad row must not stop the tick — the rest of the queue is unrelated.
     try {
       const out = await runAction(a, deps);
       if (out.kind === "sent") s.sent++;
+      else if (out.kind === "drafted") s.drafted++;
       else if (out.kind === "rescheduled") s.rescheduled++;
       else if (out.kind === "cancelled") s.cancelled++;
       else if (out.kind === "failed") s.failed++;

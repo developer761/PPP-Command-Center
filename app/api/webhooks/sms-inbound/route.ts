@@ -190,6 +190,32 @@ export async function POST(req: Request) {
       // 23505 is the retry we expected.
       if (error && error.code !== "23505") throw error;
 
+      // Queue a reply, unless they just told us to stop.
+      //
+      // Enqueued rather than generated here on purpose: asking a model takes
+      // seconds, SNS retries anything slow, and a webhook that times out gets
+      // redelivered — which would produce a second draft for the same message.
+      // The tick picks this up, and the unique index on one pending draft per
+      // conversation is the backstop if it somehow runs twice.
+      if (decision.keyword !== "opt_out" && decision.keyword !== "help") {
+        const { error: qErr } = await sb.from("sms_scheduled_actions").insert({
+          conversation_id: conversationId,
+          action: "agent_turn",
+          // A beat, not instantly. A human does not reply in 200ms, and a
+          // customer sending three texts in a row should get one answer to all
+          // three rather than three answers racing each other.
+          run_at: new Date(Date.now() + 30_000).toISOString(),
+        });
+        if (qErr) {
+          reportWarn({
+            key: "sms_inbound_queue_failed",
+            message: "Recorded an inbound SMS but could not queue a reply",
+            platform: "ppp_cc",
+            context: { conversationId, error: qErr.message },
+          });
+        }
+      }
+
       await sb.from("sms_conversations").update({
         last_message_at: new Date().toISOString(),
         ...(decision.keyword === "opt_out"
