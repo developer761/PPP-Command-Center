@@ -1107,7 +1107,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               </h3>
               <p className="text-xs sm:text-sm text-ppp-charcoal-600 mt-1 leading-relaxed">
                 Check out Benjamin Moore&apos;s recommended palettes and their
-                interactive room visualizer to see colors before you pick.
+                interactive room visualizer to see colors before you pick — or
+                browse their exterior wood stains if your job includes decking,
+                siding or fencing.
               </p>
               <div className="mt-3 flex flex-col sm:flex-row gap-2">
                 <a
@@ -1128,6 +1130,22 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                   className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
                 >
                   Visualize on a room
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M7 17L17 7 M7 7h10v10" />
+                  </svg>
+                </a>
+                {/* Kate 2026-09-10: "on the customer facing Color selection
+                    form, in this section can we include a button 'Exterior
+                    Stains'". Woodluxe is the line PPP actually orders — it is
+                    the exterior stain now in the product picker — so the
+                    customer researches the same range the crew will buy. */}
+                <a
+                  href="https://www.benjaminmoore.com/en-us/b/woodluxe-exterior-wood-stain"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
+                >
+                  Exterior stains
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M7 17L17 7 M7 7h10v10" />
                   </svg>
