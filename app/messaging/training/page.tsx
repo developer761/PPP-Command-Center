@@ -40,6 +40,13 @@ export default async function TrainingPage() {
       primary: s.total === 0,
     },
     {
+      href: "/messaging/training/replay",
+      title: "What changed",
+      blurb: "Replay the conversations you have judged and see what a rule change broke.",
+      meta: "After changing the rules",
+      primary: false,
+    },
+    {
       href: "/messaging/training/coverage",
       title: "What it covers",
       blurb: "Which of Emily's rules still have no good example behind them.",
