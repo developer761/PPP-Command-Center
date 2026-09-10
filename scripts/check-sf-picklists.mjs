@@ -17,6 +17,7 @@ import jsforce from "jsforce";
 import { readFileSync } from "node:fs";
 import { finishOptionsFor, PAINT_LINES } from "../lib/customer-form/material-types.ts";
 import { normalizeFinishToSf } from "../lib/customer-form/surface-mapping.ts";
+import { resolveFinishValue } from "../lib/salesforce/picklists.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8").split("\n")
@@ -72,7 +73,11 @@ for (const product of PRODUCTS) {
   const notes = [];
   for (const label of offered) {
     checked++;
-    const sfValue = normalizeFinishToSf(label);
+    // Resolve exactly the way the writeback does — hardcoded mapping first,
+    // then the org's own values. Checking only the switch would report Katie's
+    // newly-added picklist values as "not written" when they now save fine.
+    const allowed = new Set(finishFields[0].picklistValues.filter((v) => v.active).map((v) => String(v.value)));
+    const sfValue = resolveFinishValue(label, normalizeFinishToSf(label), allowed);
     if (sfValue === null) {
       unwritten++;
       notes.push(`${label} → not written to Salesforce (no picklist value)`);

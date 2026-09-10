@@ -9,6 +9,7 @@ import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
 import { insertCustomerFormSubmittedNotification } from "@/lib/notifications/insert";
 import { ALL_FINISH_VALUES, VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import { activePicklistValues, resolveFinishValue } from "@/lib/salesforce/picklists";
 import { formatProductLines } from "@/lib/customer-form/product-lines";
 import { alertSalesforceWriteFailure } from "@/lib/customer-form/sf-failure-alert";
 import {
@@ -372,6 +373,8 @@ export async function POST(
      * free text. Lossy-but-visible beats silent.
      */
     const unstorableFinishes: string[] = [];
+    // One cached describe per instance, not one per surface.
+    const allowedFinishes = await activePicklistValues("WorkOrderLineItem", "FinishWall__c");
 
     for (const s of surfaces) {
       // Per-element shape guard — a malformed surface element (null, or
@@ -403,7 +406,16 @@ export async function POST(
       // unintentionally. (If admin wants to force-clear, they edit in SF.)
       if (!s.colorId) continue;
 
-      const sfFinish = normalizeFinishToSf(s.finish);
+      // Ask the ORG what it accepts rather than relying only on the hardcoded
+      // switch. Katie is adding Velvet, High-Gloss and the stain opacities to
+      // these picklists (2026-09-10); each starts saving the moment it exists,
+      // with no deploy, and until then falls to the notes below rather than
+      // failing the write against a restricted picklist.
+      const sfFinish = resolveFinishValue(
+        s.finish,
+        normalizeFinishToSf(s.finish),
+        allowedFinishes
+      );
 
       if (std) {
         fields[std.color] = s.colorId;
