@@ -144,9 +144,10 @@ export function schedulerDeps(): SchedulerDeps {
       // turning it on would have produced a queue that still needed working
       // and said it did not. A switch that does not do what it says is worse
       // than no switch.
-      if (ws.autosend_enabled && !res.escalate) {
+      const to = toE164(conv.customer_phone);
+      if (ws.autosend_enabled && !res.escalate && to) {
         const sent = await gatedSend(
-          { workspace: wsFull, to: toE164(conv.customer_phone)!, body: res.rendered, agent: "agent_autosend" },
+          { workspace: wsFull, to, body: res.rendered, agent: "agent_autosend" },
           gateDeps(sb)
         );
         if (sent.ok) {

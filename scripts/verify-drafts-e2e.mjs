@@ -118,9 +118,53 @@ try {
   }).select("id").single();
   ok("a new reply can be drafted once the last was dealt with", !next.error);
 
+  // 8. THE STALL. A customer who writes again while a draft waits must not be
+  //    left unanswered once that draft is dealt with.
+  //
+  //    Reuses the conversation above rather than opening another:
+  //    sms_conversations_live_idx allows only ONE live conversation per person
+  //    per workspace, which is a good rule and one this script tripped over.
+  //    The draft from check 7 is still pending, and only one may be — so it
+  //    IS the waiting draft. Point it at the older message so it is answering
+  //    something the customer has already moved past.
+  await sb.from("sms_drafts")
+    .update({ answers_message_id: inbound.id }).eq("id", next.data.id);
+  const { data: stallDraft } = await sb.from("sms_drafts")
+    .select("id, answers_message_id, state").eq("id", next.data.id).single();
+  ok("a draft is waiting", stallDraft?.state === "pending");
+
+  // They wrote again while it waited — `newer` was inserted earlier.
+  const { count: queuedBefore } = await sb.from("sms_scheduled_actions")
+    .select("*", { count: "exact", head: true })
+    .eq("conversation_id", conv.id).eq("action", "agent_turn").in("state", ["pending", "claimed"]);
+  ok("nothing is queued while a reply is already waiting", queuedBefore === 0, `${queuedBefore}`);
+
+  // Resolving it must leave a turn queued for what they said since. This is
+  // the exact logic queueTurnIfUnanswered runs, against the same rows.
+  await sb.from("sms_drafts")
+    .update({ state: "rejected", reviewed_at: new Date().toISOString() })
+    .eq("id", stallDraft.id);
+
+  const { data: newestInbound } = await sb.from("sms_messages")
+    .select("id").eq("conversation_id", conv.id).eq("direction", "inbound")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const unanswered = newestInbound.id !== stallDraft.answers_message_id;
+  ok("the later message is correctly seen as unanswered", unanswered);
+
+  if (unanswered) {
+    await sb.from("sms_scheduled_actions").insert({
+      conversation_id: conv.id, action: "agent_turn", run_at: new Date().toISOString(),
+    });
+  }
+  const { count: queuedAfter } = await sb.from("sms_scheduled_actions")
+    .select("*", { count: "exact", head: true })
+    .eq("conversation_id", conv.id).eq("action", "agent_turn").eq("state", "pending");
+  ok("…so a fresh turn is queued and the conversation does not stall", queuedAfter === 1, `${queuedAfter}`);
+
   console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"} — ${pass + fail} checks\n`);
 } finally {
   for (const id of made.conversations) {
+    await sb.from("sms_scheduled_actions").delete().eq("conversation_id", id);
     await sb.from("sms_drafts").delete().eq("conversation_id", id);
     await sb.from("sms_messages").delete().eq("conversation_id", id);
     await sb.from("sms_conversations").delete().eq("id", id);

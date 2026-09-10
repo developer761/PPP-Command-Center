@@ -21,6 +21,20 @@ import { gatedSend } from "./gate";
 import { wasEdited, orderQueue, type DraftForReview } from "./drafts";
 import { toE164 } from "./phone";
 
+/**
+ * How long somebody may hold a draft before it goes back in the queue.
+ *
+ * Claiming stops two reviewers sending the same reply twice. Without a
+ * timeout it would also mean a closed tab strands that customer for ever,
+ * which trades a rare double-send for a permanent silence. The scheduler
+ * already reclaims rows abandoned by a dead worker for the same reason.
+ */
+const CLAIM_HOLD_MS = 2 * 60_000;
+
+function claimCutoff(): string {
+  return new Date(Date.now() - CLAIM_HOLD_MS).toISOString();
+}
+
 export async function pendingDrafts(limit = 25): Promise<DraftForReview[]> {
   await assertMessagingAccess();
   const sb = messagingDb();
@@ -29,6 +43,9 @@ export async function pendingDrafts(limit = 25): Promise<DraftForReview[]> {
     .from("sms_drafts")
     .select("id, conversation_id, answers_message_id, intent, confidence, reasoning, body, review_reason, created_at, sms_conversations(customer_phone, customer_name, sms_sub_accounts(name))")
     .eq("state", "pending")
+    // Not the ones somebody is actively looking at, unless they have been
+    // holding it long enough to have walked away.
+    .or(`reviewed_at.is.null,reviewed_at.lt.${claimCutoff()}`)
     .order("created_at")
     .limit(limit);
 
@@ -88,6 +105,40 @@ export async function draftThread(conversationId: string): Promise<{
   }));
 }
 
+/**
+ * Queue another turn when the customer has said something we have not answered.
+ *
+ * THE STALL THIS PREVENTS. While a draft waits, any further message from the
+ * customer queues an agent turn that is then cancelled — there is already a
+ * reply pending, and two pending replies to one person is worse than a slow
+ * one. But nothing used to re-queue afterwards, so message two was answered by
+ * nobody, ever. A customer who sent "the kitchen" and then "and the hallway"
+ * got an answer to the kitchen and silence about the hallway, which is exactly
+ * the not-listening failure the whole system is built to avoid.
+ */
+async function queueTurnIfUnanswered(
+  sb: ReturnType<typeof messagingDb>,
+  conversationId: string,
+  answeredMessageId: string | null
+): Promise<void> {
+  const { data: newest } = await sb.from("sms_messages")
+    .select("id").eq("conversation_id", conversationId).eq("direction", "inbound")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!newest || newest.id === answeredMessageId) return;
+
+  // Nothing to do if a turn is already waiting to run.
+  const { data: queued } = await sb.from("sms_scheduled_actions")
+    .select("id").eq("conversation_id", conversationId).eq("action", "agent_turn")
+    .in("state", ["pending", "claimed"]).maybeSingle();
+  if (queued) return;
+
+  await sb.from("sms_scheduled_actions").insert({
+    conversation_id: conversationId,
+    action: "agent_turn",
+    run_at: new Date().toISOString(),
+  });
+}
+
 export type SendOutcome =
   | { ok: true; edited: boolean }
   | { ok: false; refused: string }
@@ -97,12 +148,27 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
   const userId = await assertMessagingAccess();
   const sb = messagingDb();
 
-  const { data: d } = await sb
-    .from("sms_drafts")
-    .select("id, body, state, conversation_id, sms_conversations(customer_phone, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends))")
-    .eq("id", input.draftId).maybeSingle();
-  if (!d) return { ok: false, error: "That draft no longer exists." };
-  if (d.state !== "pending") return { ok: false, error: "That draft has already been dealt with." };
+  // CLAIM IT FIRST, atomically.
+  //
+  // Read-then-write is not enough: Kate and Katie both have access, and two
+  // people looking at the same queue can both press send. Setting reviewed_at
+  // only where it is still NULL means exactly one of them wins, and the loser
+  // is told rather than silently sending the customer a second copy.
+  const { data: claimedRows } = await sb.from("sms_drafts")
+    .update({ reviewed_by: userId, reviewed_at: new Date().toISOString() })
+    .eq("id", input.draftId).eq("state", "pending")
+    .or(`reviewed_at.is.null,reviewed_at.lt.${claimCutoff()}`)
+    .select("id, body, state, answers_message_id, conversation_id, sms_conversations(customer_phone, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends))");
+
+  const d = claimedRows?.[0];
+  if (!d) return { ok: false, error: "Somebody else is already dealing with this one." };
+
+  /** Put it back in the queue when the send does not happen. */
+  const release = async (sendError: string | null) => {
+    await sb.from("sms_drafts")
+      .update({ reviewed_by: null, reviewed_at: null, send_error: sendError, updated_at: new Date().toISOString() })
+      .eq("id", d.id);
+  };
 
   const conv = d.sms_conversations as unknown as {
     customer_phone: string;
@@ -112,13 +178,13 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
     } | null;
   } | null;
   const ws = conv?.sms_sub_accounts;
-  if (!ws) return { ok: false, error: "That conversation has no workspace." };
+  if (!ws) { await release(null); return { ok: false, error: "That conversation has no workspace." }; }
 
   const to = toE164(conv?.customer_phone);
-  if (!to) return { ok: false, error: "That conversation has no usable phone number." };
+  if (!to) { await release(null); return { ok: false, error: "That conversation has no usable phone number." }; }
 
   const body = input.body.trim();
-  if (!body) return { ok: false, error: "There is nothing to send." };
+  if (!body) { await release(null); return { ok: false, error: "There is nothing to send." }; }
 
   const res = await gatedSend(
     { workspace: ws, to, body, agent: "human_review" },
@@ -126,10 +192,9 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
   );
 
   if (!res.ok) {
-    // Pending, with the reason. Never marked sent when nothing was sent.
-    await sb.from("sms_drafts")
-      .update({ send_error: res.reason, updated_at: new Date().toISOString() })
-      .eq("id", d.id);
+    // Back in the queue, with the reason. Never marked sent when nothing was
+    // sent, and never left claimed by somebody who has walked away.
+    await release(res.reason);
     return { ok: false, refused: res.reason };
   }
 
@@ -147,8 +212,6 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
     // Only when it actually differs. Storing an unchanged copy would bury the
     // corrections that matter under ones that say nothing.
     final_body: edited ? body : null,
-    reviewed_by: userId,
-    reviewed_at: new Date().toISOString(),
     send_error: null,
     updated_at: new Date().toISOString(),
   }).eq("id", d.id);
@@ -156,6 +219,9 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
   await sb.from("sms_conversations")
     .update({ last_message_at: new Date().toISOString() })
     .eq("id", d.conversation_id);
+
+  // Anything they said while this waited still needs answering.
+  await queueTurnIfUnanswered(sb, d.conversation_id, d.answers_message_id);
 
   return { ok: true, edited };
 }
@@ -165,13 +231,19 @@ export async function rejectDraft(input: { draftId: string; reason?: string }): 
 > {
   const userId = await assertMessagingAccess();
   const sb = messagingDb();
-  const { error } = await sb.from("sms_drafts").update({
+  const { data, error } = await sb.from("sms_drafts").update({
     state: "rejected",
     reject_reason: input.reason?.trim() || null,
     reviewed_by: userId,
     reviewed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  }).eq("id", input.draftId).eq("state", "pending");
+  }).eq("id", input.draftId).eq("state", "pending").select("conversation_id, answers_message_id");
   if (error) return { ok: false, error: error.message };
+  const row = data?.[0];
+  if (!row) return { ok: false, error: "Somebody else already dealt with this one." };
+
+  // Binning a reply does not mean the customer stops needing one — and if they
+  // wrote again while it waited, that is still unanswered.
+  await queueTurnIfUnanswered(sb, row.conversation_id, row.answers_message_id);
   return { ok: true };
 }
