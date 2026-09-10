@@ -40,6 +40,23 @@ function firstName(full: string | null | undefined): string | null {
 
 export const MERGE_PATTERN = /\{\{\s*([a-z0-9_]+)\s*\}\}/gi;
 
+/**
+ * The fields this system knows how to fill.
+ *
+ * Exported so a screen can tell the difference between a placeholder that WILL
+ * be filled at send time and one nobody has ever defined. Without that
+ * distinction the campaign page flagged the seeded opener as broken — its
+ * {{workspace_phone}} is correct and deliberate — and Kate would have been
+ * unable to publish a perfectly good campaign.
+ */
+export const KNOWN_MERGE_FIELDS = [
+  "workspace_phone", "workspace_name", "customer_name", "office_location",
+] as const;
+
+export function isKnownMergeField(name: string): boolean {
+  return (KNOWN_MERGE_FIELDS as readonly string[]).includes(name.toLowerCase());
+}
+
 export function fillMergeFields(body: string, values: MergeValues): string {
   const map: Record<string, string | null> = {
     workspace_phone: displayNumber(values.workspacePhone),

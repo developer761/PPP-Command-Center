@@ -321,6 +321,67 @@ export async function loadWorkspaceServices(workspaceId?: string): Promise<{
   };
 }
 
+/**
+ * A campaign, everything a screen needs to show it in one read.
+ *
+ * One query set rather than one per panel, because the page is answering a
+ * single question — what does this campaign do, and to whom — and splitting
+ * that across four round trips makes it slower without making it clearer.
+ */
+export async function loadCampaign(campaignId?: string) {
+  const sb = messagingDb();
+
+  const { data: campaigns } = await sb
+    .from("sms_campaigns").select("id, name, trigger_event, is_active, hatch_campaign_name").order("name");
+  const campaign = campaignId
+    ? (campaigns ?? []).find((c) => c.id === campaignId)
+    : (campaigns ?? [])[0];
+  if (!campaign) return { campaigns: campaigns ?? [], campaign: null };
+
+  const [{ data: versions }, { data: links }, { data: workflows }] = await Promise.all([
+    sb.from("sms_campaign_versions").select("id, version, published_at, notes")
+      .eq("campaign_id", campaign.id).order("version", { ascending: false }),
+    sb.from("sms_campaign_workspaces")
+      .select("workspace_id, sms_sub_accounts(id, name, phone_e164, is_active, quiet_hours_start, quiet_hours_end)")
+      .eq("campaign_id", campaign.id),
+    sb.from("sms_workflows")
+      .select("id, name, workspace_id, is_active, entry_rules_id, exit_rules_id")
+      .eq("campaign_id", campaign.id),
+  ]);
+
+  const newest = (versions ?? [])[0] ?? null;
+  const { data: steps } = newest
+    ? await sb.from("sms_campaign_steps")
+        .select("id, ordinal, schedule_mode, delay_minutes, day_offset, time_of_day, channel, body, subject")
+        .eq("version_id", newest.id).order("ordinal")
+    : { data: [] };
+
+  const setIds = [...new Set((workflows ?? []).flatMap((w) => [w.entry_rules_id, w.exit_rules_id]).filter(Boolean))] as string[];
+  const [{ data: sets }, { data: rules }] = setIds.length
+    ? await Promise.all([
+        sb.from("sms_rule_sets").select("id, name, kind").in("id", setIds),
+        sb.from("sms_rules").select("rule_set_id, field, operator, values").in("rule_set_id", setIds).order("ordinal"),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  return {
+    campaigns: campaigns ?? [],
+    campaign,
+    versions: versions ?? [],
+    version: newest,
+    steps: steps ?? [],
+    workspaces: (links ?? [])
+      .map((l) => l.sms_sub_accounts as unknown as {
+        id: string; name: string; phone_e164: string | null; is_active: boolean;
+        quiet_hours_start: number; quiet_hours_end: number;
+      } | null)
+      .filter((w): w is NonNullable<typeof w> => !!w),
+    workflows: workflows ?? [],
+    ruleSets: sets ?? [],
+    rules: rules ?? [],
+  };
+}
+
 /** States that have rules of their own — the "Emily NY" tier. */
 export async function configuredStates(track: string = "new_lead"): Promise<string[]> {
   const sb = messagingDb();
