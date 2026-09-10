@@ -58,6 +58,7 @@ export default function Simulator({
   const [showKnown, setShowKnown] = useState(false);
 
   const filledKnown = Object.values(known).filter((v) => v.trim()).length;
+  const flowStage = stageFromIntents(turns.map((t) => t.intent));
   const selectedTag = tags.find((t) => t.key === tagKey);
 
   /**
@@ -209,6 +210,52 @@ export default function Simulator({
             )}
           </div>
 
+          {/* THE ORDER, VISIBLE.
+              Karan: "it's not even doing this... how do I trust it." The rule
+              IS enforced — an out-of-order intent is refused before it can be
+              sent — but nothing on screen showed it happening, so there was no
+              way to believe it from the outside. Watching it fill in one step
+              at a time is the difference between a claim and evidence. */}
+          {track === "new_lead" && (
+            <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50 px-3 py-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
+                What it has to collect, in order
+              </p>
+              <ol className="mt-1.5 space-y-1">
+                {["Project details", "Full address", "Contact information", "Appointment availability"].map((label, n) => {
+                  const done = flowStage > n;
+                  const current = flowStage === n;
+                  return (
+                    <li key={label} className="flex items-center gap-2">
+                      <span aria-hidden className={[
+                        "shrink-0 h-4 w-4 rounded-full border-2 flex items-center justify-center text-[9px] font-bold",
+                        done ? "border-ppp-green-700 bg-ppp-green-50 text-ppp-green-700"
+                             : current ? "border-ppp-charcoal bg-ppp-charcoal text-white"
+                             : "border-ppp-charcoal-200 text-ppp-charcoal-400",
+                      ].join(" ")}>
+                        {done ? "✓" : n + 1}
+                      </span>
+                      <span className={[
+                        "text-[12.5px]",
+                        done ? "text-ppp-charcoal-500 line-through" : current ? "text-ppp-charcoal font-medium" : "text-ppp-charcoal-400",
+                      ].join(" ")}>
+                        {label}
+                      </span>
+                      {current && (
+                        <span className="text-[11px] text-ppp-charcoal-400">← asking for this next</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="mt-1.5 text-[11px] text-ppp-charcoal-400 leading-snug">
+                It cannot skip ahead. Asking for an address before it has the
+                project details is refused before it can be sent, so if you see
+                these tick off in order that is the rule working, not luck.
+              </p>
+            </div>
+          )}
+
           {selectedTag && (
             <p className="text-[12.5px] text-ppp-charcoal-600 leading-relaxed bg-ppp-charcoal-50 rounded-lg px-3 py-2">
               {selectedTag.what_to_look_for}
@@ -316,13 +363,16 @@ export default function Simulator({
                       {v === "good" ? "Good" : v === "acceptable" ? "Fine" : "Wrong"}
                     </button>
                   ))}
-                  {/* Available on every verdict. "Fine, but say it like this"
-                      is the most useful note there is, and it is not a
-                      complaint about the whole conversation. */}
-                  {t.verdict && !t.showNote && t.verdictNote === undefined && (
+                  {/* NOT gated behind picking a verdict.
+                      Karan: "there's no way for me to input the feedback here."
+                      It only appeared once Good/Fine/Wrong had been chosen, so
+                      the most common thing somebody wants to write — "this is
+                      nearly right, say it like this" — needed a grade first and
+                      looked impossible until you had guessed that. */}
+                  {!t.showNote && t.verdictNote === undefined && (
                     <button type="button" onClick={() => grade(i, { showNote: true })}
                       className="min-h-[30px] px-2 rounded-md text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation min-h-[44px] sm:min-h-0">
-                      + say why
+                      {t.verdict ? "+ say why" : "+ add a note"}
                     </button>
                   )}
                 </div>
