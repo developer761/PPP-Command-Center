@@ -151,7 +151,7 @@ export function schedulerDeps(): SchedulerDeps {
           gateDeps(sb)
         );
         if (sent.ok) {
-          return { kind: "sent" as const, providerId: sent.providerId, body: res.rendered };
+          return { kind: "sent" as const, providerId: sent.providerId, body: sent.body };
         }
         // Refused. It becomes a draft rather than vanishing, so a person sees
         // the reply the gate would not let out and decides what to do.

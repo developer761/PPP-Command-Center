@@ -32,6 +32,19 @@ export function gateDeps(sb: SupabaseClient): GateDeps {
       return !!data;
     },
 
+    async hasEverSent(to: E164) {
+      // Across every workspace. Somebody who has heard from PPP before has
+      // already been told how to stop, and repeating the disclosure on first
+      // contact from each of fifteen workspaces would read as spam.
+      const { data } = await sb.from("sms_conversations").select("id").eq("customer_phone", to);
+      const ids = (data ?? []).map((c) => c.id);
+      if (!ids.length) return false;
+      const { count } = await sb
+        .from("sms_messages").select("id", { count: "exact", head: true })
+        .in("conversation_id", ids).eq("direction", "outbound");
+      return (count ?? 0) > 0;
+    },
+
     async sentToday(to: E164) {
       // Across every agent and workspace — the cap belongs to the handset, not
       // to whoever happens to be texting it.

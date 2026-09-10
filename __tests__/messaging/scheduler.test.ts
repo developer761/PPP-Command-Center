@@ -31,7 +31,7 @@ function deps(over: Partial<SchedulerDeps> = {}): Spy {
       workspace: WS, to: "+15165550147" as E164, body: "hi",
       agent: "lead_nurture", conversationState: "ai_active",
     }),
-    send: async (): Promise<GateResult> => ({ ok: true, providerId: "p1" }),
+    send: async (): Promise<GateResult> => ({ ok: true, providerId: "p1", body: "x" }),
     markSent: async () => { calls.markSent++; },
     reschedule: async (_a: DueAction, at: Date, reason: string) => { calls.reschedule++; d.last = { at, reason }; },
     cancel: async (_a: DueAction, reason: string) => { calls.cancel++; d.last = { reason }; },
@@ -187,7 +187,7 @@ describe("agent turns are drafted, not sent", () => {
     let sendCalled = false;
     const d = deps({
       claimDue: async () => [agentAction],
-      send: async () => { sendCalled = true; return { ok: true, providerId: "p" }; },
+      send: async () => { sendCalled = true; return { ok: true, providerId: "p", body: "x" }; },
       draftReply: async () => ({ kind: "drafted" as const }),
     });
     const out = await runDueActions(d);
@@ -201,7 +201,7 @@ describe("agent turns are drafted, not sent", () => {
     let sendCalled = false;
     const d = deps({
       claimDue: async () => [agentAction],
-      send: async () => { sendCalled = true; return { ok: true, providerId: "p" }; },
+      send: async () => { sendCalled = true; return { ok: true, providerId: "p", body: "x" }; },
       draftReply: undefined,
     });
     const out = await runDueActions(d);

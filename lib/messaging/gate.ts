@@ -36,6 +36,42 @@ export type GateWorkspace = {
  *  with an SMS and follows with an email fifteen minutes later. */
 export type SendChannel = "sms" | "email";
 
+/**
+ * The opt-out disclosure, enforced where everything passes.
+ *
+ * The first automated message to a stranger has to tell them how to stop it.
+ * That was being added by the RENDERER, which only covers the agent's own
+ * replies — and the message a customer actually receives first is almost
+ * always the campaign opener, which is free text somebody typed. Nothing
+ * enforced it there, and nothing stopped a reviewer deleting it while editing
+ * a draft.
+ *
+ * So it lives here instead. Every path to a carrier goes through this
+ * function; nothing else does.
+ *
+ * IT DOES NOT CONSTRAIN THE MESSAGE. It is appended, never templated, so the
+ * wording above it can be anything. And it is skipped when the text already
+ * says it — PPP's own campaigns end "Reply END to stop texts.", which is a
+ * perfectly good disclosure, and stapling a second one on would read like a
+ * machine wrote it twice.
+ */
+export const OPT_OUT_DISCLOSURE = "Reply STOP to opt out.";
+
+/** Already tells them how to stop? Any of the keywords the system honours. */
+const HAS_DISCLOSURE =
+  /\b(?:reply|text|send)\s+(?:"|')?(?:stop|end|quit|cancel|unsubscribe)\b|\bopt[- ]?out\b|\bto\s+unsubscribe\b/i;
+
+export function needsDisclosure(body: string): boolean {
+  return !HAS_DISCLOSURE.test(body);
+}
+
+export function withDisclosure(body: string): string {
+  const t = body.trim();
+  if (!t || !needsDisclosure(t)) return t;
+  // A full stop first, so it does not run into the sentence before it.
+  return /[.!?]$/.test(t) ? `${t} ${OPT_OUT_DISCLOSURE}` : `${t}. ${OPT_OUT_DISCLOSURE}`;
+}
+
 export type GateDeps = {
   /**
    * True when this person is suppressed on the channel we are about to use.
@@ -46,6 +82,15 @@ export type GateDeps = {
    * ignoring the other is worse than honouring neither — it looks compliant.
    */
   isSuppressed(target: { phone: E164 | null; email: string | null }, channel: SendChannel): Promise<boolean>;
+  /**
+   * Have we ever sent this handset anything at all?
+   *
+   * Decides whether the opt-out disclosure is required. Across every workspace
+   * deliberately: somebody who has heard from PPP before has already been told
+   * how to stop, and repeating it on every first contact from each of fifteen
+   * workspaces would read as spam.
+   */
+  hasEverSent?(to: E164): Promise<boolean>;
   /** Messages already sent to this handset today, across every agent and workspace. */
   sentToday(to: E164): Promise<number>;
   /** Supplied only by tests. App callers never hold a transport — the gate
@@ -78,7 +123,11 @@ export type GateRefusal =
   | "empty_body";
 
 export type GateResult =
-  | { ok: true; providerId: string }
+  /** `body` is what was ACTUALLY sent, which may differ from what was asked:
+   *  the opt-out disclosure is appended here on first contact. Callers that
+   *  record the message must record this, not their own copy, or the thread
+   *  will show something the customer never received. */
+  | { ok: true; providerId: string; body: string }
   | { ok: false; reason: GateRefusal; retryAt?: Date };
 
 /**
@@ -136,9 +185,21 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     return { ok: false, reason: "daily_cap", retryAt: nextSendableTime(startOfNextDay(now, ws.time_zone), ws.time_zone, hours) };
   }
 
+  // LAST THING BEFORE THE CARRIER. Every path — campaign step, agent autosend,
+  // a human approving a draft they have edited — arrives here, so this is the
+  // only place the disclosure cannot be forgotten or deleted.
+  //
+  // Deliberately after every refusal above: a message that is not going out
+  // does not need a disclosure appended to it first.
+  let outgoing = body;
+  if (channel === "sms" && deps.hasEverSent) {
+    const seenBefore = await deps.hasEverSent(to);
+    if (!seenBefore) outgoing = withDisclosure(body);
+  }
+
   const transport = deps.transport ?? activeTransport();
-  const { providerId } = await transport.send(ws.phone_e164 as E164, to, body);
-  return { ok: true, providerId };
+  const { providerId } = await transport.send(ws.phone_e164 as E164, to, outgoing);
+  return { ok: true, providerId, body: outgoing };
 }
 
 /* ── helpers, all timezone-aware for the same reason as the rest ── */

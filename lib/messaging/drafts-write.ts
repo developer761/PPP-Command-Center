@@ -202,7 +202,8 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
 
   await sb.from("sms_messages").insert({
     conversation_id: d.conversation_id,
-    direction: "outbound", channel: "sms", body,
+    // What the gate actually sent, disclosure included.
+    direction: "outbound", channel: "sms", body: res.body,
     provider_id: res.providerId, delivery_status: "sent",
     sent_by_user_id: userId,
   });
