@@ -58,7 +58,11 @@ export type SchedulerDeps = {
    * system working. Optional so a caller that only drains campaign steps —
    * every existing test — does not have to supply one.
    */
-  draftReply?(a: DueAction): Promise<{ kind: "drafted" } | { kind: "skipped"; reason: string }>;
+  draftReply?(a: DueAction): Promise<
+    | { kind: "drafted" }
+    | { kind: "sent"; providerId: string; body: string }
+    | { kind: "skipped"; reason: string }
+  >;
   now?: Date;
 };
 
@@ -125,6 +129,12 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       if (out.kind === "drafted") {
         await deps.markSent(a, "drafted", "");
         return { kind: "drafted" };
+      }
+      // A workspace that has earned autosend replies on its own — but only
+      // through the gate, and never when the agent asked for a person.
+      if (out.kind === "sent") {
+        await deps.markSent(a, out.providerId, out.body);
+        return { kind: "sent", providerId: out.providerId };
       }
       await deps.cancel(a, out.reason);
       return { kind: "cancelled", reason: out.reason };

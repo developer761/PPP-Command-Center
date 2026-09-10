@@ -6,6 +6,7 @@
  */
 import { messagingDb } from "./db";
 import { gateDeps } from "./gate-deps";
+import { toE164 } from "./phone";
 import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn } from "./agent-run";
@@ -77,13 +78,18 @@ export function schedulerDeps(): SchedulerDeps {
     async draftReply(a: DueAction) {
       const { data: conv } = await sb
         .from("sms_conversations")
-        .select("id, state, customer_phone, customer_name, customer_email, workspace_id, sms_sub_accounts(id, name, autosend_enabled)")
+        .select("id, state, customer_phone, customer_name, customer_email, workspace_id, sms_sub_accounts(id, name, autosend_enabled, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id).maybeSingle();
       if (!conv) return { kind: "skipped" as const, reason: "conversation no longer exists" };
       if (conv.state === "ended") return { kind: "skipped" as const, reason: "conversation has ended" };
 
-      const ws = conv.sms_sub_accounts as unknown as { id: string; name: string; autosend_enabled: boolean } | null;
+      const ws = conv.sms_sub_accounts as unknown as {
+        id: string; name: string; autosend_enabled: boolean;
+        phone_e164: string | null; time_zone: string;
+        quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean;
+      } | null;
       if (!ws) return { kind: "skipped" as const, reason: "conversation has no workspace" };
+      const wsFull = ws;
 
       // One pending draft per conversation is a database rule; checking here
       // turns a constraint violation into a clean skip.
@@ -126,12 +132,38 @@ export function schedulerDeps(): SchedulerDeps {
       if (!res.ok) return { kind: "skipped" as const, reason: res.rejected ?? res.error };
       if (!res.rendered.trim()) return { kind: "skipped" as const, reason: "the agent had nothing to say" };
 
-      // Autosend is off everywhere and is earned per workspace after a clean
-      // run. Until then every reply waits for a person, which is the entire
-      // safety model for the first weeks.
-      const reason = res.escalate
-        ? "escalated"
-        : ws.autosend_enabled ? "low_confidence" : "autosend_off";
+      // AUTOSEND, and what it does and does not mean.
+      //
+      // A workspace that has earned it replies without a person — but only
+      // through the gate, and never when the agent asked for one. Escalation
+      // wins over autosend every time: "I am not sure" is exactly the case a
+      // human is for, and a workspace being trusted in general says nothing
+      // about this particular turn.
+      //
+      // Until this flag was wired it changed only the LABEL on a draft, so
+      // turning it on would have produced a queue that still needed working
+      // and said it did not. A switch that does not do what it says is worse
+      // than no switch.
+      if (ws.autosend_enabled && !res.escalate) {
+        const sent = await gatedSend(
+          { workspace: wsFull, to: toE164(conv.customer_phone)!, body: res.rendered, agent: "agent_autosend" },
+          gateDeps(sb)
+        );
+        if (sent.ok) {
+          return { kind: "sent" as const, providerId: sent.providerId, body: res.rendered };
+        }
+        // Refused. It becomes a draft rather than vanishing, so a person sees
+        // the reply the gate would not let out and decides what to do.
+        await sb.from("sms_drafts").insert({
+          conversation_id: conv.id, answers_message_id: lastInbound.id,
+          intent: res.action.intent, confidence: res.action.confidence,
+          body: res.rendered, review_reason: "autosend_off",
+          send_error: sent.reason,
+        });
+        return { kind: "drafted" as const };
+      }
+
+      const reason = res.escalate ? "escalated" : "autosend_off";
 
       const { error } = await sb.from("sms_drafts").insert({
         conversation_id: conv.id,

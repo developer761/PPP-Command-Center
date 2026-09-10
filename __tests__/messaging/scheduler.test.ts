@@ -232,3 +232,41 @@ describe("agent turns are drafted, not sent", () => {
     expect(out.drafted).toBe(0);
   });
 });
+
+/**
+ * Autosend is the highest-consequence switch in the system: it is the
+ * difference between a bot that proposes and a bot that texts customers on its
+ * own. Until it was wired it changed only the LABEL on a draft, so turning it
+ * on produced a queue that still needed working and said it did not.
+ */
+describe("autosend, once a workspace has earned it", () => {
+  const agentAction = { id: "a1", conversation_id: "c1", campaign_step_id: null, action: "agent_turn", attempts: 0 };
+
+  it("counts an autosent reply as sent, not drafted", async () => {
+    const out = await runDueActions(deps({
+      claimDue: async () => [agentAction],
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p1", body: "hello" }),
+    }));
+    expect(out.sent).toBe(1);
+    expect(out.drafted).toBe(0);
+  });
+
+  it("records what was actually sent, not an empty body", async () => {
+    let recorded: string | null = null;
+    await runDueActions(deps({
+      claimDue: async () => [agentAction],
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p1", body: "hello there" }),
+      markSent: async (_a, _p, body) => { recorded = body; },
+    }));
+    expect(recorded).toBe("hello there");
+  });
+
+  it("still drafts when the reply came back drafted", async () => {
+    const out = await runDueActions(deps({
+      claimDue: async () => [agentAction],
+      draftReply: async () => ({ kind: "drafted" as const }),
+    }));
+    expect(out.drafted).toBe(1);
+    expect(out.sent).toBe(0);
+  });
+});
