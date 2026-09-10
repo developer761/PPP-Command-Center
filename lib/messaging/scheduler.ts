@@ -43,6 +43,10 @@ export type SchedulerDeps = {
     body: string;
     agent: string;
     conversationState: string;
+    /** Which channel this step is. An email step sent as an SMS blasts a
+     *  subject line and newlines at a phone number. */
+    channel?: "sms" | "email";
+    toEmail?: string | null;
   } | null>;
   send(req: SendRequest): Promise<GateResult>;
   markSent(a: DueAction, providerId: string, body: string): Promise<void>;
@@ -84,7 +88,9 @@ export function classifyRefusal(r: Extract<GateResult, { ok: false }>): "cancel"
     case "no_workspace_number":
     case "no_email_address":
     case "empty_body":
-      // Retrying cannot fix either. Surface it instead of hiding it in a queue.
+    case "unresolved_merge_field":
+      // Retrying cannot fix any of these. Surface them instead of hiding them
+      // in a queue — a placeholder nobody defined needs somebody to define it.
       return "fail";
   }
 }
@@ -154,6 +160,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
   try {
     result = await deps.send({
       workspace: ctx.workspace, to: ctx.to, body: ctx.body,
+      channel: ctx.channel ?? "sms", toEmail: ctx.toEmail ?? null,
       agent: ctx.agent, now: deps.now,
     });
   } catch (err) {

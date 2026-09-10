@@ -16,6 +16,7 @@
  */
 import type { E164 } from "./phone";
 import { activeTransport, type MessageTransport } from "./transport";
+import { hasUnresolved } from "./merge-fields";
 import {
   withinQuietHours, nextSendableTime, withinDailyCap,
   DEFAULT_DAILY_CAP, type QuietHours,
@@ -120,7 +121,8 @@ export type GateRefusal =
   | "daily_cap"         // five agents talking over each other.
   | "no_workspace_number"
   | "no_email_address"   // an email step with nowhere to send it
-  | "empty_body";
+  | "empty_body"
+  | "unresolved_merge_field"  // "Call us at {{workspace_phone}}" must never send;
 
 export type GateResult =
   /** `body` is what was ACTUALLY sent, which may differ from what was asked:
@@ -148,6 +150,11 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   if (channel === "sms" && !ws.phone_e164) return { ok: false, reason: "no_workspace_number" };
   if (channel === "email" && !req.toEmail) return { ok: false, reason: "no_email_address" };
   if (!body.trim()) return { ok: false, reason: "empty_body" };
+  // A placeholder that survived to here is a field nobody defined. Refusing is
+  // the only safe answer: a first message reading "Call us at
+  // {{workspace_phone}}" is visibly broken, is the first thing that customer
+  // ever sees from PPP, and cannot be unsent.
+  if (hasUnresolved(body)) return { ok: false, reason: "unresolved_merge_field" };
 
   // 1. Suppression, on the channel we are about to use. Absolute, and first,
   //    so nothing below can reorder past it.

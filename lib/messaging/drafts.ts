@@ -95,6 +95,8 @@ export function refusalText(reason: string): string {
     case "no_workspace_number": return "This workspace has no phone number, so it cannot send.";
     case "no_email_address":    return "There is no email address to send to.";
     case "empty_body":          return "There is nothing to send.";
+    case "unresolved_merge_field":
+      return "The message still has a blank in it that nobody filled in, so it was not sent.";
     default:                    return `The send was refused: ${reason}.`;
   }
 }

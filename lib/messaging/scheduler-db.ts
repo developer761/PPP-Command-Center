@@ -7,6 +7,7 @@
 import { messagingDb } from "./db";
 import { gateDeps } from "./gate-deps";
 import { toE164 } from "./phone";
+import { fillMergeFields } from "./merge-fields";
 import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn } from "./agent-run";
@@ -34,7 +35,7 @@ export function schedulerDeps(): SchedulerDeps {
     async resolve(a) {
       const { data } = await sb
         .from("sms_conversations")
-        .select("state, customer_phone, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .select("state, customer_phone, customer_name, customer_email, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id)
         .maybeSingle();
       if (!data) return null;
@@ -45,17 +46,32 @@ export function schedulerDeps(): SchedulerDeps {
       if (!ws) return null;
 
       let body = "";
+      let channel: "sms" | "email" = "sms";
       const agent = "campaign";
       if (a.campaign_step_id) {
         const { data: step } = await sb
-          .from("sms_campaign_steps").select("body").eq("id", a.campaign_step_id).maybeSingle();
+          .from("sms_campaign_steps").select("body, channel").eq("id", a.campaign_step_id).maybeSingle();
         body = step?.body ?? "";
+        // An email step sent as an SMS would blast a subject line and newlines
+        // at a phone number.
+        channel = (step?.channel as "sms" | "email") ?? "sms";
       }
+
+      // Fill the blanks BEFORE the gate sees it. The gate refuses anything
+      // still carrying a placeholder, which is the backstop rather than the
+      // mechanism.
+      body = fillMergeFields(body, {
+        workspacePhone: ws.phone_e164,
+        workspaceName: ws.name,
+        customerName: data.customer_name,
+      });
       return {
         workspace: ws,
         to: data.customer_phone as E164,
         body, agent,
         conversationState: data.state as string,
+        channel,
+        toEmail: data.customer_email as string | null,
       };
     },
 
