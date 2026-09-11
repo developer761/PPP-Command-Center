@@ -16,6 +16,7 @@ import {
   lineCompletedStoredCents,
   pickContractBaseCents,
   isAiaChangeOrderLine,
+  isAiaTaxLine,
   DEFAULT_RETAINAGE_PCT,
   type AiaG702,
   type AiaApplicationStatus,
@@ -1035,8 +1036,29 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
     pendingProposalCents: ladder.pendingProposalCents,
     bidMidCents: ladder.bidMidCents,
   });
+  // LINE 1 HAS TO CARRY THE TAX TOO, or the sheet does not foot.
+  //
+  // Folding tax into the schedule's lines (Stephanie 2026-09-11, "it has to all
+  // be one contract price") made the G703 column total tax-INCLUSIVE while this
+  // line 1 still came back pre-tax off the contract ladder. On a $25,000
+  // Suffolk job that is a $2,187.50 gap between the two sheets of the same
+  // certificate — `sovVarianceCents` reported -218750 — and a GC's AP system
+  // rejects a G702 whose continuation sheet does not add up to it.
+  //
+  // Guarded on the legacy row: when one is present `computeG702` already adds
+  // its value into line 3 via `salesTaxCents`, so adding tax here as well would
+  // bill it twice — the same either/or invariant the seed follows.
+  let line1Cents = effectiveOriginalCents;
+  if (!lines.some((l) => isAiaTaxLine(l))) {
+    const { taxOnCents } = await import("./tax-inline");
+    line1Cents += await taxOnCents({
+      opportunityId: app.opportunity_id,
+      baseCents: effectiveOriginalCents,
+    });
+  }
+
   return computeG702({
-    originalContractCents: effectiveOriginalCents,
+    originalContractCents: line1Cents,
     netChangeOrdersCents: netCO,
     retainagePct: app.retainage_pct,
     lines,

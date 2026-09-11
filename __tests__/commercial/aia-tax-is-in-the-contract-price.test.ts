@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { hasLegacyTaxRow } from "@/lib/commercial/aia/tax-inline";
+import { computeG702 } from "@/lib/commercial/aia/constants";
 
 /**
  * Sales tax rides INSIDE the contract price, not on a line of its own.
@@ -91,5 +92,60 @@ describe("the known consequence", () => {
     // Whitespace-tolerant: the sentence wraps across comment lines, and a
     // single-line regex would fail on a reflow rather than on a real deletion.
     expect(src.replace(/\s*\n\s*\*?\s*/g, " ")).toMatch(/restate the Original Contract Sum/);
+  });
+});
+
+/**
+ * THE SHEET HAS TO FOOT.
+ *
+ * Folding tax into the schedule's lines made the G703 column total
+ * tax-inclusive while G702 line 1 still came back pre-tax off the contract
+ * ladder. On a $25,000 Suffolk job that is a $2,187.50 gap between two sheets
+ * of the SAME certificate, and a GC's AP system rejects that outright.
+ *
+ * I shipped that gap. Every other check was green: tsc passed, 2,936 unit tests
+ * passed, all 97 pages returned 200, and the two new guards both verified the
+ * fold was happening — none of them ever added the two sheets up.
+ *
+ * `sovVarianceCents` existed the whole time and is exactly the number that
+ * catches it. Nothing was asserting on it.
+ */
+describe("the two sheets add up to each other", () => {
+  const foot = (originalContractCents: number, lines: Array<{ item_no: string; scheduled_value_cents: number }>) => {
+    return computeG702({
+      originalContractCents,
+      netChangeOrdersCents: 0,
+      retainagePct: 10,
+      previousCertificatesCents: 0,
+      lines: lines.map((l) => ({ ...l, from_previous_cents: 0, this_period_cents: 0, materials_stored_cents: 0 })) as never,
+    });
+  };
+
+  it("a tax-inclusive schedule needs a tax-inclusive line 1", () => {
+    // $25,000 + 8.75% Suffolk = $27,187.50 on the contract line.
+    const good = foot(27_187_50, [{ item_no: "1", scheduled_value_cents: 27_187_50 }]);
+    expect(good.contractSumToDateCents).toBe(27_187_50);
+    expect(good.sovVarianceCents, "G702 line 3 and the G703 total must agree").toBe(0);
+  });
+
+  it("catches the mismatch I shipped: inclusive lines, pre-tax line 1", () => {
+    // The state that went to production. Kept as a test so the failure mode is
+    // named rather than rediscovered.
+    const bad = foot(25_000_00, [{ item_no: "1", scheduled_value_cents: 27_187_50 }]);
+    expect(bad.sovVarianceCents).toBe(-218750);
+  });
+
+  it("still foots on an exempt job, where nothing is folded at all", () => {
+    const exempt = foot(25_000_00, [{ item_no: "1", scheduled_value_cents: 25_000_00 }]);
+    expect(exempt.sovVarianceCents).toBe(0);
+  });
+
+  it("resolveG702 adds tax to line 1 ONLY when there is no legacy tax row", () => {
+    // With a legacy row present, computeG702 already folds its value into line
+    // 3 via salesTaxCents — adding tax to line 1 as well would bill it twice.
+    const src = readFileSync("lib/commercial/aia/db.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(src).toMatch(/if \(!lines\.some\(\(l\) => isAiaTaxLine\(l\)\)\)/);
+    expect(src).toMatch(/originalContractCents: line1Cents/);
   });
 });

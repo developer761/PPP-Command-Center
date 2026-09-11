@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { SAVE_NOW_EVENT } from "@/lib/commercial/save-now-event";
 import { AUTOSAVE_FLAG, AUTOSAVE_DEBOUNCE_MS } from "@/lib/commercial/autosave-flag";
 
 type Status = "idle" | "saving" | "saved" | "error";
@@ -79,11 +80,28 @@ export function AutosaveForm({
     const form = formRef.current;
     if (!form || disabled) return;
     const handler = () => scheduleSave();
+    // A finished, discrete edit — a date picked, an exclusion clicked — skips
+    // the typing debounce. Wired here as well as in autosave-proposal-form
+    // because DateField dispatches it from ONE place and both forms host date
+    // fields: the Work Order and Closeout tools would otherwise keep the 2.5s
+    // window that produced Stephanie's "not sticking" reports on the other two
+    // surfaces. Exactly the drift AUTOSAVE_FLAG suffered — added to one form
+    // and not its sibling, and the complaint stayed live for a month.
+    const now = () => {
+      if (disabled) return;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      fireSave();
+    };
     form.addEventListener("input", handler);
     form.addEventListener("change", handler);
+    form.addEventListener(SAVE_NOW_EVENT, now);
     return () => {
       form.removeEventListener("input", handler);
       form.removeEventListener("change", handler);
+      form.removeEventListener(SAVE_NOW_EVENT, now);
       // Flush a PENDING debounced save on unmount. beforeunload only fires on a
       // full page unload; a client-side navigation (a Next <Link> to another
       // deal/tab) tears this form down without it, so text typed within the

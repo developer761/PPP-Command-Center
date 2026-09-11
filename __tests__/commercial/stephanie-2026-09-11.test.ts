@@ -24,6 +24,12 @@ describe("a discrete edit saves NOW, not in 2.5 seconds", () => {
     expect(src).toMatch(/export const SAVE_NOW_EVENT/);
     for (const f of [
       "components/commercial/autosave-proposal-form.tsx",
+      // Its sibling, which hosts the Work Order and Closeout tools. DateField
+      // dispatches from ONE place, so a listener on only one of the two forms
+      // leaves the other with the 2.5s window — the exact drift AUTOSAVE_FLAG
+      // suffered, where a fix reached one surface and not the other and the
+      // complaint stayed live for a month.
+      "components/commercial/autosave-form.tsx",
       "components/commercial/exclusion-picker.tsx",
       "components/commercial/date-field.tsx",
     ]) {
@@ -35,12 +41,19 @@ describe("a discrete edit saves NOW, not in 2.5 seconds", () => {
     }
   });
 
-  it("the form flushes on it instead of restarting the debounce", () => {
-    const src = strip("components/commercial/autosave-proposal-form.tsx");
-    expect(src).toMatch(/addEventListener\(SAVE_NOW_EVENT/);
-    // It must clear the pending timer and fire — scheduling again would just
-    // reintroduce the delay under a new name.
-    expect(src).toMatch(/clearTimeout\(timerRef\.current\)[\s\S]{0,120}fireSave\(\)/);
+  it("BOTH autosave forms flush on it instead of restarting the debounce", () => {
+    for (const f of [
+      "components/commercial/autosave-proposal-form.tsx",
+      "components/commercial/autosave-form.tsx",
+    ]) {
+      const src = strip(f);
+      expect(src, `${f} does not listen`).toMatch(/addEventListener\(SAVE_NOW_EVENT/);
+      // It must clear the pending timer and fire — scheduling again would just
+      // reintroduce the delay under a new name.
+      expect(src, `${f} re-schedules instead of flushing`).toMatch(
+        /clearTimeout\(timerRef\.current\)[\s\S]{0,160}fireSave\(\)/
+      );
+    }
   });
 
   it("picking a date and picking an exclusion both emit it", () => {
