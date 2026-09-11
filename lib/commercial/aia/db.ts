@@ -5,6 +5,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { taxInclusiveCents } from "./tax-inline";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { netApprovedChangeOrderCents, listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/proposals/db";
@@ -344,7 +345,12 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
             item_no: `CO-${String(co.co_number).padStart(3, "0")}`,
             description: `Change Order ${co.co_number}: ${co.title}`.slice(0, 500),
             // NOT clamped at zero — a deduct CO is a real credit line.
-            scheduled_value_cents: Math.round(Number(co.amount_cents)),
+            // A change order on a taxable job is taxable too, and its tax rides
+            // inside its own line for the same reason the contract's does.
+            scheduled_value_cents: await taxInclusiveCents({
+              opportunityId: app.opportunity_id,
+              baseCents: Math.round(Number(co.amount_cents)),
+            }),
             from_previous_cents: 0,
             this_period_cents: 0,
             materials_stored_cents: 0,
@@ -439,7 +445,13 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
       item_no: "1",
       change_order_id: null,
       description: "Original Contract",
-      scheduled_value_cents: Math.max(0, contractCents),
+      // Tax INSIDE the contract price, not on a line of its own (Stephanie
+      // 2026-09-11). Derived from contractCents each time, so it cannot
+      // compound — see lib/commercial/aia/tax-inline.ts for the two rules.
+      scheduled_value_cents: Math.max(
+        0,
+        await taxInclusiveCents({ opportunityId: app.opportunity_id, baseCents: contractCents })
+      ),
       from_previous_cents: 0,
       this_period_cents: 0,
       materials_stored_cents: 0,
@@ -483,7 +495,12 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
       // deduct — clamping made the whole batch insert fail the column's old
       // >= 0 CHECK, and the failure was swallowed, so the operator got an
       // application with a completely blank schedule of values and no error.
-      scheduled_value_cents: Math.round(Number(co.amount_cents)),
+      // A change order on a taxable job is taxable too, and its tax rides
+      // inside its own line for the same reason the contract's does.
+      scheduled_value_cents: await taxInclusiveCents({
+        opportunityId: app.opportunity_id,
+        baseCents: Math.round(Number(co.amount_cents)),
+      }),
       from_previous_cents: 0,
       this_period_cents: 0,
       materials_stored_cents: 0,
@@ -582,23 +599,31 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
     (c) => !presentIds.has(c.id) && !presentNos.has(String(c.co_number)) && !billedElsewhere.has(c.id)
   );
   if (missing.length > 0) {
-    let pos = lines.reduce((m, l) => Math.max(m, l.position ?? 0), 0) + 1000;
-    const rows = missing.map((co) => {
+    // Position from the INDEX, not a mutable counter. These callbacks are async
+    // now (the tax lookup awaits), so every one of them would read the same
+    // `pos` before any of them got to increment it — and a schedule of values
+    // with N rows at the same position has no defined order.
+    const basePos = lines.reduce((m, l) => Math.max(m, l.position ?? 0), 0) + 1000;
+    const rows = await Promise.all(missing.map(async (co, i) => {
       const r = {
         application_id: applicationId,
-        position: pos,
+        position: basePos + i * 1000,
         item_no: `CO-${String(co.co_number).padStart(3, "0")}`,
         description: `Change Order ${co.co_number}: ${co.title}`.slice(0, 500),
         // Signed — a deduct CO is a real negative credit line.
-        scheduled_value_cents: Math.round(Number(co.amount_cents)),
+        // A change order on a taxable job is taxable too, and its tax rides
+        // inside its own line for the same reason the contract's does.
+        scheduled_value_cents: await taxInclusiveCents({
+          opportunityId: app.opportunity_id,
+          baseCents: Math.round(Number(co.amount_cents)),
+        }),
         from_previous_cents: 0,
         this_period_cents: 0,
         materials_stored_cents: 0,
         change_order_id: co.id,
       };
-      pos += 1000;
       return r;
-    });
+    }));
     // UPSERT, and CHECK the error. This runs from a page render, so two people
     // opening the same draft certificate (or a render racing the PDF export)
     // both computed the same missing rows. Migration 128's unique index on

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { aiaOwnerLabel, aiaProjectLabel, aiaContractorLabel } from "@/lib/commercial/aia/header-labels";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess, denyCrewApi } from "@/lib/commercial/auth";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -46,16 +47,18 @@ export async function GET(
   if (!account) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const dealName = derivedOppName(opp, account.company_name);
-  const projectLabel = [dealName, opp.property_street].filter(Boolean).join(" · ");
 
+  // Name AND address on all three blocks (Stephanie 2026-09-11). Built by the
+  // shared helper, because the AIA tool's auto-file path builds the same three
+  // and a label built twice drifts.
   const buf = await buildAiaWorkbookBuffer({
     application,
     lines,
     g702,
-    projectLabel,
-    ownerLabel: account.company_name,
+    projectLabel: aiaProjectLabel(dealName, opp),
+    ownerLabel: aiaOwnerLabel(account),
     // PPP is the contractor submitting the application.
-    contractorLabel: (await getOperatingCompany()).name,
+    contractorLabel: aiaContractorLabel(await getOperatingCompany()),
   });
 
   const safeName = `AIA_App_${application.application_number}_${dealName}`

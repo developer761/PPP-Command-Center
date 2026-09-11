@@ -1,6 +1,6 @@
 import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
-import { AIA_TAX_ITEM_NO, isAiaTaxLine } from "./constants";
+import { isAiaTaxLine } from "./constants";
 
 /**
  * The sales-tax row on a payment application's schedule of values.
@@ -106,6 +106,10 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
   }
 
   if (existing) {
+    // A LEGACY row, from before tax moved inside the contract price. It is
+    // still maintained so an application already carrying one stays correct —
+    // one live application has $437.50 billed against its tax row, which is
+    // history on a certificate the GC may be holding.
     if (Math.round(existing.scheduled_value_cents) === want.cents) return;
     await sb
       .from("commercial_aia_line_items")
@@ -114,18 +118,14 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
     return;
   }
 
-  // Last row on the sheet: tax comes after the contract and its change orders,
-  // which is where a GC's AP department expects to find it.
-  const maxPos = lines.reduce((m, _l, i) => Math.max(m, (i + 1) * 1000), 0);
-  await sb.from("commercial_aia_line_items").insert({
-    application_id: applicationId,
-    position: maxPos + 1000,
-    item_no: AIA_TAX_ITEM_NO,
-    description: want.label,
-    scheduled_value_cents: want.cents,
-    from_previous_cents: 0,
-    this_period_cents: 0,
-    materials_stored_cents: 0,
-    change_order_id: null,
-  });
+  // NO new tax row. Stephanie 2026-09-11: "Sales tax can't show as a separate
+  // line item. It has to all be one contract price." New applications get tax
+  // folded into the contract and change-order lines at seed time instead —
+  // see `taxInclusiveCents` in ./tax-inline.
+  //
+  // This return is the invariant that stops a GC being charged twice: an
+  // application uses EITHER the legacy row or inline tax, never both. Creating
+  // a row here on an application whose lines are already tax-inclusive would
+  // bill the tax a second time.
+  return;
 }

@@ -5,6 +5,7 @@
  * Same account-scoped pattern + drawer-reopening back link as Change Orders.
  */
 import Link from "next/link";
+import { aiaOwnerLabel, aiaProjectLabel, aiaContractorLabel } from "@/lib/commercial/aia/header-labels";
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -261,14 +262,15 @@ async function autoFileAiaApplication(accountId: string, dealId: string, appId: 
     ]);
     if (!opp || !g702 || !account) return;
     const dealName = derivedOppName(opp, account.company_name);
-    const projectLabel = [dealName, opp.property_street].filter(Boolean).join(" · ");
+    // Name AND address on all three blocks — same helper the download route
+    // uses, so the filed copy and the downloaded copy cannot disagree.
     const buf = await buildAiaWorkbookBuffer({
       application,
       lines,
       g702,
-      projectLabel,
-      ownerLabel: account.company_name,
-      contractorLabel: (await getOperatingCompany()).name,
+      projectLabel: aiaProjectLabel(dealName, opp),
+      ownerLabel: aiaOwnerLabel(account),
+      contractorLabel: aiaContractorLabel(await getOperatingCompany()),
     });
     await autoFileOpportunityDocument({
       opportunityId: dealId,
