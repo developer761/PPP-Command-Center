@@ -41,7 +41,20 @@ describe("identifying the tax row", () => {
   });
 });
 
-describe("where tax lands in the G702", () => {
+/**
+ * NOTE — this block now covers the LEGACY separate-tax-row path.
+ *
+ * Stephanie reversed the design on 2026-09-11 ("Sales tax can't show as a
+ * separate line item. It has to all be one contract price"), so new
+ * applications fold tax into the contract and change-order lines instead —
+ * see `aia-tax-is-in-the-contract-price.test.ts`.
+ *
+ * These stay because one live application already carries a tax row with
+ * $437.50 billed against it. That row is history on a certificate the GC may
+ * be holding, `computeG702` must keep footing it correctly, and the arithmetic
+ * below is what proves it does. Do not delete them as "the old way".
+ */
+describe("where tax lands in the G702 (LEGACY tax-row path)", () => {
   const base = { originalContractCents: 100_000_00, netChangeOrdersCents: 10_000_00, retainagePct: 5, previousCertificatesCents: 0 };
 
   it("adds to line 3 without touching line 1 or line 2", () => {
