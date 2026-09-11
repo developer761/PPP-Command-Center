@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { hasLegacyTaxRow } from "@/lib/commercial/aia/tax-inline";
+import { hasLegacyTaxRow, taxReconcileMode } from "@/lib/commercial/aia/tax-inline";
 import { computeG702 } from "@/lib/commercial/aia/constants";
 
 /**
@@ -39,10 +39,15 @@ describe("an application uses EITHER the legacy row or inline tax", () => {
 
     const insertIdx = src.indexOf("item_no: AIA_TAX_ITEM_NO");
     if (insertIdx > -1) {
-      const guardIdx = src.lastIndexOf("if (itemizedShape)", insertIdx);
+      // The insert must sit AFTER the refold early-return, so a folded
+      // schedule can never reach it. Asserting on the ordering rather than on
+      // a guard's wording — the wording changed once already and took these
+      // assertions red with the behaviour unchanged.
+      const refoldReturn = src.indexOf('if (mode === "refold")');
+      expect(refoldReturn, "the refold early-return is gone").toBeGreaterThan(-1);
       expect(
-        guardIdx > -1 && insertIdx - guardIdx < 600,
-        "a TAX row is inserted outside the itemized guard — a folded schedule would be taxed twice"
+        insertIdx > refoldReturn,
+        "a TAX row can be inserted before the folded shape returns — that schedule would be taxed twice"
       ).toBe(true);
     }
 
@@ -199,7 +204,56 @@ describe("an ITEMIZED schedule is not left untaxed", () => {
     // being created for everyone — so an itemized schedule carried no tax at
     // all and under-billed the GC. Worse than a line item the GC asked for the
     // detail of anyway.
-    expect(src).toMatch(/itemizedShape/);
-    expect(src).toMatch(/if \(itemizedShape\)[\s\S]{0,400}item_no: AIA_TAX_ITEM_NO/);
+    // Decided by taxReconcileMode, exercised exhaustively further down.
+    expect(taxReconcileMode({ hasLegacyTaxRow: false, baseLineCount: 3 })).toBe("row");
+    // ...and the row path really does create one.
+    expect(src).toMatch(/item_no: AIA_TAX_ITEM_NO/);
+  });
+});
+
+
+/**
+ * WHICH mechanism, decided once and exhaustively.
+ *
+ * The bug this exists to prevent was pure control flow and invisible to every
+ * source check I had: the folded shape fell through into the ROW path, which
+ * returns early when a job is exempt — `want` is null and there is no row to
+ * find. So a certificate arriving mid-job never took the tax off, which is the
+ * exact scenario the re-fold had just been written for. My first version of
+ * that fix did not work for the one case it was for, and three source-level
+ * guards all stayed green.
+ */
+describe("taxReconcileMode", () => {
+  it("a folded schedule re-folds — including when the job is now exempt", () => {
+    expect(taxReconcileMode({ hasLegacyTaxRow: false, baseLineCount: 1 })).toBe("refold");
+  });
+
+  it("a legacy row always wins, whatever the shape", () => {
+    // One live application has $437.50 billed against its row. Re-folding it
+    // would restate a certificate the GC may already hold.
+    expect(taxReconcileMode({ hasLegacyTaxRow: true, baseLineCount: 1 })).toBe("row");
+    expect(taxReconcileMode({ hasLegacyTaxRow: true, baseLineCount: 5 })).toBe("row");
+  });
+
+  it("an itemized schedule uses the row", () => {
+    // No single pre-tax base per line to re-derive from.
+    expect(taxReconcileMode({ hasLegacyTaxRow: false, baseLineCount: 2 })).toBe("row");
+  });
+
+  it("an empty schedule does not take the row path", () => {
+    // Zero base lines is a freshly created application, not an itemized one.
+    expect(taxReconcileMode({ hasLegacyTaxRow: false, baseLineCount: 0 })).toBe("refold");
+  });
+
+  it("never returns both, for any combination", () => {
+    for (const hasLegacyTaxRow of [true, false]) {
+      for (let baseLineCount = 0; baseLineCount <= 4; baseLineCount++) {
+        const m = taxReconcileMode({ hasLegacyTaxRow, baseLineCount });
+        expect(["refold", "row"]).toContain(m);
+        // The invariant that stops a double charge: a legacy row is NEVER
+        // folded, because computeG702 already counts it into line 3.
+        if (hasLegacyTaxRow) expect(m).toBe("row");
+      }
+    }
   });
 });

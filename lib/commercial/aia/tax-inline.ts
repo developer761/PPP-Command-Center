@@ -66,3 +66,29 @@ export async function taxInclusiveCents(opts: {
 export function hasLegacyTaxRow(lines: Array<{ item_no?: string | null }>): boolean {
   return lines.some((l) => (l.item_no ?? "").trim().toUpperCase() === "TAX");
 }
+
+
+/**
+ * WHICH tax mechanism does this application use?
+ *
+ * Extracted as a pure function because the bug it prevents was pure control
+ * flow, invisible to every source grep: the folded shape fell through into the
+ * ROW path, which returns early when a job is exempt (`want` is null and there
+ * is no row to find). A certificate arriving mid-job therefore never took the
+ * tax off — the exact scenario the re-fold was written for.
+ *
+ *  · "refold" — one contract line, no legacy row. Values are tax-INCLUSIVE and
+ *    are re-derived from pre-tax bases on every draft reconcile.
+ *  · "row"    — a legacy tax row, or an itemized schedule. Values are pre-tax
+ *    and the tax sits on its own line.
+ *
+ * Never both. That is what stops a GC being charged twice.
+ */
+export function taxReconcileMode(opts: {
+  hasLegacyTaxRow: boolean;
+  /** Non-tax, non-change-order lines. >1 means an itemized schedule. */
+  baseLineCount: number;
+}): "refold" | "row" {
+  if (opts.hasLegacyTaxRow) return "row";
+  return opts.baseLineCount > 1 ? "row" : "refold";
+}

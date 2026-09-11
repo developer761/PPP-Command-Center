@@ -90,10 +90,41 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
   // was only added to the single-line branch and the row was no longer being
   // created. That under-bills the GC, which is worse than a line item they
   // asked for the detail of anyway.
-  const itemizedShape =
-    lines.filter((l) => !isAiaTaxLine(l) && !l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? "")).length > 1;
-
   const existing = lines.find((l) => isAiaTaxLine(l));
+
+  // ── THE FOLDED SHAPE: decide here, and return. ──────────────────────────
+  //
+  // One contract line, no legacy row. Everything below this point is the
+  // ROW-based path, and reaching it with a folded schedule is wrong twice
+  // over:
+  //
+  //  1. It returns early when the job is EXEMPT — `want` is null and
+  //     `if (!existing) return` fires, because a folded application has no tax
+  //     row to find. That is precisely the case this function was rewritten
+  //     for ("Tax settings aren't sticking if changed midway through the
+  //     job"), and it skipped the re-fold entirely. The first version of this
+  //     fix did not work for the one scenario it was written to fix.
+  //
+  //  2. `baseCents` below sums the line values, which on a folded schedule are
+  //     already tax-INCLUSIVE — so `want` would be tax charged on tax.
+  //
+  // `refoldInlineTax` handles both states: taxable re-derives the inclusive
+  // value, exempt re-derives the bare pre-tax one, and the tax comes off.
+  const { taxReconcileMode } = await import("./tax-inline");
+  const mode = taxReconcileMode({
+    hasLegacyTaxRow: !!existing,
+    baseLineCount: lines.filter(
+      (l) => !isAiaTaxLine(l) && !l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? "")
+    ).length,
+  });
+  if (mode === "refold") {
+    await refoldInlineTax(applicationId, app.opportunity_id);
+    return;
+  }
+
+  // ── From here down: a LEGACY row, or an ITEMIZED schedule. ──────────────
+  // Both keep pre-tax line values, so summing them is a valid taxable base.
+  //
   // Tax rides on everything else on the sheet — the contract AND the approved
   // change orders — because a CO on a taxable job is taxable too.
   const baseCents = lines
@@ -152,7 +183,7 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
   // Safe to re-run because every value is derived from an authoritative
   // PRE-TAX base — the seed proposal's total, a change order's amount — and
   // never from the line's own current value, so it cannot compound.
-  if (itemizedShape) {
+  if (mode === "row" && !existing) {
     // Last row on the sheet: tax comes after the contract and its change
     // orders, which is where a GC's AP department expects to find it.
     const maxPos = lines.reduce((m, _l, i) => Math.max(m, (i + 1) * 1000), 0);
@@ -170,7 +201,8 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
     return;
   }
 
-  await refoldInlineTax(applicationId, app.opportunity_id);
+  // Nothing else to do: the folded shape returned above, and both remaining
+  // shapes were handled by the row logic.
 }
 
 /**
