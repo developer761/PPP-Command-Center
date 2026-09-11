@@ -26,19 +26,25 @@ describe("an application uses EITHER the legacy row or inline tax", () => {
     expect(hasLegacyTaxRow([])).toBe(false);
   });
 
-  it("the reconcile no longer INSERTS a tax row", () => {
-    // The double-charge that would happen if it did: the contract line is
-    // already tax-inclusive at seed, so adding a TAX row on top bills the tax
-    // a second time. Asserted on the source because the insert is the thing
-    // that must not exist, and an integration test would need a live draft.
+  it("only inserts a tax row for the ITEMIZED shape, never the folded one", () => {
+    // The double-charge to avoid: on a one-contract-line schedule the line is
+    // already tax-inclusive, so a TAX row on top bills the tax twice. An
+    // ITEMIZED schedule is the opposite problem — it has no single pre-tax
+    // base to fold into, so without a row it carries no tax at all.
+    //
+    // So the insert may exist, but ONLY behind the itemized guard.
     const src = readFileSync("lib/commercial/aia/sales-tax.ts", "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^\s*\/\/.*$/gm, "");
 
-    expect(
-      /\.insert\(\s*\{[\s\S]*?item_no:\s*AIA_TAX_ITEM_NO/.test(src),
-      "sales-tax.ts inserts a TAX row again — an application whose lines are already tax-inclusive would bill tax twice"
-    ).toBe(false);
+    const insertIdx = src.indexOf("item_no: AIA_TAX_ITEM_NO");
+    if (insertIdx > -1) {
+      const guardIdx = src.lastIndexOf("if (itemizedShape)", insertIdx);
+      expect(
+        guardIdx > -1 && insertIdx - guardIdx < 600,
+        "a TAX row is inserted outside the itemized guard — a folded schedule would be taxed twice"
+      ).toBe(true);
+    }
 
     // It must still UPDATE one that already exists: a live application has
     // $437.50 billed against its tax row, and that is history on a certificate
@@ -147,5 +153,53 @@ describe("the two sheets add up to each other", () => {
       .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     expect(src).toMatch(/if \(!lines\.some\(\(l\) => isAiaTaxLine\(l\)\)\)/);
     expect(src).toMatch(/originalContractCents: line1Cents/);
+  });
+});
+
+/**
+ * A tax change MIDWAY through the job has to reach the sheet.
+ *
+ * Stephanie 2026-09-11: "Tax settings aren't sticking if changed midway through
+ * the job."
+ *
+ * Folding tax at SEED time alone regressed exactly this. The old code
+ * recomputed a tax ROW on every draft reconcile, so a certificate arriving late
+ * took the tax off; folded-at-seed, the draft kept its tax-inclusive figure
+ * forever and the exemption never landed. Her report was about a behaviour I
+ * had removed in the same batch that was meant to fix her other tax item.
+ */
+describe("a certificate arriving mid-job still comes off", () => {
+  const src = readFileSync("lib/commercial/aia/sales-tax.ts", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("the draft reconcile RE-DERIVES the folded values, it doesn't only seed them", () => {
+    // The CALL, not the definition. `/refoldInlineTax\(/` matches
+    // `async function refoldInlineTax(` too, so it stayed green with the call
+    // deleted — a check that cannot fail, which is worse than no check.
+    expect(src).toMatch(/await refoldInlineTax\(applicationId/);
+    // Re-derived from an authoritative PRE-TAX base, never the line's own
+    // current value — that is what makes re-running safe.
+    expect(src).toMatch(/baseCents: Math\.round\(Number\(seed\.total_cents/);
+    expect(src).toMatch(/baseCents: Math\.round\(Number\(co\.amount_cents\)\)/);
+  });
+
+  it("only re-folds the ONE-contract-line shape", () => {
+    // An itemized schedule has no single pre-tax base per row; the seed spread
+    // the contract across N rows proportionally, so re-deriving one is a guess.
+    expect(src).toMatch(/baseLines\.length !== 1/);
+  });
+});
+
+describe("an ITEMIZED schedule is not left untaxed", () => {
+  const src = readFileSync("lib/commercial/aia/sales-tax.ts", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("keeps the separate tax row for the breakdown case", () => {
+    // The fold was added ONLY to the single-line branch while the row stopped
+    // being created for everyone — so an itemized schedule carried no tax at
+    // all and under-billed the GC. Worse than a line item the GC asked for the
+    // detail of anyway.
+    expect(src).toMatch(/itemizedShape/);
+    expect(src).toMatch(/if \(itemizedShape\)[\s\S]{0,400}item_no: AIA_TAX_ITEM_NO/);
   });
 });

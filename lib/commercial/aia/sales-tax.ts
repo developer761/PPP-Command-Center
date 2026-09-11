@@ -1,6 +1,6 @@
 import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
-import { isAiaTaxLine } from "./constants";
+import { AIA_TAX_ITEM_NO, isAiaTaxLine } from "./constants";
 
 /**
  * The sales-tax row on a payment application's schedule of values.
@@ -64,17 +64,34 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
 
   const { data: lineRows } = await sb
     .from("commercial_aia_line_items")
-    .select("id, item_no, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents")
+    .select("id, item_no, change_order_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents")
     .eq("application_id", applicationId);
   const lines =
     (lineRows as Array<{
       id: string;
       item_no: string | null;
+      change_order_id: string | null;
       scheduled_value_cents: number;
       from_previous_cents: number;
       this_period_cents: number;
       materials_stored_cents: number;
     }> | null) ?? [];
+
+  // ITEMIZED schedules keep the separate tax row.
+  //
+  // Stephanie's "one contract price" is about the ordinary shape — one
+  // Original Contract line. An itemized schedule is the exception she named
+  // ("We don't provide an item specific SOV unless the GC specifically
+  // requests it"), and it has no single authoritative pre-tax base to fold
+  // into: the seed spreads the contract across N rows proportionally, so
+  // re-deriving any one of them is guesswork.
+  //
+  // Without this branch an itemized schedule carried NO tax at all — the fold
+  // was only added to the single-line branch and the row was no longer being
+  // created. That under-bills the GC, which is worse than a line item they
+  // asked for the detail of anyway.
+  const itemizedShape =
+    lines.filter((l) => !isAiaTaxLine(l) && !l.change_order_id && !/^CO-0*\d+$/i.test(l.item_no ?? "")).length > 1;
 
   const existing = lines.find((l) => isAiaTaxLine(l));
   // Tax rides on everything else on the sheet — the contract AND the approved
@@ -118,14 +135,98 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
     return;
   }
 
-  // NO new tax row. Stephanie 2026-09-11: "Sales tax can't show as a separate
-  // line item. It has to all be one contract price." New applications get tax
-  // folded into the contract and change-order lines at seed time instead —
-  // see `taxInclusiveCents` in ./tax-inline.
+  // No NEW tax row — Stephanie 2026-09-11: "Sales tax can't show as a separate
+  // line item. It has to all be one contract price."
   //
-  // This return is the invariant that stops a GC being charged twice: an
-  // application uses EITHER the legacy row or inline tax, never both. Creating
-  // a row here on an application whose lines are already tax-inclusive would
-  // bill the tax a second time.
-  return;
+  // Instead, RE-DERIVE the inline tax on every draft reconcile. That is what
+  // makes a mid-job change actually land:
+  //
+  //   Stephanie 2026-09-11: "Tax settings aren't sticking if changed midway
+  //   through the job."
+  //
+  // Folding tax at SEED time alone regressed exactly that. Before, this
+  // function recomputed a tax ROW on every draft render, so a certificate
+  // arriving late took the tax off. Folded-at-seed, the draft kept its
+  // tax-inclusive figure forever and the exemption never reached the sheet.
+  //
+  // Safe to re-run because every value is derived from an authoritative
+  // PRE-TAX base — the seed proposal's total, a change order's amount — and
+  // never from the line's own current value, so it cannot compound.
+  if (itemizedShape) {
+    // Last row on the sheet: tax comes after the contract and its change
+    // orders, which is where a GC's AP department expects to find it.
+    const maxPos = lines.reduce((m, _l, i) => Math.max(m, (i + 1) * 1000), 0);
+    await sb.from("commercial_aia_line_items").insert({
+      application_id: applicationId,
+      position: maxPos + 1000,
+      item_no: AIA_TAX_ITEM_NO,
+      description: want.label,
+      scheduled_value_cents: want.cents,
+      from_previous_cents: 0,
+      this_period_cents: 0,
+      materials_stored_cents: 0,
+      change_order_id: null,
+    });
+    return;
+  }
+
+  await refoldInlineTax(applicationId, app.opportunity_id);
+}
+
+/**
+ * Recompute the tax-inclusive scheduled values against the job's CURRENT tax
+ * status.
+ *
+ * Only for the ONE-contract-line shape. An itemized schedule (the rare job
+ * where the GC asked for the breakdown) has no single authoritative pre-tax
+ * base per row, so it keeps the separate tax row instead — see the caller.
+ */
+async function refoldInlineTax(applicationId: string, opportunityId: string): Promise<void> {
+  const sb = commercialDb();
+  const { taxInclusiveCents } = await import("./tax-inline");
+  const { listProposalsForOpp, listChangeOrders: listCOs } = await import("./refold-deps");
+
+  const { data: lineRows } = await sb
+    .from("commercial_aia_line_items")
+    .select("id, item_no, change_order_id, scheduled_value_cents")
+    .eq("application_id", applicationId);
+  const lines = (lineRows ?? []) as Array<{
+    id: string; item_no: string | null; change_order_id: string | null; scheduled_value_cents: number;
+  }>;
+  if (lines.length === 0) return;
+
+  const isCo = (l: { change_order_id: string | null; item_no: string | null }) =>
+    !!l.change_order_id || /^CO-0*\d+$/i.test(l.item_no ?? "");
+  const baseLines = lines.filter((l) => !isCo(l) && !isAiaTaxLine(l));
+  // More than one base line means an itemized schedule — leave it to the row.
+  if (baseLines.length !== 1) return;
+
+  const proposals = await listProposalsForOpp(opportunityId);
+  if (proposals.length === 0) return;
+  const seed = proposals.find((p) => p.status === "won") ?? proposals[0];
+  const want = await taxInclusiveCents({
+    opportunityId,
+    baseCents: Math.round(Number(seed.total_cents ?? 0)),
+  });
+  if (want > 0 && Math.round(baseLines[0].scheduled_value_cents) !== want) {
+    await sb
+      .from("commercial_aia_line_items")
+      .update({ scheduled_value_cents: want })
+      .eq("id", baseLines[0].id);
+  }
+
+  const coLines = lines.filter(isCo);
+  if (coLines.length === 0) return;
+  const cos = await listCOs(opportunityId);
+  for (const l of coLines) {
+    const co = cos.find((c) => c.id === l.change_order_id);
+    if (!co) continue;
+    const target = await taxInclusiveCents({
+      opportunityId,
+      baseCents: Math.round(Number(co.amount_cents)),
+    });
+    if (Math.round(l.scheduled_value_cents) !== target) {
+      await sb.from("commercial_aia_line_items").update({ scheduled_value_cents: target }).eq("id", l.id);
+    }
+  }
 }
