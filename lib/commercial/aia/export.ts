@@ -76,9 +76,27 @@ export async function buildAiaWorkbookBuffer(input: {
   // ── Sheet 1 · G702 ──────────────────────────────────────────────────────
   // The header labels ("TO OWNER:", "PROJECT:") are part of her form; only the
   // values go in, on the line beneath each, which is where she writes them.
-  g.getCell("A4").value = input.ownerLabel;
-  g.getCell("D4").value = input.projectLabel;
-  g.getCell("A11").value = input.contractorLabel;
+  //
+  // wrapText, and it is not cosmetic. Stephanie 2026-09-11: "(wrap the text
+  // below instead of it showing up as one long line in a single cell)". These
+  // values are now multi-line — name, street, city/state/ZIP — and Excel
+  // renders an embedded newline as a single run-on line unless the cell is
+  // explicitly set to wrap. Without this the address change makes the block
+  // WORSE than the name-only version it replaced.
+  //
+  // Row height is left to Excel: an explicit height would clip a four-line
+  // address, and `undefined` lets it auto-fit the wrapped content.
+  for (const [ref, value] of [
+    ["A4", input.ownerLabel],
+    ["D4", input.projectLabel],
+    ["A11", input.contractorLabel],
+  ] as const) {
+    const cell = g.getCell(ref);
+    cell.value = value;
+    // Preserve the template's own font/border/fill — only add wrapping and top
+    // alignment, so a multi-line block starts at the top of its cell.
+    cell.alignment = { ...(cell.alignment ?? {}), wrapText: true, vertical: "top" };
+  }
   g.getCell("I4").value = app.application_number;
   if (periodTo) {
     const c = g.getCell("I7"); // overwrites the template's =TODAY()

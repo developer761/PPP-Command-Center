@@ -69,9 +69,22 @@ export function aiaProjectLabel(
     property_zip?: string | null;
   }
 ): string {
+  // Don't print the street twice. Brendan 2026-09-03 made the job NAME the
+  // address ("I'd say it's should be the the address"), so on most jobs
+  // dealName and property_street are now the same string — and naively
+  // stacking them produced:
+  //
+  //     115 Connetquot Ave
+  //     115 Connetquot Ave
+  //     Islip, NY 11751
+  //
+  // on the document a GC's AP department reads. Found by rendering the
+  // workbook and looking at it, not by reading this function.
+  const street = opp.property_street?.trim();
+  const sameAsName = !!street && street.toLowerCase() === dealName.trim().toLowerCase();
   return block(
     dealName,
-    opp.property_street,
+    sameAsName ? null : street,
     cityStateZip(opp.property_city, opp.property_state, opp.property_zip)
   );
 }
