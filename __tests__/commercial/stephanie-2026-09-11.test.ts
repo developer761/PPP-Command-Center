@@ -151,3 +151,32 @@ describe("the bid set date sits next to the sentence it prints in", () => {
     expect(src).toMatch(/custom intro below replaces the default sentence/);
   });
 });
+
+describe("the AIA settings + delete are not hidden behind a closed disclosure", () => {
+  // NOT verified by rendering. Repeated attempts to fetch this tool in the
+  // smoke harness returned the page shell without its AIA content, so this is
+  // a source assertion and is labelled as one rather than described as
+  // "checked in the browser".
+  const src = readFileSync("app/commercial/accounts/[id]/aia/[dealId]/aia-tool.tsx", "utf8");
+
+  it("opens by default", () => {
+    // Stephanie asked for a delete option that already existed, and reported
+    // the application period as not sticking — both were shut inside this
+    // disclosure. Two reports of a feature being absent when it is one click
+    // away is the disclosure failing, not the user.
+    expect(src).toMatch(/<details open/);
+  });
+
+  it("names what is inside it, so it reads as the place to look", () => {
+    expect(src).toContain("billing period, contract, retainage, delete");
+  });
+
+  it("still only offers delete on a DRAFT", () => {
+    // An issued certificate is a document the GC may be holding a printed copy
+    // of. Opening the panel must not widen what it can do.
+    // The gate sits above the comment block explaining the change, so widen
+    // the window rather than assuming adjacency.
+    const i = src.indexOf("<details open");
+    expect(src.slice(Math.max(0, i - 1200), i)).toMatch(/application\.status === "draft"/);
+  });
+});
