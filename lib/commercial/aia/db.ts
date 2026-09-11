@@ -605,6 +605,17 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
     // `pos` before any of them got to increment it — and a schedule of values
     // with N rows at the same position has no defined order.
     const basePos = lines.reduce((m, l) => Math.max(m, l.position ?? 0), 0) + 1000;
+    // EITHER/OR, at insert time too.
+    //
+    // A change-order row only carries its tax inline on an application that is
+    // in the folded shape. On one that still has a legacy TAX row, that row
+    // already taxes the whole sheet — folding here as well taxed the change
+    // order twice, and the certificate came out exactly the CO's tax short:
+    // G702 line 2 used the raw amount while the G703 row carried amount+tax.
+    // Measured on a live draft as a -$21.88 variance on a $250 CO.
+    const foldsInline = !lines.some(
+      (l) => (l.item_no ?? "").trim().toUpperCase() === "TAX"
+    );
     const rows = await Promise.all(missing.map(async (co, i) => {
       const r = {
         application_id: applicationId,
@@ -614,10 +625,12 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
         // Signed — a deduct CO is a real negative credit line.
         // A change order on a taxable job is taxable too, and its tax rides
         // inside its own line for the same reason the contract's does.
-        scheduled_value_cents: await taxInclusiveCents({
-          opportunityId: app.opportunity_id,
-          baseCents: Math.round(Number(co.amount_cents)),
-        }),
+        scheduled_value_cents: foldsInline
+          ? await taxInclusiveCents({
+              opportunityId: app.opportunity_id,
+              baseCents: Math.round(Number(co.amount_cents)),
+            })
+          : Math.round(Number(co.amount_cents)),
         from_previous_cents: 0,
         this_period_cents: 0,
         materials_stored_cents: 0,
@@ -636,9 +649,29 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
       .from("commercial_aia_line_items")
       .upsert(rows, { onConflict: "application_id,change_order_id", ignoreDuplicates: true });
     if (insErr) {
-      console.error(
-        `[commercial/aia] reconcileDraftChangeOrderRows: failed to add ${rows.length} change-order line(s) to application ${applicationId}: ${insErr.message}`
-      );
+      // 42P10 = "no unique or exclusion constraint matching the ON CONFLICT
+      // specification". That index did not exist until migration 200, so EVERY
+      // change-order row silently failed to insert: the reconcile logged and
+      // returned, the page rendered, G702 line 2 counted the change order and
+      // the G703 had no row for it. Stephanie's "change orders aren't showing
+      // up if approved after the draft is generated."
+      //
+      // Migrations here are applied by hand, so this has to work either way.
+      // `rows` is already filtered to COs with no row on this application, so a
+      // plain insert is correct; the upsert only existed to survive two renders
+      // racing, and a duplicate-key error from that race is caught below.
+      if (insErr.code === "42P10") {
+        const { error: plainErr } = await sb.from("commercial_aia_line_items").insert(rows);
+        if (plainErr && plainErr.code !== "23505") {
+          console.error(
+            `[commercial/aia] reconcileDraftChangeOrderRows: fallback insert of ${rows.length} change-order line(s) failed on ${applicationId}: ${plainErr.message}`
+          );
+        }
+      } else {
+        console.error(
+          `[commercial/aia] reconcileDraftChangeOrderRows: failed to add ${rows.length} change-order line(s) to application ${applicationId}: ${insErr.message}`
+        );
+      }
     }
   }
 

@@ -257,3 +257,71 @@ describe("taxReconcileMode", () => {
     }
   });
 });
+
+/**
+ * EITHER/OR at INSERT time, not just at reconcile time.
+ *
+ * Found by exporting nine live certificates and adding up each one's two
+ * sheets. A draft came out exactly -$21.88 — the tax on its $250 change order.
+ *
+ * That application still carries a legacy TAX row, which taxes the whole sheet.
+ * The change-order row builder folded tax in as well, so the G703 row carried
+ * amount+tax while G702 line 2 used the raw amount. The certificate was short
+ * by precisely one change order's tax.
+ *
+ * Neither tsc, nor 2,951 unit tests, nor 97 pages at 200 could see it. Adding
+ * the two sheets up could.
+ */
+describe("a change-order row is folded ONLY on a folded application", () => {
+  const src = readFileSync("lib/commercial/aia/db.ts", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("checks for a legacy TAX row before folding", () => {
+    expect(src).toMatch(/const foldsInline = !lines\.some\(/);
+    expect(src).toMatch(/"TAX"/);
+  });
+
+  it("uses the RAW change-order amount when a legacy row is present", () => {
+    // The row already taxes the whole sheet; folding here charges it twice.
+    expect(src).toMatch(/foldsInline[\s\S]{0,200}: Math\.round\(Number\(co\.amount_cents\)\)/);
+  });
+});
+
+/**
+ * The insert that could never succeed.
+ *
+ * `reconcileDraftChangeOrderRows` appended rows with
+ * `onConflict: "application_id,change_order_id"`, and no unique index covering
+ * those columns existed. Postgres answered 42P10 — "no unique or exclusion
+ * constraint matching the ON CONFLICT specification" — on EVERY attempt, into a
+ * console.error. The reconcile returned normally, the page rendered, and the
+ * change order never reached the G703 while G702 line 2 counted it.
+ *
+ * That is Stephanie's "change orders aren't showing up if approved after the
+ * draft is generated", and it is not what I first diagnosed it as.
+ */
+describe("the change-order insert survives a missing index", () => {
+  const src = readFileSync("lib/commercial/aia/db.ts", "utf8");
+
+  it("falls back to a plain insert on 42P10", () => {
+    // Migrations here are applied by hand, so the code must work before
+    // migration 200 lands as well as after.
+    expect(src).toMatch(/insErr\.code === "42P10"/);
+    expect(src).toMatch(/from\("commercial_aia_line_items"\)\.insert\(rows\)/);
+  });
+
+  it("does not treat a genuine duplicate as a failure", () => {
+    // 23505 is the race the upsert existed to absorb: two renders reconciling
+    // the same draft at once.
+    expect(src).toMatch(/plainErr\.code !== "23505"/);
+  });
+
+  it("migration 200 creates the index it wanted all along", () => {
+    const mig = readFileSync("supabase/migrations/200_aia_co_line_unique.sql", "utf8");
+    expect(mig).toMatch(/CREATE UNIQUE INDEX/i);
+    expect(mig).toMatch(/\(application_id, change_order_id\)/);
+    // Partial: change_order_id is NULL on the contract line and the TAX row,
+    // and several of those legitimately coexist.
+    expect(mig).toMatch(/WHERE change_order_id IS NOT NULL/i);
+  });
+});
