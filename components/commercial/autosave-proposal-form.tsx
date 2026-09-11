@@ -26,6 +26,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AUTOSAVE_FLAG, AUTOSAVE_DEBOUNCE_MS } from "@/lib/commercial/autosave-flag";
+import { SAVE_NOW_EVENT } from "@/lib/commercial/save-now-event";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
@@ -99,11 +100,23 @@ export function AutosaveProposalForm({
     if (!form) return;
     if (disabled) return;
     const handler = () => scheduleSave();
+    // A finished, discrete edit (the exclusions picker) says so, and skips the
+    // typing debounce entirely — see lib/commercial/save-now-event.ts.
+    const now = () => {
+      if (disabled) return;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      fireSave();
+    };
     form.addEventListener("input", handler);
     form.addEventListener("change", handler);
+    form.addEventListener(SAVE_NOW_EVENT, now);
     return () => {
       form.removeEventListener("input", handler);
       form.removeEventListener("change", handler);
+      form.removeEventListener(SAVE_NOW_EVENT, now);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled]);

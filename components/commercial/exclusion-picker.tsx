@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { SAVE_NOW_EVENT } from "@/lib/commercial/save-now-event";
 import { exclusionCategoryLabel } from "@/lib/commercial/exclusions/constants";
 
 type Row = {
@@ -150,6 +151,12 @@ export function ExclusionPicker({
     }
     a?.dispatchEvent(new Event("change", { bubbles: true }));
     b?.dispatchEvent(new Event("change", { bubbles: true }));
+    // Every edit that reaches here is finished: an exclusion was clicked,
+    // removed, or a custom line committed with a button. Nothing is
+    // half-typed, so there is nothing for the 2.5s debounce to protect and
+    // waiting is all cost — the list moves instantly while the save sits
+    // pending, which is what reads as "glitchy".
+    a?.dispatchEvent(new Event(SAVE_NOW_EVENT, { bubbles: true }));
   }, [idsJson, customJson]);
 
   const addRow = (r: Row) => {

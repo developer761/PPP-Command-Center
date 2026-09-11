@@ -2104,19 +2104,6 @@ export default async function ProposalEditorPage({
                   <span className={LABEL_CLS}>Proposal date</span>
                   <DateField ariaLabel="Proposal date" name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} placeholder="Pick a date" className="mt-1" />
                 </div>
-                <div>
-                  <span className={LABEL_CLS}>Bid Set date <span className="font-normal text-ppp-charcoal-400">(optional)</span></span>
-                  <DateField ariaLabel="Bid set date" name="bid_set_date" defaultValue={proposal.bid_set_date ?? ""} placeholder="Pick a date" className="mt-1" />
-                  {/* Stephanie asked twice why the bid set date wasn't on the
-                      customer PDF. It was wired — she just had no way to know
-                      that this optional field IS the sentence. Nothing named
-                      where it goes, so an empty field looked like a bug in the
-                      PDF rather than a blank on the form. */}
-                  <span className="mt-1 block text-[11px] text-ppp-charcoal-500">
-                    Prints in the opening line: &ldquo;&hellip;the following proposal based on plans dated
-                    {" "}{proposal.bid_set_date ? fmtEtDate(proposal.bid_set_date) : "—"}.&rdquo; Leave blank to omit it.
-                  </span>
-                </div>
                 <label className="block sm:col-span-2">
                   <span className={LABEL_CLS}>GC address (one line per row)</span>
                   <textarea name="gc_address_lines" defaultValue={gcAddrText} rows={2} className={TEXTAREA_CLS} placeholder="143 West 29th Street, Fl 12&#10;New York, NY 10001" />
@@ -2192,6 +2179,42 @@ export default async function ProposalEditorPage({
             </svg>
           }
         >
+          {/* MOVED HERE from the Header panel (Stephanie 2026-09-11: "Bid set
+              date is still not showing up in the intro paragraph. Am I doing it
+              wrong?").
+
+              She was not. The control was two panels away from the sentence it
+              prints in, and she had asked about it twice before — the previous
+              fix added a hint UNDER the field, which only helps someone who has
+              already found it. Zero of eighteen live proposals have one set,
+              which is what "nobody can find it" looks like in the data.
+
+              Same autosave form and the same `header` field group, so moving it
+              changes where it is, not how it saves. */}
+          <div className="mb-3 pb-3 border-b border-ppp-charcoal-100">
+            <span className={LABEL_CLS}>
+              Bid Set date <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+            </span>
+            <DateField ariaLabel="Bid set date" name="bid_set_date" defaultValue={proposal.bid_set_date ?? ""} placeholder="Pick a date" className="mt-1 max-w-xs" />
+            <span className="mt-1.5 block text-[11px] text-ppp-charcoal-500">
+              {proposal.bid_set_date ? (
+                <>
+                  Printing as: &ldquo;&hellip;the following proposal based on plans dated{" "}
+                  <strong className="text-ppp-charcoal-700">{fmtEtDate(proposal.bid_set_date)}</strong>.&rdquo;
+                </>
+              ) : (
+                <>Blank — the opening line reads &ldquo;Tomco is pleased to provide the following proposal.&rdquo; Pick a date to add &ldquo;based on plans dated &hellip;&rdquo;</>
+              )}
+            </span>
+            {proposal.intro_text_override?.trim() ? (
+              // The trap worth naming: a custom intro REPLACES the default
+              // sentence, so the date silently stops printing. Previously
+              // nothing said so, and the field just looked broken.
+              <span className="mt-1.5 block text-[11px] font-semibold text-amber-700">
+                Your custom intro below replaces the default sentence, so the Bid Set date will not print. Clear the box below to use the default.
+              </span>
+            ) : null}
+          </div>
           <textarea name="intro_text_override" defaultValue={proposal.intro_text_override ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="Leave blank to use the Tomco default." />
         </EditorSection>
       </AutosaveProposalForm>
@@ -2685,6 +2708,63 @@ export default async function ProposalEditorPage({
           edit-into-a-guaranteed-error dead-end the line-item tables were fixed
           for. (db.ts's comment claiming the editor only shows this on drafts
           is now true rather than aspirational.) */}
+      {/* The same three actions as the top toolbar, repeated at the end.
+          Stephanie 2026-09-11: "can we add the PDF preview, plan report, and
+          send for approval to the bottom of the page as well to avoid
+          excessive scrolling?"
+
+          A proposal editor is a long page you work DOWN, so the controls you
+          reach for when you have finished are all the way back at the top.
+          Repeated rather than moved: the top bar is what you use to check a
+          PDF mid-edit.
+
+          Deliberately only her three. Mirroring the whole toolbar would put
+          "+ New revision" and "Delete this proposal draft" next to each other
+          at the bottom of a page, and the delete is already here.
+
+          Gating matches the top bar exactly — Send for approval on a draft
+          with a body, same action, same confirm — so the two cannot offer
+          different things on the same proposal. */}
+      <div className="flex flex-wrap items-center justify-center gap-2 pt-6 mt-2 border-t border-ppp-charcoal-100">
+        <span className="w-full text-center text-[11px] text-ppp-charcoal-400 mb-1">
+          Same actions as the top of the page
+        </span>
+        <a
+          href={
+            proposal.snapshot_document_id
+              ? `/api/commercial/documents/${proposal.snapshot_document_id}/download`
+              : `/api/commercial/proposals/${proposalId}/pdf`
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
+          title="GC copy — what the GC sees. No internal bid notes or per-line prices."
+        >
+          Customer PDF
+        </a>
+        <a
+          href={`/api/commercial/proposals/${proposalId}/pdf?mode=internal`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-navy-200 bg-ppp-navy-50 text-ppp-navy-700 text-[12px] font-semibold hover:bg-ppp-navy-100 min-h-[44px] sm:min-h-[36px]"
+          title="Internal Plan Report — the same proposal PLUS the internal bid notes + per-line prices. Never shown to the GC."
+        >
+          Plan report
+        </a>
+        {proposal.status === "draft" && hasPdfBody && (
+          <form action={requestApprovalAction} className="inline-flex">
+            {hiddenIds}
+            <ConfirmSubmitButton
+              message={`Send ${proposalRef(proposal)} for approval? A designated approver must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
+              pendingLabel="Requesting…"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
+            >
+              Send for approval
+            </ConfirmSubmitButton>
+          </form>
+        )}
+      </div>
+
       {proposal.status === "draft" && (
       <form action={deleteProposalAction} className="flex justify-center pt-2">
         {hiddenIds}

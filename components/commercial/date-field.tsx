@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { SAVE_NOW_EVENT } from "@/lib/commercial/save-now-event";
 import { createPortal } from "react-dom";
 
 const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -226,6 +227,17 @@ export function DateField({
         // Bubbling change so the enclosing form (+ AutosaveForm listener) reacts
         // exactly like a native input edit.
         el.dispatchEvent(new Event("change", { bubbles: true }));
+        // ...and then save it NOW rather than 2.5s from now.
+        //
+        // Picking a date is a discrete, finished action — there is no
+        // half-typed state the debounce is protecting, and the gap it leaves is
+        // real: pick a date, click away to another part of the page, and the
+        // save can still be pending. Stephanie reported exactly this shape
+        // twice on 2026-09-11 ("Bid set date is still not showing up",
+        // "Application period settings are not sticking"), and the live data
+        // showed zero of eighteen proposals with a bid set date and three AIA
+        // applications with one period date saved but not the other.
+        el.dispatchEvent(new Event(SAVE_NOW_EVENT, { bubbles: true }));
       }
     }
     // Keep the calendar viewing the month it just picked into.

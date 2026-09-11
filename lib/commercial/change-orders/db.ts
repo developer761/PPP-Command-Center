@@ -325,6 +325,36 @@ export async function updateChangeOrder(
   if (!updated) return { ok: false, error: "This change order changed in another tab — reload and try again." };
   const row = updated as CommercialChangeOrder;
   await logUpdate("commercial_change_orders", id, before, row, userId);
+
+  // PUSH the decision into any DRAFT payment application on this deal.
+  //
+  // Stephanie 2026-09-11: "Change orders aren't showing up if approved after
+  // the draft is generated."
+  //
+  // `reconcileDraftChangeOrderRows` already existed and was already correct —
+  // but it only ran while RENDERING the AIA tool. Approving a change order
+  // happens on a different screen, so nothing folded it in until somebody
+  // happened to open the certificate again, and if they exported straight from
+  // the list they got a G703 missing the change entirely. Live data had a draft
+  // sitting with an approved, un-invoiced $250 CO that was not on its schedule.
+  //
+  // Best-effort: a decision must not fail because a certificate could not be
+  // reconciled, and the render-time pass still catches anything missed here.
+  try {
+    const { reconcileDraftChangeOrderRows, listAiaApplications } = await import(
+      "@/lib/commercial/aia/db"
+    );
+    const apps = await listAiaApplications(row.opportunity_id);
+    for (const a of apps.filter((x) => x.status === "draft")) {
+      await reconcileDraftChangeOrderRows(a.id);
+    }
+  } catch (err) {
+    console.warn(
+      `[change-orders] could not fold CO ${id} into this deal's draft certificate(s):`,
+      err
+    );
+  }
+
   return { ok: true, value: row };
 }
 

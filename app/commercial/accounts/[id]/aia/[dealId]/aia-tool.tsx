@@ -519,10 +519,24 @@ export async function AiaTool({
               {/* Application settings + delete (compact) — Draft only; an issued
                   certificate's contract/retainage/period are locked. */}
               {application.status === "draft" && (
-              <details className="bg-surface border border-ppp-charcoal-100 rounded-xl">
+              /*
+                OPEN by default. Stephanie 2026-09-11 asked us to "add an option
+                to delete an AIA draft" — it was already here, along with the
+                application period she also reported as missing, both shut
+                inside this disclosure. Two separate reports of a feature being
+                absent when it was one click away is the disclosure failing at
+                its job, not the user failing to explore.
+
+                Draft-only, so nothing an issued certificate owns is exposed by
+                opening it, and it collapses if she wants it out of the way.
+              */
+              <details open className="bg-surface border border-ppp-charcoal-100 rounded-xl">
                 <summary className="cursor-pointer list-none px-4 py-3 min-h-[44px] flex items-center gap-2 text-[12px] font-semibold text-ppp-charcoal-700 select-none">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H1a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6h.09" /></svg>
                   Application settings
+                  <span className="font-normal text-ppp-charcoal-400">
+                    — billing period, contract, retainage, delete
+                  </span>
                 </summary>
                 <AiaSettingsForm
                   appId={selectedAppId}

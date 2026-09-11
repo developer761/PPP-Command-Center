@@ -2,12 +2,27 @@
 
 /**
  * Autosaving AIA "Application settings" (Karan #31). Period / original contract
- * / retainage / notes save on blur — no Save button. Money + retainage are
+ * / retainage / notes save on a debounce, on blur, AND on unmount — no Save
+ * button.
+ *
+ * It used to save on blur ALONE, and that lost data. The guard skips the save
+ * while focus is still inside the panel, so picking "Period from" and then
+ * "Period to" is one uninterrupted edit with no save between — and if the next
+ * thing you do is press Generate, or collapse the <details> this lives in, the
+ * component unmounts without ever blurring outward and the pending change is
+ * gone.
+ *
+ * Stephanie 2026-09-11: "Application period settings are not sticking.
+ * Disappears after choosing and have to go back in and add it while generating
+ * the AIA." The live data carried the fingerprint — three applications with one
+ * date saved and the other null, because the server writes BOTH period columns
+ * on every save and the half she had not got to yet went in as null. Money + retainage are
  * validated client-side (same rules as the server) so an invalid value can't
  * silently save as a coerced 0 / be dropped. Delete stays a separate, explicit
  * action (handled by the caller). Mirrors AiaLineRow's hardening.
  */
 import { useEffect, useRef, useState, useTransition } from "react";
+import { AUTOSAVE_DEBOUNCE_MS } from "@/lib/commercial/autosave-flag";
 import { DateField } from "@/components/commercial/date-field";
 
 const MONEY_RE = /^\d+(\.\d{1,2})?$/;
@@ -33,6 +48,12 @@ export function AiaSettingsForm({
 }) {
   const [vals, setVals] = useState(initial);
   const dirty = useRef(false);
+  // The debounce timer and the unmount cleanup both fire outside the render
+  // that scheduled them, so they must not close over a stale `vals`.
+  const valsRef = useRef(vals);
+  valsRef.current = vals;
+  const saveRef = useRef<() => void>(() => {});
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -58,6 +79,12 @@ export function AiaSettingsForm({
     dirty.current = true;
     if (status === "saved" || status === "error") setStatus("idle");
     setErrMsg(null);
+    // Don't wait for a blur that may never come.
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (dirty.current) saveRef.current();
+    }, AUTOSAVE_DEBOUNCE_MS);
   }
 
   function save() {
@@ -69,15 +96,16 @@ export function AiaSettingsForm({
     dirty.current = false;
     setStatus("saving");
     setErrMsg(null);
+    const v = valsRef.current;
     const fd = new FormData();
     fd.set("account_id", accountId);
     fd.set("opp_id", dealId);
     fd.set("app_id", appId);
-    fd.set("period_from", vals.period_from);
-    fd.set("period_to", vals.period_to);
-    fd.set("original_contract", vals.original_contract);
-    fd.set("retainage_pct", vals.retainage_pct);
-    fd.set("notes", vals.notes);
+    fd.set("period_from", v.period_from);
+    fd.set("period_to", v.period_to);
+    fd.set("original_contract", v.original_contract);
+    fd.set("retainage_pct", v.retainage_pct);
+    fd.set("notes", v.notes);
     startTransition(async () => {
       try {
         const res = await saveAction(fd);
@@ -106,9 +134,20 @@ export function AiaSettingsForm({
     });
   }
 
+  // Last line of defence: leaving the page or collapsing the panel flushes a
+  // pending edit instead of dropping it.
+  saveRef.current = save;
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (dirty.current) saveRef.current();
+    };
+  }, []);
+
   function onBlurCapture(e: React.FocusEvent<HTMLDivElement>) {
     const next = e.relatedTarget as Node | null;
     if (next && rootRef.current?.contains(next)) return;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     if (dirty.current) save();
   }
 
