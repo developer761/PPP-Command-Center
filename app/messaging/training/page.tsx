@@ -59,43 +59,37 @@ export default async function TrainingPage() {
       href: "/messaging/training/simulator",
       title: "Try the bot",
       blurb: "Play a customer and watch what it does. Nothing here can text anybody.",
-      meta: "Start here",
-      primary: false,
+      meta: "No setup needed",
     },
     {
       href: "/messaging/training/grade",
       title: "Grade conversations",
       blurb: "Read a real conversation, say whether it was handled well, and tick which rules it shows.",
       meta: cov.ungraded > 0 ? `${cov.ungraded} waiting` : s.total === 0 ? "Nothing imported yet" : "All graded",
-      primary: false,
     },
     {
       href: "/messaging/training/import",
       title: "Import from Hatch",
       blurb: "Paste an export. Personal details are removed in your browser before anything is sent.",
-      meta: s.total > 0 ? `${s.total} imported` : "Nothing yet — start here",
-      primary: false,
+      meta: s.total > 0 ? `${s.total} imported` : "Nothing yet",
     },
     {
       href: "/messaging/training/repair",
       title: "Fix a near-miss",
       blurb: "A conversation that nearly went right, with Kate's note on what should have happened. Rewrite one line.",
       meta: "Builds good examples",
-      primary: false,
     },
     {
       href: "/messaging/training/replay",
       title: "What changed",
       blurb: "Replay the conversations you have judged and see what a rule change broke.",
       meta: "After changing the rules",
-      primary: false,
     },
     {
       href: "/messaging/training/coverage",
       title: "What it covers",
       blurb: "Which of Emily's rules still have no good example behind them.",
       meta: cov.summary.missing > 0 ? `${cov.summary.missing} rules with nothing` : `${cov.summary.covered} covered`,
-      primary: false,
     },
   ];
 
@@ -145,10 +139,7 @@ export default async function TrainingPage() {
       <nav className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {jobs.filter((j) => j.href !== nextUp.href).map((j) => (
           <Link key={j.href} href={j.href}
-            className={[
-              "group rounded-xl border-2 bg-white px-4 py-3.5 transition-colors touch-manipulation",
-              j.primary ? "border-ppp-charcoal hover:bg-ppp-charcoal-50" : "border-ppp-charcoal-100 hover:border-ppp-charcoal-200",
-            ].join(" ")}>
+            className="group rounded-xl border-2 border-ppp-charcoal-100 bg-white px-4 py-3.5 transition-colors hover:border-ppp-charcoal-200 touch-manipulation">
             <div className="flex items-baseline justify-between gap-3">
               <span className="font-semibold text-ppp-charcoal">{j.title}</span>
               <span className="shrink-0 text-[11px] text-ppp-charcoal-400">{j.meta}</span>
@@ -157,8 +148,6 @@ export default async function TrainingPage() {
           </Link>
         ))}
       </nav>
-
-
 
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
         <h2 className="px-4 py-2.5 border-b border-ppp-charcoal-100 font-semibold text-ppp-charcoal text-[14px]">

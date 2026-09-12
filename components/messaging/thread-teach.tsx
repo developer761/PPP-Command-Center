@@ -122,7 +122,7 @@ export function ThreadTeach({
             <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500">
               What does this show? <span className="font-normal normal-case tracking-normal">Pick at least one.</span>
             </p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+            <div className="mt-1.5 flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
               {tags.map((t) => {
                 const on = picked.includes(t.key);
                 return (
@@ -132,7 +132,7 @@ export function ThreadTeach({
                     onClick={() => toggle(t.key)}
                     aria-pressed={on}
                     className={[
-                      "rounded-full px-2.5 py-1.5 text-[11px] font-medium border touch-manipulation",
+                      "min-h-[36px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
                       on
                         ? "bg-ppp-charcoal text-white border-ppp-charcoal"
                         : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",

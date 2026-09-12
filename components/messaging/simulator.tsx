@@ -361,7 +361,7 @@ export default function Simulator({
               <div key={i} className="space-y-1.5">
                 {/* Customer — them, on the right, because you are playing them */}
                 <div className="flex justify-end">
-                  <p className="max-w-[80%] rounded-2xl rounded-br-sm bg-[#0b93f6] text-white px-3 py-2 text-[14px] leading-snug">
+                  <p className="max-w-[80%] rounded-2xl rounded-br-sm bg-[#0b76ce] text-white px-3 py-2 text-[14px] leading-snug">
                     {t.customerText}
                   </p>
                 </div>
@@ -501,7 +501,7 @@ export default function Simulator({
               ))}
               <button type="button" onClick={() => setPhotos((n) => (n >= 3 ? 0 : n + 1))} disabled={busy}
                 className={[
-                  "h-8 px-2 rounded-lg text-[11px] font-medium touch-manipulation disabled:opacity-40",
+                  "h-11 sm:h-8 px-2.5 rounded-lg text-[11px] font-medium touch-manipulation disabled:opacity-40",
                   photos > 0 ? "bg-ppp-charcoal text-white" : "text-ppp-charcoal-500 hover:bg-ppp-charcoal-50",
                 ].join(" ")}>
                 {photos > 0 ? `${photos} photo${photos === 1 ? "" : "s"}` : "📷 photo"}
@@ -527,10 +527,10 @@ export default function Simulator({
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
               placeholder={turns.length ? "Reply as the customer…" : "Text the business…"}
               disabled={busy}
-              className="flex-1 min-w-0 rounded-full border border-ppp-charcoal-200 px-3.5 min-h-[38px] text-base sm:text-[14px] placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-[#0b93f6]/30 disabled:bg-ppp-charcoal-50" />
+              className="flex-1 min-w-0 rounded-full border border-ppp-charcoal-200 px-3.5 min-h-[38px] text-base sm:text-[14px] placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-[#0b76ce]/30 disabled:bg-ppp-charcoal-50" />
             <button type="button" onClick={() => void send()} disabled={busy || (!draft.trim() && photos === 0)}
               aria-label="Send as the customer"
-              className="shrink-0 h-[38px] w-[38px] rounded-full bg-[#0b93f6] text-white flex items-center justify-center touch-manipulation disabled:bg-ppp-charcoal-200 min-h-[44px] sm:min-h-0">
+              className="shrink-0 h-[38px] w-[38px] rounded-full bg-[#0b76ce] text-white flex items-center justify-center touch-manipulation disabled:bg-ppp-charcoal-200 min-h-[44px] sm:min-h-0">
               {busy ? <span className="text-[11px]">…</span> : (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 19V5 M5 12l7-7 7 7" /></svg>
               )}
