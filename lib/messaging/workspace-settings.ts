@@ -25,6 +25,7 @@
 import { messagingDb } from "./db";
 import { clampToFederal, FEDERAL_BOUND } from "./compliance";
 import { assertMessagingAccess } from "./auth";
+import { validateDelay } from "./reply-delay";
 
 export type WorkspaceHours = {
   id: string;
@@ -50,6 +51,8 @@ export async function saveWorkspaceHours(input: {
   sendOnWeekends?: boolean;
   afterHoursAutoreply?: boolean;
   afterHoursMessage?: string;
+  replyDelayMin?: number;
+  replyDelayMax?: number;
 }): Promise<{ ok: true; clamped: boolean } | { ok: false; error: string }> {
   await assertMessagingAccess();
   const start = HOUR(input.quietStart);
@@ -88,6 +91,17 @@ export async function saveWorkspaceHours(input: {
   if (input.afterHoursAutoreply !== undefined) patch.after_hours_autoreply = input.afterHoursAutoreply;
   if (input.afterHoursMessage !== undefined) {
     patch.after_hours_message = input.afterHoursMessage.trim() || null;
+  }
+  // Both bounds move together or neither does: saving one against a stale
+  // other is how an inverted range gets written, and the constraint would
+  // refuse the whole save with a Postgres string rather than this sentence.
+  if (input.replyDelayMin !== undefined || input.replyDelayMax !== undefined) {
+    const min = Math.round(input.replyDelayMin ?? 0);
+    const max = Math.round(input.replyDelayMax ?? 0);
+    const bad = validateDelay(min, max);
+    if (bad) return { ok: false, error: bad };
+    patch.reply_delay_min_seconds = min;
+    patch.reply_delay_max_seconds = max;
   }
 
   const sb = messagingDb();

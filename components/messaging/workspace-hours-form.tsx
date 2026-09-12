@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveWorkspaceHours } from "@/lib/messaging/workspace-settings";
+import { describeDelay, validateDelay } from "@/lib/messaging/reply-delay";
 
 export type Row = {
   id: string;
@@ -13,6 +14,9 @@ export type Row = {
   send_on_weekends: boolean | null;
   after_hours_autoreply: boolean | null;
   after_hours_message: string | null;
+  autosend_enabled: boolean | null;
+  reply_delay_min_seconds: number | null;
+  reply_delay_max_seconds: number | null;
 };
 
 const hh = (h: number) => `${((h + 11) % 12) + 1}${h < 12 ? "am" : "pm"}`;
@@ -50,14 +54,23 @@ export default function WorkspaceHoursForm({
   const [weekends, setWeekends] = useState(!!row.send_on_weekends);
   const [autoreply, setAutoreply] = useState(!!row.after_hours_autoreply);
   const [message, setMessage] = useState(row.after_hours_message ?? "");
+  const [delayMin, setDelayMin] = useState(String(row.reply_delay_min_seconds ?? 0));
+  const [delayMax, setDelayMax] = useState(String(row.reply_delay_max_seconds ?? 0));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+
+  const dMin = Number(delayMin), dMax = Number(delayMax);
+  const delayProblem = Number.isFinite(dMin) && Number.isFinite(dMax)
+    ? validateDelay(Math.round(dMin), Math.round(dMax))
+    : "Use whole seconds.";
 
   const save = async () => {
     setBusy(true); setErr(null); setNote(null);
     try {
       const res = await saveWorkspaceHours({
+        replyDelayMin: Math.round(Number(delayMin) || 0),
+        replyDelayMax: Math.round(Number(delayMax) || 0),
         workspaceId: row.id, quietStart: start, quietEnd: end, timeZone: tz,
         sendOnWeekends: weekends, afterHoursAutoreply: autoreply, afterHoursMessage: message,
       });
@@ -140,10 +153,77 @@ export default function WorkspaceHoursForm({
         </label>
       )}
 
+      {/* How long before Emily answers.
+          Presented in minutes because that is how the decision is discussed
+          ("give it two or three minutes"), stored in seconds because that is
+          what the delay is drawn in. */}
+      <div className="rounded-lg border border-ppp-charcoal-100 p-3">
+        <p className="text-[12.5px] font-semibold text-ppp-charcoal">Wait before replying</p>
+        <p className="mt-0.5 text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
+          A reply that lands the instant somebody texts reads as a machine. The
+          wait is drawn fresh each time from this range, so the gap is never
+          identical twice. Both at 0 turns it off.
+        </p>
+
+        <div className="mt-2.5 flex items-end gap-2">
+          <label className="flex-1 min-w-0">
+            <span className="block text-[11.5px] font-medium text-ppp-charcoal-600 mb-1">At least</span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number" inputMode="numeric" min={0} max={1800} step={30}
+                value={delayMin} onChange={(e) => setDelayMin(e.target.value)}
+                className="w-full min-w-0 rounded-lg border border-ppp-charcoal-200 px-2.5 py-2 text-base sm:text-[13px] tabular-nums" />
+              <span className="shrink-0 text-[11.5px] text-ppp-charcoal-500">sec</span>
+            </div>
+          </label>
+          <label className="flex-1 min-w-0">
+            <span className="block text-[11.5px] font-medium text-ppp-charcoal-600 mb-1">At most</span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number" inputMode="numeric" min={0} max={1800} step={30}
+                value={delayMax} onChange={(e) => setDelayMax(e.target.value)}
+                className="w-full min-w-0 rounded-lg border border-ppp-charcoal-200 px-2.5 py-2 text-base sm:text-[13px] tabular-nums" />
+              <span className="shrink-0 text-[11.5px] text-ppp-charcoal-500">sec</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {([[0, 0, "Off"], [120, 300, "2–5 min"], [60, 180, "1–3 min"], [180, 420, "3–7 min"]] as const)
+            .map(([lo, hi, label]) => (
+              <button key={label} type="button"
+                onClick={() => { setDelayMin(String(lo)); setDelayMax(String(hi)); }}
+                aria-pressed={Number(delayMin) === lo && Number(delayMax) === hi}
+                className={[
+                  "min-h-[36px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
+                  Number(delayMin) === lo && Number(delayMax) === hi
+                    ? "bg-ppp-charcoal text-white border-ppp-charcoal"
+                    : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",
+                ].join(" ")}>
+                {label}
+              </button>
+            ))}
+        </div>
+
+        <p className="mt-2 text-[11.5px] text-ppp-charcoal-600">
+          {delayProblem
+            ? <span className="text-ppp-orange-700">{delayProblem}</span>
+            : describeDelay({ minSeconds: Math.round(Number(delayMin) || 0), maxSeconds: Math.round(Number(delayMax) || 0) })}
+        </p>
+
+        {!row.autosend_enabled && Number(delayMax) > 0 && (
+          <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
+            Emily is not sending on her own in this workspace yet, so this has
+            no effect here — a reply a person approves goes when they approve
+            it. The setting is kept for when autosend is turned on.
+          </p>
+        )}
+      </div>
+
       {err && <p className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 px-3 py-2 text-[12.5px] text-ppp-orange-700">{err}</p>}
       {note && <p className="rounded-lg border border-ppp-green-100 bg-ppp-green-50 px-3 py-2 text-[12.5px] text-ppp-charcoal">{note}</p>}
 
-      <button type="button" onClick={() => void save()} disabled={busy}
+      <button type="button" onClick={() => void save()} disabled={busy || !!delayProblem}
         className="min-h-[44px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold disabled:opacity-40 touch-manipulation">
         {busy ? "Saving…" : "Save"}
       </button>

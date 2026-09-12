@@ -27,7 +27,7 @@ export default async function MessagingSettings({
 
   const { data } = await sb
     .from("sms_sub_accounts")
-    .select("id, name, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends, after_hours_autoreply, after_hours_message")
+    .select("id, name, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends, after_hours_autoreply, after_hours_message, autosend_enabled, reply_delay_min_seconds, reply_delay_max_seconds")
     .eq("is_active", true)
     .order("name");
   const rows = (data ?? []) as Row[];

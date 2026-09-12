@@ -3,6 +3,14 @@ import { createClient } from "@supabase/supabase-js";
 import { verifySns, fetchAwsCert, type SnsMessage } from "@/lib/messaging/sns-verify";
 import { decideInbound, type EumInbound } from "@/lib/messaging/inbound";
 import { reportError, reportWarn } from "@/lib/observability";
+import { delayedRunAt } from "@/lib/messaging/reply-delay";
+
+/**
+ * The burst beat. A customer sending three texts in a row gets one answer to
+ * all three rather than three answers racing each other. Correctness, not
+ * feel — so it is fixed, and the configurable delay is layered over it.
+ */
+const BURST_COALESCE_MS = 30_000;
 
 export const dynamic = "force-dynamic";
 
@@ -147,7 +155,8 @@ export async function POST(req: Request) {
     //    reply to a number we have forgotten about is a real customer and a
     //    real configuration problem.
     const { data: ws } = await sb.from("sms_sub_accounts")
-      .select("id").eq("phone_e164", decision.to).maybeSingle();
+      .select("id, autosend_enabled, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
+      .eq("phone_e164", decision.to).maybeSingle();
 
     // 3. The open conversation on this pair, if there is one.
     let conversationId: string | null = null;
@@ -198,13 +207,39 @@ export async function POST(req: Request) {
       // The tick picks this up, and the unique index on one pending draft per
       // conversation is the backstop if it somehow runs twice.
       if (decision.keyword !== "opt_out" && decision.keyword !== "help") {
+        // TWO DIFFERENT WAITS, and they are not the same thing.
+        //
+        // The 30-second beat is correctness: a customer sending three texts in
+        // a row should get one answer to all three rather than three answers
+        // racing each other. It is not configurable because turning it off
+        // would break threading, not change a feel.
+        //
+        // The configured delay on top is about sounding human, and applies
+        // only where Emily sends on her own. Where a person approves each
+        // reply the customer already waits for review, which is far longer
+        // than anything set here — delaying would slow the queue without the
+        // customer noticing any difference.
+        const wantsDelay = ws?.autosend_enabled ?? false;
+        const runAt = wantsDelay
+          ? delayedRunAt({
+              now: new Date(),
+              config: {
+                minSeconds: ws?.reply_delay_min_seconds ?? 0,
+                maxSeconds: ws?.reply_delay_max_seconds ?? 0,
+              },
+              timeZone: ws?.time_zone ?? "America/New_York",
+              quietHours: {
+                startHour: ws?.quiet_hours_start ?? 9,
+                endHour: ws?.quiet_hours_end ?? 20,
+              },
+            })
+          : new Date();
+        const floor = new Date(Date.now() + BURST_COALESCE_MS);
+
         const { error: qErr } = await sb.from("sms_scheduled_actions").insert({
           conversation_id: conversationId,
           action: "agent_turn",
-          // A beat, not instantly. A human does not reply in 200ms, and a
-          // customer sending three texts in a row should get one answer to all
-          // three rather than three answers racing each other.
-          run_at: new Date(Date.now() + 30_000).toISOString(),
+          run_at: new Date(Math.max(runAt.getTime(), floor.getTime())).toISOString(),
         });
         if (qErr) {
           reportWarn({
