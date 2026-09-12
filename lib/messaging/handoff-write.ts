@@ -20,6 +20,7 @@ import { messagingDb } from "./db";
 import { assertMessagingAccess } from "./auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isTakeoverReason, stateOnRelease, type TakeoverReason } from "./handoff";
+import { queueTurnIfUnanswered } from "./turn-queue";
 
 export type HandoffResult =
   | { ok: true; holder: string }
@@ -124,7 +125,20 @@ export async function releaseConversation(input: {
     .select("id").maybeSingle();
 
   if (error) return { ok: false, error: error.message };
-  if (data) return { ok: true, holder: "" };
+  if (data) {
+    // THE STALL THIS PREVENTS, again.
+    //
+    // A customer writing while somebody held the conversation had their turn
+    // queued and then cancelled, because the bot stops while a person has it.
+    // Handing it back put the conversation into ai_active — the state that
+    // means the bot owes a reply — with nothing scheduled to write one. The
+    // message was answered by nobody, ever, which is the exact failure the
+    // draft queue already had to fix once.
+    if (next === "ai_active") {
+      await queueTurnIfUnanswered(sb, input.conversationId, null);
+    }
+    return { ok: true, holder: "" };
+  }
 
   const { data: now } = await sb.from("sms_conversations")
     .select("owning_agent, owning_user_id").eq("id", input.conversationId).maybeSingle();

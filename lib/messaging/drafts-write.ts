@@ -16,6 +16,7 @@
  */
 import { messagingDb } from "./db";
 import { assertMessagingAccess } from "./auth";
+import { queueTurnIfUnanswered } from "./turn-queue";
 import { gateDeps } from "./gate-deps";
 import { gatedSend } from "./gate";
 import { wasEdited, orderQueue, type DraftForReview } from "./drafts";
@@ -105,39 +106,6 @@ export async function draftThread(conversationId: string): Promise<{
   }));
 }
 
-/**
- * Queue another turn when the customer has said something we have not answered.
- *
- * THE STALL THIS PREVENTS. While a draft waits, any further message from the
- * customer queues an agent turn that is then cancelled — there is already a
- * reply pending, and two pending replies to one person is worse than a slow
- * one. But nothing used to re-queue afterwards, so message two was answered by
- * nobody, ever. A customer who sent "the kitchen" and then "and the hallway"
- * got an answer to the kitchen and silence about the hallway, which is exactly
- * the not-listening failure the whole system is built to avoid.
- */
-async function queueTurnIfUnanswered(
-  sb: ReturnType<typeof messagingDb>,
-  conversationId: string,
-  answeredMessageId: string | null
-): Promise<void> {
-  const { data: newest } = await sb.from("sms_messages")
-    .select("id").eq("conversation_id", conversationId).eq("direction", "inbound")
-    .order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (!newest || newest.id === answeredMessageId) return;
-
-  // Nothing to do if a turn is already waiting to run.
-  const { data: queued } = await sb.from("sms_scheduled_actions")
-    .select("id").eq("conversation_id", conversationId).eq("action", "agent_turn")
-    .in("state", ["pending", "claimed"]).maybeSingle();
-  if (queued) return;
-
-  await sb.from("sms_scheduled_actions").insert({
-    conversation_id: conversationId,
-    action: "agent_turn",
-    run_at: new Date().toISOString(),
-  });
-}
 
 export type SendOutcome =
   | { ok: true; edited: boolean }
@@ -158,7 +126,7 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
     .update({ reviewed_by: userId, reviewed_at: new Date().toISOString() })
     .eq("id", input.draftId).eq("state", "pending")
     .or(`reviewed_at.is.null,reviewed_at.lt.${claimCutoff()}`)
-    .select("id, body, state, answers_message_id, conversation_id, sms_conversations(customer_phone, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends))");
+    .select("id, body, state, answers_message_id, conversation_id, sms_conversations(customer_phone, state, owning_user_id, owning_agent, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends))");
 
   const d = claimedRows?.[0];
   if (!d) return { ok: false, error: "Somebody else is already dealing with this one." };
@@ -172,6 +140,9 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
 
   const conv = d.sms_conversations as unknown as {
     customer_phone: string;
+    state: string;
+    owning_user_id: string | null;
+    owning_agent: string | null;
     sms_sub_accounts: {
       id: string; name: string; phone_e164: string | null; time_zone: string;
       quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean;
@@ -179,6 +150,29 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
   } | null;
   const ws = conv?.sms_sub_accounts;
   if (!ws) { await release(null); return { ok: false, error: "That conversation has no workspace." }; }
+
+  // THE THIRD DOOR TO THE CUSTOMER.
+  //
+  // Agent turns stop when somebody takes a conversation over, and campaign
+  // steps wait. This queue did neither, because it never read the conversation
+  // at all — so the bot escalating, a person claiming it, and a second person
+  // sending the bot's draft from here was a complete path to two voices
+  // answering one customer, through the one door that has a human pressing the
+  // button and therefore looks deliberate.
+  //
+  // Unclaimed is fine: sending IS somebody taking responsibility for the words.
+  // Held by you is fine, it is your conversation. Held by somebody else is not.
+  if (conv.owning_user_id && conv.owning_user_id !== userId) {
+    await release(null);
+    return {
+      ok: false,
+      error: `${conv.owning_agent ?? "Somebody else"} has taken this conversation over, so this reply is theirs to send or drop.`,
+    };
+  }
+  if (conv.state === "ended") {
+    await release(null);
+    return { ok: false, error: "That conversation has ended, so this reply is out of date." };
+  }
 
   const to = toE164(conv?.customer_phone);
   if (!to) { await release(null); return { ok: false, error: "That conversation has no usable phone number." }; }
