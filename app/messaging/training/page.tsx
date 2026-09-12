@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { trainingStats, loadTrainingCoverage } from "@/lib/messaging/db";
+import { repairQueue } from "@/lib/messaging/repair-write";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,44 @@ export const dynamic = "force-dynamic";
  * real conversations, and check what is still missing.
  */
 export default async function TrainingPage() {
-  const [s, cov] = await Promise.all([trainingStats(), loadTrainingCoverage()]);
+  const [s, cov, repairs] = await Promise.all([
+    trainingStats(), loadTrainingCoverage(), repairQueue(100),
+  ]);
   const needsWork = s.needsScrub + s.needsReview + cov.ungraded + cov.gradedNoReason;
+
+  /**
+   * ONE thing to do, chosen from the state rather than listed alongside five
+   * others.
+   *
+   * Six equal cards is a wall, and the answer to "what should I do now" is
+   * almost never "read all six and decide". It is whichever gap is currently
+   * costing the most, and right now that is nearly always the same one: the
+   * bot has almost nothing good to copy.
+   */
+  const nextUp =
+    s.total === 0
+      ? {
+          href: "/messaging/training/import",
+          title: "Import conversations from Hatch",
+          why: "There is nothing to learn from yet. Paste an export and personal details are removed in your browser before anything is sent.",
+        }
+      : s.byConduct.good < 10 && repairs.length > 0
+        ? {
+            href: "/messaging/training/repair",
+            title: `Fix a near-miss — ${repairs.length} waiting`,
+            why: `The bot can copy ${s.byConduct.good} conversation${s.byConduct.good === 1 ? "" : "s"} and avoid ${s.byConduct.bad}. These nearly went right and Kate wrote down what should have happened, so rewriting one line turns each into an example worth copying.`,
+          }
+        : cov.ungraded > 0
+          ? {
+              href: "/messaging/training/grade",
+              title: `Grade ${cov.ungraded} conversation${cov.ungraded === 1 ? "" : "s"}`,
+              why: "Until somebody says whether each went well, the bot cannot tell them apart from the ones that went badly.",
+            }
+          : {
+              href: "/messaging/training/simulator",
+              title: "Try the bot",
+              why: "Play a customer and watch what it does. Nothing here can text anybody.",
+            };
 
   const jobs = [
     {
@@ -23,7 +60,7 @@ export default async function TrainingPage() {
       title: "Try the bot",
       blurb: "Play a customer and watch what it does. Nothing here can text anybody.",
       meta: "Start here",
-      primary: true,
+      primary: false,
     },
     {
       href: "/messaging/training/grade",
@@ -37,7 +74,7 @@ export default async function TrainingPage() {
       title: "Import from Hatch",
       blurb: "Paste an export. Personal details are removed in your browser before anything is sent.",
       meta: s.total > 0 ? `${s.total} imported` : "Nothing yet — start here",
-      primary: s.total === 0,
+      primary: false,
     },
     {
       href: "/messaging/training/repair",
@@ -72,8 +109,18 @@ export default async function TrainingPage() {
         </p>
       </header>
 
+      {/* The one worth doing, full width and first. */}
+      <Link href={nextUp.href}
+        className="block rounded-xl border-2 border-ppp-charcoal bg-white px-4 py-4 touch-manipulation">
+        <span className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
+          Start here
+        </span>
+        <span className="mt-0.5 block text-[15px] font-bold text-ppp-charcoal">{nextUp.title}</span>
+        <span className="mt-1 block text-[12.5px] text-ppp-charcoal-500 leading-relaxed">{nextUp.why}</span>
+      </Link>
+
       <nav className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {jobs.map((j) => (
+        {jobs.filter((j) => j.href !== nextUp.href).map((j) => (
           <Link key={j.href} href={j.href}
             className={[
               "group rounded-xl border-2 bg-white px-4 py-3.5 transition-colors touch-manipulation",

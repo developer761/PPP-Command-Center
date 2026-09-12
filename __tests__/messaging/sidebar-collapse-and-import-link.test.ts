@@ -73,15 +73,25 @@ describe("the Training page can reach the import screen", () => {
     // them disappeared at total > 0. One permanent entry answers that better
     // than two conditional ones.
     //
-    // My first rewrite of this checked for no "s.total" within 400 characters
-    // before the link — and failed, because a DIFFERENT nav entry's label
-    // mentions s.total. Proximity in source text is not structure. So this
-    // asserts the structure directly: the nav maps the job list with nothing
-    // gating it.
+    // My first rewrite checked for no "s.total" within 400 characters of the
+    // link and failed, because a DIFFERENT entry's label mentions s.total.
+    // Proximity is not structure. My second pinned the exact JSX —
+    // <nav>{jobs.map( — and failed the moment the page started promoting one
+    // job to a larger card above the grid, while import was MORE reachable
+    // than before, not less.
+    //
+    // So this asserts the requirement: import is in the job list, and the list
+    // is rendered without any condition that could empty it. Filtering out the
+    // promoted job is fine — that job is rendered above, so removing its
+    // duplicate cannot make anything unreachable.
     const body = code(training);
-    expect(body).toMatch(/<nav[^>]*>\s*\{jobs\.map\(/);
     const jobsArray = body.slice(body.indexOf("const jobs = ["), body.indexOf("</nav>"));
     expect(jobsArray).toContain("/messaging/training/import");
+
+    // The nav renders the list. A filter is allowed; a conditional that could
+    // hide the whole nav is not.
+    expect(body).toMatch(/<nav[^>]*>\s*\{jobs[.\s\S]{0,80}?\.map\(/);
+    expect(body).not.toMatch(/\{\s*\w[\w.]*\s*&&\s*\(?\s*<nav/);
   });
 
   it("every training job is reachable from the landing page", () => {
