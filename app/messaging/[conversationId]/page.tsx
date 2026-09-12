@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadThread } from "@/lib/messaging/db";
 import { formatUs, type E164 } from "@/lib/messaging/phone";
+import { activeTags } from "@/lib/messaging/authoring";
+import { ThreadTeach } from "@/components/messaging/thread-teach";
+import type { AuthoredTurn } from "@/lib/messaging/authoring";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +27,14 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
   if (!data) notFound();
   const { conversation: c, messages } = data;
   const ended = c.state === "ended";
+
+  // The conversation so far, as the teaching form wants it. Only SMS bodies —
+  // an email subject line is not a turn and would read as one.
+  const tags = await activeTags();
+  const turns: AuthoredTurn[] = messages
+    .filter((m) => m.body?.trim())
+    .map((m) => ({ who: m.direction === "inbound" ? "customer" as const : "agent" as const, text: m.body }));
+  const lastWasCustomer = messages.at(-1)?.direction === "inbound";
 
   return (
     // pb-40 clears the fixed composer. Without it the last message sits under
@@ -101,31 +112,11 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
         </ol>
       )}
 
-      {/* Fixed composer. Sending is off platform-wide, so it says so rather
-          than presenting a control that silently does nothing — a disabled
-          button with no reason is worse than no button. */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-ppp-charcoal-100 px-4 pt-3 pb-safe">
-        <div className="max-w-3xl mx-auto">
-          <textarea
-            rows={2}
-            disabled
-            placeholder="Sending is switched off until the carrier is connected"
-            className="w-full resize-none rounded-xl border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-3 py-2.5 text-base sm:text-[14px] text-ppp-charcoal placeholder:text-ppp-charcoal-400 disabled:cursor-not-allowed"
-          />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <p className="text-[11px] text-ppp-charcoal-500 leading-tight">
-              Shadow mode — drafts are recorded, nothing is delivered.
-            </p>
-            <button
-              type="button"
-              disabled
-              className="shrink-0 min-h-[44px] px-4 rounded-xl bg-ppp-charcoal-200 text-ppp-charcoal-500 text-[13px] font-semibold cursor-not-allowed"
-            >
-              Send
-            </button>
-          </div>
-        </div>
-      </div>
+      <ThreadTeach
+        turns={turns}
+        tags={tags.map((t) => ({ key: t.key, section: t.section, label: t.label }))}
+        lastWasCustomer={lastWasCustomer}
+      />
     </main>
   );
 }

@@ -7,9 +7,9 @@
  * named twenty-five gaps and offered no way to fill any of them.
  *
  * The gap it fills is real and not merely convenience. The corpus can only
- * grow two ways today: import from Hatch, which is switched off until Kate
- * settles what her grades meant, and grading what was imported, which cannot
- * create an example that does not already exist. So a rule Hatch never
+ * grow two other ways: import from Hatch, and grading what was imported —
+ * neither of which can create an example that does not already exist
+ * somewhere in Hatch's history. So a rule Hatch never
  * demonstrated — the off-site-quote rule, refusing to name a price — has no
  * path into training at all. Someone who knows the right answer typing it out
  * IS the path.

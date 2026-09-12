@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { buildPreview, type ImportPreview, type GradeMeaning } from "@/lib/messaging/training-import";
+import { importTrainingRows } from "@/lib/messaging/training-import-write";
+import { useRouter } from "next/navigation";
 
 /**
  * Kate's upload screen.
@@ -21,6 +23,27 @@ export default function TrainingImportForm() {
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const router = useRouter();
+
+  const doImport = async () => {
+    setBusy(true); setErr(null); setResult(null);
+    try {
+      const res = await importTrainingRows({ csv: text, meaning: meaning ?? "conduct" });
+      if (!res.ok) { setErr(res.error); return; }
+      setResult(
+        `Imported ${res.imported}.` +
+        (res.alreadyThere ? ` ${res.alreadyThere} were already here.` : "") +
+        (res.heldBack ? ` ${res.heldBack} held back for still containing personal details.` : "") +
+        (res.needGrading ? ` ${res.needGrading} need grading before the bot can use them.` : "")
+      );
+      router.refresh();
+    } catch {
+      setErr("The import failed. Run the check again to see what is already in.");
+    } finally { setBusy(false); }
+  };
 
   const run = () => setPreview(buildPreview(text, meaning ?? "conduct"));
 
@@ -192,15 +215,18 @@ export default function TrainingImportForm() {
             </p>
             <button
               type="button"
-              disabled
-              className="mt-2.5 min-h-[44px] px-4 rounded-xl bg-ppp-charcoal-200 text-ppp-charcoal-500 text-[13px] font-semibold cursor-not-allowed"
+              onClick={() => void doImport()}
+              disabled={busy || preview.usable === 0}
+              className="mt-2.5 min-h-[44px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold disabled:bg-ppp-charcoal-200 disabled:text-ppp-charcoal-500 touch-manipulation"
             >
-              Import {preview.usable} rows
+              {busy ? "Importing…" : `Import ${preview.usable} rows`}
             </button>
             <p className="mt-1.5 text-[11px] text-ppp-charcoal-500">
-              Writing is switched off until the grade question above is settled
-              with Kate — the preview is safe to run as often as you like.
+              Safe to run twice — a conversation already here is counted and
+              skipped rather than added again.
             </p>
+            {err && <p className="mt-1.5 text-[12px] text-ppp-orange-700 leading-relaxed">{err}</p>}
+            {result && <p className="mt-1.5 text-[12px] text-ppp-charcoal-700 leading-relaxed">{result}</p>}
           </div>
         </section>
       )}
