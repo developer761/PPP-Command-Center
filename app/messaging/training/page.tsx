@@ -40,6 +40,13 @@ export default async function TrainingPage() {
       primary: s.total === 0,
     },
     {
+      href: "/messaging/training/repair",
+      title: "Fix a near-miss",
+      blurb: "A conversation that nearly went right, with Kate's note on what should have happened. Rewrite one line.",
+      meta: "Builds good examples",
+      primary: false,
+    },
+    {
       href: "/messaging/training/replay",
       title: "What changed",
       blurb: "Replay the conversations you have judged and see what a rule change broke.",
