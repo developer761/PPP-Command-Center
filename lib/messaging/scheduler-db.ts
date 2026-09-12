@@ -14,6 +14,7 @@ import { runAgentTurn } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
 import { resolveServices } from "./services";
 import { selectExamples } from "./retrieval";
+import { takeoverReasonFor } from "./handoff";
 import { gatedSend, type GateResult, type SendRequest } from "./gate";
 import type { E164 } from "./phone";
 import type { DueAction, SchedulerDeps } from "./scheduler";
@@ -108,6 +109,14 @@ export function schedulerDeps(): SchedulerDeps {
         .eq("id", a.conversation_id).maybeSingle();
       if (!conv) return { kind: "skipped" as const, reason: "conversation no longer exists" };
       if (conv.state === "ended") return { kind: "skipped" as const, reason: "conversation has ended" };
+      // A person has this one. The bot drafting alongside them is two voices
+      // answering one customer, which is the failure handing over exists to
+      // prevent — so it stops here rather than filing a draft nobody asked for.
+      // This guard and the claim button have to ship together: without it,
+      // taking a conversation over does not actually take it off the bot.
+      if (conv.state === "human_active") {
+        return { kind: "skipped" as const, reason: "a person has taken this conversation over" };
+      }
 
       const ws = conv.sms_sub_accounts as unknown as {
         id: string; name: string; autosend_enabled: boolean;
@@ -191,6 +200,23 @@ export function schedulerDeps(): SchedulerDeps {
       }
 
       const reason = res.escalate ? "escalated" : "autosend_off";
+
+      // An escalation that only files a draft leaves the conversation looking
+      // like the bot is still working it, and the "Needs human" bucket empty.
+      // Moving it to human_active with no owner IS that queue: needed by
+      // somebody, claimed by nobody. The reason is the little the agent can
+      // actually attribute — a person claiming it says what it really was.
+      if (res.escalate) {
+        await sb.from("sms_conversations").update({
+          state: "human_active",
+          takeover_reason: takeoverReasonFor({
+            intent: res.action.intent,
+            confidence: res.action.confidence,
+            threshold: cfg.cfg.confidence_threshold,
+          }),
+          takeover_at: new Date().toISOString(),
+        }).eq("id", conv.id).neq("state", "ended").is("owning_user_id", null);
+      }
 
       const { error } = await sb.from("sms_drafts").insert({
         conversation_id: conv.id,

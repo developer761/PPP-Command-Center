@@ -118,7 +118,7 @@ export async function loadThread(id: string) {
   const sb = messagingDb();
   const { data: conv } = await sb
     .from("sms_conversations")
-    .select("id, customer_phone, customer_name, customer_email, state, outcome, owning_agent, consent_basis, sf_lead_id, sf_opportunity_id, created_at, sms_sub_accounts(name, phone_e164)")
+    .select("id, customer_phone, customer_name, customer_email, state, outcome, owning_agent, owning_user_id, takeover_reason, takeover_at, consent_basis, sf_lead_id, sf_opportunity_id, created_at, sms_sub_accounts(name, phone_e164)")
     .eq("id", id)
     .maybeSingle();
   if (!conv) return null;
@@ -527,6 +527,9 @@ export type BoardCard = {
   customer_phone: string;
   customer_name: string | null;
   owning_agent: string | null;
+  /** Needed to tell "the bot is handling this" from "this needs a person and
+   *  nobody has claimed it". Both have no owner and they are opposites. */
+  state: string;
   outcome: string | null;
   last_message_at: string | null;
   preview: string | null;
@@ -559,7 +562,7 @@ export async function loadBoard(workspaceId?: string) {
   for (const r of rows) {
     const card: BoardCard = {
       id: r.id, customer_phone: r.customer_phone, customer_name: r.customer_name,
-      owning_agent: r.owning_agent, outcome: r.outcome, last_message_at: r.last_message_at,
+      owning_agent: r.owning_agent, state: r.state, outcome: r.outcome, last_message_at: r.last_message_at,
       preview: newest.get(r.id)?.body ?? null,
       direction: newest.get(r.id)?.direction ?? null,
     };

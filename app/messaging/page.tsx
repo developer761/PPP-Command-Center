@@ -243,7 +243,22 @@ function Column({
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
                 </svg>
-                <span className="truncate">{c.owning_agent ?? "Not assigned"}</span>
+                {/* "Not assigned" was shown for every conversation, including
+                    the ones the bot is correctly working — which reads as a
+                    pile of neglected leads. An unowned conversation is only
+                    waiting on somebody when it is in human_active. */}
+                <span className={[
+                  "truncate",
+                  !c.owning_agent && c.state === "human_active" ? "font-semibold text-ppp-orange-700" : "",
+                ].join(" ")}>
+                  {c.owning_agent
+                    ? c.owning_agent
+                    : c.state === "human_active"
+                      ? "Needs a person"
+                      : c.state === "ended"
+                        ? "Closed"
+                        : "Emily"}
+                </span>
               </div>
             </Link>
           </li>

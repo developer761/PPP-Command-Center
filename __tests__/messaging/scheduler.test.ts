@@ -270,3 +270,54 @@ describe("autosend, once a workspace has earned it", () => {
     expect(out.sent).toBe(0);
   });
 });
+
+describe("a person has taken the conversation over", () => {
+  it("a campaign step waits rather than landing mid-conversation", async () => {
+    // This is the one path that reaches the carrier. A nurture chase arriving
+    // while somebody handles a complaint is the failure handing over prevents.
+    const d = deps({
+      resolve: async () => ({
+        workspace: WS, to: "+15165550147" as E164, body: "hi",
+        agent: "lead_nurture", conversationState: "human_active",
+      }),
+    });
+    const out = await runAction(action(), d);
+    expect(out.kind).toBe("rescheduled");
+    expect(d.calls.cancel).toBe(0);
+    expect(d.calls.markSent).toBe(0);
+    expect(String(d.last.reason)).toMatch(/person has taken/i);
+  });
+
+  it("it is deferred, not dropped — they may hand it straight back", async () => {
+    const d = deps({
+      resolve: async () => ({
+        workspace: WS, to: "+15165550147" as E164, body: "hi",
+        agent: "lead_nurture", conversationState: "human_active",
+      }),
+    });
+    const out = await runAction(action(), d);
+    expect(out.kind).toBe("rescheduled");
+    if (out.kind !== "rescheduled") throw new Error("expected a reschedule");
+    expect(out.at.getTime()).toBeGreaterThan(NOW.getTime());
+  });
+
+  it("an ordinary conversation still sends — the guard is not catching everything", async () => {
+    // Control. Without this the two assertions above pass if runAction has
+    // simply stopped sending anything at all.
+    const d = deps();
+    const out = await runAction(action(), d);
+    expect(out.kind).toBe("sent");
+    expect(d.calls.markSent).toBe(1);
+  });
+
+  it("an ended conversation is still cancelled, not deferred", async () => {
+    const d = deps({
+      resolve: async () => ({
+        workspace: WS, to: "+15165550147" as E164, body: "hi",
+        agent: "lead_nurture", conversationState: "ended",
+      }),
+    });
+    const out = await runAction(action(), d);
+    expect(out.kind).toBe("cancelled");
+  });
+});

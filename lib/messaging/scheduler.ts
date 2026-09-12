@@ -125,6 +125,21 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
     return { kind: "cancelled", reason };
   }
 
+  // A person has taken this conversation over. A scripted step arriving in the
+  // middle of a human handling a complaint is worse than the step being late,
+  // and this is the one path that reaches the carrier rather than a review
+  // queue — so it waits.
+  //
+  // Deferred rather than cancelled: somebody holding it now does not make the
+  // step wrong forever, and they may hand it straight back. An hour, the same
+  // guess this function already makes when the gate cannot say when.
+  if (ctx.conversationState === "human_active") {
+    const reason = "a person has taken this conversation over";
+    const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
+    await deps.reschedule(a, at, reason);
+    return { kind: "rescheduled", at, reason };
+  }
+
   // An agent turn produces a REPLY, not a campaign step. While autosend is off
   // that reply goes to a person rather than a carrier, so it never reaches the
   // gate on this path — the gate runs when the human presses send.

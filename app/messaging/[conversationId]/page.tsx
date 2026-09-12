@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { loadThread } from "@/lib/messaging/db";
 import { formatUs, type E164 } from "@/lib/messaging/phone";
 import { activeTags } from "@/lib/messaging/authoring";
+import { HandoffBar } from "@/components/messaging/handoff-bar";
+import { assertMessagingAccess } from "@/lib/messaging/auth";
 import { ThreadTeach } from "@/components/messaging/thread-teach";
 import type { AuthoredTurn } from "@/lib/messaging/authoring";
 
@@ -31,6 +33,10 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
   // The conversation so far, as the teaching form wants it. Only SMS bodies —
   // an email subject line is not a turn and would read as one.
   const tags = await activeTags();
+  // Who is reading. "You have it" and "Kate has it" are different sentences and
+  // the badge said the first one for both, because nothing ever set an owner.
+  const me = await assertMessagingAccess();
+  const isMine = c.owning_user_id === me;
   const turns: AuthoredTurn[] = messages
     .filter((m) => m.body?.trim())
     .map((m) => ({ who: m.direction === "inbound" ? "customer" as const : "agent" as const, text: m.body }));
@@ -66,13 +72,16 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
                   : c.state === "human_active" ? "bg-ppp-orange-50 text-ppp-orange-700"
                   : "bg-ppp-green-50 text-ppp-green-700",
           ].join(" ")}>
-            {ended ? (OUTCOME_LABEL[c.outcome ?? ""] ?? c.outcome) : c.state === "human_active" ? "You have it" : "AI working"}
+            {ended
+              ? (OUTCOME_LABEL[c.outcome ?? ""] ?? c.outcome)
+              : c.state !== "human_active"
+                ? "AI working"
+                : isMine
+                  ? "You have it"
+                  : c.owning_agent
+                    ? `${c.owning_agent} has it`
+                    : "Needs a person"}
           </span>
-          {c.owning_agent && !ended && (
-            <span className="inline-flex items-center rounded-full bg-white border border-ppp-charcoal-200 px-2.5 py-1 text-[11px] text-ppp-charcoal-600">
-              {c.owning_agent}
-            </span>
-          )}
           {/* Why this send is lawful, surfaced rather than buried. The lead
               agents and the post-job agents do not stand on the same ground. */}
           <span className="inline-flex items-center rounded-full bg-white border border-ppp-charcoal-200 px-2.5 py-1 text-[11px] text-ppp-charcoal-500">
@@ -80,6 +89,16 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
           </span>
         </div>
       </header>
+
+      <HandoffBar
+        conversationId={c.id}
+        state={c.state}
+        holderName={c.owning_agent}
+        isMine={isMine}
+        takeoverAt={c.takeover_at}
+        botReason={c.takeover_reason}
+      />
+
 
       {messages.length === 0 ? (
         <p className="rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-6 text-center text-[13px] text-ppp-charcoal-500">
