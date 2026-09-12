@@ -31,6 +31,7 @@ export default function RepairConsole({
   const [lineIndex, setLineIndex] = useState<number | null>(null);
   const [replacement, setReplacement] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
+  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<{ id: string; from: string; to: string } | null>(null);
@@ -52,7 +53,7 @@ export default function RepairConsole({
   const lines = linesOf(c.transcript);
 
   const next = () => {
-    setDone(null); setErr(null); setLineIndex(null); setReplacement(""); setPicked([]);
+    setDone(null); setErr(null); setLineIndex(null); setReplacement(""); setPicked([]); setReason("");
     setFindingIdx(0);
     setI((n) => n + 1);
   };
@@ -62,7 +63,9 @@ export default function RepairConsole({
     setBusy(true); setErr(null);
     try {
       const res = await saveRepair({
-        exampleId: c.exampleId, findingId: finding.id,
+        exampleId: c.exampleId,
+        findingId: finding?.id ?? null,
+        reason,
         lineIndex, replacement, tagKeys: picked,
       });
       if (!res.ok) { setErr(res.error); return; }
@@ -122,46 +125,46 @@ export default function RepairConsole({
     <div className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-[12px] text-ppp-charcoal-500">
-          {c.conduct === "bad" ? "Graded bad" : "Graded mid"}
-          {c.repairs.length > 0 && <> · {c.repairs.length} repair{c.repairs.length === 1 ? "" : "s"} already</>}
+          {c.conduct === "mixed" ? "Nearly right" : "Went wrong"}
+          {c.repairs.length > 0 && <> · {c.repairs.length} repair{c.repairs.length === 1 ? "" : "s"} written already</>}
         </p>
         <span className="shrink-0 text-[12px] text-ppp-charcoal-400 tabular-nums">
           {candidates.length - i} left
         </span>
       </div>
 
-      {/* The correction being applied. */}
-      <section className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 overflow-hidden">
-        {c.findings.length > 1 && (
-          <div className="flex gap-1.5 px-3 pt-2.5 overflow-x-auto">
-            {c.findings.map((f, n) => (
-              <button key={f.id} type="button" onClick={() => { setFindingIdx(n); setLineIndex(null); }}
-                aria-pressed={n === findingIdx}
-                className={[
-                  "shrink-0 min-h-[32px] px-2 rounded-md text-[11px] font-semibold touch-manipulation",
-                  n === findingIdx ? "bg-ppp-charcoal text-white" : "bg-white text-ppp-orange-700",
-                ].join(" ")}>
-                {f.code ?? `#${n + 1}`}
-              </button>
-            ))}
+      {/* Kate's note, when there is one. Optional now — the corrections that
+          shipped with her PDF could not be reliably attached to the right
+          conversation, so this is a hint rather than the point. */}
+      {finding && (
+        <section className="rounded-xl border border-ppp-charcoal-100 bg-ppp-charcoal-50 overflow-hidden">
+          {c.findings.length > 1 && (
+            <div className="flex gap-1.5 px-3 pt-2.5 overflow-x-auto">
+              {c.findings.map((f, n) => (
+                <button key={f.id} type="button" onClick={() => { setFindingIdx(n); setLineIndex(null); }}
+                  aria-pressed={n === findingIdx}
+                  className={[
+                    "shrink-0 min-h-[32px] px-2.5 rounded-md text-[11px] font-semibold touch-manipulation",
+                    n === findingIdx ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600",
+                  ].join(" ")}>
+                  {f.code ?? `note ${n + 1}`}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="px-4 py-3">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
+              Kate&apos;s note{finding.severity ? ` · ${finding.severity}` : ""}
+            </p>
+            <p className="mt-1 text-[12.5px] text-ppp-charcoal-600 leading-relaxed">{finding.what}</p>
+            {finding.shouldHave && (
+              <p className="mt-1.5 text-[13px] text-ppp-charcoal leading-relaxed">
+                <strong>Should have</strong> {finding.shouldHave}
+              </p>
+            )}
           </div>
-        )}
-        <div className="px-4 py-3">
-          <p className="text-[12.5px] text-ppp-orange-700 leading-relaxed">
-            <strong>What went wrong:</strong> {finding.what}
-          </p>
-          {finding.shouldHave && (
-            <p className="mt-1.5 text-[13px] text-ppp-charcoal leading-relaxed">
-              <strong>Should have</strong> {finding.shouldHave}
-            </p>
-          )}
-          {finding.severity && (
-            <p className="mt-1 text-[11px] text-ppp-orange-700/80">
-              {finding.severity}{finding.turnOrdinal ? ` · Kate marked this at her turn ${finding.turnOrdinal}` : ""}
-            </p>
-          )}
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* The conversation. Only the bot's lines can be picked. */}
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
@@ -210,6 +213,19 @@ export default function RepairConsole({
             </span>
           </label>
 
+          <label className="block">
+            <span className="block text-[12.5px] font-medium text-ppp-charcoal-600 mb-1">
+              What was wrong with the original line?
+            </span>
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
+              placeholder="Asked them to type an address we already had on file"
+              className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-[13px] leading-relaxed resize-y" />
+            <span className="mt-1 block text-[11.5px] text-ppp-charcoal-400 leading-snug">
+              This is what makes the repair teach. Without it, it is just a
+              conversation somebody rewrote.
+            </span>
+          </label>
+
           <div>
             <span className="block text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1">
               Which rule does the fixed version show?
@@ -234,7 +250,7 @@ export default function RepairConsole({
           {err && <p className="text-[12.5px] text-ppp-orange-700 leading-relaxed">{err}</p>}
 
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void save()} disabled={busy || !replacement.trim()}
+            <button type="button" onClick={() => void save()} disabled={busy || !replacement.trim() || (!reason.trim() && !finding)}
               className="min-h-[48px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13.5px] font-semibold disabled:opacity-40 touch-manipulation">
               {busy ? "Saving…" : "Save the repair"}
             </button>

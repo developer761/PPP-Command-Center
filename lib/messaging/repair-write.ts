@@ -42,18 +42,23 @@ export async function repairQueue(limit = 25): Promise<RepairCandidate[]> {
   await assertMessagingAccess();
   const sb = messagingDb();
 
-  const { data: findings } = await sb
-    .from("sms_example_findings")
-    .select("id, example_id, turn_ordinal, code, severity, what, should_have")
-    .not("should_have", "is", null)
-    .order("severity");
-  if (!findings?.length) return [];
+  // MID FIRST. A near-miss is a better repair than a disaster: one line is
+  // wrong and the rest already shows what good looks like, so the repaired
+  // version is a real example rather than something rewritten end to end.
+  const { data: examples } = await sb.from("sms_training_examples")
+    .select("id, transcript, conduct")
+    .in("conduct", ["mixed", "bad"])
+    .neq("source", "derived")
+    .order("conduct");
+  if (!examples?.length) return [];
 
-  const ids = [...new Set(findings.map((f) => f.example_id))];
-  const [{ data: examples }, { data: derived }] = await Promise.all([
-    sb.from("sms_training_examples")
-      .select("id, transcript, conduct")
-      .in("id", ids).in("conduct", ["mixed", "bad"]),
+  const ids = examples.map((e) => e.id);
+  const [{ data: findings }, { data: derived }] = await Promise.all([
+    // A stored correction is a help, not a requirement — the person doing the
+    // repair can say what was wrong themselves.
+    sb.from("sms_example_findings")
+      .select("id, example_id, turn_ordinal, code, severity, what, should_have")
+      .in("example_id", ids),
     sb.from("sms_training_examples")
       .select("id, derived_from, approved, conduct_note")
       .eq("source", "derived").in("derived_from", ids),
@@ -68,7 +73,7 @@ export async function repairQueue(limit = 25): Promise<RepairCandidate[]> {
         .map((d) => ({ id: d.id, approved: d.approved, note: d.conduct_note })),
     });
   }
-  for (const f of findings) {
+  for (const f of findings ?? []) {
     const c = byExample.get(f.example_id);
     if (!c) continue;
     c.findings.push({
@@ -80,12 +85,14 @@ export async function repairQueue(limit = 25): Promise<RepairCandidate[]> {
   // The worst first — a critical finding is the one most worth fixing, and a
   // conversation already repaired drops to the bottom rather than vanishing so
   // a second finding on it can still be worked.
-  const sev = (s: string | null) => (s === "critical" ? 0 : s === "medium" ? 1 : 2);
   return [...byExample.values()]
-    .filter((c) => c.findings.length)
     .sort((a, b) =>
+      // Unrepaired first, then mid before bad: a conversation that nearly
+      // worked needs one line changed, where a bad one may need rewriting
+      // whole — and a rewritten conversation is invention, not repair.
       a.repairs.length - b.repairs.length
-      || sev(a.findings[0].severity) - sev(b.findings[0].severity))
+      || (a.conduct === "mixed" ? 0 : 1) - (b.conduct === "mixed" ? 0 : 1)
+      || b.findings.length - a.findings.length)
     .slice(0, limit);
 }
 
@@ -95,7 +102,11 @@ export type SaveRepair =
 
 export async function saveRepair(input: {
   exampleId: string;
-  findingId: string;
+  /** A stored correction, when there is one. */
+  findingId?: string | null;
+  /** What was wrong with the original line, in the reviewer's own words.
+   *  Required when there is no stored correction to lean on. */
+  reason?: string;
   lineIndex: number;
   replacement: string;
   tagKeys: string[];
@@ -103,12 +114,20 @@ export async function saveRepair(input: {
   await assertMessagingAccess();
   const sb = messagingDb();
 
-  const [{ data: original }, { data: finding }] = await Promise.all([
-    sb.from("sms_training_examples").select("id, transcript").eq("id", input.exampleId).maybeSingle(),
-    sb.from("sms_example_findings").select("id, what, should_have").eq("id", input.findingId).maybeSingle(),
-  ]);
+  const { data: original } = await sb.from("sms_training_examples")
+    .select("id, transcript").eq("id", input.exampleId).maybeSingle();
   if (!original) return { ok: false, error: "That conversation no longer exists." };
-  if (!finding) return { ok: false, error: "That correction no longer exists." };
+
+  const { data: finding } = input.findingId
+    ? await sb.from("sms_example_findings").select("id, what, should_have").eq("id", input.findingId).maybeSingle()
+    : { data: null };
+
+  const reason = input.reason?.trim() || finding?.what || null;
+  if (!reason) {
+    // A repair with no stated reason is a conversation somebody rewrote. The
+    // reason is what makes it teach.
+    return { ok: false, error: "Say what was wrong with the original line." };
+  }
 
   const applied = applyRepair({
     transcript: original.transcript,
@@ -129,11 +148,11 @@ export async function saveRepair(input: {
   const { data, error } = await sb.from("sms_training_examples").insert({
     source: "derived",
     derived_from: original.id,
-    derived_from_finding: finding.id,
+    derived_from_finding: finding?.id ?? null,
     transcript: text,
     conduct: "good",
     conduct_note: repairNote({
-      what: finding.what, shouldHave: finding.should_have,
+      what: reason, shouldHave: finding?.should_have ?? null,
       from: applied.changed.from, to: applied.changed.to,
     }),
     pii_scrubbed: true,

@@ -109,6 +109,29 @@ export default async function TrainingPage() {
         </p>
       </header>
 
+      {/* A strip, not a wall. It was four paragraph-length rows in the middle
+          of the page — Karan: "make this smaller and on the top". The detail
+          belongs on the screen that fixes it, not on the way past. */}
+      {needsWork > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            cov.ungraded > 0 && { n: cov.ungraded, label: "to judge", href: "/messaging/training/grade" },
+            cov.gradedNoReason > 0 && { n: cov.gradedNoReason, label: "need a reason", href: "/messaging/training/grade" },
+            s.needsScrub > 0 && { n: s.needsScrub, label: "still hold personal details", href: "/messaging/training/import" },
+            s.needsReview > 0 && { n: s.needsReview, label: "await sign-off", href: "/messaging/training/grade" },
+          ].filter(Boolean).map((x) => {
+            const item = x as { n: number; label: string; href: string };
+            return (
+              <Link key={item.label} href={item.href}
+                className="inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-full border border-ppp-charcoal-200 bg-white text-[12px] text-ppp-charcoal-600 touch-manipulation">
+                <span className="font-semibold text-ppp-charcoal tabular-nums">{item.n}</span>
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
       {/* The one worth doing, full width and first. */}
       <Link href={nextUp.href}
         className="block rounded-xl border-2 border-ppp-charcoal bg-white px-4 py-4 touch-manipulation">
@@ -135,73 +158,7 @@ export default async function TrainingPage() {
         ))}
       </nav>
 
-      {/* Each line says what it MEANS and what to do about it, and links
-          straight there. The first version said things like "4 scrubbed but
-          not approved", which does not tell a reader what was scrubbed, who
-          approves, what approval is for, or what they are supposed to do —
-          Karan read it and asked what it meant, which is the whole answer. */}
-      {needsWork > 0 && (
-        <section className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 overflow-hidden">
-          <p className="px-4 py-2.5 text-[13px] font-semibold text-ppp-orange-700 border-b border-ppp-orange-100">
-            {needsWork} thing{needsWork === 1 ? "" : "s"} the bot is waiting on
-          </p>
-          <ul className="divide-y divide-ppp-orange-100">
-            {cov.ungraded > 0 && (
-              <li>
-                <Link href="/messaging/training/grade" className="block px-4 py-2.5 touch-manipulation">
-                  <p className="text-[12.5px] font-medium text-ppp-orange-700">
-                    {cov.ungraded} conversation{cov.ungraded === 1 ? "" : "s"} nobody has judged yet
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-ppp-orange-700/80 leading-relaxed">
-                    Until somebody says whether each one went well, the bot cannot
-                    tell them apart from the ones that went badly. Grade them →
-                  </p>
-                </Link>
-              </li>
-            )}
-            {cov.gradedNoReason > 0 && (
-              <li>
-                <Link href="/messaging/training/grade" className="block px-4 py-2.5 touch-manipulation">
-                  <p className="text-[12.5px] font-medium text-ppp-orange-700">
-                    {cov.gradedNoReason} judged, but with no reason given
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-ppp-orange-700/80 leading-relaxed">
-                    &ldquo;This one was good&rdquo; teaches nothing on its own. Tick which
-                    of Emily&rsquo;s rules it shows and it starts teaching that rule. Add reasons →
-                  </p>
-                </Link>
-              </li>
-            )}
-            {s.needsScrub > 0 && (
-              <li>
-                <Link href="/messaging/training/import" className="block px-4 py-2.5 touch-manipulation">
-                  <p className="text-[12.5px] font-medium text-ppp-orange-700">
-                    {s.needsScrub} still contain{s.needsScrub === 1 ? "s" : ""} somebody&rsquo;s personal details
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-ppp-orange-700/80 leading-relaxed">
-                    Names, numbers and addresses. These are held back and never
-                    reach the bot until they are cleaned. Re-import them →
-                  </p>
-                </Link>
-              </li>
-            )}
-            {s.needsReview > 0 && (
-              <li>
-                <Link href="/messaging/training/grade" className="block px-4 py-2.5 touch-manipulation">
-                  <p className="text-[12.5px] font-medium text-ppp-orange-700">
-                    {s.needsReview} cleaned up and ready, but not signed off
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-ppp-orange-700/80 leading-relaxed">
-                    The personal details are gone. What is missing is somebody
-                    saying &ldquo;yes, copy this one&rdquo; — the bot only imitates
-                    conversations a person has approved. Sign them off →
-                  </p>
-                </Link>
-              </li>
-            )}
-          </ul>
-        </section>
-      )}
+
 
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
         <h2 className="px-4 py-2.5 border-b border-ppp-charcoal-100 font-semibold text-ppp-charcoal text-[14px]">
