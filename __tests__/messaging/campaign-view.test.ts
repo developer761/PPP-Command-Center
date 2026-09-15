@@ -48,7 +48,7 @@ describe("an audience, in words", () => {
 
 describe("when each message goes, in words", () => {
   it("describes each mode the way somebody would ask about it", () => {
-    expect(timingOf(step({ ordinal: 1 }))).toBe("Straight away");
+    expect(timingOf(step({ ordinal: 1 }))).toBe("2–5 min after the lead comes in");
     expect(timingOf(step({ ordinal: 2, scheduleMode: "delay_after_last", delayMinutes: 30 }))).toBe("30 minutes later");
     expect(timingOf(step({ ordinal: 3, scheduleMode: "delay_after_last", delayMinutes: 2880 }))).toBe("2 days later");
     expect(timingOf(step({ ordinal: 4, scheduleMode: "absolute_on_day", dayOffset: 1, timeOfDay: "10:00" }))).toBe("Next day at 10am");

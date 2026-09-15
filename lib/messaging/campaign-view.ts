@@ -103,7 +103,7 @@ const humanMinutes = (mins: number): string => {
 /** When this step goes, said the way somebody would ask about it. */
 export function timingOf(step: CampaignStep): string {
   switch (step.scheduleMode) {
-    case "at_launch":        return "Straight away";
+    case "at_launch":        return "2–5 min after the lead comes in";
     case "delay_after_last": return `${humanMinutes(step.delayMinutes ?? 0)} later`;
     case "absolute_on_day": {
       const day = step.dayOffset ?? 0;

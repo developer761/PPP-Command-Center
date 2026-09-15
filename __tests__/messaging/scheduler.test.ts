@@ -412,3 +412,25 @@ describe("a person has taken the conversation over", () => {
     expect(out.kind).toBe("cancelled");
   });
 });
+
+/** An email step was recorded in the thread as a text. */
+describe("what went out is recorded on the channel it went out on", () => {
+  it("records an email step as email", async () => {
+    let channel: string | undefined;
+    await runDueActions(deps({
+      resolve: async () => ({
+        workspace: WS, to: "+15165550147" as E164, body: "hi", agent: "campaign",
+        conversationState: "ai_active", channel: "email", toEmail: "c@example.com",
+        fromEmail: "hello@precisionpaintingplus.net", subject: "Your estimate",
+      }),
+      markSent: async (_a, _p, _b, ch) => { channel = ch; },
+    }));
+    expect(channel).toBe("email");
+  });
+
+  it("records a text step as sms", async () => {
+    let channel: string | undefined;
+    await runDueActions(deps({ markSent: async (_a, _p, _b, ch) => { channel = ch; } }));
+    expect(channel).toBe("sms");
+  });
+});

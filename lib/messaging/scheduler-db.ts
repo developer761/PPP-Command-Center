@@ -65,10 +65,22 @@ export function schedulerDeps(): SchedulerDeps {
       // Fill the blanks BEFORE the gate sees it. The gate refuses anything
       // still carrying a placeholder, which is the backstop rather than the
       // mechanism.
+      //
+      // office_location is offered by the editor and was never passed here, so
+      // a message using it was refused at every attempt until it failed. It is
+      // the same office the bot states, resolved the same way (global, then
+      // state, then workspace), and only looked up when the message wants it.
+      const wantsOffice = body.includes("{{office_location}}");
+      const cfg = wantsOffice ? await agentConfigFor(ws.id) : null;
       body = fillMergeFields(body, {
         workspacePhone: ws.phone_e164,
         workspaceName: ws.name,
         customerName: data.customer_name,
+        officeLocation: cfg?.cfg.office_location ?? null,
+        // A lead with no first name is common (a form with a phone and
+        // nothing else). "Hi {{customer_name}}" would otherwise be refused
+        // and the whole sequence would silently never send to them.
+        customerNameFallback: "there",
       });
       // Always FROM the shared, verified sender; the workspace's own inbox is
       // the Reply-To. The workspace address used to go in From, which Resend
@@ -314,9 +326,13 @@ export function schedulerDeps(): SchedulerDeps {
       await sb.from("sms_scheduled_actions").update({ state: "done", updated_at: new Date().toISOString() }).eq("id", a.id);
     },
 
-    async markSent(a, providerId, body) {
+    async markSent(a, providerId, body, channel = "sms") {
       await sb.from("sms_messages").insert({
         conversation_id: a.conversation_id, direction: "outbound",
+        // Recorded on the channel it actually went out on. Every email step
+        // was filed as an SMS, so a thread showed an email as a text and any
+        // count of what was emailed was wrong.
+        channel,
         body, provider_id: providerId, delivery_status: "sent",
       });
       await sb.from("sms_scheduled_actions").update({ state: "done", updated_at: new Date().toISOString() }).eq("id", a.id);

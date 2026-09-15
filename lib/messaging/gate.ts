@@ -57,22 +57,12 @@ export type SendChannel = "sms" | "email";
  * perfectly good disclosure, and stapling a second one on would read like a
  * machine wrote it twice.
  */
-export const OPT_OUT_DISCLOSURE = "Reply STOP to opt out.";
-
-/** Already tells them how to stop? Any of the keywords the system honours. */
-const HAS_DISCLOSURE =
-  /\b(?:reply|text|send)\s+(?:"|')?(?:stop|end|quit|cancel|unsubscribe)\b|\bopt[- ]?out\b|\bto\s+unsubscribe\b/i;
-
-export function needsDisclosure(body: string): boolean {
-  return !HAS_DISCLOSURE.test(body);
-}
-
-export function withDisclosure(body: string): string {
-  const t = body.trim();
-  if (!t || !needsDisclosure(t)) return t;
-  // A full stop first, so it does not run into the sentence before it.
-  return /[.!?]$/.test(t) ? `${t} ${OPT_OUT_DISCLOSURE}` : `${t}. ${OPT_OUT_DISCLOSURE}`;
-}
+//
+// Defined in first-message.ts so the campaign editor (in the browser) and this
+// gate share one test for "already says how to stop". Re-exported so existing
+// imports from the gate keep working.
+export { OPT_OUT_DISCLOSURE, needsDisclosure, withDisclosure } from "./first-message";
+import { withDisclosure } from "./first-message";
 
 export type GateDeps = {
   /**
