@@ -15,7 +15,7 @@ const money = (c: number) => (c / 100).toFixed(2);
  *  ?from=&to= the page does, through the same parser, so the file and the
  *  screen cover the identical window. */
 export async function GET(req: NextRequest) {
-  const guard = await guardExport();
+  const guard = await guardExport({ report: "win-loss" });
   if (!guard.ok) return guard.response;
 
   const q = req.nextUrl.searchParams;

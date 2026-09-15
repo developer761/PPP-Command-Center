@@ -11,7 +11,7 @@ const money = (c: number) => (c / 100).toFixed(2);
 
 /** Change orders & vendor spend. */
 export async function GET(req: NextRequest) {
-  const guard = await guardExport();
+  const guard = await guardExport({ report: "change-orders" });
   if (!guard.ok) return guard.response;
 
   const preset = resolvePreset(

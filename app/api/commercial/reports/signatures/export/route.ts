@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 /** Signatures — one row per signing link, same window as the report page. */
 export async function GET(req: NextRequest) {
-  const guard = await guardExport();
+  const guard = await guardExport({ report: "signatures" });
   if (!guard.ok) return guard.response;
 
   const preset = resolvePreset(req.nextUrl.searchParams.get("preset") ?? undefined, SIGNATURE_PRESETS, SIGNATURE_DEFAULT);

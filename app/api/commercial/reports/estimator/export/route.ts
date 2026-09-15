@@ -14,7 +14,7 @@ const money = (c: number) => (c / 100).toFixed(2);
 /** Estimator performance. Admin / account manager only — per-person numbers,
  *  same gate the page enforces, so the URL isn't a way around the redirect. */
 export async function GET(req: NextRequest) {
-  const guard = await guardExport({ people: true });
+  const guard = await guardExport({ report: "estimator", people: true });
   if (!guard.ok) return guard.response;
 
   const preset = resolvePreset(

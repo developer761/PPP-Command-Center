@@ -11,7 +11,7 @@ const money = (c: number) => (c / 100).toFixed(2);
 
 /** Cash flow — three sections in one sheet, in the order the page shows them. */
 export async function GET(req: NextRequest) {
-  const guard = await guardExport();
+  const guard = await guardExport({ report: "cash-flow" });
   if (!guard.ok) return guard.response;
 
   const preset = resolvePreset(

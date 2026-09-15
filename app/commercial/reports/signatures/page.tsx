@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { requireReportAccess } from "@/lib/commercial/reports/access";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -38,6 +39,8 @@ export default async function SignaturesReportPage({
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
+  // Report folders: only reports in a folder you belong to (admins see all).
+  await requireReportAccess(user.id, user.email, "signatures");
 
   const sp = await searchParams;
   const preset = resolvePreset(sp.preset, SIGNATURE_PRESETS, SIGNATURE_DEFAULT);
