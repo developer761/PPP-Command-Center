@@ -16,12 +16,12 @@ const action = (over: Partial<DueAction> = {}): DueAction =>
   ({ id: "a1", conversation_id: "c1", campaign_step_id: "s1", action: "send_step", attempts: 1, ...over });
 
 type Spy = SchedulerDeps & {
-  calls: { markSent: number; reschedule: number; cancel: number; fail: number };
+  calls: { markSent: number; markDone: number; reschedule: number; cancel: number; fail: number };
   last: Record<string, unknown>;
 };
 
 function deps(over: Partial<SchedulerDeps> = {}): Spy {
-  const calls = { markSent: 0, reschedule: 0, cancel: 0, fail: 0 };
+  const calls = { markSent: 0, markDone: 0, reschedule: 0, cancel: 0, fail: 0 };
   const d: Spy = {
     calls,
     last: {},
@@ -33,6 +33,7 @@ function deps(over: Partial<SchedulerDeps> = {}): Spy {
     }),
     send: async (): Promise<GateResult> => ({ ok: true, providerId: "p1", body: "x" }),
     markSent: async () => { calls.markSent++; },
+    markDone: async () => { calls.markDone++; },
     reschedule: async (_a: DueAction, at: Date, reason: string) => { calls.reschedule++; d.last = { at, reason }; },
     cancel: async (_a: DueAction, reason: string) => { calls.cancel++; d.last = { reason }; },
     fail: async (_a: DueAction, reason: string) => { calls.fail++; d.last = { reason }; },
@@ -168,7 +169,7 @@ describe("runDueActions — one bad row must not stop the tick", () => {
     // A tick that processed nothing and a tick that failed everything must not
     // look alike to whatever is watching.
     const quiet = await runDueActions(deps({ claimDue: async () => [] }));
-    expect(quiet).toEqual({ claimed: 0, sent: 0, drafted: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 });
+    expect(quiet).toEqual({ claimed: 0, sent: 0, drafted: 0, held: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 });
     const broken = await runDueActions(deps({ send: async () => ({ ok: false, reason: "no_workspace_number" }) }));
     expect(broken.claimed).toBe(1);
     expect(broken.failed).toBe(1);
@@ -268,6 +269,96 @@ describe("autosend, once a workspace has earned it", () => {
     }));
     expect(out.drafted).toBe(1);
     expect(out.sent).toBe(0);
+  });
+
+  // The bug this replaced: a drafted turn was closed with markSent(a,
+  // "drafted", ""), writing an empty outbound message. That told the gate we
+  // had already texted the customer, so Emily's real first reply lost its
+  // opt-out line, and it counted toward their daily cap.
+  it("closes a drafted turn without recording a message", async () => {
+    const d = deps({ claimDue: async () => [agentAction], draftReply: async () => ({ kind: "drafted" as const }) });
+    await runDueActions(d);
+    expect(d.calls.markSent).toBe(0);
+    expect(d.calls.markDone).toBe(1);
+  });
+});
+
+/**
+ * Karan, 2026-09-15: Emily answers 30 to 90 seconds after the customer's text.
+ * The turn writes the reply early and holds it; a send_reply row delivers it.
+ */
+describe("a reply held until its moment", () => {
+  const agentAction = { id: "a1", conversation_id: "c1", campaign_step_id: null, action: "agent_turn", attempts: 0 };
+  const heldAction = {
+    id: "h1", conversation_id: "c1", campaign_step_id: null, action: "send_reply", attempts: 1,
+    reply_body: "Thanks! What is the street address?", answers_message_id: "m1",
+    reply_due_at: NOW.toISOString(),
+  };
+
+  it("a turn that holds its reply sends nothing and records nothing yet", async () => {
+    let sendCalled = false;
+    const at = new Date(NOW.getTime() + 60_000);
+    const d = deps({
+      claimDue: async () => [agentAction],
+      send: async () => { sendCalled = true; return { ok: true, providerId: "p", body: "x" }; },
+      draftReply: async () => ({ kind: "held" as const, at }),
+    });
+    const out = await runDueActions(d);
+    expect(out.held).toBe(1);
+    expect(out.sent).toBe(0);
+    expect(sendCalled).toBe(false);
+    expect(d.calls.markSent).toBe(0);
+    expect(d.calls.markDone).toBe(1);
+  });
+
+  it("delivers the held reply and records exactly what went out", async () => {
+    let recorded: string | null = null;
+    const out = await runDueActions(deps({
+      claimDue: async () => [heldAction],
+      sendHeldReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "Thanks! What is the street address?" }),
+      markSent: async (_a, _p, body) => { recorded = body; },
+    }));
+    expect(out.sent).toBe(1);
+    expect(recorded).toBe("Thanks! What is the street address?");
+  });
+
+  it("drops it, never sends late, when a person took the conversation over", async () => {
+    let called = false;
+    const d = deps({
+      claimDue: async () => [heldAction],
+      resolve: async () => ({ workspace: WS, to: "+15165550147" as E164, body: "", agent: "x", conversationState: "human_active" }),
+      sendHeldReply: async () => { called = true; return { kind: "sent" as const, providerId: "p", body: "x" }; },
+    });
+    const out = await runDueActions(d);
+    expect(called).toBe(false);
+    expect(out.cancelled).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+  });
+
+  it("cancels a stale reply the customer has already moved past", async () => {
+    const d = deps({
+      claimDue: async () => [heldAction],
+      sendHeldReply: async () => ({ kind: "skipped" as const, reason: "the customer texted again before it was due" }),
+    });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(1);
+    expect(String(d.last.reason)).toContain("texted again");
+  });
+
+  it("a refused held reply becomes a draft, closed without a fake message", async () => {
+    const d = deps({ claimDue: async () => [heldAction], sendHeldReply: async () => ({ kind: "drafted" as const }) });
+    const out = await runDueActions(d);
+    expect(out.drafted).toBe(1);
+    expect(d.calls.markSent).toBe(0);
+    expect(d.calls.markDone).toBe(1);
+  });
+
+  it("retries a held send that threw, rather than losing the reply", async () => {
+    const out = await runDueActions(deps({
+      claimDue: async () => [heldAction],
+      sendHeldReply: async () => { throw new Error("carrier timeout"); },
+    }));
+    expect(out.rescheduled).toBe(1);
   });
 });
 

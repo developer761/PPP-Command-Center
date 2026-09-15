@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   pickDelaySeconds, delayedRunAt, validateDelay, describeDelay,
-  isDelayOff, MAX_DELAY_SECONDS,
+  isDelayOff, MAX_DELAY_SECONDS, replyDueAt, DEFAULT_DELAY, TICK_SECONDS, TURN_START_SECONDS,
 } from "@/lib/messaging/reply-delay";
 import fs from "node:fs";
 
@@ -9,7 +9,55 @@ const TZ = "America/New_York";
 const HOURS = { startHour: 9, endHour: 20 };
 const at = (iso: string) => new Date(iso);
 
-describe("off by default", () => {
+/**
+ * Karan, 2026-09-15: "30 seconds to one minute 30 seconds". Measured from the
+ * customer's text to the reply reaching them.
+ */
+describe("Emily answers 30 seconds to a minute and a half after the text", () => {
+  const noon = at("2026-09-15T16:00:00Z"); // midday in New York
+
+  it("is what every workspace starts with, in code and in the migration", () => {
+    expect(DEFAULT_DELAY).toEqual({ minSeconds: 30, maxSeconds: 90 });
+    const sql = fs.readFileSync("supabase/migrations/20260915135711_reply_in_30_to_90_seconds.sql", "utf8");
+    expect(sql).toMatch(/reply_delay_min_seconds SET DEFAULT 30/);
+    expect(sql).toMatch(/reply_delay_max_seconds SET DEFAULT 90/);
+  });
+
+  it("every reply lands inside 30-90s even when the tick picks it up a full tick late", () => {
+    for (let i = 0; i < 2000; i++) {
+      const due = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, quietHours: HOURS });
+      const earliest = (due.getTime() - noon.getTime()) / 1000;
+      const latest = earliest + TICK_SECONDS;
+      expect(earliest).toBeGreaterThanOrEqual(30);
+      expect(latest).toBeLessThanOrEqual(90);
+    }
+  });
+
+  it("can land at both ends, so the range is the range somebody set", () => {
+    const lo = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, quietHours: HOURS, rand: () => 0 });
+    const hi = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, quietHours: HOURS, rand: () => 0.999999 });
+    expect((lo.getTime() - noon.getTime()) / 1000).toBe(30);
+    expect((hi.getTime() - noon.getTime()) / 1000 + TICK_SECONDS).toBe(90);
+  });
+
+  it("starts writing well before the earliest moment it could be due", () => {
+    // Written by TURN_START + one tick + a few seconds for the model, so a
+    // reply due at 30s is ready when 30s comes.
+    expect(TURN_START_SECONDS + TICK_SECONDS).toBeLessThan(DEFAULT_DELAY.minSeconds);
+  });
+
+  it("still never carries a reply past the evening cut-off", () => {
+    const late = at("2026-09-16T00:59:30Z"); // 8:59:30pm in New York
+    const due = replyDueAt({ receivedAt: late, config: DEFAULT_DELAY, timeZone: TZ, quietHours: { startHour: 9, endHour: 21 } });
+    expect(due.getTime()).toBe(late.getTime());
+  });
+
+  it("reads plainly on the settings page", () => {
+    expect(describeDelay(DEFAULT_DELAY)).toBe("Waits 30s–1 min 30s");
+  });
+});
+
+describe("zero is off", () => {
   it("both bounds at zero is off", () => {
     expect(isDelayOff({ minSeconds: 0, maxSeconds: 0 })).toBe(true);
     expect(pickDelaySeconds({ minSeconds: 0, maxSeconds: 0 })).toBe(0);

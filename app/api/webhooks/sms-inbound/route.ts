@@ -3,14 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { verifySns, fetchAwsCert, type SnsMessage } from "@/lib/messaging/sns-verify";
 import { decideInbound, type EumInbound } from "@/lib/messaging/inbound";
 import { reportError, reportWarn } from "@/lib/observability";
-import { delayedRunAt } from "@/lib/messaging/reply-delay";
-
-/**
- * The burst beat. A customer sending three texts in a row gets one answer to
- * all three rather than three answers racing each other. Correctness, not
- * feel — so it is fixed, and the configurable delay is layered over it.
- */
-const BURST_COALESCE_MS = 30_000;
+import { replyDueAt, TURN_START_SECONDS } from "@/lib/messaging/reply-delay";
 
 export const dynamic = "force-dynamic";
 
@@ -198,6 +191,9 @@ export async function POST(req: Request) {
       });
       // 23505 is the retry we expected.
       if (error && error.code !== "23505") throw error;
+      // A retry of a message already queued must not queue a second turn.
+      const isRetry = error?.code === "23505";
+      const receivedAt = new Date();
 
       // Queue a reply, unless they just told us to stop.
       //
@@ -206,23 +202,20 @@ export async function POST(req: Request) {
       // redelivered — which would produce a second draft for the same message.
       // The tick picks this up, and the unique index on one pending draft per
       // conversation is the backstop if it somehow runs twice.
-      if (decision.keyword !== "opt_out" && decision.keyword !== "help") {
+      if (!isRetry && decision.keyword !== "opt_out" && decision.keyword !== "help") {
         // TWO DIFFERENT WAITS, and they are not the same thing.
         //
-        // The 30-second beat is correctness: a customer sending three texts in
-        // a row should get one answer to all three rather than three answers
-        // racing each other. It is not configurable because turning it off
-        // would break threading, not change a feel.
+        // When the turn STARTS: TURN_START_SECONDS after the text, fixed. A
+        // customer sending three texts in a row gets one answer to all three.
         //
-        // The configured delay on top is about sounding human, and applies
-        // only where Emily sends on her own. Where a person approves each
-        // reply the customer already waits for review, which is far longer
-        // than anything set here — delaying would slow the queue without the
-        // customer noticing any difference.
-        const wantsDelay = ws?.autosend_enabled ?? false;
-        const runAt = wantsDelay
-          ? delayedRunAt({
-              now: new Date(),
+        // When the reply ARRIVES: reply_due_at, drawn from the workspace's
+        // range (30-90 seconds by default), counted from this message. The
+        // turn writes the reply and holds it until then. That applies only
+        // where Emily sends on her own; where a person approves each reply
+        // the customer already waits for review.
+        const dueAt = ws?.autosend_enabled
+          ? replyDueAt({
+              receivedAt,
               config: {
                 minSeconds: ws?.reply_delay_min_seconds ?? 0,
                 maxSeconds: ws?.reply_delay_max_seconds ?? 0,
@@ -233,13 +226,13 @@ export async function POST(req: Request) {
                 endHour: ws?.quiet_hours_end ?? 20,
               },
             })
-          : new Date();
-        const floor = new Date(Date.now() + BURST_COALESCE_MS);
+          : null;
 
         const { error: qErr } = await sb.from("sms_scheduled_actions").insert({
           conversation_id: conversationId,
           action: "agent_turn",
-          run_at: new Date(Math.max(runAt.getTime(), floor.getTime())).toISOString(),
+          run_at: new Date(receivedAt.getTime() + TURN_START_SECONDS * 1000).toISOString(),
+          reply_due_at: dueAt?.toISOString() ?? null,
         });
         if (qErr) {
           reportWarn({

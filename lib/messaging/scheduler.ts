@@ -1,5 +1,5 @@
 /**
- * The worker behind the minute-ly tick.
+ * The worker behind the messaging tick (see app/api/cron/messaging-tick).
  *
  * Claims due rows, runs each through the gate, and decides what a refusal
  * MEANS. That last part is the whole job: a blanket "retry later" would chase
@@ -23,11 +23,20 @@ export type DueAction = {
   campaign_step_id: string | null;
   action: string;
   attempts: number;
+  /** agent_turn and send_reply: when the reply should reach the customer. */
+  reply_due_at?: string | null;
+  /** send_reply: the held reply and the message it answers. */
+  reply_body?: string | null;
+  reply_intent?: string | null;
+  reply_confidence?: number | null;
+  answers_message_id?: string | null;
 };
 
 export type ActionOutcome =
   | { kind: "sent"; providerId: string }
   | { kind: "drafted" }
+  /** Written, and waiting for its moment as a send_reply. */
+  | { kind: "held"; at: Date }
   | { kind: "rescheduled"; at: Date; reason: string }
   | { kind: "cancelled"; reason: string }
   | { kind: "failed"; reason: string }
@@ -53,6 +62,14 @@ export type SchedulerDeps = {
   } | null>;
   send(req: SendRequest): Promise<GateResult>;
   markSent(a: DueAction, providerId: string, body: string): Promise<void>;
+  /**
+   * Close the row without recording a message. A turn that filed a draft or
+   * held a reply sent nothing, and used to be closed with markSent(a,
+   * "drafted", ""): an empty outbound message in the thread, which counted
+   * toward the daily cap and told the gate we had already texted this person,
+   * so Emily's real first reply went out without the opt-out line.
+   */
+  markDone(a: DueAction): Promise<void>;
   reschedule(a: DueAction, at: Date, reason: string): Promise<void>;
   cancel(a: DueAction, reason: string): Promise<void>;
   fail(a: DueAction, reason: string): Promise<void>;
@@ -67,7 +84,18 @@ export type SchedulerDeps = {
    */
   draftReply?(a: DueAction): Promise<
     | { kind: "drafted" }
+    | { kind: "held"; at: Date }
     | { kind: "sent"; providerId: string; body: string }
+    | { kind: "skipped"; reason: string }
+  >;
+  /**
+   * Deliver a held reply at its moment: drop it if the customer has texted
+   * since, send it through the gate otherwise, and file a draft if the gate
+   * says no.
+   */
+  sendHeldReply?(a: DueAction): Promise<
+    | { kind: "sent"; providerId: string; body: string }
+    | { kind: "drafted" }
     | { kind: "skipped"; reason: string }
   >;
   now?: Date;
@@ -126,6 +154,47 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
     return { kind: "cancelled", reason };
   }
 
+  // A HELD REPLY. Written by a turn that ran seconds ago, due now.
+  //
+  // Handled before the human_active deferral below on purpose: a campaign step
+  // held for an hour while somebody handles the customer is still the right
+  // step afterwards, but Emily's answer to a message a person is now dealing
+  // with is not. It is dropped, never sent late.
+  if (a.action === "send_reply") {
+    if (ctx.conversationState === "human_active") {
+      const reason = "a person took the conversation over before the reply was due";
+      await deps.cancel(a, reason);
+      return { kind: "cancelled", reason };
+    }
+    if (!deps.sendHeldReply) {
+      const reason = "this worker cannot send held replies";
+      await deps.cancel(a, reason);
+      return { kind: "cancelled", reason };
+    }
+    try {
+      const out = await deps.sendHeldReply(a);
+      if (out.kind === "sent") {
+        await deps.markSent(a, out.providerId, out.body);
+        return { kind: "sent", providerId: out.providerId };
+      }
+      if (out.kind === "drafted") {
+        await deps.markDone(a);
+        return { kind: "drafted" };
+      }
+      await deps.cancel(a, out.reason);
+      return { kind: "cancelled", reason: out.reason };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      if (a.attempts >= MAX_ATTEMPTS) {
+        await deps.fail(a, reason);
+        return { kind: "failed", reason };
+      }
+      const at = new Date((deps.now ?? new Date()).getTime() + backoffMs(a.attempts));
+      await deps.reschedule(a, at, reason);
+      return { kind: "rescheduled", at, reason };
+    }
+  }
+
   // A person has taken this conversation over. A scripted step arriving in the
   // middle of a human handling a complaint is worse than the step being late,
   // and this is the one path that reaches the carrier rather than a review
@@ -153,8 +222,12 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
     try {
       const out = await deps.draftReply(a);
       if (out.kind === "drafted") {
-        await deps.markSent(a, "drafted", "");
+        await deps.markDone(a);
         return { kind: "drafted" };
+      }
+      if (out.kind === "held") {
+        await deps.markDone(a);
+        return { kind: "held", at: out.at };
       }
       // A workspace that has earned autosend replies on its own — but only
       // through the gate, and never when the agent asked for a person.
@@ -229,6 +302,8 @@ export function backoffMs(attempts: number): number {
 export type TickSummary = {
   /** Replies written and waiting for a person. */
   drafted: number;
+  /** Replies written and waiting for their moment (30-90s after the text). */
+  held: number;
   claimed: number;
   sent: number;
   rescheduled: number;
@@ -241,13 +316,14 @@ export type TickSummary = {
  *  processed nothing and a tick that failed everything must not look alike. */
 export async function runDueActions(deps: SchedulerDeps, limit = 50): Promise<TickSummary> {
   const claimed = await deps.claimDue(limit);
-  const s: TickSummary = { claimed: claimed.length, sent: 0, drafted: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
+  const s: TickSummary = { claimed: claimed.length, sent: 0, drafted: 0, held: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
   for (const a of claimed) {
     // One bad row must not stop the tick — the rest of the queue is unrelated.
     try {
       const out = await runAction(a, deps);
       if (out.kind === "sent") s.sent++;
       else if (out.kind === "drafted") s.drafted++;
+      else if (out.kind === "held") s.held++;
       else if (out.kind === "rescheduled") s.rescheduled++;
       else if (out.kind === "cancelled") s.cancelled++;
       else if (out.kind === "failed") s.failed++;

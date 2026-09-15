@@ -4,7 +4,13 @@ import { schedulerDeps, reclaimStale } from "@/lib/messaging/scheduler-db";
 import { reportError, reportWarn } from "@/lib/observability";
 
 /**
- * The messaging tick. Runs every minute.
+ * The messaging tick. Meant to run every TICK_SECONDS (10s, reply-delay.ts).
+ *
+ * WHAT ACTUALLY CALLS IT, as of 2026-09-15: only vercel.json, once a day at
+ * 07:00 UTC, because Vercel's Hobby plan rejects anything more frequent. That
+ * is not enough for a 30-90 second reply or a first message within minutes;
+ * an external trigger calling this route with CRON_SECRET every 10 seconds is
+ * required, and until one exists, held replies wait for the next call.
  *
  * ONE cron for the whole system, however many agents or campaigns exist,
  * because the schedule lives in sms_scheduled_actions.run_at rather than in a

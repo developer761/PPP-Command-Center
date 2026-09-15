@@ -146,6 +146,24 @@ export function schedulerDeps(): SchedulerDeps {
       const lastInbound = [...(msgs ?? [])].reverse().find((m) => m.direction === "inbound");
       if (!lastInbound) return { kind: "skipped" as const, reason: "nothing to reply to" };
 
+      // A reply already held for this conversation. If it answers the latest
+      // message, this turn has nothing to add: it is the second turn queued by
+      // a burst of texts. If it answers an older one, the customer has said
+      // more since, so it is dropped and this turn answers everything.
+      const { data: held } = await sb.from("sms_scheduled_actions")
+        .select("id, answers_message_id")
+        .eq("conversation_id", conv.id).eq("action", "send_reply").in("state", ["pending", "claimed"]);
+      if ((held ?? []).some((h) => h.answers_message_id === lastInbound.id)) {
+        return { kind: "skipped" as const, reason: "a reply to the latest message is already on its way" };
+      }
+      const stale = (held ?? []).map((h) => h.id);
+      if (stale.length) {
+        await sb.from("sms_scheduled_actions").update({
+          state: "cancelled", cancelled_reason: "the customer texted again before it was due",
+          updated_at: new Date().toISOString(),
+        }).in("id", stale).eq("state", "pending");
+      }
+
       // Everything the sandbox resolves, resolved the same way.
       const [cfg, corpus, svc] = await Promise.all([
         agentConfigFor(conv.workspace_id),
@@ -185,6 +203,26 @@ export function schedulerDeps(): SchedulerDeps {
       // than no switch.
       const to = toE164(conv.customer_phone);
       if (ws.autosend_enabled && !res.escalate && to) {
+        // HELD UNTIL ITS MOMENT. The webhook drew reply_due_at from the
+        // workspace's range, counted from the customer's text. If that moment
+        // is still ahead, the reply waits as a send_reply row rather than
+        // going now. Sending early would put a machine-speed answer back.
+        const dueAt = a.reply_due_at ? new Date(a.reply_due_at) : null;
+        if (dueAt && dueAt.getTime() > Date.now() + 1000) {
+          const { error: holdErr } = await sb.from("sms_scheduled_actions").insert({
+            conversation_id: conv.id,
+            action: "send_reply",
+            run_at: dueAt.toISOString(),
+            reply_due_at: dueAt.toISOString(),
+            reply_body: res.rendered,
+            reply_intent: res.action.intent,
+            reply_confidence: res.action.confidence,
+            answers_message_id: lastInbound.id,
+          });
+          if (holdErr) throw new Error(`could not hold the reply: ${holdErr.message}`);
+          return { kind: "held" as const, at: dueAt };
+        }
+
         const sent = await gatedSend(
           { workspace: wsFull, to, body: res.rendered, agent: "agent_autosend" },
           gateDeps(sb)
@@ -233,6 +271,47 @@ export function schedulerDeps(): SchedulerDeps {
       });
       if (error) throw new Error(`could not write the draft: ${error.message}`);
       return { kind: "drafted" as const };
+    },
+
+    async sendHeldReply(a: DueAction) {
+      const { data: conv } = await sb
+        .from("sms_conversations")
+        .select("id, customer_phone, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .eq("id", a.conversation_id).maybeSingle();
+      if (!conv) return { kind: "skipped" as const, reason: "conversation no longer exists" };
+      const ws = conv.sms_sub_accounts as unknown as {
+        id: string; name: string; phone_e164: string | null; time_zone: string;
+        quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean;
+      } | null;
+      if (!ws) return { kind: "skipped" as const, reason: "conversation has no workspace" };
+      if (!a.reply_body || !a.answers_message_id) return { kind: "skipped" as const, reason: "held reply has no text" };
+
+      // Stale? The customer has texted since this was written, so it answers
+      // the wrong message. Their newer text queued its own turn.
+      const { data: latest } = await sb.from("sms_messages")
+        .select("id").eq("conversation_id", conv.id).eq("direction", "inbound")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (latest && latest.id !== a.answers_message_id) {
+        return { kind: "skipped" as const, reason: "the customer texted again before it was due" };
+      }
+
+      const to = toE164(conv.customer_phone);
+      if (!to) return { kind: "skipped" as const, reason: "no textable number" };
+      const sent = await gatedSend({ workspace: ws, to, body: a.reply_body, agent: "agent_autosend" }, gateDeps(sb));
+      if (sent.ok) return { kind: "sent" as const, providerId: sent.providerId, body: sent.body };
+
+      // Refused at its moment (quiet hours began, the cap was reached). It
+      // becomes a draft for a person, the same as an autosend refusal always has.
+      await sb.from("sms_drafts").insert({
+        conversation_id: conv.id, answers_message_id: a.answers_message_id,
+        intent: a.reply_intent, confidence: a.reply_confidence,
+        body: a.reply_body, review_reason: "autosend_off", send_error: sent.reason,
+      });
+      return { kind: "drafted" as const };
+    },
+
+    async markDone(a) {
+      await sb.from("sms_scheduled_actions").update({ state: "done", updated_at: new Date().toISOString() }).eq("id", a.id);
     },
 
     async markSent(a, providerId, body) {

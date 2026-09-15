@@ -34,12 +34,13 @@ try {
 
   console.log(`\nREPLY DELAY — real schema  (via ${ws.name})\n`);
 
-  /* ── Off everywhere, so shipping changes nothing today ────────── */
+  /* ── 30-90 seconds everywhere unless somebody chose otherwise ─── */
+  // Karan, 2026-09-15. Was "off everywhere" until migration 20260915135711.
   const { data: all } = await sb.from("sms_sub_accounts")
     .select("name, reply_delay_min_seconds, reply_delay_max_seconds");
-  const on = all.filter((r) => (r.reply_delay_max_seconds ?? 0) > 0);
-  ok("every workspace defaults to off — nothing changes until somebody sets it",
-     on.length === 0, on.length ? `on for: ${on.map((r) => r.name).join(", ")}` : "");
+  const off = all.filter((r) => (r.reply_delay_max_seconds ?? 0) === 0);
+  ok("no workspace is still on the old off default",
+     off.length === 0, off.length ? `still off: ${off.map((r) => r.name).join(", ")}` : "");
 
   /* ── The constraint takes what the form writes ────────────────── */
   const { error: goodErr } = await sb.from("sms_sub_accounts")

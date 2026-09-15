@@ -14,15 +14,42 @@
  * that is already far longer than any delay set here. Delaying the draft would
  * only mean the reviewer sees it later — the customer waits no less, and the
  * queue moves slower. The caller decides that; this module is told.
+ *
+ * THE DELAY IS TIME TO DELIVERY. Karan, 2026-09-15: Emily should answer 30
+ * seconds to a minute and a half after the customer's text. It used to delay
+ * when the turn STARTED, so writing the reply and waiting for the next tick
+ * came on top, and "90 seconds" could be two minutes. Now the turn starts
+ * shortly after the text (TURN_START_SECONDS), the reply is held, and it goes
+ * at replyDueAt: a moment drawn from the range, measured from the customer's
+ * message, less one tick so the tick that picks it up still lands inside.
  */
 import { withinQuietHours, type QuietHours } from "./compliance";
 
 /** Same bound the database CHECK enforces. Thirty minutes. */
 export const MAX_DELAY_SECONDS = 1800;
 
+/** What every workspace starts with. Karan, 2026-09-15. */
+export const DEFAULT_DELAY = { minSeconds: 30, maxSeconds: 90 } as const;
+
+/**
+ * How often the scheduler runs (the pg_cron job). A held reply can wait up to
+ * this long past its moment before a tick picks it up, so the moment is drawn
+ * this much short of the top of the range.
+ */
+export const TICK_SECONDS = 10;
+
+/**
+ * When Emily starts writing, after the customer's text. Long enough that a
+ * customer sending two or three texts in a row gets one reply to all of them;
+ * short enough that the reply is written before its moment comes. A text that
+ * arrives later still is caught at send time: a held reply to an older
+ * message is dropped, and the newer message's own turn answers everything.
+ */
+export const TURN_START_SECONDS = 15;
+
 export type DelayConfig = { minSeconds: number; maxSeconds: number };
 
-/** Off, and the default: reply as soon as the turn is ready. */
+/** Both at zero: reply as soon as the turn is ready. */
 export function isDelayOff(c: DelayConfig): boolean {
   return c.maxSeconds <= 0;
 }
@@ -77,6 +104,32 @@ export function delayedRunAt(input: {
 }
 
 /**
+ * The moment a held reply should reach the customer, counted from their text.
+ *
+ * Drawn between min and (max - one tick), so that even a reply picked up a
+ * full tick late lands inside the range somebody set. The quiet-hours rule is
+ * delayedRunAt's: the delay never carries a reply past the evening cut-off.
+ */
+export function replyDueAt(input: {
+  receivedAt: Date;
+  config: DelayConfig;
+  timeZone: string;
+  quietHours: QuietHours;
+  rand?: () => number;
+}): Date {
+  const { config } = input;
+  if (isDelayOff(config)) return input.receivedAt;
+  const top = Math.max(config.minSeconds, config.maxSeconds - TICK_SECONDS);
+  return delayedRunAt({
+    now: input.receivedAt,
+    config: { minSeconds: config.minSeconds, maxSeconds: top },
+    timeZone: input.timeZone,
+    quietHours: input.quietHours,
+    rand: input.rand,
+  });
+}
+
+/**
  * What a person typed into the settings box, checked before it reaches a
  * constraint. The database refuses the same things; this says why in words.
  */
@@ -98,7 +151,8 @@ export function validateDelay(min: number, max: number): string | null {
 /** "2–5 min", for a screen. */
 export function describeDelay(c: DelayConfig): string {
   if (isDelayOff(c)) return "Replies straight away";
-  const m = (s: number) => (s % 60 === 0 ? `${s / 60} min` : `${s}s`);
+  const m = (s: number) =>
+    s < 60 ? `${s}s` : s % 60 === 0 ? `${s / 60} min` : `${Math.floor(s / 60)} min ${s % 60}s`;
   if (c.minSeconds === c.maxSeconds) return `Waits ${m(c.minSeconds)}`;
   return `Waits ${m(c.minSeconds)}–${m(c.maxSeconds)}`;
 }

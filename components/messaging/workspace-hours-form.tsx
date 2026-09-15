@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveWorkspaceHours } from "@/lib/messaging/workspace-settings";
-import { describeDelay, validateDelay } from "@/lib/messaging/reply-delay";
+import { describeDelay, validateDelay, DEFAULT_DELAY } from "@/lib/messaging/reply-delay";
 import { validateReplyTo } from "@/lib/messaging/reply-to";
 
 export type Row = {
@@ -56,8 +56,8 @@ export default function WorkspaceHoursForm({
   const [weekends, setWeekends] = useState(!!row.send_on_weekends);
   const [autoreply, setAutoreply] = useState(!!row.after_hours_autoreply);
   const [message, setMessage] = useState(row.after_hours_message ?? "");
-  const [delayMin, setDelayMin] = useState(String(row.reply_delay_min_seconds ?? 0));
-  const [delayMax, setDelayMax] = useState(String(row.reply_delay_max_seconds ?? 0));
+  const [delayMin, setDelayMin] = useState(String(row.reply_delay_min_seconds ?? DEFAULT_DELAY.minSeconds));
+  const [delayMax, setDelayMax] = useState(String(row.reply_delay_max_seconds ?? DEFAULT_DELAY.maxSeconds));
   const [replyTo, setReplyTo] = useState(row.reply_to_email ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -167,8 +167,9 @@ export default function WorkspaceHoursForm({
       <div className="rounded-lg border border-ppp-charcoal-100 p-3">
         <p className="text-[12.5px] font-semibold text-ppp-charcoal">Wait before replying</p>
         <p className="mt-0.5 text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
-          A reply that lands the instant somebody texts reads as a machine. The
-          wait is drawn fresh each time from this range, so the gap is never
+          How long after the customer&apos;s text Emily&apos;s reply arrives. A
+          reply that lands the instant somebody texts reads as a machine. The
+          moment is drawn fresh each time from this range, so the gap is never
           identical twice. Both at 0 turns it off.
         </p>
 
@@ -196,7 +197,7 @@ export default function WorkspaceHoursForm({
         </div>
 
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {([[0, 0, "Off"], [120, 300, "2–5 min"], [60, 180, "1–3 min"], [180, 420, "3–7 min"]] as const)
+          {([[30, 90, "30s–1½ min"], [60, 180, "1–3 min"], [120, 300, "2–5 min"], [0, 0, "Off"]] as const)
             .map(([lo, hi, label]) => (
               <button key={label} type="button"
                 onClick={() => { setDelayMin(String(lo)); setDelayMax(String(hi)); }}
