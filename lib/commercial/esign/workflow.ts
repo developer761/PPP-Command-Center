@@ -91,14 +91,16 @@ export async function buildAuditTrailPdf(requestId: string): Promise<{ bytes: Bu
         signedAt: request.customer_signed_at,
       },
       {
-        // The stored signature belongs to the company signer; whoever pressed
-        // Countersign is named alongside it, so the row never pairs one
-        // person's name with another's email as if they were the same.
-        name: request.countersigner_name
-          ? `${request.countersigner_name}${request.countersigner_email ? ` (applied by ${request.countersigner_email})` : ""}`
-          : oc.signature_name ?? oc.name,
+        name: request.countersigner_name ?? oc.signature_name ?? oc.name,
         email: request.countersigner_email ?? "—",
-        profile: `${oc.name} Representative`,
+        // The stored signature belongs to the company signer; the email column
+        // is the login that pressed Countersign. Said here in words, so the row
+        // never reads as though that name and that email are one person. (In
+        // the name cell it overflowed into the email column — an email address
+        // has no break points.)
+        profile: request.countersigner_email
+          ? `${oc.name} Representative (signature on file, applied by the login shown)`
+          : `${oc.name} Representative`,
         position: "2/2",
         ip: request.countersigner_ip,
         signedAt: request.countersigned_at,
@@ -167,6 +169,9 @@ async function emailSigner(input: {
   const to = input.request.signer_email;
   const bcc = PROPOSAL_COPY_EMAILS.filter((e) => e !== to);
   const { sendEmail } = await import("@/lib/email/resend");
+  // sendEmail THROWS when no API key is configured outside production. A mailer
+  // that throws must not abort what comes after it — the signed contract still
+  // has to file and the certificate still has to be re-issued.
   const r = await sendEmail({
     channel: "commercial",
     to,
@@ -180,7 +185,7 @@ async function emailSigner(input: {
       { name: "kind", value: "proposal_esign" },
       { name: "signature_request", value: input.request.id },
     ],
-  });
+  }).catch((err: unknown) => ({ ok: false as const, error: err instanceof Error ? err.message : String(err) }));
   if (!r.ok) {
     console.error(`[esign] email to ${to} failed for request ${input.request.id}: ${r.error}`);
     return;
