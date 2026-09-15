@@ -6,6 +6,7 @@ import { deriveOpenMaterialsWorkOrders, type OpenWorkOrderForMaterials } from "@
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { extractCustomerFreeText } from "@/lib/customer-form/notes";
+import { colorNoteLines } from "@/lib/supplier-order/color-note-items";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { normalizeFulfillmentState, emptyFulfillmentState, type FulfillmentState } from "@/lib/supplier-order/fulfillment-state";
 import { capabilitiesFor } from "@/lib/auth/roles";
@@ -77,6 +78,10 @@ export async function loadOrderPageData(
       // extractMachineColorLines returns nothing for it, which is exactly why
       // none of it reached the order.
       colorNotes: extractCustomerFreeText(li.raw.colorNotes) || null,
+      // Color notes never reach the vendor email (R4.14), so each color in
+      // them is offered to the custom-item form — including the orphan-surface
+      // lines the color form writes, which the free-text view above omits.
+      colorNoteLines: colorNoteLines(li.raw.colorNotes),
     });
   }
 

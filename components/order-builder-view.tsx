@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LineItemNotes from "@/components/line-item-notes";
+import { isOnOrder, nextCustomColorId } from "@/lib/supplier-order/color-note-items";
 import { groupExtras } from "@/lib/supplier-order/extras-groups";
 import MaterialTypePicker from "@/components/material-type-picker";
 import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pick-list";
@@ -67,6 +68,9 @@ export type SourceLine = {
    *  work order where a rep puts the whole house on one line, Description
    *  says "see notes for colors" and this is those notes (Katie item 23). */
   colorNotes?: string | null;
+  /** Each color written in ColorNotes__c, one per entry, offered to the
+   *  custom-item form — color notes never reach the vendor email (R4.14). */
+  colorNoteLines?: string[];
 };
 
 export type PreviewColor = {
@@ -428,6 +432,10 @@ export default function OrderBuilderView({
 
   /* ── Mutators ──────────────────────────────────────────────────────────── */
   const patch = (p: Partial<OrderBuildPayload>) => setPayload((cur) => ({ ...cur, ...p }));
+  // A color from a line's Color Notes, sent to the custom-item form. The nonce
+  // makes sending the same line twice (after clearing the form) fire again.
+  const [customItemPrefill, setCustomItemPrefill] = useState<{ label: string; nonce: number } | null>(null);
+  const sendToCustomItem = (label: string) => setCustomItemPrefill({ label, nonce: Date.now() });
 
   const adjustQuantity = (e: GallonEstimate, delta: number) => {
     const key = quantityKey(e.colorId, e.finish);
@@ -615,6 +623,11 @@ export default function OrderBuilderView({
                     {/* Katie item 23 — the colors themselves, labelled apart from the
                         scope above so a reader can tell which is which. */}
                     <LineItemNotes notes={l.colorNotes} label="Colors" />
+                    <ColorNoteOffers
+                      lines={l.colorNoteLines ?? []}
+                      items={payload.customColorItems}
+                      onSend={sendToCustomItem}
+                    />
                   </li>
                 ))}
                 {sourceLines.length === 0 && (
@@ -973,6 +986,7 @@ export default function OrderBuilderView({
           <CustomColorItems
             items={payload.customColorItems}
             onChange={(customColorItems) => patch({ customColorItems })}
+            prefill={customItemPrefill}
           />
 
           {/* ── Color Notes (#16) ─────────────────────────────────────────── */}
@@ -1263,23 +1277,93 @@ export default function OrderBuilderView({
  * Sits between the buy-list and Color Notes so someone reading down the notes
  * can add a line as they go.
  */
+/**
+ * The colors in one Salesforce line's Color Notes, each with a button that
+ * sends it to the custom-item form. Color notes never go to the vendor
+ * (R4.14), so on a job whose colors live only there (WO 00316248) this is the
+ * difference between an order with them and one without.
+ */
+function ColorNoteOffers({
+  lines,
+  items,
+  onSend,
+}: {
+  lines: string[];
+  items: Array<{ label: string }>;
+  onSend: (label: string) => void;
+}) {
+  if (lines.length === 0) return null;
+  const pending = lines.filter((l) => !isOnOrder(items, l)).length;
+  return (
+    <div className="mt-2 rounded-lg border border-ppp-charcoal-100 px-3 py-2">
+      <p className="text-[11px] text-ppp-charcoal-600">
+        {pending === 0
+          ? "Every color in these notes is on the order."
+          : "Color notes don't go to the vendor. Add anything that needs buying as a custom item:"}
+      </p>
+      <ul className="mt-1 divide-y divide-ppp-charcoal-100">
+        {lines.map((line) => {
+          const added = isOnOrder(items, line);
+          return (
+            <li key={line} className="flex items-center gap-2 py-1">
+              <span className="flex-1 min-w-0 text-[12px] leading-snug text-ppp-charcoal break-words">{line}</span>
+              {added ? (
+                <span className="shrink-0 text-[11px] font-medium text-ppp-green-700">✓ On order</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onSend(line)}
+                  className="shrink-0 text-[11px] font-semibold text-ppp-blue-700 hover:underline px-2 min-h-[44px] sm:min-h-[28px] inline-flex items-center touch-manipulation"
+                >
+                  Add as custom item
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function CustomColorItems({
   items,
   onChange,
+  prefill,
 }: {
   items: Array<{ id: string; label: string; qty: number; unit: string }>;
   onChange: (items: Array<{ id: string; label: string; qty: number; unit: string }>) => void;
+  /** A color sent from a line's Color Notes. Fills the text and puts the cursor
+   *  in QUANTITY, left blank: a default of 1 gal on a whole house's siding
+   *  would be a silent under-order, so the estimator types the number. */
+  prefill?: { label: string; nonce: number } | null;
 }) {
   const [label, setLabel] = useState("");
   const [qty, setQty] = useState("1");
   const [unit, setUnit] = useState<PaintUnit>("gal");
+  const sectionRef = useRef<HTMLElement>(null);
+  const qtyRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setLabel(prefill.label);
+    setQty("");
+    setUnit("gal");
+    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // preventScroll: the smooth scroll is already moving the page, and a
+    // focus jump would fight it on iOS.
+    qtyRef.current?.focus({ preventScroll: true });
+  }, [prefill]);
 
   const add = () => {
     const l = label.trim();
     if (!l) return;
+    // Blank only happens after a prefill. Send them to the box rather than
+    // quietly ordering one gallon.
+    if (!qty.trim()) { qtyRef.current?.focus(); return; }
     onChange([
       ...items,
-      { id: `cc-${items.length}-${l.length}-${l.slice(0, 8).toLowerCase().replace(/\s+/g, "-")}`, label: l, qty: Math.max(1, Math.floor(Number(qty) || 1)), unit },
+      { id: nextCustomColorId(items, l), label: l, qty: Math.max(1, Math.floor(Number(qty) || 1)), unit },
     ]);
     setLabel("");
     setQty("1");
@@ -1287,7 +1371,7 @@ function CustomColorItems({
   };
 
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
+    <section ref={sectionRef} className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 scroll-mt-4">
       <h2 className="text-sm font-semibold text-ppp-charcoal">Add a custom color item</h2>
       <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 mb-2">
         Anything that isn&apos;t in the catalog — stain, venetian plaster, a color match. It goes on
@@ -1331,8 +1415,13 @@ function CustomColorItems({
             type="number"
             inputMode="numeric"
             min={1}
+            ref={qtyRef}
             value={qty}
             onChange={(e) => setQty(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); add(); }
+            }}
+            placeholder="Qty"
             aria-label="Quantity"
             className="w-16 px-2 py-2.5 sm:py-2 text-base sm:text-sm text-right border border-ppp-charcoal-100 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
           />
@@ -1352,7 +1441,7 @@ function CustomColorItems({
           <button
             type="button"
             onClick={add}
-            disabled={!label.trim()}
+            disabled={!label.trim() || !qty.trim()}
             className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-ppp-navy text-sm font-semibold hover:bg-ppp-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
           >
             Add
