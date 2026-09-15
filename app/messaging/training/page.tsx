@@ -40,7 +40,7 @@ export default async function TrainingPage() {
         ? {
             href: "/messaging/training/repair",
             title: `Fix a near-miss — ${repairs.length} waiting`,
-            why: `The bot can copy ${s.byConduct.good} conversation${s.byConduct.good === 1 ? "" : "s"} and avoid ${s.byConduct.bad}. These nearly went right and Kate wrote down what should have happened, so rewriting one line turns each into an example worth copying.`,
+            why: `The bot can copy ${s.byConduct.good} conversation${s.byConduct.good === 1 ? "" : "s"} and avoid ${s.byConduct.bad}. These nearly went right, so rewriting the lines Emily got wrong turns each into an example worth copying.`,
           }
         : cov.ungraded > 0
           ? {
@@ -68,6 +68,12 @@ export default async function TrainingPage() {
       meta: cov.ungraded > 0 ? `${cov.ungraded} waiting` : s.total === 0 ? "Nothing imported yet" : "All graded",
     },
     {
+      href: "/messaging/training/rated",
+      title: "Rated conversations",
+      blurb: "Everything already graded or repaired. Open one to read it, change the grade, or fix more lines.",
+      meta: "See what is done",
+    },
+    {
       href: "/messaging/training/import",
       title: "Import from Hatch",
       blurb: "Paste an export. Personal details are removed in your browser before anything is sent.",
@@ -76,7 +82,7 @@ export default async function TrainingPage() {
     {
       href: "/messaging/training/repair",
       title: "Fix a near-miss",
-      blurb: "A conversation that nearly went right, with Kate's note on what should have happened. Rewrite one line.",
+      blurb: "A conversation that nearly went right. Rewrite every line Emily got wrong.",
       meta: "Builds good examples",
     },
     {

@@ -62,6 +62,25 @@ export async function nextToGrade(skipIds: string[] = []): Promise<{
   return { item: queue[0] ?? null, remaining: needsWork.length };
 }
 
+/** One conversation by id, opened from Rated conversations to change its grade. */
+export async function gradeItem(id: string): Promise<GradeQueueItem | null> {
+  await assertMessagingAccess();
+  const sb = messagingDb();
+  const [{ data: r }, { data: links }] = await Promise.all([
+    sb.from("sms_training_examples")
+      .select("id, transcript, conduct, outcome, pii_scrubbed, approved")
+      .eq("id", id).neq("source", "derived").maybeSingle(),
+    sb.from("sms_training_example_tags").select("tag_key").eq("example_id", id),
+  ]);
+  if (!r) return null;
+  return {
+    id: r.id, transcript: r.transcript,
+    conduct: r.conduct as GradeQueueItem["conduct"],
+    outcome: r.outcome, tags: (links ?? []).map((l) => l.tag_key),
+    piiScrubbed: r.pii_scrubbed, approved: r.approved,
+  };
+}
+
 export async function saveGrade(input: {
   exampleId: string;
   conduct: "good" | "mixed" | "bad";
@@ -69,12 +88,16 @@ export async function saveGrade(input: {
   note?: string;
   approve: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  await assertMessagingAccess();
+  const userId = await assertMessagingAccess();
   const sb = messagingDb();
 
   const { error } = await sb.from("sms_training_examples").update({
     conduct: input.conduct,
-    conduct_note: input.note ?? null,
+    // Left alone when nothing was typed. Re-grading from Rated conversations
+    // opens an empty note box, and saving it used to wipe the note already
+    // stored, including the ones imported from Kate's sheet.
+    ...(input.note?.trim() ? { conduct_note: input.note.trim() } : {}),
+    graded_by: userId,
     // Approving is what makes it eligible for retrieval, so it is a separate
     // decision from grading it — a bad example is still worth keeping, it is
     // just never offered as something to copy.
