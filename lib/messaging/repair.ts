@@ -5,17 +5,23 @@
  * happened. Rewriting the lines that were wrong turns a near-miss into an
  * example of the thing done properly, and the corpus badly needs those.
  *
- * TURNS ARE NUMBERED KATE'S WAY. One message is one turn, counted from 1 in
- * the order it was sent, and campaign messages count: the opener is usually
- * T1, sent before the customer said anything. That only holds because the
- * stored transcripts are rebuilt from her numbered transcript
- * (kate-transcript.ts), which says "Campaign" where the first import said
- * "Emily" and puts the opener first. A message can span several stored lines,
- * and those lines belong to the message above them.
+ * TURNS NUMBER THE AI CONVERSATION, NOT THE CAMPAIGN. Kate, 2026-09-15: she
+ * renumbered her sheet so T1 is the customer's first message, and asked that
+ * the message the customer is replying to still be shown, unnumbered, as
+ * "Previous Campaign Message". So Customer, Emily and Human agent messages
+ * are turns, counted from 1 in the order sent; Campaign and Auto-reply
+ * messages are shown in place with no number. Grading is about how the
+ * conversation was handled, and nobody handled a campaign step.
  *
- * An earlier version of this comment claimed the numbering was checked
- * against her cabinets repair. It was one example whose T3 and T5 happened to
- * survive the reordering, and Kate caught it the same day.
+ * The stored transcripts carry the real order and speakers (rebuilt from her
+ * sheet by kate-transcript.ts), which is what makes this reliable. A message
+ * can span several stored lines, and those lines belong to the message above
+ * them.
+ *
+ * History, because this changed twice in one day: the first import put the
+ * customer first and called campaign messages Emily; the fix that morning
+ * numbered campaign messages too, matching her sheet at the time; she then
+ * moved her sheet to this, and so did this.
  *
  * SEVERAL LINES, ONE REPAIR. A conversation with two wrong lines repaired one
  * at a time became two "good" examples, each still carrying the other wrong
@@ -30,10 +36,15 @@
  * Pure.
  */
 
-/** One message. `turn` is Kate's T-number. */
+/** One message. */
 export type Turn = {
-  turn: number;
+  /** Kate's T-number. NULL for a campaign message or an auto-reply. */
+  turn: number | null;
+  /** Position among all messages, from 1. Stable key; never shown as a turn. */
+  position: number;
   speaker: string;
+  /** What to call it on screen: the speaker, or "Previous Campaign Message". */
+  label: string;
   text: string;
   /** Stored line range, inclusive, so a repair replaces the whole message. */
   firstLine: number;
@@ -44,13 +55,20 @@ export type Turn = {
 // "Availability:", is part of the message it sits in.
 const SPEAKER = /^(Campaign|Customer|Emily|Human agent|Auto-reply|Agent|AI[^:]{0,20}|Bot):\s?([\s\S]*)$/i;
 
+/** Messages that are context rather than part of the conversation handled. */
+export function isUnnumbered(speaker: string): boolean {
+  const s = speaker.toLowerCase();
+  return s === "campaign" || s === "auto-reply";
+}
+
 /** The conversation as messages, numbered the way Kate numbers them. */
 export function turnsOf(transcript: string): Turn[] {
   const turns: Turn[] = [];
   transcript.split("\n").forEach((line, i) => {
     const m = SPEAKER.exec(line);
     if (m) {
-      turns.push({ turn: turns.length + 1, speaker: m[1].trim(), text: m[2], firstLine: i, lastLine: i });
+      const speaker = m[1].trim();
+      turns.push({ turn: null, position: turns.length + 1, speaker, label: speaker, text: m[2], firstLine: i, lastLine: i });
       return;
     }
     const last = turns[turns.length - 1];
@@ -61,7 +79,18 @@ export function turnsOf(transcript: string): Turn[] {
     // Text before any speaker belongs to nobody. It stays in the stored
     // transcript untouched and is simply not numbered.
   });
-  for (const t of turns) t.text = t.text.replace(/\s+$/, "");
+
+  let n = 0;
+  turns.forEach((t, i) => {
+    t.text = t.text.replace(/\s+$/, "");
+    if (!isUnnumbered(t.speaker)) { t.turn = ++n; return; }
+    // Kate: "include the message before the customer's reply even if it isn't
+    // numbered, so I know which message the customer is replying to."
+    const next = turns[i + 1];
+    t.label = t.speaker.toLowerCase() === "campaign"
+      ? next?.speaker.toLowerCase() === "customer" ? "Previous Campaign Message" : "Campaign Message"
+      : "Auto-reply";
+  });
   return turns;
 }
 
@@ -89,7 +118,7 @@ export function applyRepairs(input: { transcript: string; fixes: RepairFix[] }):
 
   const turns = turnsOf(input.transcript);
   const seen = new Set<number>();
-  const planned: { t: Turn; to: string }[] = [];
+  const planned: { t: Turn; turn: number; to: string }[] = [];
 
   for (const f of input.fixes) {
     if (seen.has(f.turn)) return { ok: false, error: `T${f.turn} is fixed twice.` };
@@ -97,10 +126,10 @@ export function applyRepairs(input: { transcript: string; fixes: RepairFix[] }):
     const t = turns.find((x) => x.turn === f.turn);
     if (!t) return { ok: false, error: `There is no T${f.turn} in this conversation.` };
     if (!isRepairable(t)) {
-      // Rewriting what the CUSTOMER said would be inventing a conversation
-      // rather than repairing one, and the result would be indistinguishable
-      // from a real transcript.
-      return { ok: false, error: `T${f.turn} is the customer. Only what Emily said can be rewritten.` };
+      // Rewriting what the customer or a person said would be inventing a
+      // conversation rather than repairing one, and the result would be
+      // indistinguishable from a real transcript.
+      return { ok: false, error: `T${f.turn} is ${t.speaker === "Customer" ? "the customer" : `a ${t.speaker.toLowerCase()} message`}. Only what Emily said can be rewritten.` };
     }
     const to = f.replacement.trim();
     if (!to) return { ok: false, error: `Write what T${f.turn} should have said.` };
@@ -111,7 +140,7 @@ export function applyRepairs(input: { transcript: string; fixes: RepairFix[] }):
     if (to.split("\n").some((l) => SPEAKER.test(l))) {
       return { ok: false, error: `T${f.turn} contains a line that starts like a new speaker. Write only what Emily says.` };
     }
-    planned.push({ t, to });
+    planned.push({ t, turn: f.turn, to });
   }
 
   // Bottom up, so replacing a multi-line message cannot shift the line
@@ -125,8 +154,8 @@ export function applyRepairs(input: { transcript: string; fixes: RepairFix[] }):
     ok: true,
     transcript: raw.join("\n"),
     changed: planned
-      .sort((a, b) => a.t.turn - b.t.turn)
-      .map(({ t, to }) => ({ turn: t.turn, from: t.text.trim(), to })),
+      .sort((a, b) => a.turn - b.turn)
+      .map(({ t, turn, to }) => ({ turn, from: t.text.trim(), to })),
   };
 }
 
@@ -134,8 +163,9 @@ export function applyRepairs(input: { transcript: string; fixes: RepairFix[] }):
  * Which turns differ between a conversation and its repair.
  *
  * For repairs saved before fixes were stored per turn: the transcript is the
- * only record of what changed, and a repair has the same number of messages as
- * its original, so turn N lines up with turn N.
+ * only record of what changed, and a repair has the same messages as its
+ * original, so message N lines up with message N. Only numbered turns can have
+ * been repaired, so an unnumbered difference is not reported as a fix.
  */
 export function changedTurns(original: string, repaired: string): { turn: number; from: string; to: string }[] {
   const a = turnsOf(original);
@@ -143,7 +173,7 @@ export function changedTurns(original: string, repaired: string): { turn: number
   if (a.length !== b.length) return [];
   return a
     .map((t, i) => ({ turn: t.turn, from: t.text.trim(), to: b[i].text.trim() }))
-    .filter((d) => d.from !== d.to);
+    .filter((d): d is { turn: number; from: string; to: string } => d.turn !== null && d.from !== d.to);
 }
 
 /**

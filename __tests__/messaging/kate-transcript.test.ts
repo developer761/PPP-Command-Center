@@ -23,12 +23,16 @@ describe("Kate's numbered transcript", () => {
     ]);
   });
 
-  it("stores it so the repair screen reads the same numbers and speakers back", () => {
+  it("stores it in her order with her speakers, numbered from the customer's first message", () => {
     const r = parseKateTranscript(CABINETS);
     if (!r.ok) throw new Error(r.error);
     const back = turnsOf(storedTranscript(r.turns));
-    expect(back.map((t) => `T${t.turn} ${t.speaker}`)).toEqual(r.turns.map((t) => `T${t.turn} ${t.speaker}`));
+    expect(back.map((t) => t.speaker)).toEqual(r.turns.map((t) => t.speaker));
     expect(back[1].text).toBe("Have 11 lower office cabinets that need painting plus 2 rooms");
+    // Her sheet moved to this on 2026-09-15: the campaign opener is context.
+    expect(back.map((t) => (t.turn === null ? t.label : `T${t.turn} ${t.speaker}`))).toEqual([
+      "Previous Campaign Message", "T1 Customer", "T2 Emily", "T3 Customer", "T4 Emily", "T5 Customer", "T6 Emily",
+    ]);
   });
 
   it("does not let a campaign message be repaired as if Emily wrote it", () => {

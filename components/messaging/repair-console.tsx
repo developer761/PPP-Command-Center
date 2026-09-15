@@ -89,9 +89,9 @@ function RepairOne({ c, options, onNext }: { c: RepairCandidate; options: RuleOp
   const setFix = (turn: number, patch: Partial<Fix>) =>
     setFixes((f) => ({ ...f, [turn]: { ...f[turn], ...patch } }));
 
-  const startFix = (t: Turn) => {
-    if (!fixes[t.turn]) setFixes((f) => ({ ...f, [t.turn]: { replacement: t.text, reason: "", ruleIds: [] } }));
-    setOpen(t.turn);
+  const startFix = (turn: number, text: string) => {
+    if (!fixes[turn]) setFixes((f) => ({ ...f, [turn]: { replacement: text, reason: "", ruleIds: [] } }));
+    setOpen(turn);
   };
 
   const removeFix = (turn: number) => {
@@ -193,23 +193,25 @@ function RepairOne({ c, options, onNext }: { c: RepairCandidate; options: RuleOp
         </div>
         <ul className="divide-y divide-ppp-charcoal-100">
           {turns.map((t) => {
+            if (t.turn === null) return <ContextRow key={`m${t.position}`} t={t} />;
+            const turn = t.turn;
             const can = isRepairable(t);
-            const fix = fixes[t.turn];
-            const isOpen = open === t.turn;
+            const fix = fixes[turn];
+            const isOpen = open === turn;
             return (
-              <li key={t.turn} className={fix ? "bg-ppp-charcoal-50/60" : ""}>
+              <li key={`m${t.position}`} className={fix ? "bg-ppp-charcoal-50/60" : ""}>
                 <button type="button" disabled={!can}
-                  onClick={() => (isOpen ? setOpen(null) : startFix(t))}
+                  onClick={() => (isOpen ? setOpen(null) : startFix(turn, t.text))}
                   aria-expanded={can ? isOpen : undefined}
                   className={[
                     "w-full text-left px-4 py-2 min-h-[44px] touch-manipulation",
                     can ? "hover:bg-ppp-charcoal-50" : "cursor-default",
                   ].join(" ")}>
                   <span className="flex items-baseline gap-2">
-                    <span className="shrink-0 w-8 text-[11px] font-bold text-ppp-charcoal-400 tabular-nums">T{t.turn}</span>
+                    <span className="shrink-0 w-8 text-[11px] font-bold text-ppp-charcoal-400 tabular-nums">T{turn}</span>
                     <span className="min-w-0 flex-1">
                       <span className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
-                        {t.speaker}
+                        {t.label}
                         {fix && <span className="ml-1.5 normal-case tracking-normal text-ppp-orange-700">being fixed</span>}
                       </span>
                       <span className={[
@@ -227,9 +229,9 @@ function RepairOne({ c, options, onNext }: { c: RepairCandidate; options: RuleOp
                   <div className="px-4 pb-3 pt-1 space-y-2.5">
                     <label className="block">
                       <span className="block text-[12.5px] font-medium text-ppp-charcoal-600 mb-1">
-                        What should T{t.turn} have said?
+                        What should T{turn} have said?
                       </span>
-                      <textarea value={fix.replacement} onChange={(e) => setFix(t.turn, { replacement: e.target.value })} rows={3}
+                      <textarea value={fix.replacement} onChange={(e) => setFix(turn, { replacement: e.target.value })} rows={3}
                         className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-[13.5px] leading-relaxed resize-y bg-white" />
                       <span className="mt-1 block text-[11.5px] text-ppp-charcoal-400 leading-snug">
                         The actual message, not a description of it. This is what the bot copies.
@@ -240,7 +242,7 @@ function RepairOne({ c, options, onNext }: { c: RepairCandidate; options: RuleOp
                       <span className="block text-[12.5px] font-medium text-ppp-charcoal-600 mb-1">
                         What was wrong with it?
                       </span>
-                      <textarea value={fix.reason} onChange={(e) => setFix(t.turn, { reason: e.target.value })} rows={2}
+                      <textarea value={fix.reason} onChange={(e) => setFix(turn, { reason: e.target.value })} rows={2}
                         placeholder="Asked for the full address while we already had the zip"
                         className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-[13px] leading-relaxed resize-y bg-white" />
                     </label>
@@ -250,15 +252,15 @@ function RepairOne({ c, options, onNext }: { c: RepairCandidate; options: RuleOp
                         Which rule does the fixed line show?
                       </span>
                       <RulePicker options={options} selected={fix.ruleIds}
-                        onChange={(ids) => setFix(t.turn, { ruleIds: ids })} />
+                        onChange={(ids) => setFix(turn, { ruleIds: ids })} />
                     </div>
 
                     <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => setOpen(null)}
                         className="min-h-[44px] px-3 rounded-lg bg-ppp-charcoal text-white text-[12.5px] font-semibold touch-manipulation">
-                        Done with T{t.turn}
+                        Done with T{turn}
                       </button>
-                      <button type="button" onClick={() => removeFix(t.turn)}
+                      <button type="button" onClick={() => removeFix(turn)}
                         className="min-h-[44px] px-3 rounded-lg border border-ppp-charcoal-200 bg-white text-[12.5px] font-medium text-ppp-charcoal-600 touch-manipulation">
                         Don&apos;t fix this line
                       </button>
@@ -291,16 +293,34 @@ function RepairOne({ c, options, onNext }: { c: RepairCandidate; options: RuleOp
   );
 }
 
+/**
+ * A campaign message or auto-reply: shown so the customer's reply has its
+ * context, not numbered and not selectable. Kate, 2026-09-15.
+ */
+export function ContextRow({ t }: { t: Turn }) {
+  return (
+    <li className="px-4 py-2 bg-ppp-charcoal-50/70">
+      <span className="flex items-baseline gap-2">
+        <span className="shrink-0 w-8" aria-hidden />
+        <span className="min-w-0">
+          <span className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">{t.label}</span>
+          <span className="block text-[12px] text-ppp-charcoal-500 leading-snug whitespace-pre-wrap break-words">{t.text}</span>
+        </span>
+      </span>
+    </li>
+  );
+}
+
 function TurnList({ turns, highlight }: { turns: Turn[]; highlight: number[] }) {
   return (
     <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
       <ul className="divide-y divide-ppp-charcoal-100">
-        {turns.map((t) => (
-          <li key={t.turn} className={["px-4 py-2", highlight.includes(t.turn) ? "bg-ppp-green-50" : ""].join(" ")}>
+        {turns.map((t) => t.turn === null ? <ContextRow key={`m${t.position}`} t={t} /> : (
+          <li key={`m${t.position}`} className={["px-4 py-2", highlight.includes(t.turn) ? "bg-ppp-green-50" : ""].join(" ")}>
             <span className="flex items-baseline gap-2">
               <span className="shrink-0 w-8 text-[11px] font-bold text-ppp-charcoal-400 tabular-nums">T{t.turn}</span>
               <span className="min-w-0">
-                <span className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">{t.speaker}</span>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">{t.label}</span>
                 <span className="block text-[12.5px] text-ppp-charcoal leading-snug whitespace-pre-wrap break-words">{t.text}</span>
               </span>
             </span>

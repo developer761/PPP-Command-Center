@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ratedConversation } from "@/lib/messaging/repair-write";
 import { turnsOf } from "@/lib/messaging/repair";
+import { ContextRow } from "@/components/messaging/repair-console";
 
 export const dynamic = "force-dynamic";
 
@@ -63,13 +64,13 @@ export default async function RatedConversationPage({ params }: { params: Promis
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
         <h2 className="px-4 py-2.5 border-b border-ppp-charcoal-100 font-semibold text-ppp-charcoal text-[14px]">The conversation</h2>
         <ul className="divide-y divide-ppp-charcoal-100">
-          {turns.map((t) => (
-            <li key={t.turn} className="px-4 py-2">
+          {turns.map((t) => t.turn === null ? <ContextRow key={`m${t.position}`} t={t} /> : (
+            <li key={`m${t.position}`} className="px-4 py-2">
               <span className="flex items-baseline gap-2">
                 <span className="shrink-0 w-8 text-[11px] font-bold text-ppp-charcoal-400 tabular-nums">T{t.turn}</span>
                 <span className="min-w-0 flex-1">
                   <span className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
-                    {t.speaker}
+                    {t.label}
                     {(flagged.get(t.turn) ?? []).map((f, i) => (
                       <span key={i} className={[
                         "ml-1.5 normal-case tracking-normal rounded px-1",

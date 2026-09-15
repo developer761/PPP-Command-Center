@@ -388,8 +388,12 @@ export async function ratedConversations(): Promise<RatedRow[]> {
 
   return (examples ?? []).map((e) => {
     const mine = (derived ?? []).filter((d) => d.derived_from === e.id);
-    const turns = turnsOf(e.transcript);
-    const first = turns[0]?.text.split("\n")[0] ?? "";
+    const all = turnsOf(e.transcript);
+    // Counted and previewed the way the screen numbers them: the campaign
+    // opener is context, and the customer's first message is what the
+    // conversation is about.
+    const turns = all.filter((t) => t.turn !== null);
+    const first = (all.find((t) => t.speaker === "Customer") ?? turns[0])?.text.split("\n")[0] ?? "";
     const rules = tagCount.get(e.id) ?? 0;
     return {
       id: e.id, conduct: e.conduct,

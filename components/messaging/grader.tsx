@@ -5,6 +5,7 @@ import { saveGrade, nextToGrade, type GradeQueueItem } from "@/lib/messaging/gra
 import type { RuleOption } from "@/lib/messaging/repair-write";
 import { turnsOf } from "@/lib/messaging/repair";
 import RulePicker from "./rule-picker";
+import { ContextRow } from "./repair-console";
 
 /**
  * Grade one conversation at a time.
@@ -103,12 +104,12 @@ export default function Grader({
         </div>
         {turns.length > 0 ? (
           <ul className="max-h-[50vh] overflow-y-auto divide-y divide-ppp-charcoal-100">
-            {turns.map((t) => (
-              <li key={t.turn} className="px-4 py-2">
+            {turns.map((t) => t.turn === null ? <ContextRow key={`m${t.position}`} t={t} /> : (
+              <li key={`m${t.position}`} className="px-4 py-2">
                 <span className="flex items-baseline gap-2">
                   <span className="shrink-0 w-8 text-[11px] font-bold text-ppp-charcoal-400 tabular-nums">T{t.turn}</span>
                   <span className="min-w-0">
-                    <span className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">{t.speaker}</span>
+                    <span className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">{t.label}</span>
                     <span className="block text-[13px] text-ppp-charcoal leading-relaxed whitespace-pre-wrap break-words">{t.text}</span>
                   </span>
                 </span>
