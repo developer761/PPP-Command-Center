@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { runDueActions } from "@/lib/messaging/scheduler";
 import { schedulerDeps, reclaimStale } from "@/lib/messaging/scheduler-db";
 import { reportError, reportWarn } from "@/lib/observability";
+import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
+import { pollSalesforceLeads, type PollSummary } from "@/lib/messaging/lead-poll";
+import { messagingDb } from "@/lib/messaging/db";
 
 /**
  * The messaging tick. Meant to run every TICK_SECONDS (10s, reply-delay.ts).
@@ -39,6 +42,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
+  // NEW LEADS FIRST, so an opener enrolled this tick is already queued. In its
+  // own try: Salesforce being down must never stop replies that are due from
+  // going out. Throttled inside to once a minute. LEAD_POLL_DISABLED=true
+  // switches it off without a deploy of code.
+  let leads: PollSummary | { error: string } | null = null;
+  if (isSalesforceConfigured() && process.env.LEAD_POLL_DISABLED !== "true") {
+    try {
+      const conn = await getSalesforceClient();
+      leads = await pollSalesforceLeads(messagingDb(), (soql) => conn.query(soql) as never);
+      if (leads.failed > 0) {
+        reportWarn({ key: "lead_poll_failed_rows", platform: "ppp_cc", message: `${leads.failed} lead(s) failed intake`, context: leads });
+      }
+    } catch (err) {
+      leads = { error: err instanceof Error ? err.message : String(err) };
+      reportWarn({ key: "lead_poll_failed", platform: "ppp_cc", message: `Salesforce lead poll failed: ${leads.error}` });
+    }
+  }
+
   try {
     // Rows abandoned by a dead worker come back first, or the queue silently
     // gets shorter and nothing says why.
@@ -50,7 +71,7 @@ export async function GET(request: Request) {
     if (summary.failed > 0) {
       reportWarn({ key: "messaging_tick_actions_failed", platform: "ppp_cc", message: `${summary.failed} scheduled action(s) failed`, context: summary });
     }
-    return NextResponse.json({ ok: true, reclaimed, ...summary });
+    return NextResponse.json({ ok: true, reclaimed, ...summary, leads });
   } catch (err) {
     reportError({ key: "messaging_tick_failed", platform: "ppp_cc", message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ ok: false, error: "tick_failed" }, { status: 500 });
