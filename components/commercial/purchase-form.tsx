@@ -7,14 +7,28 @@
  * field becomes "Worker" (with a workers datalist), an Hours field appears, and
  * a live $/hr rate shows. Every other category keeps the plain vendor form.
  *
- * The worker picker is a free-text datalist today; it upgrades to the Phase 7
- * scheduling/attendance crew roster later (same field, richer source).
+ * The vendor field is a search box over the vendor directory (Settings →
+ * Vendors, Katie 2026-09-15): the kind the category asks for is listed first
+ * (labor vendors for labor/subs, stores for everything else), names typed on
+ * this account before are still offered, and a name that isn't in the list
+ * can be added with one tap. Free text still saves — nothing is forced.
  *
  * `action` is a server action passed from the (server) costs tool — the form
  * still posts to the server; only the field layout is reactive here.
  */
 
-import { useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
+import { SearchableSelect, type SearchableOption } from "@/components/commercial/searchable-select";
+import {
+  matchVendorByName,
+  orderVendorsForCategory,
+  vendorKey,
+  vendorKindForCategory,
+  VENDOR_KIND_META,
+  type VendorKind,
+  type VendorStatus,
+} from "@/lib/commercial/vendors/constants";
+import { VENDOR_PICK_FIELDS } from "@/lib/commercial/vendors/purchase-pick";
 import { DateField } from "@/components/commercial/date-field";
 import { shrinkImageUnder } from "@/lib/commercial/uploads/downscale-image";
 import { SAFE_MULTIPART_BYTES, multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
@@ -32,6 +46,21 @@ export type PurchaseFormPurchase = {
   description: string | null;
   receipt_document_id: string | null;
   reimburse_to?: string | null;
+  vendor_id?: string | null;
+};
+
+/** A directory vendor as the picker needs it (see listVendorOptions). */
+export type PurchaseFormVendor = {
+  id: string;
+  name: string;
+  kind: VendorKind;
+  status: VendorStatus;
+  specialty: string | null;
+};
+
+const GROUP_LABEL: Record<VendorKind, string> = {
+  labor: "Labor vendors",
+  retail: "Stores & suppliers",
 };
 
 type CoAction = (formData: FormData) => void | Promise<void>;
@@ -58,6 +87,7 @@ export default function PurchaseForm({
   categories,
   recentVendors,
   recentWorkers,
+  vendors = [],
   submitLabel,
   purchase,
   cancelHref,
@@ -76,10 +106,13 @@ export default function PurchaseForm({
   categories: [string, string][];
   recentVendors: string[];
   recentWorkers: string[];
+  /** Active directory vendors. Empty (e.g. before the vendors migration) → the
+   *  field behaves as the free-text box it always was. */
+  vendors?: PurchaseFormVendor[];
   submitLabel: string;
   purchase?: PurchaseFormPurchase;
   cancelHref?: string;
-  preserve?: { cat?: string; vendor?: string; amt?: string; hours?: string; date?: string; desc?: string; reimburseTo?: string };
+  preserve?: { cat?: string; vendor?: string; vendorId?: string; vendorNew?: boolean; amt?: string; hours?: string; date?: string; desc?: string; reimburseTo?: string };
 }) {
   // `preserve` WINS over `purchase`. It is only ever populated by a rejected
   // submit, so it is what the user typed a moment ago; the DB row is the stale
@@ -95,6 +128,47 @@ export default function PurchaseForm({
   const [amount, setAmount] = useState(initAmt);
   const [hours, setHours] = useState(initHours);
   const isLabor = category === "labor";
+  const vendorKind = vendorKindForCategory(category);
+
+  // The vendor box. Its text decides the link: a name that IS a directory
+  // vendor posts that vendor's id, anything else posts none — so editing the
+  // name can never leave a stale id behind. The server re-resolves regardless.
+  // Unique per form instance: the add form and an open edit form are on the
+  // page together, and the picker scrolls its highlighted row into view by id.
+  const vendorFieldId = `pu-vendor-${useId()}`;
+  const initVendor = preserve?.vendor ?? purchase?.vendor ?? "";
+  const [vendorText, setVendorText] = useState(initVendor);
+  const [vendorNew, setVendorNew] = useState(!!preserve?.vendorNew);
+  const directoryHasVendors = vendors.length > 0;
+  const linked = useMemo(() => {
+    const byText = matchVendorByName(vendors, vendorText);
+    if (byText) return byText;
+    // An old purchase linked to a vendor since renamed or deactivated: the id
+    // still stands while the text is the one it was saved with.
+    const savedId = preserve?.vendor !== undefined ? preserve.vendorId : purchase?.vendor_id;
+    return savedId && vendorKey(vendorText) === vendorKey(initVendor) ? { id: savedId, name: vendorText, kind: vendorKind, status: "active" as const, specialty: null } : null;
+  }, [vendors, vendorText, preserve, purchase, initVendor, vendorKind]);
+
+  const vendorOptions = useMemo<SearchableOption[]>(() => {
+    const ordered = orderVendorsForCategory(vendors, category);
+    const opts: SearchableOption[] = ordered.map((v) => ({
+      value: v.name,
+      label: v.name,
+      hint: v.specialty ?? VENDOR_KIND_META[v.kind].label,
+      group: directoryHasVendors ? GROUP_LABEL[v.kind] : undefined,
+    }));
+    // Names typed on this account before that aren't in the directory — still
+    // one tap away, so the vendor list going live doesn't take anything away.
+    const seen = new Set(vendors.map((v) => vendorKey(v.name)));
+    const recent = isLabor ? [...recentWorkers, ...recentVendors] : [...recentVendors, ...recentWorkers];
+    for (const name of recent) {
+      const k = vendorKey(name);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      opts.push({ value: name, label: name, hint: "Typed before — not in the vendor list", group: directoryHasVendors ? "Typed before" : undefined });
+    }
+    return opts;
+  }, [vendors, category, isLabor, recentVendors, recentWorkers, directoryHasVendors]);
 
   // Receipt-photo handling. A phone snap is routinely over Vercel's ~4.5 MB
   // multipart cap, which would 413 the whole cost entry (typed amount, vendor,
@@ -193,24 +267,43 @@ export default function PurchaseForm({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className={LABEL_CLS} htmlFor="pu-vendor">
-            {isLabor ? "Worker / sub" : "Store / vendor"} <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+          <label className={LABEL_CLS} htmlFor={vendorFieldId}>
+            {vendorKind === "labor" ? "Worker / sub" : "Store / vendor"} <span className="font-normal text-ppp-charcoal-400">(optional)</span>
           </label>
-          <input
-            id="pu-vendor"
+          <SearchableSelect
+            id={vendorFieldId}
             name="vendor"
-            list={isLabor ? "pu-worker-list" : "pu-vendor-list"}
-            maxLength={200}
-            defaultValue={preserve?.vendor ?? purchase?.vendor ?? ""}
-            className={INPUT_CLS}
-            placeholder={isLabor ? "Worker or sub name" : "Sherwin-Williams"}
+            options={vendorOptions}
+            defaultValue={initVendor}
+            allowFreeText
+            placeholder={vendorKind === "labor" ? "Search workers & subs…" : "Search stores…"}
+            ariaLabel={vendorKind === "labor" ? "Worker or sub" : "Store or vendor"}
+            createLabel={
+              directoryHasVendors
+                ? // "sherwin williams" IS Sherwin-Williams — no "Add" row for a
+                  // spelling of a vendor that's already in the list.
+                  (q) => (matchVendorByName(vendors, q) ? null : `Add “${q}” as a new ${vendorKind === "labor" ? "labor vendor" : "vendor"}`)
+                : undefined
+            }
+            onChange={({ value, created }) => {
+              setVendorText(value);
+              setVendorNew(created);
+            }}
           />
-          <datalist id="pu-vendor-list">
-            {recentVendors.map((v) => (<option key={v} value={v} />))}
-          </datalist>
-          <datalist id="pu-worker-list">
-            {recentWorkers.map((v) => (<option key={v} value={v} />))}
-          </datalist>
+          <input type="hidden" name={VENDOR_PICK_FIELDS.id} value={linked && !vendorNew ? linked.id : ""} />
+          <input type="hidden" name={VENDOR_PICK_FIELDS.createNew} value={vendorNew && !linked ? "1" : ""} />
+          {directoryHasVendors && vendorText.trim() !== "" && (
+            <p
+              className={`text-[11.5px] mt-1 leading-snug ${linked ? "text-emerald-700" : vendorNew ? "text-cc-brand-700" : "text-ppp-charcoal-500"}`}
+              role="status"
+            >
+              {linked
+                ? `✓ In the vendor list${linked.kind !== vendorKind ? ` (${VENDOR_KIND_META[linked.kind].label.toLowerCase()})` : ""}`
+                : vendorNew
+                  ? "New vendor — it’s added to the vendor list when you save."
+                  : "Not in the vendor list. Pick “Add” in the list to save it for next time."}
+            </p>
+          )}
         </div>
         {/* Who fronted the money.
         

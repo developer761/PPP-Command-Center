@@ -50,6 +50,8 @@ const ASSIGNMENT_ROLES = listFrom("lib/commercial/accounts/assignment-roles.ts",
 const PROPOSAL_STATUSES = listFrom("lib/commercial/proposals/constants.ts", "PROPOSAL_STATUSES");
 const SIGNATURE_REQUEST_STATUSES = listFrom("lib/commercial/esign/constants.ts", "SIGNATURE_REQUEST_STATUSES");
 const SIGNATURE_EVENT_TYPES = listFrom("lib/commercial/esign/constants.ts", "SIGNATURE_EVENT_TYPES");
+const VENDOR_KINDS = listFrom("lib/commercial/vendors/constants.ts", "VENDOR_KINDS");
+const VENDOR_STATUSES = listFrom("lib/commercial/vendors/constants.ts", "VENDOR_STATUSES");
 
 let failures = 0;
 const report = (label, value, error) => {
@@ -117,12 +119,30 @@ try {
     }
   }
   await sb.from("commercial_proposals").delete().eq("id", prop.id);
+
+  // Vendor directory. Each probe row gets a unique name (the live-name index is
+  // unique) and is hard-deleted straight after — the app only ever deactivates,
+  // but a probe row must leave nothing behind. A missing table is a FAILURE.
+  for (const kind of VENDOR_KINDS) {
+    for (const status of VENDOR_STATUSES) {
+      const { data: v, error } = await sb.from("commercial_vendors").insert({ name: `ZZ enum-check ${kind} ${status} ${Date.now()}`, kind, status }).select("id").single();
+      report("commercial_vendors.kind/status", `${kind}/${status}`, error);
+      if (v) await sb.from("commercial_vendors").delete().eq("id", v.id);
+    }
+  }
+  {
+    const { data: bogus, error } = await sb.from("commercial_vendors").insert({ name: `ZZ enum-check bogus ${Date.now()}`, kind: "NOT_A_KIND" }).select("id").single();
+    if (bogus) await sb.from("commercial_vendors").delete().eq("id", bogus.id);
+    if (error?.code !== "23514") {
+      report("commercial_vendors.kind (negative control)", "NOT_A_KIND", { message: `expected a CHECK violation (23514), got ${error?.code ?? "success"}` });
+    }
+  }
 } finally {
   await sb.from("commercial_opportunities").delete().eq("account_id", accountId);
   await sb.from("commercial_teams").delete().eq("id", team.id);
   await sb.from("commercial_accounts").delete().eq("id", accountId);
 }
 
-const total = CONTACT_ROLES.length + ASSIGNMENT_ROLES.length + PROPOSAL_STATUSES.length + SIGNATURE_REQUEST_STATUSES.length + SIGNATURE_EVENT_TYPES.length;
+const total = CONTACT_ROLES.length + ASSIGNMENT_ROLES.length + PROPOSAL_STATUSES.length + SIGNATURE_REQUEST_STATUSES.length + SIGNATURE_EVENT_TYPES.length + VENDOR_KINDS.length * VENDOR_STATUSES.length;
 if (failures) { console.error(`\n❌ ${failures} of ${total} picker values the database will not accept`); process.exit(1); }
-console.log(`✅ all ${total} picker values are writable (contact roles, team roles, proposal statuses, e-signature statuses + event types)`);
+console.log(`✅ all ${total} picker values are writable (contact roles, team roles, proposal statuses, e-signature statuses + event types, vendor kinds × statuses)`);

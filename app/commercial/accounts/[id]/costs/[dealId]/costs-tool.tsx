@@ -29,6 +29,8 @@ import {
 } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META, purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
 import { getDocumentsByIds } from "@/lib/commercial/documents/db";
+import { listVendorOptions, resolvePurchaseVendor } from "@/lib/commercial/vendors/db";
+import { readVendorPick } from "@/lib/commercial/vendors/purchase-pick";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import PurchaseForm from "@/components/commercial/purchase-form";
@@ -58,6 +60,9 @@ export type CostsSP = {
   pu_hours?: string;
   pu_date?: string;
   pu_desc?: string; pu_reimb?: string;
+  // The picked directory vendor + the "add as new vendor" tap, so a rejected
+  // save doesn't quietly drop the link the crew member chose.
+  pu_vid?: string; pu_vnew?: string;
 };
 
 /** Parse a loose hours string ("40", "37.5") → number or null (server guard;
@@ -149,23 +154,28 @@ async function addPurchaseAction(formData: FormData) {
   await assertDealOwned(opp_id, account_id);
   const category = String(formData.get("category") ?? "materials");
   const vendor = String(formData.get("vendor") ?? "");
+  const vendorPick = readVendorPick(formData);
   const rawAmount = String(formData.get("amount") ?? "");
   const rawHours = String(formData.get("hours") ?? "");
   const rawDate = String(formData.get("purchased_at") ?? "");
   const description = String(formData.get("description") ?? "");
   // Round-trip the typed values on a validation error (audit M3).
   const reimburseTo = String(formData.get("reimburse_to") ?? "").trim();
-  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000), pu_reimb: reimburseTo.slice(0, 120) };
+  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000), pu_reimb: reimburseTo.slice(0, 120), ...vendorPick.preserve };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
     costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", ...preserve }, back, origin, from);
   }
   // Blank date → today's ET date at 16:00Z (stable, matches the edit prefill).
   const purchased_at = new Date(`${rawDate || etToday()}T16:00:00Z`).toISOString();
+  // Resolved only once the amount has passed, so a rejected save never creates
+  // a directory vendor for a purchase that doesn't exist.
+  const v = await resolvePurchaseVendor({ vendorId: vendorPick.id, vendorText: vendor, category, createIfNew: vendorPick.createNew, userId });
   const res = await addPurchase({
     opportunity_id: opp_id,
     category,
-    vendor: vendor || null,
+    vendor: v.vendor,
+    vendor_id: v.vendor_id,
     // Empty = an ordinary company purchase; a name = the company owes them.
     reimburse_to: reimburseTo || null,
     amount_cents: cents!,
@@ -200,6 +210,7 @@ async function updatePurchaseAction(formData: FormData) {
   await assertDealOwned(opp_id, account_id);
   const category = String(formData.get("category") ?? "materials");
   const vendor = String(formData.get("vendor") ?? "");
+  const vendorPick = readVendorPick(formData);
   const rawAmount = String(formData.get("amount") ?? "");
   const rawHours = String(formData.get("hours") ?? "");
   const rawDate = String(formData.get("purchased_at") ?? "");
@@ -209,16 +220,19 @@ async function updatePurchaseAction(formData: FormData) {
   // silently restored the OLD amount and presented it as what you had typed.
   // Worse than losing the input: you can hit Save again believing it's fixed.
   const reimburseTo = String(formData.get("reimburse_to") ?? "").trim();
-  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000), pu_reimb: reimburseTo.slice(0, 120) };
+  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_hours: rawHours.slice(0, 20), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000), pu_reimb: reimburseTo.slice(0, 120), ...vendorPick.preserve };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
     costsRedirect(account_id, opp_id, { error: "Enter a transaction amount greater than $0.", edit_purchase: purchase_id, ...preserve }, back, origin, from);
   }
+  const v = await resolvePurchaseVendor({ vendorId: vendorPick.id, vendorText: vendor, category, createIfNew: vendorPick.createNew, userId });
   const res = await updatePurchase(
     purchase_id,
     {
       category,
-      vendor: vendor || null,
+      vendor: v.vendor,
+      // Always sent, so clearing or retyping the name drops a stale link.
+      vendor_id: v.vendor_id,
       // Empty = an ordinary company purchase; a name = the company owes them.
       reimburse_to: reimburseTo || null,
       amount_cents: cents!,
@@ -284,13 +298,14 @@ export async function ProjectCostsTool({
   if (opp.account_id !== id) notFound();
 
   const dealName = derivedOppName(opp, account.company_name);
-  const [fin, purchases, recentVendors, recentWorkers, laborByWorker, crewLabor] = await Promise.all([
+  const [fin, purchases, recentVendors, recentWorkers, laborByWorker, crewLabor, vendorOptions] = await Promise.all([
     getProjectFinancials(dealId),
     listPurchasesForProject(dealId),
     recentVendorsForAccount(id),
     recentWorkersForAccount(id),
     laborByWorkerForProject(dealId),
     fieldOpsLaborByWorkerForOpp(dealId),
+    listVendorOptions(),
   ]);
   const crewLaborTotalCents = fin.fieldOpsLaborCents;
   const crewLaborHours = crewLabor.reduce((s, w) => s + w.hours, 0);
@@ -535,7 +550,7 @@ export async function ProjectCostsTool({
             <span className="group-open:hidden">Log a transaction</span>
             <span className="hidden group-open:inline">Close</span>
           </summary>
-          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Add transaction" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc, reimburseTo: sp.pu_reimb }} />
+          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} vendors={vendorOptions} submitLabel="Add transaction" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, vendorId: sp.pu_vid, vendorNew: sp.pu_vnew === "1", amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc, reimburseTo: sp.pu_reimb }} />
         </details>
 
         {purchases.length > 0 && (
@@ -554,7 +569,7 @@ export async function ProjectCostsTool({
               return (
                 <li key={pu.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-3.5">
                   {isEditing ? (
-                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} submitLabel="Save" purchase={pu} preserve={editId === pu.id ? { cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc, reimburseTo: sp.pu_reimb } : undefined} cancelHref={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} />
+                    <PurchaseForm action={updatePurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} from={sp.from ?? ""} origin={variant} categories={CATEGORY_OPTIONS} recentVendors={recentVendors} recentWorkers={recentWorkers} vendors={vendorOptions} submitLabel="Save" purchase={pu} preserve={editId === pu.id ? { cat: sp.pu_cat, vendor: sp.pu_vendor, vendorId: sp.pu_vid, vendorNew: sp.pu_vnew === "1", amt: sp.pu_amt, hours: sp.pu_hours, date: sp.pu_date, desc: sp.pu_desc, reimburseTo: sp.pu_reimb } : undefined} cancelHref={`${costsBase(id, dealId, variant)}${toolOriginQs(sp.from)}`} />
                   ) : (
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0">

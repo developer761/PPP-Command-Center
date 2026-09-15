@@ -18,6 +18,9 @@
 --    tax jurisdictions · competitors · teams · team members · user roles
 --    employees · employee rates · crews · crew members · pay periods
 --    notification rules · email prefs · Slack links · audit log
+--    VENDORS (commercial_vendors) — the Tomco vendor directory seeded from
+--    Salesforce (migration 20260915191000). Never add it below: deleting the
+--    purchases above is safe, their vendor link is on the purchase side.
 --
 --  All-or-nothing: the whole thing runs in one transaction, so a failure
 --  part-way leaves the database exactly as it was.

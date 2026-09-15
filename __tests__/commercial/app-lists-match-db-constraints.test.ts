@@ -11,6 +11,7 @@ import { SUBMITTAL_STATUSES } from "@/lib/commercial/opportunities/submittal-con
 import { WORK_ORDER_STATUSES } from "@/lib/commercial/work-orders/constants";
 import { CLOSEOUT_ITEM_STATUSES } from "@/lib/commercial/closeout/constants";
 import { EMPLOYEE_ROLES } from "@/lib/commercial/field-ops/employees";
+import { VENDOR_KINDS, VENDOR_STATUSES } from "@/lib/commercial/vendors/constants";
 
 /**
  * THE AUDIT THAT SHOULD HAVE EXISTED.
@@ -112,6 +113,8 @@ const REGISTRY: Row[] = [
   { where: "Submittal status", table: "commercial_opp_submittals", column: "status", appValues: SUBMITTAL_STATUSES },
   { where: "Work order status", table: "commercial_work_orders", column: "status", appValues: WORK_ORDER_STATUSES },
   { where: "Field Ops → employee role", table: "commercial_employees", column: "role", appValues: EMPLOYEE_ROLES },
+  { where: "Settings → Vendors — kind", table: "commercial_vendors", column: "kind", appValues: VENDOR_KINDS },
+  { where: "Settings → Vendors — deactivate", table: "commercial_vendors", column: "status", appValues: VENDOR_STATUSES },
 ];
 
 describe("every value the app can WRITE is permitted by the database", () => {
