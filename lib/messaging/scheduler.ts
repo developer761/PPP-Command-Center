@@ -48,6 +48,7 @@ export type SchedulerDeps = {
     channel?: "sms" | "email";
     toEmail?: string | null;
     fromEmail?: string | null;
+    replyToEmail?: string | null;
     subject?: string | null;
   } | null>;
   send(req: SendRequest): Promise<GateResult>;
@@ -180,7 +181,8 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
     result = await deps.send({
       workspace: ctx.workspace, to: ctx.to, body: ctx.body,
       channel: ctx.channel ?? "sms", toEmail: ctx.toEmail ?? null,
-      fromEmail: ctx.fromEmail ?? null, subject: ctx.subject ?? null,
+      fromEmail: ctx.fromEmail ?? null, replyToEmail: ctx.replyToEmail ?? null,
+      subject: ctx.subject ?? null,
       agent: ctx.agent, now: deps.now,
     });
   } catch (err) {

@@ -17,6 +17,7 @@
 import type { E164 } from "./phone";
 import { activeTransport, type MessageTransport } from "./transport";
 import { hasUnresolved } from "./merge-fields";
+import { emailAddressesFor } from "./reply-to";
 import {
   withinQuietHours, nextSendableTime, withinDailyCap,
   DEFAULT_DAILY_CAP, type QuietHours,
@@ -110,6 +111,10 @@ export type SendRequest = {
    *  refused rather than defaulted — a customer receiving PPP mail from an
    *  unexpected address is a deliverability and a trust problem. */
   fromEmail?: string | null;
+  /** Where a reply goes: the workspace's own inbox. Optional — without it the
+   *  reply goes to the From address. Re-validated here, since this is the last
+   *  thing before the header is written. */
+  replyToEmail?: string | null;
   /** Email subject. */
   subject?: string | null;
   channel?: SendChannel;
@@ -222,8 +227,12 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
       // worse than not sending it.
       return { ok: false, reason: "channel_not_supported" };
     }
+    // Every caller already validates, but a bad reply-to is a header injection,
+    // and this is the one place every email passes. Dropped, not refused: the
+    // email is still fine to send from the shared address.
+    const replyTo = emailAddressesFor({ workspaceReplyTo: req.replyToEmail, sharedFrom: from }).replyTo;
     const { providerId } = await transport.sendEmail({
-      from, to, subject: req.subject?.trim() || "Precision Painting Plus", body,
+      from, to, subject: req.subject?.trim() || "Precision Painting Plus", body, replyTo,
     });
     return { ok: true, providerId, body };
   }

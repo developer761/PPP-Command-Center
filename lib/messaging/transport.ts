@@ -26,6 +26,9 @@ export type EmailSend = {
   to: string;
   subject: string;
   body: string;
+  /** The workspace's own inbox, if it has one. Validated before it gets here —
+   *  see reply-to.ts — because it becomes a header. */
+  replyTo?: string | null;
 };
 
 export interface MessageTransport {
@@ -176,6 +179,7 @@ export class ResendEmailTransport implements MessageTransport {
     const { sendEmail } = await import("@/lib/email/resend");
     const res = await sendEmail({
       to: input.to, subject: input.subject, text: input.body, from: input.from,
+      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
     });
     if (!res.ok) throw new Error(`email failed: ${res.error}`);
     // Resend can accept a send and return no id. lib/email/resend.ts warns

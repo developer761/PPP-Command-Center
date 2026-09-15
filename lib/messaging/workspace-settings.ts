@@ -26,6 +26,7 @@ import { messagingDb } from "./db";
 import { clampToFederal, FEDERAL_BOUND } from "./compliance";
 import { assertMessagingAccess } from "./auth";
 import { validateDelay } from "./reply-delay";
+import { validateReplyTo } from "./reply-to";
 
 export type WorkspaceHours = {
   id: string;
@@ -53,6 +54,7 @@ export async function saveWorkspaceHours(input: {
   afterHoursMessage?: string;
   replyDelayMin?: number;
   replyDelayMax?: number;
+  replyToEmail?: string;
 }): Promise<{ ok: true; clamped: boolean } | { ok: false; error: string }> {
   await assertMessagingAccess();
   const start = HOUR(input.quietStart);
@@ -102,6 +104,13 @@ export async function saveWorkspaceHours(input: {
     if (bad) return { ok: false, error: bad };
     patch.reply_delay_min_seconds = min;
     patch.reply_delay_max_seconds = max;
+  }
+  // Validated in words here; the CHECK constraint refuses the same shapes, but
+  // with a Postgres string nobody at PPP should have to read.
+  if (input.replyToEmail !== undefined) {
+    const r = validateReplyTo(input.replyToEmail);
+    if (!r.ok) return { ok: false, error: r.error };
+    patch.reply_to_email = r.value;
   }
 
   const sb = messagingDb();

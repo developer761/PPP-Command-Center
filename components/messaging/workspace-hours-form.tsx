@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveWorkspaceHours } from "@/lib/messaging/workspace-settings";
 import { describeDelay, validateDelay } from "@/lib/messaging/reply-delay";
+import { validateReplyTo } from "@/lib/messaging/reply-to";
 
 export type Row = {
   id: string;
@@ -17,6 +18,7 @@ export type Row = {
   autosend_enabled: boolean | null;
   reply_delay_min_seconds: number | null;
   reply_delay_max_seconds: number | null;
+  reply_to_email: string | null;
 };
 
 const hh = (h: number) => `${((h + 11) % 12) + 1}${h < 12 ? "am" : "pm"}`;
@@ -56,6 +58,7 @@ export default function WorkspaceHoursForm({
   const [message, setMessage] = useState(row.after_hours_message ?? "");
   const [delayMin, setDelayMin] = useState(String(row.reply_delay_min_seconds ?? 0));
   const [delayMax, setDelayMax] = useState(String(row.reply_delay_max_seconds ?? 0));
+  const [replyTo, setReplyTo] = useState(row.reply_to_email ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -65,6 +68,9 @@ export default function WorkspaceHoursForm({
     ? validateDelay(Math.round(dMin), Math.round(dMax))
     : "Use whole seconds.";
 
+  const replyToCheck = validateReplyTo(replyTo);
+  const replyToProblem = replyToCheck.ok ? null : replyToCheck.error;
+
   const save = async () => {
     setBusy(true); setErr(null); setNote(null);
     try {
@@ -73,6 +79,7 @@ export default function WorkspaceHoursForm({
         replyDelayMax: Math.round(Number(delayMax) || 0),
         workspaceId: row.id, quietStart: start, quietEnd: end, timeZone: tz,
         sendOnWeekends: weekends, afterHoursAutoreply: autoreply, afterHoursMessage: message,
+        replyToEmail: replyTo,
       });
       if (!res.ok) { setErr(res.error); return; }
       setNote(res.clamped
@@ -220,10 +227,31 @@ export default function WorkspaceHoursForm({
         )}
       </div>
 
+      {/* Reply-To, not From. Email always goes out from the shared verified
+          address, so a customer sees one consistent sender; this decides whose
+          inbox their reply lands in. Blank is a valid answer. */}
+      <label className="block">
+        <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">Email replies go to</span>
+        <input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+          value={replyTo} onChange={(e) => setReplyTo(e.target.value)}
+          placeholder="name@precisionpaintingplus.com"
+          aria-invalid={!!replyToProblem}
+          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px]" />
+        <span className="mt-1 block text-[11.5px] leading-relaxed">
+          {replyToProblem
+            ? <span className="text-ppp-orange-700">{replyToProblem}</span>
+            : <span className="text-ppp-charcoal-400">
+                Emails still come from the shared PPP address. This is the inbox a
+                customer&apos;s reply lands in. Leave it blank and replies go to the
+                shared address, where they land in the admin Mail inbox tied to no conversation.
+              </span>}
+        </span>
+      </label>
+
       {err && <p className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 px-3 py-2 text-[12.5px] text-ppp-orange-700">{err}</p>}
       {note && <p className="rounded-lg border border-ppp-green-100 bg-ppp-green-50 px-3 py-2 text-[12.5px] text-ppp-charcoal">{note}</p>}
 
-      <button type="button" onClick={() => void save()} disabled={busy || !!delayProblem}
+      <button type="button" onClick={() => void save()} disabled={busy || !!delayProblem || !!replyToProblem}
         className="min-h-[44px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold disabled:opacity-40 touch-manipulation">
         {busy ? "Saving…" : "Save"}
       </button>

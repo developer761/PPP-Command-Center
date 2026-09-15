@@ -16,6 +16,7 @@ import { resolveServices } from "./services";
 import { selectExamples } from "./retrieval";
 import { takeoverReasonFor } from "./handoff";
 import { gatedSend, type GateResult, type SendRequest } from "./gate";
+import { emailAddressesFor } from "./reply-to";
 import type { E164 } from "./phone";
 import type { DueAction, SchedulerDeps } from "./scheduler";
 
@@ -43,6 +44,7 @@ export function schedulerDeps(): SchedulerDeps {
       const ws = data.sms_sub_accounts as unknown as {
         id: string; name: string; phone_e164: string | null; time_zone: string;
         quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean;
+        reply_to_email: string | null;
       } | null;
       if (!ws) return null;
 
@@ -68,6 +70,13 @@ export function schedulerDeps(): SchedulerDeps {
         workspaceName: ws.name,
         customerName: data.customer_name,
       });
+      // Always FROM the shared, verified sender; the workspace's own inbox is
+      // the Reply-To. The workspace address used to go in From, which Resend
+      // refuses for any domain it has not verified. See reply-to.ts.
+      const addresses = emailAddressesFor({
+        workspaceReplyTo: ws.reply_to_email,
+        sharedFrom: process.env.RESEND_FROM_ADDRESS,
+      });
       return {
         workspace: ws,
         to: data.customer_phone as E164,
@@ -75,13 +84,8 @@ export function schedulerDeps(): SchedulerDeps {
         conversationState: data.state as string,
         channel,
         toEmail: data.customer_email as string | null,
-        // The workspace's own address if it has one, otherwise the shared
-        // sender. NO workspace has one configured today, so every email
-        // currently comes from the same place — worth knowing before anybody
-        // switches email on.
-        fromEmail: (ws as unknown as { reply_to_email?: string | null }).reply_to_email
-          || process.env.RESEND_FROM_ADDRESS
-          || null,
+        fromEmail: addresses.from,
+        replyToEmail: addresses.replyTo,
         subject,
       };
     },
