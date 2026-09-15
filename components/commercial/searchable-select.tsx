@@ -25,6 +25,17 @@
  * - `allowFreeText` mode: when true, if the user types something that
  *   doesn't match any option, the typed value itself is submitted (used
  *   by the estimator picker where free-text is a first-class value).
+ * - `createLabel` (optional): when the typed text isn't an option, a last,
+ *   tappable row — "Add 'Joe's Hardware' as a new vendor" — commits the
+ *   typed text and reports `created: true` through `onChange`. One tap, no
+ *   detour to another page. Implies free text for that value.
+ * - `group` on an option (optional): options are shown grouped in the order
+ *   their groups first appear, with a small header per group, and matches rank
+ *   INSIDE their group. Lets a caller say "labor vendors first" and keep it
+ *   true while the user types.
+ * - `onChange` (optional): the committed value, the option it came from, and
+ *   whether it was the create row — for a client parent that needs more than
+ *   the hidden input (e.g. a second hidden id).
  *
  * NOT a full ARIA combobox implementation — no listbox role wiring for
  * screen readers yet. If Katie or Alex needs SR support we upgrade.
@@ -40,6 +51,15 @@ export type SearchableOption = {
   label: string;
   /** Optional secondary line (email, role, category, etc.) shown small. */
   hint?: string;
+  /** Optional section. Options render grouped, groups in first-seen order. */
+  group?: string;
+};
+
+export type SearchableSelectChange = {
+  value: string;
+  option: SearchableOption | null;
+  /** True when the value came from the `createLabel` row. */
+  created: boolean;
 };
 
 export function SearchableSelect({
@@ -54,6 +74,9 @@ export function SearchableSelect({
   emptyMessage = "No matches. Try a different search.",
   maxVisible = 100,
   className = "",
+  createLabel,
+  onChange,
+  id: idProp,
 }: {
   name: string;
   options: SearchableOption[];
@@ -69,6 +92,12 @@ export function SearchableSelect({
   emptyMessage?: string;
   maxVisible?: number;
   className?: string;
+  /** Label for the "add what I typed" row. Omit — or return null for a query
+   *  the caller already knows is not new — for no such row. */
+  createLabel?: (query: string) => string | null;
+  onChange?: (change: SearchableSelectChange) => void;
+  /** id for the visible input, so an external <label htmlFor> can point at it. */
+  id?: string;
 }) {
   const initialOption =
     options.find((o) => o.value === defaultValue) ?? null;
@@ -78,7 +107,14 @@ export function SearchableSelect({
   const [highlight, setHighlight] = useState<number>(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const id = useId();
+  const autoId = useId();
+  const id = idProp ?? autoId;
+  // Every committed value goes through here, so an optional client parent
+  // hears about all of them (pick, create, exact-typed match, clear).
+  const commitValue = (value: string, option: SearchableOption | null, created: boolean) => {
+    setSelectedValue(value);
+    onChange?.({ value, option, created });
+  };
 
   // Close the popover when the user clicks outside the component. Uses
   // pointerdown for parity with Enter/Escape close paths.
@@ -118,24 +154,45 @@ export function SearchableSelect({
     }
     ranked.sort((a, b) => a.rank - b.rank);
   }
+  // Grouped callers: keep each group together (first-seen order), rank inside.
+  // Array.prototype.sort is stable, so the rank order survives within a group.
+  const groupOrder = new Map<string, number>();
+  for (const o of options) if (o.group !== undefined && !groupOrder.has(o.group)) groupOrder.set(o.group, groupOrder.size);
+  if (groupOrder.size > 0) {
+    ranked.sort((a, b) => (groupOrder.get(a.group ?? "") ?? groupOrder.size) - (groupOrder.get(b.group ?? "") ?? groupOrder.size));
+  }
   const visible = ranked.slice(0, maxVisible);
+  // The "add what I typed" row — only when it would add something new.
+  const typed = query.trim();
+  const createText =
+    createLabel && typed !== "" && !options.some((o) => o.label.trim().toLowerCase() === typed.toLowerCase())
+      ? createLabel(typed)
+      : null;
+  const showCreate = createText !== null;
+  const rowCount = visible.length + (showCreate ? 1 : 0);
+  const createIndex = showCreate ? visible.length : -1;
 
-  // Keep highlight in-range when the visible list shrinks.
-  useEffect(() => {
-    if (highlight >= visible.length) setHighlight(0);
-  }, [visible.length, highlight]);
+  // Keep the highlight in range when the list shrinks — derived during render
+  // rather than corrected in an effect, which painted one frame with nothing
+  // highlighted and then re-rendered.
+  const hi = highlight < rowCount ? highlight : 0;
 
   // Scroll the highlighted option into view as the user arrows through a long
   // list (Karan 2026-07-27 audit — the list is max-h-64 overflow-y-auto).
   useEffect(() => {
     if (!open) return;
-    const el = document.getElementById(`${id}-opt-${highlight}`);
+    const el = document.getElementById(`${id}-opt-${hi}`);
     el?.scrollIntoView({ block: "nearest" });
-  }, [highlight, open, id]);
+  }, [hi, open, id]);
 
   const commitOption = (opt: SearchableOption) => {
     setQuery(opt.label);
-    setSelectedValue(opt.value);
+    commitValue(opt.value, opt, false);
+    setOpen(false);
+  };
+  const commitCreate = () => {
+    setQuery(typed);
+    commitValue(typed, null, true);
     setOpen(false);
   };
 
@@ -149,14 +206,17 @@ export function SearchableSelect({
         setHighlight(0);
         return;
       }
-      setHighlight((h) => Math.min(h + 1, Math.max(0, visible.length - 1)));
+      setHighlight(Math.min(hi + 1, Math.max(0, rowCount - 1)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setHighlight((h) => Math.max(0, h - 1));
+      setHighlight(Math.max(0, hi - 1));
     } else if (e.key === "Enter") {
-      if (open && visible[highlight]) {
+      if (open && hi === createIndex) {
         e.preventDefault();
-        commitOption(visible[highlight]!);
+        commitCreate();
+      } else if (open && visible[hi]) {
+        e.preventDefault();
+        commitOption(visible[hi]!);
       } else if (allowFreeText && normalizedQuery !== "") {
         // Fallthrough — form-submit handles the raw typed value via
         // the hidden input below (set on onChange).
@@ -180,7 +240,7 @@ export function SearchableSelect({
           aria-controls={`${id}-list`}
           aria-autocomplete="list"
           aria-label={ariaLabel}
-          aria-activedescendant={open && visible[highlight] ? `${id}-opt-${highlight}` : undefined}
+          aria-activedescendant={open && hi < rowCount ? `${id}-opt-${hi}` : undefined}
           value={query}
           required={required}
           disabled={disabled}
@@ -207,11 +267,11 @@ export function SearchableSelect({
               (o) => o.label.toLowerCase() === next.trim().toLowerCase()
             );
             if (exact) {
-              setSelectedValue(exact.value);
-            } else if (allowFreeText) {
-              setSelectedValue(next.trim());
+              commitValue(exact.value, exact, false);
+            } else if (allowFreeText || createLabel) {
+              commitValue(next.trim(), null, false);
             } else if (next.trim() === "") {
-              setSelectedValue("");
+              commitValue("", null, false);
             }
             // else: partial non-match — leave selectedValue untouched.
           }}
@@ -227,7 +287,7 @@ export function SearchableSelect({
             type="button"
             onClick={() => {
               setQuery("");
-              setSelectedValue("");
+              commitValue("", null, false);
               setOpen(false);
               inputRef.current?.focus();
             }}
@@ -246,14 +306,23 @@ export function SearchableSelect({
           role="listbox"
           className="absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-surface border border-ppp-charcoal-200 rounded-lg shadow-lg py-1 text-sm"
         >
-          {visible.length === 0 ? (
+          {visible.length === 0 && !showCreate ? (
             <li className="px-3 py-2 text-ppp-charcoal-500 italic">
               {allowFreeText && normalizedQuery !== ""
                 ? `Use "${query.trim()}" as manual entry`
                 : emptyMessage}
             </li>
           ) : (
-            visible.map((opt, i) => (
+            visible.map((opt, i) => [
+              opt.group !== undefined && opt.group !== visible[i - 1]?.group ? (
+                <li
+                  key={`group-${opt.group}`}
+                  role="presentation"
+                  className="px-3 pt-2 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500 bg-ppp-charcoal-50/70 border-y border-ppp-charcoal-100 first:border-t-0"
+                >
+                  {opt.group}
+                </li>
+              ) : null,
               <li
                 key={opt.value}
                 id={`${id}-opt-${i}`}
@@ -262,7 +331,7 @@ export function SearchableSelect({
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => commitOption(opt)}
                 className={`px-3 py-2.5 min-h-[44px] cursor-pointer flex items-center justify-between gap-3 touch-manipulation ${
-                  i === highlight ? "bg-cc-brand-50" : "hover:bg-ppp-charcoal-50"
+                  i === hi ? "bg-cc-brand-50" : "hover:bg-ppp-charcoal-50"
                 } ${selectedValue === opt.value ? "font-semibold" : ""}`}
               >
                 <div className="min-w-0 flex-1">
@@ -278,8 +347,27 @@ export function SearchableSelect({
                     <path d="M20 6 9 17l-5-5" />
                   </svg>
                 )}
-              </li>
-            ))
+              </li>,
+            ])
+          )}
+          {showCreate && (
+            <li
+              id={`${id}-opt-${createIndex}`}
+              role="option"
+              aria-selected={false}
+              onMouseEnter={() => setHighlight(createIndex)}
+              onClick={commitCreate}
+              className={`px-3 py-2.5 min-h-[44px] cursor-pointer flex items-center gap-2.5 touch-manipulation border-t border-ppp-charcoal-100 font-semibold text-cc-brand-700 ${
+                hi === createIndex ? "bg-cc-brand-50" : "hover:bg-ppp-charcoal-50"
+              }`}
+            >
+              <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-cc-brand-600 text-white shrink-0">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 5v14 M5 12h14" />
+                </svg>
+              </span>
+              <span className="min-w-0 break-words">{createText}</span>
+            </li>
           )}
           {ranked.length > maxVisible && (
             <li className="px-3 py-1.5 text-[11px] text-ppp-charcoal-400 italic border-t border-ppp-charcoal-100">

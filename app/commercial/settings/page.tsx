@@ -40,6 +40,13 @@ const CARDS: Card[] = [
     icon: <IconBell />,
   },
   {
+    href: "/commercial/settings/vendors",
+    label: "Vendors",
+    blurb:
+      "Every store, supplier, crew payee and sub Tomco pays — the list behind the vendor search on each job's transactions. Admins and account managers keep it up to date.",
+    icon: <IconStore />,
+  },
+  {
     href: "/commercial/settings/competitors",
     label: "Competitors",
     blurb:
@@ -161,6 +168,13 @@ export default async function CommercialSettingsHubPage() {
 }
 
 /* Icons (20px) — match the sidebar's set. */
+function IconStore() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 9l1.5-5h15L21 9 M3 9h18 M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0 M5 11.5V21h14v-9.5 M10 21v-5h4v5" />
+    </svg>
+  );
+}
 function IconBuilding() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

@@ -21,6 +21,10 @@ export type CommercialProjectPurchase = {
   account_id: string;
   category: PurchaseCategory;
   vendor: string | null;
+  /** The directory vendor (commercial_vendors), when one was picked. `vendor`
+   *  still holds the name — reports group on it and old rows only have text.
+   *  Absent from the row entirely until the vendors migration is applied. */
+  vendor_id?: string | null;
   amount_cents: number;
   /** Labor hours for this entry (labor category only; null otherwise). Phase 2
    *  labor form; upgrades to Phase 7 scheduling/attendance later. */
@@ -318,6 +322,8 @@ export type AddPurchaseInput = {
   opportunity_id: string;
   category: string;
   vendor?: string | null;
+  /** From resolvePurchaseVendor — never trusted raw from a form. */
+  vendor_id?: string | null;
   amount_cents: number;
   hours?: number | null;
   purchased_at?: string | null;
@@ -355,6 +361,9 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
       account_id: scope.account_id,
       category,
       vendor: input.vendor?.trim().slice(0, 200) || null,
+      // Only sent when set: an insert naming a column the database doesn't have
+      // yet (vendors migration unapplied) would fail the whole purchase.
+      ...(input.vendor_id ? { vendor_id: input.vendor_id } : {}),
       amount_cents: amount,
       // Hours only make sense for labor; drop them on any other category so an
       // edited category can't strand stale hours.
@@ -377,7 +386,7 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
 
 export async function updatePurchase(
   id: string,
-  patch: { category?: string; vendor?: string | null; amount_cents?: number; hours?: number | null; purchased_at?: string | null; description?: string | null; reimburse_to?: string | null },
+  patch: { category?: string; vendor?: string | null; vendor_id?: string | null; amount_cents?: number; hours?: number | null; purchased_at?: string | null; description?: string | null; reimburse_to?: string | null },
   userId: string,
   /** Ownership guard (audit H1): the purchase must belong to this opportunity —
    *  rejects a forged purchase_id from another deal. */
@@ -393,6 +402,12 @@ export async function updatePurchase(
   const next: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.category !== undefined) next.category = isPurchaseCategory(patch.category) ? patch.category : "other";
   if (patch.vendor !== undefined) next.vendor = patch.vendor?.trim().slice(0, 200) || null;
+  // Clearing the link is written only when the column exists (the row we just
+  // read carries the key) — otherwise an unapplied migration would fail every
+  // edit. Setting one needs no guard: an id only exists once the table does.
+  if (patch.vendor_id !== undefined && (patch.vendor_id !== null || "vendor_id" in before)) {
+    if (patch.vendor_id !== (before.vendor_id ?? null)) next.vendor_id = patch.vendor_id;
+  }
   if (patch.amount_cents !== undefined) {
     const a = Math.round(patch.amount_cents);
     if (!Number.isFinite(a) || a <= 0) return { ok: false, error: "Enter a purchase amount greater than $0." };

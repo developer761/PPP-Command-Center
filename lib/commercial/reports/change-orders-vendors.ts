@@ -4,6 +4,12 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { etDateOf } from "@/lib/date-et";
 import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
+import { vendorKey } from "@/lib/commercial/vendors/constants";
+import { vendorNamesByIds } from "@/lib/commercial/vendors/db";
+
+// The grouping rule now lives with the vendor directory, so "is this already a
+// vendor?" and "which row does this spend land in?" can never disagree.
+export { vendorKey };
 
 /**
  * Change orders & vendor spend — the two halves of "what did the job cost us
@@ -33,6 +39,11 @@ import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
  *   removed) while the most-used spelling is what gets displayed — and the
  *   report says when a group merged variants, because silently merging two
  *   real vendors would be worse than splitting one.
+ *
+ * - **A purchase linked to the vendor directory reports under the directory's
+ *   name** (Settings → Vendors). The link is the stronger fact than the text
+ *   saved beside it: a vendor renamed in the directory moves all its spend to
+ *   the new name instead of leaving it split across the old spelling.
  */
 
 export type CoBucket = {
@@ -121,25 +132,6 @@ export const EMPTY: ChangeOrderVendorReport = {
   unattributedCents: 0,
 };
 
-/**
- * Group key for a free-text vendor name.
- *
- * Lower-cases, drops punctuation, collapses whitespace, and strips the company
- * suffixes people type inconsistently. Deliberately conservative: it will not
- * merge "Sherwin Williams" with "Sherwin", because two genuinely different
- * vendors merged into one row is a worse error than one vendor split in two —
- * you can SEE a split, you cannot see a bad merge.
- */
-export function vendorKey(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/[.,'"()]/g, "")
-    .replace(/\b(inc|llc|ltd|co|corp|company|incorporated)\b/g, "")
-    .replace(/[-_/&]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function daysBetween(fromYmd: string, toYmd: string): number {
   const a = Date.UTC(+fromYmd.slice(0, 4), +fromYmd.slice(5, 7) - 1, +fromYmd.slice(8, 10));
   const b = Date.UTC(+toYmd.slice(0, 4), +toYmd.slice(5, 7) - 1, +toYmd.slice(8, 10));
@@ -171,13 +163,17 @@ export async function getChangeOrderVendorReport(range: {
     paginateAll<{
       opportunity_id: string | null;
       vendor: string | null;
+      /** Absent until the vendors migration is applied — hence "*" below. */
+      vendor_id?: string | null;
       category: string | null;
       amount_cents: number | null;
       purchased_at: string | null;
     }>(() =>
       sb
         .from("commercial_project_purchases")
-        .select("opportunity_id, vendor, category, amount_cents, purchased_at")
+        // "*", not a column list: naming vendor_id before its migration is
+        // applied would fail this whole report.
+        .select("*")
         .is("deleted_at", null)
         .order("purchased_at")
         .order("id")
@@ -323,6 +319,9 @@ export async function getChangeOrderVendorReport(range: {
   );
 
   // ── Vendor spend ───────────────────────────────────────────────────────
+  const directoryName = await vendorNamesByIds(
+    purchases.map((p) => p.vendor_id ?? "").filter(Boolean)
+  );
   const vendors = new Map<string, { names: Map<string, number>; cents: number; count: number; cats: Map<string, number> }>();
   const categories = new Map<string, CategoryRow>();
 
@@ -339,7 +338,7 @@ export async function getChangeOrderVendorReport(range: {
     categories.set(cat, c);
     out.vendorTotalCents += amount;
 
-    const raw = p.vendor?.trim();
+    const raw = (p.vendor_id ? directoryName.get(p.vendor_id) : undefined) ?? p.vendor?.trim();
     if (!raw) {
       out.unattributedCount += 1;
       out.unattributedCents += amount;
