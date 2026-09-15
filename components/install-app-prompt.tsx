@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 /**
  * A visible way to install the Command Center, instead of hunting a browser menu.
@@ -29,6 +30,18 @@ type BeforeInstallPromptEvent = Event & {
 
 const DISMISS_KEY = "ppp.install.dismissed";
 
+/**
+ * Pages opened by people OUTSIDE the company — a GC signing a proposal, a
+ * customer picking colors, a crew clock-in link, the public bid form. Offering
+ * them "install the Command Center" is at best noise and at worst reads as the
+ * link asking them to install something.
+ */
+const PUBLIC_PREFIXES = ["/sign/", "/select/", "/f/", "/c/"];
+
+export function isPublicPath(pathname: string | null): boolean {
+  return !!pathname && PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 /** Already running as an installed app — nothing to offer. */
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
@@ -51,6 +64,7 @@ export default function InstallAppPrompt() {
   const [showIosHint, setShowIosHint] = useState(false);
   const [dismissed, setDismissed] = useState(true);   // assume hidden until checked
   const [installing, setInstalling] = useState(false);
+  const isPublic = isPublicPath(usePathname());
 
   useEffect(() => {
     if (isStandalone()) return;
@@ -105,7 +119,7 @@ export default function InstallAppPrompt() {
     }
   };
 
-  if (dismissed) return null;
+  if (dismissed || isPublic) return null;
   if (!deferred && !showIosHint) return null;
 
   return (

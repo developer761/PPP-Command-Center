@@ -61,6 +61,10 @@ export const DOCUMENT_CATEGORIES = [
   "master_agreement",  // MSA / subcontract agreement signed with this GC
   "safety",            // site safety plan, OSHA certs, toolbox talks
   "prequal",           // prequal questionnaire completed FOR this job
+  // E-signature (Karan 2026-09-15): the certificate filed each time a customer
+  // signs a proposal online — who signed, when, from where, and the signed
+  // document's SHA-256. The signed contract itself files under "contract".
+  "esign_audit",
   "other",             // fallback
 ] as const;
 
@@ -90,6 +94,7 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "master_agreement": return "Master Service Agreement";
     case "safety": return "Safety / OSHA";
     case "prequal": return "Prequal Questionnaire";
+    case "esign_audit": return "E-Signature Audit Trail";
     case "other": return "Other";
     default: return cat;
   }

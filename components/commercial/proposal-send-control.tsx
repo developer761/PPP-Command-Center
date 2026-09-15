@@ -62,6 +62,7 @@ export function ProposalSendControl({
   pdfHref,
   markSentAction,
   resend = false,
+  signatureAvailable = true,
 }: {
   proposalId: string;
   accountId: string;
@@ -78,6 +79,9 @@ export function ProposalSendControl({
   /** Re-send from an already-sent proposal: hide the "mark sent" escape hatch
    *  + soften the trigger to a text button. */
   resend?: boolean;
+  /** False once the proposal carries a customer signature — there is nothing
+   *  left to sign, so the option isn't offered. */
+  signatureAvailable?: boolean;
 }) {
   // ONE source for what a proposal is called. The original is not a revision
   // and carries no label at all — see proposalRevisionLabel.
@@ -102,6 +106,10 @@ export function ProposalSendControl({
       `— ${ocName}`,
     ].join("\n")
   );
+  // E-signature is the default: a signed proposal is the whole point of sending
+  // one, and the PDF stays attached for a GC who would rather print it.
+  const [requestSignature, setRequestSignature] = useState(signatureAvailable);
+  const [signatureNote, setSignatureNote] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const firstFieldRef = useRef<HTMLElement>(null);
@@ -157,16 +165,24 @@ export function ProposalSendControl({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to_email: email,
+          to_name: contacts.find((c) => c.email === email)?.name || null,
           cc_email: showCc && cc.trim() ? cc.trim() : null,
           subject,
           message,
+          request_signature: signatureAvailable && requestSignature,
         }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        detail?: string;
+        signature?: { included: boolean; note: string | null };
+      };
       if (res.ok && json.ok) {
+        setSignatureNote(json.signature?.note ?? (json.signature?.included ? "Includes a link to review and sign online." : null));
         setStatus("success");
         router.refresh();
-        setTimeout(() => setOpen(false), 1400);
+        // A note that something DIDN'T happen needs time to be read.
+        setTimeout(() => setOpen(false), json.signature?.note ? 4000 : 1600);
       } else {
         setStatus("error");
         setError(json.detail ?? "Couldn't send — please try again.");
@@ -233,6 +249,7 @@ export function ProposalSendControl({
                 </div>
                 <h2 className="text-lg font-bold text-ppp-charcoal">Sent to {email}</h2>
                 <p className="text-[13px] text-ppp-charcoal-500 mt-1">The proposal is on its way to the GC.</p>
+                {signatureNote ? <p className="text-[13px] text-ppp-charcoal-700 mt-2">{signatureNote}</p> : null}
               </div>
             ) : (
               <>
@@ -318,6 +335,25 @@ export function ProposalSendControl({
                     </div>
                     <a href={pdfHref} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[12px] font-semibold text-cc-brand-700 hover:underline">Preview</a>
                   </div>
+
+                  {signatureAvailable ? (
+                    <label className="flex items-start gap-3 rounded-lg border border-ppp-charcoal-100 px-3 py-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requestSignature}
+                        onChange={(e) => setRequestSignature(e.target.checked)}
+                        className="mt-0.5 h-5 w-5 shrink-0 accent-cc-brand-600"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-semibold text-ppp-charcoal">Ask the GC to sign online</span>
+                        <span className="block text-[12px] text-ppp-charcoal-500 mt-0.5">
+                          Adds a &ldquo;Review &amp; sign&rdquo; link. When they sign, approvers are asked to countersign, and the signed copy + audit trail file to this deal.
+                        </span>
+                      </span>
+                    </label>
+                  ) : (
+                    <p className="text-[12px] text-ppp-charcoal-500">This proposal is already signed, so no signing link will be included.</p>
+                  )}
 
                   {status === "error" && error && (
                     <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700" role="alert">{error}</div>

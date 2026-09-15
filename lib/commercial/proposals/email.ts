@@ -6,6 +6,7 @@ import { getProposal, sendProposal, type CommercialProposal } from "./db";
 import { getDocument, STORAGE_BUCKET } from "@/lib/commercial/documents/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { sanitizeFileName } from "@/lib/commercial/accounts/documents";
+import { PROPOSAL_COPY_EMAILS } from "./copy-emails";
 
 /**
  * Kim — email an approved proposal PDF to the general contractor via Resend.
@@ -27,21 +28,6 @@ import { sanitizeFileName } from "@/lib/commercial/accounts/documents";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/**
- * Internal copies on every proposal sent to a GC (Karan 2026-08-04). These
- * addresses become the Reply-To (so the GC's reply reaches Brendan + the ops
- * inbox, not a generic company address) AND a silent BCC (so they always have a
- * copy of what went out). Brendan runs proposal approvals, so replies should
- * land with him. Overridable via env (comma-separated) without a deploy.
- */
-const PROPOSAL_COPY_EMAILS = (
-  process.env.COMMERCIAL_PROPOSAL_COPY_EMAILS ||
-  "brendan@tomcopainting.com,developer@precisionpaintingplus.net"
-)
-  .split(",")
-  .map((e) => e.trim().toLowerCase())
-  .filter((e) => EMAIL_RE.test(e));
-
 export type EmailProposalInput = {
   proposal_id: string;
   actor_user_id: string;
@@ -52,10 +38,18 @@ export type EmailProposalInput = {
   cc_email?: string | null;
   subject: string;
   message: string;
+  /** Include a "Review & sign" link (Karan 2026-09-15). The PDF is attached
+   *  either way — a GC who prints and signs by hand still can. */
+  request_signature?: boolean;
 };
 
 export type EmailProposalResult =
-  | { ok: true; send: { id: string; to_email: string; created_at: string } }
+  | {
+      ok: true;
+      send: { id: string; to_email: string; created_at: string };
+      /** What happened to the signing link, for the send sheet to say so. */
+      signature: { included: boolean; note: string | null };
+    }
   | { ok: false; error: string };
 
 export async function emailProposalToGc(input: EmailProposalInput): Promise<EmailProposalResult> {
@@ -144,13 +138,45 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
   // shouldn't have to read our internal revision counter off a filename.
   const filename = `${sanitizeFileName(`Proposal_${projectLabel}`)}.pdf`;
 
+  // E-signature link. Issued AFTER the snapshot exists (sendProposal above), so
+  // the hash it records is of the exact bytes attached to this email. A
+  // proposal that is already signed goes out without a link — asking for a
+  // second signature on a signed contract helps nobody.
+  let signatureRequestId: string | null = null;
+  let signatureNote: string | null = null;
+  let text = message;
+  let html: string | undefined;
+  if (input.request_signature) {
+    const { createSignatureRequest } = await import("@/lib/commercial/esign/db");
+    const { signingUrl } = await import("@/lib/commercial/esign/workflow");
+    const req = await createSignatureRequest({
+      proposalId: input.proposal_id,
+      signerEmail: toEmail,
+      signerName: input.to_name ?? proposal.header_json.attention ?? null,
+      requestedBy: { userId: input.actor_user_id, name: input.actor_name ?? null, email: input.actor_email ?? null },
+    });
+    if (req.ok) {
+      signatureRequestId = req.request.id;
+      const url = signingUrl(req.token);
+      text = `${message}\n\nReview and sign the proposal online:\n${url}\n\nThe link is personal to you and stays open for 30 days.`;
+      html = signingEmailHtml(message, url, oc.name);
+    } else {
+      signatureNote =
+        req.reason === "already_signed"
+          ? "Sent without a signing link — this proposal is already signed."
+          : `Sent without a signing link: ${req.error}`;
+      console.warn(`[emailProposalToGc] signing link not issued for ${input.proposal_id}: ${req.error}`);
+    }
+  }
+
   const { sendEmail } = await import("@/lib/email/resend");
   const r = await sendEmail({
     channel: "commercial",
     to: toEmail,
     ...(ccEmail ? { cc: ccEmail } : {}),
     subject,
-    text: message,
+    text,
+    ...(html ? { html } : {}),
     ...(from ? { from } : {}),
     ...(replyTo ? { replyTo } : {}),
     ...(bcc.length > 0 ? { bcc } : {}),
@@ -161,7 +187,20 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
     ],
   });
   if (!r.ok) {
+    if (signatureRequestId) {
+      const { voidUnsentRequest } = await import("@/lib/commercial/esign/db");
+      await voidUnsentRequest(signatureRequestId, `The email carrying the signing link failed to send: ${r.error}`);
+    }
     return { ok: false, error: `The proposal is marked sent, but the email didn't go out: ${r.error}` };
+  }
+  if (signatureRequestId) {
+    const { recordSignatureEvent } = await import("@/lib/commercial/esign/db");
+    await recordSignatureEvent(signatureRequestId, {
+      type: "EMAIL",
+      actorName: input.actor_name ?? null,
+      actorEmail: input.actor_email ?? null,
+      details: `Signing link emailed to ${toEmail}${ccEmail ? ` (cc ${ccEmail})` : ""} [Profile: Customer | Signing position: 1/2] with the proposal PDF attached.`,
+    });
   }
 
   // Record the delivery.
@@ -203,7 +242,25 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
   return {
     ok: true,
     send: sendRow ?? { id: "", to_email: toEmail, created_at: new Date().toISOString() },
+    signature: { included: !!signatureRequestId, note: signatureNote },
   };
+}
+
+/** The review-sheet message as HTML, plus a real button for the signing link.
+ *  The plain-text part carries the same link for mail clients without HTML. */
+function signingEmailHtml(message: string, url: string, companyName: string): string {
+  const esc = (v: string) =>
+    v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const paragraphs = message
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 14px;">${esc(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.55;color:#1f2937;max-width:560px;">
+  ${paragraphs}
+  <p style="margin:26px 0 8px;"><a href="${esc(url)}" style="display:inline-block;padding:12px 22px;background:#172B4D;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Review &amp; sign the proposal</a></p>
+  <p style="margin:0 0 20px;font-size:12.5px;color:#6b7280;">The link is personal to you and stays open for 30 days. The proposal PDF is also attached.</p>
+  <p style="margin:0;font-size:12px;color:#9ca3af;">Sent by ${esc(companyName)}</p>
+</div>`;
 }
 
 /** List email-send history for a proposal (newest first) — powers the

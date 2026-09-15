@@ -39,6 +39,9 @@ const KIND_META: Record<string, KindMeta> = {
   commercial_proposal_approval_requested: { label: "Approval requested", category: "warning" },
   commercial_proposal_approved: { label: "Proposal approved", category: "success" },
   commercial_proposal_changes_requested: { label: "Changes requested", category: "warning" },
+  commercial_proposal_signed: { label: "Customer signed", category: "warning" },
+  commercial_proposal_signature_declined: { label: "Signature declined", category: "danger" },
+  commercial_proposal_fully_signed: { label: "Contract fully signed", category: "success" },
   // Commercial — custom alert rules (Block 3B)
   commercial_custom_rule: { label: "Custom alert", category: "warning" },
 };

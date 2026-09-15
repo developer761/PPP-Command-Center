@@ -30,6 +30,7 @@ const REPORTS: { href: string; label: string; exact?: boolean; adminOnly?: boole
   { href: "/commercial/reports/cash-flow", label: "Cash flow" },
   { href: "/commercial/reports/change-orders", label: "Change orders" },
   { href: "/commercial/reports/labor", label: "Labor" },
+  { href: "/commercial/reports/signatures", label: "Signatures" },
   // Estimator self-gates to admin / account_manager and redirects everyone else,
   // so it must only appear as a tab for those roles — otherwise a sales rep taps
   // it and is bounced out of Reports entirely (audit D12).

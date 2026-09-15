@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 /**
  * POST /api/commercial/proposals/[proposalId]/email — Kim: email the approved
  * proposal PDF to the GC via Resend. Body (from the review sheet):
- *   { to_email, to_name?, cc_email?, subject, message }
+ *   { to_email, to_name?, cc_email?, subject, message, request_signature? }
  *
  * Auth: signed in + has_new_platform_access. The R1 approval hard-gate is
  * re-checked inside emailProposalToGc (never trust the client on status).
@@ -56,11 +56,12 @@ export async function POST(
       cc_email: typeof body.cc_email === "string" ? body.cc_email : null,
       subject: String(body.subject ?? "").slice(0, 300),
       message: String(body.message ?? "").slice(0, 8000),
+      request_signature: body.request_signature === true,
     });
     if (!result.ok) {
       return NextResponse.json({ error: "send_failed", detail: result.error }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, send: result.send });
+    return NextResponse.json({ ok: true, send: result.send, signature: result.signature });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[commercial/proposals/email] unhandled: ${message}`);

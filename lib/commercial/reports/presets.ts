@@ -220,6 +220,38 @@ export function changeOrderRange(preset: ChangeOrderPreset): RangeResult {
   }
 }
 
+// ─────────────────────── E-signatures ───────────────────────
+
+export type SignaturePreset = "last_30" | "last_90" | "this_year" | "all";
+
+export const SIGNATURE_PRESETS: { key: SignaturePreset; label: string }[] = [
+  { key: "last_30", label: "Last 30 days" },
+  { key: "last_90", label: "Last 90 days" },
+  { key: "this_year", label: "This year" },
+  { key: "all", label: "All time" },
+];
+
+export const SIGNATURE_DEFAULT: SignaturePreset = "last_90";
+
+/** Window on when the signing link was SENT — a signature belongs to the
+ *  request it answers, so a link sent in August and signed in September counts
+ *  once, in August. */
+export function signatureRange(preset: SignaturePreset): RangeResult {
+  const today = etTodayIso();
+  const y = Number(today.slice(0, 4));
+  switch (preset) {
+    case "last_30":
+      return { fromYmd: daysBack(29), toYmd: today, label: "last 30 days" };
+    case "this_year":
+      return { fromYmd: `${y}-01-01`, toYmd: today, label: `${y}` };
+    case "all":
+      return { fromYmd: "2000-01-01", toYmd: today, label: "all time" };
+    case "last_90":
+    default:
+      return { fromYmd: daysBack(89), toYmd: today, label: "last 90 days" };
+  }
+}
+
 // ───────────────── Activity period (day / week / month / year) ─────────────────
 //
 // Karan, 2026-08-19: *"can we have filters like by day, week, monthly, year"*.

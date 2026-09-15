@@ -10,6 +10,8 @@ import { getLaborReport, EMPTY as EMPTY_LABOR } from "@/lib/commercial/reports/l
 import { getEstimatorReport, EMPTY as EMPTY_ESTIMATOR } from "@/lib/commercial/reports/estimator";
 import { getCashFlowReport, EMPTY as EMPTY_CASH } from "@/lib/commercial/reports/cash-flow";
 import { getChangeOrderVendorReport, EMPTY as EMPTY_CO } from "@/lib/commercial/reports/change-orders-vendors";
+import { listSignatureRequestsForReport } from "@/lib/commercial/esign/db";
+import { summarizeSignatures } from "@/lib/commercial/esign/report";
 import { etTodayIso } from "@/lib/date-et";
 import { getGeographyReport, EMPTY_GEO } from "@/lib/commercial/reports/geography";
 import { getWinLossSummary, currentQuarterRange, EMPTY_WIN_LOSS } from "@/lib/commercial/win-loss/reports";
@@ -24,6 +26,7 @@ import {
   estimatorRange, ESTIMATOR_DEFAULT, fiscalYearStartMonth,
   cashFlowRange, CASH_FLOW_DEFAULT,
   changeOrderRange, CHANGE_ORDER_DEFAULT,
+  signatureRange, SIGNATURE_DEFAULT,
 } from "@/lib/commercial/reports/presets";
 
 export const dynamic = "force-dynamic";
@@ -95,7 +98,7 @@ export default async function ReportsOverviewPage() {
       return fallback;
     }
   };
-  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor, receivables] =
+  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor, receivables, signatureRows] =
     await Promise.all([
       settle("Pipeline", getPipelineReport(), EMPTY_PIPELINE),
       settle("Job costs", getJobCostsReport(), EMPTY_JOB_COSTS),
@@ -108,7 +111,10 @@ export default async function ReportsOverviewPage() {
       // Year to date, matching that report's own default preset.
       settle("Change orders", getChangeOrderVendorReport(changeOrderRange(CHANGE_ORDER_DEFAULT)), EMPTY_CO),
       settle("Receivables", getReceivablesReport(), summarizeReceivables([])),
+      // The card summarises the report's own default window.
+      settle("Signatures", listSignatureRequestsForReport(signatureRange(SIGNATURE_DEFAULT)), []),
     ]);
+  const signatures = summarizeSignatures(signatureRows);
   const topTown = geo.byCity[0] ?? null;
 
   // Snapshot visuals for the landing: company billing trend (line) + cost mix (pie).
@@ -257,6 +263,19 @@ export default async function ReportsOverviewPage() {
         tone: coVendor.co.unbilledCents > 0 ? "amber" as const : "emerald" as const,
       },
       secondary: { label: "Vendor spend", value: formatCentsCompact(coVendor.vendorTotalCents) },
+    },
+    {
+      href: "/commercial/reports/signatures",
+      group: "sales",
+      title: "Signatures",
+      blurb: "Proposals sent for e-signature, who signed, and each audit trail.",
+      icon: <><path d="M3 17c3-3 5-8 7-8s1 6 3 6 3-3 4-3 2 2 4 2" /><path d="M3 21h18" /></>,
+      primary: { label: "Signed · 90 days", value: String(signatures.proposalsSigned), tone: "emerald" as const },
+      secondary: {
+        label: signatures.awaitingCountersign > 0 ? "Need countersigning" : "Sent",
+        value: String(signatures.awaitingCountersign > 0 ? signatures.awaitingCountersign : signatures.proposalsSent),
+        tone: signatures.awaitingCountersign > 0 ? "amber" as const : undefined,
+      },
     },
     {
       href: "/commercial/reports/win-loss",

@@ -91,7 +91,13 @@ export type CommercialNotificationKind =
   | "commercial_aia_dunning"
   // R6 (Karan 2026-08): a GC submitted a bid through the public online bid form.
   // Fans out to the whole commercial team so nobody misses a fresh lead.
-  | "commercial_bid_submitted";
+  | "commercial_bid_submitted"
+  // E-signature (Karan 2026-09-15). The GC signing is the moment the deal is
+  // won on paper — it lands in the approvers' court to countersign. A decline
+  // and the fully-executed contract are FYI to the deal team.
+  | "commercial_proposal_signed"
+  | "commercial_proposal_signature_declined"
+  | "commercial_proposal_fully_signed";
 
 function adminClient() {
   return createSupabaseAdminClient(
@@ -1311,14 +1317,15 @@ export async function hasRecentNotification(
  * could not be tidied.
  */
 export async function clearApprovalRequestNotifications(
-  proposalId: string
+  proposalId: string,
+  kind: CommercialNotificationKind = "commercial_proposal_approval_requested"
 ): Promise<void> {
   try {
     const sb = adminClient();
     const { error } = await sb
       .from("notifications")
       .update({ read_at: new Date().toISOString() })
-      .eq("kind", "commercial_proposal_approval_requested")
+      .eq("kind", kind)
       .eq("work_order_id", proposalId)
       .is("read_at", null);
     if (error) {
@@ -1925,6 +1932,114 @@ export async function insertCommercialProposalApprovalRequestedNotifications(inp
     tone: "needs_action",
   });
   return { fanout, approverCount: approverIds.length };
+}
+
+/**
+ * E-signature events on a proposal.
+ *
+ *   signed    — the GC signed. Approvers must countersign, so they are always
+ *               emailed (same reasoning as approval requests: a bell nobody
+ *               opens stalls a signed contract). The deal team is told too.
+ *   declined  — the GC said no through the link. Deal team + approvers.
+ *   completed — Tomco countersigned; the contract is fully executed.
+ *
+ * The public signer has no user id, so nothing here is self-skipped for
+ * `signed`/`declined`. For `completed` the countersigner is the actor.
+ */
+export async function insertCommercialProposalSignatureNotifications(input: {
+  event: "signed" | "declined" | "completed";
+  proposalId: string;
+  revisionNumber: number;
+  opportunityId: string;
+  gcCompany: string | null;
+  signerName: string;
+  declineReason?: string | null;
+  actingUserId: string | null;
+}): Promise<{ fanout: number }> {
+  const { listProposalApproverUserIds } = await import("@/lib/commercial/proposals/db");
+  const [approvers, team, { accountId, oppTitle }] = await Promise.all([
+    listProposalApproverUserIds(),
+    resolveOppTeamRecipients(input.opportunityId, input.actingUserId),
+    resolveOppAccountAndTitle(input.opportunityId),
+  ]);
+  if (!accountId) return { fanout: 0 };
+
+  const relativeLink = `/commercial/accounts/${accountId}/deals/${input.opportunityId}/proposal/${input.proposalId}#signature`;
+  const emailLink = appendBase(relativeLink);
+  const revLabel = proposalLabel({ revision_number: input.revisionNumber });
+  const gc = input.gcCompany ? ` (${input.gcCompany})` : "";
+  const shortOppTitle = truncatePreview(oppTitle, BELL_TITLE_OPP_CAP);
+
+  const copy = {
+    signed: {
+      kind: "commercial_proposal_signed" as const,
+      title: `Signed by the customer — countersign ${revLabel}`,
+      body: `${input.signerName}${gc} signed ${revLabel} on ${shortOppTitle}. It needs a countersignature to be final.`,
+      cta: "Countersign",
+      slack: `*${slackEscape(revLabel)} signed by the customer* — ${slackEscape(input.signerName)}${input.gcCompany ? ` for *${slackEscape(input.gcCompany)}*` : ""}`,
+      slackContext: `${slackEscape(oppTitle)} · waiting on a countersignature`,
+      tone: "needs_action" as const,
+      color: "#b45309",
+    },
+    declined: {
+      kind: "commercial_proposal_signature_declined" as const,
+      title: `Signature declined — ${revLabel}`,
+      body: `${input.signerName}${gc} declined to sign ${revLabel} on ${shortOppTitle}.${input.declineReason ? ` "${truncatePreview(input.declineReason, 160)}"` : ""}`,
+      cta: "Open the proposal",
+      slack: `*${slackEscape(revLabel)} signature declined* — ${slackEscape(input.signerName)}${input.gcCompany ? ` at *${slackEscape(input.gcCompany)}*` : ""}`,
+      slackContext: `${slackEscape(oppTitle)}${input.declineReason ? ` · "${slackEscape(truncatePreview(input.declineReason, 200))}"` : ""}`,
+      tone: "bad" as const,
+      color: "#b91c1c",
+    },
+    completed: {
+      kind: "commercial_proposal_fully_signed" as const,
+      title: `Contract fully signed — ${revLabel}`,
+      body: `${revLabel} on ${shortOppTitle} is signed by both parties. The signed copy and audit trail are filed.`,
+      cta: "Open the signed contract",
+      slack: `*${slackEscape(revLabel)} fully signed*${input.gcCompany ? ` with *${slackEscape(input.gcCompany)}*` : ""}`,
+      slackContext: `${slackEscape(oppTitle)} · signed copy + audit trail filed to the deal`,
+      tone: "good" as const,
+      color: "#15803d",
+    },
+  }[input.event];
+
+  await postCommercialSlack({
+    text: copy.slack,
+    context: copy.slackContext,
+    url: relativeLink,
+    urlLabel: copy.cta,
+    tone: copy.tone,
+  });
+
+  const approverSet = new Set(approvers);
+  const recipients = Array.from(new Set([...approvers, ...team]));
+  const subject = `${copy.title} · ${oppTitle}`;
+  const text = [`Hi,`, ``, copy.body, ``, `${copy.cta}: ${emailLink}`, ``, `— PPP Commercial Command Center`].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p>${escape(copy.body)}</p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:${copy.color};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">${escape(copy.cta)} →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  let fanout = 0;
+  await Promise.allSettled(
+    recipients.map(async (uid) => {
+      const r = await dispatchCommercialNotification({
+        kind: copy.kind,
+        recipientUserId: uid,
+        actingUserId: input.actingUserId,
+        sourceId: input.proposalId,
+        title: copy.title,
+        body: copy.body,
+        link: relativeLink,
+        email: { subject, text, html },
+        alwaysEmail: input.event === "signed" && approverSet.has(uid),
+      });
+      if (r.ok && r.written) fanout += 1;
+    })
+  );
+  return { fanout };
 }
 
 /**

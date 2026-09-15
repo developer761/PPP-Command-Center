@@ -34,6 +34,9 @@ const ACTIONABLE_KINDS = new Set([
   "commercial_proposal_approval_requested",
   "commercial_proposal_changes_requested",
   "commercial_proposal_approved",
+  // A GC signed and the contract is waiting on OUR signature — a signed deal
+  // stuck on a countersignature is exactly "you are blocking something".
+  "commercial_proposal_signed",
   // Karan 2026-08-22, on the platform being less clicky than Salesforce: the
   // bar answered "what needs me today" for the proposal loop only. These three
   // are addressed to ONE PERSON BY NAME — somebody assigned you a task, your
@@ -54,6 +57,7 @@ function ctaFor(kind: string): string {
   if (kind === "commercial_proposal_approval_requested") return "Review & approve";
   if (kind === "commercial_proposal_changes_requested") return "Make the edits";
   if (kind === "commercial_proposal_approved") return "Send it";
+  if (kind === "commercial_proposal_signed") return "Countersign";
   if (kind === "commercial_task_assigned") return "Open the task";
   if (kind === "commercial_task_overdue") return "It's overdue";
   if (kind === "commercial_note_mention") return "Read it";

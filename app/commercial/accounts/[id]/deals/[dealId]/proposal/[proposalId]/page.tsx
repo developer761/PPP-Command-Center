@@ -34,6 +34,9 @@ import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { listProposalEmailSends } from "@/lib/commercial/proposals/email";
 import { ProposalSendControl } from "@/components/commercial/proposal-send-control";
+import { ProposalSignaturePanel, REFILE_AFTER_MS } from "@/components/commercial/esign/proposal-signature-panel";
+import { countersignBlockedReason } from "@/lib/commercial/esign/workflow";
+import { headers } from "next/headers";
 import { fmtEtDate, formatCentsFull } from "@/lib/commercial/invoices/format";
 import { resolveProposalExclusions } from "@/lib/commercial/proposals/exclusion-texts";
 import {
@@ -1191,6 +1194,101 @@ async function markProposalOutcomeAction(formData: FormData) {
   redirect(proposalHref(accountId, dealId, proposalId, `?outcome=${outcome}${kept}`, proposalBack(formData)));
 }
 
+// ─────────────── e-signature actions ───────────────
+
+async function esignActor(): Promise<{ id: string; email: string | null; name: string | null }> {
+  const userId = await requireAuthed();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const profile = await getProfileByUserId(userId);
+  const name = profile?.full_name?.trim() || profile?.sf_user_name?.trim() || null;
+  return { id: userId, email: user?.email ?? null, name };
+}
+
+function esignIds(formData: FormData) {
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  const requestId = String(formData.get("signature_request_id") ?? "");
+  if (![accountId, dealId, proposalId, requestId].every((v) => UUID_RE.test(v))) redirect("/commercial");
+  return { accountId, dealId, proposalId, requestId };
+}
+
+/** The request must belong to THIS proposal — the ids arrive from a form, and
+ *  a countersign aimed at another deal's signature is not one to trust. */
+async function assertRequestOnProposal(requestId: string, proposalId: string): Promise<boolean> {
+  const { getSignatureRequest } = await import("@/lib/commercial/esign/db");
+  const r = await getSignatureRequest(requestId);
+  return !!r && r.proposal_id === proposalId;
+}
+
+async function countersignAction(formData: FormData) {
+  "use server";
+  const actor = await esignActor();
+  const { accountId, dealId, proposalId, requestId } = esignIds(formData);
+  const back = proposalBack(formData);
+  if (!(await assertRequestOnProposal(requestId, proposalId))) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("That signature isn't on this proposal.")}`, back));
+  }
+  const { countersignProposal } = await import("@/lib/commercial/esign/workflow");
+  const { clientMeta } = await import("@/lib/commercial/esign/request-meta");
+  const result = await countersignProposal({ requestId, user: actor, meta: clientMeta(await headers()) });
+  if (!result.ok) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}#signature`, back));
+  }
+  revalidatePath(`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`);
+  revalidatePath(`/commercial/accounts/${accountId}`);
+  redirect(proposalHref(accountId, dealId, proposalId, `?esign=${result.filed ? "countersigned" : "countersigned_unfiled"}#signature`, back));
+}
+
+async function voidSignatureAction(formData: FormData) {
+  "use server";
+  const actor = await esignActor();
+  const { accountId, dealId, proposalId, requestId } = esignIds(formData);
+  const back = proposalBack(formData);
+  if (!(await assertRequestOnProposal(requestId, proposalId))) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("That signature isn't on this proposal.")}`, back));
+  }
+  const { voidSignatureRequest, getSignatureRequest } = await import("@/lib/commercial/esign/db");
+  const result = await voidSignatureRequest({ requestId, reason: String(formData.get("reason") ?? ""), user: actor });
+  if (!result.ok) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}#signature`, back));
+  }
+  // A filed audit trail must not stop at "awaiting countersignature" when the
+  // request was voided — re-file it so the deal's copy tells the whole story.
+  const after = await getSignatureRequest(requestId);
+  if (after?.audit_document_id) {
+    const { fileAuditTrail } = await import("@/lib/commercial/esign/workflow");
+    await fileAuditTrail(requestId);
+  }
+  revalidatePath(`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`);
+  redirect(proposalHref(accountId, dealId, proposalId, `?esign=voided#signature`, back));
+}
+
+async function refileSignatureAction(formData: FormData) {
+  "use server";
+  await requireAuthed();
+  const { accountId, dealId, proposalId, requestId } = esignIds(formData);
+  const back = proposalBack(formData);
+  if (!(await assertRequestOnProposal(requestId, proposalId))) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("That signature isn't on this proposal.")}`, back));
+  }
+  const { getSignatureRequest } = await import("@/lib/commercial/esign/db");
+  const current = await getSignatureRequest(requestId);
+  if (current?.countersigned_at && Date.now() - Date.parse(current.countersigned_at) < REFILE_AFTER_MS) {
+    redirect(proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent("The signed copy is still being filed — give it a couple of minutes, then refresh.")}#signature`, back));
+  }
+  const { finalizeCompletedRequest } = await import("@/lib/commercial/esign/workflow");
+  const ok = await finalizeCompletedRequest(requestId).catch((err) => {
+    console.error(`[esign] refile threw for ${requestId}:`, err);
+    return false;
+  });
+  revalidatePath(`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`);
+  redirect(proposalHref(accountId, dealId, proposalId, `?esign=${ok ? "refiled" : "countersigned_unfiled"}#signature`, back));
+}
+
 // ─────────────── page render ───────────────
 
 export default async function ProposalEditorPage({
@@ -1198,7 +1296,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; back?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; deal_kept?: string; kept?: string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
+  searchParams: Promise<{ esign?: string; saved?: string; error?: string; created?: string; sent?: string; back?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string; deal_kept?: string; kept?: string; approval?: "requested" | "approved" | "changes" | "unlocked" | "withdrawn" | string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -1277,11 +1375,20 @@ export default async function ProposalEditorPage({
   const revLabel = proposalRevisionLabel(proposal);
   // Kim: recipient list + operating-company identity + prior email-sends for the
   // "Send proposal" review sheet / "emailed to …" line.
-  const [accountContacts, operatingCompany, proposalEmailSends] = await Promise.all([
+  const [accountContacts, operatingCompany, proposalEmailSends, signatureRequests] = await Promise.all([
     listAccountContacts(accountId),
     getOperatingCompany(),
     listProposalEmailSends(proposalId),
+    (async () => {
+      const { listSignatureRequestsForProposal, listSignatureEvents } = await import("@/lib/commercial/esign/db");
+      const rows = await listSignatureRequestsForProposal(proposalId);
+      return Promise.all(rows.map(async (r) => ({ ...r, events: await listSignatureEvents(r.id) })));
+    })(),
   ]);
+  // Nothing left to sign once a customer signature is on file.
+  const signatureAvailable = !signatureRequests.some(
+    (r) => r.status === "awaiting_countersign" || r.status === "completed"
+  );
   const contactsWithEmail = accountContacts
     .map(({ contact, attachments }) => ({
       name: contact.full_name,
@@ -1729,6 +1836,7 @@ export default async function ProposalEditorPage({
                 ocName={operatingCompany.name}
                 pdfHref={`/api/commercial/proposals/${proposalId}/pdf`}
                 markSentAction={sendProposalAction}
+                signatureAvailable={signatureAvailable}
               />
               <form action={unlockAction} className="inline-flex">
                 {hiddenIds}
@@ -1888,6 +1996,26 @@ export default async function ProposalEditorPage({
           <strong>Proposal sent.</strong> PDF snapshot saved to Files, opportunity flipped to <em>Proposal · Sent</em>, and the team was notified.
         </div>
       )}
+      {sp.esign === "countersigned" && (
+        <div role="status" className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
+          <strong>Countersigned — the contract is fully signed.</strong> The signed copy and audit trail are filed to this deal, and the customer was emailed their copy.
+        </div>
+      )}
+      {sp.esign === "countersigned_unfiled" && (
+        <div role="alert" className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900">
+          <strong>Countersigned, but the signed copy didn&rsquo;t file.</strong> The signatures are recorded. Use &ldquo;try again&rdquo; in the E-signature card below to file the signed copy and send it to the customer.
+        </div>
+      )}
+      {sp.esign === "refiled" && (
+        <div role="status" className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
+          <strong>Filed.</strong> The signed copy and audit trail are on this deal.
+        </div>
+      )}
+      {sp.esign === "voided" && (
+        <div role="status" className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-3 text-sm text-ppp-charcoal-800">
+          <strong>Signature request voided.</strong> The link no longer works, and the reason is on the audit trail.
+        </div>
+      )}
       {sp.outcome === "won" && (
         <div role="status" className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
           <IconTrophy size={16} className="text-emerald-700 shrink-0 mt-0.5" />
@@ -2037,6 +2165,7 @@ export default async function ProposalEditorPage({
                   ocName={operatingCompany.name}
                   pdfHref={`/api/commercial/proposals/${proposalId}/pdf`}
                   markSentAction={sendProposalAction}
+                  signatureAvailable={signatureAvailable}
                   resend
                 />
               )}
@@ -2059,6 +2188,18 @@ export default async function ProposalEditorPage({
             </div>
           </div>
         )}
+
+      <ProposalSignaturePanel
+        requests={signatureRequests}
+        hiddenIds={hiddenIds}
+        viewerIsApprover={viewerIsApprover}
+        hasCompanySignature={!!operatingCompany.signature_asset_key}
+        countersignAs={[operatingCompany.signature_name, operatingCompany.signature_title].filter(Boolean).join(", ") || operatingCompany.name}
+        countersignBlocked={countersignBlockedReason({ status: proposal.status, deleted_at: null })}
+        countersignAction={countersignAction}
+        voidAction={voidSignatureAction}
+        refileAction={refileSignatureAction}
+      />
 
       {/* MAIN AUTOSAVE FORM — wraps every editable section EXCEPT line
           items. Karan 2026-07-20: no manual Save button, every field
