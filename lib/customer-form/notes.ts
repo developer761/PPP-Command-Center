@@ -98,8 +98,9 @@ function stripOrphanColorPreamble(text: string): string {
  * surfaces with no dedicated Salesforce color field (Cabinets AND Door), the
  * colors go to Color Notes and the shared Other slot is deliberately left
  * blank — so those colors are absent from the order's line items and would
- * never reach the vendor. Pulling them back out here puts them in the order's
- * Color Notes, which does go in the email.
+ * be easy to miss. Pulling them back out here puts them in the order page's
+ * Color Notes box, where the estimator turns anything that needs buying into
+ * a custom color item. The box itself never goes in the vendor email (R4.14).
  *
  * The customer's free text and the "don't paint" lines are excluded because the
  * builder already sources those separately; including them would duplicate.

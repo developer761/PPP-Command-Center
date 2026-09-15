@@ -6,7 +6,7 @@ import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQ
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
-import { extractCustomerFreeText, extractMachineColorLines } from "@/lib/customer-form/notes";
+import { extractMachineColorLines } from "@/lib/customer-form/notes";
 import { denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
 import type {
   SnapshotAccount,
@@ -130,10 +130,9 @@ export type BuildSupplierOrderInput = {
    *  Materials page — the top-priority job-level value (beats the customer/WO
    *  value). Every color defaults to it unless a per-color override differs. */
   materialType?: string | null;
-  /** Kate round-2 #25: the editable "Color Notes" value from the modal. When
-   *  provided it becomes the COLOR NOTES email section (replacing the old
-   *  Customer-Notes + Not-Painting blocks); when omitted the builder falls back
-   *  to the default built from the customer's notes + opted-out surfaces. */
+  /** Kate round-2 #25: the editable "Color Notes" value from the order page.
+   *  Estimator-only — persisted with the draft, never rendered into the vendor
+   *  email (R4.14). */
   colorNotes?: string | null;
   /** True when the worker MANUALLY picked this supplier (a store), vs the
    *  supplier being auto-derived from a color's manufacturer. PPP buys paint of
@@ -1334,7 +1333,7 @@ export async function buildSupplierOrderDraft(
     // Kate round-3 #31: one surface per LINE. The Salesforce write was fixed to
     // do this, and then this join(" · ") put them straight back onto a single
     // run-on line — the exact separator she rejected — in the order's Color
-    // Notes box and in the vendor email's COLOR NOTES block.
+    // Notes box.
     const label = (li.areaLabel ?? "").trim();
     if (label) colorNotesDefaultParts.push(`${label}:`);
     for (const line of machineLines) colorNotesDefaultParts.push(line);
@@ -1347,36 +1346,17 @@ export async function buildSupplierOrderDraft(
     for (const s of skippedSurfaces) colorNotesDefaultParts.push(`- ${s.roomLabel} · ${s.surface}`);
   }
   const colorNotesDefault = colorNotesDefaultParts.join("\n");
-  // R4.14 vs Katie item 23 — a real disagreement, resolved narrowly.
+  // R4.14 (Kate): color notes do NOT go on the vendor email — not the rep's
+  // free text, not the machine lines, not the estimator's edited box. They
+  // exist so the estimator sees what the AM/customer wrote; anything in them
+  // that needs buying becomes a custom color item, which reaches the email as
+  // a real line.
   //
-  // R4.14 (Kate): COLOR NOTES does not go on the vendor email. Color notes
-  // inform the ESTIMATOR, and when something in them needs ordering the
-  // estimator adds a custom color item, which reaches the email as a line.
-  //
-  // Katie, 2026-09-08, with WO 00316248 in hand: a rep put the entire exterior
-  // on ONE line item, wrote "see notes for colors" in the Description, and put
-  // the actual colors in Color Notes — "Siding: HC-6 Windham Cream, Low
-  // Lustre. Trim: OC-95 Navajo White, Soft Gloss…". The vendor cannot fill that
-  // order without them.
-  //
-  // Both are right about different content, so only the CUSTOMER-FACING free
-  // text is sent: the colors a person wrote. The machine-written lines, the
-  // "Not painting:" list and the skipped surfaces stay internal — those are the
-  // estimator bookkeeping R4.14 was about, and a supplier has no use for them.
-  const vendorColorNotes = input.woliRows
-    .map((li) => {
-      const text = extractCustomerFreeText(li.colorNotes).trim();
-      if (!text) return "";
-      const label = (li.areaLabel ?? "").trim();
-      return label ? `${label}:\n${text}` : text;
-    })
-    .filter(Boolean)
-    .join("\n\n");
-  if (vendorColorNotes) {
-    sections.push("");
-    sections.push("COLOR NOTES");
-    sections.push(vendorColorNotes);
-  }
+  // Katie item 23 (WO 00316248, colors only in Color Notes) briefly sent the
+  // free text here, which contradicted the order page's own "does NOT go to
+  // the vendor". Kate re-confirmed 2026-09-15: "we don't need the color notes
+  // in the email." The order page shows those colors, labelled, on the source
+  // line so the estimator can add them.
   void colorNotesDefault;
   const extrasBlock = formatExtrasBlock(input.extras);
   if (extrasBlock) {
