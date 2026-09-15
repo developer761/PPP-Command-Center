@@ -97,3 +97,28 @@ describe("residualPii — the check before import", () => {
     expect(residualPii(t)).toEqual(residualPii(t));
   });
 });
+
+/**
+ * Found importing Kate's CSV, 2026-09-15: a customer typed their number as
+ * "305  469 6767" — a double space between the groups — and it went through
+ * the scrubber untouched into a transcript we were about to store.
+ */
+describe("phone numbers people actually type", () => {
+  it("catches extra spaces between the groups", () => {
+    for (const raw of ["305  469 6767", "305 469  6767", "(305)  469-6767", "+1  305 469 6767", "305 . 469 . 6767"]) {
+      const { text } = scrub(`call me at ${raw} thanks`);
+      expect(text, raw).not.toMatch(/469/);
+      expect(text, raw).toContain("[PHONE]");
+    }
+  });
+
+  it("still catches the ordinary shapes, and still leaves a zip alone", () => {
+    expect(scrub("516-344-8418").text).toBe("[PHONE]");
+    expect(scrub("5163448418").text).toBe("[PHONE]");
+    expect(scrub("my zip is 11530").text).toBe("my zip is [ZIP]");
+  });
+
+  it("does not eat a price or a room count", () => {
+    expect(scrub("about 2 rooms and 11 cabinets").text).toBe("about 2 rooms and 11 cabinets");
+  });
+});
