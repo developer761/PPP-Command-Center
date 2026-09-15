@@ -276,6 +276,10 @@ function AddUserForm({
   const [showPw, setShowPw] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState(false);
+  const [role, setRole] = useState<"rep" | "account_manager" | "admin">("rep");
+  // Set when the email already belongs to a login (e.g. a Command Center user):
+  // offer to switch Commercial on for it instead of a dead-end error.
+  const [existing, setExisting] = useState<string | null>(null);
 
   const generate = () => {
     setPassword(genPassword());
@@ -294,10 +298,39 @@ function AddUserForm({
     }
   };
 
+  const grantExisting = async () => {
+    if (pending || !existing) return;
+    setPending(true);
+    try {
+      const res = await fetch("/api/admin/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: existing, grant_existing: true, platforms: { commandCenter: false, commercial: true } }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        onError(json.error ?? "Could not grant access.");
+        return;
+      }
+      onCreated(
+        json.already
+          ? `${existing} already had Commercial access.`
+          : `${existing} can now open Commercial with the login they already use.`
+      );
+      setExisting(null);
+      setEmail("");
+      setFullName("");
+      setPassword("");
+    } finally {
+      setPending(false);
+    }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (pending) return;
     setPending(true);
+    setExisting(null);
     try {
       const res = await fetch("/api/admin/access", {
         method: "POST",
@@ -306,11 +339,16 @@ function AddUserForm({
           email,
           full_name: fullName,
           password,
-          // Commercial-only grant. No role sent → provisioned non-admin.
+          role,
+          // Commercial-only grant.
           platforms: { commandCenter: false, commercial: true },
         }),
       });
       const json = await res.json().catch(() => ({}));
+      if (res.status === 409 && json.code === "exists") {
+        setExisting(email.trim());
+        return;
+      }
       if (!res.ok) {
         onError(json.error ?? "Could not create the account.");
         return;
@@ -405,6 +443,44 @@ function AddUserForm({
           )}
         </div>
       </label>
+
+      <fieldset>
+        <legend className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">What they can do</legend>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {([
+            { value: "rep", label: "Standard", hint: "Deals, jobs and the reports in their folders" },
+            { value: "account_manager", label: "Finance / manager", hint: "Also Accounting and people reports" },
+            { value: "admin", label: "Admin", hint: "Everything, including settings" },
+          ] as const).map((o) => (
+            <label
+              key={o.value}
+              className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2.5 min-h-[44px] ${role === o.value ? "border-cc-brand-500 bg-cc-brand-50" : "border-ppp-charcoal-200"}`}
+            >
+              <input type="radio" name="commercial-role" value={o.value} checked={role === o.value} onChange={() => setRole(o.value)} className="mt-0.5 accent-cc-brand-600" />
+              <span>
+                <span className="block text-[13px] font-semibold text-ppp-charcoal">{o.label}</span>
+                <span className="block text-[11.5px] text-ppp-charcoal-500">{o.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      {existing ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[13px] text-amber-900" role="status">
+          <p>
+            <strong>{existing}</strong> already has a login (they probably use the Command Center). Give them Commercial access with that same login? Their password stays the same.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" onClick={grantExisting} disabled={pending} className="inline-flex items-center rounded-lg bg-cc-brand-600 px-3 text-sm font-semibold text-white hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">
+              {pending ? "Granting…" : "Give Commercial access"}
+            </button>
+            <button type="button" onClick={() => setExisting(null)} className="inline-flex items-center px-3 text-sm font-medium text-amber-900 min-h-[44px]">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <button
         type="submit"

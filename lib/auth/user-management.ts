@@ -299,6 +299,43 @@ export async function createPasswordUser(input: {
   return { ok: true, user_id: authUserId };
 }
 
+/**
+ * Give an EXISTING login access to Commercial — grant only, never a downgrade.
+ *
+ * Katie 2026-09-15: "add Jason". Jason already signs in to the Command Center,
+ * so "Add a Commercial user" refused him ("an account with that email already
+ * exists") and nothing on either Access page could switch Commercial on. His
+ * password and residential access are left exactly as they are.
+ */
+export async function grantCommercialAccess(input: {
+  email: string;
+  actor: ActorMeta;
+}): Promise<{ ok: true; user_id: string; alreadyHad: boolean } | { ok: false; error: string }> {
+  const email = validateEmail(input.email);
+  if (!email) return { ok: false, error: "Enter a valid email address." };
+  const sb = adminClient();
+  const { data: row } = await sb
+    .from("profiles")
+    .select("user_id,email,is_active,has_new_platform_access")
+    .ilike("email", email)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "No login with that email exists yet." };
+  if (row.is_active === false) {
+    return { ok: false, error: "That login is deactivated — reactivate it on Settings → Access first." };
+  }
+  if (row.has_new_platform_access === true) return { ok: true, user_id: row.user_id, alreadyHad: true };
+  const { error } = await sb.from("profiles").update({ has_new_platform_access: true }).eq("user_id", row.user_id);
+  if (error) return { ok: false, error: error.message };
+  invalidateProfileCache(row.user_id);
+  await audit({
+    actor: input.actor,
+    action: "grant_commercial_access",
+    target_user_id: row.user_id,
+    target_email: row.email,
+  });
+  return { ok: true, user_id: row.user_id, alreadyHad: false };
+}
+
 /** Find an auth.users id by email (paginates the admin list). */
 async function findAuthUserByEmail(email: string): Promise<string | null> {
   const sb = adminClient();

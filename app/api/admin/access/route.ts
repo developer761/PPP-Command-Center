@@ -76,6 +76,16 @@ export async function POST(request: Request) {
     ? { commandCenter: rawPlatforms.commandCenter === true, commercial: rawPlatforms.commercial === true }
     : undefined;
 
+  // An existing login (e.g. someone already on the Command Center) is granted
+  // Commercial instead of being refused — only when the caller asks for it,
+  // after the form has shown them who it is.
+  if (body.grant_existing === true && platforms?.commercial) {
+    const { grantCommercialAccess } = await import("@/lib/auth/user-management");
+    const granted = await grantCommercialAccess({ email: String(body.email ?? ""), actor: gate.actor });
+    if (!granted.ok) return NextResponse.json({ error: granted.error }, { status: 400 });
+    return NextResponse.json({ ok: true, user_id: granted.user_id, granted: true, already: granted.alreadyHad });
+  }
+
   const result = await createPasswordUser({
     email: String(body.email ?? ""),
     password: String(body.password ?? ""),
@@ -88,7 +98,7 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json(
-      { error: result.error },
+      { error: result.error, code: result.code ?? null },
       { status: result.code === "exists" ? 409 : 400 }
     );
   }
