@@ -88,6 +88,11 @@ try {
   const { error: clearErr } = await sb.from("sms_sub_accounts").update({ reply_to_email: cleared.value }).eq("id", wsId);
   ok("blank clears it to NULL", !clearErr && cleared.value === null, clearErr?.message ?? "");
 
+} catch (err) {
+  // Without this an error part-way exits through finally as "N passed, 0 failed",
+  // exit 0, with every later check skipped. It is a failure.
+  fail++;
+  console.log(`  ✗  stopped early: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
   if (wsId) {
     await sb.from("sms_sub_accounts").update({ reply_to_email: original ?? null }).eq("id", wsId);

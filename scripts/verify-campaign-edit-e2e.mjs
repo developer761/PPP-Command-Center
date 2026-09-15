@@ -137,6 +137,11 @@ try {
   ok("publishing takes effect immediately", nowPub.published_at !== null);
 
   console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"} — ${pass + fail} checks\n`);
+} catch (err) {
+  // Without this an error part-way exits through finally as "N passed, 0 failed",
+  // exit 0, with every later check skipped. It is a failure.
+  fail++;
+  console.log(`  ✗  stopped early: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
   for (const fn of undo.reverse()) await fn();
   for (const id of made.conversations) {

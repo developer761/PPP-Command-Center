@@ -33,12 +33,17 @@ const ok = (label, cond, extra = "") => {
 };
 
 const conversations = [];
-// A reserved fictional number (555-0100 to 0199), never a real customer.
-const PHONE = "+12125550142";
+// Area code 999 is reserved in the NANP and assigned to nobody, so this can never
+// be a real customer. (555-01XX would be the obvious choice, but toE164 rejects
+// it on purpose as a leaked test fixture, which is how this check first failed.)
+// One number per thread: a workspace allows one live conversation per number,
+// and reusing it made the second thread fail to insert.
+let nextPhone = 140;
+const phone = () => `+1999222${String(nextPhone++).padStart(4, "0")}`;
 
 async function thread(ws, state = "ai_active") {
   const { data: conv, error } = await sb.from("sms_conversations").insert({
-    workspace_id: ws.id, customer_phone: PHONE, state, consent_basis: "inquiry",
+    workspace_id: ws.id, customer_phone: phone(), state, consent_basis: "inquiry",
   }).select("id").single();
   if (error) throw new Error(`conversation: ${error.message}`);
   conversations.push(conv.id);
@@ -117,6 +122,11 @@ try {
   const { data: rowC } = await sb.from("sms_scheduled_actions").select("state, run_at").eq("id", heldC.id).single();
   ok("dropped, not pushed an hour later", rowC.state === "cancelled");
 
+} catch (err) {
+  // An error part-way used to fall straight through to "N passed, 0 failed"
+  // and exit 0, having skipped every check after it. It is a failure.
+  fail++;
+  console.log(`  ✗  stopped early: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
   if (conversations.length) await sb.from("sms_conversations").delete().in("id", conversations);
   console.log(`\n  ${pass} passed, ${fail} failed\n`);

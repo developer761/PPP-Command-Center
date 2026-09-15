@@ -89,6 +89,11 @@ try {
   ok("consecutive replies do not share one identical gap", draws.size > 5,
      `${draws.size} distinct`);
 
+} catch (err) {
+  // Without this an error part-way exits through finally as "N passed, 0 failed",
+  // exit 0, with every later check skipped. It is a failure.
+  fail++;
+  console.log(`  ✗  stopped early: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
   if (wsId && original) {
     await sb.from("sms_sub_accounts")

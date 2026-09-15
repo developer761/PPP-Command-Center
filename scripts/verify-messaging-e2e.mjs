@@ -137,6 +137,11 @@ try {
   ok(/success/.test(after.data[0]?.cancelled_reason ?? ""), "…and records why", after.data[0]?.cancelled_reason ?? "");
 
   console.log(`\n${fail === 0 ? "ALL PASS" : `${fail} FAILURES`} — ${pass} checks\n`);
+} catch (err) {
+  // Without this an error part-way exits through finally as "N passed, 0 failed",
+  // exit 0, with every later check skipped. It is a failure.
+  fail++;
+  console.log(`  ✗  stopped early: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
   // In a finally block on purpose. An earlier verification script left a row
   // behind because its cleanup came after an assertion that threw.
