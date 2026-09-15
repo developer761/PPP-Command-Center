@@ -51,6 +51,8 @@ export function ProposalSignaturePanel(props: {
   countersignAction: Action;
   voidAction: Action;
   refileAction: Action;
+  /** Report folders: only link to Reports → Signatures for someone who can open it. */
+  canOpenSignaturesReport?: boolean;
 }) {
   if (props.requests.length === 0) return null;
   const primary =
@@ -66,9 +68,11 @@ export function ProposalSignaturePanel(props: {
             The customer signs online first, then an approver countersigns. Every step is on the audit trail.
           </p>
         </div>
-        <Link href="/commercial/reports/signatures" className="shrink-0 text-[12px] font-semibold text-cc-brand-700 hover:underline">
-          All signatures →
-        </Link>
+        {props.canOpenSignaturesReport && (
+          <Link href="/commercial/reports/signatures" className="shrink-0 text-[12px] font-semibold text-cc-brand-700 hover:underline">
+            All signatures →
+          </Link>
+        )}
       </div>
 
       <div className="p-4 sm:p-5">

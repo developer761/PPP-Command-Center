@@ -1,12 +1,8 @@
-import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { commercialDb } from "@/lib/commercial/db";
-import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
 import { receivablesCsv, receivablesFilename } from "@/lib/commercial/reports/receivables-export";
 import { parseReceivableQuery, filtersFor, describeReceivableQuery } from "@/lib/commercial/reports/receivables-filters";
-import { csvResponse } from "@/lib/commercial/reports/export-guard";
+import { guardExport, csvResponse } from "@/lib/commercial/reports/export-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,18 +18,8 @@ export const dynamic = "force-dynamic";
  * downloads and the file attached to Alex's email are byte-identical.
  */
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const sb = commercialDb();
-  const { data: prof } = await sb
-    .from("profiles")
-    .select("has_new_platform_access, is_active")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-  if (await apiAccessDenied(auth.user.id, prof)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const guard = await guardExport({ report: "receivables", orAccounting: true });
+  if (!guard.ok) return guard.response;
 
   // Same parser the page uses, so the file is exactly the slice on screen.
   const q = parseReceivableQuery((k) => req.nextUrl.searchParams.get(k));

@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 import { normalizeRole } from "@/lib/auth/roles";
 import { isAdminEmail } from "@/lib/auth/admin";
+import type { ReportKey } from "@/lib/commercial/reports/registry";
 
 /**
  * The ONE auth preamble for a report export route.
@@ -16,13 +17,29 @@ import { isAdminEmail } from "@/lib/auth/admin";
  * `people: true` additionally requires admin / account manager, matching the
  * gate the labor and estimator PAGES already enforce — otherwise the export
  * URL is a way around the page's own redirect.
+ *
+ * `report` applies report-folder access (Katie 2026-09-15): the export URL must
+ * not be a way around a folder the viewer isn't in. With a key, the registry's
+ * own role gates apply too (`requires` / `exportRequires`), so a route can't
+ * drift from its page. Fails closed — a folder lookup error is a 403.
+ *
+ * Omit `report` ONLY for files that are not reports: the Accounting ledger and
+ * sales-tax exports live under this path for history.
  */
 export type ExportGuardResult =
   | { ok: true; userId: string }
   | { ok: false; response: NextResponse };
 
 export async function guardExport(
-  opts: { people?: boolean } = {}
+  opts: {
+    report?: ReportKey;
+    people?: boolean;
+    /** Also admit anyone who can open Accounting (admin / account manager),
+     *  for an export that Accounting links to as well — receivables. Without
+     *  it, an account manager outside the Finance folder would see a working
+     *  Export button on Accounting that 403s. */
+    orAccounting?: boolean;
+  } = {}
 ): Promise<ExportGuardResult> {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
@@ -42,6 +59,17 @@ export async function guardExport(
     const p = prof as { role?: string | null; is_admin?: boolean | null } | null;
     const role = normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(auth.user.email));
     if (role !== "admin" && role !== "account_manager") {
+      return { ok: false, response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
+    }
+  }
+  const accountingRole = (() => {
+    const p = prof as { role?: string | null; is_admin?: boolean | null } | null;
+    const role = normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(auth.user.email));
+    return role === "admin" || role === "account_manager";
+  })();
+  if (opts.report && !(opts.orAccounting && accountingRole)) {
+    const { canExportReport } = await import("@/lib/commercial/reports/access");
+    if (!(await canExportReport(auth.user.id, auth.user.email, opts.report))) {
       return { ok: false, response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
     }
   }

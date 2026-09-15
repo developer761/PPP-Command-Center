@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { requireReportAccess } from "@/lib/commercial/reports/access";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getArAging, type ArAgingBuckets } from "@/lib/commercial/reports/ar-aging";
@@ -22,6 +23,8 @@ export default async function ArAgingReportPage() {
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
+  // Report folders: only reports in a folder you belong to (admins see all).
+  await requireReportAccess(user.id, user.email, "ar-aging");
 
   const aging = await getArAging();
   const overdue = aging.totals.total - aging.totals.current;

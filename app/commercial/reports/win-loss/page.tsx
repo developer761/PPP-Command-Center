@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
+import { requireReportAccess } from "@/lib/commercial/reports/access";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -67,6 +68,8 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
+  // Report folders: only reports in a folder you belong to (admins see all).
+  await requireReportAccess(user.id, user.email, "win-loss");
 
   const sp = await searchParams;
   const range = parseRange(sp);

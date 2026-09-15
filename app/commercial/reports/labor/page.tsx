@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { requireReportAccess } from "@/lib/commercial/reports/access";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -41,6 +42,8 @@ export default async function LaborReportPage({
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
+  // Report folders: only reports in a folder you belong to (admins see all).
+  await requireReportAccess(user.id, user.email, "labor");
 
   const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
   const canSeePeople = role === "admin" || role === "account_manager";

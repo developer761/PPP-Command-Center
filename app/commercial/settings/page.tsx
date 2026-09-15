@@ -111,6 +111,14 @@ const CARDS: Card[] = [
     adminOnly: true,
   },
   {
+    href: "/commercial/settings/report-folders",
+    label: "Report folders",
+    blurb:
+      "Team folders — Manager, Finance, Field Users — and who is in each. Anyone who isn't an admin sees only the reports in their folders. Admin-only.",
+    icon: <IconFolder />,
+    adminOnly: true,
+  },
+  {
     href: "/commercial/settings/field-ops",
     label: "Field operations",
     blurb:
@@ -180,6 +188,13 @@ function IconBuilding() {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <rect x="4" y="2" width="16" height="20" rx="1" />
       <path d="M9 22v-4h6v4 M8 6h2 M14 6h2 M8 10h2 M14 10h2 M8 14h2 M14 14h2" />
+    </svg>
+  );
+}
+function IconFolder() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
     </svg>
   );
 }

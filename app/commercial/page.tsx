@@ -85,6 +85,17 @@ function relativeLabel(iso: string | null | undefined): string {
 
 export default async function CommercialDashboardPage() {
   const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
+  // Report folders: the dashboard links into AR aging and Win/Loss. Someone
+  // outside those folders gets the number without a link that would bounce
+  // them. The /commercial layout has already required a signed-in user.
+  const reportAccess = await (async () => {
+    const { createClient } = await import("@/lib/supabase/server");
+    const { getReportAccess } = await import("@/lib/commercial/reports/access");
+    const { data: { user } } = await (await createClient()).auth.getUser();
+    return user ? getReportAccess(user.id, user.email) : null;
+  })();
+  const canOpenArAging = !!reportAccess?.visible.has("ar-aging");
+  const canOpenWinLoss = !!reportAccess?.visible.has("win-loss");
   const [opps, accounts, invoices, projectRows, operatingCompany] = await Promise.all([
     listCommercialOpportunities({}),
     listCommercialAccounts({}),
@@ -529,7 +540,7 @@ export default async function CommercialDashboardPage() {
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
         <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
-        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={winLossMonthHref} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
+        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={canOpenWinLoss ? winLossMonthHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
         <DashStat label="Active GCs" value={accounts.filter((a) => !a.do_not_bid).length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
         <DashStat label="Under contract" value={production.activeProjects > 0 ? formatCentsCompact(production.contractValueCents) : "—"} sub={production.activeProjects > 0 ? `${production.activeProjects} active` : "no jobs yet"} tone="navy" href="/commercial/opportunities?lane=under_contract" />
         <DashStat
@@ -549,7 +560,7 @@ export default async function CommercialDashboardPage() {
               : "billed and unpaid, none overdue"
           }
           tone={arOverdueCount > 0 ? "rose" : "blue"}
-          href="/commercial/reports/ar-aging"
+          href={canOpenArAging ? "/commercial/reports/ar-aging" : undefined}
         />
       </section>
 
@@ -602,7 +613,8 @@ export default async function CommercialDashboardPage() {
               </svg>
             ),
           },
-          winsAwaitingDebrief.length > 0 && {
+          // The debrief list lives on the Win/Loss report — no card without a way in.
+          canOpenWinLoss && winsAwaitingDebrief.length > 0 && {
             key: "debrief",
             count: winsAwaitingDebrief.length,
             label: "Awaiting debrief",
@@ -733,12 +745,14 @@ export default async function CommercialDashboardPage() {
             sub="Create a new general-contractor account."
             icon={<IconBuilding />}
           />
-          <QuickAction
-            href="/commercial/reports/win-loss"
-            title="Win / Loss"
-            sub="Win rate and why opportunities were lost."
-            icon={<IconChart />}
-          />
+          {canOpenWinLoss && (
+            <QuickAction
+              href="/commercial/reports/win-loss"
+              title="Win / Loss"
+              sub="Win rate and why opportunities were lost."
+              icon={<IconChart />}
+            />
+          )}
         </div>
       </section>
 

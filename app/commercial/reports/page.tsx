@@ -1,42 +1,61 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
-import { getPipelineReport, EMPTY_PIPELINE } from "@/lib/commercial/reports/pipeline";
-import { getJobCostsReport, EMPTY_JOB_COSTS } from "@/lib/commercial/reports/job-costs";
-import { getArAging, EMPTY_AGING } from "@/lib/commercial/reports/ar-aging";
-import { getReceivablesReport, summarizeReceivables } from "@/lib/commercial/reports/receivables";
-import { getLaborReport, EMPTY as EMPTY_LABOR } from "@/lib/commercial/reports/labor";
-import { getEstimatorReport, EMPTY as EMPTY_ESTIMATOR } from "@/lib/commercial/reports/estimator";
-import { getCashFlowReport, EMPTY as EMPTY_CASH } from "@/lib/commercial/reports/cash-flow";
-import { getChangeOrderVendorReport, EMPTY as EMPTY_CO } from "@/lib/commercial/reports/change-orders-vendors";
-import { listSignatureRequestsForReport } from "@/lib/commercial/esign/db";
-import { summarizeSignatures } from "@/lib/commercial/esign/report";
-import { etTodayIso } from "@/lib/date-et";
-import { getGeographyReport, EMPTY_GEO } from "@/lib/commercial/reports/geography";
-import { getWinLossSummary, currentQuarterRange, EMPTY_WIN_LOSS } from "@/lib/commercial/win-loss/reports";
+import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets, type JobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
-import { COST_BUCKET_COLUMNS, type CostBuckets } from "@/lib/commercial/reports/job-costs";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import TrendChart from "@/components/trend-chart";
+import { flashMessage } from "@/lib/commercial/flash";
+import { getReportAccess, getViewerFolders } from "@/lib/commercial/reports/access";
 import {
-  laborRange, LABOR_DEFAULT,
-  estimatorRange, ESTIMATOR_DEFAULT, fiscalYearStartMonth,
-  cashFlowRange, CASH_FLOW_DEFAULT,
-  changeOrderRange, CHANGE_ORDER_DEFAULT,
-  signatureRange, SIGNATURE_DEFAULT,
-} from "@/lib/commercial/reports/presets";
+  ALL_REPORTS_VIEW,
+  FOLDER_COOKIE,
+  folderReports,
+  pickActiveView,
+  showAllView,
+} from "@/lib/commercial/reports/access-rule";
+import { REPORT_GROUPS, isReportKey, reportDef, type ReportKey } from "@/lib/commercial/reports/registry";
+import { loadCardMetrics, type CardMetrics, type MetricTone } from "@/lib/commercial/reports/card-metrics";
+import { countFolderMembers, listCommercialAdminNames, type FolderView } from "@/lib/commercial/reports/folders-db";
+import { FolderNav, type FolderNavItem } from "@/components/commercial/reports/folder-nav";
+import { FolderGlyph, PathIcon } from "@/components/commercial/reports/folder-glyph";
+import { RememberReportFolder } from "@/components/commercial/reports/remember-folder";
+import { ReportCardMenu } from "@/components/commercial/reports/report-card-menu";
+import { PersonalFolderMenu } from "@/components/commercial/reports/personal-folder-controls";
+import {
+  createPersonalFolderAction,
+  renamePersonalFolderAction,
+  deletePersonalFolderAction,
+  movePersonalFolderAction,
+  addReportToPersonalFolderAction,
+  removeReportFromPersonalFolderAction,
+  moveReportInPersonalFolderAction,
+} from "./folder-actions";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * REPORTS — folder-first (Katie + Karan, 2026-09-15).
+ *
+ * Reports live in folders. Team folders (Manager, Finance, Field Users…) are
+ * made by admins in Settings → Report folders and decide who sees what; "My
+ * folders" are anyone's own tidy view and grant nothing. Admins also get "All
+ * reports". The folder you last opened is remembered, so Alex lands where he
+ * left off.
+ *
+ * Only the cards in the open folder are loaded — a report you can't see, or
+ * one in another folder, never runs its query.
+ */
 
 const BUCKET_TONE: Record<keyof CostBuckets, ChartTone> = {
   materials: "brand", crewLabor: "emerald", subLabor: "blue", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
 };
 
-type Tone = "brand" | "navy" | "amber" | "emerald" | "rose" | "neutral";
-const toneText: Record<Tone, string> = {
+const toneText: Record<MetricTone, string> = {
   brand: "text-cc-brand-700",
   navy: "text-ppp-navy-700",
   amber: "text-amber-700",
@@ -45,379 +64,453 @@ const toneText: Record<Tone, string> = {
   neutral: "text-ppp-charcoal",
 };
 
-export default async function ReportsOverviewPage() {
+type View =
+  | { kind: "all"; id: string; title: string; keys: ReportKey[] }
+  | { kind: "shared" | "personal"; id: string; title: string; keys: ReportKey[]; folder: FolderView };
+
+function pick(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+export default async function ReportsOverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
-  // The estimator report is per-person performance and redirects a rep. A card
-  // that offers it and then bounces you is worse than one that isn't there —
-  // same reason the inline-edit pencil is hidden rather than shown-and-failing.
-  const { normalizeRole } = await import("@/lib/auth/roles");
-  const { isAdminEmail } = await import("@/lib/auth/admin");
-  const viewerRole = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
-  const canSeePeople = viewerRole === "admin" || viewerRole === "account_manager";
-  // Accounting gates on exactly the same pair (Mary keeps the book and isn't a
-  // platform admin), so the "full detail on Accounting" link is only offered to
-  // someone who can actually open it — the same reason the estimator card is
-  // hidden rather than shown-and-bouncing.
-  const canSeeFinance = canSeePeople;
   if (!platformAccess(profile).hasNewPlatform) redirect("/commercial");
 
-  const quarter = currentQuarterRange();
-  // The labor card summarises the CURRENT MONTH, matching the report page's
-  // own default, so the number on the card is the number you land on.
-  const laborToday = etTodayIso();
-  // Each card summarises the window its report OPENS on, resolved through the
-  // report's own preset function — so the number on the card is the number you
-  // land on. These were hand-rolled here, and the estimator one was a CALENDAR
-  // year while the estimator report defaults to the FISCAL year: with a
-  // non-January FY start the card's win rate and the page's disagreed, with
-  // nothing on screen to explain why.
-  const laborWindow = laborRange(LABOR_DEFAULT);
-  const estimatorFy = await fiscalYearStartMonth();
-  const estRange = estimatorRange(ESTIMATOR_DEFAULT, estimatorFy);
-  const estYearLabel = estRange.label;
-  const cashRange = cashFlowRange(CASH_FLOW_DEFAULT);
-  // TEN reports on one page, and `Promise.all` rejects on the first failure —
-  // so a single bad row, a transient timeout, or one report throwing took down
-  // the page that says "the whole company at a glance", including the nine
-  // reports that were fine. The daily cron has run on `allSettled` for exactly
-  // this reason since it was written; the pages never got the same treatment.
-  //
-  // Now one report failing costs one card. `failed` names them out loud rather
-  // than letting a card quietly read $0 — a zero that is really an error is
-  // worse than an error.
-  const failed: string[] = [];
-  const settle = async <T,>(label: string, p: Promise<T>, fallback: T): Promise<T> => {
-    try {
-      return await p;
-    } catch (err) {
-      console.error(`[reports] ${label} failed:`, err);
-      failed.push(label);
-      return fallback;
-    }
-  };
-  const [pipeline, jobCosts, aging, winLoss, geo, labor, estimator, cash, coVendor, receivables, signatureRows] =
-    await Promise.all([
-      settle("Pipeline", getPipelineReport(), EMPTY_PIPELINE),
-      settle("Job costs", getJobCostsReport(), EMPTY_JOB_COSTS),
-      settle("AR aging", getArAging(), EMPTY_AGING),
-      settle("Win/loss", getWinLossSummary(quarter), EMPTY_WIN_LOSS),
-      settle("Geography", getGeographyReport(), EMPTY_GEO),
-      settle("Labor", getLaborReport(laborWindow), EMPTY_LABOR),
-      settle("Estimator", getEstimatorReport(estRange), EMPTY_ESTIMATOR),
-      settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH),
-      // Year to date, matching that report's own default preset.
-      settle("Change orders", getChangeOrderVendorReport(changeOrderRange(CHANGE_ORDER_DEFAULT)), EMPTY_CO),
-      settle("Receivables", getReceivablesReport(), summarizeReceivables([])),
-      // The card summarises the report's own default window.
-      settle("Signatures", listSignatureRequestsForReport(signatureRange(SIGNATURE_DEFAULT)), []),
-    ]);
-  const signatures = summarizeSignatures(signatureRows);
-  const topTown = geo.byCity[0] ?? null;
+  const sp = await searchParams;
+  const access = await getReportAccess(user.id, user.email);
+  const { isAdmin } = access;
+  // Accounting gates on admin / account manager (Mary keeps the book and isn't
+  // a platform admin), so its link is only offered to someone who can open it.
+  const canSeeFinance = access.role === "admin" || access.role === "account_manager";
 
-  // Snapshot visuals for the landing: company billing trend (line) + cost mix (pie).
-  const allOppIds = new Set(jobCosts.groups.flatMap((g) => g.deals.map((d) => d.oppId)));
-  const invoices = await listCommercialInvoices({});
-  const billingTrend = monthlyBilledSeries(invoices, { months: 6, oppIds: allOppIds, nowIso: new Date().toISOString() });
-  const hasTrend = billingTrend.some((p) => p.value > 0);
-  // monthlyBilledSeries returns $K (cents / 100_000) so it can feed
-  // TrendChart's currency-k axis — convert back before formatting as money.
-  const trendTotalCents = Math.round(billingTrend.reduce((n, p) => n + p.value, 0) * 100_000);
-  const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
-    .filter((c) => jobCosts.totals.buckets[c.key] > 0)
-    .map((c) => ({ label: c.label, value: jobCosts.totals.buckets[c.key], tone: BUCKET_TONE[c.key], valueLabel: formatCentsCompact(jobCosts.totals.buckets[c.key]) }));
+  const list = await getViewerFolders(user.id, isAdmin);
+  const shared = list.ok ? list.shared : [];
+  const personal = list.ok ? list.personal : [];
+  const keysOf = (f: FolderView) =>
+    folderReports(f.id, f.reportKeys.map((k, i) => ({ folder_id: f.id, report_key: k, sort_order: i })), access.visible);
 
-  // Span the row when the other snapshot card is absent. A lg:col-span-2
-  // trend with no cost mix next to it left a third of the row empty and read
-  // as a broken layout (Karan, 2026-08-19: "looks off").
-  const hasMix = costSegments.length > 0;
-  const trendSpan = hasMix ? "lg:col-span-2" : "lg:col-span-3";
-  const mixSpan = hasTrend ? "lg:col-span-1" : "lg:col-span-3";
+  const showAll = showAllView(isAdmin, shared.length);
+  const remembered = (await cookies()).get(FOLDER_COOKIE)?.value ?? null;
+  const activeId = pickActiveView({
+    requested: pick(sp.folder),
+    remembered,
+    folderIds: [...shared, ...personal].map((f) => f.id),
+    showAll,
+  });
 
-  const overdue = aging.totals.total - aging.totals.current;
-  const marginTone: Tone =
-    jobCosts.totals.marginPct === null || jobCosts.totals.totalCostCents === 0
-      ? "neutral"
-      : jobCosts.totals.marginPct < 0
-        ? "rose"
-        : jobCosts.totals.marginPct < 15
-          ? "amber"
-          : "emerald";
-  const hasHeadToHead = winLoss.wonCount + winLoss.lostCount > 0;
-
-  const cards: {
-    href: string;
-    /** Which family this report belongs to. Ten cards in one flat grid is a
-     *  wall; three named groups is a menu. */
-    group: "sales" | "delivery" | "money";
-    title: string;
-    blurb: string;
-    icon: React.ReactNode;
-    primary: { label: string; value: string; tone: Tone };
-    secondary: { label: string; value: string; tone?: Tone };
-  }[] = [
-    {
-      href: "/commercial/reports/pipeline",
-      group: "sales",
-      title: "Pipeline",
-      blurb: "Open opportunities by stage — bid vs weighted value.",
-      icon: <path d="M3 3v18h18 M7 14l3-3 4 4 5-6" />,
-      primary: { label: "Weighted pipeline", value: formatCentsCompact(pipeline.totals.weightedCents), tone: "brand" },
-      secondary: { label: "Open", value: `${pipeline.totals.count} ${pipeline.totals.count === 1 ? "deal" : "deals"}` },
-    },
-    {
-      href: "/commercial/reports/job-costs",
-      group: "delivery",
-      title: "Job costs & profit",
-      blurb: "Real cost vs contract per deal, GC, and company-wide.",
-      icon: <path d="M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />,
-      primary: { label: "Margin", value: jobCosts.totals.marginPct === null ? "—" : `${jobCosts.totals.marginPct}%`, tone: marginTone },
-      secondary: { label: "Total cost", value: formatCentsCompact(jobCosts.totals.totalCostCents), tone: "amber" },
-    },
-    {
-      href: "/commercial/reports/geography",
-      group: "sales",
-      title: "Where the work is",
-      blurb: "Jobs by town, zip, and state — where the work concentrates.",
-      icon: <><path d="M12 21s-6-5.686-6-10a6 6 0 1 1 12 0c0 4.314-6 10-6 10z" /><circle cx="12" cy="11" r="2" /></>,
-      primary: { label: "Towns", value: String(geo.totals.cityCount), tone: "navy" },
-      secondary: { label: "Top town", value: topTown ? `${topTown.label} · ${topTown.dealCount}` : "—" },
-    },
-    {
-      href: "/commercial/reports/cash-flow",
-      group: "money",
-      title: "Cash flow & collections",
-      blurb: "What actually arrived, and how long it took.",
-      icon: <><path d="M3 6h18v12H3z" /><circle cx="12" cy="12" r="2.5" /><path d="M7 12h.01 M17 12h.01" /></>,
-      primary: { label: "Collected · 6 mo", value: formatCentsCompact(cash.totals.collectedCents), tone: "emerald" as const },
-      secondary: {
-        label: "Days to pay",
-        value: cash.totals.avgDaysToPay === null ? "—" : `${cash.totals.avgDaysToPay}d`,
-        tone: cash.totals.avgDaysToPay !== null && cash.totals.avgDaysToPay > 60 ? "amber" as const : undefined,
-      },
-    },
-    {
-      // Alex's ask (2026-08-19), modelled on Mary's hand-kept sheet. Sits above
-      // AR aging because it answers the question he actually asks — what's out
-      // and what's happening with it — where aging answers "who is late".
-      href: "/commercial/reports/receivables",
-      group: "money",
-      title: "Receivables",
-      blurb: "Every job with money out, invoices and AIA together, with a chase note per item.",
-      icon: <><path d="M3 6h18v12H3z" /><path d="M3 10h18" /><path d="M7 14h4" /></>,
-      primary: { label: "Outstanding", value: formatCentsCompact(receivables.totalOpenCents), tone: "brand" as const },
-      secondary: {
-        label: "Past due",
-        value: formatCentsCompact(receivables.overdueCents),
-        tone: receivables.overdueCents > 0 ? "amber" as const : "neutral" as const,
-      },
-    },
-    {
-      href: "/commercial/reports/ar-aging",
-      group: "money",
-      title: "AR aging",
-      blurb: "What's owed by how far past due, per GC — invoices and AIA.",
-      icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
-      primary: { label: "Total AR", value: formatCentsCompact(aging.totals.total), tone: "brand" },
-      secondary: { label: "Overdue", value: formatCentsCompact(overdue), tone: overdue > 0 ? "amber" : "neutral" },
-    },
-    ...(canSeePeople ? [{
-      href: "/commercial/reports/estimator",
-      group: "sales" as const,
-      title: "Estimator performance",
-      blurb: "Bids sent, win rate, and how fast they go out.",
-      icon: <><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
-      primary: {
-        label: `Win rate · ${estYearLabel}`,
-        value: estimator.totals.winRatePct === null ? "—" : `${estimator.totals.winRatePct}%`,
-        tone: "emerald" as const,
-      },
-      secondary: { label: "Bids sent", value: String(estimator.totals.bidsSent) },
-    }] : []),
-    {
-      href: "/commercial/reports/labor",
-      group: "delivery" as const,
-      title: "Labor & payroll",
-      blurb: "Approved crew hours and cost, by person and by job.",
-      icon: <><path d="M9 21V9a3 3 0 0 1 6 0v12" /><path d="M3 21h18 M5 21V11l7-5 7 5v10" /></>,
-      primary: { label: "Hours (this month)", value: `${labor.totalHours.toLocaleString("en-US", { maximumFractionDigits: 0 })}h`, tone: "navy" },
-      secondary: {
-        label: labor.unratedHours > 0 ? "Unpriced hours" : "Labor cost",
-        value: labor.unratedHours > 0
-          ? `${labor.unratedHours.toLocaleString("en-US", { maximumFractionDigits: 0 })}h`
-          : formatCentsCompact(labor.totalCostCents),
-        tone: labor.unratedHours > 0 ? "amber" : "neutral",
-      },
-    },
-    {
-      href: "/commercial/reports/change-orders",
-      group: "delivery",
-      title: "Change orders & vendor spend",
-      blurb: "Scope beyond contract, and who got paid.",
-      icon: <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
-      primary: {
-        label: coVendor.co.unbilledCents > 0 ? "Approved, unbilled" : "Added scope",
-        value: formatCentsCompact(coVendor.co.unbilledCents > 0 ? coVendor.co.unbilledCents : coVendor.co.approvedAddCents),
-        tone: coVendor.co.unbilledCents > 0 ? "amber" as const : "emerald" as const,
-      },
-      secondary: { label: "Vendor spend", value: formatCentsCompact(coVendor.vendorTotalCents) },
-    },
-    {
-      href: "/commercial/reports/signatures",
-      group: "sales",
-      title: "Signatures",
-      blurb: "Proposals sent for e-signature, who signed, and each audit trail.",
-      icon: <><path d="M3 17c3-3 5-8 7-8s1 6 3 6 3-3 4-3 2 2 4 2" /><path d="M3 21h18" /></>,
-      primary: { label: "Signed · 90 days", value: String(signatures.proposalsSigned), tone: "emerald" as const },
-      secondary: {
-        label: signatures.awaitingCountersign > 0 ? "Need countersigning" : "Sent",
-        value: String(signatures.awaitingCountersign > 0 ? signatures.awaitingCountersign : signatures.proposalsSent),
-        tone: signatures.awaitingCountersign > 0 ? "amber" as const : undefined,
-      },
-    },
-    {
-      href: "/commercial/reports/win-loss",
-      group: "sales",
-      title: "Win / loss",
-      blurb: "What we win, what we lose, and why. Quarterly review fuel.",
-      icon: <><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6 M18 9h1.5a2.5 2.5 0 0 0 0-5H18 M6 4h12v5a6 6 0 0 1-12 0V4z M9 20h6 M12 15v5" /></>,
-      primary: { label: `Win rate · ${quarter.label}`, value: hasHeadToHead ? `${winLoss.winRatePct}%` : "—", tone: "emerald" },
-      secondary: { label: "Won", value: formatCentsCompact(winLoss.wonValueCents), tone: "emerald" },
-    },
+  const views: View[] = [
+    ...(showAll ? [{ kind: "all" as const, id: ALL_REPORTS_VIEW, title: "All reports", keys: [...access.visibleList] }] : []),
+    ...shared.map((f) => ({ kind: "shared" as const, id: f.id, title: f.name, keys: keysOf(f), folder: f })),
+    ...personal.map((f) => ({ kind: "personal" as const, id: f.id, title: f.name, keys: keysOf(f), folder: f })),
   ];
+  const current = views.find((v) => v.id === activeId) ?? null;
+  const navItems: FolderNavItem[] = views.map((v) => ({
+    id: v.id,
+    label: v.title,
+    icon: v.kind === "all" ? "all" : v.folder.icon,
+    count: v.keys.length,
+    kind: v.kind,
+  }));
+
+  const hasNothing = !isAdmin && shared.length === 0 && access.visibleList.length === 0;
+  const denied = pick(sp.denied);
+  const deniedTitle = denied && isReportKey(denied) ? reportDef(denied).title : null;
+  const needAdminNames = hasNothing || !!deniedTitle;
+  const adminNames = needAdminNames ? await listCommercialAdminNames() : [];
+  const askWho = adminNames.length > 0 ? `ask an admin (${joinNames(adminNames)})` : "ask an admin";
+
+  // ── Cards for the open view only ──
+  const keys = current?.keys ?? [];
+  const wantsSnapshot = keys.includes("job-costs");
+  const jobCostsP: Promise<JobCostsReport> | undefined = wantsSnapshot ? getJobCostsReport() : undefined;
+  // Swallow here; the job-costs card reports its own failure by name.
+  jobCostsP?.catch(() => {});
+  const [{ metrics, failed }, snapshot, memberCount] = await Promise.all([
+    loadCardMetrics(keys, { jobCosts: jobCostsP }),
+    jobCostsP ? loadSnapshot(jobCostsP) : Promise.resolve(null),
+    isAdmin && current?.kind === "shared" ? countFolderMembers(current.id) : Promise.resolve(null),
+  ]);
+
+  const personalMenuFolders = (key: ReportKey) =>
+    personal.map((f) => ({ id: f.id, name: f.name, icon: f.icon, has: f.reportKeys.includes(key) }));
+  const cardActions = {
+    add: addReportToPersonalFolderAction,
+    remove: removeReportFromPersonalFolderAction,
+    move: moveReportInPersonalFolderAction,
+    create: createPersonalFolderAction,
+  };
+  const view = activeId ?? "";
+
+  const renderCard = (key: ReportKey, idx: number, all: ReportKey[]) => (
+    <ReportCard
+      key={key}
+      reportKey={key}
+      metrics={metrics.get(key) ?? null}
+      menu={
+        <ReportCardMenu
+          reportKey={key}
+          reportTitle={reportDef(key).title}
+          view={view}
+          personalFolders={personalMenuFolders(key)}
+          inCurrentPersonalFolder={
+            current?.kind === "personal"
+              ? { folderId: current.id, isFirst: idx === 0, isLast: idx === all.length - 1 }
+              : null
+          }
+          position={`${idx + 1} of ${all.length}`}
+          actions={cardActions}
+        />
+      }
+    />
+  );
+
+  const notice = flashMessage(sp.notice);
+  const folderError = flashMessage(sp.folder_error);
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
-      <div>
-        <h2 className="text-lg font-bold text-ppp-charcoal">Reports</h2>
-        <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">The whole company at a glance — sales pipeline, job profitability, receivables, and win/loss. Open any report to drill in and export.</p>
+      {activeId && <RememberReportFolder value={activeId} />}
+
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-ppp-charcoal">Reports</h2>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">
+            {isAdmin
+              ? "Every report, organised into folders. Team folders decide who sees what; your own folders are just for you."
+              : "The reports shared with you, in folders. Open any report to drill in and export."}
+          </p>
+        </div>
+        {isAdmin && (
+          <Link
+            href="/commercial/settings/report-folders"
+            className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg border border-ppp-charcoal-200 bg-surface text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 touch-manipulation"
+          >
+            <FolderGlyph icon="folder" size={15} className="text-ppp-charcoal-500" />
+            Manage team folders
+          </Link>
+        )}
       </div>
 
+      {/* ── Banners: said out loud, never a silent empty page ── */}
+      {deniedTitle && (
+        <Banner tone="amber">
+          You don&rsquo;t have access to <strong>{deniedTitle}</strong>. Reports are shared through folders — {askWho} to add you to one that has it.
+        </Banner>
+      )}
+      {notice && <Banner tone="emerald">{notice}</Banner>}
+      {folderError && <Banner tone="rose">{folderError}</Banner>}
+      {access.lookupFailed && (
+        <Banner tone="amber">
+          We couldn&rsquo;t check which reports are shared with you just now, so none are shown rather than guessing. Refresh to try again.
+        </Banner>
+      )}
+      {!list.ok && (isAdmin || !access.lookupFailed) && (
+        <Banner tone="amber">
+          {list.notSetUp
+            ? isAdmin
+              ? "Report folders aren’t switched on yet (migration 20260915190000). You still see every report under All reports; team folders appear once it’s applied."
+              : "Report folders aren’t set up yet. Your admin is on it."
+            : `Couldn’t load your folders just now — ${list.error}`}
+        </Banner>
+      )}
       {failed.length > 0 && (
-        // Named, not swallowed. A card reading $0 because its report threw is a
-        // lie; this is the difference between "nothing happened" and "we
-        // couldn't find out". The other cards are unaffected — that's the whole
-        // point of letting one fail alone.
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
-          Couldn&rsquo;t load {failed.join(", ")} just now, so {failed.length === 1 ? "that card is" : "those cards are"}{" "}
-          showing nothing rather than a number. Everything else on this page is current — refresh to try again.
-        </div>
+        <Banner tone="amber">
+          Couldn&rsquo;t load {failed.join(", ")} just now, so {failed.length === 1 ? "that card is" : "those cards are"} showing a dash rather than a number. Everything else here is current — refresh to try again.
+        </Banner>
       )}
 
-      {/* Snapshot visuals — billing trend (line) + cost mix (pie). */}
-      {(hasTrend || costSegments.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          {hasTrend && (
-            <div className={`${trendSpan} bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5`}>
-              <div className="flex items-baseline justify-between gap-2 mb-2">
-                <div className="flex items-baseline gap-2 min-w-0">
-                  <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed / month</h3>
-                  {/* The total, so the card carries a figure and not just a
-                      shape — a flat line with no number reads as an error. */}
-                  <span className="font-condensed text-[15px] font-black tabular-nums text-cc-brand-700">
-                    {formatCentsCompact(trendTotalCents)}
-                  </span>
-                </div>
-                <span className="text-[11px] text-ppp-charcoal-400 shrink-0">last 6 months</span>
-              </div>
-              <TrendChart data={billingTrend} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px]" />
-            </div>
-          )}
-          {costSegments.length > 0 && (
-            <div className={`${mixSpan} bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5`}>
-              <h3 className="text-[13px] font-bold text-ppp-charcoal mb-2">Cost mix</h3>
-              <DonutChart size={132} segments={costSegments} centerValue={formatCentsCompact(jobCosts.totals.totalCostCents)} centerLabel="total cost" legend={false} />
-            </div>
-          )}
+      {hasNothing && !access.lookupFailed ? (
+        <div className="text-center py-14 px-5 bg-surface border border-ppp-charcoal-100 rounded-xl">
+          <span aria-hidden className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-3">
+            <FolderGlyph icon="folder" size={24} />
+          </span>
+          <p className="text-[15px] font-bold text-ppp-charcoal">No reports shared with you yet</p>
+          <p className="text-[13px] text-ppp-charcoal-500 mt-1.5 max-w-md mx-auto leading-relaxed">
+            Reports are organised into folders — Manager, Finance, Field Users — and an admin decides who&rsquo;s in each one.
+            To see reports here, {askWho} to add you to a folder.
+          </p>
         </div>
-      )}
+      ) : (
+        <div className="lg:flex lg:items-start lg:gap-6 space-y-4 lg:space-y-0">
+          <FolderNav
+            items={navItems}
+            activeId={activeId}
+            sharedLabel={isAdmin ? "Team folders" : "Shared with you"}
+            createAction={createPersonalFolderAction}
+          />
 
-      {/* ── Three families, not one wall of ten ──────────────────────────
-          Ten cards in a flat grid is a list you scan twice and still miss
-          something. Grouped, you stop reading as soon as you've found the
-          family your question belongs to.
-          
-          MONEY says out loud that Accounting owns the detail. Four of these
-          reports also exist as views there, and "which one is the real one?"
-          was a fair question with no answer on the page. The reports stay:
-          Accounting is admin + account-manager only, and the restructure put
-          AR aging under Reports deliberately — "who owes us across every job"
-          is a cross-job question a per-job page structurally cannot answer. ── */}
-      {([
-        { key: "sales" as const, label: "Sales", blurb: "What's coming in, and how well we win it." },
-        { key: "delivery" as const, label: "Delivery", blurb: "What the work costs once it's ours." },
-        { key: "money" as const, label: "Money", blurb: null },
-      ]).map((g) => {
-        const inGroup = cards.filter((c) => c.group === g.key);
-        if (inGroup.length === 0) return null;
-        return (
-          <div key={g.key} className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3 flex-wrap">
-              <div className="flex items-baseline gap-2 flex-wrap min-w-0">
-                <h3 className="font-condensed text-[13px] font-bold uppercase tracking-[0.14em] text-ppp-navy-700">
-                  {g.label}
-                </h3>
-                {g.blurb && <span className="text-[11.5px] text-ppp-charcoal-500">{g.blurb}</span>}
+          <div className="flex-1 min-w-0 space-y-4">
+            {current ? (
+              <FolderHeader
+                current={current}
+                isAdmin={isAdmin}
+                memberCount={memberCount}
+                personalIndex={current.kind === "personal" ? personal.findIndex((f) => f.id === current.id) : -1}
+                personalCount={personal.length}
+              />
+            ) : null}
+
+            {snapshot && <SnapshotVisuals {...snapshot} />}
+
+            {current && current.keys.length === 0 ? (
+              <EmptyFolder current={current} isAdmin={isAdmin} fallbackHref={showAll ? `/commercial/reports?folder=${ALL_REPORTS_VIEW}` : null} />
+            ) : current?.kind === "all" ? (
+              REPORT_GROUPS.map((g) => {
+                const inGroup = current.keys.filter((k) => reportDef(k).group === g.key);
+                if (inGroup.length === 0) return null;
+                return (
+                  <section key={g.key} className="space-y-2">
+                    <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                      <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+                        <h3 className="font-condensed text-[13px] font-bold uppercase tracking-[0.14em] text-ppp-navy-700">{g.label}</h3>
+                        {g.blurb && <span className="text-[11.5px] text-ppp-charcoal-500">{g.blurb}</span>}
+                      </div>
+                      {/* Four of the money reports also exist as views on
+                          Accounting; say which one owns the detail. */}
+                      {g.key === "money" && canSeeFinance && (
+                        <Link href="/commercial/accounting" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline shrink-0 min-h-[44px] inline-flex items-center">
+                          Full detail on Accounting →
+                        </Link>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {inGroup.map((k, i) => renderCard(k, i, inGroup))}
+                    </div>
+                  </section>
+                );
+              })
+            ) : current ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {current.keys.map((k, i) => renderCard(k, i, current.keys))}
               </div>
-              {g.key === "money" && canSeeFinance && (
-                <Link href="/commercial/accounting" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline shrink-0">
-                  Full detail on Accounting →
-                </Link>
-              )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {inGroup.map(renderCard)}
-            </div>
+            ) : null}
           </div>
-        );
-      })}
-
+        </div>
+      )}
     </div>
   );
 }
 
-/** One report card. Lifted out of the grid so the three groups render the same
- *  card rather than three copies of it. */
-function renderCard(c: {
-  href: string;
-  title: string;
-  blurb: string;
-  icon: React.ReactNode;
-  primary: { label: string; value: string; tone: Tone };
-  secondary: { label: string; value: string; tone?: Tone };
-}) {
-  return (
-          <Link
-            key={c.href}
-            href={c.href}
-            className="group bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 hover:border-cc-brand-300 hover:shadow-sm transition-colors flex flex-col"
-          >
-            <div className="flex items-start gap-3">
-              <span aria-hidden className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-50 text-cc-brand-700 shrink-0">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{c.icon}</svg>
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-[14px] font-bold text-ppp-charcoal">{c.title}</h3>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 group-hover:text-cc-brand-600 group-hover:translate-x-0.5 transition-all"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-                </div>
-                <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 leading-snug">{c.blurb}</p>
-              </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-ppp-charcoal-50 grid grid-cols-2 gap-3">
-              <Metric label={c.primary.label} value={c.primary.value} tone={c.primary.tone} />
-              <Metric label={c.secondary.label} value={c.secondary.value} tone={c.secondary.tone ?? "neutral"} />
-            </div>
-          </Link>);
+function joinNames(names: string[]): string {
+  const n = names.slice(0, 3);
+  if (n.length === 1) return n[0];
+  if (n.length === 2) return `${n[0]} or ${n[1]}`;
+  return `${n[0]}, ${n[1]} or ${n[2]}`;
 }
 
-function Metric({ label, value, tone }: { label: string; value: string; tone: Tone }) {
+function Banner({ tone, children }: { tone: "amber" | "emerald" | "rose"; children: React.ReactNode }) {
+  const cls =
+    tone === "emerald"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+      : tone === "rose"
+        ? "border-rose-200 bg-rose-50 text-rose-800"
+        : "border-amber-200 bg-amber-50 text-amber-900";
+  return <div role={tone === "rose" ? "alert" : "status"} className={`rounded-lg border px-3 py-2 text-[12.5px] leading-snug ${cls}`}>{children}</div>;
+}
+
+function FolderHeader({
+  current,
+  isAdmin,
+  memberCount,
+  personalIndex,
+  personalCount,
+}: {
+  current: View;
+  isAdmin: boolean;
+  memberCount: number | null;
+  personalIndex: number;
+  personalCount: number;
+}) {
+  const count = `${current.keys.length} ${current.keys.length === 1 ? "report" : "reports"}`;
+  const meta =
+    current.kind === "all"
+      ? isAdmin
+        ? `${count} · admins see every report`
+        : `${count} · everything shared with you`
+      : current.kind === "shared"
+        ? isAdmin
+          ? `${count} · team folder${memberCount !== null ? ` · ${memberCount} ${memberCount === 1 ? "person" : "people"}` : ""}`
+          : `${count} · shared with you`
+        : `${count} · only you see this folder`;
   return (
-    <div>
+    <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3 min-w-0">
+        <span aria-hidden className="hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-xl bg-ppp-navy-50 text-ppp-navy-700 shrink-0">
+          <FolderGlyph icon={current.kind === "all" ? "all" : current.folder.icon} size={20} />
+        </span>
+        <div className="min-w-0">
+          <h3 className="font-condensed text-[22px] sm:text-2xl font-black text-ppp-charcoal leading-tight tracking-tight break-words">{current.title}</h3>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">{meta}</p>
+          {current.kind !== "all" && current.folder.description && (
+            <p className="text-[12.5px] text-ppp-charcoal-600 mt-1 max-w-xl">{current.folder.description}</p>
+          )}
+        </div>
+      </div>
+      {current.kind === "shared" && isAdmin && (
+        <Link
+          href={`/commercial/settings/report-folders?folder=${current.id}`}
+          className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[13px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 touch-manipulation"
+        >
+          Manage
+        </Link>
+      )}
+      {current.kind === "personal" && (
+        <div className="shrink-0">
+          <PersonalFolderMenu
+            folder={{ id: current.id, name: current.title }}
+            view={current.id}
+            isFirst={personalIndex <= 0}
+            isLast={personalIndex === personalCount - 1}
+            actions={{ rename: renamePersonalFolderAction, move: movePersonalFolderAction, remove: deletePersonalFolderAction }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyFolder({ current, isAdmin, fallbackHref }: { current: View; isAdmin: boolean; fallbackHref: string | null }) {
+  const [title, body] =
+    current.kind === "personal"
+      ? ["Nothing in this folder yet", "Open the ⋯ on any report card and tick this folder to add it here."]
+      : current.kind === "shared"
+        ? isAdmin
+          ? ["No reports in this folder yet", "Choose which reports belong here — everyone in the folder will see them."]
+          : ["Nothing here you can open yet", "An admin can add reports to this folder."]
+        : ["No reports yet", "Nothing is shared with you right now."];
+  return (
+    <div className="text-center py-12 px-5 bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl">
+      <p className="text-[14px] font-semibold text-ppp-charcoal">{title}</p>
+      <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">{body}</p>
+      <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
+        {current.kind === "shared" && isAdmin && (
+          <Link href={`/commercial/settings/report-folders?folder=${current.id}`} className="inline-flex items-center px-3.5 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700">
+            Choose reports
+          </Link>
+        )}
+        {current.kind === "personal" && fallbackHref && (
+          <Link href={fallbackHref} className="inline-flex items-center px-3.5 min-h-[44px] rounded-lg border border-ppp-charcoal-200 bg-surface text-[13px] font-semibold text-cc-brand-700 hover:bg-ppp-charcoal-50">
+            Browse all reports
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** One report card. The whole card opens the report (a stretched link); the ⋯
+ *  sits above that link so it's its own control — never a button inside an
+ *  anchor, which is invalid and swallows taps on iOS. */
+function ReportCard({ reportKey, metrics, menu }: { reportKey: ReportKey; metrics: CardMetrics | null; menu: React.ReactNode }) {
+  const d = reportDef(reportKey);
+  return (
+    <div className="group relative bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 hover:border-cc-brand-300 hover:shadow-sm transition-colors flex flex-col focus-within:border-cc-brand-400">
+      <div className="flex items-start gap-3 pr-9">
+        <span aria-hidden className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-50 text-cc-brand-700 shrink-0">
+          <PathIcon paths={d.icon} size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-[14px] font-bold text-ppp-charcoal">
+              <Link href={d.href} className="after:absolute after:inset-0 after:rounded-xl after:content-[''] focus:outline-none focus-visible:underline">
+                {d.title}
+              </Link>
+            </h3>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 group-hover:text-cc-brand-600 group-hover:translate-x-0.5 transition-all shrink-0"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </div>
+          <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 leading-snug">{d.blurb}</p>
+        </div>
+      </div>
+      <div className="mt-3 pt-3 border-t border-ppp-charcoal-50 grid grid-cols-2 gap-3">
+        {metrics ? (
+          <>
+            <Metric label={metrics.primary.label} value={metrics.primary.value} tone={metrics.primary.tone} />
+            <Metric label={metrics.secondary.label} value={metrics.secondary.value} tone={metrics.secondary.tone ?? "neutral"} />
+          </>
+        ) : (
+          <>
+            <Metric label="Couldn't load" value="—" tone="neutral" />
+            <Metric label="Open to see it" value="—" tone="neutral" />
+          </>
+        )}
+      </div>
+      <div className="absolute top-1.5 right-1.5 z-10">{menu}</div>
+    </div>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone: MetricTone }) {
+  return (
+    <div className="min-w-0">
       <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 truncate">{label}</div>
-      <div className={`font-condensed text-[20px] font-black tabular-nums leading-tight mt-0.5 ${toneText[tone]}`}>{value}</div>
+      <div className={`font-condensed text-[20px] font-black tabular-nums leading-tight mt-0.5 truncate ${toneText[tone]}`}>{value}</div>
+    </div>
+  );
+}
+
+type Snapshot = {
+  billingTrend: { label: string; value: number }[];
+  trendTotalCents: number;
+  costSegments: DonutSegment[];
+  totalCostCents: number;
+};
+
+/** Company billing trend + cost mix. Shown with the job-costs card, because
+ *  both are cut from the same job-cost data. Failure hides the row; the
+ *  job-costs card already names the failure. */
+async function loadSnapshot(jobCostsP: Promise<JobCostsReport>): Promise<Snapshot | null> {
+  try {
+    const jobCosts = await jobCostsP;
+    const allOppIds = new Set(jobCosts.groups.flatMap((g) => g.deals.map((d) => d.oppId)));
+    const invoices = await listCommercialInvoices({});
+    const billingTrend = monthlyBilledSeries(invoices, { months: 6, oppIds: allOppIds, nowIso: new Date().toISOString() });
+    // monthlyBilledSeries returns $K (cents / 100_000) for TrendChart's axis.
+    const trendTotalCents = Math.round(billingTrend.reduce((n, p) => n + p.value, 0) * 100_000);
+    const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
+      .filter((c) => jobCosts.totals.buckets[c.key] > 0)
+      .map((c) => ({ label: c.label, value: jobCosts.totals.buckets[c.key], tone: BUCKET_TONE[c.key], valueLabel: formatCentsCompact(jobCosts.totals.buckets[c.key]) }));
+    return { billingTrend, trendTotalCents, costSegments, totalCostCents: jobCosts.totals.totalCostCents };
+  } catch (err) {
+    console.error("[reports] snapshot failed:", err);
+    return null;
+  }
+}
+
+function SnapshotVisuals({ billingTrend, trendTotalCents, costSegments, totalCostCents }: Snapshot) {
+  const hasTrend = billingTrend.some((p) => p.value > 0);
+  const hasMix = costSegments.length > 0;
+  if (!hasTrend && !hasMix) return null;
+  // Span the row when the other card is absent — a two-thirds trend with an
+  // empty third reads as a broken layout (Karan, 2026-08-19).
+  const trendSpan = hasMix ? "lg:col-span-2" : "lg:col-span-3";
+  const mixSpan = hasTrend ? "lg:col-span-1" : "lg:col-span-3";
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      {hasTrend && (
+        <div className={`${trendSpan} bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 min-w-0`}>
+          <div className="flex items-baseline justify-between gap-2 mb-2">
+            <div className="flex items-baseline gap-2 min-w-0">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed / month</h3>
+              <span className="font-condensed text-[15px] font-black tabular-nums text-cc-brand-700">{formatCentsCompact(trendTotalCents)}</span>
+            </div>
+            <span className="text-[11px] text-ppp-charcoal-400 shrink-0">last 6 months</span>
+          </div>
+          <TrendChart data={billingTrend} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px]" />
+        </div>
+      )}
+      {hasMix && (
+        <div className={`${mixSpan} bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 min-w-0`}>
+          <h3 className="text-[13px] font-bold text-ppp-charcoal mb-2">Cost mix</h3>
+          <DonutChart size={132} segments={costSegments} centerValue={formatCentsCompact(totalCostCents)} centerLabel="total cost" legend={false} />
+        </div>
+      )}
     </div>
   );
 }

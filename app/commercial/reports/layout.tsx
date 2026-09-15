@@ -1,27 +1,52 @@
-import { ReportTabs } from "@/components/commercial/report-tabs";
+import { cookies } from "next/headers";
+import { ReportTabs, type TabFolder, type TabReport } from "@/components/commercial/report-tabs";
 import { createClient } from "@/lib/supabase/server";
-import { getProfileByUserId } from "@/lib/auth/profile";
-import { normalizeRole } from "@/lib/auth/roles";
-import { isAdminEmail } from "@/lib/auth/admin";
+import { getReportAccess, getViewerFolders } from "@/lib/commercial/reports/access";
+import { FOLDER_COOKIE, folderReports } from "@/lib/commercial/reports/access-rule";
+import { reportDef } from "@/lib/commercial/reports/registry";
 
 /**
- * Reports framework shell (R4) — the shared report tab bar sits above every
- * /commercial/reports/* page so each report reads as a tab of one Reports area.
- * Kept minimal (just the tabs) so each report page owns its own content/width.
+ * Reports framework shell — the shared tab bar above every
+ * /commercial/reports/* page.
+ *
+ * NOT an access gate. A layout doesn't re-render when you move between the
+ * reports under it, and it never runs for server actions, so each report page
+ * (and each action) checks folder access itself via requireReportAccess. This
+ * only decides which tabs to draw: the reports this viewer may open, plus their
+ * folders so the bar can scope itself to the folder they came from.
  */
 export default async function ReportsLayout({ children }: { children: React.ReactNode }) {
-  // The Estimator report self-gates to admin / account_manager, so resolve the
-  // role here and only show that tab to those roles — a sales rep should never
-  // see a tab that bounces them (audit D12). Same predicate the page enforces.
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const profile = user ? await getProfileByUserId(user.id) : null;
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user?.email));
-  const canSeeEstimator = role === "admin" || role === "account_manager";
+
+  let reports: TabReport[] = [];
+  let folders: TabFolder[] = [];
+  let initialFolder: string | null = null;
+  if (user) {
+    const access = await getReportAccess(user.id, user.email);
+    reports = access.visibleList.map((k) => {
+      const d = reportDef(k);
+      return { key: k, href: d.href, label: d.tabLabel };
+    });
+    const list = await getViewerFolders(user.id, access.isAdmin);
+    if (list.ok) {
+      folders = [...list.shared, ...list.personal].map((f) => ({
+        id: f.id,
+        name: f.name,
+        keys: folderReports(
+          f.id,
+          f.reportKeys.map((k, i) => ({ folder_id: f.id, report_key: k, sort_order: i })),
+          access.visible
+        ),
+      }));
+    }
+    initialFolder = (await cookies()).get(FOLDER_COOKIE)?.value ?? null;
+  }
+
   return (
     <>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-6">
-        <ReportTabs canSeeEstimator={canSeeEstimator} />
+        <ReportTabs reports={reports} folders={folders} initialFolder={initialFolder} />
       </div>
       {children}
     </>

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
+import { requireReportAccess } from "@/lib/commercial/reports/access";
 import { getReceivablesReport, setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { formatCentsFull } from "@/lib/commercial/invoices/format";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
@@ -42,6 +43,8 @@ async function saveNoteAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
+  // Actions POST past the page render, so each one re-checks folder access.
+  await requireReportAccess(user.id, user.email, "receivables");
   const rowKey = String(formData.get("row_key") ?? "");
   if (!rowKey) redirect(`${BASE}${String(formData.get("qs") ?? "")}`);
   const res = await setReceivableNote(rowKey, String(formData.get("note") ?? ""), user.id);
@@ -68,6 +71,8 @@ async function refreshBriefAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
+  // Actions POST past the page render, so each one re-checks folder access.
+  await requireReportAccess(user.id, user.email, "receivables");
   const res = await generateBrief(await getReceivablesReport());
   revalidatePath(BASE);
   revalidatePath("/commercial/accounting");
@@ -85,6 +90,8 @@ async function sendToAlexAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
+  // Actions POST past the page render, so each one re-checks folder access.
+  await requireReportAccess(user.id, user.email, "receivables");
   const res = await sendReceivablesToAlex();
   revalidatePath(BASE);
   const qs = String(formData.get("qs") ?? "");
@@ -106,6 +113,14 @@ export default async function ReceivablesReportPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // This page had no gate of its own (the /commercial layout covered renders).
+  // Folder access is per report, so it needs one.
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  await requireReportAccess(user.id, user.email, "receivables");
+
   const sp = await searchParams;
   const q = parseReceivableQuery((k) => sp[k]);
   const report = await getReceivablesReport(Date.now(), filtersFor(q));

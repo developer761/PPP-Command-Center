@@ -1,11 +1,7 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { commercialDb } from "@/lib/commercial/db";
-import { apiAccessDenied } from "@/lib/commercial/auth";
 import { getArAging, type ArAgingRow } from "@/lib/commercial/reports/ar-aging";
 import { etTodayIso } from "@/lib/date-et";
 import { csvEscape as csv } from "@/lib/commercial/csv";
-import { csvResponse } from "@/lib/commercial/reports/export-guard";
+import { guardExport, csvResponse } from "@/lib/commercial/reports/export-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,16 +9,8 @@ export const dynamic = "force-dynamic";
 const money = (cents: number) => (cents / 100).toFixed(2);
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const sb = commercialDb();
-  const { data: prof } = await sb
-    .from("profiles")
-    .select("has_new_platform_access, is_active")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-  if ((await apiAccessDenied(auth?.user?.id, prof))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const guard = await guardExport({ report: "ar-aging" });
+  if (!guard.ok) return guard.response;
 
   const aging = await getArAging();
   const header = ["GC", "Current", "1-30", "31-60", "61-90", "90+", "Total", "Open items", "Oldest days"];

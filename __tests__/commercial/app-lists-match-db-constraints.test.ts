@@ -12,6 +12,7 @@ import { WORK_ORDER_STATUSES } from "@/lib/commercial/work-orders/constants";
 import { CLOSEOUT_ITEM_STATUSES } from "@/lib/commercial/closeout/constants";
 import { EMPLOYEE_ROLES } from "@/lib/commercial/field-ops/employees";
 import { VENDOR_KINDS, VENDOR_STATUSES } from "@/lib/commercial/vendors/constants";
+import { FOLDER_ICONS } from "@/lib/commercial/reports/folders-db";
 
 /**
  * THE AUDIT THAT SHOULD HAVE EXISTED.
@@ -115,6 +116,7 @@ const REGISTRY: Row[] = [
   { where: "Field Ops → employee role", table: "commercial_employees", column: "role", appValues: EMPLOYEE_ROLES },
   { where: "Settings → Vendors — kind", table: "commercial_vendors", column: "kind", appValues: VENDOR_KINDS },
   { where: "Settings → Vendors — deactivate", table: "commercial_vendors", column: "status", appValues: VENDOR_STATUSES },
+  { where: "Settings → Report folders — icon", table: "commercial_report_folders", column: "icon", appValues: FOLDER_ICONS },
 ];
 
 describe("every value the app can WRITE is permitted by the database", () => {

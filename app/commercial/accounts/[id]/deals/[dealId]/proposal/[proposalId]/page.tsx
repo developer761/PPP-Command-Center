@@ -35,6 +35,7 @@ import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { listProposalEmailSends } from "@/lib/commercial/proposals/email";
 import { ProposalSendControl } from "@/components/commercial/proposal-send-control";
 import { ProposalSignaturePanel, REFILE_AFTER_MS } from "@/components/commercial/esign/proposal-signature-panel";
+import { canViewReport } from "@/lib/commercial/reports/access";
 import { countersignBlockedReason } from "@/lib/commercial/esign/workflow";
 import { headers } from "next/headers";
 import { fmtEtDate, formatCentsFull } from "@/lib/commercial/invoices/format";
@@ -2199,6 +2200,7 @@ export default async function ProposalEditorPage({
         countersignAction={countersignAction}
         voidAction={voidSignatureAction}
         refileAction={refileSignatureAction}
+        canOpenSignaturesReport={await canViewReport(viewerId, null, "signatures")}
       />
 
       {/* MAIN AUTOSAVE FORM — wraps every editable section EXCEPT line

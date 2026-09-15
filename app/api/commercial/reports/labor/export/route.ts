@@ -12,7 +12,7 @@ const hrs = (h: number) => h.toFixed(2);
 
 /** Labor & payroll. Admin / account manager only — this is per-person pay. */
 export async function GET(req: NextRequest) {
-  const guard = await guardExport({ people: true });
+  const guard = await guardExport({ report: "labor", people: true });
   if (!guard.ok) return guard.response;
 
   const preset = resolvePreset(

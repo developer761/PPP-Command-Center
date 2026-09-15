@@ -151,12 +151,31 @@ try {
     }
   }
 
+  async function fetchWithRetry(url, cookie) {
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await fetch(url, { headers: { cookie }, redirect: "manual", signal: AbortSignal.timeout(120_000) });
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr;
+  }
+
   let bad = 0;
-  for (const p of paths) {
+  // SMOKE_ONLY=<substring> narrows the run when chasing one page.
+  const only = process.env.SMOKE_ONLY;
+  const list = only ? paths.filter((p) => p.includes(only)) : paths;
+  for (const p of list) {
     let code = "ERR";
     let where = "";
     try {
-      const res = await fetch(BASE + p, { headers: { cookie }, redirect: "manual" });
+      // A bare "DOWN" with the reason thrown away has been read as "the page is
+      // broken" three times now, when the fetch itself had timed out against a
+      // dev server still compiling. Say WHY, and give a slow page a second go
+      // before calling it down.
+      const res = await fetchWithRetry(BASE + p, cookie);
       code = String(res.status);
       // A bare "307" says a page bounced but not WHERE, and the destination is
       // the whole diagnosis — /choose-platform is an access gate, /?error= is a
@@ -164,12 +183,13 @@ try {
       if (code !== "200") where = res.headers.get("location") ?? "";
     } catch (e) {
       code = "DOWN";
+      where = e instanceof Error ? `${e.message}${e.cause instanceof Error ? ` (${e.cause.message})` : ""}` : String(e);
     }
     if (code !== "200") { console.log(`  ${code}  ${p}${where ? `  →  ${where}` : ""}`); bad++; }
   }
   console.log(bad === 0
-    ? `✅ all ${paths.length} pages returned 200`
-    : `❌ ${bad} of ${paths.length} pages did not return 200`);
+    ? `✅ all ${list.length} pages returned 200`
+    : `❌ ${bad} of ${list.length} pages did not return 200`);
   await cleanup();
   process.exit(bad === 0 ? 0 : 1);
 } catch (err) {
