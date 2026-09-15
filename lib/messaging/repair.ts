@@ -5,15 +5,17 @@
  * happened. Rewriting the lines that were wrong turns a near-miss into an
  * example of the thing done properly, and the corpus badly needs those.
  *
- * TURNS ARE NUMBERED KATE'S WAY. One message is one turn, counted from 1, and
- * the customer's first message is T1. A message can span several stored lines
- * (a form submission carries blank lines and an "Availability:" block under
- * it), and those lines belong to the message above them rather than being
- * turns of their own. Checked against her own repair of 2026-09-15: the full
- * address ask she calls T3 and the street ask she calls T5 are the third and
- * fifth messages here. An earlier version of this file said her numbers could
- * not be trusted. That was about a PDF export that merged in campaign emails,
- * and it is not true of the transcripts stored now.
+ * TURNS ARE NUMBERED KATE'S WAY. One message is one turn, counted from 1 in
+ * the order it was sent, and campaign messages count: the opener is usually
+ * T1, sent before the customer said anything. That only holds because the
+ * stored transcripts are rebuilt from her numbered transcript
+ * (kate-transcript.ts), which says "Campaign" where the first import said
+ * "Emily" and puts the opener first. A message can span several stored lines,
+ * and those lines belong to the message above them.
+ *
+ * An earlier version of this comment claimed the numbering was checked
+ * against her cabinets repair. It was one example whose T3 and T5 happened to
+ * survive the reordering, and Kate caught it the same day.
  *
  * SEVERAL LINES, ONE REPAIR. A conversation with two wrong lines repaired one
  * at a time became two "good" examples, each still carrying the other wrong
@@ -40,7 +42,7 @@ export type Turn = {
 
 // Only these start a message. Anything else with a colon, like
 // "Availability:", is part of the message it sits in.
-const SPEAKER = /^(Customer|Emily|Human agent|Agent|AI[^:]{0,20}|Bot):\s?([\s\S]*)$/i;
+const SPEAKER = /^(Campaign|Customer|Emily|Human agent|Auto-reply|Agent|AI[^:]{0,20}|Bot):\s?([\s\S]*)$/i;
 
 /** The conversation as messages, numbered the way Kate numbers them. */
 export function turnsOf(transcript: string): Turn[] {
