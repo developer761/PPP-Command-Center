@@ -103,8 +103,23 @@ function maskEmail(email: string): string {
   return `${local.slice(0, 1)}***@${domain}`;
 }
 
+/**
+ * OFF, with its invoice twin — see DUNNING_ENABLED in ./invoice-dunning.ts.
+ *
+ * This is the same past-due reminder for the ledger that raises no invoice, and
+ * "no automatic chasing of Tomco's GCs for now" has to mean both or it means
+ * nothing. It cannot fire today (Tomco has no AIA applications), which is
+ * exactly why it would be the one to forget: the day they raise their first
+ * G702, it would start emailing on its own.
+ */
+const DUNNING_ENABLED = false;
+
 export async function runAiaDunningReminder(): Promise<Result> {
   const out: Result = { ok: true, found: 0, sent: 0, skipped: 0, errors: [] };
+  if (!DUNNING_ENABLED) {
+    console.log("[cron/aia-dunning] disabled — see DUNNING_ENABLED in lib/commercial/cron/invoice-dunning.ts.");
+    return out;
+  }
   try {
     const sb = commercialDb();
     const now = Date.now();

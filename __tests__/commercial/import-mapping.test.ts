@@ -3,6 +3,7 @@ import {
   cents,
   dealStatusForWorkOrder,
   jobStatusForWorkOrder,
+  dueDateFor,
   isClosedWorkOrder,
   planInvoice,
   adjustmentLabel,
@@ -131,6 +132,28 @@ describe("the invoice plan — Salesforce's balance wins, to the cent", () => {
   it("a fully paid job reads paid, an untouched one reads sent", () => {
     expect(invoiceStatus(planInvoice({ quotedSubtotalWithCo: 100, totalChangeOrder: 0, tax: 0, grandTotal: 100, totalPaymentsIn: 100, balanceOwed: 0 }))).toBe("paid");
     expect(invoiceStatus(planInvoice({ quotedSubtotalWithCo: 100, totalChangeOrder: 0, tax: 0, grandTotal: 100, totalPaymentsIn: 0, balanceOwed: 100 }))).toBe("sent");
+  });
+});
+
+describe("when an invoice is due", () => {
+  it("'Upon Receipt' is due the day it went out — which is what Tomco's terms say", () => {
+    expect(dueDateFor("2026-02-26", "Upon Receipt")).toBe("2026-02-26");
+    expect(dueDateFor("2026-02-26", "upon receipt")).toBe("2026-02-26");
+    expect(dueDateFor("2026-02-26", "Due on Receipt")).toBe("2026-02-26");
+  });
+  it("honours net terms, including across a month and a year end", () => {
+    expect(dueDateFor("2026-02-26", "Net 30")).toBe("2026-03-28");
+    expect(dueDateFor("2026-12-20", "Net 30")).toBe("2027-01-19");
+    expect(dueDateFor("2026-01-31", "Net 45")).toBe("2026-03-17");
+  });
+  it("falls back to 30 days rather than leaving it undated", () => {
+    // An invoice with no due date cannot age, and every collections surface
+    // then reads it as current.
+    expect(dueDateFor("2026-02-26", null)).toBe("2026-03-28");
+    expect(dueDateFor("2026-02-26", "whatever Salesforce had")).toBe("2026-03-28");
+  });
+  it("returns nothing when the invoice was never issued", () => {
+    expect(dueDateFor(null, "Upon Receipt")).toBeNull();
   });
 });
 

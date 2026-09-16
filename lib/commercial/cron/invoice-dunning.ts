@@ -44,8 +44,31 @@ function maskEmail(email: string): string {
   return `${head}***@${domain}`;
 }
 
+/**
+ * The past-due reminder is OFF.
+ *
+ * Karan, 2026-09-16, the day before Tomco go-live: "add the due dates and
+ * remove the 15 day past reminder for now."
+ *
+ * Tomco's 92 migrated invoices are now dated — their Salesforce terms are "Upon
+ * Receipt", so the older ones are months past due and the aging on them is
+ * real. Without this switch, the first run after those dates landed would have
+ * emailed up to 100 of their GCs about invoices from 2024, on the morning of
+ * go-live, from a system nobody at Tomco had used yet.
+ *
+ * It is a constant rather than a deleted call so that turning it back on is one
+ * line and the whole mechanism — the 15-day threshold, the once-a-week cap, the
+ * "no contact email" bell — stays tested and intact. Flip it when Tomco decides
+ * they want the platform chasing their money.
+ */
+const DUNNING_ENABLED = false;
+
 export async function runInvoiceDunningReminder(): Promise<Result> {
   const out: Result = { ok: true, found: 0, sent: 0, skipped: 0, errors: [] };
+  if (!DUNNING_ENABLED) {
+    console.log("[cron/invoice-dunning] disabled — see DUNNING_ENABLED in this file.");
+    return out;
+  }
   try {
     const sb = commercialDb();
     const now = Date.now();

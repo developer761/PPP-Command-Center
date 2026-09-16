@@ -33,6 +33,7 @@ import {
   planInvoiceColumns,
   adjustmentLabel,
   invoiceStatus,
+  dueDateFor,
   purchaseCategory,
   isReimbursement,
   employeeFromCrewWorker,
@@ -716,6 +717,14 @@ async function stageInvoices() {
       paid_at: plan.balanceCents <= 0 ? at(ymd(w.EndDate) ?? ymd(w.StartDate) ?? ymd(w.CreatedDate)) : null,
       po_number: w.Customer_PO__c || null,
       payment_terms: w.Payment_Terms__c || null,
+      // THE DUE DATE, from the terms Salesforce holds on the job.
+      //
+      // Left NULL until 2026-09-16 on purpose: a due date arms the daily
+      // past-due email, and nobody wanted that pointed at Tomco's 75 GCs before
+      // they had used the platform. Karan turned the reminder off (see
+      // DUNNING_ENABLED in lib/commercial/cron/invoice-dunning.ts) and asked for
+      // the dates, so AR aging can do the one thing it is for.
+      due_at: at(dueDateFor(ymd(w.StartDate) ?? ymd(w.CreatedDate), w.Payment_Terms__c)),
       notes: [`Imported from Salesforce work order ${w.WorkOrderNumber}.`, note].filter(Boolean).join(" "),
     }, r);
     // The adjustment used to also be written as an invoice LINE ITEM here. It
@@ -750,6 +759,12 @@ async function stagePayments() {
       deposited_at: t.Deposited__c ? at(ymd(t.Date__c)) : null,
     }, r);
   }
+  // Writing a payment fires the invoice's recompute trigger, which moves
+  // `commercial_invoices.updated_at`. Left alone, the next run would read every
+  // one of those invoices as edited-by-a-person and refuse Salesforce's updates
+  // — the guard protecting the rows from the importer itself.
+  const restamped = await restampEntity("invoice");
+  if (restamped) r.notes.push(`re-stamped ${restamped} invoice(s) the payment trigger touched`);
   return r;
 }
 
@@ -1448,6 +1463,47 @@ const ENTITY_TABLE = {
   employee: "commercial_employees",
   attendance: "commercial_time_entries",
 };
+
+/**
+ * Re-record "what is here now is what we last wrote" for ONE entity.
+ *
+ * Needed because a write can move a row the importer did not touch: inserting a
+ * payment fires the invoice's recompute trigger (migration 042), which bumps
+ * `commercial_invoices.updated_at`. On the next run the guard sees an invoice
+ * newer than its map stamp and concludes a person edited it — so Salesforce
+ * updates to all 92 invoices would be refused, every day of the dual-run, by
+ * the importer protecting the rows from itself.
+ *
+ * Called at the end of the stages that cascade. Narrow on purpose: a blanket
+ * re-baseline after every run would also swallow a genuine edit made while the
+ * run was in flight.
+ */
+async function restampEntity(entity) {
+  const table = ENTITY_TABLE[entity];
+  if (!COMMIT || !table || !COLUMNS.get(table)?.has("updated_at")) return 0;
+  const stamps = new Map();
+  let from = 0;
+  for (;;) {
+    const { data, error } = await sb.from(table).select("id, updated_at").order("id").range(from, from + 999);
+    if (error) throw new Error(`${table}: ${error.message}`);
+    for (const r of data ?? []) stamps.set(r.id, r.updated_at);
+    if (!data || data.length < 1000) break;
+    from += data.length;
+  }
+  const rows = [];
+  for (const [key, rowId] of MAP) {
+    if (!key.startsWith(`${entity}:`)) continue;
+    const stamp = stamps.get(rowId);
+    if (!stamp) continue;
+    rows.push({ sf_id: key.slice(entity.length + 1), entity, row_id: rowId, updated_at: stamp });
+    WROTE_AT.set(key, stamp);
+  }
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await sb.from("commercial_import_map").upsert(rows.slice(i, i + 500), { onConflict: "sf_id,entity" });
+    if (error) throw new Error(`import map (${entity}): ${error.message}`);
+  }
+  return rows.length;
+}
 
 async function rebaseline() {
   let total = 0, skipped = 0;

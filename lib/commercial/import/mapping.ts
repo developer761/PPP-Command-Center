@@ -212,6 +212,33 @@ export function invoiceStatus(plan: InvoicePlan): "paid" | "partial" | "sent" {
   return "sent";
 }
 
+/**
+ * When an invoice is due, from the terms Salesforce recorded on the job.
+ *
+ * All 92 of Tomco's invoices carry "Upon Receipt", which means exactly what it
+ * says: due the day it was issued. That makes the older ones months past due —
+ * which is TRUE, and is the whole reason AR aging exists. Without a due date
+ * nothing can age, and the aging report reads a healthy "$0 overdue" over a
+ * book that is entirely late.
+ *
+ * Net terms are honoured where Tomco used them; anything unrecognised falls
+ * back to the platform's own 30 days rather than being left undated, because an
+ * undated invoice is invisible to every collections surface.
+ *
+ * Returns a bare YYYY-MM-DD; the caller anchors it for the timestamp column.
+ */
+export function dueDateFor(issuedYmd: string | null, terms: string | null | undefined): string | null {
+  if (!issuedYmd) return null;
+  const t = (terms ?? "").trim().toLowerCase();
+  if (/upon\s*receipt|due\s*on\s*receipt|^cod$|cash\s*on\s*delivery/.test(t)) return issuedYmd;
+  const net = /net\s*(\d{1,3})/.exec(t);
+  const days = net ? Number(net[1]) : 30;
+  const d = new Date(`${issuedYmd}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Costs
 // ─────────────────────────────────────────────────────────────────────────────
