@@ -118,16 +118,21 @@ own per-job rollup on all 92 jobs — zero discrepancies.
 Six are closed jobs written down to zero — short payments accepted, or
 overpayments kept. One (`00302953`) is live and is the one to ask Katie about.
 
-**Proposal:** the payment rows are the truth, because they are individually
-dated and they reconcile. For the six closed jobs, the small remainder is
-recorded as a **write-off adjustment** on the invoice so the job closes at zero
-exactly as it does in Salesforce — rather than leaving six jobs showing $21.75
-and $1.00 owed forever, or silently inventing a payment that never happened.
-`00302953` is imported at the payment-row figure ($27,500 owed) and flagged for
-Katie.
+**Decided (Karan, 2026-09-16): Salesforce's balance wins, on all seven.** It is
+the system Tomco runs on today, so the platform has to agree with what they see.
+The payment rows still import exactly as they are — individually dated, and they
+reconcile — and the residual becomes an explicit adjustment line on the invoice,
+"Carried over from Salesforce":
 
-Overpayment (`00269035` +$3.00, `00271332` +$489.51) lands as a credit, which
-the platform already models.
+- short-paid and closed at zero → a **write-off** (00277843, 00273063, 00276888,
+  00281988)
+- over-paid and closed at zero → a **credit** (00269035 +$3.00, 00271332 +$489.51)
+- `00302953`, still live → an adjustment of +$1,575.40 so the balance reads
+  $29,075.40, matching Salesforce. Flagged in the import report for Katie, since
+  that one is a live job and the difference may be a change order nobody logged.
+
+Nothing is invented and nothing is hidden: the payments are real, the difference
+is a line you can see and click.
 
 ---
 
@@ -202,7 +207,27 @@ owed, 9 employees, 1,920 attendance rows, 769 files, 180 quotes.
 
 ---
 
-## 8. Open questions for Katie
+## 8. Decisions (Karan, 2026-09-16) — all four answered
+
+1. **`00302953`** and every other job: **Salesforce's stated balance wins.** It is
+   the system Tomco has been running on, so the platform must agree with what
+   they see today. The real payment rows still import with their own dates; any
+   residual between `GrandTotal − payments` and `BalanceOwed__c` lands as an
+   explicit adjustment line on the invoice ("Carried over from Salesforce"), so
+   nothing is hidden and nothing is invented.
+2. **Closed jobs exactly as Salesforce has them** — the six zeroed jobs close at
+   zero, via that same adjustment line (a write-off where short-paid, a credit
+   where over-paid).
+3. **The four Tomco WIP jobs are imported.** Total stays 92.
+4. **Win/Loss showing wins only is fine.** No lost jobs.
+
+### The money rule, stated once
+
+For every job: `invoice balance == WorkOrder.BalanceOwed__c`, to the cent, with
+the payments being the real 109 rows. The reconciliation in §7 fails on any
+difference.
+
+## 9. Superseded — the original open questions
 
 1. **`00302953`** — Salesforce says $29,075.40 owed, the payments say $27,500.
    Which is right?
@@ -213,7 +238,7 @@ owed, 9 employees, 1,920 attendance rows, 769 files, 180 quotes.
    not change the 35-open count.
 4. **No lost jobs** means Win/Loss shows wins only. Confirmed with Alex?
 
-## 9. Risks
+## 10. Risks
 
 - **Files.** 769 downloads and uploads is the longest, most failure-prone stage.
   It is last, and re-runnable, so a partial failure costs only time.
