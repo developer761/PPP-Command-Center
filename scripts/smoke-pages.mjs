@@ -170,7 +170,12 @@ try {
   let bad = 0;
   // SMOKE_ONLY=<substring> narrows the run when chasing one page.
   const only = process.env.SMOKE_ONLY;
-  const list = only ? paths.filter((p) => p.includes(only)) : paths;
+  // SMOKE_EXTRA=<comma-separated paths> adds paths the directory walk cannot
+  // find — a tab behind ?view=, a filtered report. Without it "is that form on
+  // the page?" is unanswerable for anything that is not the default view.
+  const extra = (process.env.SMOKE_EXTRA ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+  const all = [...paths, ...extra];
+  const list = only ? all.filter((p) => p.includes(only)) : all;
   for (const p of list) {
     let code = "ERR";
     let where = "";

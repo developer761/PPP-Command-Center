@@ -22,6 +22,8 @@ import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
 import { GroupedReport } from "@/components/commercial/grouped-report";
+import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
+import { getAccountingEntryOptions } from "@/lib/commercial/accounting/entry-options";
 import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
 import {
   getSpendRows,
@@ -218,6 +220,82 @@ async function settleReimbursementAction(formData: FormData) {
   if (!res.ok) {
     redirect(`${BASE}?view=reimbursements&error=${encodeURIComponent(res.error)}`);
   }
+}
+
+/**
+ * Mary's three entry points — money in, money out to a crew, money out to a
+ * supplier — posting to the SAME functions the invoice page and the deal cost
+ * tool use. Not a second way of writing the row, just a nearer one.
+ *
+ * Amounts arrive as typed dollars ("1,250.50"), so they are parsed once, here.
+ */
+function dollarsToCents(raw: unknown): number {
+  const n = Number(String(raw ?? "").replace(/[$,\s]/g, ""));
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100);
+}
+
+/** A bare YYYY-MM-DD anchored at noon ET, so it lands on the day picked. */
+function pickedDate(raw: unknown): string | undefined {
+  const d = String(raw ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T16:00:00.000Z` : undefined;
+}
+
+async function recordPaymentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const invoiceId = String(formData.get("invoice_id") ?? "");
+  const cents = dollarsToCents(formData.get("amount"));
+  if (!invoiceId || cents <= 0) {
+    redirect(`${BASE}?view=receivables&error=${encodeURIComponent("Pick an invoice and enter an amount.")}`);
+  }
+  const { addPayment } = await import("@/lib/commercial/invoices/db");
+  const res = await addPayment(invoiceId, {
+    amount_cents: cents,
+    paid_at: pickedDate(formData.get("paid_at")),
+    method: String(formData.get("method") ?? "other"),
+    reference: String(formData.get("reference") ?? "") || null,
+    recorded_by_user_id: user.id,
+  });
+  revalidatePath(BASE);
+  if (!res.ok) redirect(`${BASE}?view=receivables&error=${encodeURIComponent(res.error ?? "Could not record the payment.")}`);
+  // Capping is not a failure — it is the invoice refusing to be overpaid — but
+  // it must not be silent, or the bank and the platform quietly disagree.
+  redirect(`${BASE}?view=receivables&ok=${encodeURIComponent(res.capped ? `Recorded ${formatCentsFull(res.applied_cents ?? 0)} — capped at the invoice balance.` : "Payment recorded.")}`);
+}
+
+async function recordSpendAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const oppId = String(formData.get("opportunity_id") ?? "");
+  const cents = dollarsToCents(formData.get("amount"));
+  const isLabor = String(formData.get("kind") ?? "") === "labor";
+  const view = isLabor ? "labor-out" : "purchases";
+  if (!oppId || cents <= 0) {
+    redirect(`${BASE}?view=${view}&error=${encodeURIComponent("Pick a job and enter an amount.")}`);
+  }
+  const hoursRaw = String(formData.get("hours") ?? "").trim();
+  const { addPurchase } = await import("@/lib/commercial/purchases/db");
+  const res = await addPurchase({
+    opportunity_id: oppId,
+    category: isLabor ? "labor" : String(formData.get("category") ?? "materials"),
+    vendor: String(formData.get("vendor") ?? "") || null,
+    amount_cents: cents,
+    hours: isLabor && hoursRaw ? Number(hoursRaw) : null,
+    purchased_at: pickedDate(formData.get("purchased_at")),
+    description: String(formData.get("description") ?? "") || null,
+    reimburse_to: String(formData.get("reimburse_to") ?? "") || null,
+    created_by_user_id: user.id,
+  });
+  revalidatePath(BASE);
+  if (!res.ok) redirect(`${BASE}?view=${view}&error=${encodeURIComponent(res.error)}`);
+  redirect(`${BASE}?view=${view}&ok=${encodeURIComponent(isLabor ? "Labor payment recorded." : "Purchase recorded.")}`);
 }
 
 /**
@@ -466,6 +544,9 @@ export default async function AccountingPage({
       : null;
   // Mary's four, each paid for only on the view that renders it.
   const owedRows = view === "owed" ? await getBalanceOwedRows() : null;
+  // The pickers for Mary's entry forms, built only on the views that show one.
+  const entryOn = view === "receivables" || view === "purchases" || view === "labor-out";
+  const entry = entryOn ? await getAccountingEntryOptions() : null;
   const spendRows = view === "purchases" || view === "labor-out" ? await getSpendRows() : null;
   const depositRows = view === "deposits" ? await getMoneyInRows() : null;
   const production = summarizeProduction(projects);
@@ -908,6 +989,12 @@ export default async function AccountingPage({
       )}
 
       {/* ── Receivables, in place ──────────────────────────────────────── */}
+      {/* Money in, on the view that answers "what is owed" — Mary reads the
+          list and records the check against the line she is looking at. */}
+      {view === "receivables" && entry && (
+        <RecordPaymentForm action={recordPaymentAction} invoices={entry.openInvoices} />
+      )}
+
       {view === "receivables" && receivablesView && (
         <section className="space-y-2.5">
           <SectionHead
@@ -1646,12 +1733,20 @@ export default async function AccountingPage({
         />
       )}
 
+      {view === "purchases" && entry && (
+        <RecordPurchaseForm action={recordSpendAction} jobs={entry.jobs} vendors={entry.vendors} />
+      )}
+
       {view === "purchases" && spendRows && (
         <GroupedReport
           spec={PURCHASES_BY_VENDOR_SPEC}
           rows={purchaseRows(spendRows)}
           emptyHint="No purchases recorded."
         />
+      )}
+
+      {view === "labor-out" && entry && (
+        <RecordLaborPaymentForm action={recordSpendAction} jobs={entry.jobs} payees={entry.payees} />
       )}
 
       {view === "labor-out" && spendRows && (
