@@ -21,6 +21,7 @@ import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type 
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
+import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { GroupedReport } from "@/components/commercial/grouped-report";
 import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
 import { getAccountingEntryOptions } from "@/lib/commercial/accounting/entry-options";
@@ -241,6 +242,49 @@ function dollarsToCents(raw: unknown): number {
 function pickedDate(raw: unknown): string | undefined {
   const d = String(raw ?? "").slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T16:00:00.000Z` : undefined;
+}
+
+/**
+ * Mary's AR sheet is hers to keep. She has maintained it by hand for years, and
+ * a platform that can only ever show her a copy of it is a downgrade — a line
+ * gets revised, a figure corrected, one added before its certificate exists.
+ */
+async function editArRowAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const id = String(formData.get("id") ?? "");
+  const intent = String(formData.get("intent") ?? "save");
+  const { editArRow, setCarryoverCleared, addArRow, removeAddedArRow } = await import(
+    "@/lib/commercial/reports/tomco/ar-applications"
+  );
+
+  if (intent === "clear" && id) {
+    if (id.startsWith("added:")) await removeAddedArRow(id);
+    else await setCarryoverCleared(id, true);
+    revalidatePath(BASE);
+    redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line removed.")}`);
+  }
+  if (intent === "add") {
+    const cents = dollarsToCents(formData.get("amount"));
+    const job = String(formData.get("job") ?? "").trim();
+    if (!job || cents <= 0) redirect(`${BASE}?view=ar&error=${encodeURIComponent("Give the line a job and an amount.")}`);
+    await addArRow({ job, openCents: cents, note: String(formData.get("note") ?? "").trim() });
+    revalidatePath(BASE);
+    redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line added.")}`);
+  }
+  if (id) {
+    const raw = String(formData.get("amount") ?? "").trim();
+    await editArRow(id, {
+      job: String(formData.get("job") ?? "").trim() || undefined,
+      note: String(formData.get("note") ?? "").trim() || undefined,
+      openCents: raw ? dollarsToCents(raw) : undefined,
+    });
+  }
+  revalidatePath(BASE);
+  redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line updated.")}`);
 }
 
 async function recordPaymentAction(formData: FormData) {
@@ -527,6 +571,22 @@ export default async function AccountingPage({
     settle("Change orders", getChangeOrderVendorReport(coRange), EMPTY_CO),
     settle("Projects", listProjects(), []),
   ]);
+
+  // What the band shows when the obvious figures collapse into each other —
+  // concentration, age, and whether anybody has actually chased any of it.
+  const gcTotals = new Map<string, number>();
+  for (const r of receivables.rows) gcTotals.set(r.accountName, (gcTotals.get(r.accountName) ?? 0) + r.openCents);
+  const topGcEntry = [...gcTotals.entries()].sort((a, b) => b[1] - a[1])[0];
+  const topGc = topGcEntry
+    ? {
+        name: topGcEntry[0],
+        cents: topGcEntry[1],
+        pct: receivables.totalOpenCents > 0 ? Math.round((topGcEntry[1] / receivables.totalOpenCents) * 100) : 0,
+      }
+    : null;
+  const oldestDays = receivables.rows.reduce((n, r) => Math.max(n, r.daysOut ?? 0), 0);
+  const unnotedCount = receivables.rows.filter((r) => !r.note?.trim()).length;
+
   // Only fetched for the view that renders it — the money band above doesn't
   // use aging, so paying for it on every page load would be waste.
   const aging = view === "aging" ? await getArAging() : null;
@@ -774,14 +834,47 @@ export default async function AccountingPage({
             tone="brand"
             sub={`${receivables.rows.length} open item${receivables.rows.length === 1 ? "" : "s"}`}
           />
-          <Tile label="Collectible now" value={formatCentsFull(receivables.dueNowCents)} tone="navy" sub="excludes retention" />
+          {/* FOUR TILES, FOUR FACTS.
+              Three of these printed the SAME number — $1,369,044.37 as Total
+              outstanding, again as Collectible now (because no retention is
+              held), and again as Past due (because every invoice carries
+              Salesforce's "Upon Receipt" terms, so the whole book is late).
+              A tile that restates the tile beside it is worse than no tile: it
+              costs a quarter of the band and teaches people to stop reading it.
+              Each one now only appears when it says something the first does
+              not, and the slot is given to the thing actually worth knowing. */}
+          {receivables.dueNowCents !== receivables.totalOpenCents ? (
+            <Tile label="Collectible now" value={formatCentsFull(receivables.dueNowCents)} tone="navy" sub="excludes retention" />
+          ) : (
+            <Tile
+              label="Biggest GC"
+              value={topGc ? formatCentsFull(topGc.cents) : "—"}
+              tone="navy"
+              sub={topGc ? `${topGc.name} · ${topGc.pct}% of the book` : "nothing outstanding"}
+            />
+          )}
           <Tile
-            label="Past due"
+            label={receivables.overdueCents === receivables.totalOpenCents ? "Past due · all of it" : "Past due"}
             value={formatCentsFull(receivables.overdueCents)}
             tone={receivables.overdueCents > 0 ? "rose" : "neutral"}
-            sub={receivables.overdueCents > 0 ? "chase these first" : "nothing late"}
+            sub={
+              receivables.overdueCents === 0
+                ? "nothing late"
+                : oldestDays > 0
+                  ? `oldest ${oldestDays} days`
+                  : "chase these first"
+            }
           />
-          <Tile label="Retention held" value={formatCentsFull(receivables.retainageCents)} tone="neutral" sub="released at close-out" />
+          {receivables.retainageCents > 0 ? (
+            <Tile label="Retention held" value={formatCentsFull(receivables.retainageCents)} tone="neutral" sub="released at close-out" />
+          ) : (
+            <Tile
+              label="No note yet"
+              value={String(unnotedCount)}
+              tone={unnotedCount > 0 ? "amber" : "neutral"}
+              sub={unnotedCount > 0 ? "nobody has recorded a chase" : "every open item has a note"}
+            />
+          )}
         </div>
       </section>
 
@@ -1828,22 +1921,93 @@ export default async function AccountingPage({
         <section className="space-y-3">
           <SectionHead
             title={AR_APPLICATIONS_SPEC.title}
-            hint={`Mary's sheet as of ${AR_CARRYOVER_AS_OF}, copied — plus anything raised here since.`}
+            hint="What is certified and waiting to be paid. Retention on its own line."
           />
-          {/* Said plainly: these rows came out of her spreadsheet, they are not
-              linked to a job, and they stop being carried over as soon as the
-              certificate behind each one is raised in the platform. */}
-          <p className="text-[12px] rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-3 py-2 text-ppp-charcoal-600">
-            The <strong className="text-ppp-charcoal">{AR_CARRYOVER.length} lines below</strong> are copied from Mary&rsquo;s
-            spreadsheet exactly as she wrote them &mdash; {formatCentsFull(AR_CARRYOVER.reduce((n, r) => n + r.openCents, 0))} in
-            total. They are not attached to a job yet, because four of her job names match more than one job here. Raise the
-            certificate on the job and the real line replaces the copied one.
-          </p>
         <GroupedReport
           spec={AR_APPLICATIONS_SPEC}
           rows={arRows}
-          emptyHint="No AIA applications have been issued yet. Raise one from a job's AIA Billing tool and its line appears here — with its retention on its own row, the way this sheet has always been written."
+          emptyHint="Nothing is certified and waiting. Raise an application on a job, or add a line below."
         />
+
+        {/* HER SHEET STAYS HERS. Every line can be corrected or removed, and a
+            line can be added before its certificate exists here. A copied line
+            removed is the signal that its real certificate has been raised —
+            which is what stops the two ever counting twice. */}
+        <details className="bg-surface border border-ppp-charcoal-100 rounded-xl">
+          <summary className="list-none cursor-pointer px-4 py-3 text-[13px] font-bold text-ppp-charcoal min-h-[44px] flex items-center gap-1.5">
+            Edit the sheet
+            <span className="font-semibold text-ppp-charcoal-400">— correct a line, remove one, or add one</span>
+          </summary>
+          <div className="px-4 pb-4 space-y-4">
+            <form action={editArRowAction} className="grid grid-cols-1 sm:grid-cols-[1fr_9rem_1fr_auto] gap-2 items-end">
+              <input type="hidden" name="intent" value="add" />
+              <label className="block">
+                <span className={LABEL_CLS}>Job *</span>
+                <input name="job" required placeholder="As you write it" className={INPUT_CLS} />
+              </label>
+              <label className="block">
+                <span className={LABEL_CLS}>Billed / open *</span>
+                <input name="amount" required inputMode="decimal" placeholder="0.00" className={INPUT_CLS} />
+              </label>
+              <label className="block">
+                <span className={LABEL_CLS}>Notes</span>
+                <input name="note" placeholder="AIA#4 - 7/22/26 — revision sent" className={INPUT_CLS} />
+              </label>
+              <PendingSubmitButton
+                pendingLabel="Adding…"
+                className="inline-flex items-center justify-center px-3 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+              >
+                Add line
+              </PendingSubmitButton>
+            </form>
+
+            {arRows.filter((r) => r.carriedOver).length > 0 && (
+              <ul className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
+                {arRows
+                  .filter((r) => r.carriedOver)
+                  .map((r) => (
+                    <li key={r.id} className="py-2.5">
+                      <form action={editArRowAction} className="grid grid-cols-1 sm:grid-cols-[1fr_9rem_1fr_auto_auto] gap-2 items-end">
+                        <input type="hidden" name="id" value={r.id} />
+                        <label className="block">
+                          <span className={LABEL_CLS}>Job</span>
+                          <input name="job" defaultValue={r.jobName} className={INPUT_CLS} />
+                        </label>
+                        <label className="block">
+                          <span className={LABEL_CLS}>Billed / open</span>
+                          <input name="amount" defaultValue={(r.openCents / 100).toFixed(2)} inputMode="decimal" className={INPUT_CLS} />
+                        </label>
+                        <label className="block">
+                          <span className={LABEL_CLS}>Notes</span>
+                          <input name="note" defaultValue={r.notes ?? ""} className={INPUT_CLS} />
+                        </label>
+                        <PendingSubmitButton
+                          pendingLabel="Saving…"
+                          className="inline-flex items-center justify-center px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12.5px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px]"
+                        >
+                          Save
+                        </PendingSubmitButton>
+                        {/* Its own form: PendingSubmitButton carries no name/value,
+                            and a second submit in the same form would post the
+                            edit fields as a removal. */}
+                      </form>
+                      <form action={editArRowAction} className="mt-1.5">
+                        <input type="hidden" name="id" value={r.id} />
+                        <input type="hidden" name="intent" value="clear" />
+                        <PendingSubmitButton
+                          pendingLabel="Removing…"
+                          title="Remove this line — do this once its certificate is raised here"
+                          className="inline-flex items-center justify-center px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-500 hover:border-rose-300 hover:text-rose-700 min-h-[38px]"
+                        >
+                          Remove
+                        </PendingSubmitButton>
+                      </form>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        </details>
         </section>
       )}
 

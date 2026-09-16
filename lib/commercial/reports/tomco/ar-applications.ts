@@ -150,11 +150,54 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
  * $177,733.93 on the wrong building, so the name stays as she wrote it until
  * somebody who knows says otherwise.
  */
-/** Carried-over lines Mary has ticked off, because the real certificate exists. */
+/**
+ * Mary's edits to the AR sheet, kept alongside the copied baseline.
+ *
+ * She has always maintained this sheet by hand, and taking that away the day
+ * the platform arrives would be a downgrade — a line gets revised, a number
+ * corrected, a new one added before its certificate is raised. So a copied line
+ * can be edited or removed, and a line can be added outright; the baseline in
+ * ar-carryover.ts stays untouched underneath, so nothing is ever lost.
+ *
+ * Settings rather than a table: this is a migration aid with a limited life —
+ * every one of these rows becomes a real certificate eventually — and a schema
+ * change the night before go-live is not a trade worth making.
+ */
 const CLEARED_KEY = "commercial_ar_carryover_cleared";
+const EDITS_KEY = "commercial_ar_carryover_edits";
+const ADDED_KEY = "commercial_ar_added_rows";
+
+export type ArRowEdit = { job?: string; openCents?: number; note?: string };
+export type ArAddedRow = { id: string; job: string; openCents: number; note: string };
 
 export async function clearedCarryoverIds(): Promise<string[]> {
   return getCommercialSetting<string[]>(CLEARED_KEY, []);
+}
+
+export async function carryoverEdits(): Promise<Record<string, ArRowEdit>> {
+  return getCommercialSetting<Record<string, ArRowEdit>>(EDITS_KEY, {});
+}
+
+export async function addedArRows(): Promise<ArAddedRow[]> {
+  return getCommercialSetting<ArAddedRow[]>(ADDED_KEY, []);
+}
+
+/** Edit one line — any field she leaves alone keeps the copied value. */
+export async function editArRow(id: string, patch: ArRowEdit): Promise<void> {
+  const all = await carryoverEdits();
+  const next = { ...all, [id]: { ...(all[id] ?? {}), ...patch } };
+  await setCommercialSetting(EDITS_KEY, next, null);
+}
+
+/** Add a line she is tracking before its certificate exists here. */
+export async function addArRow(row: Omit<ArAddedRow, "id">): Promise<void> {
+  const all = await addedArRows();
+  await setCommercialSetting(ADDED_KEY, [...all, { ...row, id: `added:${Date.now()}` }], null);
+}
+
+export async function removeAddedArRow(id: string): Promise<void> {
+  const all = await addedArRows();
+  await setCommercialSetting(ADDED_KEY, all.filter((r) => r.id !== id), null);
 }
 
 /**
@@ -174,10 +217,34 @@ export async function setCarryoverCleared(id: string, cleared: boolean): Promise
 }
 
 export async function getArSheetRows(): Promise<ArApplicationRow[]> {
-  const [generated, cleared] = await Promise.all([getArApplicationRows(), clearedCarryoverIds()]);
+  const [generated, cleared, edits, added] = await Promise.all([
+    getArApplicationRows(),
+    clearedCarryoverIds(),
+    carryoverEdits(),
+    addedArRows(),
+  ]);
   const done = new Set(cleared);
-  const carried: ArApplicationRow[] = AR_CARRYOVER.map((r, i) => ({
-    id: `carryover:${i}`,
+  const carried: ArApplicationRow[] = AR_CARRYOVER.map((r, i) => {
+    const id = `carryover:${i}`;
+    const e = edits[id] ?? {};
+    const job = e.job ?? r.job;
+    const note = e.note ?? r.note;
+    return {
+      id,
+      oppId: "",
+      jobName: job,
+      accountName: job,
+      label: note,
+      isRetention: /retention/i.test(note),
+      openCents: e.openCents ?? r.openCents,
+      notes: note,
+      issuedYmd: null,
+      carriedOver: true,
+    };
+  }).filter((r) => !done.has(r.id));
+
+  const extra: ArApplicationRow[] = added.map((r) => ({
+    id: r.id,
     oppId: "",
     jobName: r.job,
     accountName: r.job,
@@ -187,8 +254,9 @@ export async function getArSheetRows(): Promise<ArApplicationRow[]> {
     notes: r.note,
     issuedYmd: null,
     carriedOver: true,
-  })).filter((r) => !done.has(r.id));
-  return [...generated, ...carried];
+  }));
+
+  return [...generated, ...carried, ...extra];
 }
 
 /** The copied lines that have been ticked off — shown so they can be put back. */
