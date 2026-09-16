@@ -6,6 +6,7 @@ import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { listAiaApplications, resolveG702 } from "@/lib/commercial/aia/db";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
 import { AR_CARRYOVER } from "@/lib/commercial/reports/tomco/ar-carryover";
+import { getCommercialSetting, setCommercialSetting } from "@/lib/commercial/settings";
 
 /**
  * Mary's Accounts Receivable sheet, generated.
@@ -149,8 +150,32 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
  * $177,733.93 on the wrong building, so the name stays as she wrote it until
  * somebody who knows says otherwise.
  */
+/** Carried-over lines Mary has ticked off, because the real certificate exists. */
+const CLEARED_KEY = "commercial_ar_carryover_cleared";
+
+export async function clearedCarryoverIds(): Promise<string[]> {
+  return getCommercialSetting<string[]>(CLEARED_KEY, []);
+}
+
+/**
+ * Tick a copied line off, or put it back.
+ *
+ * This is what makes the sheet maintain itself. A carried-over line and the
+ * certificate that replaces it CANNOT be matched automatically: the copied rows
+ * carry the job as Mary typed it, and four of her names match more than one job
+ * here — so the platform would be guessing which $177,733.93 is which. One tick
+ * from the person raising the certificate is certain where a match would not be.
+ */
+export async function setCarryoverCleared(id: string, cleared: boolean): Promise<void> {
+  const now = new Set(await clearedCarryoverIds());
+  if (cleared) now.add(id);
+  else now.delete(id);
+  await setCommercialSetting(CLEARED_KEY, [...now], null);
+}
+
 export async function getArSheetRows(): Promise<ArApplicationRow[]> {
-  const generated = await getArApplicationRows();
+  const [generated, cleared] = await Promise.all([getArApplicationRows(), clearedCarryoverIds()]);
+  const done = new Set(cleared);
   const carried: ArApplicationRow[] = AR_CARRYOVER.map((r, i) => ({
     id: `carryover:${i}`,
     oppId: "",
@@ -162,8 +187,25 @@ export async function getArSheetRows(): Promise<ArApplicationRow[]> {
     notes: r.note,
     issuedYmd: null,
     carriedOver: true,
-  }));
+  })).filter((r) => !done.has(r.id));
   return [...generated, ...carried];
+}
+
+/** The copied lines that have been ticked off — shown so they can be put back. */
+export async function clearedCarryoverRows(): Promise<ArApplicationRow[]> {
+  const done = new Set(await clearedCarryoverIds());
+  return AR_CARRYOVER.map((r, i) => ({
+    id: `carryover:${i}`,
+    oppId: "",
+    jobName: r.job,
+    accountName: r.job,
+    label: r.note,
+    isRetention: /retention/i.test(r.note),
+    openCents: r.openCents,
+    notes: r.note,
+    issuedYmd: null,
+    carriedOver: true,
+  })).filter((r) => done.has(r.id));
 }
 
 export const AR_APPLICATIONS_SPEC: ReportSpec<ArApplicationRow> = {

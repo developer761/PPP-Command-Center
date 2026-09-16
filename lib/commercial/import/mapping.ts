@@ -239,6 +239,65 @@ export function dueDateFor(issuedYmd: string | null, terms: string | null | unde
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * A Salesforce address → the four columns the platform stores.
+ *
+ * `Estimation_Address__c` is a COMPOUND address field: jsforce hands it back as
+ * an object, and assigning it straight to a text column stringifies it. 44 of
+ * Tomco's 132 deals ended up with this on the deal's Info tab, under "Street":
+ *
+ *   {"city":"Glen Head","country":"United States","countryCode":"US",
+ *    "geocodeAccuracy":null,"latitude":null,"longitude":null,"postalCode":…}
+ *
+ * — and their city, state and zip columns were left empty, so those jobs were
+ * also missing from the Geography report. The parts were there the whole time;
+ * nothing read them.
+ */
+export type SfAddress = {
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  stateCode?: string | null;
+  postalCode?: string | null;
+} | string | null | undefined;
+
+export function addressParts(value: SfAddress): {
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+} {
+  const empty = { street: null, city: null, state: null, zip: null };
+  if (!value) return empty;
+
+  // A plain string is already the street line — that is what WorkOrder.Street
+  // gives, and it must keep working exactly as it did.
+  if (typeof value === "string") {
+    const t = value.trim();
+    if (!t) return empty;
+    if (!t.startsWith("{")) return { ...empty, street: t };
+    try {
+      return addressParts(JSON.parse(t) as SfAddress);
+    } catch {
+      // Unparseable: keep the text rather than losing the address entirely.
+      return { ...empty, street: t };
+    }
+  }
+
+  const clean = (v: unknown) => {
+    const t = typeof v === "string" ? v.trim() : "";
+    return t || null;
+  };
+  return {
+    street: clean(value.street),
+    city: clean(value.city),
+    // Two-letter code where Salesforce has one — "NY" is what every address
+    // on the platform is written with.
+    state: clean(value.stateCode) ?? clean(value.state),
+    zip: clean(value.postalCode),
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Costs
 // ─────────────────────────────────────────────────────────────────────────────

@@ -400,6 +400,9 @@ async function sendToAlexAction(formData: FormData) {
  * get created and edited, not a read-only view, and embedding it would mean two
  * places that can create an invoice.
  */
+/** Tabs whose CSV comes from the shared grouped-report export. */
+const EXPORTABLE_TABS = new Set(["ar", "owed", "purchases", "labor-out", "deposits"]);
+
 const VIEWS = [
   { key: "overview", label: "Overview", primary: true },
   { key: "receivables", label: "Receivables" , primary: true },
@@ -635,8 +638,29 @@ export default async function AccountingPage({
             presses), so it moved into the hover title and the confirmation,
             where it is available without being shouted. */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* EXPORT THE TAB YOU ARE ON.
+              This was hard-wired to the receivables sheet, so however deep into
+              Purchases or the AR sheet Mary was, pressing Export downloaded
+              Receivables — and the AR sheet is the one she sends Alex. The
+              three tabs with their own endpoints keep them (they carry filters
+              a generic export cannot); the rest go through one route that
+              builds the CSV from the same spec the page renders. */}
           <ExportCsvLink
-            href="/api/commercial/reports/receivables/export"
+            href={
+              view === "transactions"
+                ? "/api/commercial/reports/transactions/export"
+                : view === "tax"
+                  ? "/api/commercial/reports/sales-tax/export"
+                  : view === "aging"
+                    ? "/api/commercial/reports/ar-aging/export"
+                    : view === "costs"
+                      ? "/api/commercial/reports/job-costs/export"
+                      : view === "cash"
+                        ? "/api/commercial/reports/cash-flow/export"
+                        : EXPORTABLE_TABS.has(view)
+                          ? `/api/commercial/accounting/export?view=${view}`
+                          : "/api/commercial/reports/receivables/export"
+            }
             params={view === "receivables" ? receivableQueryParams(q) : undefined}
             disabled={(view === "receivables" ? receivablesView?.rows.length ?? 0 : receivables.rows.length) === 0}
             disabledHint="Nothing to export in this view"

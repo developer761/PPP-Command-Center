@@ -4,6 +4,7 @@ import {
   dealStatusForWorkOrder,
   jobStatusForWorkOrder,
   dueDateFor,
+  addressParts,
   isClosedWorkOrder,
   planInvoice,
   adjustmentLabel,
@@ -154,6 +155,47 @@ describe("when an invoice is due", () => {
   });
   it("returns nothing when the invoice was never issued", () => {
     expect(dueDateFor(null, "Upon Receipt")).toBeNull();
+  });
+});
+
+describe("Salesforce addresses → the four columns", () => {
+  it("pulls a compound address apart instead of stringifying it", () => {
+    // What jsforce actually returned for Estimation_Address__c, and what
+    // landed on 44 of Tomco's 132 deals as the "Street" on screen.
+    expect(
+      addressParts({
+        city: "Glen Head",
+        country: "United States",
+        countryCode: "US",
+        postalCode: "11545",
+        state: "New York",
+        stateCode: "NY",
+        street: "10 Glen Head Road",
+      } as never)
+    ).toEqual({ street: "10 Glen Head Road", city: "Glen Head", state: "NY", zip: "11545" });
+  });
+
+  it("parses one that arrived already stringified", () => {
+    const raw = '{"city":"Melville","postalCode":"11747","stateCode":"NY","street":"540 Broadhollow Road"}';
+    expect(addressParts(raw)).toEqual({ street: "540 Broadhollow Road", city: "Melville", state: "NY", zip: "11747" });
+  });
+
+  it("leaves a plain street line alone — WorkOrder.Street must keep working", () => {
+    expect(addressParts("21 Newton Place")).toEqual({ street: "21 Newton Place", city: null, state: null, zip: null });
+  });
+
+  it("prefers the two-letter state code, which is how every address here is written", () => {
+    expect(addressParts({ state: "New York", stateCode: "NY" } as never).state).toBe("NY");
+    expect(addressParts({ state: "New York" } as never).state).toBe("New York");
+  });
+
+  it("keeps unparseable text rather than losing the address", () => {
+    expect(addressParts("{not json").street).toBe("{not json");
+  });
+
+  it("returns nothing for nothing", () => {
+    expect(addressParts(null)).toEqual({ street: null, city: null, state: null, zip: null });
+    expect(addressParts("   ")).toEqual({ street: null, city: null, state: null, zip: null });
   });
 });
 

@@ -34,6 +34,7 @@ import {
   adjustmentLabel,
   invoiceStatus,
   dueDateFor,
+  addressParts,
   purchaseCategory,
   isReimbursement,
   employeeFromCrewWorker,
@@ -564,10 +565,25 @@ async function stageDeals() {
       sub_status: st.subStatus,
       source: "other",
       probability_pct: o.IsWon ? 100 : 50,
-      property_street: wo?.Street || o.Estimation_Address__c || null,
-      property_city: wo?.City || null,
-      property_state: wo?.State || null,
-      property_zip: wo?.PostalCode || null,
+      // The work order's address wins; the opportunity's estimation address is
+      // the fallback — and it is a COMPOUND field, so it has to be pulled
+      // apart rather than assigned. Assigning it put a JSON blob in the
+      // "Street" box on 44 of 132 deals and left their city, state and zip
+      // empty, which also kept those jobs off the Geography report.
+      ...(() => {
+        const a = wo?.Street
+          ? { street: wo.Street, city: wo.City, state: wo.State, zip: wo.PostalCode }
+          : (() => {
+              const p = addressParts(o.Estimation_Address__c);
+              return { street: p.street, city: p.city, state: p.state, zip: p.zip };
+            })();
+        return {
+          property_street: a.street || null,
+          property_city: a.city || null,
+          property_state: a.state || null,
+          property_zip: a.zip || null,
+        };
+      })(),
       proposed_start_at: ymd(wo?.StartDate ?? o.Start_Date__c),
       proposed_end_at: ymd(wo?.EndDate ?? o.End_Date__c),
       decided_at: o.IsWon ? ymd(o.CloseDate) : null,
