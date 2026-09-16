@@ -34,6 +34,10 @@ export const REPORT_KEYS = [
   "pipeline-manager",
   "scheduling",
   "open-sales",
+  "purchases-by-vendor",
+  "labor-payments",
+  "reimbursements-out",
+  "deposit-history",
 ] as const;
 
 export type ReportKey = (typeof REPORT_KEYS)[number];
@@ -230,6 +234,42 @@ export const REPORTS: readonly ReportDef[] = [
     blurb: "Tomco's own report: every won job not yet closed out, with contract, tax, billed and balance.",
     group: "sales",
     icon: ["M3 17l6-6 4 4 8-8", "M21 7h-5", "M21 7v5"],
+  },
+  {
+    key: "purchases-by-vendor",
+    href: "/commercial/reports/purchases-by-vendor",
+    title: "Purchases by Vendor",
+    tabLabel: "Purchases",
+    blurb: "Tomco's own report: every purchase grouped by supplier — pick one to get that vendor's statement.",
+    group: "delivery",
+    icon: ["M6 2L3 6v14h18V6l-3-4z", "M3 6h18", "M16 10a4 4 0 0 1-8 0"],
+  },
+  {
+    key: "labor-payments",
+    href: "/commercial/reports/labor-payments",
+    title: "Labor Payments Out",
+    tabLabel: "Labor payments",
+    blurb: "Tomco's own report: what went out to the crews, grouped by who was paid.",
+    group: "delivery",
+    icon: [circle(9, 7, 4), "M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2", "M19 8v6", "M22 11h-6"],
+  },
+  {
+    key: "reimbursements-out",
+    href: "/commercial/reports/reimbursements-out",
+    title: "Reimbursements",
+    tabLabel: "Reimbursements",
+    blurb: "Tomco's own report: money paid back out of pocket, and who it went to.",
+    group: "delivery",
+    icon: ["M3 12a9 9 0 1 0 3-6.7", "M3 3v5h5"],
+  },
+  {
+    key: "deposit-history",
+    href: "/commercial/reports/deposit-history",
+    title: "Partner Deposit History",
+    tabLabel: "Deposits",
+    blurb: "Tomco's own report: money in, grouped by the day it landed — what the bank gets reconciled against.",
+    group: "money",
+    icon: ["M12 3v12", "M7 10l5 5 5-5", "M4 21h16"],
   },
 ];
 

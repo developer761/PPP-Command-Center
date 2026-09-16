@@ -50,3 +50,16 @@ select f.id, 'open-sales', 230
   from public.commercial_report_folders f
  where f.name = 'Finance'
 on conflict (folder_id, report_key) do nothing;
+
+-- Round three: Mary's money-in and money-out reports.
+insert into public.commercial_report_folder_items (folder_id, report_key, sort_order)
+select f.id, v.report_key, v.sort_order
+  from public.commercial_report_folders f
+  cross join (values
+    ('purchases-by-vendor', 240),
+    ('labor-payments',      250),
+    ('reimbursements-out',  260),
+    ('deposit-history',     270)
+  ) as v(report_key, sort_order)
+ where f.name in ('Manager', 'Finance')
+on conflict (folder_id, report_key) do nothing;
