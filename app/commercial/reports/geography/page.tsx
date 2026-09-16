@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getGeographyReport, type GeoRow } from "@/lib/commercial/reports/geography";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { GroupedReport } from "@/components/commercial/grouped-report";
+import { GEOGRAPHY_SPEC } from "@/lib/commercial/reports/tomco/geography-spec";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 
 export const dynamic = "force-dynamic";
@@ -76,6 +78,14 @@ export default async function GeographyReportPage() {
               <span className="font-semibold">{t.unspecifiedCount} {t.unspecifiedCount === 1 ? "opportunity has" : "opportunities have"} no site address</span> — they&rsquo;re counted in totals but can&rsquo;t be placed on the map below. Add a property city/zip on each deal to include it.
             </p>
           )}
+
+          {/* The places themselves, before the picture of them. The ranked
+              lists below are capped at ten or twelve; this is all of them. */}
+          <GroupedReport
+            spec={GEOGRAPHY_SPEC}
+            rows={geo.byCity}
+            emptyHint="No job has a town on it yet."
+          />
 
           {townSegments.length > 0 && (
             <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">

@@ -92,35 +92,6 @@ export default async function ArAgingReportPage() {
             </p>
           )}
 
-          {/* Composition bar — where the open balance sits across buckets. */}
-          <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-            <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
-              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-              Balance by age
-            </h3>
-            <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-5 items-center">
-              <DonutChart size={168} segments={bucketSegments} centerValue={formatCentsCompact(aging.totals.total)} centerLabel="open AR" legend={false} />
-              <div>
-                <div className="flex h-3.5 rounded-full overflow-hidden bg-ppp-charcoal-100" role="img" aria-label="Open balance by aging bucket">
-                  {BUCKETS.map((b) => {
-                    const v = aging.totals[b.key];
-                    if (v <= 0) return null;
-                    return <div key={b.key} className={b.color} style={{ width: `${(v / aging.totals.total) * 100}%` }} title={`${b.label}: ${formatCentsFull(v)}`} />;
-                  })}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {BUCKETS.filter((b) => aging.totals[b.key] > 0).map((b) => (
-                    <span key={b.key} className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-1 text-[11px]">
-                      <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${b.color}`} />
-                      <span className="font-semibold text-ppp-charcoal-600">{b.label}</span>
-                      <span className="tabular-nums font-bold text-ppp-charcoal">{formatCentsFull(aging.totals[b.key])}</span>
-                      <span className="text-ppp-charcoal-400 tabular-nums">{Math.round((aging.totals[b.key] / aging.totals.total) * 100)}%</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
 
           {/* Per-GC breakdown. */}
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -207,6 +178,38 @@ export default async function ArAgingReportPage() {
               </table>
             </div>
           </div>
+
+          {/* The chart sits UNDER the rows. Tomco's reports open with the
+              records and explain them afterwards — the per-GC list is what
+              gets worked; the age split is how it is read back. */}
+          <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+            <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+              Balance by age
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-5 items-center">
+              <DonutChart size={168} segments={bucketSegments} centerValue={formatCentsCompact(aging.totals.total)} centerLabel="open AR" legend={false} />
+              <div>
+                <div className="flex h-3.5 rounded-full overflow-hidden bg-ppp-charcoal-100" role="img" aria-label="Open balance by aging bucket">
+                  {BUCKETS.map((b) => {
+                    const v = aging.totals[b.key];
+                    if (v <= 0) return null;
+                    return <div key={b.key} className={b.color} style={{ width: `${(v / aging.totals.total) * 100}%` }} title={`${b.label}: ${formatCentsFull(v)}`} />;
+                  })}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {BUCKETS.filter((b) => aging.totals[b.key] > 0).map((b) => (
+                    <span key={b.key} className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-1 text-[11px]">
+                      <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${b.color}`} />
+                      <span className="font-semibold text-ppp-charcoal-600">{b.label}</span>
+                      <span className="tabular-nums font-bold text-ppp-charcoal">{formatCentsFull(aging.totals[b.key])}</span>
+                      <span className="text-ppp-charcoal-400 tabular-nums">{Math.round((aging.totals[b.key] / aging.totals.total) * 100)}%</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
         </>
       )}
     </div>

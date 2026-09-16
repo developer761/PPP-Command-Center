@@ -8,6 +8,8 @@ import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/f
 import { opportunityStatusLabelV2 } from "@/lib/commercial/opportunities/constants";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
+import { GroupedReport } from "@/components/commercial/grouped-report";
+import { JOB_COSTS_SPEC } from "@/lib/commercial/reports/tomco/job-costs-spec";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import TrendChart from "@/components/trend-chart";
 
@@ -104,6 +106,22 @@ export default async function JobCostsReportPage() {
             <Tile label="Total cost" value={formatCentsCompact(t.totalCostCents)} tone="amber" sub="materials · crew · subs" />
             <Tile label="Margin" value={t.marginPct === null ? "—" : `${t.marginPct}%`} tone={marginTone} sub={t.totalCostCents === 0 ? "no costs logged yet" : `${t.marginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(t.marginCents))} · billed − cost`} />
           </div>
+
+          {/* THE JOBS THEMSELVES, first.
+              This report was three charts and a set of collapsed account
+              cards — a picture of the money with the jobs nowhere on it. The
+              rows go on top; the composition and the trend stay below, which
+              is the order every Tomco report is read in. */}
+          <GroupedReport
+            spec={JOB_COSTS_SPEC}
+            rows={report.groups.flatMap((g) => g.deals)}
+            emptyHint="No job has money on it yet."
+          />
+
+          <h3 className="text-[13px] font-bold text-ppp-charcoal pt-2 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            How it breaks down
+          </h3>
 
           {/* ── Monthly billing trend (line) ── */}
           {billingTrend.some((p) => p.value > 0) && (
