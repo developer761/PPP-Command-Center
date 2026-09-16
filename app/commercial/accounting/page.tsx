@@ -437,6 +437,7 @@ export default async function AccountingPage({
   await requireFinanceViewer();
   const sp = await searchParams;
   const error = pickFirst(sp.error);
+  const okMessage = pickFirst(sp.ok);
   const saved = pickFirst(sp.saved) === "1";
   const sentTo = pickFirst(sp.sent);
   const rawView = pickFirst(sp.view);
@@ -676,6 +677,16 @@ export default async function AccountingPage({
       {saved && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
           Note saved.
+        </div>
+      )}
+      {okMessage && (
+        // Recording a payment or a purchase said so via `?ok=` and NOTHING
+        // rendered it — so Mary would enter a payment and get no
+        // acknowledgement at all, and the one message that really matters
+        // ("capped at the invoice balance", i.e. the bank and the platform
+        // now disagree) was invisible.
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-800">
+          {okMessage}
         </div>
       )}
       {pickFirst(sp.notes) === "1" && (
