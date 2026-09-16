@@ -25,7 +25,8 @@ import { GroupedReport } from "@/components/commercial/grouped-report";
 import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
 import { getAccountingEntryOptions } from "@/lib/commercial/accounting/entry-options";
 import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
-import { getArApplicationRows, AR_APPLICATIONS_SPEC } from "@/lib/commercial/reports/tomco/ar-applications";
+import { getArSheetRows, AR_APPLICATIONS_SPEC } from "@/lib/commercial/reports/tomco/ar-applications";
+import { AR_CARRYOVER, AR_CARRYOVER_AS_OF } from "@/lib/commercial/reports/tomco/ar-carryover";
 import {
   getSpendRows,
   getMoneyInRows,
@@ -547,7 +548,7 @@ export default async function AccountingPage({
       : null;
   // Mary's four, each paid for only on the view that renders it.
   const owedRows = view === "owed" ? await getBalanceOwedRows() : null;
-  const arRows = view === "ar" ? await getArApplicationRows() : null;
+  const arRows = view === "ar" ? await getArSheetRows() : null;
   // The pickers for Mary's entry forms, built only on the views that show one.
   const entryOn = view === "receivables" || view === "purchases" || view === "labor-out";
   const entry = entryOn ? await getAccountingEntryOptions() : null;
@@ -1790,7 +1791,19 @@ export default async function AccountingPage({
              and anywhere else they appear cannot drift apart. ── */}
       {view === "ar" && arRows && (
         <section className="space-y-3">
-          <SectionHead title={AR_APPLICATIONS_SPEC.title} hint={AR_APPLICATIONS_SPEC.blurb ?? ""} />
+          <SectionHead
+            title={AR_APPLICATIONS_SPEC.title}
+            hint={`Mary's sheet as of ${AR_CARRYOVER_AS_OF}, copied — plus anything raised here since.`}
+          />
+          {/* Said plainly: these rows came out of her spreadsheet, they are not
+              linked to a job, and they stop being carried over as soon as the
+              certificate behind each one is raised in the platform. */}
+          <p className="text-[12px] rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-3 py-2 text-ppp-charcoal-600">
+            The <strong className="text-ppp-charcoal">{AR_CARRYOVER.length} lines below</strong> are copied from Mary&rsquo;s
+            spreadsheet exactly as she wrote them &mdash; {formatCentsFull(AR_CARRYOVER.reduce((n, r) => n + r.openCents, 0))} in
+            total. They are not attached to a job yet, because four of her job names match more than one job here. Raise the
+            certificate on the job and the real line replaces the copied one.
+          </p>
         <GroupedReport
           spec={AR_APPLICATIONS_SPEC}
           rows={arRows}

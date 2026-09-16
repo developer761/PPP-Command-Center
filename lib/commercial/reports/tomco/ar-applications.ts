@@ -5,6 +5,7 @@ import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { listAiaApplications, resolveG702 } from "@/lib/commercial/aia/db";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
+import { AR_CARRYOVER } from "@/lib/commercial/reports/tomco/ar-carryover";
 
 /**
  * Mary's Accounts Receivable sheet, generated.
@@ -27,6 +28,8 @@ import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
  */
 
 export type ArApplicationRow = {
+  /** True for a line copied from Mary's spreadsheet rather than raised here. */
+  carriedOver?: boolean;
   id: string;
   oppId: string;
   jobName: string;
@@ -137,6 +140,32 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
   return rows.sort((a, b) => (b.issuedYmd ?? "").localeCompare(a.issuedYmd ?? "") || b.openCents - a.openCents);
 }
 
+/**
+ * Her sheet as it stands, plus anything raised in the platform since.
+ *
+ * The carried-over lines are her own rows, copied — they are not linked to a
+ * job, because she writes the job by hand and four of her names match more than
+ * one job here (AIREF alone is four buildings). Guessing which one would put
+ * $177,733.93 on the wrong building, so the name stays as she wrote it until
+ * somebody who knows says otherwise.
+ */
+export async function getArSheetRows(): Promise<ArApplicationRow[]> {
+  const generated = await getArApplicationRows();
+  const carried: ArApplicationRow[] = AR_CARRYOVER.map((r, i) => ({
+    id: `carryover:${i}`,
+    oppId: "",
+    jobName: r.job,
+    accountName: r.job,
+    label: r.note,
+    isRetention: /retention/i.test(r.note),
+    openCents: r.openCents,
+    notes: r.note,
+    issuedYmd: null,
+    carriedOver: true,
+  }));
+  return [...generated, ...carried];
+}
+
 export const AR_APPLICATIONS_SPEC: ReportSpec<ArApplicationRow> = {
   title: "Accounts Receivable",
   sourceLabel: "AIA applications",
@@ -148,11 +177,12 @@ export const AR_APPLICATIONS_SPEC: ReportSpec<ArApplicationRow> = {
   ],
   groupings: [
     [{ key: "job", label: "Job", of: (r) => r.jobName }],
+    [{ key: "source", label: "Source", of: (r) => (r.carriedOver ? "From Mary's sheet" : "Raised in the platform") }],
     [{ key: "gc", label: "GC", of: (r) => r.accountName }],
     [{ key: "month", label: "Month", of: (r) => (r.issuedYmd ? r.issuedYmd.slice(0, 7) : "—") }],
   ],
   columns: [
-    { key: "label", label: "Application", text: (r) => r.label, href: (r) => `/commercial/opportunities/${r.oppId}?tab=project&sub=aia` },
+    { key: "label", label: "Application", text: (r) => r.label, href: (r) => (r.oppId ? `/commercial/opportunities/${r.oppId}?tab=project&sub=aia` : null) },
     { key: "open", label: "Billed / open", kind: "money", amount: (r) => r.openCents },
     { key: "notes", label: "Notes", text: (r) => r.notes },
   ],
