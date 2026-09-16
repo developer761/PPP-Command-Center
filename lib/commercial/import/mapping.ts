@@ -59,7 +59,28 @@ export function dealStatusForWorkOrder(woStatus: string | null | undefined): Dea
   }
 }
 
-/** An open bid with no work order — a proposal that went out and is waiting. */
+/**
+ * An open bid, placed by what Salesforce says has actually happened to it.
+ *
+ * Every open bid used to import as `proposal / sent`, which put a "Proposal
+ * sent" pill on 9 deals Tomco has been assigned but not yet quoted — and the
+ * deal page then said "No proposals yet" directly underneath it.
+ *
+ *   Estimate Sent        → the quote is out, waiting on the GC
+ *   Opportunity Assigned → it is ours to price, nothing sent
+ */
+export function openBidStatus(stageName: string | null | undefined): DealStatus {
+  switch ((stageName ?? "").trim()) {
+    case "Estimate Sent":
+      return { status: "proposal", subStatus: "sent" };
+    case "Opportunity Assigned":
+      return { status: "estimating", subStatus: "estimating" };
+    default:
+      return { status: "qualifying", subStatus: "rfp" };
+  }
+}
+
+/** An open bid with no work order — kept for callers that have no stage. */
 export const OPEN_BID_STATUS: DealStatus = { status: "proposal", subStatus: "sent" };
 
 /**

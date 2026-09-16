@@ -28,6 +28,7 @@ import {
   jobStatusForWorkOrder,
   isClosedWorkOrder,
   OPEN_BID_STATUS,
+  openBidStatus,
   planInvoice,
   planInvoiceColumns,
   adjustmentLabel,
@@ -67,6 +68,25 @@ const STAGES = [
 const args = process.argv.slice(2);
 const COMMIT = args.includes("--commit");
 const RECONCILE = args.includes("--reconcile");
+/**
+ * Let Salesforce overwrite rows a person has edited on the platform.
+ *
+ * OFF by default, and it should stay off for the whole dual-run: from go-live
+ * Tomco works in both systems for about two weeks, and the platform is the one
+ * becoming the system of record. Pass this only to deliberately re-baseline
+ * from Salesforce.
+ */
+const SF_WINS = args.includes("--salesforce-wins");
+/**
+ * Re-baseline: record "the platform as it stands right now is what we last
+ * wrote", for every mapped row, without touching any data.
+ *
+ * The guard compares a row's `updated_at` against the moment the importer last
+ * wrote it — and rows written before the guard existed have no such record, so
+ * every one of them looks edited-by-a-human and Salesforce updates stop coming
+ * through. Run this ONCE after everything is in agreement, and at cutover.
+ */
+const REBASELINE = args.includes("--rebaseline");
 const stageArg = (args.find((a) => a.startsWith("--stage=")) ?? "--stage=all").split("=")[1];
 const wanted = stageArg === "all" ? STAGES : stageArg.split(",");
 
@@ -123,6 +143,17 @@ async function all(conn, soql) {
 
 // ─── the map: Salesforce id -> our row ──────────────────────────────────────
 const MAP = new Map(); // `${entity}:${sfId}` -> row_id
+/**
+ * WHEN this importer last wrote each row, as the DATABASE clock saw it.
+ *
+ * This is what makes a dual-run safe. From go-live Tomco works in both systems
+ * for about two weeks, and a sync that blindly re-applies Salesforce would undo
+ * real work here — Brendan moves a job to Scheduled, the next run reads "Work
+ * In Progress" from Salesforce and moves it back. Comparing a row's current
+ * `updated_at` against the moment we last wrote it says whether a PERSON has
+ * touched it since. If they have, Salesforce loses.
+ */
+const WROTE_AT = new Map(); // `${entity}:${sfId}` -> ISO timestamp
 
 async function loadMap() {
   // PAGINATE, and order by the WHOLE key.
@@ -138,7 +169,7 @@ async function loadMap() {
   for (;;) {
     const { data, error } = await sb
       .from("commercial_import_map")
-      .select("sf_id, entity, row_id")
+      .select("sf_id, entity, row_id, updated_at")
       .order("sf_id", { ascending: true })
       .order("entity", { ascending: true })
       .range(from, from + 999);
@@ -149,7 +180,10 @@ async function loadMap() {
       }
       throw new Error(error.message);
     }
-    for (const r of data ?? []) MAP.set(`${r.entity}:${r.sf_id}`, r.row_id);
+    for (const r of data ?? []) {
+      MAP.set(`${r.entity}:${r.sf_id}`, r.row_id);
+      WROTE_AT.set(`${r.entity}:${r.sf_id}`, r.updated_at);
+    }
     if (!data || data.length < 1000) break;
     from += data.length;
   }
@@ -157,12 +191,17 @@ async function loadMap() {
 }
 const mapped = (entity, sfId) => MAP.get(`${entity}:${sfId}`) ?? null;
 
-async function remember(entity, sfId, rowId, notes) {
+async function remember(entity, sfId, rowId, notes, wroteAt) {
   MAP.set(`${entity}:${sfId}`, rowId);
+  // Prefer the timestamp the DATABASE put on the row we just wrote. Using this
+  // machine's clock instead would make every row look edited-by-a-human on the
+  // next run if the two clocks disagree by a second.
+  const stamp = wroteAt ?? new Date().toISOString();
+  if (COMMIT) WROTE_AT.set(`${entity}:${sfId}`, stamp);
   if (!COMMIT) return;
   const { error } = await sb
     .from("commercial_import_map")
-    .upsert({ sf_id: sfId, entity, row_id: rowId, notes: notes ?? null, updated_at: new Date().toISOString() }, { onConflict: "sf_id,entity" });
+    .upsert({ sf_id: sfId, entity, row_id: rowId, notes: notes ?? null, updated_at: stamp }, { onConflict: "sf_id,entity" });
   if (error) throw new Error(`import map (${entity} ${sfId}): ${error.message}`);
 }
 
@@ -219,28 +258,83 @@ async function put(entity, sfId, table, row, report) {
     return pretend;
   }
   if (existing) {
-    const { error } = await sb.from(table).update(row).eq("id", existing);
+    // THE PLATFORM WINS. If somebody has edited this row here since the last
+    // sync, Salesforce does not get to undo it — the row is left alone and the
+    // clash is reported, because two people quietly disagreeing is worse than
+    // either answer. `--salesforce-wins` overrides, deliberately and loudly.
+    if (!SF_WINS && (await editedHere(table, existing, `${entity}:${sfId}`))) {
+      report.kept = (report.kept ?? 0) + 1;
+      report.conflicts = report.conflicts ?? [];
+      if (report.conflicts.length < 40) report.conflicts.push(`${table} ${existing} (Salesforce ${sfId})`);
+      return existing;
+    }
+    const hasStamp = COLUMNS.get(table)?.has("updated_at");
+    const { data: upd, error } = hasStamp
+      ? await sb.from(table).update(row).eq("id", existing).select("updated_at").single()
+      : await sb.from(table).update(row).eq("id", existing);
     if (error) throw new Error(`${table} update ${sfId}: ${error.message}`);
     report.updated += 1;
+    await remember(entity, sfId, existing, undefined, upd?.updated_at);
     return existing;
   }
-  const { data, error } = await sb.from(table).insert(row).select("id").single();
+  const hasStamp = COLUMNS.get(table)?.has("updated_at");
+  const { data, error } = await sb.from(table).insert(row).select(hasStamp ? "id, updated_at" : "id").single();
   if (error) throw new Error(`${table} insert ${sfId}: ${error.message}`);
-  await remember(entity, sfId, data.id);
+  await remember(entity, sfId, data.id, undefined, data.updated_at);
   report.inserted += 1;
   return data.id;
 }
 
+/**
+ * Has a person changed this row on the platform since the importer last wrote
+ * it?
+ *
+ * `updated_at` is stamped by a trigger on every write, ours included — so the
+ * question is only answerable by comparing it against the moment WE last wrote,
+ * which `commercial_import_map.updated_at` records. A row with no `updated_at`
+ * column cannot be judged, so it is treated as untouched.
+ *
+ * Timestamps are read in bulk, once per table, and cached.
+ */
+const ROW_STAMPS = new Map(); // table -> Map(id -> updated_at)
+async function editedHere(table, rowId, mapKey) {
+  if (!COLUMNS.get(table)?.has("updated_at")) return false;
+  const lastWrote = WROTE_AT.get(mapKey);
+  if (!lastWrote) return false; // never written by us — nothing to protect
+  if (!ROW_STAMPS.has(table)) {
+    const stamps = new Map();
+    let from = 0;
+    for (;;) {
+      const { data, error } = await sb.from(table).select("id, updated_at").order("id").range(from, from + 999);
+      if (error) throw new Error(`${table} timestamps: ${error.message}`);
+      for (const r of data ?? []) stamps.set(r.id, r.updated_at);
+      if (!data || data.length < 1000) break;
+      from += data.length;
+    }
+    ROW_STAMPS.set(table, stamps);
+  }
+  const current = ROW_STAMPS.get(table).get(rowId);
+  if (!current) return false;
+  // A millisecond of slack: our own write sets the row stamp and the map stamp
+  // from the same instant, and they are stored at different precisions.
+  return new Date(current).getTime() - new Date(lastWrote).getTime() > 1000;
+}
+
 function newReport(stage) {
-  return { stage, total: 0, would: 0, inserted: 0, updated: 0, skipped: [], sample: [], notes: [] };
+  return { stage, total: 0, would: 0, inserted: 0, updated: 0, kept: 0, conflicts: [], skipped: [], sample: [], notes: [] };
 }
 
 function printReport(r) {
   const head = COMMIT
-    ? `${r.stage}: ${r.inserted} inserted, ${r.updated} updated`
+    ? `${r.stage}: ${r.inserted} inserted, ${r.updated} updated${r.kept ? `, ${r.kept} kept (yours)` : ""}`
     : `${r.stage}: would write ${r.would} row(s)`;
   console.log(`\n${head}`);
   for (const n of r.notes ?? []) console.log(`   ${n}`);
+  if (r.kept) {
+    console.log(`   🛡  ${r.kept} row(s) KEPT as they are — edited on the platform since the last sync, so Salesforce did not overwrite them:`);
+    for (const c of (r.conflicts ?? []).slice(0, 8)) console.log(`     - ${c}`);
+    if ((r.conflicts ?? []).length > 8) console.log(`     …and ${r.conflicts.length - 8} more`);
+  }
   if (r.skipped.length) {
     console.log(`   ${r.skipped.length} skipped:`);
     for (const s of r.skipped.slice(0, 8)) console.log(`     - ${s}`);
@@ -258,7 +352,7 @@ async function loadSalesforce(conn) {
   if (SF.loaded) return SF;
   SF.opps = await all(conn, `SELECT Id, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, AccountId,
       Primary_Contact__c, Primary_Contact__r.Name, Primary_Contact__r.Email, Primary_Contact__r.Phone, Primary_Contact__r.Title,
-      QuotedSubtotalWithChangeOrder__c, Amount, Estimation_Address__c, Service_Territory__c,
+      QuotedSubtotalWithChangeOrder__c, Quote_Subtotal__c, TotalAmount__c, Amount, Estimation_Address__c, Service_Territory__c,
       Start_Date__c, End_Date__c, Owner.Name, Estimator__r.Name, ProjectManager__r.Name
       FROM Opportunity WHERE ${TOMCO}`);
   SF.wos = await all(conn, `SELECT Id, WorkOrderNumber, Name__c, Status, Opportunity__c, AccountId, Account.Name,
@@ -416,15 +510,45 @@ function contractCentsFor(wo, opp) {
   return base + (!plan.isOverpaid && plan.adjustmentCents > 0 ? plan.adjustmentCents : 0);
 }
 
+/**
+ * What an open bid is worth. Salesforce keeps this in a different field from the
+ * won-job contract figure, and only this one is populated on live bids.
+ */
+function bidCentsFor(o) {
+  // NO fallback to TotalAmount__c. It is populated on all 39 open bids, but
+  // Tomco's own "Opportunity Pipeline Manager" report sums Quote_Subtotal__c
+  // and prints a blank for the four that have none — so falling back added
+  // $119,690 the people reading this report have never seen. Their report is
+  // the spec: $2,116,612.79.
+  return cents(o.Quote_Subtotal__c ?? o.QuotedSubtotalWithChangeOrder__c);
+}
+
 async function stageDeals() {
   const r = newReport("deals");
   for (const o of SF.opps) {
-    // No lost jobs (Karan, 2026-09-15).
-    if (o.IsClosed && !o.IsWon) continue;
+    // No lost jobs (Karan, 2026-09-15) — we do not BRING them across.
+    //
+    // But one that has already come across and has SINCE been lost in
+    // Salesforce has to be closed here, or it sits in the pipeline for ever:
+    // "Jefferson's Ferry Building Expansion" was still an open bid on this
+    // platform after Tomco had marked it lost. Skipping it outright is what
+    // left it there. This matters for the whole dual-run, where deals will keep
+    // being decided in Salesforce while the platform is live.
+    if (o.IsClosed && !o.IsWon) {
+      if (!mapped("deal", o.Id)) continue;
+      await put("deal", o.Id, "commercial_opportunities", {
+        status: "pre_sale_closed",
+        sub_status: "lost",
+        bid_value_low_cents: null,
+        bid_value_high_cents: null,
+      }, r);
+      r.notes.push(`${o.Name}: lost in Salesforce since the import — closed here too`);
+      continue;
+    }
     const accountId = mapped("account", o.AccountId);
     if (!accountId) { r.skipped.push(`${o.Name}: no imported GC account`); continue; }
     const wo = SF.woByOpp.get(o.Id);
-    const st = wo ? dealStatusForWorkOrder(wo.Status) : OPEN_BID_STATUS;
+    const st = wo ? dealStatusForWorkOrder(wo.Status) : openBidStatus(o.StageName);
     if (!st.status) { r.skipped.push(`${o.Name}: unmapped work order status "${wo?.Status}"`); continue; }
     await put("deal", o.Id, "commercial_opportunities", {
       account_id: accountId,
@@ -455,8 +579,13 @@ async function stageDeals() {
       // An open bid with no bid value makes the whole Pipeline report read $0:
       // 40 open opportunities, no value, no weighted pipeline, no win
       // probability. Salesforce's quoted subtotal IS the bid.
-      bid_value_low_cents: o.IsWon ? null : cents(o.QuotedSubtotalWithChangeOrder__c ?? o.Amount),
-      bid_value_high_cents: o.IsWon ? null : cents(o.QuotedSubtotalWithChangeOrder__c ?? o.Amount),
+      // THE BID IS `Quote_Subtotal__c`. Not QuotedSubtotalWithChangeOrder__c,
+      // which is filled on exactly ONE of Tomco's 39 open opportunities — so
+      // the Pipeline report read "$500 · $13 avg deal" against a book worth
+      // $2.1M. Quote_Subtotal__c totals $2,116,612.79, which is the figure
+      // Tomco's own "Opportunity Pipeline Manager" report prints, to the cent.
+      bid_value_low_cents: o.IsWon ? null : bidCentsFor(o),
+      bid_value_high_cents: o.IsWon ? null : bidCentsFor(o),
       accepted_contract_cents: o.IsWon ? contractCentsFor(wo, o) : null,
       accepted_contract_set_at: o.IsWon ? new Date().toISOString() : null,
       created_at: o.CreatedDate,
@@ -1273,6 +1402,72 @@ async function reconcile() {
   console.log("\n✅ every figure matches Salesforce to the cent");
 }
 
+/**
+ * Say "what is here now is what we last wrote", for every mapped row.
+ *
+ * Writes no data — only `commercial_import_map.updated_at`. Run it once when
+ * the two systems agree, and again at cutover, so the platform-wins guard has
+ * an honest starting point.
+ */
+const ENTITY_TABLE = {
+  account: "commercial_accounts",
+  contact: "commercial_contacts",
+  deal: "commercial_opportunities",
+  work_order: "commercial_work_orders",
+  job: "commercial_jobs",
+  change_order: "commercial_change_orders",
+  invoice: "commercial_invoices",
+  purchase: "commercial_project_purchases",
+  project: "commercial_projects",
+  file: "commercial_documents",
+  employee: "commercial_employees",
+  attendance: "commercial_time_entries",
+};
+
+async function rebaseline() {
+  let total = 0, skipped = 0;
+  for (const [entity, table] of Object.entries(ENTITY_TABLE)) {
+    if (!COLUMNS.get(table)?.has("updated_at")) { console.log(`  ${entity}: no updated_at column — nothing to baseline`); continue; }
+    // Current timestamps for the whole table, paginated.
+    const stamps = new Map();
+    let from = 0;
+    for (;;) {
+      const { data, error } = await sb.from(table).select("id, updated_at").order("id").range(from, from + 999);
+      if (error) throw new Error(`${table}: ${error.message}`);
+      for (const r of data ?? []) stamps.set(r.id, r.updated_at);
+      if (!data || data.length < 1000) break;
+      from += data.length;
+    }
+    const rows = [];
+    let undated = 0, gone = 0;
+    for (const [key, rowId] of MAP) {
+      if (!key.startsWith(`${entity}:`)) continue;
+      if (!stamps.has(rowId)) { gone += 1; skipped += 1; continue; }
+      const stamp = stamps.get(rowId);
+      // The column can exist and still be NULL — nothing has ever written
+      // commercial_project_purchases.updated_at. Such a row cannot be judged,
+      // so it stays unprotected until something stamps it (migration
+      // 20260916140000 adds the trigger that will).
+      if (!stamp) { undated += 1; skipped += 1; continue; }
+      rows.push({ sf_id: key.slice(entity.length + 1), entity, row_id: rowId, updated_at: stamp });
+    }
+    if (COMMIT) {
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await sb.from("commercial_import_map").upsert(rows.slice(i, i + 500), { onConflict: "sf_id,entity" });
+        if (error) throw new Error(`import map (${entity}): ${error.message}`);
+      }
+    }
+    total += rows.length;
+    const why = [];
+    if (undated) why.push(`${undated} never stamped`);
+    if (gone) why.push(`${gone} no longer here`);
+    console.log(`  ${entity.padEnd(13)} ${String(rows.length).padStart(5)} row(s)${why.length ? `  (${why.join(" · ")})` : ""}`);
+  }
+  console.log(`
+${COMMIT ? "Re-baselined" : "Would re-baseline"} ${total} row(s)${skipped ? ` · ${skipped} left unprotected (no usable timestamp)` : ""}.`);
+  if (!COMMIT) console.log("Dry run. Re-run with --commit to write.");
+}
+
 // ─── go ─────────────────────────────────────────────────────────────────────
 
 const conn = await salesforce();
@@ -1282,7 +1477,9 @@ await loadSalesforce(conn);
 console.log(`Salesforce: ${SF.opps.length} opportunities · ${SF.wos.length} work orders · ${SF.tx.length} transactions · ${SF.attendance.length} attendance rows`);
 console.log(COMMIT ? "MODE: COMMIT — writing to Supabase" : RECONCILE ? "MODE: reconcile only" : "MODE: dry run — nothing will be written");
 
-if (RECONCILE) {
+if (REBASELINE) {
+  await rebaseline();
+} else if (RECONCILE) {
   await reconcile();
 } else {
   for (const stage of wanted) {

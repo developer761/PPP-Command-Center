@@ -1,9 +1,8 @@
 import { cookies } from "next/headers";
-import { ReportTabs, type TabFolder, type TabReport } from "@/components/commercial/report-tabs";
+import { ReportTabs, type TabFolder } from "@/components/commercial/report-tabs";
 import { createClient } from "@/lib/supabase/server";
 import { getReportAccess, getViewerFolders } from "@/lib/commercial/reports/access";
 import { FOLDER_COOKIE, folderReports } from "@/lib/commercial/reports/access-rule";
-import { reportDef } from "@/lib/commercial/reports/registry";
 
 /**
  * Reports framework shell — the shared tab bar above every
@@ -19,15 +18,10 @@ export default async function ReportsLayout({ children }: { children: React.Reac
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  let reports: TabReport[] = [];
   let folders: TabFolder[] = [];
   let initialFolder: string | null = null;
   if (user) {
     const access = await getReportAccess(user.id, user.email);
-    reports = access.visibleList.map((k) => {
-      const d = reportDef(k);
-      return { key: k, href: d.href, label: d.tabLabel };
-    });
     const list = await getViewerFolders(user.id, access.isAdmin);
     if (list.ok) {
       folders = [...list.shared, ...list.personal].map((f) => ({
@@ -46,7 +40,7 @@ export default async function ReportsLayout({ children }: { children: React.Reac
   return (
     <>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-6">
-        <ReportTabs reports={reports} folders={folders} initialFolder={initialFolder} />
+        <ReportTabs folders={folders} initialFolder={initialFolder} />
       </div>
       {children}
     </>
