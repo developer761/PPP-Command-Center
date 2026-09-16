@@ -18,7 +18,8 @@ import "server-only";
  * All amounts are integer cents.
  */
 
-import { listProjects, type ProjectRow } from "@/lib/commercial/projects/db";
+import { type ProjectRow } from "@/lib/commercial/projects/db";
+import { listAllProjects } from "./all-projects";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { marginFrom } from "@/lib/commercial/projects/financials";
 /** The seven cost buckets a job can carry, in display order. `subLabor` is the
@@ -116,7 +117,9 @@ const pct = (margin: number, contract: number): number | null =>
  * logged is dropped so the report isn't padded with empty rows.
  */
 export async function getJobCostsReport(): Promise<JobCostsReport> {
-  const rows = await listProjects({ includeClosed: true, allDeals: true });
+  // Request-memoised: the Jobs report wants the same set, and on the Reports
+  // index both cards render in one pass.
+  const rows = await listAllProjects();
 
   const groupsById = new Map<string, JobCostAccountGroup>();
   const totalsBuckets = emptyBuckets();

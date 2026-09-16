@@ -83,6 +83,11 @@ export type ProjectRow = {
   /** Approved crew hours with no cost rate on file (cost $0 → margin
    *  understated until a rate is set). Surfaced as a data-quality nudge. */
   laborUnratedHours: number;
+  /** ALL settled crew hours on the job (rated + unrated). The cost is already
+   *  here as `fieldOpsLaborCents`; the hours behind it were not, so any surface
+   *  wanting "how many hours went into this job" had to re-run the whole
+   *  time-entry walk a second time. Same batch, no extra query. */
+  laborHours: number;
   /** Contract to date − total costs = projected gross profit (negative = over budget). */
   grossMarginCents: number;
   /** grossMargin ÷ contract, whole %, null when contract is 0. */
@@ -495,6 +500,7 @@ export async function listProjects(opts: {
       costs,
       fieldOpsLaborCents,
       laborUnratedHours: labor.unratedHours,
+      laborHours: Math.round((labor.ratedHours + labor.unratedHours) * 100) / 100,
       grossMarginCents,
       grossMarginPct,
     };

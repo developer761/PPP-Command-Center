@@ -11,6 +11,8 @@ import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orde
 import { listSignatureRequestsForReport } from "@/lib/commercial/esign/db";
 import { summarizeSignatures } from "@/lib/commercial/esign/report";
 import { getGeographyReport } from "@/lib/commercial/reports/geography";
+import { getJobsOverviewRows } from "@/lib/commercial/reports/jobs";
+import { summarizeJobRows } from "@/lib/commercial/reports/jobs-rows";
 import { getWinLossSummary, currentQuarterRange } from "@/lib/commercial/win-loss/reports";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import {
@@ -60,6 +62,21 @@ const LOADERS: Record<ReportKey, Loader> = {
     return {
       primary: { label: "Margin", value: j.totals.marginPct === null ? "—" : `${j.totals.marginPct}%`, tone: marginTone },
       secondary: { label: "Total cost", value: formatCentsCompact(j.totals.totalCostCents), tone: "amber" },
+    };
+  },
+  jobs: async () => {
+    // Shares the Job-costs card's `listProjects` call (request-memoised in
+    // ./all-projects), so the two cards side by side cost one batch, not two.
+    const rows = await getJobsOverviewRows();
+    const totals = summarizeJobRows(rows);
+    const inDelivery = totals.byGroup.delivery;
+    return {
+      primary: { label: "Jobs", value: String(totals.jobCount), tone: "navy" },
+      secondary: {
+        label: inDelivery > 0 ? "In delivery" : "Open balance",
+        value: inDelivery > 0 ? String(inDelivery) : formatCentsCompact(totals.openBalanceCents),
+        tone: inDelivery > 0 ? "brand" : "neutral",
+      },
     };
   },
   geography: async () => {
