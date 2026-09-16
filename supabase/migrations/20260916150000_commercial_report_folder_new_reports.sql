@@ -31,3 +31,22 @@ select f.name, i.report_key
   join public.commercial_report_folders f on f.id = i.folder_id
  where i.report_key = 'balance-owed'
  order by f.name;
+
+-- Round two: the deal-shaped Tomco reports.
+insert into public.commercial_report_folder_items (folder_id, report_key, sort_order)
+select f.id, v.report_key, v.sort_order
+  from public.commercial_report_folders f
+  cross join (values
+    ('pipeline-manager', 210),
+    ('scheduling',       220),
+    ('open-sales',       230)
+  ) as v(report_key, sort_order)
+ where f.name in ('Manager', 'Field Users')
+on conflict (folder_id, report_key) do nothing;
+
+-- Finance wants what is owed and what is in flight, not the bid list.
+insert into public.commercial_report_folder_items (folder_id, report_key, sort_order)
+select f.id, 'open-sales', 230
+  from public.commercial_report_folders f
+ where f.name = 'Finance'
+on conflict (folder_id, report_key) do nothing;

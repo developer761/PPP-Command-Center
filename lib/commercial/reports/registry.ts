@@ -31,6 +31,9 @@ export const REPORT_KEYS = [
   "ar-aging",
   // Tomco's own reports, reproduced from the ones they run in Salesforce.
   "balance-owed",
+  "pipeline-manager",
+  "scheduling",
+  "open-sales",
 ] as const;
 
 export type ReportKey = (typeof REPORT_KEYS)[number];
@@ -200,6 +203,33 @@ export const REPORTS: readonly ReportDef[] = [
     blurb: "Tomco's own report: jobs finished or on hold with money still out, grouped the way Brendan and Mary each run it.",
     group: "money",
     icon: ["M3 6h18v12H3z", "M7 10h6", "M7 14h3"],
+  },
+  {
+    key: "pipeline-manager",
+    href: "/commercial/reports/pipeline-manager",
+    title: "Opportunity Pipeline Manager",
+    tabLabel: "Pipeline Manager",
+    blurb: "Tomco's own report: every open bid, what it is quoted at, and who to ring about it.",
+    group: "sales",
+    icon: ["M4 19V5", "M8 19v-7", "M12 19V9", "M16 19v-4", "M20 19V7"],
+  },
+  {
+    key: "scheduling",
+    href: "/commercial/reports/scheduling",
+    title: "Scheduling Report",
+    tabLabel: "Scheduling",
+    blurb: "Tomco's own report: jobs in coordination, on site or on hold, with what each still owes.",
+    group: "delivery",
+    icon: ["M3 5h18v16H3z", "M3 9h18", "M8 3v4", "M16 3v4"],
+  },
+  {
+    key: "open-sales",
+    href: "/commercial/reports/open-sales",
+    title: "Open Sales",
+    tabLabel: "Open Sales",
+    blurb: "Tomco's own report: every won job not yet closed out, with contract, tax, billed and balance.",
+    group: "sales",
+    icon: ["M3 17l6-6 4 4 8-8", "M21 7h-5", "M21 7v5"],
   },
 ];
 
