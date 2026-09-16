@@ -961,7 +961,9 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
   const code = formatOpportunityNumber(opp.project_number);
   const lo = opp.bid_value_low_cents;
   const hi = opp.bid_value_high_cents;
-  const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : "—";
+  // Via the shared formatter, which collapses an equal low/high: every imported
+  // bid carries the same figure on both sides and read "$120k–$120k".
+  const bid = lo != null || hi != null ? formatBidRange(lo, hi) : "—";
   // Stage-derived, not the stored column — see `probabilityFor`.
   const stageProb = probabilityFor(opp.status, opp.sub_status);
   // Weighted falls back to the proposal total when the deal has no bid range,
@@ -5449,6 +5451,9 @@ async function AccountKpisTab({
       ? `${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`
       : "none yet";
   const decidedCount = (overview?.won_opps_count ?? 0) + (overview?.lost_opps_count ?? 0);
+  // A win rate needs a loss to be a rate. Every GC read "100%" in emerald after
+  // the migration brought across 92 won jobs and no lost bids.
+  const hasHeadToHead = (overview?.won_opps_count ?? 0) > 0 && (overview?.lost_opps_count ?? 0) > 0;
   const bidLow = overview?.total_active_bid_low_cents ?? 0;
   const bidHigh = overview?.total_active_bid_high_cents ?? 0;
   // The SQL view sums the raw bid low/high columns, and the create forms stopped
@@ -5719,7 +5724,7 @@ async function AccountKpisTab({
           <Link href="/commercial/opportunities" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Board →</Link>
         </div>
         <div className="flex items-center gap-5 flex-wrap sm:flex-nowrap">
-          {decidedCount > 0 ? (
+          {hasHeadToHead ? (
             <GaugeRing pct={winRatePct ?? 0} tone="emerald" value={`${winRatePct ?? 0}%`} label="win rate" size={116} />
           ) : (
             <div className="shrink-0 flex flex-col items-center justify-center h-[116px] w-[116px] rounded-full border-[9px] border-ppp-charcoal-100">
@@ -5735,10 +5740,10 @@ async function AccountKpisTab({
               tone="neutral"
               sub="open bids"
             />
-            <MiniFig label="Won / lost" value={`${overview?.won_opps_count ?? 0} / ${overview?.lost_opps_count ?? 0}`} tone="emerald" sub={decidedCount === 0 ? "no history" : `of ${decidedCount} decided`} />
+            <MiniFig label="Won / lost" value={`${overview?.won_opps_count ?? 0} / ${overview?.lost_opps_count ?? 0}`} tone="emerald" sub={decidedCount === 0 ? "no history" : (overview?.lost_opps_count ?? 0) === 0 ? "none lost on record" : `of ${decidedCount} decided`} />
           </div>
         </div>
-        {decidedCount > 0 && overview && renderWinRateSub(overview) && (
+        {hasHeadToHead && overview && renderWinRateSub(overview) && (
           <p className="mt-2.5 text-[11px] text-ppp-charcoal-400">{renderWinRateSub(overview)}</p>
         )}
       </section>

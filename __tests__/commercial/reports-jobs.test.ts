@@ -57,6 +57,7 @@ function row(over: Partial<JobsReportRow> = {}): JobsReportRow {
     costCents: 0,
     marginCents: 0,
     marginPct: null,
+    marginProvisional: false,
     laborHours: 0,
     unratedHours: 0,
     invoiceCount: 0,

@@ -13,6 +13,7 @@ import {
   jobStatusLabel,
   divisionLabel,
   JOB_STATUSES,
+  JOB_BOARD_ORDER,
   type JobStatus,
 } from "@/lib/commercial/field-ops/jobs";
 import { StatusMoveSelect } from "@/components/commercial/status-move-select";
@@ -74,7 +75,7 @@ export default async function FieldOpsStatusPage({
   // One flat list, ordered by pipeline stage (estimating → … → closed) then name,
   // so same-stage work orders cluster without the horizontal-scroll board Karan
   // didn't want. Each row carries an inline status control.
-  const rank = new Map<JobStatus, number>(JOB_STATUSES.map((s, i) => [s, i]));
+  const rank = new Map<JobStatus, number>(JOB_BOARD_ORDER.map((s, i) => [s, i]));
   const ordered = [...jobs].sort((a, b) => {
     const ra = rank.get(a.status) ?? 99;
     const rb = rank.get(b.status) ?? 99;

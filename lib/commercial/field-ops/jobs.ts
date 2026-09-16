@@ -18,6 +18,7 @@ import { todayEtIso } from "./schedule";
 // many server callers that import them from here.
 export {
   JOB_STATUSES,
+  JOB_BOARD_ORDER,
   jobStatusLabel,
   DIVISION_TAGS,
   divisionLabel,

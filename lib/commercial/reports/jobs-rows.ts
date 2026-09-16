@@ -93,6 +93,13 @@ export type JobsReportRow = {
   /** Billed − cost (decision D2), via `marginFrom`. */
   marginCents: number;
   marginPct: number | null;
+  /**
+   * True when the percentage above is not a measured margin — no costs are
+   * booked against the job, so it is everything billed rather than profit.
+   * `marginFrom` has always returned this; the row dropped it, and the table
+   * painted a confident emerald "100%" on any job whose costs had not landed.
+   */
+  marginProvisional: boolean;
   /** Settled crew hours on the job (rated + unrated). */
   laborHours: number;
   /** Of those, hours with no cost rate on file — labor cost is understated. */

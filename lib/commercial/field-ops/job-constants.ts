@@ -18,6 +18,25 @@ export const JOB_STATUSES = [
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
+/**
+ * The order a BOARD should read in: what needs attention first, finished last.
+ *
+ * `JOB_STATUSES` is the vocabulary, and `on_hold` sits at the end of it because
+ * that is where it was added — fine for a dropdown, wrong for a list. Ranking
+ * the Status board by it put the jobs that are STUCK below every closed one:
+ * after the Tomco migration that meant rows 91 and 92 of 92.
+ */
+export const JOB_BOARD_ORDER = [
+  "on_hold",
+  "estimating",
+  "ready_to_schedule",
+  "scheduled",
+  "in_progress",
+  "almost_done",
+  "complete",
+  "closed",
+] as const satisfies readonly JobStatus[];
+
 export function jobStatusLabel(s: JobStatus): string {
   return {
     estimating: "Estimating",

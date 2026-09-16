@@ -112,6 +112,7 @@ export async function getJobsOverviewRows(): Promise<JobsReportRow[]> {
       costCents: p.costsCents,
       marginCents: m.cents,
       marginPct: m.pct,
+      marginProvisional: m.provisional,
       laborHours: p.laborHours,
       unratedHours: p.laborUnratedHours,
       invoiceCount: p.invoiceCount,

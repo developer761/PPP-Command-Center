@@ -145,7 +145,15 @@ export default async function FieldOpsEmployeesPage({
     return c != null ? (c / 100).toFixed(2) : "";
   };
   // Active crew missing a cost rate → their hours cost $0 in job P&L.
-  const missingRateCount = employees.filter((e) => e.active && !costRates.has(e.id)).length;
+  //
+  // W-2 ONLY. A subcontractor's cost does not come from a rate on their hours —
+  // it comes from what the labor company invoices, which is already booked as a
+  // Subcontract purchase. Tomco's 23 imported crew are all subs, and this
+  // banner told Katie that 23 people needed a burdened $/hr: following it would
+  // have added a second, phantom labor cost on top of the 790 payouts already
+  // counted, and made every job's margin worse than it is.
+  const missingRateCount = employees.filter((e) => e.active && e.worker_type === "w2" && !costRates.has(e.id)).length;
+  const subCount = employees.filter((e) => e.active && e.worker_type !== "w2").length;
 
   return (
     <div className="pb-8 max-w-4xl">
@@ -156,6 +164,11 @@ export default async function FieldOpsEmployeesPage({
 
       {sp.error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700">{sp.error}</div>}
       {sp.ok && <div className="mb-4 rounded-lg bg-ppp-green-50 border border-ppp-green-100 px-3 py-2 text-[12.5px] text-ppp-green-700">{sp.ok === "added" ? "Added." : "Saved."}</div>}
+      {subCount > 0 && (
+        <div className="mb-4 rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-100 px-3 py-2 text-[12.5px] text-ppp-charcoal-600">
+          <span className="font-semibold">{subCount} of these crew are subcontractors.</span> They have no cost rate on purpose &mdash; what they cost is what their labor company invoices, and that is already booked against the job as a Subcontract cost. Their hours are a record of who was on site, not a second charge.
+        </div>
+      )}
       {missingRateCount > 0 && (
         <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12.5px] text-amber-800">
           <span className="font-semibold">{missingRateCount} active {missingRateCount === 1 ? "crew member has" : "crew members have"} no cost rate.</span> Their approved hours cost $0 in job P&amp;L, so margins look better than they are. Set a burdened $/hr below (open a crew member → Cost rate).

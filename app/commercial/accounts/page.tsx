@@ -271,8 +271,13 @@ export default async function CommercialAccountsPage({
     }
   });
 
-  // Recently active pre-fetch (unchanged from prior behavior).
-  const recentlyActive = accountsRaw
+  // Recently active. COUNT the whole set, SHOW the top three.
+  //
+  // The slice used to come first, so `recentlyActiveCount` could never exceed
+  // 3: the KPI read "Recently active · 3 · in the last 7 days" on a book where
+  // 75 accounts had been touched, and the card's own sentence said "3 accounts
+  // touched" underneath a list of exactly 3.
+  const recentlyActiveAll = accountsRaw
     .map((a) => ({ account: a, ov: overviewsById.get(a.id) }))
     .filter(({ ov }) => {
       if (!ov) return false;
@@ -283,8 +288,8 @@ export default async function CommercialAccountsPage({
       const xt = x.ov?.last_activity_at ?? "";
       const yt = y.ov?.last_activity_at ?? "";
       return yt.localeCompare(xt);
-    })
-    .slice(0, 3);
+    });
+  const recentlyActive = recentlyActiveAll.slice(0, 3);
 
   // KPI strip. accountsRaw is FILTERED (search/rating/compliance), so
   // when a filter is active these numbers describe the matching set, not the
@@ -297,7 +302,7 @@ export default async function CommercialAccountsPage({
   const filterActive = !!(search || rating || compliance || tagFilter || filterStale || filterExpiring || filterIssue);
   const universeCount = accountsRaw.length; // search/rating-filtered size — for the "of N" header
   const matchingCount = accounts.length; // the DISPLAYED set (after the quick-filter chips)
-  const recentlyActiveCount = recentlyActive.length;
+  const recentlyActiveCount = recentlyActiveAll.length;
   // Roll up over the DISPLAYED set so "Open bids / Bid range · across matches"
   // agree with the visible list, not the pre-chip set (audit fix).
   const matchOverviews = accounts.map((a) => overviewsById.get(a.id)).filter((o) => !!o);
@@ -739,7 +744,8 @@ export default async function CommercialAccountsPage({
                   Recently active
                 </div>
                 <div className="text-[11px] text-ppp-charcoal-500">
-                  {recentlyActive.length} account{recentlyActive.length === 1 ? "" : "s"} touched in the last {RECENT_WINDOW_DAYS} days
+                  {recentlyActiveAll.length} account{recentlyActiveAll.length === 1 ? "" : "s"} touched in the last {RECENT_WINDOW_DAYS} days
+                  {recentlyActiveAll.length > recentlyActive.length ? ` · showing ${recentlyActive.length}` : ""}
                 </div>
               </div>
             </div>
@@ -1129,7 +1135,12 @@ function AccountRow({
   const contactCount = overview?.contact_count ?? 0;
   const teamCount = overview?.ppp_team_count ?? 0;
   const docCount = overview?.active_document_count ?? 0;
-  const hasAnyEngagement = contactCount + teamCount + docCount + openBids > 0;
+  // Work we have DONE for them counts as engagement. Without won jobs in this
+  // sum, a GC with eight finished Tomco projects and no contact on file read
+  // "Fresh account — no contacts, docs, or bids yet", and the Repeat-business
+  // pill nested under the same guard disappeared with it.
+  const wonCount = overview?.won_opps_count ?? 0;
+  const hasAnyEngagement = contactCount + teamCount + docCount + openBids + wonCount > 0;
 
   return (
     <li className="hover:bg-cc-brand-50/30 transition-colors group/row">

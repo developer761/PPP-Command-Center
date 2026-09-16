@@ -2355,11 +2355,13 @@ function CustomerBoardRow({
               is in production still lists that work instead of showing nothing
               (audit D1). */}
           {[...open, ...inDelivery].map((o) => {
-            const bidRange = o.bid_value_high_cents
-              ? `${formatCentsCompact(o.bid_value_low_cents ?? 0)}–${formatCentsCompact(o.bid_value_high_cents)}`
-              : o.bid_value_low_cents
-              ? formatCentsCompact(o.bid_value_low_cents)
-              : null;
+            // `formatBidRange` collapses an equal low/high to one figure — the
+            // 40 imported bids all carry the same number on both sides, and
+            // this hand-rolled copy rendered every one as "$120k–$120k".
+            const bidRange =
+              o.bid_value_low_cents != null || o.bid_value_high_cents != null
+                ? formatBidRange(o.bid_value_low_cents, o.bid_value_high_cents)
+                : null;
             return (
               <Link
                 key={o.id}

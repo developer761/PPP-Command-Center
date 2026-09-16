@@ -95,7 +95,11 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
 
   // Win-rate delta vs prior period (only meaningful when both periods had
   // head-to-heads). Points, not %-of-%, so "45% → 52%" reads as "+7".
-  const hadHeadToHead = summary.wonCount + summary.lostCount > 0;
+  // A win RATE needs something to have been lost. With wins and no losses the
+  // arithmetic says 100%, which is not a measurement — it is the absence of one.
+  // Tomco's migration imported the 92 won jobs and no lost bids, so every
+  // win-rate surface read a confident emerald 100%.
+  const hadHeadToHead = summary.wonCount > 0 && summary.lostCount > 0;
   const prevHadHeadToHead = prevSummary.wonCount + prevSummary.lostCount > 0;
   const winRateDelta = hadHeadToHead && prevHadHeadToHead ? summary.winRatePct - prevSummary.winRatePct : null;
 
@@ -262,7 +266,9 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
               ? winRateDelta !== null && winRateDelta !== 0
                 ? `${summary.wonCount}W · ${summary.lostCount}L · ${winRateDelta > 0 ? "▲" : "▼"}${Math.abs(winRateDelta)}pt vs prior`
                 : `${summary.wonCount} won · ${summary.lostCount} lost`
-              : "no head-to-heads yet"
+              : summary.wonCount > 0
+                ? `${summary.wonCount} won · none lost on record`
+                : "no head-to-heads yet"
           }
         />
         <KpiTile

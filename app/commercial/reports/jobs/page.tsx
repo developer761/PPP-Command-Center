@@ -360,8 +360,17 @@ export default async function JobsReportPage({ searchParams }: { searchParams: P
                       <Num value={r.costCents > 0 ? formatCentsFull(r.costCents) : "None logged"} muted={r.costCents === 0} />
                       <Num
                         value={r.marginPct === null ? "—" : `${r.marginPct}%`}
-                        muted={r.marginPct === null}
-                        className={r.marginPct === null ? undefined : r.marginPct < 0 ? "text-rose-700" : r.marginPct < 15 ? "text-amber-800" : "text-emerald-700"}
+                        muted={r.marginPct === null || r.marginProvisional}
+                        title={r.marginProvisional ? "No costs booked yet — this is everything billed, not profit." : undefined}
+                        className={
+                          r.marginPct === null || r.marginProvisional
+                            ? undefined
+                            : r.marginPct < 0
+                              ? "text-rose-700"
+                              : r.marginPct < 15
+                                ? "text-amber-800"
+                                : "text-emerald-700"
+                        }
                       />
                       <Num
                         value={r.laborHours > 0 ? `${fmtHours(r.laborHours)}h` : "—"}
