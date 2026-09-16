@@ -19,9 +19,20 @@ it("times the report data layer", async () => {
   const { getJobsOverviewRows } = await import("@/lib/commercial/reports/jobs");
   await time("getJobsOverviewRows", () => getJobsOverviewRows());
   const { getReceivablesReport } = await import("@/lib/commercial/reports/receivables");
-  await time("getReceivablesReport", () => getReceivablesReport());
+  await time("getReceivablesReport (the money band, on EVERY Accounting tab)", () => getReceivablesReport());
   const { getPipelineReport } = await import("@/lib/commercial/reports/pipeline");
   await time("getPipelineReport", () => getPipelineReport());
+
+  // Accounting — the page Mary lives in. Every tab pays for the whole-book
+  // receivables report on load, so this is where a slow page starts.
+  const { getArSheetRows } = await import("@/lib/commercial/reports/tomco/ar-applications");
+  await time("  AR sheet", () => getArSheetRows());
+  const { getSpendRows } = await import("@/lib/commercial/reports/tomco/transactions");
+  await time("  Purchases / Labor payments", () => getSpendRows());
+  const { getBalanceOwedRows } = await import("@/lib/commercial/reports/tomco/balance-owed");
+  await time("  Balance owed", () => getBalanceOwedRows());
+  const { getAccountingEntryOptions } = await import("@/lib/commercial/accounting/entry-options");
+  await time("  entry pickers", () => getAccountingEntryOptions());
 
   // One job, end to end: the page Alex opens most, and the slowest one measured.
   const { commercialDb } = await import("@/lib/commercial/db");

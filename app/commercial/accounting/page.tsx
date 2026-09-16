@@ -564,12 +564,25 @@ export default async function AccountingPage({
       return fallback;
     }
   };
+  // PAY FOR WHAT THIS TAB SHOWS.
+  //
+  // All five ran on every tab — so opening Purchases, or the AR sheet, or
+  // Deposits also computed the cash-flow report, the whole job-costs report,
+  // the change-order/vendor report and every project. Measured against Tomco's
+  // book that is ~1.7s of queries on a page that needed none of them, on every
+  // click, because these pages are `force-dynamic` and nothing is cached.
+  //
+  // Receivables stays unconditional: it feeds the money band, which is on
+  // screen whatever tab you are on and is the reason the page exists.
+  const needsCash = view === "overview" || view === "cash";
+  const needsCosts = view === "overview" || view === "costs";
+  const needsOverviewOnly = view === "overview";
   const [receivables, cash, jobCosts, coVendor, projects] = await Promise.all([
     settle("Receivables", getReceivablesReport(), summarizeReceivables([])),
-    settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH),
-    settle("Job costs", getJobCostsReport(), EMPTY_JOB_COSTS),
-    settle("Change orders", getChangeOrderVendorReport(coRange), EMPTY_CO),
-    settle("Projects", listProjects(), []),
+    needsCash ? settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH) : Promise.resolve(EMPTY_CASH),
+    needsCosts ? settle("Job costs", getJobCostsReport(), EMPTY_JOB_COSTS) : Promise.resolve(EMPTY_JOB_COSTS),
+    needsOverviewOnly ? settle("Change orders", getChangeOrderVendorReport(coRange), EMPTY_CO) : Promise.resolve(EMPTY_CO),
+    needsOverviewOnly ? settle("Projects", listProjects(), []) : Promise.resolve([]),
   ]);
 
   // What the band shows when the obvious figures collapse into each other —
