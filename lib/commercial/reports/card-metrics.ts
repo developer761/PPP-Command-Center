@@ -118,14 +118,6 @@ const LOADERS: Record<ReportKey, Loader> = {
       secondary: { label: "Overdue", value: formatCentsCompact(overdue), tone: overdue > 0 ? "amber" : "neutral" },
     };
   },
-  "balance-owed": async () => {
-    const rows = await getBalanceOwedRows();
-    const owed = rows.reduce((n, r) => n + r.balanceCents, 0);
-    return {
-      primary: { label: "Balance owed", value: formatCentsCompact(owed), tone: owed > 0 ? "amber" : "neutral" },
-      secondary: { label: "Jobs", value: `${rows.length}` },
-    };
-  },
   scheduling: async () => {
     const rows = schedulingRows(await getDealReportRows());
     return {
@@ -140,53 +132,12 @@ const LOADERS: Record<ReportKey, Loader> = {
       secondary: { label: "Open jobs", value: `${rows.length}` },
     };
   },
-  "purchases-by-vendor": async () => {
-    const rows = purchaseRows(await getSpendRows());
-    const vendors = new Set(rows.map((r) => r.vendor));
-    return {
-      primary: { label: "Purchased", value: formatCentsCompact(rows.reduce((n, r) => n + r.amountCents, 0)), tone: "brand" },
-      secondary: { label: "Vendors", value: `${vendors.size}` },
-    };
-  },
-  "labor-payments": async () => {
-    const rows = laborPaymentRows(await getSpendRows());
-    return {
-      primary: { label: "Paid to crews", value: formatCentsCompact(rows.reduce((n, r) => n + r.amountCents, 0)), tone: "brand" },
-      secondary: { label: "Payments", value: `${rows.length}` },
-    };
-  },
-  "reimbursements-out": async () => {
-    const rows = reimbursementRows(await getSpendRows());
-    const open = rows.filter((r) => !r.reimbursedYmd);
-    return {
-      primary: { label: "Reimbursed", value: formatCentsCompact(rows.reduce((n, r) => n + r.amountCents, 0)), tone: "brand" },
-      secondary: {
-        label: open.length > 0 ? "Still owed" : "All settled",
-        value: open.length > 0 ? formatCentsCompact(open.reduce((n, r) => n + r.amountCents, 0)) : `${rows.length}`,
-        tone: open.length > 0 ? "amber" : "neutral",
-      },
-    };
-  },
-  "deposit-history": async () => {
-    const rows = await getMoneyInRows();
-    return {
-      primary: { label: "Money in", value: formatCentsCompact(rows.reduce((n, r) => n + r.amountCents, 0)), tone: "emerald" },
-      secondary: { label: "Payments", value: `${rows.length}` },
-    };
-  },
   attendance: async () => {
     const rows = await getAttendanceRows();
     const crews = new Set(rows.map((r) => r.crew));
     return {
       primary: { label: "Hours on site", value: `${Math.round(rows.reduce((n, r) => n + r.hours, 0)).toLocaleString()}h`, tone: "brand" },
       secondary: { label: "Crew", value: `${crews.size}` },
-    };
-  },
-  "sales-tax": async () => {
-    const r = await getSalesTaxReport();
-    return {
-      primary: { label: "Tax collected", value: formatCentsCompact(r.taxCollectedCents), tone: "brand" },
-      secondary: { label: "Taxable base", value: formatCentsCompact(r.taxableBaseCents) },
     };
   },
   estimator: async () => {

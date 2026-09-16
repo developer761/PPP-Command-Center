@@ -21,6 +21,17 @@ import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type 
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
+import { GroupedReport } from "@/components/commercial/grouped-report";
+import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
+import {
+  getSpendRows,
+  getMoneyInRows,
+  purchaseRows,
+  laborPaymentRows,
+  PURCHASES_BY_VENDOR_SPEC,
+  LABOR_PAYMENTS_SPEC,
+  DEPOSIT_HISTORY_SPEC,
+} from "@/lib/commercial/reports/tomco/transactions";
 import { ReceivablesFilterBar } from "@/components/commercial/receivables-filter-bar";
 import {
   parseReceivableQuery, filtersFor, receivableQueryParams, receivableQueryString,
@@ -321,6 +332,14 @@ const VIEWS = [
   // The last two of Alex's reports the platform didn't carry.
   { key: "tax", label: "Sales tax" },
   { key: "reimbursements", label: "Reimbursements" },
+  // Karan 2026-09-16: "all of Mary's stuff should be in accounting." These four
+  // are Tomco's own Salesforce reports, rebuilt in the shape she reads them —
+  // records grouped and subtotalled, not a chart of them. They were briefly
+  // separate pages under Reports, which meant her work was in two places.
+  { key: "owed", label: "Balance owed" },
+  { key: "purchases", label: "Purchases" },
+  { key: "labor-out", label: "Labor payments" },
+  { key: "deposits", label: "Deposits" },
 ] as const;
 type View = (typeof VIEWS)[number]["key"];
 
@@ -445,6 +464,10 @@ export default async function AccountingPage({
     view === "reimbursements"
       ? await getReimbursementsReport({ fromYmd: txRange?.fromYmd, toYmd: txRange?.toYmd })
       : null;
+  // Mary's four, each paid for only on the view that renders it.
+  const owedRows = view === "owed" ? await getBalanceOwedRows() : null;
+  const spendRows = view === "purchases" || view === "labor-out" ? await getSpendRows() : null;
+  const depositRows = view === "deposits" ? await getMoneyInRows() : null;
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
   const canBrief = briefAvailable();
@@ -1608,6 +1631,43 @@ export default async function AccountingPage({
             settled
           />
         </section>
+      )}
+
+      {/* ── Mary's four Tomco reports ──────────────────────────────────
+             Each is the same object: records grouped, subtotalled, totalled —
+             the shape she reads in Salesforce. The definitions live in
+             lib/commercial/reports/tomco/ and are shared, so the numbers here
+             and anywhere else they appear cannot drift apart. ── */}
+      {view === "owed" && owedRows && (
+        <GroupedReport
+          spec={BALANCE_OWED_SPEC}
+          rows={[...owedRows].sort((a, b) => b.balanceCents - a.balanceCents)}
+          emptyHint="Nothing is finished-and-unpaid right now."
+        />
+      )}
+
+      {view === "purchases" && spendRows && (
+        <GroupedReport
+          spec={PURCHASES_BY_VENDOR_SPEC}
+          rows={purchaseRows(spendRows)}
+          emptyHint="No purchases recorded."
+        />
+      )}
+
+      {view === "labor-out" && spendRows && (
+        <GroupedReport
+          spec={LABOR_PAYMENTS_SPEC}
+          rows={laborPaymentRows(spendRows)}
+          emptyHint="No crew payments recorded."
+        />
+      )}
+
+      {view === "deposits" && depositRows && (
+        <GroupedReport
+          spec={DEPOSIT_HISTORY_SPEC}
+          rows={depositRows}
+          emptyHint="No payments in yet."
+        />
       )}
 
       {/* ── Recurring reports to Alex ─────────────────────────────────
