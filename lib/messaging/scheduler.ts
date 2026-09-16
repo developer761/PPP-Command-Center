@@ -61,7 +61,7 @@ export type SchedulerDeps = {
     subject?: string | null;
   } | null>;
   send(req: SendRequest): Promise<GateResult>;
-  markSent(a: DueAction, providerId: string, body: string): Promise<void>;
+  markSent(a: DueAction, providerId: string, body: string, channel?: "sms" | "email"): Promise<void>;
   /**
    * Close the row without recording a message. A turn that filed a draft or
    * held a reply sent nothing, and used to be closed with markSent(a,
@@ -274,7 +274,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
   if (result.ok) {
     // result.body, not ctx.body — the gate may have appended the opt-out
     // disclosure, and the thread must show what the customer actually got.
-    await deps.markSent(a, result.providerId, result.body);
+    await deps.markSent(a, result.providerId, result.body, ctx.channel ?? "sms");
     return { kind: "sent", providerId: result.providerId };
   }
 

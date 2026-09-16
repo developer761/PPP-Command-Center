@@ -99,3 +99,32 @@ describe("the gate refuses a message with a blank left in it", () => {
     expect(classifyRefusal({ ok: false, reason: "unresolved_merge_field" })).toBe("fail");
   });
 });
+
+/**
+ * Two blanks that made a campaign unsendable rather than imperfect: the send
+ * path never passed office_location, and a lead with no name left
+ * {{customer_name}} in place, which the gate refuses.
+ */
+describe("the blanks the send path fills", () => {
+  it("fills the office the bot states", () => {
+    expect(fillMergeFields("We are in {{office_location}}.", { officeLocation: "Garden City" }))
+      .toBe("We are in Garden City.");
+  });
+
+  it("leaves it in place when nothing defines it, so the gate refuses rather than sending a gap", () => {
+    expect(fillMergeFields("We are in {{office_location}}.", {}))
+      .toBe("We are in {{office_location}}.");
+  });
+
+  it("greets a nameless lead as 'there' instead of never sending to them", () => {
+    expect(fillMergeFields("Hi {{customer_name}}!", { customerName: null, customerNameFallback: "there" }))
+      .toBe("Hi there!");
+    // The real name still wins, first name only.
+    expect(fillMergeFields("Hi {{customer_name}}!", { customerName: "Jeremy Saxe", customerNameFallback: "there" }))
+      .toBe("Hi Jeremy!");
+  });
+
+  it("without the fallback the placeholder stays, which is what the editor previews", () => {
+    expect(fillMergeFields("Hi {{customer_name}}!", { customerName: null })).toBe("Hi {{customer_name}}!");
+  });
+});

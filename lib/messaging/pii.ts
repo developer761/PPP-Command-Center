@@ -27,7 +27,11 @@ const EMAIL = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 // Deliberately loose — it should catch "516-344-8418", "(516) 344 8418",
 // "5163448418" and "+1 516 344 8418". A false positive redacts a number that
 // was not a phone; a false negative leaks one that was.
-const PHONE = /(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}\b/g;
+//
+// Up to three separators between the groups, not one: a customer typed their
+// number as "305  469 6767" with a double space and it went through the
+// scrubber untouched (found importing Kate's CSV, 2026-09-15).
+const PHONE = /(?:\+?1[\s.-]{0,3})?(?:\(\d{3}\)|\d{3})[\s.-]{0,3}\d{3}[\s.-]{0,3}\d{4}\b/g;
 
 // Street addresses: a number followed by words ending in a street-type word.
 // This is the shape PPP's customers actually send — "42 Hillcrest Ave",

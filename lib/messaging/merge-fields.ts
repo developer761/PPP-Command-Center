@@ -21,6 +21,9 @@ export type MergeValues = {
   workspaceName?: string | null;
   customerName?: string | null;
   officeLocation?: string | null;
+  /** Used when there is no name at all: "Hi there" rather than a refused send.
+   *  Only the send path passes it; the editor preview shows the placeholder. */
+  customerNameFallback?: string | null;
 };
 
 /** Dashed, matching how Emily writes a number in the conversations Kate graded well. */
@@ -61,7 +64,7 @@ export function fillMergeFields(body: string, values: MergeValues): string {
   const map: Record<string, string | null> = {
     workspace_phone: displayNumber(values.workspacePhone),
     workspace_name: values.workspaceName?.trim() || null,
-    customer_name: firstName(values.customerName),
+    customer_name: firstName(values.customerName) ?? values.customerNameFallback?.trim() ?? null,
     office_location: values.officeLocation?.trim() || null,
   };
   return body.replace(MERGE_PATTERN, (whole, key: string) => {

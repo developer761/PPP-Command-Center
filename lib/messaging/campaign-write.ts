@@ -27,6 +27,7 @@ import { messagingDb } from "./db";
 import { assertMessagingAccess } from "./auth";
 import { scheduleSteps, parseTimeOfDay, type CampaignStep } from "./campaign-schedule";
 import { unresolvedFields, isKnownMergeField } from "./merge-fields";
+import { firstMessageProblem, openerStepId } from "./first-message";
 
 export type StepEdit = {
   body?: string;
@@ -71,6 +72,18 @@ export async function updateStep(input: { stepId: string; edit: StepEdit }): Pro
   }
   if (step.channel === "email" && !next.subject?.trim()) {
     return { ok: false, error: "An email needs a subject line." };
+  }
+
+  // THE FIRST TEXT has to say who it is from and how to stop. Refused here as
+  // well as on screen, because a server action can be called without the
+  // screen, and the gate's appended "Reply STOP" is a backstop, not the rule.
+  if (step.channel === "sms") {
+    const { data: siblings } = await sb.from("sms_campaign_steps")
+      .select("id, ordinal, channel").eq("version_id", step.version_id);
+    if (openerStepId(siblings ?? []) === step.id) {
+      const problem = firstMessageProblem(next.body);
+      if (problem) return { ok: false, error: problem };
+    }
   }
 
   // The schema enforces the shape of each mode; getting it wrong here would
@@ -169,9 +182,17 @@ export async function setWorkflowActive(input: { workflowId: string; active: boo
 
   // Switching OFF does not stop anybody already in the sequence. Saying so is
   // the difference between a pause and what people assume a pause is.
-  const { count } = await sb.from("sms_conversations")
-    .select("*", { count: "exact", head: true })
-    .eq("workspace_id", wf.workspace_id).neq("state", "ended");
+  // Counted for THIS campaign in this workspace. It counted every live
+  // conversation in the workspace, so switching one campaign off could claim
+  // it left forty people running when they belonged to another one.
+  const { data: versions } = await sb.from("sms_campaign_versions")
+    .select("id").eq("campaign_id", wf.campaign_id);
+  const versionIds = (versions ?? []).map((v) => v.id);
+  const { count } = versionIds.length
+    ? await sb.from("sms_conversations")
+        .select("*", { count: "exact", head: true })
+        .eq("workspace_id", wf.workspace_id).in("campaign_version_id", versionIds).neq("state", "ended")
+    : { count: 0 };
 
   return { ok: true, alreadyEnrolled: count ?? 0 };
 }
@@ -184,8 +205,12 @@ export async function setVersionPublished(input: { versionId: string; published:
 
   if (input.published) {
     const { data: steps } = await sb.from("sms_campaign_steps")
-      .select("id, channel, body, subject").eq("version_id", input.versionId);
+      .select("id, ordinal, channel, body, subject").eq("version_id", input.versionId);
     if (!steps?.length) return { ok: false, error: "There are no messages to publish." };
+
+    const opener = steps.find((s) => s.id === openerStepId(steps));
+    const openerProblem = opener ? firstMessageProblem(opener.body) : null;
+    if (openerProblem) return { ok: false, error: openerProblem };
 
     for (const s of steps) {
       const unknown = [...new Set(unresolvedFields(s.body))].filter((f) => !isKnownMergeField(f));

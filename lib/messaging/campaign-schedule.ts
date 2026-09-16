@@ -88,14 +88,46 @@ export function localTimeOnDay(
 }
 
 /**
+ * A new lead hears from us 2 to 5 minutes after it was created.
+ *
+ * Karan, 2026-09-15: "a lead should be responded within 2-5 minutes". Hatch
+ * notices a lead up to 15 minutes late; an instant text reads as a machine.
+ */
+export const FIRST_MESSAGE_WINDOW = { minSeconds: 120, maxSeconds: 300 } as const;
+
+/**
+ * When the opener goes, counted from when the lead was CREATED in Salesforce,
+ * not from when we noticed it: the poll's own lag is part of the customer's
+ * wait. Drawn one tick short of the top so the tick that picks it up still
+ * lands inside the window, and never in the past.
+ */
+export function firstMessageAt(input: {
+  leadCreatedAt: Date | null;
+  now: Date;
+  tickSeconds: number;
+  rand?: () => number;
+}): Date {
+  const base = input.leadCreatedAt && input.leadCreatedAt <= input.now ? input.leadCreatedAt : input.now;
+  const { minSeconds } = FIRST_MESSAGE_WINDOW;
+  const top = Math.max(minSeconds, FIRST_MESSAGE_WINDOW.maxSeconds - input.tickSeconds);
+  const r = input.rand ?? Math.random;
+  const seconds = minSeconds + Math.floor(r() * (top - minSeconds + 1));
+  const at = new Date(base.getTime() + seconds * 1000);
+  return at < input.now ? input.now : at;
+}
+
+/**
  * Turn a campaign's steps into instants.
  *
  * Steps are cumulative: delay_after_last stacks on whatever the previous step
  * resolved to, which is why this returns the whole sequence rather than
  * answering one step at a time.
+ *
+ * `launchAt` moves the at_launch opener off the moment of enrolment (see
+ * firstMessageAt); everything after it stacks on the opener as before.
  */
 export function scheduleSteps(
-  steps: CampaignStep[], enrolledAt: Date, timeZone: string
+  steps: CampaignStep[], enrolledAt: Date, timeZone: string, opts: { launchAt?: Date } = {}
 ): ScheduledStep[] {
   const ordered = [...steps].sort((a, b) => a.ordinal - b.ordinal);
   const out: ScheduledStep[] = [];
@@ -105,7 +137,7 @@ export function scheduleSteps(
     let runAt: Date;
     switch (step.scheduleMode) {
       case "at_launch":
-        runAt = enrolledAt;
+        runAt = opts.launchAt ?? enrolledAt;
         break;
       case "delay_after_last":
         runAt = new Date(last.getTime() + (step.delayMinutes ?? 0) * 60_000);

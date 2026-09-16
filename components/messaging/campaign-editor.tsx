@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateStep, setWorkflowActive, setVersionPublished } from "@/lib/messaging/campaign-write";
 import { fillMergeFields, unresolvedFields, KNOWN_MERGE_FIELDS } from "@/lib/messaging/merge-fields";
+import {
+  firstMessageChecks, applyFirstMessageFix, openerStepId, smsSegments, withDisclosure,
+} from "@/lib/messaging/first-message";
 
 export type EditableStep = {
   id: string; ordinal: number;
@@ -47,6 +50,8 @@ export default function CampaignEditor({
   const ws = workspaces.find((w) => w.id === previewWs) ?? workspaces[0];
   const preview = (body: string) =>
     fillMergeFields(body, { workspacePhone: ws?.phone_e164, workspaceName: ws?.name });
+  // The first TEXT, which has to say who it is from and how to stop.
+  const openerId = openerStepId(steps);
 
   const publish = async (next: boolean) => {
     if (!versionId) return;
@@ -123,17 +128,25 @@ export default function CampaignEditor({
           {steps.map((s) => (
             <li key={s.id}>
               {editing === s.id ? (
-                <StepForm step={s} onDone={(msg) => { setEditing(null); if (msg) setNote(msg); router.refresh(); }}
+                <StepForm step={s} isOpener={s.id === openerId} preview={preview}
+                  onDone={(msg) => { setEditing(null); if (msg) setNote(msg); router.refresh(); }}
                   onError={setErr} onCancel={() => setEditing(null)} />
               ) : (
                 <button type="button" onClick={() => { setEditing(s.id); setNote(null); setErr(null); }}
                   className="w-full text-left px-4 py-3 touch-manipulation">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-[11px] font-medium uppercase tracking-wide text-ppp-charcoal-400">
+                      {s.id === openerId && <span className="mr-1.5 rounded bg-ppp-charcoal px-1.5 py-0.5 normal-case tracking-normal text-white">First message</span>}
                       {s.timing}{s.channel === "email" ? " · email" : ""}
                     </span>
                     <span className="shrink-0 text-[11px] text-ppp-charcoal-400">Edit</span>
                   </div>
+                  {s.id === openerId && firstMessageChecks(s.body).some((c) => !c.ok) && (
+                    <p className="mt-1 text-[12px] text-ppp-orange-700 leading-snug">
+                      Missing: {firstMessageChecks(s.body).filter((c) => !c.ok).map((c) => c.label.toLowerCase()).join(" and ")}.
+                      It cannot be published like this.
+                    </p>
+                  )}
                   {s.channel === "email" && (
                     <p className="mt-1 text-[13px] font-semibold text-ppp-charcoal">{s.subject}</p>
                   )}
@@ -181,9 +194,12 @@ export default function CampaignEditor({
 }
 
 function StepForm({
-  step, onDone, onError, onCancel,
+  step, isOpener, preview, onDone, onError, onCancel,
 }: {
   step: EditableStep;
+  /** The first text in the sequence: must say who it is from and how to stop. */
+  isOpener: boolean;
+  preview: (body: string) => string;
   onDone: (note: string | null) => void;
   onError: (e: string) => void;
   onCancel: () => void;
@@ -198,6 +214,11 @@ function StepForm({
 
   const unknown = [...new Set(unresolvedFields(body))]
     .filter((f) => !(KNOWN_MERGE_FIELDS as readonly string[]).includes(f.toLowerCase()));
+  const checks = isOpener ? firstMessageChecks(body) : [];
+  const openerFails = checks.some((c) => !c.ok);
+  // What the customer receives: fields filled for the workspace being viewed,
+  // and the opt-out line the gate would add if it were missing.
+  const received = step.channel === "sms" && isOpener ? withDisclosure(preview(body)) : preview(body);
 
   const save = async () => {
     setBusy(true);
@@ -235,12 +256,39 @@ function StepForm({
         </label>
       )}
 
+      {isOpener && (
+        <div className="rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2.5">
+          <p className="text-[12.5px] font-semibold text-ppp-charcoal">The first message a new lead gets</p>
+          <p className="mt-0.5 text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
+            Write it however you like. Carriers require two things in it, and it
+            cannot be saved or published without both.
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {checks.map((c) => (
+              <li key={c.key} className="flex flex-wrap items-center gap-2">
+                <span aria-hidden className={[
+                  "shrink-0 h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white",
+                  c.ok ? "bg-ppp-green-600" : "bg-ppp-orange-600",
+                ].join(" ")}>{c.ok ? "✓" : "!"}</span>
+                <span className={["text-[12.5px]", c.ok ? "text-ppp-charcoal" : "text-ppp-orange-700"].join(" ")}>{c.label}</span>
+                {!c.ok && (
+                  <button type="button" onClick={() => setBody((b) => applyFirstMessageFix(b, c.key))}
+                    className="min-h-[44px] px-3 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-medium text-ppp-charcoal touch-manipulation">
+                    {c.fix}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <label className="block">
         <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">What it says</span>
         <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={step.channel === "email" ? 8 : 4}
           className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-[13px] leading-relaxed resize-y" />
         <span className="mt-1 block text-[11.5px] text-ppp-charcoal-400 leading-snug">
-          {step.channel === "sms" && <>{body.length} characters, about {Math.max(1, Math.ceil(body.length / 160))} texts. </>}
+          {step.channel === "sms" && <>{[...received].length} characters as sent, {smsSegments(received)} text{smsSegments(received) === 1 ? "" : "s"}. </>}
           You can use {KNOWN_MERGE_FIELDS.map((f) => `{{${f}}}`).join(", ")}.
         </span>
         {unknown.length > 0 && (
@@ -250,11 +298,20 @@ function StepForm({
         )}
       </label>
 
+      {step.channel === "sms" && body.trim() && (
+        <div>
+          <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">What the customer sees</span>
+          <p className="rounded-2xl rounded-bl-sm bg-white border border-ppp-charcoal-100 px-3 py-2 text-[13px] text-ppp-charcoal leading-relaxed whitespace-pre-wrap max-w-[34rem]">
+            {received}
+          </p>
+        </div>
+      )}
+
       <div>
         <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">When it goes</span>
         <div className="flex flex-wrap gap-1.5">
           {([
-            ["at_launch", "Straight away"],
+            ["at_launch", "2–5 min after the lead"],
             ["delay_after_last", "After the last one"],
             ["absolute_on_day", "On a set day"],
           ] as const).map(([v, label]) => (
@@ -296,7 +353,7 @@ function StepForm({
       </div>
 
       <div className="flex gap-2">
-        <button type="button" onClick={() => void save()} disabled={busy || !body.trim() || unknown.length > 0}
+        <button type="button" onClick={() => void save()} disabled={busy || !body.trim() || unknown.length > 0 || openerFails}
           className="min-h-[44px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold disabled:opacity-40 touch-manipulation">
           {busy ? "Saving…" : "Save"}
         </button>

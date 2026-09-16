@@ -55,10 +55,19 @@ export type Turn = {
 // "Availability:", is part of the message it sits in.
 const SPEAKER = /^(Campaign|Customer|Emily|Human agent|Auto-reply|Agent|AI[^:]{0,20}|Bot):\s?([\s\S]*)$/i;
 
-/** Messages that are context rather than part of the conversation handled. */
+/**
+ * Messages that are context rather than part of the AI conversation.
+ *
+ * Kate's export of 2026-09-15 is "AI Conversation Only [PCM + T turns]": her
+ * T-numbers count the customer and Emily and nothing else. The campaign
+ * message before the customer's first reply is her [PCM], and a human agent's
+ * messages after a handoff are not in her transcript at all. They are kept
+ * here, unnumbered, so the thread still shows what happened without moving a
+ * single T-number away from her sheet.
+ */
 export function isUnnumbered(speaker: string): boolean {
   const s = speaker.toLowerCase();
-  return s === "campaign" || s === "auto-reply";
+  return s === "campaign" || s === "auto-reply" || s === "human agent" || s === "agent";
 }
 
 /** The conversation as messages, numbered the way Kate numbers them. */
@@ -87,9 +96,11 @@ export function turnsOf(transcript: string): Turn[] {
     // Kate: "include the message before the customer's reply even if it isn't
     // numbered, so I know which message the customer is replying to."
     const next = turns[i + 1];
-    t.label = t.speaker.toLowerCase() === "campaign"
+    const s = t.speaker.toLowerCase();
+    t.label = s === "campaign"
       ? next?.speaker.toLowerCase() === "customer" ? "Previous Campaign Message" : "Campaign Message"
-      : "Auto-reply";
+      : s === "auto-reply" ? "Auto-reply"
+      : "Human agent (after handoff)";
   });
   return turns;
 }
