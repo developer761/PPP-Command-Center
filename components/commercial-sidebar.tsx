@@ -122,6 +122,9 @@ const navSections: NavSection[] = [
     items: [
       { label: "Field Ops", href: "/commercial/field-ops", icon: <IconHardHat />, adminOnly: true },
       { label: "Accounting", href: "/commercial/accounting", icon: <IconLedger />, financeOnly: true },
+      // Everything BCC'd to a job or GC archive address, sent and received
+      // together. It was only ever readable one record at a time before.
+      { label: "Email", href: "/commercial/email", icon: <IconEnvelope /> },
       { label: "Reports", href: "/commercial/reports", icon: <IconChart /> },
       { label: "Settings", href: "/commercial/settings", icon: <IconGear /> },
     ],
@@ -428,6 +431,15 @@ function IconLedger() {
       <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 18.5Z" />
       <path d="M8 3v17" />
       <path d="M11.5 8h5 M11.5 12h5 M11.5 16h3" />
+    </svg>
+  );
+}
+
+function IconEnvelope() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 7l9 6 9-6" />
     </svg>
   );
 }
