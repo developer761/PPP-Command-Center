@@ -103,15 +103,35 @@ async function all(conn, soql) {
 const MAP = new Map(); // `${entity}:${sfId}` -> row_id
 
 async function loadMap() {
-  const { data, error } = await sb.from("commercial_import_map").select("sf_id, entity, row_id").limit(20000);
-  if (error) {
-    if (/does not exist|schema cache/i.test(error.message)) {
-      console.error("commercial_import_map is missing — apply migration 20260916130000 first.");
-      process.exit(1);
+  // PAGINATE, and order by the WHOLE key.
+  //
+  // Two bugs lived here. `.limit(20000)` returned 1000 rows, because PostgREST
+  // caps a response at its max-rows setting and says nothing about the rest —
+  // so the importer saw a third of the map, could not find the employees it had
+  // just written, and would have RE-INSERTED every row it could not see.
+  // Then paginating on `sf_id` alone was not enough either: one work order has
+  // an invoice, a job and a work_order row under the same sf_id, and a
+  // non-unique sort lets tied rows fall between pages.
+  let from = 0;
+  for (;;) {
+    const { data, error } = await sb
+      .from("commercial_import_map")
+      .select("sf_id, entity, row_id")
+      .order("sf_id", { ascending: true })
+      .order("entity", { ascending: true })
+      .range(from, from + 999);
+    if (error) {
+      if (/does not exist|schema cache/i.test(error.message)) {
+        console.error("commercial_import_map is missing — apply migration 20260916130000 first.");
+        process.exit(1);
+      }
+      throw new Error(error.message);
     }
-    throw new Error(error.message);
+    for (const r of data ?? []) MAP.set(`${r.entity}:${r.sf_id}`, r.row_id);
+    if (!data || data.length < 1000) break;
+    from += data.length;
   }
-  for (const r of data ?? []) MAP.set(`${r.entity}:${r.sf_id}`, r.row_id);
+  console.log(`import map: ${MAP.size} row(s) already imported`);
 }
 const mapped = (entity, sfId) => MAP.get(`${entity}:${sfId}`) ?? null;
 
@@ -233,7 +253,7 @@ async function loadSalesforce(conn) {
       Amount__c, Date__c, Method__c, Description__c, ReferenceId__c, Deposited__c,
       RetailVendor__c, RetailVendor__r.Name, Payee__c, Payee__r.Name
       FROM Transaction__c WHERE WorkOrder__c IN (${woIds}) OR Opportunity__c IN (${oppIds})`);
-  SF.attendance = await all(conn, `SELECT Id, WorkOrder__c, Crew__c, Crew__r.Name, Crew_Worker__c, StartDate__c, EndDate__c,
+  SF.attendance = await all(conn, `SELECT Id, WorkOrder__c, Crew__c, Crew__r.Name, Crew_Worker__c, CreatedDate, StartDate__c, EndDate__c,
       LengthofDay__c, ActualLaborDays__c, Hours_Worked__c, Paid__c, PaidAmount__c, Notes__c
       FROM WorkOrderCrew__c WHERE WorkOrder__c IN (${woIds})`);
   SF.lines = await all(conn, `SELECT Id, WorkOrderId, LineItemNumber, Description, Quantity, UnitPrice, Subtotal, TotalPrice,
@@ -601,22 +621,44 @@ async function stageAttendance() {
     }, r);
     jobForDeal.set(w.Id, jobId);
   }
+  // One entry per person per job per day — the table enforces it with a UNIQUE
+  // on (employee, job, work_date). Salesforce has 29 cases of the same person
+  // on the same job twice in a day, so those FOLD: the hours are summed and the
+  // day's total is what it always was. No Salesforce row spans more than one
+  // day, so nothing needs spreading across dates.
+  const byDay = new Map();
   for (const a of SF.attendanceInScope) {
     const jobId = jobForDeal.get(a.WorkOrder__c);
     const who = attendanceWho(a);
     const employeeId = who ? mapped("employee", who.key) : null;
-    const workDate = ymd(a.StartDate__c);
+    // One row carries 8 hours with no dates at all (Tomco Labor - JJ on AIREF
+    // #2). Salesforce is being retired, so dropping real hours is worse than
+    // dating them by the day the row was created — flagged, not hidden.
+    const dated = ymd(a.StartDate__c) ?? ymd(a.EndDate__c);
+    const workDate = dated ?? ymd(a.CreatedDate);
+    if (!dated && workDate) r.skipped.push(`attendance ${a.Id}: no work date in Salesforce — dated ${workDate}, the day the row was created (${a.Hours_Worked__c ?? 0}h)`);
     if (!jobId || !employeeId || !workDate) {
-      r.skipped.push(`attendance ${a.Id}: ${!jobId ? "no job" : !employeeId ? "no employee" : "no work date"}`);
+      r.skipped.push(`attendance ${a.Id}: ${!jobId ? "no job" : !employeeId ? "no employee" : "no date at all"}`);
       continue;
     }
+    const key = `attday:${a.WorkOrder__c}|${who.key}|${workDate}`;
     const hours = Number(a.Hours_Worked__c ?? 0);
-    await put("attendance", a.Id, "commercial_time_entries", {
-      job_id: jobId,
-      employee_id: employeeId,
-      work_date: workDate,
-      // numeric(4,2): 99.99 is the ceiling, and a day cannot exceed 24 anyway.
-      actual_hours: Math.min(24, Math.max(0, Math.round(hours * 100) / 100)),
+    const prev = byDay.get(key);
+    if (prev) prev.hours += hours;
+    else byDay.set(key, { jobId, employeeId, workDate, hours });
+  }
+
+  for (const [key, day] of byDay) {
+    const rounded = Math.round(day.hours * 100) / 100;
+    // numeric(4,2) holds 99.99. Capping at 24 would look tidy and silently drop
+    // hours that the reconciliation would then report as missing.
+    const hours = Math.max(0, Math.min(99.99, rounded));
+    if (hours !== rounded) r.skipped.push(`${key}: ${rounded}h is more than the column holds; stored ${hours}`);
+    await put("attendance", key, "commercial_time_entries", {
+      job_id: day.jobId,
+      employee_id: day.employeeId,
+      work_date: day.workDate,
+      actual_hours: hours,
       source: "manual",
       status: "approved",
     }, r);
@@ -632,6 +674,18 @@ const RUNNERS = {
 
 // ─── reconcile ──────────────────────────────────────────────────────────────
 
+/** Every row, not the first thousand. Ordered by id so pagination is stable. */
+async function readAll(table, columns, shape = (q) => q) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await shape(sb.from(table).select(columns).order("id", { ascending: true }).range(from, from + 999));
+    if (error) throw new Error(`${table}: ${error.message}`);
+    out.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
 async function reconcile() {
   const problems = [];
   const money = (c) => `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
@@ -642,10 +696,10 @@ async function reconcile() {
     if (!dealId) { problems.push(`${w.WorkOrderNumber}: no deal imported`); continue; }
     const { data: inv } = await sb
       .from("commercial_invoices")
-      .select("total_cents, paid_cents, balance_cents")
+      .select("subtotal_cents, total_cents, paid_cents, balance_cents")
       .eq("opportunity_id", dealId)
       .is("deleted_at", null);
-    const ourTotal = (inv ?? []).reduce((n, i) => n + Number(i.total_cents), 0);
+    const ourTotal = (inv ?? []).reduce((n, i) => n + Number(i.subtotal_cents), 0);
     const ourPaidJob = (inv ?? []).reduce((n, i) => n + Number(i.paid_cents), 0);
     const ourBalanceJob = (inv ?? []).reduce((n, i) => n + Number(i.balance_cents), 0);
     const sfBalanceJob = cents(w.BalanceOwed__c);
@@ -664,13 +718,17 @@ async function reconcile() {
 
   const { count: deals } = await sb.from("commercial_opportunities").select("id", { count: "exact", head: true }).is("deleted_at", null);
   const { count: accounts } = await sb.from("commercial_accounts").select("id", { count: "exact", head: true }).is("deleted_at", null);
-  const { data: purch } = await sb.from("commercial_project_purchases").select("category, amount_cents").is("deleted_at", null);
-  const ourMaterials = (purch ?? []).filter((p) => p.category === "materials").reduce((n, p) => n + Number(p.amount_cents), 0);
-  const ourLabor = (purch ?? []).filter((p) => p.category === "labor").reduce((n, p) => n + Number(p.amount_cents), 0);
+  // PAGINATED. PostgREST caps a response at 1000 rows, so the first version of
+  // this read 1000 of 1,626 purchases and reported materials at 61% of thetrue
+  // figure — a reconciliation that INVENTED a discrepancy in correctly imported
+  // data. The check has to be at least as careful as the thing it checks.
+  const purch = await readAll("commercial_project_purchases", "category, amount_cents", (q) => q.is("deleted_at", null));
+  const ourMaterials = purch.filter((p) => p.category === "materials").reduce((n, p) => n + Number(p.amount_cents), 0);
+  const ourLabor = purch.filter((p) => p.category === "labor").reduce((n, p) => n + Number(p.amount_cents), 0);
   const sfMaterials = SF.txInScope.filter((t) => t.RecordType?.DeveloperName === "Purchase").reduce((n, t) => n + cents(t.Amount__c), 0);
   const sfLabor = SF.txInScope.filter((t) => t.RecordType?.DeveloperName === "Payment_Out" && t.PayeeType__c === "Labor_Company").reduce((n, t) => n + cents(t.Amount__c), 0);
-  const { data: hoursRows } = await sb.from("commercial_time_entries").select("actual_hours").limit(5000);
-  const ourHours = (hoursRows ?? []).reduce((n, h) => n + Number(h.actual_hours), 0);
+  const hoursRows = await readAll("commercial_time_entries", "actual_hours");
+  const ourHours = hoursRows.reduce((n, h) => n + Number(h.actual_hours), 0);
   const sfHours = SF.attendanceInScope.reduce((n, a) => n + Number(a.Hours_Worked__c ?? 0), 0);
 
   const rows = [
@@ -688,7 +746,13 @@ async function reconcile() {
   const hoursOk = Math.abs(ourHours - sfHours) < 0.01;
   if (!hoursOk) problems.push(`TOTAL hours: ours ${ourHours.toFixed(2)} vs Salesforce ${sfHours.toFixed(2)}`);
   console.log(`  ${hoursOk ? "✅" : "❌"} ${"attendance hours".padEnd(16)} ${ourHours.toFixed(1).padStart(16)}  ${sfHours.toFixed(1).padStart(16)}`);
-  console.log(`\n  deals ${deals} · accounts ${accounts} · contract (ours) ${money(ourContract)} vs Salesforce ${money(sfContract)}`);
+  // Our subtotal carries the adjustments that make the seven jobs match
+  // Salesforce's balance, so it is EXPECTED to differ from Salesforce's quoted
+  // subtotal by exactly those adjustments. Say so rather than printing two
+  // numbers and leaving it hanging.
+  const adjustments = ourContract - sfContract;
+  console.log(`\n  deals ${deals} · accounts ${accounts}`);
+  console.log(`  contract: ours ${money(ourContract)} vs Salesforce ${money(sfContract)}${adjustments ? `  (difference ${money(adjustments)} = the carried-over adjustments)` : ""}`);
   if (SF.txOutOfScope.length) {
     const amt = SF.txOutOfScope.reduce((n, t) => n + cents(t.Amount__c), 0);
     console.log(`  (excluded on purpose: ${SF.txOutOfScope.length} transaction(s) ${money(amt)} on canceled work orders)`);
