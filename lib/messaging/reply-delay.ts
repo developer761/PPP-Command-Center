@@ -18,10 +18,10 @@
  * THE DELAY IS TIME TO DELIVERY. Karan, 2026-09-15: Emily should answer 30
  * seconds to a minute and a half after the customer's text. It used to delay
  * when the turn STARTED, so writing the reply and waiting for the next tick
- * came on top, and "90 seconds" could be two minutes. Now the turn starts
- * shortly after the text (TURN_START_SECONDS), the reply is held, and it goes
- * at replyDueAt: a moment drawn from the range, measured from the customer's
- * message, less one tick so the tick that picks it up still lands inside.
+ * came on top, and "90 seconds" could be two minutes. Now the turn is queued
+ * at once, the reply is written on the next tick and held, and it goes at
+ * replyDueAt: a moment drawn from the range, measured from the customer's
+ * message, less one tick so the tick that picks it up still lands inside it.
  */
 import { withinQuietHours, type QuietHours } from "./compliance";
 
@@ -32,20 +32,31 @@ export const MAX_DELAY_SECONDS = 1800;
 export const DEFAULT_DELAY = { minSeconds: 30, maxSeconds: 90 } as const;
 
 /**
- * How often the scheduler runs (the pg_cron job). A held reply can wait up to
- * this long past its moment before a tick picks it up, so the moment is drawn
- * this much short of the top of the range.
+ * How often the scheduler runs. PPP moved to Vercel Pro on 2026-09-15, whose
+ * crons run at most once a minute (vercel.json: "* * * * *"), so this is 60.
+ *
+ * A held reply waits up to one tick past its moment before a tick picks it up,
+ * so the moment is drawn one tick short of the top of the range. At 60 that
+ * collapses a 30-90 range to "due at 30, delivered whenever the next tick
+ * fires": still 30-90 seconds after the text, with the spread coming from
+ * where the text lands in the minute rather than from the draw. A faster
+ * trigger — the same route called every 10 seconds — would restore the drawn
+ * spread and tighten everything else; nothing else would need to change.
  */
-export const TICK_SECONDS = 10;
+export const TICK_SECONDS = 60;
 
 /**
- * When Emily starts writing, after the customer's text. Long enough that a
- * customer sending two or three texts in a row gets one reply to all of them;
- * short enough that the reply is written before its moment comes. A text that
- * arrives later still is caught at send time: a held reply to an older
- * message is dropped, and the newer message's own turn answers everything.
+ * When Emily starts writing, after the customer's text.
+ *
+ * Zero: the turn is queued immediately and written by the next tick, so the
+ * reply exists before its moment comes. It was 15 seconds when the tick ran
+ * every 10; at a minute that only risked writing the reply after it was due.
+ *
+ * A burst of texts still gets ONE answer: they are all in the queue by the
+ * time the tick runs, and a held reply answering an older message is dropped
+ * when a newer one exists (scheduler-db.ts).
  */
-export const TURN_START_SECONDS = 15;
+export const TURN_START_SECONDS = 0;
 
 export type DelayConfig = { minSeconds: number; maxSeconds: number };
 

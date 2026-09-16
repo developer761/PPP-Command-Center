@@ -40,10 +40,34 @@ describe("Emily answers 30 seconds to a minute and a half after the text", () =>
     expect((hi.getTime() - noon.getTime()) / 1000 + TICK_SECONDS).toBe(90);
   });
 
-  it("starts writing well before the earliest moment it could be due", () => {
-    // Written by TURN_START + one tick + a few seconds for the model, so a
-    // reply due at 30s is ready when 30s comes.
-    expect(TURN_START_SECONDS + TICK_SECONDS).toBeLessThan(DEFAULT_DELAY.minSeconds);
+  /**
+   * The whole model, wherever the text lands in the tick.
+   *
+   * The turn is queued at once and written by the next tick. If the moment has
+   * passed by then the reply goes in that same tick; if not it is held and the
+   * next tick sends it. Simulated for a text arriving at every second of the
+   * minute, because "held, then one more tick" is exactly how a 90-second
+   * promise turns into two minutes.
+   */
+  it("arrives 30-90s after the text wherever the text lands in the minute", () => {
+    const WRITE_SECONDS = 8; // a generous allowance for the model
+    const due = (replyDueAt({
+      receivedAt: new Date(0), config: DEFAULT_DELAY, timeZone: TZ, quietHours: HOURS,
+    }).getTime()) / 1000;
+    for (let offset = 1; offset <= TICK_SECONDS; offset++) {
+      // The text lands `offset` seconds before the next tick.
+      const firstTick = offset;
+      const written = firstTick + WRITE_SECONDS;
+      const delivered = written >= due
+        ? written
+        : Math.ceil((due - written) / TICK_SECONDS) * TICK_SECONDS + written;
+      expect(delivered, `text ${offset}s before a tick`).toBeGreaterThanOrEqual(DEFAULT_DELAY.minSeconds);
+      expect(delivered, `text ${offset}s before a tick`).toBeLessThanOrEqual(DEFAULT_DELAY.maxSeconds);
+    }
+  });
+
+  it("is queued the moment the text arrives, so it is written by the next tick", () => {
+    expect(TURN_START_SECONDS).toBe(0);
   });
 
   it("still never carries a reply past the evening cut-off", () => {

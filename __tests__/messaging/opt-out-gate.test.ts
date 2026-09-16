@@ -3,6 +3,15 @@ import { withDisclosure, needsDisclosure, OPT_OUT_DISCLOSURE, gatedSend } from "
 import { LoggingTransport } from "@/lib/messaging/transport";
 import type { E164 } from "@/lib/messaging/phone";
 
+/**
+ * A fixed clock. The gate refuses to send outside 8am-9pm local (the federal
+ * bound, applied whatever a workspace is set to), so a gate test that used the
+ * real clock passed all afternoon and failed after 9pm — which is how it was
+ * found, at 21:25 on 2026-09-15.
+ */
+const MIDDAY = new Date("2026-07-15T16:00:00Z"); // noon in New York
+
+
 const ws = {
   id: "w", name: "NY LI Nassau Leads", phone_e164: "+15163448418" as E164,
   time_zone: "America/New_York", quiet_hours_start: 0, quiet_hours_end: 24,
@@ -30,7 +39,7 @@ describe("the opt-out disclosure, enforced at the carrier boundary", () => {
   it("is added to the first message we ever send someone", async () => {
     const t = new LoggingTransport();
     const res = await gatedSend(
-      { workspace: ws, to: TO, body: "Thanks for requesting a free estimate!", agent: "campaign" },
+      { workspace: ws, to: TO, body: "Thanks for requesting a free estimate!", agent: "campaign", now: MIDDAY },
       { ...deps(), transport: t }
     );
     expect(res.ok).toBe(true);
@@ -40,7 +49,7 @@ describe("the opt-out disclosure, enforced at the carrier boundary", () => {
   it("is not added again to somebody who has heard from us before", async () => {
     const t = new LoggingTransport();
     await gatedSend(
-      { workspace: ws, to: TO, body: "What's the address?", agent: "agent" },
+      { workspace: ws, to: TO, body: "What's the address?", agent: "agent", now: MIDDAY },
       { ...deps({ hasEverSent: async () => true }), transport: t }
     );
     expect(t.sent[0].body).not.toContain(OPT_OUT_DISCLOSURE);
@@ -53,7 +62,7 @@ describe("the opt-out disclosure, enforced at the carrier boundary", () => {
   it("leaves a message that already says it alone", async () => {
     const t = new LoggingTransport();
     const body = "Thanks for requesting a free estimate! Reply END to stop texts.";
-    await gatedSend({ workspace: ws, to: TO, body, agent: "campaign" }, { ...deps(), transport: t });
+    await gatedSend({ workspace: ws, to: TO, body, agent: "campaign", now: MIDDAY }, { ...deps(), transport: t });
     expect(t.sent[0].body).toBe(body);
   });
 
@@ -89,7 +98,7 @@ describe("the opt-out disclosure, enforced at the carrier boundary", () => {
   it("reports what was really sent, not what was asked for", async () => {
     const t = new LoggingTransport();
     const res = await gatedSend(
-      { workspace: ws, to: TO, body: "Hello", agent: "campaign" },
+      { workspace: ws, to: TO, body: "Hello", agent: "campaign", now: MIDDAY },
       { ...deps(), transport: t }
     );
     expect(res.ok).toBe(true);
@@ -103,7 +112,7 @@ describe("the opt-out disclosure, enforced at the carrier boundary", () => {
   it("adds nothing when the send is refused", async () => {
     const t = new LoggingTransport();
     const res = await gatedSend(
-      { workspace: ws, to: TO, body: "Hello", agent: "campaign" },
+      { workspace: ws, to: TO, body: "Hello", agent: "campaign", now: MIDDAY },
       { ...deps({ isSuppressed: async () => true }), transport: t }
     );
     expect(res.ok).toBe(false);
@@ -115,7 +124,7 @@ describe("the opt-out disclosure, enforced at the carrier boundary", () => {
     const t = new LoggingTransport();
     const d = deps();
     delete (d as Record<string, unknown>).hasEverSent;
-    await gatedSend({ workspace: ws, to: TO, body: "Hello", agent: "campaign" }, { ...d, transport: t });
+    await gatedSend({ workspace: ws, to: TO, body: "Hello", agent: "campaign", now: MIDDAY }, { ...d, transport: t });
     // Documented rather than desired: every real caller supplies it, and a
     // test asserts the shipped deps do.
     expect(t.sent[0].body).toBe("Hello");
@@ -147,7 +156,7 @@ describe("the renderer and the gate do not both add it", () => {
 
     const t = new LoggingTransport();
     await gatedSend(
-      { workspace: ws, to: TO, body: rendered, agent: "agent" },
+      { workspace: ws, to: TO, body: rendered, agent: "agent", now: MIDDAY },
       { ...deps(), transport: t }
     );
     // Kate sees the disclosure while reviewing, and the gate recognises it

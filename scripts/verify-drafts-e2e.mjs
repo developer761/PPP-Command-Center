@@ -14,6 +14,16 @@ import { gatedSend } from "../lib/messaging/gate.ts";
 import { gateDeps } from "../lib/messaging/gate-deps.ts";
 import { isStale, wasEdited } from "../lib/messaging/drafts.ts";
 
+/**
+ * A fixed midday, in the workspace's own timezone.
+ *
+ * The gate refuses to send outside 8am-9pm local whatever a workspace is set
+ * to, so "a normal approval passes the gate" passed all day and failed after
+ * 9pm — found at 21:30 on 2026-09-15. The suppression checks below are
+ * deliberately unaffected by the clock: opting out is not a time of day.
+ */
+const MIDDAY = new Date(new Date().toISOString().slice(0, 10) + "T16:00:00.000Z");
+
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
 });
@@ -78,7 +88,7 @@ try {
 
   // 5. THE GATE. Approving is not an override.
   const suppressedCheck = await gatedSend(
-    { workspace: ws, to: CUSTOMER, body: "approved by a human", agent: "human_review" },
+    { workspace: ws, to: CUSTOMER, body: "approved by a human", agent: "human_review", now: MIDDAY },
     gateDeps(sb)
   );
   const allowedBefore = suppressedCheck.ok;
@@ -92,7 +102,7 @@ try {
   made.optOuts.push(CUSTOMER);
 
   const afterOptOut = await gatedSend(
-    { workspace: ws, to: CUSTOMER, body: "approved by a human", agent: "human_review" },
+    { workspace: ws, to: CUSTOMER, body: "approved by a human", agent: "human_review", now: MIDDAY },
     gateDeps(sb)
   );
   ok("a human pressing send CANNOT reach someone who opted out",
