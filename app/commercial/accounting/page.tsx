@@ -25,6 +25,7 @@ import { GroupedReport } from "@/components/commercial/grouped-report";
 import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
 import { getAccountingEntryOptions } from "@/lib/commercial/accounting/entry-options";
 import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
+import { getArApplicationRows, AR_APPLICATIONS_SPEC } from "@/lib/commercial/reports/tomco/ar-applications";
 import {
   getSpendRows,
   getMoneyInRows,
@@ -414,6 +415,8 @@ const VIEWS = [
   // are Tomco's own Salesforce reports, rebuilt in the shape she reads them —
   // records grouped and subtotalled, not a chart of them. They were briefly
   // separate pages under Reports, which meant her work was in two places.
+  // Mary's own AR sheet, generated from the AIA certificates she raises.
+  { key: "ar", label: "AR sheet" },
   { key: "owed", label: "Balance owed" },
   { key: "purchases", label: "Purchases" },
   { key: "labor-out", label: "Labor payments" },
@@ -544,6 +547,7 @@ export default async function AccountingPage({
       : null;
   // Mary's four, each paid for only on the view that renders it.
   const owedRows = view === "owed" ? await getBalanceOwedRows() : null;
+  const arRows = view === "ar" ? await getArApplicationRows() : null;
   // The pickers for Mary's entry forms, built only on the views that show one.
   const entryOn = view === "receivables" || view === "purchases" || view === "labor-out";
   const entry = entryOn ? await getAccountingEntryOptions() : null;
@@ -1725,12 +1729,26 @@ export default async function AccountingPage({
              the shape she reads in Salesforce. The definitions live in
              lib/commercial/reports/tomco/ and are shared, so the numbers here
              and anywhere else they appear cannot drift apart. ── */}
+      {view === "ar" && arRows && (
+        <section className="space-y-3">
+          <SectionHead title={AR_APPLICATIONS_SPEC.title} hint={AR_APPLICATIONS_SPEC.blurb ?? ""} />
+        <GroupedReport
+          spec={AR_APPLICATIONS_SPEC}
+          rows={arRows}
+          emptyHint="No AIA applications have been issued yet. Raise one from a job's AIA Billing tool and its line appears here — with its retention on its own row, the way this sheet has always been written."
+        />
+        </section>
+      )}
+
       {view === "owed" && owedRows && (
+        <section className="space-y-3">
+          <SectionHead title={BALANCE_OWED_SPEC.title} hint={BALANCE_OWED_SPEC.blurb ?? ""} />
         <GroupedReport
           spec={BALANCE_OWED_SPEC}
           rows={[...owedRows].sort((a, b) => b.balanceCents - a.balanceCents)}
           emptyHint="Nothing is finished-and-unpaid right now."
         />
+        </section>
       )}
 
       {view === "purchases" && entry && (
@@ -1738,11 +1756,14 @@ export default async function AccountingPage({
       )}
 
       {view === "purchases" && spendRows && (
+        <section className="space-y-3">
+          <SectionHead title={PURCHASES_BY_VENDOR_SPEC.title} hint={PURCHASES_BY_VENDOR_SPEC.blurb ?? ""} />
         <GroupedReport
           spec={PURCHASES_BY_VENDOR_SPEC}
           rows={purchaseRows(spendRows)}
           emptyHint="No purchases recorded."
         />
+        </section>
       )}
 
       {view === "labor-out" && entry && (
@@ -1750,19 +1771,25 @@ export default async function AccountingPage({
       )}
 
       {view === "labor-out" && spendRows && (
+        <section className="space-y-3">
+          <SectionHead title={LABOR_PAYMENTS_SPEC.title} hint={LABOR_PAYMENTS_SPEC.blurb ?? ""} />
         <GroupedReport
           spec={LABOR_PAYMENTS_SPEC}
           rows={laborPaymentRows(spendRows)}
           emptyHint="No crew payments recorded."
         />
+        </section>
       )}
 
       {view === "deposits" && depositRows && (
+        <section className="space-y-3">
+          <SectionHead title={DEPOSIT_HISTORY_SPEC.title} hint={DEPOSIT_HISTORY_SPEC.blurb ?? ""} />
         <GroupedReport
           spec={DEPOSIT_HISTORY_SPEC}
           rows={depositRows}
           emptyHint="No payments in yet."
         />
+        </section>
       )}
 
       {/* ── Recurring reports to Alex ─────────────────────────────────
