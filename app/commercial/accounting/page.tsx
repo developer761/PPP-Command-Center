@@ -400,27 +400,27 @@ async function sendToAlexAction(formData: FormData) {
  * places that can create an invoice.
  */
 const VIEWS = [
-  { key: "overview", label: "Overview" },
-  { key: "receivables", label: "Receivables" },
+  { key: "overview", label: "Overview", primary: true },
+  { key: "receivables", label: "Receivables" , primary: true },
   // Alex's ledger. Sits next to Receivables on purpose: one answers "what is
   // owed", the other "what actually moved", and he reads them together.
-  { key: "transactions", label: "Transactions" },
-  { key: "aging", label: "AR aging" },
-  { key: "cash", label: "Cash flow" },
-  { key: "costs", label: "Job costs" },
+  { key: "transactions", label: "Transactions" , primary: false },
+  { key: "aging", label: "AR aging" , primary: false },
+  { key: "cash", label: "Cash flow" , primary: false },
+  { key: "costs", label: "Job costs" , primary: false },
   // The last two of Alex's reports the platform didn't carry.
-  { key: "tax", label: "Sales tax" },
-  { key: "reimbursements", label: "Reimbursements" },
+  { key: "tax", label: "Sales tax" , primary: false },
+  { key: "reimbursements", label: "Reimbursements" , primary: false },
   // Karan 2026-09-16: "all of Mary's stuff should be in accounting." These four
   // are Tomco's own Salesforce reports, rebuilt in the shape she reads them —
   // records grouped and subtotalled, not a chart of them. They were briefly
   // separate pages under Reports, which meant her work was in two places.
   // Mary's own AR sheet, generated from the AIA certificates she raises.
-  { key: "ar", label: "AR sheet" },
-  { key: "owed", label: "Balance owed" },
-  { key: "purchases", label: "Purchases" },
-  { key: "labor-out", label: "Labor payments" },
-  { key: "deposits", label: "Deposits" },
+  { key: "ar", label: "AR sheet" , primary: true },
+  { key: "owed", label: "Balance owed" , primary: false },
+  { key: "purchases", label: "Purchases" , primary: true },
+  { key: "labor-out", label: "Labor payments" , primary: true },
+  { key: "deposits", label: "Deposits" , primary: true },
 ] as const;
 type View = (typeof VIEWS)[number]["key"];
 
@@ -752,25 +752,66 @@ export default async function AccountingPage({
       {/* ── The switcher. Prominent and high, because these are the surfaces
              people came for — not a footer of links. Renders in place: the URL
              stays on /commercial/accounting. ── */}
-      <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {VIEWS.map((v) => {
-          const active = v.key === view;
-          return (
-            <Link
-              key={v.key}
-              href={href(v.key)}
-              aria-current={active ? "page" : undefined}
-              className={`shrink-0 px-3.5 py-2 text-[13.5px] font-bold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${
-                active
-                  ? "border-cc-brand-600 text-ppp-charcoal"
-                  : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"
-              }`}
-            >
-              {v.label}
-            </Link>
-          );
-        })}
+      {/* THIRTEEN TABS WAS TOO MANY TO LAND ON.
+          Karan 2026-09-16: "there's so many tabs here, I don't know if we need
+          all of these... the ones I mentioned and the things she needs to do
+          should be there, and the other tabs we're unsure about need to be
+          collapsed until tomorrow." So the six Mary works in every day stay on
+          the bar, and the other seven fold behind "More" — nothing is removed,
+          and anything she is already looking at stays open. */}
+      <nav className="border-b border-ppp-charcoal-100 -mx-1 px-1">
+        <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {VIEWS.filter((v) => v.primary).map((v) => {
+            const active = v.key === view;
+            return (
+              <Link
+                key={v.key}
+                href={href(v.key)}
+                aria-current={active ? "page" : undefined}
+                className={`shrink-0 px-3.5 py-2 text-[13.5px] font-bold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${
+                  active
+                    ? "border-cc-brand-600 text-ppp-charcoal"
+                    : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"
+                }`}
+              >
+                {v.label}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
+
+      {/* The seven held back. A real disclosure — `details` so it works with no
+          JavaScript — and forced open when you are already on one of them, so
+          the bar can never hide where you are. */}
+      <details className="-mt-1" open={VIEWS.some((v) => !v.primary && v.key === view)}>
+        <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-1 py-2 text-[12.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[38px]">
+          More
+          <span className="text-ppp-charcoal-400">({VIEWS.filter((v) => !v.primary).length})</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </summary>
+        <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {VIEWS.filter((v) => !v.primary).map((v) => {
+            const active = v.key === view;
+            return (
+              <Link
+                key={v.key}
+                href={href(v.key)}
+                aria-current={active ? "page" : undefined}
+                className={`shrink-0 px-3 rounded-lg border text-[12.5px] font-semibold min-h-[38px] inline-flex items-center ${
+                  active
+                    ? "border-cc-brand-300 bg-cc-brand-50 text-cc-brand-800"
+                    : "border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                }`}
+              >
+                {v.label}
+              </Link>
+            );
+          })}
+        </div>
+      </details>
 
       {view === "overview" && (
       <>
@@ -996,7 +1037,25 @@ export default async function AccountingPage({
       {/* Money in, on the view that answers "what is owed" — Mary reads the
           list and records the check against the line she is looking at. */}
       {view === "receivables" && entry && (
-        <RecordPaymentForm action={recordPaymentAction} invoices={entry.openInvoices} />
+        <>
+          {/* WHAT THIS NUMBER IS. Karan, 2026-09-16: "the receivables tab still
+              shows 1.4 million almost while the sheet I gave you was just above
+              300k, I'm so confused on what's going on."
+              Both are right, and they answer different questions. This page is
+              every job's CONTRACT less what has been collected — Tomco's four
+              AIREF buildings alone are $922,563.91 of it, because the imported
+              invoice for each is the whole contract. Mary's sheet is only what
+              has been formally certified and is being chased, which for AIREF
+              is one line: $177,733.93. The reconciler proves this page against
+              Salesforce to the cent; her sheet is the narrower list, and it
+              lives on the AR SHEET tab. */}
+          <p className="text-[12px] rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-3 py-2 text-ppp-charcoal-600">
+            <strong className="text-ppp-charcoal">This is every job&rsquo;s contract less what has come in</strong> &mdash;
+            including work not yet billed to the GC, which is why it is far larger than the chase list. What has been
+            certified and is actually being chased is on the <Link href={href("ar")} className="font-semibold text-cc-brand-700 hover:underline">AR sheet</Link> tab.
+          </p>
+          <RecordPaymentForm action={recordPaymentAction} invoices={entry.openInvoices} />
+        </>
       )}
 
       {view === "receivables" && receivablesView && (
