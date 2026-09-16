@@ -39,7 +39,7 @@ import {
 const TOMCO = "Corporate_Name__c='Tomco Painting'";
 const STAGES = [
   "accounts", "contacts", "deals", "jobs", "change-orders",
-  "invoices", "payments", "costs", "employees", "crews", "attendance",
+  "invoices", "payments", "costs", "employees", "crews", "attendance", "files",
 ];
 
 const args = process.argv.slice(2);
@@ -258,6 +258,20 @@ async function loadSalesforce(conn) {
       FROM WorkOrderCrew__c WHERE WorkOrder__c IN (${woIds})`);
   SF.lines = await all(conn, `SELECT Id, WorkOrderId, LineItemNumber, Description, Quantity, UnitPrice, Subtotal, TotalPrice,
       Status, ProductName__c, ChangeOrderRelated__c, SortOrder__c FROM WorkOrderLineItem WHERE WorkOrderId IN (${woIds})`);
+  // Files: everything attached to a Tomco opportunity or work order. With
+  // Salesforce being retired, whatever is not imported is gone.
+  const linkTargets = [...SF.opps.map((o) => o.Id), ...SF.wos.map((w) => w.Id)];
+  SF.links = [];
+  for (let i = 0; i < linkTargets.length; i += 150) {
+    SF.links.push(...await all(conn, `SELECT ContentDocumentId, LinkedEntityId FROM ContentDocumentLink
+      WHERE LinkedEntityId IN (${linkTargets.slice(i, i + 150).map((id) => `'${id}'`).join(",")})`));
+  }
+  const docIds = [...new Set(SF.links.map((l) => l.ContentDocumentId))];
+  SF.docs = [];
+  for (let i = 0; i < docIds.length; i += 200) {
+    SF.docs.push(...await all(conn, `SELECT Id, Title, FileExtension, FileType, ContentSize, LatestPublishedVersionId
+      FROM ContentDocument WHERE Id IN (${docIds.slice(i, i + 200).map((d) => `'${d}'`).join(",")})`));
+  }
   SF.loaded = true;
   // Everything we import hangs off the 92 LIVE work orders. Transactions and
   // attendance also exist on canceled ones (5 and 6 of them) and on lost
@@ -666,10 +680,148 @@ async function stageAttendance() {
   return r;
 }
 
+/**
+ * What kind of document this is, from its name. Tomco's own naming is the only
+ * signal Salesforce gives, so this is a best guess with a safe fallback — every
+ * file lands on the deal either way, and "other" is a filter, not a loss.
+ */
+export function documentCategory(title) {
+  // Match the NORMALISED name, not the raw title. Sherwin Williams receipts are
+  // titled "Sale#PA343844" in Salesforce and my rule looked for "Sale-…" —
+  // which is what the file is CALLED here, after sanitising. Tested against my
+  // own invented example, it passed; against the real data, 540 files stayed
+  // filed as "other".
+  const t = (title ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  if (/(^|-)(quote|proposal|estimate|bid)(-|$)/.test(t)) return "proposal";
+  if (/(^|-)(plans?|drawings?|specs?|bid-set|permit-set|stamped)(-|$)/.test(t)) return "bid_set";
+  if (/(^|-)(invoices?|billing|application-for-payment|aia|g70\d?)(-|$)/.test(t)) return "invoice_attachment";
+  if (/(^|-)(coi|certificate-of-insurance|insurance)(-|$)/.test(t)) return "insurance";
+  if (/(^|-)w-?9(-|$)/.test(t)) return "w9";
+  if (/(^|-)(lien|waiver)(-|$)/.test(t)) return "lien_waiver";
+  if (/(^|-)(change-order|co-?\d+)(-|$)/.test(t)) return "change_order";
+  if (/(^|-)(photos?|image|screenshot)(-|$)/.test(t)) return "site_photo";
+  if (/(^|-)(contracts?|agreement|signed)(-|$)/.test(t)) return "contract";
+  if (/(^|-)(submittals?|product-data|drawdown)(-|$)/.test(t)) return "submittal";
+  if (/(^|-)(closeout|as-?built|o-m|warranty)(-|$)/.test(t)) return "closeout";
+  // Tomco's receipts, by the names their sources give them: Sherwin Williams
+  // ("Sale-PA343844"), Aboffs ("aboffs_JHSB7"), and the office scanner, which
+  // names a file after the moment it was scanned ("2025-09-24-14-42",
+  // "img20251106_09320170"). 776 of the 890 files landed in "other" before
+  // this, which is honest but useless as a filter.
+  if (/^sale-?\w+/.test(t)) return "receipt";
+  if (/^(aboffs|sherwin|home ?depot|lowes|ace|amazon)/.test(t)) return "receipt";
+  if (/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}/.test(t)) return "receipt";
+  if (/^img\d{6,}/.test(t)) return "receipt";
+  return "other";
+}
+
+const MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  doc: "application/msword", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel", csv: "text/csv", txt: "text/plain" };
+
+function safeName(name) {
+  return (name ?? "file").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 120) || "file";
+}
+
+/**
+ * The 893 files attached to Tomco's jobs — plans, signed contracts, photos,
+ * the quote PDFs. 328 MB, so this is the slow stage: it runs last, one file at
+ * a time, and skips anything already imported, which makes a failure halfway
+ * through cost only the files it had not reached.
+ */
+async function stageFiles() {
+  const r = newReport("files");
+  // One document can be linked to both the opportunity and its work order;
+  // import it ONCE, against the deal.
+  const dealForDoc = new Map();
+  for (const l of SF.links) {
+    if (dealForDoc.has(l.ContentDocumentId)) continue;
+    const viaOpp = mapped("deal", l.LinkedEntityId);
+    const wo = SF.wos.find((w) => w.Id === l.LinkedEntityId);
+    const dealId = viaOpp ?? (wo ? mapped("deal", wo.Opportunity__c) : null);
+    if (dealId) dealForDoc.set(l.ContentDocumentId, dealId);
+  }
+
+  let done = 0;
+  for (const doc of SF.docs) {
+    const dealId = dealForDoc.get(doc.Id);
+    if (!dealId) { r.skipped.push(`${doc.Title}: not attached to an imported deal`); continue; }
+    const already = mapped("file", doc.Id);
+    if (already) {
+      // Already imported: do not download it again, but DO refresh the
+      // classification, so improving the rules re-files the old import.
+      r.total += 1;
+      r.updated += 1;
+      if (COMMIT) {
+        const { error } = await sb.from("commercial_documents").update({ category: documentCategory(doc.Title) }).eq("id", already);
+        if (error) r.skipped.push(`${doc.Title}: re-file failed — ${error.message}`);
+      }
+      continue;
+    }
+    const ext = (doc.FileExtension ?? "").toLowerCase();
+    const mime = MIME[ext] ?? "application/octet-stream";
+    const fileName = `${safeName(doc.Title)}${ext ? `.${ext}` : ""}`;
+    const category = documentCategory(doc.Title);
+    const size = Number(doc.ContentSize ?? 0);
+
+    if (!COMMIT) {
+      r.total += 1; r.would += 1;
+      if (r.sample.length < 3) r.sample.push({ fileName, category, mb: +(size / 1024 / 1024).toFixed(2) });
+      continue;
+    }
+
+    // Pull the bytes from Salesforce, then put them in Storage, then record the
+    // row — in that order, so a row never points at a file that is not there.
+    let bytes;
+    try {
+      const res = await fetch(`${conn.instanceUrl}/services/data/v60.0/sobjects/ContentVersion/${doc.LatestPublishedVersionId}/VersionData`, {
+        headers: { Authorization: `Bearer ${conn.accessToken}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      bytes = Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      r.skipped.push(`${doc.Title}: download failed — ${err instanceof Error ? err.message : err}`);
+      continue;
+    }
+
+    const documentId = crypto.randomUUID();
+    const storageKey = `opportunitys/${dealId}/${documentId}-${fileName}`;
+    const up = await sb.storage.from("commercial-documents").upload(storageKey, bytes, { contentType: mime, upsert: true });
+    if (up.error) { r.skipped.push(`${doc.Title}: upload failed — ${up.error.message}`); continue; }
+
+    const { error } = await sb.from("commercial_documents").insert({
+      id: documentId,
+      parent_type: "opportunity",
+      parent_id: dealId,
+      category,
+      file_name: fileName,
+      storage_key: storageKey,
+      size_bytes: bytes.byteLength,
+      mime_type: mime,
+      version: 1,
+      status: "approved",
+      notes: `Imported from Salesforce (${doc.Title})`,
+      uploaded_at: new Date().toISOString(),
+    });
+    if (error) {
+      await sb.storage.from("commercial-documents").remove([storageKey]).catch(() => {});
+      r.skipped.push(`${doc.Title}: row insert failed — ${error.message}`);
+      continue;
+    }
+    await remember("file", doc.Id, documentId);
+    r.total += 1; r.inserted += 1;
+    done += 1;
+    if (done % 50 === 0) console.log(`   …${done} files`);
+  }
+  return r;
+}
+
 const RUNNERS = {
   accounts: stageAccounts, contacts: stageContacts, deals: stageDeals, jobs: stageJobs,
   "change-orders": stageChangeOrders, invoices: stageInvoices, payments: stagePayments,
   costs: stageCosts, employees: stageEmployees, crews: stageCrews, attendance: stageAttendance,
+  files: stageFiles,
 };
 
 // ─── reconcile ──────────────────────────────────────────────────────────────
