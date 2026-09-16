@@ -29,6 +29,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import {
   isWon,
+  debriefOutcomeLabel,
   isLost,
   PRE_SALE_OPEN_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
@@ -370,7 +371,7 @@ export default async function AccountDebriefPage({
   const debriefs = await listDebriefsForOpp(dealId);
   const latestDebrief = debriefs[0] ?? null;
   const isDebriefed = Boolean(opp.win_loss_debriefed_at) && latestDebrief !== null;
-  const outcomeLabel = isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid";
+  const outcomeLabel = debriefOutcomeLabel(opp);
   const justClosed = sp.just_closed === "1";
   const error = sp.error;
 
@@ -519,7 +520,7 @@ function DebriefFormCard({
   opp: CommercialOpportunity;
   accountId: string;
 }) {
-  const outcomeLabel = isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid";
+  const outcomeLabel = debriefOutcomeLabel(opp);
   const subhead = isWon(opp)
     ? "Two quick fields — who you beat and what tipped it your way. Feeds the quarterly Win/Loss report."
     : isLost(opp)
@@ -589,7 +590,7 @@ function DebriefReadOnlyView({
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-bold text-ppp-charcoal leading-tight">
-            {isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid"} debrief on file
+            {debriefOutcomeLabel(opp)} debrief on file
           </h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1">
             Recorded{" "}

@@ -36,6 +36,21 @@ export type ArAging = {
   /** Balance-weighted average age of the open book, in days past due — a DSO-like
    *  health number (Σ balance × max(0, daysPastDue) ÷ Σ balance). */
   weightedAvgAgeDays: number;
+  /**
+   * How much of the open book has NO due date, and so cannot age.
+   *
+   * `daysPastDue(null)` is 0 and 0 buckets as Current, which is the honest
+   * default for an invoice nobody has dated — but it means "Overdue $0 · 90+
+   * days none · avg age 0d" is a sentence this report can produce about a book
+   * that is entirely overdue. Tomco's 92 migrated invoices arrived that way on
+   * purpose (a due date would arm the daily dunning email to their GCs), so
+   * without this the report reads perfectly healthy and says nothing.
+   *
+   * The Accounting page already surfaces this; the number lives here so both
+   * read the same one.
+   */
+  noDueDateCents: number;
+  noDueDateCount: number;
 };
 
 function emptyBuckets(): ArAgingBuckets {
@@ -104,7 +119,7 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   // helper fans out to several queries each — so this report issued roughly
   // five sequential round-trips per live opportunity before rendering. Two
   // queries now, whatever the pipeline size.
-  const aiaRows: { accountId: string; balance: number; days: number }[] = [];
+  const aiaRows: { accountId: string; balance: number; days: number; dated: boolean }[] = [];
   {
     const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
     const { DEFAULT_DUE_DAYS } = await import("@/lib/commercial/invoices/constants");
@@ -127,6 +142,7 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
         accountId,
         balance: roll.dueNowCents,
         days: dueAt ? daysPastDue(dueAt, nowMs) : 0,
+        dated: !!dueAt,
       });
       if (!acctIds.includes(accountId)) acctIds.push(accountId);
     }
@@ -148,6 +164,8 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   const byAccount = new Map<string, ArAgingRow>();
   const totals = emptyBuckets();
   let ageWeightSum = 0; // Σ balance × max(0, daysPastDue)
+  let noDueDateCents = 0;
+  let noDueDateCount = 0;
 
   for (const inv of open) {
     const days = daysPastDue(inv.due_at, nowMs);
@@ -173,6 +191,7 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
 
     totals[bucket] += bal;
     totals.total += bal;
+    if (!inv.due_at) { noDueDateCents += bal; noDueDateCount += 1; }
   }
 
   // Same aggregation for the AIA applications collected above — one row per GC
@@ -197,6 +216,7 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
     row.oldestDays = Math.max(row.oldestDays, a.days);
     totals[bucket] += a.balance;
     totals.total += a.balance;
+    if (!a.dated) { noDueDateCents += a.balance; noDueDateCount += 1; }
   }
 
   const rows = [...byAccount.values()].sort((a, b) => b.total - a.total);
@@ -206,6 +226,8 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
     invoiceCount: open.length + aiaRows.length,
     customerCount: rows.length,
     weightedAvgAgeDays: totals.total > 0 ? Math.round(ageWeightSum / totals.total) : 0,
+    noDueDateCents,
+    noDueDateCount,
   };
 }
 
@@ -217,4 +239,6 @@ export const EMPTY_AGING: ArAging = {
   invoiceCount: 0,
   customerCount: 0,
   weightedAvgAgeDays: 0,
+  noDueDateCents: 0,
+  noDueDateCount: 0,
 };

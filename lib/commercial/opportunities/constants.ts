@@ -401,6 +401,24 @@ export function isPostSaleProject(opp: StatusTuple): boolean {
   );
 }
 
+/**
+ * What a debrief on this deal is ABOUT: a win, a loss, or a bid nobody placed.
+ *
+ * "Win" has to be `isPostSaleProject`, not `isWon`. `isWon` is the MOMENT a deal
+ * is won — pre_sale_closed + won — and every won deal leaves it the day work
+ * starts. Tomco's 92 migrated jobs all arrived past that point, in
+ * in_progress / billing / post_sale_closed, and the debrief card called each one
+ * a "No-bid" and offered to record "who took it and why you passed" on jobs they
+ * had finished and been paid for.
+ *
+ * One helper because this ternary was written out six times across two pages.
+ */
+export function debriefOutcomeLabel(opp: StatusTuple): "Win" | "Loss" | "No-bid" {
+  if (isLost(opp)) return "Loss";
+  if (isPostSaleProject(opp)) return "Win";
+  return "No-bid";
+}
+
 /** True when this opp is in Proposal/Follow Up (waiting on customer). */
 export function isFollowUp(opp: StatusTuple): boolean {
   return opp.status === "proposal" && opp.sub_status === "follow_up";

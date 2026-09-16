@@ -63,6 +63,7 @@ import {
   isValidSubStatus,
   PRE_SALE_OPEN_STATUSES,
   isWon,
+  debriefOutcomeLabel,
   isPostSaleProject,
   isLost,
   dealPhase,
@@ -4870,7 +4871,7 @@ async function DebriefTab({
   const latestDebrief = debriefs[0] ?? null;
   const isDebriefed = Boolean(opp.win_loss_debriefed_at) && latestDebrief !== null;
   const outcomeLabel =
-    isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid";
+    debriefOutcomeLabel(opp);
 
   return (
     <div className="space-y-4">
@@ -4927,7 +4928,7 @@ async function DebriefTab({
 
 function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
   const outcomeLabel =
-    isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid";
+    debriefOutcomeLabel(opp);
   const subhead = isWon(opp)
     ? "Two quick fields — who you beat and what tipped it your way. Feeds the quarterly Win/Loss report."
     : isLost(opp)
@@ -4992,7 +4993,7 @@ function DebriefReadOnlyView({
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">{isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid"} debrief on file</h2>
+          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">{debriefOutcomeLabel(opp)} debrief on file</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1">
             Recorded {new Date(debrief.debriefed_at).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "America/New_York" })}
             {debriefCount > 1 && ` · ${debriefCount} debriefs on file (this is the most recent)`}
