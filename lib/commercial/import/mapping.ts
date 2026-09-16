@@ -62,6 +62,45 @@ export function dealStatusForWorkOrder(woStatus: string | null | undefined): Dea
 /** An open bid with no work order — a proposal that went out and is waiting. */
 export const OPEN_BID_STATUS: DealStatus = { status: "proposal", subStatus: "sent" };
 
+/**
+ * A Tomco work order's status → the FIELD OPS job's status.
+ *
+ * A different vocabulary from the deal's, and a different question: not "where
+ * is the money" but "is there crew work left". It matters because Field Ops
+ * hides anything closed — the calendar, the Jobs page and the overview KPIs all
+ * list only the open statuses. Importing all 92 jobs as `closed` (which is what
+ * happened) left Brendan a calendar with nothing on it, including the jobs his
+ * crews were standing on that morning.
+ *
+ * "Complete Balance Owed" is `complete`, not `closed`: the painting is done, so
+ * it is off the schedule, but the job is not finished with.
+ */
+export function jobStatusForWorkOrder(woStatus: string | null | undefined):
+  | "ready_to_schedule"
+  | "in_progress"
+  | "on_hold"
+  | "complete"
+  | "closed" {
+  switch ((woStatus ?? "").trim()) {
+    case "Work In Progress":
+      return "in_progress";
+    case "On Hold":
+      return "on_hold";
+    case "Coordination":
+    case "Pending":
+      return "ready_to_schedule";
+    case "Complete Balance Owed":
+      return "complete";
+    case "Closed":
+    case "Complete Paid in Full":
+      return "closed";
+    default:
+      // An unknown status must not park real work on the calendar forever, nor
+      // hide it. Closed is what Salesforce's own unmapped statuses have been.
+      return "closed";
+  }
+}
+
 export function isClosedWorkOrder(woStatus: string | null | undefined): boolean {
   const s = (woStatus ?? "").trim();
   return s === "Closed" || s === "Complete Paid in Full" || s === "Complete Balance Owed";

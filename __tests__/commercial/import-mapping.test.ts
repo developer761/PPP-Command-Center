@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   cents,
   dealStatusForWorkOrder,
+  jobStatusForWorkOrder,
   isClosedWorkOrder,
   planInvoice,
   adjustmentLabel,
@@ -52,6 +53,19 @@ describe("work order status → deal status", () => {
       subStatus: "completed_and_invoiced",
     });
     expect(isClosedWorkOrder("Complete Balance Owed")).toBe(true);
+  });
+
+  it("puts live work back on Brendan's calendar", () => {
+    // Field Ops lists only the open statuses; `closed` is invisible there.
+    expect(jobStatusForWorkOrder("Work In Progress")).toBe("in_progress");
+    expect(jobStatusForWorkOrder("On Hold")).toBe("on_hold");
+    expect(jobStatusForWorkOrder("Coordination")).toBe("ready_to_schedule");
+    expect(jobStatusForWorkOrder("Pending")).toBe("ready_to_schedule");
+    // Painting done, money not in: off the schedule, not finished with.
+    expect(jobStatusForWorkOrder("Complete Balance Owed")).toBe("complete");
+    expect(jobStatusForWorkOrder("Closed")).toBe("closed");
+    expect(jobStatusForWorkOrder("Complete Paid in Full")).toBe("closed");
+    expect(jobStatusForWorkOrder("Something New")).toBe("closed");
   });
 
   it("refuses to guess at an unknown status", () => {

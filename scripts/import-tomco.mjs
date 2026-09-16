@@ -25,6 +25,8 @@ import jsforce from "jsforce";
 import {
   cents,
   dealStatusForWorkOrder,
+  jobStatusForWorkOrder,
+  isClosedWorkOrder,
   OPEN_BID_STATUS,
   planInvoice,
   planInvoiceColumns,
@@ -36,10 +38,30 @@ import {
   ymd,
 } from "../lib/commercial/import/mapping.ts";
 
+/**
+ * A Salesforce day → the instant a TIMESTAMPTZ column should hold.
+ *
+ * `ymd()` returns a bare "2025-08-04", and Postgres reads that into a
+ * timestamptz as UTC MIDNIGHT. Render it in Eastern and it is the 3rd — every
+ * invoice, payment and receipt a day earlier than Salesforce shows, and an
+ * invoice dated the 1st filing into the previous quarter on the Cash Flow and
+ * Sales Tax reports. 16:00 UTC is noon-ish ET and stays on the intended day in
+ * both EST and EDT; it is the same anchor as `anchorDateOnlyIso` in
+ * lib/commercial/dates.ts, which exists for exactly this.
+ *
+ * Only for timestamptz. The DATE columns (a deal's proposed_start_at, a
+ * project's closed_out_at) take the bare day and must NOT be anchored.
+ */
+const at = (day) => (day ? `${day}T16:00:00.000Z` : null);
+
 const TOMCO = "Corporate_Name__c='Tomco Painting'";
 const STAGES = [
-  "accounts", "contacts", "deals", "jobs", "change-orders",
-  "invoices", "payments", "costs", "employees", "crews", "attendance", "files",
+  // Invoices BEFORE change orders: a carried-over change order has to point at
+  // the invoice that already billed it, or the platform offers to bill it a
+  // second time. Nothing in the invoice stage needs a change order — the
+  // contract figure it uses already includes them.
+  "accounts", "contacts", "deals", "jobs", "invoices", "change-orders",
+  "payments", "costs", "employees", "crews", "attendance", "projects", "files", "dates",
 ];
 
 const args = process.argv.slice(2);
@@ -210,7 +232,7 @@ async function put(entity, sfId, table, row, report) {
 }
 
 function newReport(stage) {
-  return { stage, total: 0, would: 0, inserted: 0, updated: 0, skipped: [], sample: [] };
+  return { stage, total: 0, would: 0, inserted: 0, updated: 0, skipped: [], sample: [], notes: [] };
 }
 
 function printReport(r) {
@@ -218,6 +240,7 @@ function printReport(r) {
     ? `${r.stage}: ${r.inserted} inserted, ${r.updated} updated`
     : `${r.stage}: would write ${r.would} row(s)`;
   console.log(`\n${head}`);
+  for (const n of r.notes ?? []) console.log(`   ${n}`);
   if (r.skipped.length) {
     console.log(`   ${r.skipped.length} skipped:`);
     for (const s of r.skipped.slice(0, 8)) console.log(`     - ${s}`);
@@ -245,9 +268,9 @@ async function loadSalesforce(conn) {
       FROM WorkOrder WHERE (${TOMCO} OR Opportunity__r.${TOMCO}) AND Status != 'Canceled'`);
   const woIds = SF.wos.map((w) => `'${w.Id}'`).join(",");
   const oppIds = SF.opps.map((o) => `'${o.Id}'`).join(",");
-  SF.accounts = await all(conn, `SELECT Id, Name, Phone, Website, BillingStreet, BillingCity, BillingState, BillingPostalCode,
+  SF.accounts = await all(conn, `SELECT Id, Name, CreatedDate, Phone, Website, BillingStreet, BillingCity, BillingState, BillingPostalCode,
       ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE ${TOMCO})`);
-  SF.contacts = await all(conn, `SELECT Id, Name, FirstName, LastName, Email, Phone, MobilePhone, Title, AccountId
+  SF.contacts = await all(conn, `SELECT Id, Name, CreatedDate, FirstName, LastName, Email, Phone, MobilePhone, Title, AccountId
       FROM Contact WHERE Id IN (SELECT Primary_Contact__c FROM Opportunity WHERE ${TOMCO})`);
   SF.tx = await all(conn, `SELECT Id, Name, RecordType.DeveloperName, PayeeType__c, WorkOrder__c, Opportunity__c,
       Amount__c, Date__c, Method__c, Description__c, ReferenceId__c, Deposited__c,
@@ -269,7 +292,7 @@ async function loadSalesforce(conn) {
   const docIds = [...new Set(SF.links.map((l) => l.ContentDocumentId))];
   SF.docs = [];
   for (let i = 0; i < docIds.length; i += 200) {
-    SF.docs.push(...await all(conn, `SELECT Id, Title, FileExtension, FileType, ContentSize, LatestPublishedVersionId
+    SF.docs.push(...await all(conn, `SELECT Id, Title, CreatedDate, FileExtension, FileType, ContentSize, LatestPublishedVersionId
       FROM ContentDocument WHERE Id IN (${docIds.slice(i, i + 200).map((d) => `'${d}'`).join(",")})`));
   }
   SF.loaded = true;
@@ -347,6 +370,26 @@ async function stageContacts() {
   return r;
 }
 
+/**
+ * The contract a won job is measured against: Salesforce's quoted subtotal,
+ * plus anything its balance owes beyond the invoice (see the change-order
+ * stage). Without the second part the deal reads "over-billed" against its own
+ * contract.
+ */
+function contractCentsFor(wo, opp) {
+  const base = cents(wo?.Quoted_Subtotal_with_Change_Order__c ?? opp.QuotedSubtotalWithChangeOrder__c);
+  if (!wo) return base;
+  const plan = planInvoice({
+    quotedSubtotalWithCo: wo.Quoted_Subtotal_with_Change_Order__c,
+    totalChangeOrder: wo.TotalChangeOrder__c,
+    tax: wo.Tax,
+    grandTotal: wo.GrandTotal__c,
+    totalPaymentsIn: wo.TotalPaymentsIn__c,
+    balanceOwed: wo.BalanceOwed__c,
+  });
+  return base + (!plan.isOverpaid && plan.adjustmentCents > 0 ? plan.adjustmentCents : 0);
+}
+
 async function stageDeals() {
   const r = newReport("deals");
   for (const o of SF.opps) {
@@ -372,9 +415,23 @@ async function stageDeals() {
       proposed_start_at: ymd(wo?.StartDate ?? o.Start_Date__c),
       proposed_end_at: ymd(wo?.EndDate ?? o.End_Date__c),
       decided_at: o.IsWon ? ymd(o.CloseDate) : null,
+      // THE DAY THE JOB CLOSED OUT, on the deal — not just on its project.
+      //
+      // Both tables have a `closed_out_at`, and only the project's was being
+      // written. But `wasWonInPeriod` reads the DEAL's, and the Win/Loss report
+      // skips any post_sale_closed deal without one
+      // (lib/commercial/win-loss/reports.ts). With it null on all 56 closed
+      // jobs, Alex sets Win/Loss to FY26 expecting 92 wins and $2.7M and gets
+      // an empty report — the dashboard's won-in-period figures go with it.
+      closed_out_at: st.status === "post_sale_closed" ? (ymd(wo?.EndDate) ?? ymd(wo?.StartDate) ?? ymd(o.CloseDate)) : null,
       win_loss_debriefed_at: o.IsWon ? new Date().toISOString() : null,
       ppp_job_number: wo?.WorkOrderNumber || null,
-      accepted_contract_cents: o.IsWon ? cents(wo?.Quoted_Subtotal_with_Change_Order__c ?? o.QuotedSubtotalWithChangeOrder__c) : null,
+      // An open bid with no bid value makes the whole Pipeline report read $0:
+      // 40 open opportunities, no value, no weighted pipeline, no win
+      // probability. Salesforce's quoted subtotal IS the bid.
+      bid_value_low_cents: o.IsWon ? null : cents(o.QuotedSubtotalWithChangeOrder__c ?? o.Amount),
+      bid_value_high_cents: o.IsWon ? null : cents(o.QuotedSubtotalWithChangeOrder__c ?? o.Amount),
+      accepted_contract_cents: o.IsWon ? contractCentsFor(wo, o) : null,
       accepted_contract_set_at: o.IsWon ? new Date().toISOString() : null,
       created_at: o.CreatedDate,
     }, r);
@@ -394,6 +451,12 @@ async function stageJobs() {
       opportunity_id: dealId,
       account_id: accountId,
       status: "sent",
+      // A work order marked `sent` with no `sent_at` reads as NOT sent: the
+      // dashboard's Jobs-in-flight strip flags "work order not sent" on every
+      // active Tomco job, and the deal page hides "Last sent to Field Ops".
+      // These went out to the crews months ago; the day the work started is the
+      // closest honest stamp Salesforce has.
+      sent_at: at(ymd(w.StartDate) ?? ymd(w.CreatedDate)),
       scheduled_start_date: ymd(w.StartDate),
       scheduled_end_date: ymd(w.EndDate),
       area_label: (w.Name__c || w.WorkOrderNumber || "Work order").slice(0, 120),
@@ -407,7 +470,21 @@ async function stageJobs() {
 async function stageChangeOrders() {
   const r = newReport("change-orders");
   for (const w of SF.wos) {
-    const amount = cents(w.TotalChangeOrder__c);
+    const plan = planInvoice({
+      quotedSubtotalWithCo: w.Quoted_Subtotal_with_Change_Order__c,
+      totalChangeOrder: w.TotalChangeOrder__c,
+      tax: w.Tax,
+      grandTotal: w.GrandTotal__c,
+      totalPaymentsIn: w.TotalPaymentsIn__c,
+      balanceOwed: w.BalanceOwed__c,
+    });
+    // A job that OWES more than its invoice explains is billing work the
+    // contract does not cover, and the deal page called it "103% billed ·
+    // OVER-BILLED $1.6k". Salesforce has no change order for it, but its own
+    // balance says the work happened — so it goes into the contract as one,
+    // which is what an unlogged extra IS.
+    const residual = !plan.isOverpaid && plan.adjustmentCents > 0 ? plan.adjustmentCents : 0;
+    const amount = cents(w.TotalChangeOrder__c) + residual;
     if (amount === 0) continue;
     const dealId = mapped("deal", w.Opportunity__c);
     const accountId = mapped("account", w.AccountId) ?? mapped("account", SF.opps.find((o) => o.Id === w.Opportunity__c)?.AccountId);
@@ -415,12 +492,20 @@ async function stageChangeOrders() {
     await put("change_order", w.Id, "commercial_change_orders", {
       opportunity_id: dealId,
       account_id: accountId,
-      co_number: `CO-${w.WorkOrderNumber}`,
+      co_number: 1,
       title: "Change orders carried over from Salesforce",
-      description: "Salesforce tracks change-order VALUE per job, not individual change orders. This is that total, so the contract matches.",
+      description: residual
+        ? `Salesforce tracks change-order VALUE per job, not individual change orders. This is that total, plus $${(residual / 100).toFixed(2)} its balance owed carries beyond the invoice — work that was billed but never written down as a change order.`
+        : "Salesforce tracks change-order VALUE per job, not individual change orders. This is that total, so the contract matches.",
       amount_cents: amount,
       status: "approved",
-      decided_at: ymd(w.StartDate) ?? ymd(w.CreatedDate),
+      decided_at: at(ymd(w.StartDate) ?? ymd(w.CreatedDate)),
+      // ALREADY BILLED. The invoice subtotal is built from
+      // Quoted_Subtotal_with_Change_Order__c, which includes this money — the
+      // GC has been charged for it. Left unset, every carried-over change order
+      // reads "Approved, unbilled" on the reports index and the deal panel
+      // offers a button to put it on a NEW invoice, billing the GC twice.
+      invoiced_invoice_id: mapped("invoice", w.Id),
     }, r);
   }
   return r;
@@ -451,22 +536,26 @@ async function stageInvoices() {
       status: invoiceStatus(plan),
       subtotal_cents: cols.subtotal_cents,
       tax_pct: cols.tax_pct,
-      issued_at: ymd(w.StartDate) ?? ymd(w.CreatedDate),
+      issued_at: at(ymd(w.StartDate) ?? ymd(w.CreatedDate)),
       // Set BEFORE payments land: the payment trigger stamps paid_at with now()
       // when it is null, which would date every historical job today.
-      paid_at: plan.balanceCents <= 0 ? (ymd(w.EndDate) ?? ymd(w.StartDate) ?? ymd(w.CreatedDate)) : null,
+      paid_at: plan.balanceCents <= 0 ? at(ymd(w.EndDate) ?? ymd(w.StartDate) ?? ymd(w.CreatedDate)) : null,
       po_number: w.Customer_PO__c || null,
       payment_terms: w.Payment_Terms__c || null,
       notes: [`Imported from Salesforce work order ${w.WorkOrderNumber}.`, note].filter(Boolean).join(" "),
     }, r);
-    if (COMMIT && invoiceId && note) {
-      // The adjustment, as a line somebody can see and click.
-      const { error } = await sb.from("commercial_invoice_line_items").upsert({
-        invoice_id: invoiceId, position: 9000, description: note,
-        quantity: 1, unit_price_cents: plan.adjustmentCents,
-      }, { onConflict: "invoice_id,position" });
-      if (error && !/duplicate|conflict/i.test(error.message)) r.skipped.push(`${w.WorkOrderNumber}: adjustment line — ${error.message}`);
-    }
+    // The adjustment used to also be written as an invoice LINE ITEM here. It
+    // never once succeeded, and never said so:
+    //   · `onConflict: "invoice_id,position"` names no unique constraint —
+    //     (invoice_id, position) carries only a plain index — so Postgres
+    //     answered 42P10, whose message contains the word "conflict", which the
+    //     error filter treated as a harmless duplicate and swallowed.
+    //   · and four of the seven adjustments are NEGATIVE, which the table
+    //     rejects outright unless the line belongs to a change order.
+    // It is not worth resurrecting: `subtotal_cents` is stored, not summed from
+    // the lines, so a single -$21.75 line under a $1,087.50 subtotal would read
+    // as an invoice that does not add up. The explanation is on the invoice in
+    // `notes` above — verified present on all 7 — and that is where it belongs.
   }
   return r;
 }
@@ -480,11 +569,11 @@ async function stagePayments() {
     await put("payment", t.Id, "commercial_invoice_payments", {
       invoice_id: invoiceId,
       amount_cents: cents(t.Amount__c),
-      paid_at: ymd(t.Date__c) ?? ymd(t.CreatedDate),
+      paid_at: at(ymd(t.Date__c) ?? ymd(t.CreatedDate)),
       method: (t.Method__c || "other").toLowerCase().includes("check") ? "check" : (t.Method__c || "other").toLowerCase().includes("ach") || (t.Method__c || "").toLowerCase().includes("wire") ? "ach" : "other",
       reference: t.ReferenceId__c || t.Name || null,
       notes: "Imported from Salesforce",
-      deposited_at: t.Deposited__c ? ymd(t.Date__c) : null,
+      deposited_at: t.Deposited__c ? at(ymd(t.Date__c)) : null,
     }, r);
   }
   return r;
@@ -508,10 +597,10 @@ async function stageCosts() {
       vendor: vendor?.name ?? t.RetailVendor__r?.Name ?? t.Payee__r?.Name ?? null,
       vendor_id: vendor?.id ?? null,
       amount_cents: cents(t.Amount__c),
-      purchased_at: ymd(t.Date__c),
+      purchased_at: at(ymd(t.Date__c)),
       description: t.Description__c || t.Name || null,
       reimburse_to: isReimbursement(kind) ? (t.Payee__r?.Name ?? null) : null,
-      reimbursed_at: isReimbursement(kind) ? ymd(t.Date__c) : null,
+      reimbursed_at: isReimbursement(kind) ? at(ymd(t.Date__c)) : null,
     }, r);
   }
   return r;
@@ -612,6 +701,44 @@ async function stageCrews() {
   return r;
 }
 
+/**
+ * Salesforce's attendance rows → one day per person per job, which is what the
+ * platform stores.
+ *
+ * Lives outside the stage because the reconciliation needs the SAME fold: to
+ * say whether the hours on screen are right it has to compare like with like,
+ * and a second, separately-written copy of this arithmetic would only ever
+ * agree with the first by luck.
+ *
+ * `note` is called for anything worth saying out loud; the stage turns those
+ * into skips, the reconciliation ignores them.
+ */
+function foldAttendanceDays(note = () => {}) {
+  const byDay = new Map();
+  for (const a of SF.attendanceInScope) {
+    const who = attendanceWho(a);
+    // One row carries 8 hours with no dates at all (Tomco Labor - JJ on AIREF
+    // #2). Salesforce is being retired, so dropping real hours is worse than
+    // dating them by the day the row was created — flagged, not hidden.
+    const dated = ymd(a.StartDate__c) ?? ymd(a.EndDate__c);
+    const workDate = dated ?? ymd(a.CreatedDate);
+    if (!dated && workDate) note(`attendance ${a.Id}: no work date in Salesforce — dated ${workDate}, the day the row was created (${a.Hours_Worked__c ?? 0}h)`);
+    if (!who || !workDate) {
+      note(`attendance ${a.Id}: ${!who ? "no employee" : "no date at all"}`);
+      continue;
+    }
+    const key = `attday:${a.WorkOrder__c}|${who.key}|${workDate}`;
+    const hours = Number(a.Hours_Worked__c ?? 0);
+    const prev = byDay.get(key);
+    if (prev) prev.hours += hours;
+    else byDay.set(key, { woId: a.WorkOrder__c, whoKey: who.key, workDate, hours });
+  }
+  return byDay;
+}
+
+/** What the day's hours become in a numeric(4,2) column. */
+const storedHours = (h) => Math.max(0, Math.min(99.99, Math.round(h * 100) / 100));
+
 async function stageAttendance() {
   const r = newReport("attendance");
   // Attendance needs a Field Ops job per deal to hang off.
@@ -629,7 +756,15 @@ async function stageAttendance() {
       site_city: w.City || null,
       site_state: w.State || null,
       site_zip: w.PostalCode || null,
-      status: "closed",
+      // Salesforce's status, not a constant. Every job came across as `closed`,
+      // and Field Ops shows only open ones — so the calendar, the Jobs page and
+      // the overview KPIs were empty on jobs Brendan's crews were working that
+      // day, and he could not schedule anyone onto one without editing it first.
+      status: jobStatusForWorkOrder(w.Status),
+      // The work order this job IS. Without it, the Jobs page's
+      // `ensureWorkOrdersForConnectedJobs` sees a job with a deal and no work
+      // order and mints a second, empty one on first load.
+      work_order_id: mapped("work_order", w.Id),
       target_start: ymd(w.StartDate),
       target_end: ymd(w.EndDate),
     }, r);
@@ -640,42 +775,44 @@ async function stageAttendance() {
   // on the same job twice in a day, so those FOLD: the hours are summed and the
   // day's total is what it always was. No Salesforce row spans more than one
   // day, so nothing needs spreading across dates.
-  const byDay = new Map();
-  for (const a of SF.attendanceInScope) {
-    const jobId = jobForDeal.get(a.WorkOrder__c);
-    const who = attendanceWho(a);
-    const employeeId = who ? mapped("employee", who.key) : null;
-    // One row carries 8 hours with no dates at all (Tomco Labor - JJ on AIREF
-    // #2). Salesforce is being retired, so dropping real hours is worse than
-    // dating them by the day the row was created — flagged, not hidden.
-    const dated = ymd(a.StartDate__c) ?? ymd(a.EndDate__c);
-    const workDate = dated ?? ymd(a.CreatedDate);
-    if (!dated && workDate) r.skipped.push(`attendance ${a.Id}: no work date in Salesforce — dated ${workDate}, the day the row was created (${a.Hours_Worked__c ?? 0}h)`);
-    if (!jobId || !employeeId || !workDate) {
-      r.skipped.push(`attendance ${a.Id}: ${!jobId ? "no job" : !employeeId ? "no employee" : "no date at all"}`);
-      continue;
-    }
-    const key = `attday:${a.WorkOrder__c}|${who.key}|${workDate}`;
-    const hours = Number(a.Hours_Worked__c ?? 0);
-    const prev = byDay.get(key);
-    if (prev) prev.hours += hours;
-    else byDay.set(key, { jobId, employeeId, workDate, hours });
-  }
+  const byDay = foldAttendanceDays((m) => r.skipped.push(m));
+
+  // The hours ledger, stated out loud. Salesforce's total, what the fold keeps,
+  // and what actually gets stored have to be the same number — if they are not,
+  // this says WHERE the hours went rather than leaving the reconciliation to
+  // report a gap with no explanation.
+  const sfIn = SF.attendanceInScope.reduce((n, a) => n + Number(a.Hours_Worked__c ?? 0), 0);
+  let folded = 0;
+  for (const [, d] of byDay) folded += d.hours;
+  let stored = 0;
 
   for (const [key, day] of byDay) {
+    const jobId = jobForDeal.get(day.woId);
+    const employeeId = mapped("employee", day.whoKey);
+    if (!jobId || !employeeId) {
+      r.skipped.push(`${key}: ${!jobId ? "no job" : "no employee"} (${day.hours}h)`);
+      continue;
+    }
     const rounded = Math.round(day.hours * 100) / 100;
     // numeric(4,2) holds 99.99. Capping at 24 would look tidy and silently drop
     // hours that the reconciliation would then report as missing.
-    const hours = Math.max(0, Math.min(99.99, rounded));
+    const hours = storedHours(day.hours);
     if (hours !== rounded) r.skipped.push(`${key}: ${rounded}h is more than the column holds; stored ${hours}`);
     await put("attendance", key, "commercial_time_entries", {
-      job_id: day.jobId,
-      employee_id: day.employeeId,
+      job_id: jobId,
+      employee_id: employeeId,
       work_date: day.workDate,
       actual_hours: hours,
       source: "manual",
       status: "approved",
+      created_at: `${day.workDate}T12:00:00Z`,
     }, r);
+    stored += hours;
+  }
+  const fmt = (n) => n.toFixed(2);
+  r.notes.push(`hours: Salesforce ${fmt(sfIn)} → folded ${fmt(folded)} → stored ${fmt(stored)}`);
+  if (Math.abs(sfIn - stored) >= 0.01) {
+    r.notes.push(`⚠️  ${fmt(sfIn - stored)}h did not make it across — see the skipped list above.`);
   }
   return r;
 }
@@ -817,11 +954,113 @@ async function stageFiles() {
   return r;
 }
 
+/**
+ * Put the history back on the rows.
+ *
+ * Every imported row got `created_at = now()`, because that is the column
+ * default — so the dashboard's revenue chart, which buckets invoices by
+ * created_at, showed Tomco's entire $2.7M as billed THIS MONTH. Anything that
+ * asks "what happened lately" had the same answer: all of it, today.
+ *
+ * Cash flow was unaffected — it reads issued_at and paid_at, which were right
+ * from the start. That is the difference between a report reading the date the
+ * thing HAPPENED and the date the row was written.
+ */
+async function stageDates() {
+  const r = newReport("dates");
+  const woById = new Map(SF.wos.map((w) => [w.Id, w]));
+  const txById = new Map(SF.tx.map((t) => [t.Id, t]));
+  const oppById = new Map(SF.opps.map((o) => [o.Id, o]));
+  const docById = new Map(SF.docs.map((d) => [d.Id, d]));
+
+  // entity -> [table, how to find its historical date]
+  const SOURCES = {
+    account: ["commercial_accounts", (sfId) => SF.accounts.find((a) => a.Id === sfId)?.CreatedDate],
+    contact: ["commercial_contacts", (sfId) => SF.contacts.find((c) => c.Id === sfId)?.CreatedDate],
+    deal: ["commercial_opportunities", (sfId) => oppById.get(sfId)?.CreatedDate],
+    work_order: ["commercial_work_orders", (sfId) => woById.get(sfId)?.CreatedDate],
+    job: ["commercial_jobs", (sfId) => woById.get(sfId)?.CreatedDate],
+    change_order: ["commercial_change_orders", (sfId) => woById.get(sfId)?.StartDate ?? woById.get(sfId)?.CreatedDate],
+    invoice: ["commercial_invoices", (sfId) => woById.get(sfId)?.StartDate ?? woById.get(sfId)?.CreatedDate],
+    payment: ["commercial_invoice_payments", (sfId) => txById.get(sfId)?.Date__c],
+    purchase: ["commercial_project_purchases", (sfId) => txById.get(sfId)?.Date__c],
+    file: ["commercial_documents", (sfId) => docById.get(sfId)?.CreatedDate],
+  };
+
+  for (const [entity, [table, dateFor]] of Object.entries(SOURCES)) {
+    for (const [key, rowId] of MAP) {
+      if (!key.startsWith(`${entity}:`)) continue;
+      const sfId = key.slice(entity.length + 1);
+      const when = dateFor(sfId);
+      const iso = when ? (String(when).length === 10 ? `${when}T12:00:00Z` : String(when)) : null;
+      if (!iso) { r.skipped.push(`${entity} ${sfId}: no date in Salesforce`); continue; }
+      r.total += 1;
+      if (!COMMIT) { r.would += 1; if (r.sample.length < 3) r.sample.push({ table, rowId, created_at: iso }); continue; }
+      const patch = { created_at: iso };
+      if (table === "commercial_documents") patch.uploaded_at = iso;
+      const { error } = await sb.from(table).update(patch).eq("id", rowId);
+      if (error) { r.skipped.push(`${table} ${rowId}: ${error.message}`); continue; }
+      r.updated += 1;
+    }
+  }
+  return r;
+}
+
+/**
+ * The project record every won job needs.
+ *
+ * The platform hangs a job's delivery off a project: invoices, costs, change
+ * orders and work orders all carry a project_id, filled by a trigger AT INSERT
+ * from the deal — if the project exists. It did not, so 92 jobs each said "This
+ * job has no project record. Its invoices, change orders and costs have nothing
+ * to hang off." and every project_id is null.
+ *
+ * So: create the project, then backfill the links the trigger could not.
+ */
+async function stageProjects() {
+  const r = newReport("projects");
+  const PROJECT_STATUS = {
+    post_sale_closed: "closed_out",
+    billing: "billing",
+    in_progress: "in_progress",
+    pre_construction: "pre_construction",
+  };
+  for (const w of SF.wos) {
+    const dealId = mapped("deal", w.Opportunity__c);
+    if (!dealId) { r.skipped.push(`${w.WorkOrderNumber}: no deal`); continue; }
+    const st = dealStatusForWorkOrder(w.Status);
+    const { data: deal } = COMMIT
+      ? await sb.from("commercial_opportunities").select("project_number, title").eq("id", dealId).maybeSingle()
+      : { data: null };
+    const projectId = await put("project", w.Id, "commercial_projects", {
+      opportunity_id: dealId,
+      project_number: deal?.project_number ?? null,
+      name: (w.Name__c || deal?.title || w.WorkOrderNumber || "Project").slice(0, 200),
+      contract_base_cents: cents(w.Quoted_Subtotal_with_Change_Order__c),
+      contract_source: "accepted_snapshot",
+      status: PROJECT_STATUS[st.status] ?? "awarded",
+      started_at: ymd(w.StartDate),
+      substantially_complete_at: isClosedWorkOrder(w.Status) ? ymd(w.EndDate) : null,
+      closed_out_at: st.status === "post_sale_closed" ? (ymd(w.EndDate) ?? ymd(w.StartDate)) : null,
+      created_at: w.CreatedDate,
+    }, r);
+    if (!COMMIT || !projectId) continue;
+    // The trigger fills project_id at INSERT, and these rows were inserted
+    // before any project existed. Link them now, or the Project tab, the job
+    // report and the money rollups all read empty.
+    for (const table of ["commercial_invoices", "commercial_change_orders", "commercial_project_purchases", "commercial_work_orders", "commercial_jobs"]) {
+      const { error } = await sb.from(table).update({ project_id: projectId }).eq("opportunity_id", dealId).is("project_id", null);
+      if (error) r.skipped.push(`${table} link for ${w.WorkOrderNumber}: ${error.message}`);
+    }
+  }
+  return r;
+}
+
 const RUNNERS = {
   accounts: stageAccounts, contacts: stageContacts, deals: stageDeals, jobs: stageJobs,
   "change-orders": stageChangeOrders, invoices: stageInvoices, payments: stagePayments,
   costs: stageCosts, employees: stageEmployees, crews: stageCrews, attendance: stageAttendance,
-  files: stageFiles,
+  projects: stageProjects, files: stageFiles, dates: stageDates,
 };
 
 // ─── reconcile ──────────────────────────────────────────────────────────────
@@ -879,7 +1118,7 @@ async function reconcile() {
   const ourLabor = purch.filter((p) => p.category === "labor").reduce((n, p) => n + Number(p.amount_cents), 0);
   const sfMaterials = SF.txInScope.filter((t) => t.RecordType?.DeveloperName === "Purchase").reduce((n, t) => n + cents(t.Amount__c), 0);
   const sfLabor = SF.txInScope.filter((t) => t.RecordType?.DeveloperName === "Payment_Out" && t.PayeeType__c === "Labor_Company").reduce((n, t) => n + cents(t.Amount__c), 0);
-  const hoursRows = await readAll("commercial_time_entries", "actual_hours");
+  const hoursRows = await readAll("commercial_time_entries", "id, actual_hours");
   const ourHours = hoursRows.reduce((n, h) => n + Number(h.actual_hours), 0);
   const sfHours = SF.attendanceInScope.reduce((n, a) => n + Number(a.Hours_Worked__c ?? 0), 0);
 
@@ -895,9 +1134,55 @@ async function reconcile() {
     if (!ok) problems.push(`TOTAL ${label}: ours ${money(ours)} vs Salesforce ${money(theirs)}`);
     console.log(`  ${ok ? "✅" : "❌"} ${label.padEnd(16)} ${money(ours).padStart(16)}  ${money(theirs).padStart(16)}`);
   }
-  const hoursOk = Math.abs(ourHours - sfHours) < 0.01;
-  if (!hoursOk) problems.push(`TOTAL hours: ours ${ourHours.toFixed(2)} vs Salesforce ${sfHours.toFixed(2)}`);
+  // Salesforce is STILL LIVE. Tomco's crews clock in there every working day —
+  // 14 new rows appeared inside one five-minute import run on 2026-09-16 — so
+  // the hours total moves while we are looking at it. Counting that as a
+  // discrepancy would mean this check could never read green until Salesforce
+  // is switched off.
+  //
+  // Comparing by timestamp cannot separate "logged since" from "we lost it":
+  // the Salesforce snapshot is taken once at the start of a run, so rows
+  // created DURING it are missing from the import without being newer than it.
+  // So this compares the actual work instead. The fold is re-run from the same
+  // function the import uses, and every day is looked up through the map:
+  //   · no mapped row            → new work, not imported yet
+  //   · mapped, different hours  → edited in Salesforce since
+  //   · mapped, hours match      → correct
+  // What is left after those three is a real discrepancy, and it still fails.
+  const fold = foldAttendanceDays();
+  const byRow = new Map(hoursRows.map((h) => [h.id, Number(h.actual_hours)]));
+  const accountedRows = new Set();
+  let pendingNew = 0, pendingNewDays = 0, changed = 0, changedDays = 0, capped = 0;
+  for (const [key, day] of fold) {
+    const want = storedHours(day.hours);
+    const rowId = mapped("attendance", key);
+    const have = rowId ? byRow.get(rowId) : undefined;
+    if (rowId) accountedRows.add(rowId);
+    if (have === undefined) { pendingNew += want; pendingNewDays++; }
+    else if (Math.abs(want - have) >= 0.005) { changed += want - have; changedDays++; }
+    // numeric(4,2) tops out at 99.99; a day longer than that loses hours for
+    // real, and that is OURS, not Salesforce moving.
+    const rounded = Math.round(day.hours * 100) / 100;
+    if (rounded > want) capped += rounded - want;
+  }
+  const orphans = hoursRows.filter((h) => !accountedRows.has(h.id));
+  const orphanHours = orphans.reduce((n, h) => n + Number(h.actual_hours), 0);
+
+  const explained = ourHours + pendingNew + changed + capped - orphanHours;
+  const hoursOk = Math.abs(explained - sfHours) < 0.01 && capped < 0.01 && orphans.length === 0;
+  if (!hoursOk) {
+    problems.push(`TOTAL hours: ours ${ourHours.toFixed(2)} + ${(pendingNew + changed).toFixed(2)} not yet re-imported vs Salesforce ${sfHours.toFixed(2)}`);
+  }
   console.log(`  ${hoursOk ? "✅" : "❌"} ${"attendance hours".padEnd(16)} ${ourHours.toFixed(1).padStart(16)}  ${sfHours.toFixed(1).padStart(16)}`);
+  if (pendingNewDays || changedDays) {
+    const bits = [];
+    if (pendingNewDays) bits.push(`${pendingNewDays} new day(s) (+${pendingNew.toFixed(1)}h)`);
+    if (changedDays) bits.push(`${changedDays} edited day(s) (${changed >= 0 ? "+" : ""}${changed.toFixed(1)}h)`);
+    console.log(`     ↳ ${bits.join(" · ")} logged in Salesforce since the import.`);
+    console.log(`       Not a discrepancy — Tomco is still working. Re-run \`--stage=attendance --commit\` at cutover.`);
+  }
+  if (capped >= 0.01) console.log(`     ❌ ${capped.toFixed(2)}h lost to the numeric(4,2) column cap.`);
+  if (orphans.length) console.log(`     ❌ ${orphans.length} time entr(ies) (${orphanHours.toFixed(1)}h) here with no Salesforce row behind them.`);
   // Our subtotal carries the adjustments that make the seven jobs match
   // Salesforce's balance, so it is EXPECTED to differ from Salesforce's quoted
   // subtotal by exactly those adjustments. Say so rather than printing two
