@@ -31,7 +31,6 @@ export const REPORT_KEYS = [
   "ar-aging",
   // Tomco's own reports, reproduced from the ones they run in Salesforce.
   "balance-owed",
-  "pipeline-manager",
   "scheduling",
   "open-sales",
   "purchases-by-vendor",
@@ -209,15 +208,6 @@ export const REPORTS: readonly ReportDef[] = [
     blurb: "Tomco's own report: jobs finished or on hold with money still out, grouped the way Brendan and Mary each run it.",
     group: "money",
     icon: ["M3 6h18v12H3z", "M7 10h6", "M7 14h3"],
-  },
-  {
-    key: "pipeline-manager",
-    href: "/commercial/reports/pipeline-manager",
-    title: "Opportunity Pipeline Manager",
-    tabLabel: "Pipeline Manager",
-    blurb: "Tomco's own report: every open bid, what it is quoted at, and who to ring about it.",
-    group: "sales",
-    icon: ["M4 19V5", "M8 19v-7", "M12 19V9", "M16 19v-4", "M20 19V7"],
   },
   {
     key: "scheduling",

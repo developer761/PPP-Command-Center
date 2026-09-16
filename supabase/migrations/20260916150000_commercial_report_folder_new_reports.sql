@@ -37,7 +37,6 @@ insert into public.commercial_report_folder_items (folder_id, report_key, sort_o
 select f.id, v.report_key, v.sort_order
   from public.commercial_report_folders f
   cross join (values
-    ('pipeline-manager', 210),
     ('scheduling',       220),
     ('open-sales',       230)
   ) as v(report_key, sort_order)
@@ -77,3 +76,8 @@ select f.id, 'sales-tax', 290
   from public.commercial_report_folders f
  where f.name in ('Manager', 'Finance')
 on conflict (folder_id, report_key) do nothing;
+
+-- Opportunity Pipeline Manager became the Pipeline report itself (the table now
+-- sits above the funnel on /commercial/reports/pipeline), so the separate entry
+-- is removed. Harmless if it was never inserted.
+delete from public.commercial_report_folder_items where report_key = 'pipeline-manager';

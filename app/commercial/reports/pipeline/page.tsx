@@ -4,6 +4,9 @@ import { requireReportAccess } from "@/lib/commercial/reports/access";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getPipelineReport, type PipelineStageRow } from "@/lib/commercial/reports/pipeline";
+import { getDealReportRows, PIPELINE_MANAGER_SPEC, pipelineManagerRows } from "@/lib/commercial/reports/tomco/opportunities";
+import { GroupedReport } from "@/components/commercial/grouped-report";
+import { viewIndex } from "@/components/commercial/tomco-report-page";
 import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/format";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 
@@ -20,7 +23,30 @@ const STAGE_TONE: Record<string, ChartTone> = {
   proposal: "emerald",
 };
 
-export default async function PipelineReportPage() {
+/**
+ * THE RECORDS ARE THE REPORT. The charts sit underneath.
+ *
+ * Karan, 2026-09-16: "have it exactly as Tomco's on Salesforce for everything
+ * and give us some extra visuals or stuff at the bottom." This page used to
+ * open with four KPI tiles, a funnel and three stage cards — an analytics view
+ * of the pipeline, with the actual bids nowhere on it. Brendan's Salesforce
+ * report opens with the 39 rows and the GC's phone number, because he works
+ * down the list ringing people.
+ *
+ * So: the grouped table first, totalling $2,116,612.79 to match his report to
+ * the cent, and the funnel, the donut and the per-stage detail kept below it
+ * for Alex.
+ */
+const VIEWS = [
+  { key: "status", label: "By status" },
+  { key: "gc", label: "By GC" },
+];
+
+export default async function PipelineReportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
@@ -29,7 +55,9 @@ export default async function PipelineReportPage() {
   // Report folders: only reports in a folder you belong to (admins see all).
   await requireReportAccess(user.id, user.email, "pipeline");
 
-  const report = await getPipelineReport();
+  const sp = await searchParams;
+  const [report, dealRows] = await Promise.all([getPipelineReport(), getDealReportRows()]);
+  const bids = pipelineManagerRows(dealRows);
   const t = report.totals;
   const maxBid = Math.max(1, ...report.rows.map((r) => r.bidCents));
   const weightedSegments: DonutSegment[] = report.rows
@@ -65,6 +93,38 @@ export default async function PipelineReportPage() {
         </div>
       ) : (
         <>
+          {/* The report itself: every open bid, grouped, subtotalled, totalled. */}
+          <GroupedReport
+            spec={PIPELINE_MANAGER_SPEC}
+            rows={bids}
+            groupingIndex={viewIndex(VIEWS, sp.view)}
+            emptyHint="No open bids right now."
+            controls={
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-1">Group by</span>
+                {VIEWS.map((v, i) => (
+                  <Link
+                    key={v.key}
+                    href={`/commercial/reports/pipeline?view=${v.key}`}
+                    aria-current={i === viewIndex(VIEWS, sp.view) ? "true" : undefined}
+                    className={`px-2.5 rounded-lg border text-[12px] font-semibold min-h-[36px] inline-flex items-center ${
+                      i === viewIndex(VIEWS, sp.view)
+                        ? "border-cc-brand-300 bg-cc-brand-50 text-cc-brand-800"
+                        : "border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                    }`}
+                  >
+                    {v.label}
+                  </Link>
+                ))}
+              </div>
+            }
+          />
+
+          <h3 className="text-[13px] font-bold text-ppp-charcoal pt-2 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            How it breaks down
+          </h3>
+
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Tile label="Open opportunities" value={String(t.count)} tone="navy" sub={`${formatCentsCompact(t.avgDealCents)} avg deal`} />
             <Tile label="Bid value" value={formatCentsCompact(t.bidCents)} tone="brand" sub="full, unweighted" />

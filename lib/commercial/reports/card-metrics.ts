@@ -4,7 +4,7 @@ import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
 import { getJobCostsReport, type JobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getBalanceOwedRows } from "@/lib/commercial/reports/tomco/balance-owed";
-import { getDealReportRows, pipelineManagerRows, schedulingRows, openSalesRows } from "@/lib/commercial/reports/tomco/opportunities";
+import { getDealReportRows, schedulingRows, openSalesRows } from "@/lib/commercial/reports/tomco/opportunities";
 import { getSpendRows, getMoneyInRows, purchaseRows, laborPaymentRows, reimbursementRows } from "@/lib/commercial/reports/tomco/transactions";
 import { getAttendanceRows } from "@/lib/commercial/reports/tomco/attendance";
 import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
@@ -124,13 +124,6 @@ const LOADERS: Record<ReportKey, Loader> = {
     return {
       primary: { label: "Balance owed", value: formatCentsCompact(owed), tone: owed > 0 ? "amber" : "neutral" },
       secondary: { label: "Jobs", value: `${rows.length}` },
-    };
-  },
-  "pipeline-manager": async () => {
-    const rows = pipelineManagerRows(await getDealReportRows());
-    return {
-      primary: { label: "Quoted", value: formatCentsCompact(rows.reduce((n, r) => n + r.bidCents, 0)), tone: "brand" },
-      secondary: { label: "Open bids", value: `${rows.length}` },
     };
   },
   scheduling: async () => {
