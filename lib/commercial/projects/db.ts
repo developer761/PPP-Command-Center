@@ -156,8 +156,12 @@ export async function listProjects(opts: {
   if (opps.length === 0) return [];
   const oppIds = opps.map((o) => o.id);
 
-  // ── Batch: change orders (net approved + pending count per opp) ──
-  const coData = await paginateAll<{ opportunity_id: string; status: string; amount_cents: number }>(
+  // Every batch below needs only `oppIds`, and none needs another's result —
+  // so they go out TOGETHER. In sequence they were ~1.8s against Tomco's 92
+  // jobs, and this function is the spine of the dashboard, Job costs, the
+  // Jobs report and every deal page: what it costs, Alex pays on his phone.
+  // Each transform below still awaits its own promise exactly where it did.
+  const coData__p = paginateAll<{ opportunity_id: string; status: string; amount_cents: number }>(
     () =>
       sb
         .from("commercial_change_orders")
@@ -166,6 +170,58 @@ export async function listProjects(opts: {
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
+  const invData__p = paginateAll<{ opportunity_id: string; status: string; subtotal_cents: number; total_cents: number; paid_cents: number }>(
+    () =>
+      sb
+        .from("commercial_invoices")
+        .select("opportunity_id, status, subtotal_cents, total_cents, paid_cents")
+        .in("opportunity_id", oppIds)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+  );
+  const costsByOpp__p = costBreakdownByOpp(oppIds);
+  const laborByOpp__p = fieldOpsLaborByOpp(oppIds);
+  const propData__p = paginateAll<{ opportunity_id: string; total_cents: number; status: string; revision_number: number }>(
+    () =>
+      sb
+        .from("commercial_proposals")
+        .select("opportunity_id, total_cents, status, revision_number")
+        .in("opportunity_id", oppIds)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+  );
+  const closeoutData__p = paginateAll<{ opportunity_id: string; status: string }>(
+    () =>
+      sb
+        .from("commercial_closeout_packages")
+        .select("opportunity_id, status")
+        .in("opportunity_id", oppIds)
+        .is("voided_at", null)
+        .order("id", { ascending: true })
+  );
+  const submittalCounts__p = listSubmittalCountByOpp(oppIds);
+  const appData__p = paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; frozen_at: string | null; period_to: string | null }>(
+    () =>
+      sb
+        .from("commercial_aia_applications")
+        // frozen_at / period_to: WHEN the application was issued, which is the
+        // only thing that can say whether the money on it is late. Without them
+        // an AIA-billed job could only ever be counted as current.
+        .select("id, opportunity_id, application_number, status, original_contract_cents, original_contract_is_manual, retainage_pct, frozen_at, period_to")
+        .in("opportunity_id", oppIds)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+  );
+
+  // A promise that rejects before anything is awaiting it is an unhandled
+  // rejection, and Node will take the process down for one. This attaches a
+  // handler to all eight now, without waiting and without swallowing anything:
+  // the real error still throws at whichever `await` below belongs to it.
+  const inFlight = [coData__p, invData__p, costsByOpp__p, laborByOpp__p, propData__p, closeoutData__p, submittalCounts__p, appData__p];
+  void Promise.allSettled(inFlight);
+
+  // ── Batch: change orders (net approved + pending count per opp) ──
+  const coData = await coData__p;
   const coByOpp = new Map<string, { netApproved: number; pending: number; pendingCents: number }>();
   for (const c of coData) {
     const e = coByOpp.get(c.opportunity_id) ?? { netApproved: 0, pending: 0, pendingCents: 0 };
@@ -181,15 +237,7 @@ export async function listProjects(opts: {
   // non-void invoice totals; Paid = Σ payments. These drive "left to bill"
   // (contract − invoiced) + "outstanding" (invoiced − paid) so billing
   // actually moves the numbers — the old rollup ignored invoices entirely. ──
-  const invData = await paginateAll<{ opportunity_id: string; status: string; subtotal_cents: number; total_cents: number; paid_cents: number }>(
-    () =>
-      sb
-        .from("commercial_invoices")
-        .select("opportunity_id, status, subtotal_cents, total_cents, paid_cents")
-        .in("opportunity_id", oppIds)
-        .is("deleted_at", null)
-        .order("id", { ascending: true })
-  );
+  const invData = await invData__p;
   // "Invoiced" = ISSUED invoices only (sent/viewed/partial/overdue/paid) — a
   // draft isn't billed to the GC yet, so it must NOT inflate billed / %-billed
   // / left-to-bill (2026-07-29 audit: a $50k draft was flipping a job to "100%
@@ -222,26 +270,18 @@ export async function listProjects(opts: {
 
   // ── Batch: project costs per opp (Phase 2). One grouped query; only live
   // purchases (costBreakdownByOpp filters deleted_at IS NULL — audit C2). ──
-  const costsByOpp = await costBreakdownByOpp(oppIds);
+  const costsByOpp = await costsByOpp__p;
 
   // ── Batch: field-ops crew labor cost per opp (Option A). Σ approved
   // time-entries × effective cost rate, keyed by opp. Folded into total cost so
   // margin + every rollup (account, platform) includes real crew labor, not
   // just purchases — deal ⊂ account ⊂ platform still reconciles. ──
-  const laborByOpp = await fieldOpsLaborByOpp(oppIds);
+  const laborByOpp = await laborByOpp__p;
 
   // ── Batch: proposals per opp — the WON one is the signed contract; if none
   // is won, the LATEST (highest revision) proposal drives the contract so a deal
   // never shows its first/oldest quote (Karan 2026-08 smoke-test fix). ──
-  const propData = await paginateAll<{ opportunity_id: string; total_cents: number; status: string; revision_number: number }>(
-    () =>
-      sb
-        .from("commercial_proposals")
-        .select("opportunity_id, total_cents, status, revision_number")
-        .in("opportunity_id", oppIds)
-        .is("deleted_at", null)
-        .order("id", { ascending: true })
-  );
+  const propData = await propData__p;
   // Group per deal, then apply the ONE shared selection rule — the same
   // function the single-opp path uses, so the two can't drift.
   const propsByOpp = new Map<string, ContractProposalRow[]>();
@@ -264,15 +304,7 @@ export async function listProjects(opts: {
   // ── Batch: close-out package status per opp. Keep the most-advanced non-void
   // status so the account/deal can badge "Closed out" (2026-07-30). ──
   const CLOSEOUT_RANK: Record<string, number> = { draft: 1, sent: 2, acknowledged: 3, complete: 4 };
-  const closeoutData = await paginateAll<{ opportunity_id: string; status: string }>(
-    () =>
-      sb
-        .from("commercial_closeout_packages")
-        .select("opportunity_id, status")
-        .in("opportunity_id", oppIds)
-        .is("voided_at", null)
-        .order("id", { ascending: true })
-  );
+  const closeoutData = await closeoutData__p;
   const closeoutByOpp = new Map<string, ProjectRow["closeoutStatus"]>();
   for (const c of closeoutData) {
     if (c.status === "voided") continue;
@@ -283,23 +315,12 @@ export async function listProjects(opts: {
   }
 
   // ── Batch: submittal counts per opp (total + awaiting GC response). ──
-  const submittalCounts = await listSubmittalCountByOpp(oppIds);
+  const submittalCounts = await submittalCounts__p;
 
   // ── Batch: latest AIA application per opp. We fetch ALL apps (paginated) and
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
-  const appData = await paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; frozen_at: string | null; period_to: string | null }>(
-    () =>
-      sb
-        .from("commercial_aia_applications")
-        // frozen_at / period_to: WHEN the application was issued, which is the
-        // only thing that can say whether the money on it is late. Without them
-        // an AIA-billed job could only ever be counted as current.
-        .select("id, opportunity_id, application_number, status, original_contract_cents, original_contract_is_manual, retainage_pct, frozen_at, period_to")
-        .in("opportunity_id", oppIds)
-        .is("deleted_at", null)
-        .order("id", { ascending: true })
-  );
+  const appData = await appData__p;
   type AppRow = { id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; frozen_at: string | null; period_to: string | null };
   const latestAppByOpp = new Map<string, AppRow>();
   // Latest ISSUED (submitted/paid) app → AIA billed; latest PAID app → AIA

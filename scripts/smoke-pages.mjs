@@ -174,6 +174,7 @@ try {
   for (const p of list) {
     let code = "ERR";
     let where = "";
+    const started = Date.now();
     try {
       // A bare "DOWN" with the reason thrown away has been read as "the page is
       // broken" three times now, when the fetch itself had timed out against a
@@ -189,7 +190,11 @@ try {
       code = "DOWN";
       where = e instanceof Error ? `${e.message}${e.cause instanceof Error ? ` (${e.cause.message})` : ""}` : String(e);
     }
+    const ms = Date.now() - started;
     if (code !== "200") { console.log(`  ${code}  ${p}${where ? `  →  ${where}` : ""}`); bad++; }
+    // A page that loads is not the same as a page that loads in time. SLOW is
+    // not a failure, but it is the thing somebody notices first.
+    else if (ms > 3000 || process.env.SMOKE_TIMES) console.log(`  ${ms > 3000 ? "SLOW" : "  ok"}  ${String(ms).padStart(6)}ms  ${p}`);
   }
   console.log(bad === 0
     ? `✅ all ${list.length} pages returned 200`
