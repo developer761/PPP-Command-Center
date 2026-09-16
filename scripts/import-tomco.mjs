@@ -1428,6 +1428,51 @@ async function reconcile() {
   const adjustments = ourContract - sfContract;
   console.log(`\n  deals ${deals} · accounts ${accounts}`);
   console.log(`  contract: ours ${money(ourContract)} vs Salesforce ${money(sfContract)}${adjustments ? `  (difference ${money(adjustments)} = the carried-over adjustments)` : ""}`);
+  // THE ONE PLACE THE APP AND SALESFORCE LEGITIMATELY DIFFER, named.
+  //
+  // "Tomco SHOP" carries $12,187.79 of payments against a $0 contract, so its
+  // invoice balance is NEGATIVE. Salesforce nets that into its outstanding
+  // figure; every receivables surface here clamps a negative balance to zero,
+  // because a credit on an internal bucket is not money a GC owes and must not
+  // reduce what is chased. Both are right, and the gap between them is exactly
+  // this row — so it is stated rather than left to be discovered on day one.
+  {
+    const credits = (await readAll("commercial_invoices", "balance_cents"))
+      .map((i) => Number(i.balance_cents))
+      .filter((b) => b < 0)
+      .reduce((n, b) => n + b, 0);
+    if (credits < 0) {
+      console.log(`  (the app shows ${money(ourBalance - credits)} outstanding: it clamps ${money(-credits)} of credit balances to zero, which Salesforce nets)`);
+    }
+  }
+  // DELETIONS DO NOT PROPAGATE, so look for them.
+  //
+  // A transaction we imported and Tomco later deleted in Salesforce stays on
+  // our books for ever: nothing in a pull-based import can notice a row that
+  // is simply no longer there. It showed up as the platform reporting MORE
+  // labor cost than Salesforce — $510.00 to Omar LI (TN-204829) — which reads
+  // like an import bug and is actually a deletion.
+  //
+  // Reported, not auto-removed: a Salesforce query that failed or returned
+  // short would look exactly like a deletion, and quietly deleting Tomco's
+  // cost records on that basis is not a trade worth making. During the
+  // dual-run this is the line to watch.
+  {
+    const liveTx = new Set(SF.tx.map((t) => t.Id));
+    const orphans = [];
+    for (const [key] of MAP) {
+      const [entity, sfId] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+      if (entity !== "purchase" && entity !== "payment") continue;
+      if (!liveTx.has(sfId)) orphans.push({ entity, sfId });
+    }
+    if (orphans.length) {
+      console.log(`\n  ⚠️  ${orphans.length} imported row(s) no longer exist in Salesforce — deleted there, still here:`);
+      for (const o of orphans.slice(0, 10)) console.log(`     ${o.entity} ${o.sfId}`);
+      if (orphans.length > 10) console.log(`     …and ${orphans.length - 10} more`);
+      console.log(`     Check each before removing it — a short Salesforce read looks the same as a deletion.`);
+    }
+  }
+
   if (SF.txOutOfScope.length) {
     const amt = SF.txOutOfScope.reduce((n, t) => n + cents(t.Amount__c), 0);
     console.log(`  (excluded on purpose: ${SF.txOutOfScope.length} transaction(s) ${money(amt)} on canceled work orders)`);

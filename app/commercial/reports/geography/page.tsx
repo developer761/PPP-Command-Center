@@ -69,7 +69,16 @@ export default async function GeographyReportPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Tile label="Towns" value={String(t.cityCount)} tone="brand" sub={`${t.zipCount} zip${t.zipCount === 1 ? "" : "s"}`} />
             <Tile label="Located opportunities" value={String(t.locatedCount)} tone="navy" sub={t.unspecifiedCount > 0 ? `${t.unspecifiedCount} missing address` : "all mapped"} />
-            <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="emerald" sub="across all opportunities" />
+            {/* Says WHICH opportunities. This tile counts all of them; the table
+                below can only count the ones with a town on file, so the two
+                Contract figures differ by whatever the unplaced deals are worth
+                — and nothing on the page said so. */}
+            <Tile
+              label="Contract value"
+              value={formatCentsCompact(t.contractCents)}
+              tone="emerald"
+              sub={t.unspecifiedCount > 0 ? `all ${t.dealCount} opportunities, placed or not` : "across all opportunities"}
+            />
             <Tile label="States" value={String(t.stateCount)} tone="neutral" sub={geo.byState.slice(0, 3).map((s) => s.label).join(" · ") || undefined} />
           </div>
 
@@ -86,6 +95,13 @@ export default async function GeographyReportPage() {
             rows={geo.byCity}
             emptyHint="No job has a town on it yet."
           />
+          {t.unspecifiedCount > 0 && (
+            <p className="text-[11px] text-ppp-charcoal-400 leading-snug -mt-1">
+              The table totals only what could be placed on a town, so it comes to less than the Contract value tile
+              above — the difference is the {t.unspecifiedCount} {t.unspecifiedCount === 1 ? "opportunity" : "opportunities"} with no
+              site address.
+            </p>
+          )}
 
           {townSegments.length > 0 && (
             <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">

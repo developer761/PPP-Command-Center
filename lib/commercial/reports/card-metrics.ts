@@ -151,11 +151,14 @@ const LOADERS: Record<ReportKey, Loader> = {
   labor: async () => {
     const l = await getLaborReport(laborRange(LABOR_DEFAULT));
     const h = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+    // Says W-2, because that is what this report counts. "Hours (this month)
+    // 0h" sat one card away from Attendance reading 14,992h, and both were
+    // telling the truth about different populations.
     return {
-      primary: { label: "Hours (this month)", value: `${h(l.totalHours)}h`, tone: "navy" },
+      primary: { label: "W-2 hours (this month)", value: `${h(l.totalHours)}h`, tone: "navy" },
       secondary: {
-        label: l.unratedHours > 0 ? "Unpriced hours" : "Labor cost",
-        value: l.unratedHours > 0 ? `${h(l.unratedHours)}h` : formatCentsCompact(l.totalCostCents),
+        label: l.unratedHours > 0 ? "Unpriced hours" : l.totalHours === 0 ? "Subs are on Attendance" : "Labor cost",
+        value: l.unratedHours > 0 ? `${h(l.unratedHours)}h` : l.totalHours === 0 ? "—" : formatCentsCompact(l.totalCostCents),
         tone: l.unratedHours > 0 ? "amber" : "neutral",
       },
     };

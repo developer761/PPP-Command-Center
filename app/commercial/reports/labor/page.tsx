@@ -101,15 +101,27 @@ export default async function LaborReportPage({
       </div>
 
       {report.totalHours === 0 ? (
+        // THIS REPORT IS W-2 ONLY, and every one of Tomco's crew is a
+        // subcontractor — so "no approved hours" was true of this report and
+        // false of the platform, which holds 14,992 of them. Sending somebody
+        // to Approvals to look for hours that are already approved, on a page
+        // sitting next to a card reading 14,992h, is the worst version of an
+        // empty state. Say where the hours are.
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
-          <p className="text-[13px] font-semibold text-ppp-charcoal">No approved hours in this period.</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto">
-            Hours appear here once a foreman submits them and they&rsquo;re approved — a submitted or
-            questioned entry isn&rsquo;t a settled cost yet.
+          <p className="text-[13px] font-semibold text-ppp-charcoal">No W-2 payroll hours in this period.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-lg mx-auto">
+            This report covers crew on Tomco&rsquo;s own payroll. Subcontract crews &mdash; which is everyone at the
+            moment &mdash; are paid through their labor company, so their cost is on each job as a Subcontract line and
+            their hours are recorded separately.
           </p>
-          <Link href="/commercial/field-ops/approvals" className="inline-flex items-center mt-3 text-[12px] font-semibold text-cc-brand-700 hover:underline min-h-[44px]">
-            Go to approvals →
-          </Link>
+          <div className="flex items-center justify-center gap-4 flex-wrap mt-3">
+            <Link href="/commercial/reports/attendance" className="inline-flex items-center text-[12px] font-semibold text-cc-brand-700 hover:underline min-h-[44px]">
+              See the hours on Attendance →
+            </Link>
+            <Link href="/commercial/field-ops/approvals" className="inline-flex items-center text-[12px] font-semibold text-ppp-charcoal-500 hover:underline min-h-[44px]">
+              Approvals queue
+            </Link>
+          </div>
         </div>
       ) : (
         <>

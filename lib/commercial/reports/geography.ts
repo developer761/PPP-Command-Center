@@ -98,7 +98,14 @@ export async function getGeographyReport(): Promise<GeographyReport> {
     const hasLoc = !!(city || state || zip);
     if (hasLoc) located += 1; else unspecified += 1;
 
-    if (city) bump(byCity, `${city}|${state}`, city, state || null, p.contractToDateCents, p.billedContractCents, p.costsCents);
+    // KEY ON THE TOWN, not town+state.
+    //
+    // Keying on `${city}|${state}` while LABELLING with the town alone split
+    // Central Islip into two rows both called "Central Islip" — 8 deals whose
+    // state is blank and 6 whose state says NY — and counted the town twice in
+    // "34 towns". A missing state is missing data, not a second place. The
+    // state shown is whichever the town has on record.
+    if (city) bump(byCity, city, city, state || null, p.contractToDateCents, p.billedContractCents, p.costsCents);
     if (zip) bump(byZip, zip, zip, city || null, p.contractToDateCents, p.billedContractCents, p.costsCents);
     if (state) bump(byState, state, state, null, p.contractToDateCents, p.billedContractCents, p.costsCents);
   }
