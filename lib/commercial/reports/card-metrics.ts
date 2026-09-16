@@ -6,6 +6,7 @@ import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getBalanceOwedRows } from "@/lib/commercial/reports/tomco/balance-owed";
 import { getDealReportRows, pipelineManagerRows, schedulingRows, openSalesRows } from "@/lib/commercial/reports/tomco/opportunities";
 import { getSpendRows, getMoneyInRows, purchaseRows, laborPaymentRows, reimbursementRows } from "@/lib/commercial/reports/tomco/transactions";
+import { getAttendanceRows } from "@/lib/commercial/reports/tomco/attendance";
 import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
 import { getLaborReport } from "@/lib/commercial/reports/labor";
 import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
@@ -177,6 +178,14 @@ const LOADERS: Record<ReportKey, Loader> = {
     return {
       primary: { label: "Money in", value: formatCentsCompact(rows.reduce((n, r) => n + r.amountCents, 0)), tone: "emerald" },
       secondary: { label: "Payments", value: `${rows.length}` },
+    };
+  },
+  attendance: async () => {
+    const rows = await getAttendanceRows();
+    const crews = new Set(rows.map((r) => r.crew));
+    return {
+      primary: { label: "Hours on site", value: `${Math.round(rows.reduce((n, r) => n + r.hours, 0)).toLocaleString()}h`, tone: "brand" },
+      secondary: { label: "Crew", value: `${crews.size}` },
     };
   },
   estimator: async () => {

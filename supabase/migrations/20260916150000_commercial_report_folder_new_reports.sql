@@ -63,3 +63,10 @@ select f.id, v.report_key, v.sort_order
   ) as v(report_key, sort_order)
  where f.name in ('Manager', 'Finance')
 on conflict (folder_id, report_key) do nothing;
+
+-- Round four: Attendance — the report that makes the crew hours visible.
+insert into public.commercial_report_folder_items (folder_id, report_key, sort_order)
+select f.id, 'attendance', 280
+  from public.commercial_report_folders f
+ where f.name in ('Manager', 'Field Users', 'Finance')
+on conflict (folder_id, report_key) do nothing;

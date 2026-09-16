@@ -110,7 +110,7 @@ begin
   for f in
     select * from (values
       ('6f1d3c2a-5b7e-4c1a-9d0e-000000000001'::uuid, 'Manager', 'Every report — the whole company at a glance.', 'briefcase', 10,
-        array['pipeline','geography','estimator','signatures','win-loss','jobs','job-costs','labor','change-orders','cash-flow','receivables','ar-aging','balance-owed','pipeline-manager','scheduling','open-sales','purchases-by-vendor','labor-payments','reimbursements-out','deposit-history'],
+        array['pipeline','geography','estimator','signatures','win-loss','jobs','job-costs','labor','change-orders','cash-flow','receivables','ar-aging','balance-owed','pipeline-manager','scheduling','open-sales','purchases-by-vendor','labor-payments','reimbursements-out','deposit-history','attendance'],
         array['alex@precisionpaintingplus.net']),
       ('6f1d3c2a-5b7e-4c1a-9d0e-000000000002'::uuid, 'Finance', 'What is owed, what came in, and what the work cost.', 'dollar', 20,
         array['jobs','receivables','ar-aging','cash-flow','job-costs','change-orders','labor','signatures'],

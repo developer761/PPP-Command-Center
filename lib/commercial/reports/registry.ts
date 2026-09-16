@@ -38,6 +38,7 @@ export const REPORT_KEYS = [
   "labor-payments",
   "reimbursements-out",
   "deposit-history",
+  "attendance",
 ] as const;
 
 export type ReportKey = (typeof REPORT_KEYS)[number];
@@ -270,6 +271,15 @@ export const REPORTS: readonly ReportDef[] = [
     blurb: "Tomco's own report: money in, grouped by the day it landed — what the bank gets reconciled against.",
     group: "money",
     icon: ["M12 3v12", "M7 10l5 5 5-5", "M4 21h16"],
+  },
+  {
+    key: "attendance",
+    href: "/commercial/reports/attendance",
+    title: "Attendance",
+    tabLabel: "Attendance",
+    blurb: "Tomco's own report: who was on site, on which job, for how long. Hours only — the cost is on the job.",
+    group: "delivery",
+    icon: ["M3 5h18v16H3z", "M3 9h18", "M8 3v4", "M16 3v4", "M9 14l2 2 4-4"],
   },
 ];
 
