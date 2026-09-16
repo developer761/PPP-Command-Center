@@ -22,6 +22,7 @@ export const REPORT_KEYS = [
   "estimator",
   "signatures",
   "win-loss",
+  "jobs",
   "job-costs",
   "labor",
   "change-orders",
@@ -120,6 +121,19 @@ export const REPORTS: readonly ReportDef[] = [
     blurb: "What we win, what we lose, and why. Quarterly review fuel.",
     group: "sales",
     icon: ["M6 9H4.5a2.5 2.5 0 0 1 0-5H6 M18 9h1.5a2.5 2.5 0 0 0 0-5H18 M6 4h12v5a6 6 0 0 1-12 0V4z M9 20h6 M12 15v5"],
+  },
+  {
+    key: "jobs",
+    href: "/commercial/reports/jobs",
+    title: "Jobs",
+    tabLabel: "Jobs",
+    blurb: "Every job, and one full report per job — money, costs, labor, paperwork.",
+    group: "delivery",
+    icon: [
+      "M9 3h6a1 1 0 0 1 1 1v2H8V4a1 1 0 0 1 1-1z",
+      "M8 6H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2",
+      "M9 12h6 M9 16h4",
+    ],
   },
   {
     key: "job-costs",

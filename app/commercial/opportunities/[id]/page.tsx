@@ -6,6 +6,7 @@ import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { canViewReport } from "@/lib/commercial/reports/access";
 import {
   getCommercialOpportunity,
   getCommercialOpportunityIncludingDeleted,
@@ -1706,6 +1707,15 @@ export default async function OpportunityDetailPage({
   if (!opp) notFound();
   const isDeletedDeal = !!opp.deleted_at;
   const account = await getCommercialAccount(opp.account_id);
+  // The Jobs report's per-job page is this deal, read-only, on one printable
+  // sheet — the thing people ask for when they want to send "everything about
+  // this job" somewhere. Offered only when the viewer can actually open it:
+  // reports are shared through folders, and a button that bounces you to a
+  // "you don't have access" page is worse than no button. Memoised per request.
+  const pageViewer = (await (await createClient()).auth.getUser()).data.user;
+  const canSeeJobReport = pageViewer
+    ? await canViewReport(pageViewer.id, pageViewer.email, "jobs").catch(() => false)
+    : false;
   // Bid low/high is gone from the create forms (2026-08); pricing lives on the
   // proposal now. Supply the current proposal total so a bid-less deal's
   // Weighted tile matches the dashboard instead of reading $0.
@@ -2634,6 +2644,20 @@ export default async function OpportunityDetailPage({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {canSeeJobReport && (
+              <Link
+                href={`/commercial/reports/jobs/${opp.id}`}
+                title="Everything about this job on one page — money, costs, labor, change orders, paperwork. Printable."
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M9 3h6a1 1 0 0 1 1 1v2H8V4a1 1 0 0 1 1-1z" />
+                  <path d="M8 6H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2" />
+                  <path d="M9 12h6 M9 16h4" />
+                </svg>
+                Job report
+              </Link>
+            )}
             <Link
               href={`/commercial/opportunities/${opp.id}/edit`}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"

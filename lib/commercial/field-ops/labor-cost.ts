@@ -172,15 +172,43 @@ export type CrewLaborWorker = {
   costCents: number;
   /** The worker's CURRENT effective cost rate (for display), null if none. */
   currentRateCents: number | null;
+  /** Distinct days this worker had settled hours on the deal — the attendance
+   *  count. Hours alone can't say whether 40 hours was one crew for a week or
+   *  five people for a day. */
+  days: number;
 };
 
+export type CrewDetailForOpp = {
+  workers: CrewLaborWorker[];
+  /** Every distinct work date with settled hours, ascending. */
+  days: string[];
+  /** Σ hours (rated + unrated) across the workers below. */
+  totalHours: number;
+  /** Σ burdened cost — the same figure `fieldOpsLaborForOpp` returns when no
+   *  range is given. */
+  costCents: number;
+  unratedHours: number;
+};
+
+const EMPTY_DETAIL: CrewDetailForOpp = { workers: [], days: [], totalHours: 0, costCents: 0, unratedHours: 0 };
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 /**
- * Per-worker crew-labor breakdown for ONE deal — the in-house (time-entry)
- * counterpart to laborByWorkerForProject (which covers manual subcontract-labor
- * purchases). Costliest worker first; a worker with unrated hours is surfaced so
- * the operator knows whose rate to set. Names come from commercial_employees.
+ * Crew labor on ONE deal, broken out by worker AND by day.
+ *
+ * One walk of the job → time-entry path. The per-worker table and the
+ * attendance-day count are cut from the same entries, so a report can never
+ * show 12 days beside a set of workers that only add up to 9 — which is what
+ * happens when two callers each run their own query.
+ *
+ * `range` narrows on `work_date` (inclusive, YYYY-MM-DD). Omit it for the whole
+ * life of the job.
  */
-export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLaborWorker[]> {
+export async function fieldOpsCrewDetailForOpp(
+  oppId: string,
+  range?: { fromYmd: string; toYmd: string } | null
+): Promise<CrewDetailForOpp> {
   const sb = commercialDb();
   // Include soft-deleted jobs — their settled hours were paid (audit 2026-08).
   const { data: jobRows } = await sb
@@ -188,18 +216,18 @@ export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLa
     .select("id")
     .eq("opportunity_id", oppId);
   const jobIds = ((jobRows ?? []) as { id: string }[]).map((j) => j.id);
-  if (jobIds.length === 0) return [];
+  if (jobIds.length === 0) return { ...EMPTY_DETAIL, workers: [], days: [] };
 
-  const entries = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number }>(() =>
-    sb
+  const entries = await paginateAll<{ employee_id: string; work_date: string; actual_hours: number }>(() => {
+    let q = sb
       .from("commercial_time_entries")
       .select("employee_id, work_date, actual_hours, status")
       .in("job_id", jobIds)
-      .in("status", SETTLED_STATUSES as unknown as string[])
-      .order("work_date")
-      .order("id")
-  );
-  if (entries.length === 0) return [];
+      .in("status", SETTLED_STATUSES as unknown as string[]);
+    if (range) q = q.gte("work_date", range.fromYmd).lte("work_date", range.toYmd);
+    return q.order("work_date").order("id");
+  });
+  if (entries.length === 0) return { ...EMPTY_DETAIL, workers: [], days: [] };
 
   // W-2 only, matching fieldOpsLaborByOpp + payroll (audit round 8).
   const { data: w2Rows } = await sb
@@ -211,6 +239,8 @@ export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLa
   const rates = await loadRates(entries.map((e) => e.employee_id));
   const today = etTodayIso();
   const byEmp = new Map<string, CrewLaborWorker>();
+  const daysByEmp = new Map<string, Set<string>>();
+  const allDays = new Set<string>();
   for (const e of entries) {
     if (!w2.has(e.employee_id)) continue;
     const hours = Number(e.actual_hours ?? 0);
@@ -220,7 +250,7 @@ export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLa
     const rate = rateOn(rows, workDate);
     const cur =
       byEmp.get(e.employee_id) ??
-      ({ employeeId: e.employee_id, name: "", hours: 0, ratedHours: 0, unratedHours: 0, costCents: 0, currentRateCents: rateOn(rows, today)?.cents ?? null } as CrewLaborWorker);
+      ({ employeeId: e.employee_id, name: "", hours: 0, ratedHours: 0, unratedHours: 0, costCents: 0, currentRateCents: rateOn(rows, today)?.cents ?? null, days: 0 } as CrewLaborWorker);
     cur.hours += hours;
     if (rate) {
       cur.costCents += Math.round(hours * rate.cents);
@@ -229,8 +259,12 @@ export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLa
       cur.unratedHours += hours;
     }
     byEmp.set(e.employee_id, cur);
+    const ds = daysByEmp.get(e.employee_id) ?? new Set<string>();
+    ds.add(workDate);
+    daysByEmp.set(e.employee_id, ds);
+    allDays.add(workDate);
   }
-  if (byEmp.size === 0) return [];
+  if (byEmp.size === 0) return { ...EMPTY_DETAIL, workers: [], days: [] };
 
   // Resolve names.
   const { data: empRows } = await sb
@@ -241,7 +275,31 @@ export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLa
   for (const r of (empRows ?? []) as { id: string; display_name: string | null }[]) {
     nameById.set(r.id, (r.display_name ?? "").trim() || "Crew member");
   }
-  const out = [...byEmp.values()].map((w) => ({ ...w, name: nameById.get(w.employeeId) ?? "Crew member" }));
-  out.sort((a, b) => b.costCents - a.costCents || b.hours - a.hours);
-  return out;
+  const workers = [...byEmp.values()].map((w) => ({
+    ...w,
+    name: nameById.get(w.employeeId) ?? "Crew member",
+    hours: round2(w.hours),
+    ratedHours: round2(w.ratedHours),
+    unratedHours: round2(w.unratedHours),
+    days: daysByEmp.get(w.employeeId)?.size ?? 0,
+  }));
+  workers.sort((a, b) => b.costCents - a.costCents || b.hours - a.hours);
+
+  return {
+    workers,
+    days: [...allDays].sort(),
+    totalHours: round2(workers.reduce((n, w) => n + w.hours, 0)),
+    costCents: workers.reduce((n, w) => n + w.costCents, 0),
+    unratedHours: round2(workers.reduce((n, w) => n + w.unratedHours, 0)),
+  };
+}
+
+/**
+ * Per-worker crew-labor breakdown for ONE deal — the in-house (time-entry)
+ * counterpart to laborByWorkerForProject (which covers manual subcontract-labor
+ * purchases). Costliest worker first; a worker with unrated hours is surfaced so
+ * the operator knows whose rate to set. Names come from commercial_employees.
+ */
+export async function fieldOpsLaborByWorkerForOpp(oppId: string): Promise<CrewLaborWorker[]> {
+  return (await fieldOpsCrewDetailForOpp(oppId)).workers;
 }
