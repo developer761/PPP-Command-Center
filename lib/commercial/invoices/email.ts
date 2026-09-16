@@ -53,6 +53,31 @@ export type EmailInvoiceResult =
   | { ok: true; to_email: string; warning?: string }
   | { ok: false; error: string };
 
+/**
+ * The invoice PDF a GC actually receives — ONE page, like every customer
+ * document on this platform.
+ *
+ * This existed inline, and rendered WITHOUT the fit ladder that the download
+ * route has used since 2026-08-26. So the copy the team previewed was one page
+ * and the copy that landed in the GC's inbox was two: the contract summary is a
+ * keep-together block, so it moved wholesale onto a second sheet rather than
+ * splitting. Exported, and asserted on page count in scripts/pdf-paths.live.test.ts,
+ * because the bug is invisible in the source — both paths call the same renderer.
+ */
+export async function buildInvoiceEmailPdf(invoiceId: string): Promise<Buffer | null> {
+  const pdfInput = await buildInvoicePdfInput(invoiceId);
+  if (!pdfInput) return null;
+  const { renderInvoicePdf } = await import("./invoice-pdf");
+  const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+  const fit = await renderFitToOnePage((pageHeightScale) =>
+    renderInvoicePdf({ ...pdfInput, pageHeightScale })
+  );
+  if (!fit.fitted) {
+    console.warn(`[invoice-email] invoice ${invoiceId} is too long to fit one readable page — sent at its natural length`);
+  }
+  return fit.bytes;
+}
+
 export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailInvoiceResult> {
   const toEmail = (input.to_email ?? "").trim().toLowerCase();
   const ccEmail = (input.cc_email ?? "").trim().toLowerCase() || null;
@@ -71,12 +96,11 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
   }
 
   // Render the exact bytes the team previewed.
-  const pdfInput = await buildInvoicePdfInput(input.invoice_id);
-  if (!pdfInput) return { ok: false, error: "Couldn't assemble the invoice — its deal may have been removed." };
   let pdf: Buffer;
   try {
-    const { renderInvoicePdf } = await import("./invoice-pdf");
-    pdf = await renderInvoicePdf(pdfInput);
+    const built = await buildInvoiceEmailPdf(input.invoice_id);
+    if (!built) return { ok: false, error: "Couldn't assemble the invoice — its deal may have been removed." };
+    pdf = built;
   } catch (err) {
     console.error("[emailInvoiceToGc] pdf render failed:", err);
     return { ok: false, error: "The invoice PDF couldn't be generated — try again." };

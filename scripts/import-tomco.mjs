@@ -289,6 +289,18 @@ async function loadSalesforce(conn) {
     SF.links.push(...await all(conn, `SELECT ContentDocumentId, LinkedEntityId FROM ContentDocumentLink
       WHERE LinkedEntityId IN (${linkTargets.slice(i, i + 150).map((id) => `'${id}'`).join(",")})`));
   }
+  // And the links from TRANSACTIONS, which say which receipt belongs to which
+  // cost. Every one of these 729 documents is also linked to its opportunity or
+  // work order, so nothing new is downloaded and nothing was being lost — but
+  // without this the receipts arrive as a flat list of 730 files on the deal,
+  // and no cost line can show the receipt behind it.
+  SF.txLinks = [];
+  const txIds = SF.tx.map((t) => t.Id);
+  for (let i = 0; i < txIds.length; i += 150) {
+    SF.txLinks.push(...await all(conn, `SELECT ContentDocumentId, LinkedEntityId FROM ContentDocumentLink
+      WHERE LinkedEntityId IN (${txIds.slice(i, i + 150).map((id) => `'${id}'`).join(",")})`));
+  }
+
   const docIds = [...new Set(SF.links.map((l) => l.ContentDocumentId))];
   SF.docs = [];
   for (let i = 0; i < docIds.length; i += 200) {
@@ -345,6 +357,17 @@ async function stageAccounts() {
 
 async function stageContacts() {
   const r = newReport("contacts");
+  // ONE primary per account — migration 026 enforces it with a partial unique
+  // index on (account_id) WHERE is_primary.
+  //
+  // Every contact used to be written as the primary, which meant the second
+  // contact on a GC was not an upsert (the ON CONFLICT names a different
+  // constraint) but a plain INSERT that hit that index — and the error said
+  // "duplicate key", which the filter below swallowed as harmless. 28 of
+  // Tomco's 93 contacts were dropped that way, silently, and every account
+  // showed exactly one contact. The first contact on an account is the primary;
+  // the rest are linked as ordinary contacts, which is what they are.
+  const primaryTaken = new Set();
   for (const c of SF.contacts) {
     // Prefer the account the contact is attached to; fall back to the account
     // of the Tomco opportunity that names them, since a contact can sit on a
@@ -361,10 +384,13 @@ async function stageContacts() {
       r.skipped.push(`${c.Name}: its GC account is not imported yet (run --stage=accounts first)`);
       continue;
     }
+    const isPrimary = !primaryTaken.has(accountId);
+    primaryTaken.add(accountId);
     if (COMMIT && contactId) {
       const { error } = await sb.from("commercial_account_contacts")
-        .upsert({ account_id: accountId, contact_id: contactId, role: "decision_maker", is_primary: true }, { onConflict: "account_id,contact_id,role" });
-      if (error && !/duplicate/i.test(error.message)) throw new Error(`account_contacts: ${error.message}`);
+        .upsert({ account_id: accountId, contact_id: contactId, role: "decision_maker", is_primary: isPrimary }, { onConflict: "account_id,contact_id,role" });
+      // NOT swallowed. A link that does not land is a person Katie cannot ring.
+      if (error) r.skipped.push(`${c.Name}: not linked to its GC — ${error.message}`);
     }
   }
   return r;
@@ -493,10 +519,17 @@ async function stageChangeOrders() {
       opportunity_id: dealId,
       account_id: accountId,
       co_number: 1,
-      title: "Change orders carried over from Salesforce",
+      // CUSTOMER-FACING TEXT. `title` and `description` are both printed on the
+      // change-order PDF, under "Description of change" — so the GC reads them.
+      // They used to carry the migration's own explanation ("Salesforce tracks
+      // change-order VALUE per job, not individual change orders…"), which is
+      // an internal note about how we moved the data and has no business on a
+      // document that leaves the building. The explanation now lives on the
+      // import map row, which is exactly what its `notes` column is for.
+      title: "Approved change orders",
       description: residual
-        ? `Salesforce tracks change-order VALUE per job, not individual change orders. This is that total, plus $${(residual / 100).toFixed(2)} its balance owed carries beyond the invoice — work that was billed but never written down as a change order.`
-        : "Salesforce tracks change-order VALUE per job, not individual change orders. This is that total, so the contract matches.",
+        ? `The total approved change-order value on this project, including $${(residual / 100).toFixed(2)} of additional approved work billed against this job.`
+        : "The total approved change-order value on this project.",
       amount_cents: amount,
       status: "approved",
       decided_at: at(ymd(w.StartDate) ?? ymd(w.CreatedDate)),
@@ -507,6 +540,13 @@ async function stageChangeOrders() {
       // offers a button to put it on a NEW invoice, billing the GC twice.
       invoiced_invoice_id: mapped("invoice", w.Id),
     }, r);
+    // The internal version of the story, kept off the customer's document.
+    if (COMMIT) {
+      await remember("change_order", w.Id, mapped("change_order", w.Id),
+        residual
+          ? `Salesforce tracks change-order VALUE per job, not individual change orders. This row is that total, plus $${(residual / 100).toFixed(2)} the job's balance owed carries beyond its invoice — work that was billed but never written down as a change order.`
+          : "Salesforce tracks change-order VALUE per job, not individual change orders. This row is that total, so the contract matches.");
+    }
   }
   return r;
 }
@@ -951,6 +991,35 @@ async function stageFiles() {
     done += 1;
     if (done % 50 === 0) console.log(`   …${done} files`);
   }
+
+  // THE RECEIPT, ON THE COST IT PAYS FOR.
+  //
+  // Salesforce links each receipt to its Transaction as well as to the job, so
+  // the pairing is recorded and does not have to be guessed from an amount or a
+  // date. Without this the 730 receipts land as one flat list on the deal and
+  // every cost line reads "no receipt", which is the opposite of what Tomco
+  // has: a photographed receipt for nearly every purchase.
+  //
+  // A document can be linked to several transactions (one receipt covering a
+  // few lines), and a purchase holds one receipt — so the first wins and the
+  // rest stay reachable in Documents.
+  let linked = 0;
+  const seenPurchase = new Set();
+  for (const l of SF.txLinks ?? []) {
+    const documentId = mapped("file", l.ContentDocumentId);
+    const purchaseId = mapped("purchase", l.LinkedEntityId);
+    if (!documentId || !purchaseId || seenPurchase.has(purchaseId)) continue;
+    seenPurchase.add(purchaseId);
+    if (!COMMIT) { linked += 1; continue; }
+    const { error } = await sb
+      .from("commercial_project_purchases")
+      .update({ receipt_document_id: documentId })
+      .eq("id", purchaseId)
+      .is("receipt_document_id", null); // never overwrite one somebody attached
+    if (error) { r.skipped.push(`receipt link for purchase ${purchaseId}: ${error.message}`); continue; }
+    linked += 1;
+  }
+  r.notes.push(`receipts attached to their cost line: ${linked}`);
   return r;
 }
 
