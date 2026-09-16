@@ -29,6 +29,8 @@ export const REPORT_KEYS = [
   "cash-flow",
   "receivables",
   "ar-aging",
+  // Tomco's own reports, reproduced from the ones they run in Salesforce.
+  "balance-owed",
 ] as const;
 
 export type ReportKey = (typeof REPORT_KEYS)[number];
@@ -189,6 +191,15 @@ export const REPORTS: readonly ReportDef[] = [
     blurb: "What's owed by how far past due, per GC — invoices and AIA.",
     group: "money",
     icon: [circle(12, 12, 9), "M12 7v5l3 2"],
+  },
+  {
+    key: "balance-owed",
+    href: "/commercial/reports/balance-owed",
+    title: "Balance Owed",
+    tabLabel: "Balance Owed",
+    blurb: "Tomco's own report: jobs finished or on hold with money still out, grouped the way Brendan and Mary each run it.",
+    group: "money",
+    icon: ["M3 6h18v12H3z", "M7 10h6", "M7 14h3"],
   },
 ];
 

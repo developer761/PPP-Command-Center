@@ -182,6 +182,14 @@ try {
       // before calling it down.
       const res = await fetchWithRetry(BASE + p, cookie);
       code = String(res.status);
+      // SMOKE_GREP=<text> — does the page actually CONTAIN this? A 200 says the
+      // page rendered, never what it rendered, and "I removed that from the UI"
+      // is a claim worth being able to check against the real bytes.
+      if (process.env.SMOKE_GREP && code === "200") {
+        const html = await res.text();
+        const hits = html.split(process.env.SMOKE_GREP).length - 1;
+        console.log(`  ${hits ? "FOUND" : "absent"}  ${String(hits).padStart(3)}×  "${process.env.SMOKE_GREP}"  on  ${p}`);
+      }
       // A bare "307" says a page bounced but not WHERE, and the destination is
       // the whole diagnosis — /choose-platform is an access gate, /?error= is a
       // deactivated account, / is no session at all.

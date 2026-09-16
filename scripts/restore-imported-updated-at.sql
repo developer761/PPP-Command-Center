@@ -29,12 +29,12 @@
 --
 -- Paste into the Supabase SQL editor. The SELECT at the end is the proof.
 
-BEGIN;
+-- Reads commercial_import_map directly. An earlier version staged it in a TEMP
+-- table, which the Supabase SQL editor cannot see from a later statement — it
+-- pools connections, so the temp table is gone by the time the DO block runs
+-- ("relation _imported_rows does not exist").
 
--- The import finished on 2026-09-16. Any row whose updated_at is meaningfully
--- later than that has been edited by a person — leave those alone.
-CREATE TEMP TABLE _imported_rows ON COMMIT DROP AS
-SELECT DISTINCT entity, row_id FROM public.commercial_import_map;
+BEGIN;
 
 DO $$
 DECLARE
@@ -54,7 +54,9 @@ BEGIN
       ('commercial_project_purchases',  'purchase'),
       ('commercial_projects',           'project'),
       ('commercial_documents',          'file')
-    ) AS v(tbl, ent)
+    ) AS v(tbl_name, entity_name)   -- deliberately NOT named `t`/`ent`: a column
+                                    -- sharing a PL/pgSQL variable's name is how
+                                    -- "column reference is ambiguous" happens.
   LOOP
     -- Only tables that actually carry the column.
     IF NOT EXISTS (
@@ -66,11 +68,12 @@ BEGIN
     EXECUTE format($f$
       UPDATE public.%I x
          SET updated_at = x.created_at
-        FROM _imported_rows m
-       WHERE m.row_id = x.id
-         AND m.entity = %L
-         AND x.created_at IS NOT NULL
+       WHERE x.created_at IS NOT NULL
          AND x.updated_at > x.created_at
+         AND EXISTS (
+           SELECT 1 FROM public.commercial_import_map m
+            WHERE m.row_id = x.id AND m.entity = %L
+         )
     $f$, t, ent);
     GET DIAGNOSTICS n = ROW_COUNT;
     EXECUTE format('ALTER TABLE public.%I ENABLE TRIGGER USER', t);

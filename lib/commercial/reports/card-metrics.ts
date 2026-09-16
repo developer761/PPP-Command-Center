@@ -3,6 +3,7 @@ import "server-only";
 import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
 import { getJobCostsReport, type JobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
+import { getBalanceOwedRows } from "@/lib/commercial/reports/tomco/balance-owed";
 import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
 import { getLaborReport } from "@/lib/commercial/reports/labor";
 import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
@@ -111,6 +112,14 @@ const LOADERS: Record<ReportKey, Loader> = {
     return {
       primary: { label: "Total AR", value: formatCentsCompact(a.totals.total), tone: "brand" },
       secondary: { label: "Overdue", value: formatCentsCompact(overdue), tone: overdue > 0 ? "amber" : "neutral" },
+    };
+  },
+  "balance-owed": async () => {
+    const rows = await getBalanceOwedRows();
+    const owed = rows.reduce((n, r) => n + r.balanceCents, 0);
+    return {
+      primary: { label: "Balance owed", value: formatCentsCompact(owed), tone: owed > 0 ? "amber" : "neutral" },
+      secondary: { label: "Jobs", value: `${rows.length}` },
     };
   },
   estimator: async () => {
