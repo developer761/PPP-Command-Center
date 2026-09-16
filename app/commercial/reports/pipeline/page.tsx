@@ -3,12 +3,11 @@ import { redirect } from "next/navigation";
 import { requireReportAccess } from "@/lib/commercial/reports/access";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
-import { getPipelineReport, type PipelineStageRow } from "@/lib/commercial/reports/pipeline";
+import { getPipelineReport } from "@/lib/commercial/reports/pipeline";
 import { getDealReportRows, PIPELINE_MANAGER_SPEC, pipelineManagerRows } from "@/lib/commercial/reports/tomco/opportunities";
 import { GroupedReport } from "@/components/commercial/grouped-report";
 import { viewIndex } from "@/components/commercial/tomco-report-page";
 import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/format";
-import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +15,6 @@ const STAGE_ACCENT: Record<string, string> = {
   qualifying: "bg-ppp-blue-500",
   estimating: "bg-cc-brand-500",
   proposal: "bg-emerald-500",
-};
-const STAGE_TONE: Record<string, ChartTone> = {
-  qualifying: "blue",
-  estimating: "brand",
-  proposal: "emerald",
 };
 
 /**
@@ -60,9 +54,6 @@ export default async function PipelineReportPage({
   const bids = pipelineManagerRows(dealRows);
   const t = report.totals;
   const maxBid = Math.max(1, ...report.rows.map((r) => r.bidCents));
-  const weightedSegments: DonutSegment[] = report.rows
-    .filter((r) => r.weightedCents > 0)
-    .map((r) => ({ label: r.label, value: r.weightedCents, tone: STAGE_TONE[r.status] ?? "neutral", valueLabel: formatCentsCompact(r.weightedCents) }));
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
@@ -132,82 +123,50 @@ export default async function PipelineReportPage({
             <Tile label="Blended win prob." value={t.probabilityPct === null ? "—" : `${t.probabilityPct}%`} tone="neutral" sub="weighted ÷ bid" />
           </div>
 
-          {/* Funnel (bars) + weighted-value pie, side by side. */}
+          {/* ONE chart, not three.
+              This was a funnel of bars, a weighted-value donut AND four
+              per-stage cards — three pictures of the same four numbers, two of
+              the cards reading "0 deals · $0 · — · —" because Tomco uses
+              neither RFP nor Pending Approval. Karan: "make this chart just
+              simpler and only one thing." So: one row per stage that HAS
+              deals, carrying everything the cards carried. */}
           <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-            <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
-              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-              Pipeline funnel
-            </h3>
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5 items-center">
-              <div className="space-y-3">
-                {report.rows.map((r) => (
-                  <StageBar key={r.status} r={r} maxBid={maxBid} accent={STAGE_ACCENT[r.status] ?? "bg-cc-brand-500"} />
+            <div className="space-y-3.5">
+              {report.rows
+                .filter((r) => r.count > 0)
+                .map((r) => (
+                  <div key={r.status}>
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span aria-hidden className={`inline-block h-2.5 w-2.5 rounded-full shrink-0 ${STAGE_ACCENT[r.status] ?? "bg-cc-brand-500"}`} />
+                      <span className="text-[13px] font-bold text-ppp-charcoal">{r.label}</span>
+                      <span className="text-[11.5px] text-ppp-charcoal-500 tabular-nums">
+                        {r.count} {r.count === 1 ? "deal" : "deals"} · {formatCentsCompact(r.avgDealCents)} avg
+                      </span>
+                      <span className="ml-auto text-[13px] font-bold text-ppp-charcoal tabular-nums">
+                        {formatCentsFull(r.bidCents)}
+                      </span>
+                    </div>
+                    {/* The bar is the bid; the filled part is what it is worth
+                        after the stage's win probability. */}
+                    <div className="mt-1.5 h-2.5 rounded-full bg-ppp-charcoal-100 overflow-hidden" role="img"
+                      aria-label={`${r.label}: ${formatCentsFull(r.bidCents)} bid, ${formatCentsFull(r.weightedCents)} weighted`}>
+                      <div className={`h-full ${STAGE_ACCENT[r.status] ?? "bg-cc-brand-500"}`}
+                        style={{ width: `${Math.max(1, Math.round((r.bidCents / maxBid) * 100))}%` }} />
+                    </div>
+                    <p className="mt-1 text-[11px] text-ppp-charcoal-500 tabular-nums">
+                      {formatCentsFull(r.weightedCents)} weighted
+                      {r.probabilityPct === null ? "" : ` · ${r.probabilityPct}% win probability`}
+                    </p>
+                  </div>
                 ))}
-              </div>
-              {weightedSegments.length > 0 && (
-                <div className="justify-self-center">
-                  <DonutChart size={168} segments={weightedSegments} centerValue={formatCentsCompact(t.weightedCents)} centerLabel="weighted" />
-                </div>
-              )}
             </div>
           </section>
-
-          {/* Per-stage detail cards. */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {report.rows.map((r) => (
-              <div key={r.status} className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-                <div className="flex items-center gap-2">
-                  <span aria-hidden className={`inline-block h-2.5 w-2.5 rounded-full ${STAGE_ACCENT[r.status] ?? "bg-cc-brand-500"}`} />
-                  <h4 className="text-[13px] font-bold text-ppp-charcoal">{r.label}</h4>
-                  <span className="ml-auto text-[11px] font-semibold text-ppp-charcoal-500 tabular-nums">{r.count} {r.count === 1 ? "deal" : "deals"}</span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-                  <Metric label="Bid value" value={formatCentsCompact(r.bidCents)} />
-                  <Metric label="Weighted" value={formatCentsCompact(r.weightedCents)} />
-                  <Metric label="Avg opportunity" value={r.count > 0 ? formatCentsCompact(r.avgDealCents) : "—"} />
-                  <Metric label="Win prob." value={r.probabilityPct === null ? "—" : `${r.probabilityPct}%`} />
-                </div>
-              </div>
-            ))}
-          </div>
 
           <p className="text-[11px] text-ppp-charcoal-400 leading-snug">
             &ldquo;Open&rdquo; = Qualifying, Estimating, and Proposal-out — the same set as the dashboard Pipeline, so it reconciles. Bid value is the mid of each deal&rsquo;s range; weighted applies each stage&rsquo;s win probability.
           </p>
         </>
       )}
-    </div>
-  );
-}
-
-function StageBar({ r, maxBid, accent }: { r: PipelineStageRow; maxBid: number; accent: string }) {
-  const bidPct = Math.round((r.bidCents / maxBid) * 100);
-  const wtPct = r.bidCents > 0 ? Math.round((r.weightedCents / r.bidCents) * 100) : 0;
-  return (
-    <div>
-      <div className="flex items-center justify-between gap-2 text-[12.5px] mb-1">
-        <span className="font-semibold text-ppp-charcoal">
-          {r.label}
-          <span className="text-ppp-charcoal-400 font-normal tabular-nums"> · {r.count}</span>
-        </span>
-        <span className="tabular-nums text-ppp-charcoal-600">
-          <span className="font-bold text-ppp-charcoal">{formatCentsFull(r.weightedCents)}</span>
-          <span className="text-ppp-charcoal-400"> of {formatCentsFull(r.bidCents)}</span>
-        </span>
-      </div>
-      {/* Outer bar = bid value (funnel width); inner fill = weighted portion. */}
-      <div className="h-3 rounded-full bg-ppp-charcoal-100 overflow-hidden" style={{ width: `${Math.max(6, bidPct)}%` }}>
-        <div className={`h-full rounded-full ${accent}`} style={{ width: `${wtPct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-ppp-charcoal-50/60 px-2 py-1.5">
-      <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">{label}</div>
-      <div className="text-[12.5px] font-bold tabular-nums text-ppp-charcoal mt-0.5">{value}</div>
     </div>
   );
 }

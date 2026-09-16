@@ -89,21 +89,44 @@ export function DeliveryToolsStrip({
           sequence, which is what delivery IS; stacking it into four bordered
           blocks turned a timeline into a form. The phase label still prints
           once per group, so the grouping is there without the furniture. */}
-      <div className="flex items-stretch divide-x divide-ppp-charcoal-100 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      {/* EACH TOOL IS A BUTTON, not a cell in a ruled bar.
+          Karan, twice: "can we make like buttons on these so they seem
+          clickable of some sort." They always WERE links — that was the
+          problem. Divided cells with no border, no raised surface and no
+          chevron read as a summary table, so the six things you actually do on
+          a job looked like six facts about it. Now each one has its own edge, a
+          hover that lifts, and an arrow saying it goes somewhere. */}
+      <div className="flex items-stretch gap-2 p-2.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {tools.map((t, i) => (
           <Link
             key={t.key}
             href={withFrom(t.href)}
-            className="group min-w-[9rem] flex-1 px-3.5 py-2.5 min-h-[44px] hover:bg-cc-brand-50/50 transition-colors"
+            className="group min-w-[10rem] flex-1 rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 min-h-[44px] shadow-[0_1px_0_0_rgb(0_0_0/0.04)] hover:border-cc-brand-400 hover:bg-cc-brand-50/60 hover:shadow-[0_2px_6px_-1px_rgb(0_0_0/0.10)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cc-brand-600 active:translate-y-px transition-all"
           >
-            <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-0.5 whitespace-nowrap">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1 whitespace-nowrap">
               {i === 0 || tools[i - 1].phase !== t.phase ? t.phase : "\u00A0"}
             </span>
             <span className="flex items-center gap-1.5">
               <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOT[t.status]}`} />
-              <span className="text-[11.5px] font-semibold text-ppp-charcoal group-hover:text-cc-brand-800 whitespace-nowrap">
+              <span className="text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800 whitespace-nowrap">
                 {t.label}
               </span>
+              {/* The affordance. Slides on hover, like every other "go here"
+                  control on the platform. */}
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+                className="ml-auto shrink-0 text-ppp-charcoal-300 group-hover:text-cc-brand-600 group-hover:translate-x-0.5 transition-transform"
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
             </span>
             <span
               className={`block text-[11px] mt-0.5 whitespace-nowrap ${
