@@ -70,3 +70,10 @@ select f.id, 'attendance', 280
   from public.commercial_report_folders f
  where f.name in ('Manager', 'Field Users', 'Finance')
 on conflict (folder_id, report_key) do nothing;
+
+-- Round five: Sales Tax, which Mary files from.
+insert into public.commercial_report_folder_items (folder_id, report_key, sort_order)
+select f.id, 'sales-tax', 290
+  from public.commercial_report_folders f
+ where f.name in ('Manager', 'Finance')
+on conflict (folder_id, report_key) do nothing;

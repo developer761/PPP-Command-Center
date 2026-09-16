@@ -7,6 +7,7 @@ import { getBalanceOwedRows } from "@/lib/commercial/reports/tomco/balance-owed"
 import { getDealReportRows, pipelineManagerRows, schedulingRows, openSalesRows } from "@/lib/commercial/reports/tomco/opportunities";
 import { getSpendRows, getMoneyInRows, purchaseRows, laborPaymentRows, reimbursementRows } from "@/lib/commercial/reports/tomco/transactions";
 import { getAttendanceRows } from "@/lib/commercial/reports/tomco/attendance";
+import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
 import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
 import { getLaborReport } from "@/lib/commercial/reports/labor";
 import { getEstimatorReport } from "@/lib/commercial/reports/estimator";
@@ -186,6 +187,13 @@ const LOADERS: Record<ReportKey, Loader> = {
     return {
       primary: { label: "Hours on site", value: `${Math.round(rows.reduce((n, r) => n + r.hours, 0)).toLocaleString()}h`, tone: "brand" },
       secondary: { label: "Crew", value: `${crews.size}` },
+    };
+  },
+  "sales-tax": async () => {
+    const r = await getSalesTaxReport();
+    return {
+      primary: { label: "Tax collected", value: formatCentsCompact(r.taxCollectedCents), tone: "brand" },
+      secondary: { label: "Taxable base", value: formatCentsCompact(r.taxableBaseCents) },
     };
   },
   estimator: async () => {
