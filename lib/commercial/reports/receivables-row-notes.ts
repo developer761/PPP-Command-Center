@@ -200,7 +200,11 @@ Rules — these matter more than being interesting:
       // Scaled to the book. A flat 1500 was fine for three rows and would have
       // silently truncated a fifty-row one mid-list — the rows past the cut
       // simply wouldn't get a read, with nothing to say why.
-      max_tokens: Math.min(16_000, 400 + need.length * 60),
+      // The BASE matters as much as the per-row allowance: a reasoning model
+      // spends some of this before it writes anything, and a 400-token floor is
+      // what left the brief returning no text at all on its own call. One row
+      // now gets room to think and still answer.
+      max_tokens: Math.min(16_000, 1_500 + need.length * 80),
       // Low effort on purpose, and not for cost: each line is capped at
       // fourteen words, and lower effort means terser output with no preamble —
       // which is exactly the shape being asked for.
@@ -228,7 +232,18 @@ Rules — these matter more than being interesting:
       merged[key] = { note: note.slice(0, 200), hash: hashFacts(facts), at };
       wrote += 1;
     }
-    if (wrote === 0) return { ok: false, error: "Couldn't read the drafted notes. Try again." };
+    if (wrote === 0) {
+      // Name the reason rather than "try again" — the same loop the brief sent
+      // Karan round twice. An empty response and an unparseable one are
+      // different problems with different fixes.
+      const kinds = res.content.map((b) => b.type).join(", ") || "nothing";
+      return {
+        ok: false,
+        error: text.trim()
+          ? "The model answered but not in the expected format, so no note was saved."
+          : `The model returned no text (stop reason: ${res.stop_reason ?? "unknown"}; blocks: ${kinds}).`,
+      };
+    }
 
     // Drop reads for rows that have left the book, so the cache can't grow
     // forever and can't resurrect a note if a key is ever reused.

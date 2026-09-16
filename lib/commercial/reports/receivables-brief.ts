@@ -141,7 +141,16 @@ Rules:
     const client = new Anthropic({ apiKey });
     const res = await client.messages.create({
       model: MODEL,
-      max_tokens: 400,
+      // 400 was the whole budget, with no effort setting — so on a reasoning
+      // model the allowance was spent before a single word of the brief was
+      // written, and every attempt came back with no text block at all:
+      // "The model returned an empty brief. Try again." Retrying could never
+      // have worked, because nothing about the request changed.
+      //
+      // Room to think, and LOW effort because this is four sentences of plain
+      // prose — the same setting the row-notes call has always used.
+      max_tokens: 2_000,
+      output_config: { effort: "low" },
       messages: [{ role: "user", content: prompt }],
     });
     const text = res.content
@@ -149,7 +158,16 @@ Rules:
       .map((b) => b.text)
       .join("")
       .trim();
-    if (!text) return { ok: false, error: "The model returned an empty brief. Try again." };
+    if (!text) {
+      // Say WHY it was empty. "Try again" sent Karan round the same loop twice
+      // with nothing to act on; `stop_reason` names it immediately — hitting
+      // the token ceiling reads differently from a refusal or an empty turn.
+      const kinds = res.content.map((b) => b.type).join(", ") || "nothing";
+      return {
+        ok: false,
+        error: `The model returned no text (stop reason: ${res.stop_reason ?? "unknown"}; blocks: ${kinds}).`,
+      };
+    }
 
     const brief: ReceivablesBrief = {
       text,
