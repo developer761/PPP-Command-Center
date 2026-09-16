@@ -143,6 +143,12 @@ DELETE FROM public.commercial_team_members
 DELETE FROM public.commercial_teams WHERE name <> 'Tomco Suffolk';
 DELETE FROM public.commercial_competitors;
 
+-- 15. The Salesforce import map. It says "this SF id became this row"; every
+--     row it names has just been deleted. Leaving it would be worse than not
+--     having it: the next import run reads the map, believes those rows still
+--     exist, and UPDATEs ids that are gone instead of inserting the data.
+DELETE FROM public.commercial_import_map;
+
 COMMIT;
 
 -- ─── Proof, not a promise: every line below must read 0. ─────────────────────
@@ -164,6 +170,7 @@ UNION ALL SELECT 'documents',          count(*) FROM public.commercial_documents
 UNION ALL SELECT 'signature requests', count(*) FROM public.commercial_signature_requests
 UNION ALL SELECT 'signature events',   count(*) FROM public.commercial_signature_events
 UNION ALL SELECT 'commercial bells',   count(*) FROM public.notifications WHERE kind LIKE 'commercial\_%'
+UNION ALL SELECT 'SF import map',       count(*) FROM public.commercial_import_map
 
 -- ─── And every line below must be NON-zero: the setup that had to survive. ──
 UNION ALL SELECT '— vendors KEPT',        count(*) FROM public.commercial_vendors
