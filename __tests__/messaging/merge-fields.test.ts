@@ -5,6 +5,15 @@ import { LoggingTransport } from "@/lib/messaging/transport";
 import { classifyRefusal } from "@/lib/messaging/scheduler";
 import type { E164 } from "@/lib/messaging/phone";
 
+/**
+ * A fixed clock. The gate refuses to send outside 8am-9pm local (the federal
+ * bound, applied whatever a workspace is set to), so a gate test that used the
+ * real clock passed all afternoon and failed after 9pm — which is how it was
+ * found, at 21:25 on 2026-09-15.
+ */
+const MIDDAY = new Date("2026-07-15T16:00:00Z"); // noon in New York
+
+
 const OPENER =
   "Hello, this is Precision Painting Plus. Thanks for requesting a free estimate! " +
   "Call us at {{workspace_phone}} with any questions. Reply END to stop texts.";
@@ -72,7 +81,7 @@ describe("the gate refuses a message with a blank left in it", () => {
   it("does not send an unfilled opener", async () => {
     const t = new LoggingTransport();
     const res = await gatedSend(
-      { workspace: ws, to: "+15165551234" as E164, body: OPENER, agent: "campaign" },
+      { workspace: ws, to: "+15165551234" as E164, body: OPENER, agent: "campaign", now: MIDDAY },
       { ...deps, transport: t }
     );
     expect(res.ok).toBe(false);
@@ -86,7 +95,7 @@ describe("the gate refuses a message with a blank left in it", () => {
       {
         workspace: ws, to: "+15165551234" as E164,
         body: fillMergeFields(OPENER, { workspacePhone: ws.phone_e164 }),
-        agent: "campaign",
+        agent: "campaign", now: MIDDAY,
       },
       { ...deps, transport: t }
     );

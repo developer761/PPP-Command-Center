@@ -5,6 +5,15 @@ import { classifyRefusal } from "@/lib/messaging/scheduler";
 import { emailChoice } from "@/lib/messaging/transport-config";
 import type { E164 } from "@/lib/messaging/phone";
 
+/**
+ * A fixed clock. The gate refuses to send outside 8am-9pm local (the federal
+ * bound, applied whatever a workspace is set to), so a gate test that used the
+ * real clock passed all afternoon and failed after 9pm — which is how it was
+ * found, at 21:25 on 2026-09-15.
+ */
+const MIDDAY = new Date("2026-07-15T16:00:00Z"); // noon in New York
+
+
 const ws = {
   id: "w", name: "NY LI Nassau Leads", phone_e164: "+15163448418" as E164,
   time_zone: "America/New_York", quiet_hours_start: 0, quiet_hours_end: 24,
@@ -18,7 +27,7 @@ const deps = (o: Record<string, unknown> = {}) => ({
 const emailReq = (o: Record<string, unknown> = {}) => ({
   workspace: ws, to: TO, channel: "email" as const,
   toEmail: "customer@example.com", fromEmail: "hello@precisionpaintingplus.net",
-  subject: "Your free estimate", body: "Hello,\n\nThanks for reaching out.", agent: "campaign",
+  subject: "Your free estimate", body: "Hello,\n\nThanks for reaching out.", agent: "campaign", now: MIDDAY,
   ...o,
 });
 
