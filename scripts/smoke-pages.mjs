@@ -149,6 +149,10 @@ try {
                      "?tab=project&sub=change-orders", "?tab=project&sub=submittals"]) {
       paths.push(`/commercial/opportunities/${id}${t}`);
     }
+    // The per-job report lives under a [dynamic] folder, so the directory walk
+    // above cannot see it — the deepest new Reports page would have had zero
+    // coverage.
+    paths.push(`/commercial/reports/jobs/${id}`, `/commercial/reports/jobs/${id}?period=this_year`);
   }
 
   async function fetchWithRetry(url, cookie) {
