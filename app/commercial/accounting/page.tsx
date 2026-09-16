@@ -1378,16 +1378,31 @@ export default async function AccountingPage({
             />
           </div>
 
-          {salesTax.unmarkedCount > 0 && (
+          {salesTax.unmarkedCount - salesTax.unmarkedMigratedCount > 0 && (
             // The worse of the two, so it gets its own line above the other.
             // In NY everything is taxable unless an exemption is CLAIMED — so
             // an invoice that charged no tax on a job nobody marked exempt is
             // most likely under-billed, not missing a document.
+            //
+            // MIGRATED INVOICES ARE EXCLUDED from this count (below). Tomco
+            // billed those correctly in Salesforce years ago; the exemption is
+            // recorded there and the importer brought the money across, not the
+            // certificates. Counting them here opened the report accusing Tomco
+            // of under-billing $2.5M on work that was invoiced properly.
             <p className="text-[12px] rounded-lg border px-3 py-2 border-rose-300 bg-rose-100 text-rose-900">
-              <strong>{salesTax.unmarkedCount}</strong> invoice
-              {salesTax.unmarkedCount === 1 ? "" : "s"} charged no tax on a job that was never marked
-              exempt — {formatCentsFull(salesTax.unmarkedBaseCents)} of work. That is usually tax
+              <strong>{salesTax.unmarkedCount - salesTax.unmarkedMigratedCount}</strong> invoice
+              {salesTax.unmarkedCount - salesTax.unmarkedMigratedCount === 1 ? "" : "s"} charged no tax on a job that was never marked
+              exempt — {formatCentsFull(salesTax.unmarkedBaseCents - salesTax.unmarkedMigratedBaseCents)} of work. That is usually tax
               that should have been billed, not a certificate that&rsquo;s missing.
+            </p>
+          )}
+          {salesTax.unmarkedMigratedCount > 0 && (
+            <p className="text-[12px] rounded-lg border px-3 py-2 border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600">
+              <strong>{salesTax.unmarkedMigratedCount}</strong> invoice
+              {salesTax.unmarkedMigratedCount === 1 ? " that" : "s that"} came across from Salesforce charged no tax
+              ({formatCentsFull(salesTax.unmarkedMigratedBaseCents)} of work) and carry no exemption here. The
+              exemption for those sits in Salesforce &mdash; the migration brought the money, not the certificates &mdash;
+              so they are listed but not counted as under-billed.
             </p>
           )}
           {salesTax.noCertCount > 0 && (

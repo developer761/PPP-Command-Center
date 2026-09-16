@@ -146,11 +146,16 @@ const LOADERS: Record<ReportKey, Loader> = {
     const c = await getChangeOrderVendorReport(changeOrderRange(CHANGE_ORDER_DEFAULT));
     return {
       primary: {
-        label: c.co.unbilledCents > 0 ? "Approved, unbilled" : "Added scope",
+        label: c.co.unbilledCents > 0 ? "Approved, unbilled" : "Added scope · this year",
         value: formatCentsCompact(c.co.unbilledCents > 0 ? c.co.unbilledCents : c.co.approvedAddCents),
         tone: c.co.unbilledCents > 0 ? "amber" : "emerald",
       },
-      secondary: { label: "Vendor spend", value: formatCentsCompact(c.vendorTotalCents) },
+      // SAY THE WINDOW. This card runs on the report's default preset
+      // (`this_year`), and "Vendor spend $736.6K" beside no period read as the
+      // whole book — Tomco's all-time figure is $1.0M, so the card was 27%
+      // light with nothing on it admitting the range. Every other windowed card
+      // on this page names its period; this one did not.
+      secondary: { label: "Vendor spend · this year", value: formatCentsCompact(c.vendorTotalCents) },
     };
   },
   signatures: async () => {

@@ -36,7 +36,7 @@ const txn = (o: Partial<TxnRow> = {}): TxnRow => ({
 const taxRow = (o: Partial<SalesTaxRow> = {}): SalesTaxRow => ({
   invoiceId: "i1", invoiceNumber: "INV-1", issuedYmd: "2026-08-10", accountId: "a1",
   accountName: "Acme GC", jobName: "Job", subtotalCents: 100_00, taxCents: 8_63, taxPct: 8.625,
-  exempt: false, exemptSource: null, exemptKind: null, certNumber: null, href: "/x", ...o,
+  exempt: false, exemptSource: null, exemptKind: null, certNumber: null, migrated: false, href: "/x", ...o,
 });
 
 const reimb = (o: Partial<ReimbursementRow> = {}): ReimbursementRow => ({

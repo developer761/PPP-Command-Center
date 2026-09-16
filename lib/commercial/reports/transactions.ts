@@ -1,5 +1,7 @@
 import "server-only";
 
+import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
+
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
@@ -111,15 +113,6 @@ export function monthLabel(key: string): string {
   const [y, m] = key.split("-").map(Number);
   return `${MONTH_LABEL[(m || 1) - 1]} ${y}`;
 }
-
-const CATEGORY_LABEL: Record<string, string> = {
-  materials: "Materials",
-  subcontractor: "Subcontractor",
-  sub_labor: "Sub labor",
-  equipment: "Equipment",
-  permit: "Permit",
-  other: "Other",
-};
 
 /**
  * Group, subtotal and total — his report's whole structure.
@@ -337,7 +330,12 @@ export async function getTransactionsReport(
       // Vendor first: on the money-out side that IS the name Alex reads, and
       // his own report is "Purchases by Month by VENDOR".
       name: p.vendor?.trim() || "Unnamed vendor",
-      recordType: CATEGORY_LABEL[p.category ?? "other"] ?? "Purchase",
+      // The ONE category label map (lib/commercial/purchases/constants.ts).
+      // This file kept its own copy, and that copy had drifted: it listed
+      // `sub_labor` where the column actually holds `labor`, so all 795 of
+      // Tomco's subcontract-labor payouts — $544,349.54 — fell through to the
+      // "Purchase" default and the report called them materials buying.
+      recordType: purchaseCategoryLabel(p.category ?? "other"),
       amountCents: p.amount_cents,
       reference: p.description?.trim() || (opp ? derivedOppName(opp, accountName) : null),
       depositedAtIso: null,

@@ -24,6 +24,7 @@ function row(over: Partial<SalesTaxRow> = {}): SalesTaxRow {
     exempt: false,
     exemptSource: null,
     exemptKind: null,
+    migrated: false,
     certNumber: null,
     href: "/x",
     ...over,

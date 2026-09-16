@@ -63,6 +63,17 @@ export type SalesTaxRow = {
    *                    tax rather than an unfiled certificate.
    */
   exemptKind: "certified" | "no_cert" | "unmarked" | null;
+  /**
+   * This invoice came across from Salesforce rather than being written here.
+   *
+   * It changes what "no tax and no exemption marked" MEANS. On an invoice
+   * raised here it is a decision nobody made. On a migrated one, Tomco billed
+   * it correctly in Salesforce years ago — the exemption is recorded there, and
+   * the importer brought the money across, not the certificates. Calling those
+   * "tax that should have been billed" would open this report on day one
+   * accusing Tomco of under-billing $2.5M.
+   */
+  migrated: boolean;
   /** The certificate on file. Null on an exempt invoice = the compliance risk. */
   certNumber: string | null;
   href: string;
@@ -89,6 +100,9 @@ export type SalesTaxReport = {
   /** Never marked exempt at all, and billed no tax. */
   unmarkedCount: number;
   unmarkedBaseCents: number;
+  /** Of `unmarked`, how many came from Salesforce (see `SalesTaxRow.migrated`). */
+  unmarkedMigratedCount: number;
+  unmarkedMigratedBaseCents: number;
   byRate: SalesTaxByRate[];
   /** Every GC in the unfiltered set, for the picker. */
   gcOptions: { id: string; name: string }[];
@@ -155,6 +169,8 @@ export function summarizeSalesTax(
     noCertBaseCents: noCert.reduce((n, r) => n + r.subtotalCents, 0),
     unmarkedCount: unmarked.length,
     unmarkedBaseCents: unmarked.reduce((n, r) => n + r.subtotalCents, 0),
+    unmarkedMigratedCount: unmarked.filter((r) => r.migrated).length,
+    unmarkedMigratedBaseCents: unmarked.filter((r) => r.migrated).reduce((n, r) => n + r.subtotalCents, 0),
     byRate: [...rateMap.values()].sort((a, b) => b.taxCents - a.taxCents),
     gcOptions: [...new Map(allRows.map((r) => [r.accountId, r.accountName])).entries()]
       .map(([id, name]) => ({ id, name }))
@@ -219,6 +235,20 @@ export async function getSalesTaxReport(
       .order("id", { ascending: true })
   );
 
+  // Which invoices came from Salesforce. `commercial_import_map` is the record
+  // of exactly that, so no guessing from notes text.
+  const migratedInvoiceIds = new Set(
+    (
+      await paginateAll<{ row_id: string }>(() =>
+        commercialDb()
+          .from("commercial_import_map")
+          .select("row_id")
+          .eq("entity", "invoice")
+          .order("row_id", { ascending: true })
+      ).catch(() => [] as { row_id: string }[])
+    ).map((m) => m.row_id)
+  );
+
   const rows: SalesTaxRow[] = [];
   for (const inv of invoices) {
     // A DRAFT has charged nobody anything and a VOID has been withdrawn.
@@ -271,6 +301,7 @@ export async function getSalesTaxReport(
             ? "no_cert"
             : "unmarked",
       certNumber: certNumber?.trim() || null,
+      migrated: migratedInvoiceIds.has(inv.id),
       href: `/commercial/invoices/${inv.id}`,
     });
   }

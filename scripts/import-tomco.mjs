@@ -350,7 +350,7 @@ function printReport(r) {
 const SF = {};
 async function loadSalesforce(conn) {
   if (SF.loaded) return SF;
-  SF.opps = await all(conn, `SELECT Id, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, AccountId,
+  SF.opps = await all(conn, `SELECT Id, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, LastModifiedDate, AccountId,
       Primary_Contact__c, Primary_Contact__r.Name, Primary_Contact__r.Email, Primary_Contact__r.Phone, Primary_Contact__r.Title,
       QuotedSubtotalWithChangeOrder__c, Quote_Subtotal__c, TotalAmount__c, Amount, Estimation_Address__c, Service_Territory__c,
       Start_Date__c, End_Date__c, Owner.Name, Estimator__r.Name, ProjectManager__r.Name
@@ -539,6 +539,11 @@ async function stageDeals() {
       await put("deal", o.Id, "commercial_opportunities", {
         status: "pre_sale_closed",
         sub_status: "lost",
+        // WITHOUT A DECIDED DATE A LOST DEAL IS INVISIBLE. The Win/Loss report
+        // filters on `decided_at IS NOT NULL`, so a loss with no date is not
+        // counted as a loss — and a win rate computed over 92 wins and zero
+        // countable losses is 100%, for ever, on every GC account.
+        decided_at: ymd(o.CloseDate) ?? ymd(o.LastModifiedDate),
         bid_value_low_cents: null,
         bid_value_high_cents: null,
       }, r);
@@ -1314,8 +1319,21 @@ async function reconcile() {
   const purch = await readAll("commercial_project_purchases", "category, amount_cents", (q) => q.is("deleted_at", null));
   const ourMaterials = purch.filter((p) => p.category === "materials").reduce((n, p) => n + Number(p.amount_cents), 0);
   const ourLabor = purch.filter((p) => p.category === "labor").reduce((n, p) => n + Number(p.amount_cents), 0);
-  const sfMaterials = SF.txInScope.filter((t) => t.RecordType?.DeveloperName === "Purchase").reduce((n, t) => n + cents(t.Amount__c), 0);
-  const sfLabor = SF.txInScope.filter((t) => t.RecordType?.DeveloperName === "Payment_Out" && t.PayeeType__c === "Labor_Company").reduce((n, t) => n + cents(t.Amount__c), 0);
+  // AS OF THE LAST IMPORT, for the same reason the hours are (below): Tomco is
+  // entering crew payments in Salesforce while we look at it — the labor total
+  // moved three times in one afternoon. A transaction with no row in the import
+  // map has not been brought across yet, which is work to do at cutover and not
+  // a discrepancy. Same map-based test as attendance: no timestamp guessing.
+  const notYetImported = (t) => !mapped("purchase", t.Id) && !mapped("payment", t.Id);
+  const arrivedSince = SF.txInScope.filter(notYetImported);
+  const inScopeAtImport = SF.txInScope.filter((t) => !notYetImported(t));
+  const sumOf = (list, pick) => list.filter(pick).reduce((n, t) => n + cents(t.Amount__c), 0);
+  const isPurchase = (t) => t.RecordType?.DeveloperName === "Purchase";
+  const isLabor = (t) => t.RecordType?.DeveloperName === "Payment_Out" && t.PayeeType__c === "Labor_Company";
+  const sfMaterials = sumOf(inScopeAtImport, isPurchase);
+  const sfLabor = sumOf(inScopeAtImport, isLabor);
+  const sinceMaterials = sumOf(arrivedSince, isPurchase);
+  const sinceLabor = sumOf(arrivedSince, isLabor);
   const hoursRows = await readAll("commercial_time_entries", "id, actual_hours");
   const ourHours = hoursRows.reduce((n, h) => n + Number(h.actual_hours), 0);
   const sfHours = SF.attendanceInScope.reduce((n, a) => n + Number(a.Hours_Worked__c ?? 0), 0);
@@ -1332,6 +1350,13 @@ async function reconcile() {
     if (!ok) problems.push(`TOTAL ${label}: ours ${money(ours)} vs Salesforce ${money(theirs)}`);
     console.log(`  ${ok ? "✅" : "❌"} ${label.padEnd(16)} ${money(ours).padStart(16)}  ${money(theirs).padStart(16)}`);
   }
+  if (arrivedSince.length) {
+    console.log(`     ↳ ${arrivedSince.length} transaction(s) entered in Salesforce since the import` +
+      `${sinceMaterials ? ` · materials +${money(sinceMaterials)}` : ""}` +
+      `${sinceLabor ? ` · labor +${money(sinceLabor)}` : ""}.`);
+    console.log(`       Not a discrepancy — Tomco is still working. Re-run \`--stage=costs,payments --commit\` at cutover.`);
+  }
+
   // Salesforce is STILL LIVE. Tomco's crews clock in there every working day —
   // 14 new rows appeared inside one five-minute import run on 2026-09-16 — so
   // the hours total moves while we are looking at it. Counting that as a
