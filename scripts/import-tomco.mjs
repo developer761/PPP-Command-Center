@@ -39,7 +39,7 @@ import {
 const TOMCO = "Corporate_Name__c='Tomco Painting'";
 const STAGES = [
   "accounts", "contacts", "deals", "jobs", "change-orders",
-  "invoices", "payments", "costs", "employees", "attendance",
+  "invoices", "payments", "costs", "employees", "crews", "attendance",
 ];
 
 const args = process.argv.slice(2);
@@ -518,6 +518,66 @@ async function stageEmployees() {
   return r;
 }
 
+/**
+ * Brendan's crews, as crews — not just as a label on old attendance.
+ *
+ * Salesforce is being retired, so the platform has to BE the record: the crews
+ * he already works with need to exist here, ready to schedule, with the right
+ * people in them. Every membership below is one Salesforce recorded itself, on
+ * an attendance row naming both the crew and the worker — nothing is inferred
+ * from a name.
+ *
+ * The foreman is the person who appears on that crew most often. That IS a
+ * judgement, so it is one click to change and the crew works either way.
+ */
+async function stageCrews() {
+  const r = newReport("crews");
+  const pairCounts = new Map(); // company -> Map(workerKey -> rows)
+  const companies = new Map();  // company name -> nothing, just the set
+  for (const a of SF.attendanceInScope) {
+    const company = (a.Crew__r?.Name ?? "").trim();
+    if (!company) continue;
+    companies.set(company, true);
+    const worker = (a.Crew_Worker__c ?? "").trim();
+    if (!worker) continue;
+    if (!pairCounts.has(company)) pairCounts.set(company, new Map());
+    const m = pairCounts.get(company);
+    m.set(worker, (m.get(worker) ?? 0) + 1);
+  }
+
+  for (const company of companies.keys()) {
+    const members = [...(pairCounts.get(company) ?? new Map()).entries()].sort((a, b) => b[1] - a[1]);
+    // The crew company itself imported as an employee (it carries the hours
+    // Salesforce never attributed to a person); the foreman is the named worker
+    // seen most on this crew, if there is one.
+    const foremanKey = members[0]?.[0] ? `crew:${members[0][0]}` : `crewco:${company}`;
+    const crewId = await put("crew", `crewco:${company}`, "commercial_crews", {
+      name: company,
+      foreman_employee_id: mapped("employee", foremanKey),
+      active: true,
+    }, r);
+    if (!crewId) continue;
+    for (const [worker] of members) {
+      const employeeId = mapped("employee", `crew:${worker}`);
+      if (!employeeId) { r.skipped.push(`${company}: ${worker} has no employee record`); continue; }
+      await put("crew_member", `crewco:${company}|crew:${worker}`, "commercial_crew_members", {
+        crew_id: crewId,
+        employee_id: employeeId,
+      }, r);
+    }
+    // The company-as-employee belongs to its own crew too, so the hours
+    // Salesforce recorded against the company sit inside the crew that did them.
+    const companyEmployee = mapped("employee", `crewco:${company}`);
+    if (companyEmployee) {
+      await put("crew_member", `crewco:${company}|self`, "commercial_crew_members", {
+        crew_id: crewId,
+        employee_id: companyEmployee,
+      }, r);
+    }
+  }
+  return r;
+}
+
 async function stageAttendance() {
   const r = newReport("attendance");
   // Attendance needs a Field Ops job per deal to hang off.
@@ -567,7 +627,7 @@ async function stageAttendance() {
 const RUNNERS = {
   accounts: stageAccounts, contacts: stageContacts, deals: stageDeals, jobs: stageJobs,
   "change-orders": stageChangeOrders, invoices: stageInvoices, payments: stagePayments,
-  costs: stageCosts, employees: stageEmployees, attendance: stageAttendance,
+  costs: stageCosts, employees: stageEmployees, crews: stageCrews, attendance: stageAttendance,
 };
 
 // ─── reconcile ──────────────────────────────────────────────────────────────

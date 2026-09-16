@@ -238,7 +238,35 @@ difference.
    not change the 35-open count.
 4. **No lost jobs** means Win/Loss shows wins only. Confirmed with Alex?
 
-## 10. Risks
+## 10. Salesforce is being retired (Karan, 2026-09-16)
+
+"We don't have to write anything back to Salesforce, we're gonna get rid of it
+soon, so everything should be on our platform."
+
+That raises the bar from "the reports add up" to "nothing Tomco needs is left
+behind", and it adds a stage:
+
+- **Crews.** Brendan's crews import as real crews (`commercial_crews` +
+  `commercial_crew_members`), ready to schedule — 14 crews, 26 memberships,
+  each one a pairing Salesforce recorded on an attendance row naming both the
+  crew and the worker. Nothing inferred from a name: "Rob" is Robert Caputo on
+  154 rows and Robert Patterson is his own crew. The foreman is the worker seen
+  most on that crew, which IS a judgement, so it is one click to change.
+- **Office teams stay as they are.** `commercial_teams` members are platform
+  LOGINS, and crew workers do not have logins. Tomco Suffolk (Brendan +
+  Stephanie) is already right.
+- **Still to confirm before the switch-off:** everything else living in
+  Salesforce that nobody has named yet — see the completeness audit in §11.
+
+## 11. Before Salesforce is switched off
+
+An audit still to run: list every Salesforce object holding Tomco data and mark
+each one imported / deliberately skipped / not yet decided. Known so far:
+files (769) and quotes (180) are planned but not built; `Payment_Term__c`,
+service territories, and any report or list view Tomco relies on have not been
+looked at.
+
+## 12. Risks
 
 - **Files.** 769 downloads and uploads is the longest, most failure-prone stage.
   It is last, and re-runnable, so a partial failure costs only time.
