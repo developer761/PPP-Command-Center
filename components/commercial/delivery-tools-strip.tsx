@@ -106,24 +106,28 @@ export function DeliveryToolsStrip({
             <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1 whitespace-nowrap">
               {i === 0 || tools[i - 1].phase !== t.phase ? t.phase : "\u00A0"}
             </span>
-            <span className="flex items-center gap-1.5">
+            {/* THE WORD IS THE BUTTON.
+                Asked for three times: "the word should be a button." A
+                bordered tile was still a tile — the thing you press has to
+                LOOK pressable, so "Invoices" itself is a filled control with
+                the status dot on it and the arrow on the end, and the state
+                line sits under it as its caption. */}
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-cc-brand-300 bg-cc-brand-50 px-2 py-1 max-w-full group-hover:border-cc-brand-500 group-hover:bg-cc-brand-100 transition-colors">
               <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOT[t.status]}`} />
-              <span className="text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800 whitespace-nowrap">
+              <span className="text-[11.5px] font-bold text-cc-brand-900 whitespace-nowrap">
                 {t.label}
               </span>
-              {/* The affordance. Slides on hover, like every other "go here"
-                  control on the platform. */}
               <svg
-                width="12"
-                height="12"
+                width="11"
+                height="11"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="3"
+                strokeWidth="3.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 aria-hidden
-                className="ml-auto shrink-0 text-ppp-charcoal-300 group-hover:text-cc-brand-600 group-hover:translate-x-0.5 transition-transform"
+                className="shrink-0 text-cc-brand-500 group-hover:text-cc-brand-700 group-hover:translate-x-0.5 transition-transform"
               >
                 <path d="M9 18l6-6-6-6" />
               </svg>
