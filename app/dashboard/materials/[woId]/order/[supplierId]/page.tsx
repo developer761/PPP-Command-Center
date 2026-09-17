@@ -2,7 +2,7 @@ import { isCompanyEmail } from "@/lib/auth/company-domain";
 import Link from "next/link";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import OrderFulfillmentView from "@/components/order-fulfillment-view";
-import { loadOrderPageData, loadBuildPayload, loadSentOrdersForWorkOrder } from "@/lib/materials/order-page-data";
+import { loadOrderPageDataOrReason, loadBuildPayload, loadSentOrdersForWorkOrder } from "@/lib/materials/order-page-data";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 
@@ -84,15 +84,21 @@ export default async function OrderFulfillmentPage({
   const cleanWoId = decodeURIComponent(woId).trim().replace(/^['"]|['"]$/g, "");
   const supplierAccountId = decodeURIComponent(supplierId).trim();
 
-  const data = await loadOrderPageData(cleanWoId);
+  const { data, unavailable } = await loadOrderPageDataOrReason(cleanWoId);
 
   if (!data) {
+    // See the build page: a Salesforce outage used to read as "this job isn't
+    // yours", which is both wrong and un-actionable.
+    const sfDown = unavailable?.unavailable === "salesforce";
     return (
       <div className="max-w-lg mx-auto py-16 text-center">
-        <h1 className="text-lg font-bold text-ppp-navy">Work order not available</h1>
+        <h1 className="text-lg font-bold text-ppp-navy">
+          {sfDown ? "Couldn't reach Salesforce" : "Work order not available"}
+        </h1>
         <p className="mt-2 text-sm text-ppp-charcoal-500">
-          This work order isn&apos;t in your open-materials list — it may be closed, or outside
-          what you can see.
+          {sfDown
+            ? "The work order is probably fine — we just can't read it right now. Refresh in a moment, and tell Karan if it keeps happening."
+            : "This work order isn't in your open-materials list — it may be closed, or outside what you can see."}
         </p>
         <Link
           href="/dashboard/materials"

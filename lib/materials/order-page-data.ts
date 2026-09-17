@@ -35,17 +35,37 @@ export type OrderPageData = {
 // this page must classify surfaces identically or a color shows in one and
 // vanishes from the other.
 
+/**
+ * Why there is no data, when there is none.
+ *
+ * Every failure — Salesforce down, the OAuth token expired, Supabase
+ * unreachable — arrived here as `snapshot: null`, and both order pages said
+ * "Work order not available — it may be closed, or outside what you can see."
+ * The estimator is told the job is not theirs when the truth is that a system
+ * is down, and there is nothing to retry. The draft endpoint has said the
+ * honest thing for months; the pages never did.
+ */
+export type OrderPageUnavailable = { unavailable: "salesforce" | "not_found"; reason: string | null };
+
 export async function loadOrderPageData(
   rawWoId: string
 ): Promise<OrderPageData | null> {
+  return (await loadOrderPageDataOrReason(rawWoId)).data;
+}
+
+export async function loadOrderPageDataOrReason(
+  rawWoId: string
+): Promise<{ data: OrderPageData | null; unavailable: OrderPageUnavailable | null }> {
   const bundle = await loadDashboardData({}, { materials: true });
-  if (!bundle.snapshot) return null;
+  if (!bundle.snapshot) {
+    return { data: null, unavailable: { unavailable: "salesforce", reason: bundle.reason ?? null } };
+  }
 
   const jobs = deriveOpenMaterialsWorkOrders(bundle.snapshot);
   const woId = resolveWorkOrderId(rawWoId, jobs);
-  if (!woId) return null;
+  if (!woId) return { data: null, unavailable: { unavailable: "not_found", reason: null } };
   const job = jobs.find((j) => j.wo.id === woId);
-  if (!job) return null;
+  if (!job) return { data: null, unavailable: { unavailable: "not_found", reason: null } };
 
   const sourceLines: SourceLine[] = [];
 
@@ -101,7 +121,7 @@ export async function loadOrderPageData(
     (job.wo.accountName ? bundle.snapshot.accounts.find((a) => a.name === job.wo.accountName) : null) ??
     null;
 
-  return {
+  return { unavailable: null, data: {
     job,
     workOrderId: woId,
     sourceLines,
@@ -120,7 +140,7 @@ export async function loadOrderPageData(
           postalCode: acct.billingPostalCode ?? "",
         }
       : null,
-  };
+  } };
 }
 
 /** Read the committed build for one (WO, supplier). Deploy-safe: returns an

@@ -120,6 +120,11 @@ export default function OrderFulfillmentView({
   // wins — it was typed deliberately for this order.
   const [contactPhone, setContactPhone] = useState(savedFulfillment.contactPhone || (viewerPhone ?? ""));
   const [editedBody, setEditedBody] = useState<string | null>(null);
+  /** What the fulfilment said when the body was frozen. Send still posts the
+   *  LIVE method, address and date — so switching delivery→pickup after
+   *  editing recorded a pickup with no address while the vendor read
+   *  "DELIVERY to: 123 Main St". The caveat only mentioned the body. */
+  const [editedUnder, setEditedUnder] = useState<{ method: string; requiredBy: string } | null>(null);
 
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<
@@ -681,6 +686,9 @@ export default function OrderFulfillmentView({
         <div className="relative">
           <textarea
             value={editedBody ?? draft?.body ?? ""}
+            onFocus={() => {
+              if (editedBody === null) setEditedUnder({ method: fulfillment, requiredBy: requiredByValue });
+            }}
             onChange={(e) => setEditedBody(e.target.value)}
             rows={16}
             className={`w-full px-3 py-2 text-base sm:text-xs font-mono border rounded-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 ${
@@ -700,10 +708,18 @@ export default function OrderFulfillmentView({
               ? "Editing manually — fulfilment changes won't update this body."
               : "Edit any line before sending. Fulfilment changes update this automatically."}
           </span>
+          {editedBody !== null && editedUnder &&
+            (editedUnder.method !== fulfillment || editedUnder.requiredBy !== requiredByValue) && (
+              <span role="alert" className="text-ppp-orange-700 font-semibold">
+                {editedUnder.method !== fulfillment
+                  ? `You changed this to ${fulfillment} AFTER editing the email — the text still says ${editedUnder.method}. Reset it, or edit those lines by hand.`
+                  : "You changed the required-by date after editing the email — the text still has the old one."}
+              </span>
+            )}
           {editedBody !== null && (
             <button
               type="button"
-              onClick={() => setEditedBody(null)}
+              onClick={() => { setEditedBody(null); setEditedUnder(null); }}
               className="text-ppp-blue hover:text-ppp-blue-700 underline shrink-0"
             >
               Reset to auto-generated
