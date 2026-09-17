@@ -319,11 +319,19 @@ body {
   --color-cc-brand-50:  #122430;
   --color-cc-brand-100: #16323f;
   --color-cc-brand-200: #1e4658;
+  /* -300 and -900 were MISSING from this ramp, so both kept their light-theme
+     values in dark: a pale border on a dark card, and near-black text on the
+     dark -50 tint — unreadable. 72 places across the platform use one of them,
+     including every "text-cc-brand-900 on bg-cc-brand-50" status box and the
+     delivery tool buttons on a deal. Filled in following the ramp's own rule:
+     in dark, higher = lighter. */
+  --color-cc-brand-300: #2b5f79;
   --color-cc-brand-400: #3f88b0;
   --color-cc-brand-500: #2f7ba8;
   --color-cc-brand-600: #286a92;   /* button rest */
   --color-cc-brand-700: #74aecb;   /* active-nav text + button hover */
   --color-cc-brand-800: #9dc6db;
+  --color-cc-brand-900: #c3ddea;   /* lightest — text on the dark -50 tint */
 
   /* Per-customer color (opportunities/proposals group + kanban). Curated
      platform-harmonious hues (see NICE_HUES) at a MODERATE saturation — present

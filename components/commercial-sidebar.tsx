@@ -124,8 +124,8 @@ const navSections: NavSection[] = [
       { label: "Accounting", href: "/commercial/accounting", icon: <IconLedger />, financeOnly: true },
       // Everything BCC'd to a job or GC archive address, sent and received
       // together. It was only ever readable one record at a time before.
-      { label: "Email", href: "/commercial/email", icon: <IconEnvelope /> },
       { label: "Reports", href: "/commercial/reports", icon: <IconChart /> },
+      { label: "Email", href: "/commercial/email", icon: <IconEnvelope /> },
       { label: "Settings", href: "/commercial/settings", icon: <IconGear /> },
     ],
   },
