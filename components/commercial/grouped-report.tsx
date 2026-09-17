@@ -63,11 +63,14 @@ function SubtotalRow<R>({
   columns,
   depth,
   label,
+  extraCell,
 }: {
   node: GroupNode<R>;
   columns: ReportColumn<R>[];
   depth: number;
   label: string;
+  /** Keeps the subtotal row the same width as the detail rows above it. */
+  extraCell?: boolean;
 }) {
   return (
     <tr className="bg-ppp-charcoal-50/70 border-t border-ppp-charcoal-100">
@@ -87,6 +90,7 @@ function SubtotalRow<R>({
           {c.amount ? fmt(c.kind, node.subtotals[c.key] ?? 0) : ""}
         </td>
       ))}
+      {extraCell && <td />}
     </tr>
   );
 }
@@ -98,6 +102,7 @@ function GroupRows<R>({
   showDetail,
   showSubtotals,
   showCounts,
+  rowAction,
 }: {
   nodes: GroupNode<R>[];
   columns: ReportColumn<R>[];
@@ -105,6 +110,7 @@ function GroupRows<R>({
   showDetail: boolean;
   showSubtotals: boolean;
   showCounts: boolean;
+  rowAction?: { header: string; render: (row: R) => React.ReactNode };
 }) {
   return (
     <>
@@ -117,6 +123,7 @@ function GroupRows<R>({
           showDetail={showDetail}
           showSubtotals={showSubtotals}
           showCounts={showCounts}
+          rowAction={rowAction}
         />
       ))}
     </>
@@ -130,6 +137,7 @@ function GroupBlock<R>({
   showDetail,
   showSubtotals,
   showCounts,
+  rowAction,
 }: {
   node: GroupNode<R>;
   columns: ReportColumn<R>[];
@@ -137,13 +145,14 @@ function GroupBlock<R>({
   showDetail: boolean;
   showSubtotals: boolean;
   showCounts: boolean;
+  rowAction?: { header: string; render: (row: R) => React.ReactNode };
 }) {
   const hasChildren = node.children.length > 0;
   return (
     <>
       <tr className={depth === 0 ? "bg-surface border-t-2 border-ppp-charcoal-200" : "bg-surface border-t border-ppp-charcoal-100"}>
         <td
-          colSpan={columns.length}
+          colSpan={columns.length + (rowAction ? 1 : 0)}
           className="px-3 py-2 text-[12.5px] font-bold text-ppp-charcoal"
           style={{ paddingLeft: `${12 + depth * 14}px` }}
         >
@@ -160,6 +169,7 @@ function GroupBlock<R>({
           showDetail={showDetail}
           showSubtotals={showSubtotals}
           showCounts={showCounts}
+          rowAction={rowAction}
         />
       ) : (
         showDetail &&
@@ -168,11 +178,14 @@ function GroupBlock<R>({
             {columns.map((c) => (
               <Cell key={c.key} col={c} row={row} />
             ))}
+            {rowAction && <td className="px-3 py-2 align-top text-right whitespace-nowrap">{rowAction.render(row)}</td>}
           </tr>
         ))
       )}
 
-      {showSubtotals && <SubtotalRow node={node} columns={columns} depth={depth} label="Subtotal" />}
+      {showSubtotals && (
+        <SubtotalRow node={node} columns={columns} depth={depth} label="Subtotal" extraCell={!!rowAction} />
+      )}
     </>
   );
 }
@@ -190,6 +203,17 @@ export type GroupedReportProps<R> = {
   showSubtotals?: boolean;
   showCounts?: boolean;
   showGrandTotal?: boolean;
+  /**
+   * An extra cell at the end of every detail row.
+   *
+   * Karan 2026-09-17: the Deposits tab listed the money that had landed but had
+   * no way to tick one off — the Mark button lived on Transactions, behind
+   * "More", so the tab named after reconciling was the one tab where you could
+   * not reconcile. Rather than push a button into the SPEC, which is pure and
+   * shared with the CSV export, the column is rendered here and the spec stays
+   * a description of the data.
+   */
+  rowAction?: { header: string; render: (row: R) => React.ReactNode };
 };
 
 export function GroupedReport<R>({
@@ -202,6 +226,7 @@ export function GroupedReport<R>({
   showSubtotals = true,
   showCounts = true,
   showGrandTotal = true,
+  rowAction,
 }: GroupedReportProps<R>) {
   const groupings: ReportGrouping<R>[] = spec.groupings[groupingIndex] ?? spec.groupings[0] ?? [];
   const tree = buildGroups(rows, groupings, spec.columns);
@@ -254,6 +279,11 @@ export function GroupedReport<R>({
                       {c.label}
                     </th>
                   ))}
+                  {rowAction && (
+                    <th scope="col" className="px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 text-right">
+                      {rowAction.header}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -264,6 +294,7 @@ export function GroupedReport<R>({
                   showDetail={showDetail}
                   showSubtotals={showSubtotals}
                   showCounts={showCounts}
+                  rowAction={rowAction}
                 />
                 {showGrandTotal && (
                   <tr className="bg-ppp-charcoal-100/80 border-t-2 border-ppp-charcoal-300">
@@ -280,6 +311,7 @@ export function GroupedReport<R>({
                         {c.amount ? fmt(c.kind, totals[c.key] ?? 0) : ""}
                       </td>
                     ))}
+                    {rowAction && <td />}
                   </tr>
                 )}
               </tbody>

@@ -283,11 +283,11 @@ const MARY: RoleGuide = {
             "Click Accounting in the left menu.",
             "Click the Deposits tab.",
             "Read down the list against your bank statement.",
-            "To tick one off: click More, then Transactions, find the row, click Mark.",
+            "Click Mark on a row once it has cleared the bank. It turns green and reads Deposited.",
           ],
           strip: { boxes: ACCOUNTING_BAR, at: 5 },
           watchOut:
-            "This tab shows the deposits; it does not tick them off. The Mark button is on the Transactions tab, behind More.",
+            "Receivables and Deposits are the two halves of the same money: Receivables is what has not arrived, Deposits is what has. A payment moves from one to the other the moment you record it.",
         },
       ],
     },

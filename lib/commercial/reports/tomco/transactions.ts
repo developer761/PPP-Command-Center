@@ -258,7 +258,11 @@ export const REIMBURSEMENTS_SPEC: ReportSpec<SpendRow> = {
 export const DEPOSIT_HISTORY_SPEC: ReportSpec<MoneyInRow> = {
   title: "Partner Deposit History",
   sourceLabel: "Work Orders with Transactions",
-  blurb: "Money in, grouped by the day it landed — the report Mary reconciles the bank against.",
+  // Says what this tab IS, next to what Receivables is, because the two are
+  // easy to mix up and nothing on either page said so. Karan 2026-09-17:
+  // "write it here so we know."
+  blurb:
+    "Money that has ARRIVED, by the day it landed — the history you read against the bank statement. Receivables is the other half: money that has not arrived yet. Tick each one off here as it clears.",
   totals: [{ label: "Total amount", value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0) }],
   groupings: [
     [{ key: "date", label: "Date", of: (r) => r.ymd ?? "—" }],

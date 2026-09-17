@@ -49,6 +49,7 @@ import { joinOtherDetail } from "@/lib/commercial/forms/other-detail";
 import { PrintButton } from "@/components/commercial/reports/print-button";
 import { PrintSheetStyles, PrintHeader } from "@/components/commercial/print-sheet";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
+import { DepositToggle } from "@/components/commercial/deposit-toggle";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import {
@@ -1199,7 +1200,12 @@ export default async function AccountingPage({
           <p className="text-[12px] rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-3 py-2 text-ppp-charcoal-600">
             <strong className="text-ppp-charcoal">This is every job&rsquo;s contract less what has come in</strong> &mdash;
             including work not yet billed to the GC, which is why it is far larger than the chase list. What has been
-            certified and is actually being chased is on the <Link href={href("ar")} className="font-semibold text-cc-brand-700 hover:underline">AR sheet</Link> tab.
+            certified and is actually being chased is on the <Link href={href("ar")} className="font-semibold text-cc-brand-700 hover:underline">AR sheet</Link> tab.{" "}
+            {/* Karan 2026-09-17: "write it here so we know." Receivables and
+                Deposits are the two halves of the same money and nothing on
+                either page said which was which. */}
+            Money that has already arrived is on{" "}
+            <Link href={href("deposits")} className="font-semibold text-cc-brand-700 hover:underline">Deposits</Link>.
           </p>
           {/* Entry forms are for the screen. On paper they are empty boxes. */}
           <div data-print-hide data-tour="accounting:record-payment">
@@ -2089,6 +2095,19 @@ export default async function AccountingPage({
           spec={DEPOSIT_HISTORY_SPEC}
           rows={depositRows}
           emptyHint="No payments in yet."
+          // Tick it off HERE. This is the tab you open with a bank statement;
+          // the Mark button used to live only on Transactions, behind "More".
+          rowAction={{
+            header: "Cleared",
+            render: (r) => (
+              <DepositToggle
+                paymentId={r.id}
+                deposited={!!r.depositedYmd}
+                action={depositAction}
+                queryString="?view=deposits"
+              />
+            ),
+          }}
         />
         </section>
       )}
