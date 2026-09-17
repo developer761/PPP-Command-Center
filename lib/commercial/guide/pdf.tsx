@@ -26,11 +26,41 @@ import type { RoleGuide, Surface, Strip } from "./walkthrough";
 
 Font.registerHyphenationCallback((word) => [word]);
 
+/**
+ * PPP's palette, not a document-grey one.
+ *
+ * Karan 2026-09-17: "use PPP colors, just Tomco's logo." The handbook is a PPP
+ * product that Tomco use, so it wears PPP's colors and Tomco's mark.
+ *
+ * WHERE THE COLOR DOES WORK RATHER THAN DECORATION: each person gets one, used
+ * on their divider sheet, their running header and their step numbers. Fanning
+ * the handbook shows you where Mary's section ends and Brendan's starts without
+ * reading a word.
+ *
+ * Text on a tint is always NAVY. White on the brand blue measures 2.64:1, which
+ * fails AA, and the same trap is waiting on the green — so the tints carry the
+ * color and the ink stays readable.
+ */
 const ORANGE = "#EE662E";
+const BLUE = "#2BAAE1";
+const GREEN = "#8DC442";
 const NAVY = "#172B4D";
-const INK = "#1f2937";
+const TEAL = "#37738C";
+const LIGHT_BLUE = "#C4DDE4";
+const PALE_GREEN = "#E9F4D4";
+const WARM_BEIGE = "#F0E8DD";
+const INK = "#3F3E40";
 const GREY = "#6b7280";
 const RULE = "#e5e7eb";
+
+/** One color per person, so a section is findable by its edge alone. */
+const ROLE_COLOR: Record<string, { accent: string; tint: string }> = {
+  overview: { accent: NAVY, tint: LIGHT_BLUE },
+  mary: { accent: TEAL, tint: LIGHT_BLUE },
+  brendan: { accent: GREEN, tint: PALE_GREEN },
+  stephanie: { accent: ORANGE, tint: WARM_BEIGE },
+};
+const colorFor = (key: string) => ROLE_COLOR[key] ?? { accent: NAVY, tint: LIGHT_BLUE };
 
 
 /**
@@ -93,17 +123,18 @@ const s = StyleSheet.create({
   logoImageBig: { height: 72, objectFit: "contain", alignSelf: "center" },
   wordmark: { fontSize: 18, fontFamily: "Helvetica-Bold", letterSpacing: 1, textAlign: "center", color: NAVY },
 
-  coverTitle: { fontSize: 30, fontFamily: "Helvetica-Bold", color: NAVY, textAlign: "center", marginTop: 30, letterSpacing: -0.4 },
-  coverSub: { fontSize: 11.5, color: GREY, textAlign: "center", marginTop: 10, lineHeight: 1.5 },
+  coverTitle: { fontSize: 38, fontFamily: "Helvetica-Bold", color: NAVY, textAlign: "center", marginTop: 34, letterSpacing: -1, lineHeight: 1.12 },
+  coverSub: { fontSize: 12, color: "#3E5471", textAlign: "center", marginTop: 16 },
   coverRule: { borderBottomWidth: 3, borderBottomColor: ORANGE, width: 70, alignSelf: "center", marginTop: 26, marginBottom: 26 },
-  coverMeta: { fontSize: 8.5, color: "#9ca3af", textAlign: "center", letterSpacing: 0.4 },
+  coverMeta: { fontSize: 8.5, color: "#8A97A8", textAlign: "center", letterSpacing: 1.4, marginTop: 44 },
+  coverBand: { position: "absolute", top: 0, left: 0, right: 0, height: 10, flexDirection: "row" },
 
   // Running header on every page after the cover.
   runHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 0.75, borderBottomColor: RULE, paddingBottom: 5, marginBottom: 16 },
   runHeadTitle: { fontSize: 8, color: "#9ca3af", letterSpacing: 0.6, textTransform: "uppercase" },
 
-  h1: { fontSize: 19, fontFamily: "Helvetica-Bold", color: NAVY, letterSpacing: -0.2 },
-  whoChip: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: "#ffffff", backgroundColor: NAVY, paddingVertical: 2.5, paddingHorizontal: 6, borderRadius: 2, textTransform: "uppercase", letterSpacing: 0.6 },
+  h1: { fontSize: 22, fontFamily: "Helvetica-Bold", color: NAVY, letterSpacing: -0.5 },
+  whoChip: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: NAVY, backgroundColor: LIGHT_BLUE, paddingVertical: 3, paddingHorizontal: 7, borderRadius: 2, textTransform: "uppercase", letterSpacing: 0.6 },
   intro: { fontSize: 10.5, color: GREY, marginTop: 6, marginBottom: 16, lineHeight: 1.5 },
 
   task: { marginBottom: 26 },
@@ -116,6 +147,10 @@ const s = StyleSheet.create({
   stepNum: { width: 16, height: 16, borderRadius: 8, backgroundColor: NAVY, color: "#ffffff", fontSize: 8.5, fontFamily: "Helvetica-Bold", textAlign: "center", lineHeight: 1, paddingTop: 4, marginRight: 8 },
   stepText: { flex: 1, fontSize: 10.5, lineHeight: 1.45, paddingTop: 0.5 },
   purpose: { fontSize: 9.5, color: "#374151", lineHeight: 1.45, marginBottom: 6 },
+  dividerName: { fontSize: 46, fontFamily: "Helvetica-Bold", color: NAVY, letterSpacing: -1.2, lineHeight: 1.1 },
+  dividerTag: { fontSize: 13, color: "#3E5471", marginTop: 8, lineHeight: 1.3 },
+  dividerChapter: { fontSize: 11, color: "#3E5471", marginBottom: 6, lineHeight: 1.3 },
+  dividerFoot: { position: "absolute", bottom: 34, left: 66, fontSize: 8, color: "#6E7F94", letterSpacing: 0.8, textTransform: "uppercase" },
   roleHead: { marginBottom: 14 },
   roleIntro: { fontSize: 10, color: GREY, lineHeight: 1.5, marginTop: 5 },
   h2: { fontSize: 13.5, fontFamily: "Helvetica-Bold", color: NAVY },
@@ -134,15 +169,15 @@ const s = StyleSheet.create({
   ctrlLabel: { width: "30%", paddingRight: 10, fontSize: 9, fontFamily: "Helvetica-Bold", color: INK, lineHeight: 1.35 },
   ctrlDoes: { flex: 1, fontSize: 9, color: GREY, lineHeight: 1.4 },
 
-  watchBox: { flexDirection: "row", borderLeftWidth: 3, borderLeftColor: ORANGE, backgroundColor: "#fdf4ef", paddingVertical: 7, paddingHorizontal: 9, marginTop: 9, borderRadius: 2 },
+  watchBox: { flexDirection: "row", borderLeftWidth: 3, borderLeftColor: ORANGE, backgroundColor: WARM_BEIGE, paddingVertical: 8, paddingHorizontal: 10, marginTop: 10, borderRadius: 2 },
   watchLabel: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: ORANGE, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 2 },
-  watchText: { fontSize: 9, color: "#7c3a1d", lineHeight: 1.45 },
+  watchText: { fontSize: 9.5, color: "#5c3a24", lineHeight: 1.45 },
 
   // The schematic.
   sketchWrap: { marginBottom: 9, marginTop: 2 },
-  sketchRow: { flexDirection: "row", borderWidth: 0.75, borderColor: "#cbd5e1", borderRadius: 3, backgroundColor: "#f8fafc" },
+  sketchRow: { flexDirection: "row", borderRadius: 3, backgroundColor: "#f4f6f8" },
   sketchBox: { paddingVertical: 6, paddingHorizontal: 7, fontSize: 8.5, color: "#475569", textAlign: "center" },
-  sketchBoxOn: { fontFamily: "Helvetica-Bold", color: NAVY, backgroundColor: "#ffffff", borderBottomWidth: 2, borderBottomColor: ORANGE },
+  sketchBoxOn: { fontFamily: "Helvetica-Bold", color: NAVY, backgroundColor: "#ffffff", borderBottomWidth: 2, borderBottomColor: BLUE },
   arrowLine: { flexDirection: "row", marginTop: 3, alignItems: "flex-start" },
   arrowLabel: { fontSize: 8.5, color: ORANGE, fontFamily: "Helvetica-Bold", marginLeft: 4, lineHeight: 1.3 },
 
@@ -156,12 +191,12 @@ const s = StyleSheet.create({
 
   // The journey strip + area cards on the map page.
   journeyRow: { flexDirection: "row", marginBottom: 20, alignItems: "stretch" },
-  jStep: { flex: 1, borderWidth: 0.75, borderColor: "#cbd5e1", borderRadius: 3, paddingVertical: 6, paddingHorizontal: 4, backgroundColor: "#f8fafc" },
+  jStep: { flex: 1, borderRadius: 3, paddingVertical: 7, paddingHorizontal: 4, backgroundColor: LIGHT_BLUE },
   jLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", color: NAVY, textAlign: "center" },
-  jSub: { fontSize: 6.8, color: GREY, textAlign: "center", marginTop: 2, lineHeight: 1.25 },
+  jSub: { fontSize: 6.8, color: "#3E5471", textAlign: "center", marginTop: 2, lineHeight: 1.25 },
   jChevron: { width: 13, alignItems: "center", justifyContent: "center", paddingTop: 12 },
 
-  areaCard: { borderWidth: 0.75, borderColor: RULE, borderRadius: 3, padding: 10, marginBottom: 8 },
+  areaCard: { borderLeftWidth: 3, borderLeftColor: BLUE, borderRadius: 2, paddingLeft: 11, paddingVertical: 7, marginBottom: 9, backgroundColor: "#fbfcfd" },
   areaName: { fontSize: 11.5, fontFamily: "Helvetica-Bold", color: NAVY },
   areaWho: { fontSize: 7.5, color: ORANGE, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 1 },
   areaHolds: { fontSize: 9.5, color: "#374151", marginTop: 4, lineHeight: 1.4 },
@@ -240,7 +275,7 @@ function SketchView({ sketch }: { sketch: Strip }) {
   );
 }
 
-function SurfaceView({ surface }: { surface: Surface }) {
+function SurfaceView({ surface, accent }: { surface: Surface; accent: string }) {
   // Only the controls the steps do not already walk through.
   const extras = extraControls(surface);
   const hasDetail = (surface.steps?.length ?? 0) > 0 || extras.length > 0;
@@ -251,7 +286,7 @@ function SurfaceView({ surface }: { surface: Surface }) {
       <View style={s.refRow} wrap={false}>
         <View style={{ width: "32%", paddingRight: 10 }}>
           <Text style={s.refName}>{pdfSafe(surface.name)}</Text>
-          <Text style={s.refPath}>{pdfSafe(surface.path)}</Text>
+          <Text style={[s.refPath, { color: accent }]}>{pdfSafe(surface.path)}</Text>
         </View>
         <Text style={s.refPurpose}>{pdfSafe(surface.purpose)}</Text>
       </View>
@@ -263,13 +298,13 @@ function SurfaceView({ surface }: { surface: Surface }) {
           page with its steps overleaf is the one break that must never happen. */}
       <View wrap={false}>
         <Text style={s.taskTitle}>{pdfSafe(surface.name)}</Text>
-        <Text style={s.taskPath}>{pdfSafe(surface.path)}</Text>
+        <Text style={[s.taskPath, { color: accent }]}>{pdfSafe(surface.path)}</Text>
         {surface.strip && <SketchView sketch={surface.strip} />}
         <Text style={s.purpose}>{pdfSafe(surface.purpose)}</Text>
       </View>
       {surface.steps?.map((st, i) => (
         <View key={i} style={s.step} wrap={false}>
-          <Text style={s.stepNum}>{i + 1}</Text>
+          <Text style={[s.stepNum, { backgroundColor: accent }]}>{i + 1}</Text>
           <Text style={s.stepText}>{pdfSafe(st)}</Text>
         </View>
       ))}
@@ -288,7 +323,7 @@ function SurfaceView({ surface }: { surface: Surface }) {
         </View>
       )}
       {surface.watchOut && (
-        <View style={s.watchBox} wrap={false}>
+        <View style={[s.watchBox, { borderLeftColor: accent }]} wrap={false}>
           <View style={{ flex: 1 }}>
             <Text style={s.watchLabel}>Watch out</Text>
             <Text style={s.watchText}>{pdfSafe(surface.watchOut)}</Text>
@@ -309,22 +344,63 @@ function SurfaceView({ surface }: { surface: Surface }) {
  * paginates a long page by itself; what it needs from us is small
  * keep-together units, not one enormous one.
  */
+/**
+ * The sheet that says whose section this is.
+ *
+ * Karan 2026-09-17: "when Brendan's page starts, have a page with only his name
+ * on it so we know that's the start." A 23-page handbook where three people's
+ * work runs together is one nobody can hand to one of them. This is the divider
+ * you get in a ring binder, and it does the same job: a full tint, the name,
+ * and the short list of what is inside.
+ */
+function DividerPage({ role, company }: { role: RoleGuide; company: string }) {
+  const { accent, tint } = colorFor(role.key);
+  return (
+    <Page size="LETTER" style={[s.page, { backgroundColor: tint }]}>
+      <View style={{ paddingHorizontal: 20, marginTop: 250 }}>
+        <View style={{ width: 54, height: 5, backgroundColor: accent, marginBottom: 22 }} />
+        <Text style={s.dividerName}>{pdfSafe(role.label)}</Text>
+        <Text style={s.dividerTag}>{pdfSafe(role.tagline)}</Text>
+        <View style={{ height: 1, backgroundColor: "#AFC4D2", marginTop: 28, marginBottom: 18 }} />
+        {role.chapters.map((c) => (
+          <Text key={c.id} style={s.dividerChapter}>
+            {pdfSafe(c.title)}
+          </Text>
+        ))}
+      </View>
+      <Text style={s.dividerFoot} fixed>
+        {pdfSafe(company)}
+      </Text>
+    </Page>
+  );
+}
+
+/**
+ * A person's walkthrough, flowing, in their color.
+ *
+ * One <Page> per role, not one per chapter: react-pdf paginates a long page by
+ * itself, and the first version's page-per-chapter left sheets carrying a
+ * single three-line entry.
+ */
 function RolePages({ role, company }: { role: RoleGuide; company: string }) {
+  const { accent } = colorFor(role.key);
   return (
     <Page size="LETTER" style={s.page}>
-      <RunningHeader company={company} title={role.label} />
-      <View style={s.roleHead} wrap={false}>
-        <Text style={s.h1}>{pdfSafe(role.label === "Everything" ? "The whole platform" : `${role.label}'s work`)}</Text>
-        <Text style={s.roleIntro}>{pdfSafe(role.intro)}</Text>
+      <View style={s.runHead} fixed>
+        <Text style={s.runHeadTitle}>{pdfSafe(company)}</Text>
+        <Text style={[s.runHeadTitle, { color: accent, fontFamily: "Helvetica-Bold" }]}>
+          {pdfSafe(role.label)}
+        </Text>
       </View>
       {role.chapters.map((c) => (
         <View key={c.id}>
           <View style={s.chapterHead} wrap={false}>
+            <View style={{ width: 28, height: 3, backgroundColor: accent, marginBottom: 7 }} />
             <Text style={s.h2}>{pdfSafe(c.title)}</Text>
             <Text style={s.chapterBlurb}>{pdfSafe(c.blurb)}</Text>
           </View>
           {c.surfaces.map((su, i) => (
-            <SurfaceView key={i} surface={su} />
+            <SurfaceView key={i} surface={su} accent={accent} />
           ))}
         </View>
       ))}
@@ -338,13 +414,19 @@ function GuideDoc({ company, logo }: { company: string; logo: Buffer | null }) {
     <Document title={`${company} — Running Commercial Work`} author={company}>
       {/* ── Cover ── */}
       <Page size="LETTER" style={s.cover}>
-        {logo ? <Image src={logo} style={s.logoImageBig} /> : <Text style={s.wordmark}>{company}</Text>}
-        <Text style={s.coverTitle}>Running Commercial Work</Text>
-        <Text style={s.coverSub}>
-          How to do everything in the Commercial Command Center{"\n"}— where each job lives, and who does what.
-        </Text>
-        <View style={s.coverRule} />
-        <Text style={s.coverMeta}>{fmtToday().toUpperCase()}</Text>
+        {/* The three PPP colors as a band across the head of the sheet —
+            the logo's own colors, doing the job a logo cannot do at this size. */}
+        <View style={s.coverBand} fixed>
+          <View style={{ flex: 1, backgroundColor: ORANGE }} />
+          <View style={{ flex: 1, backgroundColor: BLUE }} />
+          <View style={{ flex: 1, backgroundColor: GREEN }} />
+        </View>
+        <View style={{ marginTop: 150 }}>
+          {logo ? <Image src={logo} style={s.logoImageBig} /> : <Text style={s.wordmark}>{company}</Text>}
+          <Text style={s.coverTitle}>Running{"\n"}Commercial Work</Text>
+          <Text style={s.coverSub}>How to do everything, and who does what.</Text>
+          <Text style={s.coverMeta}>{fmtToday().toUpperCase()}</Text>
+        </View>
       </Page>
 
       {/* ── Contents ──
@@ -357,13 +439,17 @@ function GuideDoc({ company, logo }: { company: string; logo: Buffer | null }) {
           Find your name. Each section covers only the pages that person uses, and what every button on them does.
         </Text>
         {ROLES.map((r) => (
-          <View key={r.key} style={{ marginBottom: 12 }} wrap={false}>
+          <View key={r.key} style={{ marginBottom: 14 }} wrap={false}>
             <View style={s.tocRow}>
+              {/* The same color as this person's divider sheet, so "the green
+                  section" means one thing in both places. */}
+              <View style={{ width: 8, height: 8, backgroundColor: colorFor(r.key).accent, marginRight: 8, marginTop: 3 }} />
               <Text style={s.tocWho}>{pdfSafe(r.label === "Everything" ? "Everyone" : r.label)}</Text>
               <Text style={s.tocWhat}>{pdfSafe(r.tagline)}</Text>
             </View>
             {r.chapters.map((c) => (
               <View key={c.id} style={s.tocRow}>
+                <View style={{ width: 8, marginRight: 8 }} />
                 <Text style={[s.tocWho, { fontFamily: "Helvetica", color: GREY, fontSize: 9 }]}> </Text>
                 <Text style={[s.tocWhat, { color: GREY }]}>
                   {/* "screens", not "pages": this document has its own page
@@ -425,9 +511,10 @@ function GuideDoc({ company, logo }: { company: string; logo: Buffer | null }) {
       {/* ── One page per section ── */}
       {/* One page per chapter, per person. The overview role is the map page
           above, so it is not repeated here. */}
-      {ROLES.filter((r) => r.key !== "overview").map((r) => (
-        <RolePages key={r.key} role={r} company={company} />
-      ))}
+      {ROLES.filter((r) => r.key !== "overview").flatMap((r) => [
+        <DividerPage key={`${r.key}-div`} role={r} company={company} />,
+        <RolePages key={r.key} role={r} company={company} />,
+      ])}
 
       {/* ── The index ── */}
       <Page size="LETTER" style={s.page}>
