@@ -5,6 +5,7 @@ import { CONTACT_ROLES, roleLabel as contactRoleLabel } from "@/lib/commercial/c
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
+import { resolveToolBack } from "@/components/commercial/tool-back-header";
 import { createClient } from "@/lib/supabase/server";
 import { canViewReport } from "@/lib/commercial/reports/access";
 import {
@@ -198,6 +199,10 @@ type PP = Promise<{ id: string }>;
 type SP = Promise<{
   tab?: string;
   sub?: string;
+  /** Where to return to, when this page was opened from somewhere that is not
+   *  the pipeline — the Accounting tabs link jobs straight into the costs tool
+   *  and need a clean way back. Whitelisted before it is used as an href. */
+  back?: string;
   /** Which tab the user opened this delivery tool FROM (overview/docs/activity).
    *  The tool's back arrow returns there instead of the project tool list, so a
    *  jump out of the Overview delivery strip lands back on Overview, not Project. */
@@ -1706,6 +1711,9 @@ export default async function OpportunityDetailPage({
   // invoices tab (plus timeline) as useful surfaces.
   const opp = await getCommercialOpportunityIncludingDeleted(id);
   if (!opp) notFound();
+  // A way back to where you came from. `resolveToolBack` whitelists it — a raw
+  // `?back=` becomes an href, so it must never accept an arbitrary URL.
+  const cameFrom = resolveToolBack(sp.back);
   const isDeletedDeal = !!opp.deleted_at;
   const account = await getCommercialAccount(opp.account_id);
   // The Jobs report's per-job page is this deal, read-only, on one printable
@@ -2525,6 +2533,20 @@ export default async function OpportunityDetailPage({
             pipeline. `min-h-[44px]` on each link keeps mobile tap
             targets solid. Truncate on the deal title so long ones
             don't push the trail off-screen on mobile. */}
+        {/* Opened from somewhere that is not the pipeline — Accounting links a
+            job straight into its costs tool — so the way back is the tab you
+            left, not the breadcrumb, which would strand you on Opportunities. */}
+        {cameFrom && !toolView && (
+          <Link
+            href={cameFrom.path}
+            className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px] -ml-1 px-1"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M19 12H5 M12 19l-7-7 7-7" />
+            </svg>
+            Back to {cameFrom.label}
+          </Link>
+        )}
         <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
           <Link
             href="/commercial/opportunities"
@@ -2805,14 +2827,26 @@ export default async function OpportunityDetailPage({
           CHROME that steps aside, not the routing. */}
       {toolView ? (
         <div className="flex items-center gap-2.5 border-b border-ppp-charcoal-100 pb-3">
+          {/* Opened from Accounting — Mary clicks a job on Purchases to reach
+              the place she adds one — so the arrow returns to the tab she left
+              rather than to the project tools she never saw. One back control,
+              pointing where she came from; stacking a second one above it is
+              the chrome this view exists to remove. */}
           <Link
-            href={`/commercial/opportunities/${opp.id}?tab=${backTab}`}
-            aria-label={backTab === "project" ? "Back to the project tools" : "Back"}
-            className="inline-flex items-center justify-center h-11 w-11 -ml-2 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 shrink-0"
+            href={cameFrom ? cameFrom.path : `/commercial/opportunities/${opp.id}?tab=${backTab}`}
+            aria-label={cameFrom ? `Back to ${cameFrom.label}` : backTab === "project" ? "Back to the project tools" : "Back"}
+            className={`inline-flex items-center justify-center h-11 -ml-2 rounded-lg shrink-0 ${
+              cameFrom
+                ? "gap-1.5 px-2.5 text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 hover:bg-cc-brand-50"
+                : "w-11 text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50"
+            }`}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
+            {/* Named, not just an arrow: the person who got here from Accounting
+                needs to see it says Purchases before she trusts it. */}
+            {cameFrom ? <span className="whitespace-nowrap">{cameFrom.label}</span> : null}
           </Link>
           <div className="min-w-0">
             <h2 className="text-[15px] font-bold text-ppp-charcoal leading-tight truncate">

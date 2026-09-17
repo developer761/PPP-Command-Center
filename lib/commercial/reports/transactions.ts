@@ -5,6 +5,7 @@ import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
+import { costToolHref } from "@/lib/commercial/reports/tomco/accounting-links";
 import { etDateOf } from "@/lib/date-et";
 import { safeNowMs } from "@/lib/commercial/now";
 
@@ -343,9 +344,11 @@ export async function getTransactionsReport(
       accountId,
       accountName,
       opportunityId: p.opportunity_id,
-      href: p.opportunity_id
-        ? `/commercial/opportunities/${p.opportunity_id}?tab=transactions`
-        : null,
+      // `?tab=transactions` was not a tab this page has — it fell through to
+      // the deal's Overview, so a purchase row opened somewhere that showed
+      // neither the purchase nor the form to add another. The costs tool is
+      // the surface, and it carries the ledger back with it.
+      href: costToolHref(p.opportunity_id, "transactions"),
     });
   }
 

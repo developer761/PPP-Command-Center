@@ -53,11 +53,37 @@ const DEAL_DRILL_IN_BACK_RE =
 const OPPORTUNITY_BACK_RE =
   /^\/commercial\/opportunities\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?tab=[a-z-]+(&sub=[a-z-]+)?)?(#[a-z-]+)?$/i;
 
+/** ACCOUNTING — a tab on /commercial/accounting.
+ *
+ *  Karan 2026-09-16: clicking a job on the Purchases tab landed on the deal
+ *  page, which is not where you add a purchase, and there was no way back to
+ *  the tab you came from. The job link now opens the cost tool directly and
+ *  carries the tab as its back-target, so it is one hop there and one hop back.
+ *
+ *  Restricted to a known view key — `?back=` becomes an href and must never
+ *  accept an arbitrary URL. */
+const ACCOUNTING_BACK_RE = /^\/commercial\/accounting(\?view=[a-z-]{1,20})?$/i;
+
+const ACCOUNTING_LABELS: Record<string, string> = {
+  purchases: "Purchases",
+  "labor-out": "Labor payments",
+  deposits: "Deposits",
+  receivables: "Receivables",
+  ar: "AR sheet",
+  owed: "Balance owed",
+  costs: "Job costs",
+  transactions: "Transactions",
+};
+
 /** Resolve the whitelisted back-target from a raw ?back param (or null). */
 export function resolveToolBack(back: string | undefined): { path: string; label: string } | null {
   if (!back) return null;
   if (TOOL_BACK[back]) return TOOL_BACK[back];
   if (INVOICE_DEAL_BACK_RE.test(back)) return { path: back, label: "Invoices" };
+  if (ACCOUNTING_BACK_RE.test(back)) {
+    const view = back.split("view=")[1] ?? "";
+    return { path: back, label: ACCOUNTING_LABELS[view] ?? "Accounting" };
+  }
   if (DEAL_DRILL_IN_BACK_RE.test(back)) return { path: back, label: "Opportunity" };
   if (OPPORTUNITY_BACK_RE.test(back)) return { path: back, label: "Opportunity" };
   return null;

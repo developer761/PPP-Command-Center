@@ -1,4 +1,5 @@
 import "server-only";
+import { moneyInHref } from "@/lib/commercial/reports/tomco/accounting-links";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
@@ -156,7 +157,11 @@ export const BALANCE_OWED_SPEC: ReportSpec<BalanceOwedRow> = {
     [{ key: "account", label: "Account name", of: (r) => r.accountName }],
   ],
   columns: [
-    { key: "opp", label: "Opportunity name", text: (r) => r.oppName, href: (r) => `/commercial/opportunities/${r.oppId}` },
+    // What you do on this report is chase and then record what came in, so the
+    // job opens its invoices — the surface with the payment form — and carries
+    // the tab back with it. This spec is Accounting-only (it is the `owed` tab
+    // and its export); nothing on /commercial/reports renders it.
+    { key: "opp", label: "Opportunity name", text: (r) => r.oppName, href: (r) => moneyInHref(r.oppId, "owed") },
     { key: "wo", label: "Work order", text: (r) => r.workOrderNumber, secondary: true },
     { key: "charges", label: "Total customer charges", kind: "money", amount: (r) => r.chargesCents },
     { key: "paid", label: "Total payments in", kind: "money", amount: (r) => r.paidCents },

@@ -32,6 +32,7 @@ export function ReceivablesTable({
   queryString = "",
   emptyMessage,
   backHref,
+  oppBackView,
 }: {
   rows: ReceivableRow[];
   totalOpenCents: number;
@@ -49,13 +50,29 @@ export function ReceivablesTable({
    *  isn't in the navigation either. The invoice page honours `?from=`, so
    *  hand it the view you actually came from. */
   backHref?: string;
+  /** The Accounting tab to return to, when this table is on one.
+   *
+   *  Deliberately the TAB and not `backHref`: that one carries the current
+   *  filters, and the deal page whitelists `?back=` down to a bare `?view=`
+   *  before it will render it. Handing it a filtered URL would fail the
+   *  whitelist and drop the back button with nothing on screen to say why —
+   *  which is exactly how this button stayed broken the first time. Omitted on
+   *  /commercial/reports/receivables, where the links stay as they were. */
+  oppBackView?: string;
 }) {
-  // Only invoice links need it — an AIA row opens the deal, which has its own
-  // navigation and breadcrumb.
-  const withBack = (href: string) =>
-    backHref && href.startsWith("/commercial/invoices/")
-      ? `${href}?from=${encodeURIComponent(backHref)}`
-      : href;
+  // Invoice links carry `?from=` (the invoice page's own convention). Deal
+  // links carry `?back=`, which the deal page turns into one "← Receivables"
+  // control — they already have a `?tab=`, so it appends.
+  const withBack = (href: string) => {
+    if (backHref && href.startsWith("/commercial/invoices/")) {
+      return `${href}?from=${encodeURIComponent(backHref)}`;
+    }
+    if (oppBackView && href.startsWith("/commercial/opportunities/")) {
+      const back = encodeURIComponent(`/commercial/accounting?view=${oppBackView}`);
+      return `${href}${href.includes("?") ? "&" : "?"}back=${back}`;
+    }
+    return href;
+  };
   if (rows.length === 0) {
     return (
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">

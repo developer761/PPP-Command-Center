@@ -26,6 +26,7 @@ import { GroupedReport } from "@/components/commercial/grouped-report";
 import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
 import { getAccountingEntryOptions } from "@/lib/commercial/accounting/entry-options";
 import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
+import { costToolHref } from "@/lib/commercial/reports/tomco/accounting-links";
 import { getArSheetRows, AR_APPLICATIONS_SPEC } from "@/lib/commercial/reports/tomco/ar-applications";
 import { AR_CARRYOVER, AR_CARRYOVER_AS_OF } from "@/lib/commercial/reports/tomco/ar-carryover";
 import {
@@ -1263,6 +1264,7 @@ export default async function AccountingPage({
             saveNoteAction={saveNoteAction}
             queryString={receivableQueryString(q, { view: "receivables" })}
             backHref={`${BASE}${receivableQueryString(q, { view: "receivables" })}`}
+            oppBackView="receivables"
             emptyMessage={
               receivablesView.filtered
                 ? `Nothing matches this filter${activeFilter ? ` (${activeFilter})` : ""}. The book isn't empty — clear the filters to see all ${receivablesView.unfilteredCount}.`
@@ -1638,7 +1640,11 @@ export default async function AccountingPage({
                         {g.deals.map((d) => (
                           <tr key={d.oppId} className="hover:bg-cc-brand-50/30">
                             <td className="px-3 py-2">
-                              <Link href={`/commercial/opportunities/${d.oppId}`} className="font-semibold text-ppp-charcoal hover:text-cc-brand-700 hover:underline">
+                              {/* Same one-hop rule as Purchases: the job opens
+                                  the costs tool — where you actually add to
+                                  what this row shows — and carries this tab
+                                  back with it. */}
+                              <Link href={costToolHref(d.oppId, "costs") ?? `/commercial/opportunities/${d.oppId}`} className="font-semibold text-ppp-charcoal hover:text-cc-brand-700 hover:underline">
                                 {d.dealName}
                               </Link>
                               {d.laborUnratedHours > 0 && (

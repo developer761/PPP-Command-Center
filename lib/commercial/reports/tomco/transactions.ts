@@ -1,4 +1,5 @@
 import "server-only";
+import { costToolHref as costToolHrefFor, moneyInHref } from "@/lib/commercial/reports/tomco/accounting-links";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
@@ -23,6 +24,8 @@ import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
 export type SpendRow = {
   id: string;
   oppId: string | null;
+  /** The GC's account id — the cost tool lives under it. */
+  accountId: string | null;
   jobName: string;
   vendor: string;
   category: string;
@@ -55,6 +58,7 @@ export async function getSpendRows(): Promise<SpendRow[]> {
   const purchases = await paginateAll<{
     id: string;
     opportunity_id: string | null;
+    account_id: string | null;
     category: string | null;
     vendor: string | null;
     amount_cents: number;
@@ -67,7 +71,7 @@ export async function getSpendRows(): Promise<SpendRow[]> {
     sb
       .from("commercial_project_purchases")
       .select(
-        "id, opportunity_id, category, vendor, amount_cents, purchased_at, description, receipt_document_id, reimburse_to, reimbursed_at"
+        "id, opportunity_id, account_id, category, vendor, amount_cents, purchased_at, description, receipt_document_id, reimburse_to, reimbursed_at"
       )
       .is("deleted_at", null)
       .order("id", { ascending: true })
@@ -77,6 +81,7 @@ export async function getSpendRows(): Promise<SpendRow[]> {
   return purchases.map((p) => ({
     id: p.id,
     oppId: p.opportunity_id,
+    accountId: p.account_id,
     jobName: (p.opportunity_id && names.get(p.opportunity_id)) || "—",
     vendor: (p.vendor ?? "").trim() || "—",
     category: p.category ?? "other",
@@ -173,7 +178,25 @@ async function jobNames(ids: (string | null)[]): Promise<Map<string, string>> {
 
 // ─── Specs ──────────────────────────────────────────────────────────────────
 
-const jobColumn = { key: "job", label: "Name", text: (r: SpendRow) => r.jobName, href: (r: SpendRow) => (r.oppId ? `/commercial/opportunities/${r.oppId}` : null) };
+/**
+ * The job link opens the COST TOOL, not the deal page.
+ *
+ * Karan 2026-09-16: "if I go onto purchases and then click a job it brings me
+ * to [the deal page] — I want it to bring me to the place where I can put
+ * purchases, and then a back button so I can cleanly go back."
+ *
+ * It carries the tab it came from as `?back=`, which the tool's header turns
+ * into "← Purchases". Falls back to the deal page for a row with no account on
+ * it, because a link that goes somewhere useful beats one that does nothing.
+ */
+const costToolHref = (r: SpendRow, backView: string): string | null => costToolHrefFor(r.oppId, backView);
+
+const jobColumn = {
+  key: "job",
+  label: "Name",
+  text: (r: SpendRow) => r.jobName,
+  href: (r: SpendRow) => costToolHref(r, "purchases"),
+};
 
 export const PURCHASES_BY_VENDOR_SPEC: ReportSpec<SpendRow> = {
   title: "Purchases by Vendor",
@@ -195,6 +218,8 @@ export const PURCHASES_BY_VENDOR_SPEC: ReportSpec<SpendRow> = {
   ],
 };
 
+const laborJobColumn = { ...jobColumn, href: (r: SpendRow) => costToolHref(r, "labor-out") };
+
 export const LABOR_PAYMENTS_SPEC: ReportSpec<SpendRow> = {
   title: "Labor Payments Out",
   sourceLabel: "Work Orders with Transactions",
@@ -205,7 +230,7 @@ export const LABOR_PAYMENTS_SPEC: ReportSpec<SpendRow> = {
     [{ key: "job", label: "Job", of: (r) => r.jobName }],
   ],
   columns: [
-    jobColumn,
+    laborJobColumn,
     { key: "date", label: "Date", text: (r) => r.ymd },
     { key: "amount", label: "Amount", kind: "money", amount: (r) => r.amountCents },
     { key: "reference", label: "Reference", text: (r) => r.reference },
@@ -241,7 +266,9 @@ export const DEPOSIT_HISTORY_SPEC: ReportSpec<MoneyInRow> = {
     [{ key: "method", label: "Method", of: (r) => r.method ?? "—" }],
   ],
   columns: [
-    { key: "job", label: "Name", text: (r) => r.jobName, href: (r) => (r.oppId ? `/commercial/opportunities/${r.oppId}` : null) },
+    // Money IN, so the job opens its invoices — where the next payment gets
+    // recorded — rather than the costs tool.
+    { key: "job", label: "Name", text: (r) => r.jobName, href: (r) => moneyInHref(r.oppId, "deposits") },
     { key: "gc", label: "GC", text: (r) => r.accountName, secondary: true },
     { key: "amount", label: "Amount", kind: "money", amount: (r) => r.amountCents },
     { key: "method", label: "Method", text: (r) => r.method },
