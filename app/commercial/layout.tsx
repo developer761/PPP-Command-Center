@@ -9,6 +9,8 @@ import { UndoToast } from "@/components/commercial/undo-toast";
 import { CommandPalette } from "@/components/commercial/command-palette";
 import { KeyboardShortcuts } from "@/components/commercial/keyboard-shortcuts";
 import { OnboardingWalkthrough } from "@/components/commercial/onboarding-walkthrough";
+import { AssistantPanel } from "@/components/commercial/assistant-panel";
+import { assistantAvailable } from "@/lib/commercial/assistant/ask";
 import { Suspense } from "react";
 import { normalizeRole } from "@/lib/auth/roles";
 
@@ -138,6 +140,10 @@ export default async function CommercialDashboardLayout({
         firstName={firstName}
         autoStart={!crewOnly && profile?.commercial_onboarding_seen_at == null}
       />
+      {/* Ask — on every commercial page, because the question people have is
+          almost always about the page they are already on. Not for crew-only
+          logins: it can read the company's money, and they cannot. */}
+      {!crewOnly && assistantAvailable() && <AssistantPanel />}
     </CommercialChrome>
     </div>
   );
