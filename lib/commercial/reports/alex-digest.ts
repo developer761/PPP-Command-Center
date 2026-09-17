@@ -3,6 +3,7 @@ import "server-only";
 import { sendEmail } from "@/lib/email/resend";
 import { getCommercialSetting, setCommercialSetting } from "@/lib/commercial/settings";
 import { getReceivablesReport } from "./receivables";
+import { marginVerdict } from "./company-pnl";
 import { getCachedBrief } from "./receivables-brief";
 import { getTransactionsReport } from "./transactions";
 import { getSalesTaxReport } from "./sales-tax";
@@ -124,6 +125,12 @@ export type DigestData = {
   /** Position again — money earned that nobody has billed. */
   readyToBillCents: number;
   overBilledProjects: number;
+  /** "Are we making money?" — the whole company, every opportunity. */
+  pnl: import("./company-pnl").CompanyPnl;
+  /** The AR sheet Mary sends on: certified and waiting, retention on its own line. */
+  ar: { jobName: string; label: string; openCents: number; isRetention: boolean }[];
+  arTotalCents: number;
+  arRetentionCents: number;
 };
 
 export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso()): Promise<DigestData> {
@@ -140,6 +147,20 @@ export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso(
     listProjects(),
     getChangeOrderVendorReport(changeOrderRange("this_year")),
   ]);
+  // "Are we making money?" and the AR sheet — the two things Karan asked for
+  // (2026-09-17). The P&L goes through the shared calculator the dashboard
+  // uses, so the email and the screen cannot answer the same question
+  // differently.
+  const { companyPnl } = await import("./company-pnl");
+  const { costBreakdownByOpp } = await import("@/lib/commercial/purchases/db");
+  const { getArSheetRows } = await import("./tomco/ar-applications");
+  const [breakdown, arRows] = await Promise.all([
+    costBreakdownByOpp(projects.map((p) => p.opp.id)),
+    getArSheetRows(),
+  ]);
+  let purchaseCostCents = 0;
+  for (const b of breakdown.values()) purchaseCostCents += b.total;
+  const pnl = companyPnl({ projects, purchaseCostCents });
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
 
@@ -148,6 +169,10 @@ export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso(
     windowLabel: win.label,
     fromYmd: win.fromYmd,
     toYmd: win.toYmd,
+    pnl,
+    ar: arRows.map((r) => ({ jobName: r.jobName, label: r.label, openCents: r.openCents, isRetention: r.isRetention })),
+    arTotalCents: arRows.reduce((n, r) => n + r.openCents, 0),
+    arRetentionCents: arRows.filter((r) => r.isRetention).reduce((n, r) => n + r.openCents, 0),
     outstandingCents: receivables.totalOpenCents,
     collectibleCents: receivables.dueNowCents,
     overdueCents: receivables.overdueCents,
@@ -245,8 +270,21 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
 
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:680px;">
   <h2 style="margin:0 0 2px;font-size:18px;color:#172B4D;">${escape(TITLE[d.cadence])} report</h2>
-  <p style="margin:0 0 16px;font-size:12px;color:#6b7280;">${escape(d.fromYmd)}${d.fromYmd === d.toYmd ? "" : ` to ${escape(d.toYmd)}`}</p>
+  <p style="margin:0 0 18px;font-size:12px;color:#6b7280;">${escape(d.fromYmd)}${d.fromYmd === d.toYmd ? "" : ` to ${escape(d.toYmd)}`}</p>
 
+  <!-- ARE WE MAKING MONEY? First, because it is the question he opens the
+       email to answer. Whole company, every opportunity — the same four
+       figures as the dashboard, from the same calculator. -->
+  <div style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#172B4D;">Are we making money?</div>
+  <div style="margin:0 0 8px;font-size:11.5px;color:#6b7280;">Whole company &middot; every opportunity</div>
+  <table style="border-collapse:collapse;width:100%;margin:0 0 20px;"><tr>
+    ${tile("Net profit", money(d.pnl.netProfitCents), "after job costs")}
+    ${tile("Margin", d.pnl.marginPct === null ? "\u2014" : `${d.pnl.marginPct}%`, marginVerdict(d.pnl.marginPct))}
+    ${tile("Gross revenue", money(d.pnl.grossRevenueCents), "billed to date")}
+    ${tile("Job costs", money(d.pnl.totalCostCents), "materials \u00b7 crew \u00b7 subs")}
+  </tr></table>
+
+  <div style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#172B4D;">What we are owed</div>
   <table style="border-collapse:collapse;width:100%;margin:0 0 6px;"><tr>
     ${tile("Outstanding", money(d.outstandingCents), `${d.openItemCount} open items`)}
     ${tile("Collectible now", money(d.collectibleCents), "excludes retention")}
@@ -284,7 +322,52 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
   <p style="font-size:12px;color:#666;margin-top:28px;">— PPP Commercial Command Center</p>
 </div>`;
 
-  return { subject, text, html };
+// THE AR SHEET, in full. Karan 2026-09-17: "can we send the AR sheet report".
+  // It is the sheet Mary sends on, so Alex gets the same rows she does rather
+  // than a total he has to ask her to break down. Grouped by job, retention on
+  // its own line, exactly as the tab shows it.
+  const arByJob = new Map<string, { label: string; openCents: number; isRetention: boolean }[]>();
+  for (const r of d.ar) {
+    const list = arByJob.get(r.jobName) ?? [];
+    list.push({ label: r.label, openCents: r.openCents, isRetention: r.isRetention });
+    arByJob.set(r.jobName, list);
+  }
+  const arHtml =
+    d.ar.length === 0
+      ? `<p style="margin:0 0 18px;font-size:13px;color:#6b7280;">Nothing is certified and waiting.</p>`
+      : `<table style="border-collapse:collapse;width:100%;margin:0 0 18px;font-size:12.5px;">
+    <tr>
+      <th align="left" style="padding:0 0 4px;border-bottom:1px solid #172B4D;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#374151;">Job / application</th>
+      <th align="right" style="padding:0 0 4px;border-bottom:1px solid #172B4D;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#374151;">Billed / open</th>
+    </tr>
+    ${[...arByJob.entries()]
+      .map(([job, lines]) => {
+        const sub = lines.reduce((n, l) => n + l.openCents, 0);
+        return `<tr><td colspan="2" style="padding:9px 0 2px;font-weight:700;color:#172B4D;">${escape(job)}</td></tr>
+        ${lines
+          .map(
+            (l) =>
+              `<tr><td style="padding:2px 0 2px 12px;color:#374151;">${escape(l.label)}</td><td align="right" style="padding:2px 0;color:#374151;">${money(l.openCents)}</td></tr>`
+          )
+          .join("")}
+        <tr><td style="padding:2px 0 6px 12px;border-bottom:1px solid #e5e7eb;font-size:11.5px;color:#6b7280;">Subtotal (${lines.length})</td><td align="right" style="padding:2px 0 6px;border-bottom:1px solid #e5e7eb;font-weight:700;">${money(sub)}</td></tr>`;
+      })
+      .join("")}
+    <tr><td style="padding:8px 0;font-weight:700;color:#172B4D;">Total (${d.ar.length})</td><td align="right" style="padding:8px 0;font-weight:700;color:#172B4D;">${money(d.arTotalCents)}</td></tr>
+    ${d.arRetentionCents > 0 ? `<tr><td style="padding:0 0 8px;font-size:11.5px;color:#6b7280;">Of which retention \u2014 held until close-out, not late</td><td align="right" style="padding:0 0 8px;font-size:11.5px;color:#6b7280;">${money(d.arRetentionCents)}</td></tr>` : ""}
+  </table>`;
+
+  const htmlWithAr = html.replace(
+    "</div>",
+    `  <div style="margin:18px 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#172B4D;">AR sheet</div>
+  <div style="margin:0 0 8px;font-size:11.5px;color:#6b7280;">Certified and waiting to be paid</div>
+  ${arHtml}
+</div>`
+  );
+
+  return { subject, text: `${text}\n\nAR SHEET — certified and waiting\n${d.ar
+    .map((r) => `  ${r.jobName} · ${r.label}  ${money(r.openCents)}`)
+    .join("\n")}\n  Total (${d.ar.length})  ${money(d.arTotalCents)}`, html: htmlWithAr };
 }
 
 /**

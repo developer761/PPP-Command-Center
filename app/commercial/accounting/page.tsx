@@ -15,7 +15,6 @@ import { getArAging } from "@/lib/commercial/reports/ar-aging";
 import { getTransactionsReport, setPaymentDeposited, type TxnFilters, type TxnDirection } from "@/lib/commercial/reports/transactions";
 import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
 import { getReimbursementsReport, setReimbursementSettled } from "@/lib/commercial/reports/reimbursements";
-import { getDigestSettings, setDigestSettings, sendDigest, type DigestCadence } from "@/lib/commercial/reports/alex-digest";
 import { TransactionsLedger } from "@/components/commercial/transactions-ledger";
 import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type ActivityPreset } from "@/lib/commercial/reports/presets";
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
@@ -45,7 +44,6 @@ import {
 } from "@/lib/commercial/reports/receivables-filters";
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
-import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { joinOtherDetail } from "@/lib/commercial/forms/other-detail";
 import { PrintButton } from "@/components/commercial/reports/print-button";
@@ -157,25 +155,6 @@ function safeBack(raw: unknown): string {
   return v === BASE || v.startsWith(`${BASE}?`) ? v : BASE;
 }
 
-/** Rewrite the brief. Its own action so a slow model call never delays the page.
- *  Shared cache with the receivables report — write it here, it shows there.
- *
- *  Returns to the VIEW you pressed it from. It used to land on `?brief=1`,
- *  which dropped you out of Receivables (or AR aging, or Job costs) back to
- *  Overview — the exact navigate-away this page was restructured to remove. */
-async function refreshBriefAction(formData: FormData) {
-  "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
-  const res = await generateBrief(await getReceivablesReport());
-  revalidatePath(BASE);
-  revalidatePath("/commercial/reports/receivables");
-  const back = safeBack(formData.get("back"));
-  const sep = back.includes("?") ? "&" : "?";
-  redirect(res.ok ? `${back}${sep}brief=1` : `${back}${sep}error=${encodeURIComponent(res.error)}`);
-}
 
 /** Save a chase note without leaving Accounting. Revalidates BOTH surfaces —
  *  the note is one record and it must not appear on one page and not the other. */
@@ -437,47 +416,7 @@ async function draftNotesAction(formData: FormData) {
   redirect(res.ok ? `${back}${sep}notes=1` : `${back}${sep}error=${encodeURIComponent(res.error)}`);
 }
 
-/**
- * Turn a recurring report to Alex on or off.
- *
- * Every cadence ships OFF. Karan: *"we need to get everything 100 percent
- * perfect before we do so"* — so the switch exists, the schedule exists, and
- * nothing reaches him until somebody deliberately flips it.
- */
-async function toggleDigestAction(formData: FormData) {
-  "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
-  const cadence = String(formData.get("cadence") ?? "") as DigestCadence;
-  if (!["daily", "weekly", "monthly"].includes(cadence)) return;
-  await setDigestSettings({ [cadence]: String(formData.get("on")) === "1" }, user.id);
-  revalidatePath(BASE);
-}
 
-/**
- * Preview it — addressed to WHOEVER PRESSED THIS, never to Alex.
- *
- * The whole point of the hold: you read the exact email he would get, in your
- * own inbox, before anything is switched on. A preview that went to him would
- * defeat the thing it exists for.
- */
-async function previewDigestAction(formData: FormData) {
-  "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.email) redirect("/");
-  await assertCommercialAccess(user.id);
-  const cadence = String(formData.get("cadence") ?? "daily") as DigestCadence;
-  const res = await sendDigest(["daily", "weekly", "monthly"].includes(cadence) ? cadence : "daily", [user.email]);
-  revalidatePath(BASE);
-  redirect(
-    res.ok
-      ? `${BASE}?preview=${encodeURIComponent(user.email)}`
-      : `${BASE}?error=${encodeURIComponent(res.error)}`
-  );
-}
 
 /** Email the sheet to Alex. Explicit click only — no auto-send from here.
  *  Stays on the view you sent it from; it used to force `?view=receivables`,
@@ -683,7 +622,6 @@ export default async function AccountingPage({
   const over90 = receivables.rows.filter((r) => (r.daysOut ?? 0) > 90);
   const over90Cents = over90.reduce((n, r) => n + r.openCents, 0);
   const over90Count = over90.length;
-  const unnotedCount = receivables.rows.filter((r) => !r.note?.trim()).length;
 
   // Only fetched for the view that renders it — the money band above doesn't
   // use aging, so paying for it on every page load would be waste.
@@ -717,9 +655,10 @@ export default async function AccountingPage({
   const spendRows = view === "purchases" || view === "labor-out" ? await getSpendRows() : null;
   const depositRows = view === "deposits" ? await getMoneyInRows() : null;
   const production = summarizeProduction(projects);
-  const { brief, stale } = await getCachedBrief(receivables);
-  const canBrief = briefAvailable();
-  const digest = await getDigestSettings();
+  // The brief block and the digest switches both left this page (2026-09-17):
+  // the brief restated the tiles, and the schedule is a setting, not a figure.
+  // Neither is read here any more, so neither is loaded — one fewer model call
+  // and one fewer settings read on every load of the page Mary lives on.
   const { getCachedRowNotes, rowNotesAvailable } = await import("@/lib/commercial/reports/receivables-row-notes");
   // Rows whose read is missing OR written from facts that have since moved —
   // including a note somebody typed after the last draft. Only offered when
@@ -752,7 +691,6 @@ export default async function AccountingPage({
   // `invoice pre-tax + AIA billed` — so an AIA job doesn't read as unbilled.
   const unbilledContractCents = production.leftToBillCents;
   const unbilledCoCents = coVendor.co.unbilledCents;
-  const readyToBillCents = unbilledContractCents + unbilledCoCents;
 
   const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
     .filter((c) => jobCosts.totals.buckets[c.key] > 0)
@@ -1168,48 +1106,19 @@ export default async function AccountingPage({
         </div>
       </section>
 
-      {/* ── 5 · Not yet billed ────────────────────────────────────────────
-          Money already earned that no one has invoiced. It appears on no other
-          surface, and it is the fastest cash in the building — you don't have
-          to chase anyone for it, you just have to send it. */}
-      <section className="space-y-2">
-        <SectionHead
-          title="Earned, not yet billed"
-          href={href("costs")}
-          hint="Signed work with no invoice against it — the fastest cash there is."
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Tile
-            label="Ready to bill"
-            value={formatCentsFull(readyToBillCents)}
-            tone={readyToBillCents > 0 ? "amber" : "neutral"}
-            sub={readyToBillCents > 0 ? "contract + approved change orders" : "everything signed has been invoiced"}
-          />
-          <Tile
-            label="Contract left to bill"
-            value={formatCentsFull(unbilledContractCents)}
-            tone="neutral"
-            sub={`of ${formatCentsCompact(production.contractValueCents)} signed`}
-          />
-          <Tile
-            label="Approved COs unbilled"
-            value={formatCentsFull(unbilledCoCents)}
-            tone={unbilledCoCents > 0 ? "amber" : "neutral"}
-            sub={unbilledCoCents > 0 ? "approved scope, never invoiced" : "all approved COs billed"}
-          />
-        </div>
-        {production.overBilledProjects > 0 && (
-          // A warning, not a block (the never-reject rule): over-billing is
-          // usually an approved CO invoiced before it was logged. Saying so
-          // beats letting it net away invisibly inside "left to bill".
-          <p className="text-[11.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            {production.overBilledProjects} job{production.overBilledProjects === 1 ? " is" : "s are"} billed
-            past contract by {formatCentsCompact(production.overBilledCents)} — usually a change order
-            invoiced before it was logged.{" "}
-            <Link href={href("costs")} className="font-semibold underline">Check the jobs</Link>
-          </p>
-        )}
-      </section>
+      {/* "Earned, not yet billed" was here — three tiles, and two of them
+          printed the same figure.
+
+          Karan 2026-09-17: "we can remove this from the accounting overview."
+          On Tomco's book it read $122,060.49 ready to bill, $122,060.49
+          contract left to bill, and $0.00 approved COs unbilled: the first two
+          are the same number whenever no approved change order is waiting,
+          which is the normal case, and the third is the difference between
+          them. One fact wearing three tiles.
+
+          The figure itself is not lost — it is the "Bill the work that is done"
+          row on the dashboard work list, which is where somebody can act on it,
+          and Job costs carries the per-job breakdown. */}
 
       {/* ── 6 · Where it went ─────────────────────────────────────────── */}
       <section className="space-y-2">
@@ -2184,78 +2093,12 @@ export default async function AccountingPage({
         </section>
       )}
 
-      {/* ── Recurring reports to Alex ─────────────────────────────────
-             Built, scheduled, and OFF. Karan: "we need to get everything 100
-             percent perfect before we do so" — so the hold is the feature.
-             Preview mails it to you; nothing reaches him until a switch here
-             is deliberately flipped. Overview only: it's a setting, not a
-             figure, and it shouldn't sit under a filtered list. ── */}
-      {view === "overview" && (
-        <section className="space-y-2">
-          <SectionHead
-            title="Recurring reports to Alex"
-            hint="Everything on this page, in his inbox, on a schedule."
-          />
-          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <p className="text-[12px] text-ppp-charcoal-500 max-w-lg">
-                Each one sends what you see here — owed, collected, still to bill, undeposited,
-                sales tax, reimbursements — plus the brief.{" "}
-                <strong className="text-ppp-charcoal">
-                  {digest.daily || digest.weekly || digest.monthly
-                    ? `Sending to ${recipients.join(", ")}.`
-                    : "Nothing is being sent."}
-                </strong>{" "}
-                Preview one first — it goes to you, not to him.
-              </p>
-              <form action={previewDigestAction} className="shrink-0">
-                <input type="hidden" name="cadence" value="daily" />
-                <PendingSubmitButton
-                  pendingLabel="Sending…"
-                  className="inline-flex items-center min-h-[40px] px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
-                >
-                  Preview it to me
-                </PendingSubmitButton>
-              </form>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {([
-                { key: "daily" as const, label: "Daily", when: "Every morning", on: digest.daily },
-                { key: "weekly" as const, label: "Weekly", when: "Monday mornings", on: digest.weekly },
-                { key: "monthly" as const, label: "Monthly", when: "The 1st", on: digest.monthly },
-              ]).map((c) => (
-                <form key={c.key} action={toggleDigestAction}>
-                  <input type="hidden" name="cadence" value={c.key} />
-                  <input type="hidden" name="on" value={c.on ? "0" : "1"} />
-                  <PendingSubmitButton
-                    pendingLabel="…"
-                    className={`w-full inline-flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg border text-left min-h-[56px] transition-colors ${
-                      c.on
-                        ? "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
-                        : "bg-surface border-ppp-charcoal-200 hover:border-cc-brand-300"
-                    }`}
-                  >
-                    <span className="min-w-0">
-                      <span className={`block text-[13px] font-bold ${c.on ? "text-emerald-800" : "text-ppp-charcoal"}`}>
-                        {c.label}
-                      </span>
-                      <span className="block text-[11px] text-ppp-charcoal-500">
-                        {c.on ? `On · ${c.when.toLowerCase()}` : c.when}
-                      </span>
-                    </span>
-                    <span
-                      aria-hidden
-                      className={`shrink-0 inline-flex items-center w-9 h-5 rounded-full px-0.5 ${c.on ? "bg-emerald-600 justify-end" : "bg-ppp-charcoal-200 justify-start"}`}
-                    >
-                      <span className="w-4 h-4 rounded-full bg-white" />
-                    </span>
-                  </PendingSubmitButton>
-                </form>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+      {/* "Recurring reports to Alex" moved to Settings › Recurring Reports.
+          Karan 2026-09-17: "put this in settings, make a new tab for it."
+          It is a setting, not a figure, and one you touch once — so every day
+          it was taking a block of the page Mary works in for a control nobody
+          was going to press. */}
+
 
       {/* The footer of links is gone.
           

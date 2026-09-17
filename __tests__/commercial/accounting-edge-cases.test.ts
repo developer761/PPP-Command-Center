@@ -51,7 +51,12 @@ const digest = (o: Partial<DigestData> = {}): DigestData => ({
   briefText: null, briefStale: false, inCents: 0, outCents: 0, netCents: 0, txnCount: 0,
   undepositedCents: 0, undepositedCount: 0, taxCollectedCents: 0, uncertifiedCount: 0,
   reimbursementsOwedCents: 0, reimbursementsOwedCount: 0, readyToBillCents: 0,
-  overBilledProjects: 0, ...o,
+  overBilledProjects: 0,
+  pnl: { grossRevenueCents: 0, totalCostCents: 0, crewLaborCents: 0, netProfitCents: 0, marginPct: null, unratedHours: 0 },
+  ar: [],
+  arTotalCents: 0,
+  arRetentionCents: 0,
+  ...o,
 });
 
 // ───────────────────── a brand-new environment ─────────────────────

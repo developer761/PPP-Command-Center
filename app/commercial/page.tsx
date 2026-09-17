@@ -50,6 +50,7 @@ import { listAllWorkOrders } from "@/lib/commercial/work-orders/db";
 import { rankJobsInFlight } from "@/lib/commercial/reports/jobs-in-flight";
 import { JobsInFlight } from "@/components/commercial/jobs-in-flight";
 import { buildWorklist, worklistTotals } from "@/lib/commercial/worklist";
+import { companyPnl } from "@/lib/commercial/reports/company-pnl";
 import { Worklist, WorklistClear } from "@/components/commercial/worklist";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
@@ -400,10 +401,14 @@ export default async function CommercialDashboardPage() {
   // already carries its labor (folded into p.costsCents), so summing the rows'
   // labor keeps the portfolio total identical to Σ per-deal P&L (deal ⊂
   // portfolio). totalCostCents = purchases + crew labor drives Net/Margin.
-  const crewLaborCents = allProjectRows.reduce((acc, p) => acc + p.fieldOpsLaborCents, 0);
-  const laborUnratedHours = allProjectRows.reduce((acc, p) => acc + p.laborUnratedHours, 0);
-  const totalCostCents = costs.total + crewLaborCents;
-  const grossRevenueCents = allProjectRows.reduce((acc, p) => acc + p.billedContractCents, 0);
+  // Through the shared calculator, not inline: Alex's recurring email carries
+  // the same four figures, and two places doing this arithmetic is how the
+  // platform ends up saying 62% on screen and 58% in his inbox.
+  const pnl = companyPnl({ projects: allProjectRows, purchaseCostCents: costs.total });
+  const crewLaborCents = pnl.crewLaborCents;
+  const laborUnratedHours = pnl.unratedHours;
+  const totalCostCents = pnl.totalCostCents;
+  const grossRevenueCents = pnl.grossRevenueCents;
 
   // Brendan 2026-08-26: "under 'this month' it should say things specific to
   // the deals." Everything above is a company aggregate; this is the same money
@@ -438,8 +443,8 @@ export default async function CommercialDashboardPage() {
         };
       })
   );
-  const netProfitCents = grossRevenueCents - totalCostCents;
-  const revMarginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
+  const netProfitCents = pnl.netProfitCents;
+  const revMarginPct = pnl.marginPct;
   const revMarginTone: ChartTone = revMarginPct === null ? "neutral" : revMarginPct < 0 ? "rose" : revMarginPct < 15 ? "amber" : "emerald";
   // Monthly billed revenue ($K) — shared ET-bucketed, pre-tax, issued-only
   // helper scoped to the SAME project opps as the headline, so the trend is

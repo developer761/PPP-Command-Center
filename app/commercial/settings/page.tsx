@@ -47,6 +47,16 @@ const CARDS: Card[] = [
     icon: <IconBuilding />,
   },
   {
+    // Karan 2026-09-17: "put this in settings, make a new tab for it and call
+    // it Recurring Reports." Next to Notifications, which is the other place
+    // you decide what leaves the building and when.
+    href: "/commercial/settings/recurring-reports",
+    label: "Recurring Reports",
+    blurb:
+      "The whole picture in Alex's inbox on a schedule — is the company making money, what is owed, what came in, and the AR sheet in full. Off until somebody turns it on; preview one to yourself first.",
+    icon: <IconClock />,
+  },
+  {
     href: "/commercial/settings/notifications",
     label: "Notifications",
     blurb:
@@ -202,6 +212,14 @@ function IconStore() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M3 9l1.5-5h15L21 9 M3 9h18 M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0 M5 11.5V21h14v-9.5 M10 21v-5h4v5" />
+    </svg>
+  );
+}
+function IconClock() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
     </svg>
   );
 }

@@ -41,6 +41,11 @@ function data(over: Partial<DigestData> = {}): DigestData {
     reimbursementsOwedCount: 0,
     readyToBillCents: 0,
     overBilledProjects: 0,
+  pnl: { grossRevenueCents: 0, totalCostCents: 0, crewLaborCents: 0, netProfitCents: 0, marginPct: null, unratedHours: 0 },
+    ar: [],
+    arTotalCents: 0,
+    arRetentionCents: 0,
+
     ...over,
   };
 }
