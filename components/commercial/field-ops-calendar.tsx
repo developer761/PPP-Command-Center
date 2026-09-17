@@ -20,6 +20,12 @@ import { ABSENCE_TYPES } from "@/lib/commercial/field-ops/absence-constants";
 import { jobStatusLabel, type JobStatus } from "@/lib/commercial/field-ops/job-constants";
 import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
+/** The standard Tomco day, prefilled on the Schedule form (Karan 2026-09-17:
+ *  "for field scheduling have times auto populate 7am-3pm"). 24-hour "HH:MM",
+ *  which is the value shape TimeSelect and the DB column both use. */
+const DEFAULT_SHIFT_START = "07:00";
+const DEFAULT_SHIFT_END = "15:00";
+
 // A work order's status, shown next to the crew on the calendar (Karan 2026-08).
 // Dot = the dense month/agenda chips; pill = the readable day roster + slide-out.
 const STATUS_DOT: Record<string, string> = {
@@ -633,6 +639,10 @@ function DayPanel({
   onOpenPerson: (id: string, name: string) => void;
 }) {
   const [mode, setMode] = useState<"schedule" | "off">("schedule");
+  // Who the Schedule form is currently pointed at, so the time fields can show
+  // that person's existing shift rather than the default day.
+  const [pickedEmployee, setPickedEmployee] = useState<string>("");
+  const existingShift = pickedEmployee ? (crew.find((c) => c.employee_id === pickedEmployee) ?? null) : null;
   const totalHours = crew.reduce((s, c) => s + c.hours, 0);
   // Warn (never block) if you try to schedule someone already marked off today.
   // Match by employee_id, not display name — two crew sharing a name (common on
@@ -712,16 +722,47 @@ function DayPanel({
             ) : (
               <form key={`sch-${formKey}`} onSubmit={onAdd} className="space-y-3">
                 <label className="block"><span className={LABEL_CLS}>Crew member</span>
-                  <SearchableSelect name="employee_id" options={crewOptions} placeholder="Search crew…" ariaLabel="Crew member" />
+                  <SearchableSelect
+                    name="employee_id"
+                    options={crewOptions}
+                    placeholder="Search crew…"
+                    ariaLabel="Crew member"
+                    onChange={(c) => setPickedEmployee(c.value)}
+                  />
                 </label>
                 <label className="block"><span className={LABEL_CLS}>Work order</span>
                   <SearchableSelect name="job_id" options={jobOptions} placeholder="Search work orders…" ariaLabel="Work order" />
                 </label>
+                {/* DEFAULT 7:00–3:00, unless this person already has a shift.
+                    Karan 2026-09-17: "for field scheduling have times auto
+                    populate 7am-3pm."
+
+                    The blank default was not merely unhelpful, it was load-
+                    bearing: `upsertAssignment` coalesces a BLANK time to the
+                    existing row's value, which is what lets you re-submit this
+                    form to fix a note without wiping a shift's hours. Filling
+                    the inputs unconditionally would have posted 7:00–15:00 over
+                    somebody's real 6:00–14:00 — and this form emails the crew,
+                    so the crew would have been told the wrong time.
+
+                    So the prefill follows the person: their existing times if
+                    they are already on this day, 7:00–15:00 if they are not.
+                    Keyed on the employee so the controls remount when the
+                    picker changes. */}
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="block"><span className={LABEL_CLS}>Start time</span><TimeSelect name="start_time" ariaLabel="Start time" placeholder="e.g. 7:00 AM" /></label>
-                  <label className="block"><span className={LABEL_CLS}>End time</span><TimeSelect name="end_time" ariaLabel="End time" placeholder="e.g. 3:30 PM" /></label>
+                  <label className="block"><span className={LABEL_CLS}>Start time</span>
+                    <TimeSelect key={`s-${pickedEmployee}`} name="start_time" ariaLabel="Start time" placeholder="e.g. 7:00 AM" defaultValue={existingShift?.start?.slice(0, 5) ?? DEFAULT_SHIFT_START} />
+                  </label>
+                  <label className="block"><span className={LABEL_CLS}>End time</span>
+                    <TimeSelect key={`e-${pickedEmployee}`} name="end_time" ariaLabel="End time" placeholder="e.g. 3:30 PM" defaultValue={existingShift?.end?.slice(0, 5) ?? DEFAULT_SHIFT_END} />
+                  </label>
                 </div>
-                <p className="text-[11px] text-ppp-charcoal-400 -mt-1">Hours come from start &amp; end. Leave both blank for a full 8h day.{off.length > 0 && <span className="text-amber-700"> Someone marked off can still be scheduled — check &ldquo;Off today&rdquo; above.</span>}</p>
+                <p className="text-[11px] text-ppp-charcoal-400 -mt-1">
+                  {existingShift
+                    ? "Already on this day — these are their current times. Change them to move the shift."
+                    : "Hours come from start & end. Clear both for a full 8h day."}
+                  {off.length > 0 && <span className="text-amber-700"> Someone marked off can still be scheduled — check &ldquo;Off today&rdquo; above.</span>}
+                </p>
                 <label className="block"><span className={LABEL_CLS}>Note for the crew (goes in their email)</span>
                   <textarea name="note" rows={2} placeholder="Gate code 1234, park in rear lot…" className={INPUT_CLS} /></label>
                 <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{saving ? "Scheduling…" : "Schedule & email"}</button>

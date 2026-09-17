@@ -472,13 +472,19 @@ export async function ProjectCostsTool({
             <div>
               <h3 className="text-[13px] font-bold text-ppp-charcoal flex items-center gap-1.5">
                 <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                Crew labor
+                {crewLaborTotalCents > 0 ? "Crew labor" : "Crew hours on this job"}
               </h3>
-              <p className="text-[11px] text-ppp-charcoal-400 leading-snug mt-0.5">Auto from approved time entries — no re-typing.</p>
+              <p className="text-[11px] text-ppp-charcoal-400 leading-snug mt-0.5">
+                {crewLaborTotalCents > 0
+                  ? "Auto from approved time entries — no re-typing."
+                  : "Auto from approved time entries. What these crews were PAID is under Subcontract labor below — hours and money are two counts of the same work and are never added."}
+              </p>
             </div>
             <span className="text-[11px] text-ppp-charcoal-500 tabular-nums text-right shrink-0">
-              {formatCentsFull(crewLaborTotalCents)} total
-              {crewLaborHours > 0 ? ` · ${crewLaborHours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs` : ""}
+              {crewLaborTotalCents > 0 ? `${formatCentsFull(crewLaborTotalCents)} total` : null}
+              {crewLaborHours > 0
+                ? `${crewLaborTotalCents > 0 ? " · " : ""}${crewLaborHours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs`
+                : ""}
             </span>
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
@@ -494,7 +500,19 @@ export async function ProjectCostsTool({
                     )}
                   </div>
                 </div>
-                <div className="text-[13px] font-bold tabular-nums text-ppp-charcoal shrink-0">{formatCentsFull(w.costCents)}</div>
+                {/* A sub's cost here is 0 and that is CORRECT, not missing —
+                    what they cost is the payout to their labor company, which
+                    is the Subcontract labor section below on this same page.
+                    Printing "$0.00" against their name would read as a figure
+                    that failed to load, and invite someone to "fix" it by
+                    setting a rate, which would count the work twice. */}
+                <div className="text-[13px] font-bold tabular-nums text-ppp-charcoal shrink-0">
+                  {w.isSub ? (
+                    <span className="font-semibold text-[11px] text-ppp-charcoal-400 italic">via crew payout</span>
+                  ) : (
+                    formatCentsFull(w.costCents)
+                  )}
+                </div>
               </li>
             ))}
           </ul>

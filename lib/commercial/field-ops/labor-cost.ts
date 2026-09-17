@@ -172,6 +172,9 @@ export type CrewLaborWorker = {
   costCents: number;
   /** The worker's CURRENT effective cost rate (for display), null if none. */
   currentRateCents: number | null;
+  /** Paid through a labor company, so `costCents` is 0 and that is correct —
+   *  what they cost is the Subcontract-labor payout on this same deal. */
+  isSub?: boolean;
   /** Distinct days this worker had settled hours on the deal — the attendance
    *  count. Hours alone can't say whether 40 hours was one crew for a week or
    *  five people for a day. */
@@ -229,7 +232,24 @@ export async function fieldOpsCrewDetailForOpp(
   });
   if (entries.length === 0) return { ...EMPTY_DETAIL, workers: [], days: [] };
 
-  // W-2 only, matching fieldOpsLaborByOpp + payroll (audit round 8).
+  /**
+   * W-2 decides who is PRICED, not who is counted.
+   *
+   * Karan 2026-09-17: "do labor costs go into costs for opportunities? if I put
+   * labor on a certain day it should go into that opportunity under costs."
+   *
+   * This used to skip a sub's entries entirely, and every one of Tomco's 23
+   * crew is `worker_type='sub'` — so the job's crew panel was empty on every
+   * job, and a day of logged hours left no trace on the opportunity at all.
+   * Same defect, same cause, as the Labor report (lib/commercial/reports/labor.ts).
+   *
+   * Their COST still must not be rate-priced here: a sub is paid through their
+   * labor company, that payment is already booked as a Subcontract-labor
+   * purchase on this same deal, and pricing their hours as well would count the
+   * work twice on the one screen that shows both. So hours count for everyone,
+   * `costCents` stays W-2-only, and the two sit side by side without being
+   * added.
+   */
   const { data: w2Rows } = await sb
     .from("commercial_employees")
     .select("id, worker_type")
@@ -242,20 +262,23 @@ export async function fieldOpsCrewDetailForOpp(
   const daysByEmp = new Map<string, Set<string>>();
   const allDays = new Set<string>();
   for (const e of entries) {
-    if (!w2.has(e.employee_id)) continue;
     const hours = Number(e.actual_hours ?? 0);
     if (hours <= 0) continue;
+    const isW2 = w2.has(e.employee_id);
     const workDate = String(e.work_date).slice(0, 10);
     const rows = rates.get(e.employee_id);
-    const rate = rateOn(rows, workDate);
+    // A sub has no rate BY DESIGN — their money is the payout to their company.
+    // Reading one for them would both double the cost and put all 23 crew under
+    // "no cost rate on file", which is a list of 23 rates nobody should set.
+    const rate = isW2 ? rateOn(rows, workDate) : null;
     const cur =
       byEmp.get(e.employee_id) ??
-      ({ employeeId: e.employee_id, name: "", hours: 0, ratedHours: 0, unratedHours: 0, costCents: 0, currentRateCents: rateOn(rows, today)?.cents ?? null, days: 0 } as CrewLaborWorker);
+      ({ employeeId: e.employee_id, name: "", hours: 0, ratedHours: 0, unratedHours: 0, costCents: 0, currentRateCents: isW2 ? (rateOn(rows, today)?.cents ?? null) : null, isSub: !isW2, days: 0 } as CrewLaborWorker);
     cur.hours += hours;
     if (rate) {
       cur.costCents += Math.round(hours * rate.cents);
       cur.ratedHours += hours;
-    } else {
+    } else if (isW2) {
       cur.unratedHours += hours;
     }
     byEmp.set(e.employee_id, cur);
@@ -283,7 +306,9 @@ export async function fieldOpsCrewDetailForOpp(
     unratedHours: round2(w.unratedHours),
     days: daysByEmp.get(w.employeeId)?.size ?? 0,
   }));
-  workers.sort((a, b) => b.costCents - a.costCents || b.hours - a.hours);
+  // Hours break the tie, and for a sub they decide it: their cost here is 0 by
+  // design, so sorting on cost alone left the whole crew in arbitrary order.
+  workers.sort((a, b) => b.costCents - a.costCents || b.hours - a.hours || a.name.localeCompare(b.name));
 
   return {
     workers,

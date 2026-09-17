@@ -39,6 +39,7 @@ import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { workOrderRecordId } from "@/lib/commercial/record-ids";
 import { AutosaveForm } from "@/components/commercial/autosave-form";
+import { SaveNowButton } from "@/components/commercial/save-now-button";
 import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import { LiveScopeCount } from "@/components/commercial/live-scope-count";
 import { DateField } from "@/components/commercial/date-field";
@@ -663,6 +664,17 @@ export async function WorkOrderTool({
                 <span className={LABEL_CLS}>Crew notes <span className="text-ppp-charcoal-400 font-normal">· prints under the scope</span></span>
                 <textarea name="work_notes" defaultValue={wo.work_notes ?? ""} rows={3} placeholder="Site access, staging, sequence, safety…" className={TEXTAREA_CLS} />
               </label>
+              {/* Karan 2026-09-17: "have a work order save button."
+                  This form autosaves, and has done since it shipped — but with
+                  no button, no working Enter key (the form preventDefaults its
+                  own submit) and a status pill that renders nothing until the
+                  first save, there was no way to tell. The button flushes the
+                  pending save immediately rather than adding a second way to
+                  write, so the pill beside it is the confirmation. */}
+              <div className="flex items-center justify-end gap-3 pt-1">
+                <span className="text-[11px] text-ppp-charcoal-400">Saves on its own — this just does it now.</span>
+                <SaveNowButton />
+              </div>
             </AutosaveForm>
           ) : (
             <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-2.5 text-[12px] text-ppp-charcoal-600 space-y-1.5">
