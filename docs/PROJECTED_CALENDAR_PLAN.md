@@ -107,10 +107,20 @@ the only number in the feature that must never be presented as fact.
 - **Color by stage.** `columnKeyForOpp(status, sub_status)` already maps a deal
   to one of ten stages, and `kanbanColumnLabel` names them. Color belongs
   **next to that map**, not in the calendar — a stage color defined in the
-  calendar is one the pipeline cannot use. Note Karan's "when you bid it's
-  green" conflicts with the existing delivery language (green = done, amber = in
-  progress, grey = not started), which is written down as a rule. **Pick one and
-  change the other**; two color languages on one platform is worse than either.
+  calendar is one the pipeline cannot use.
+
+  **DECIDED (Karan, 2026-09-17): "when you bid it's green" is for THIS calendar
+  only.** I had flagged it as colliding with the delivery language (green =
+  done, amber = in progress, grey = not started); it does not, because the two
+  encode different axes — the delivery strip colors a tool's COMPLETION, this
+  colors a job's STAGE. Nothing platform-wide changes.
+
+  The one thing that must not be skipped: because green means "finished" a few
+  inches away and "just bid" here, the two must not look like the same kind of
+  mark. Delivery uses a small status DOT; the calendar should use a filled chip
+  or a left edge bar — different shape carrying different meaning, which is what
+  keeps one green from being read as the other. Same reason `na` is a hollow dot
+  rather than a fourth color.
 - **Click off what you don't want.** A searchParam per toggled group, defaulting
   to all on. Same shape as the AR sheet's group-by row.
 - **Pinning.** Needs storage. `commercial_settings` already holds per-key JSON
@@ -135,8 +145,9 @@ the only number in the feature that must never be presented as fact.
 2. **A guess rendered like a fact.** Projected crew hours are inferred. They must
    be visually distinct and labelled, and must never be summed into a figure
    anyone reports.
-3. **Two color languages** — see above. A decision, not an implementation
-   detail.
+3. **Green means two things on one screen** — "just bid" here, "done" on the
+   delivery strip. Settled as a deliberate split (different axes), so the guard
+   is visual: stage color must not be rendered as a status dot.
 4. **The Sunday/Monday split.** The calendar's weeks are Sunday-start; payroll
    and `copyWeekForward` are Monday-start. That mismatch already produced a real
    bug today (copy week took the wrong seven days). Any capacity-per-week maths
