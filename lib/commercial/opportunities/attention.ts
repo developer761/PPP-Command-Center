@@ -47,6 +47,15 @@ export type AttentionInput = {
   /** ET calendar dates. Drive the grace periods below. */
   decidedAt?: string | null;
   todayIso?: string;
+  /**
+   * When we think the work starts — the opportunity's own estimate, not a
+   * scheduled date. Feeds the two projection rules below.
+   *
+   * Optional, and `undefined` means THE CALLER DID NOT ASK, which is different
+   * from `null` meaning nobody has set one. Callers that do not pass it get
+   * neither rule rather than a false "nothing planned" on every deal.
+   */
+  proposedStartAt?: string | null;
 };
 
 /** Whole ET calendar days between two YYYY-MM-DD dates. */
@@ -398,6 +407,61 @@ export function attentionFor(i: AttentionInput): Attention[] {
   // job. Warning about a missing work order on a job we didn't get is noise,
   // and noise is what teaches people to ignore the row.
   if (lost) return out;
+
+  /**
+   * ── WHEN IS THIS ACTUALLY GOING TO HAPPEN? ───────────────────────────────
+   *
+   * Karan 2026-09-17: "if a due date for a project is like 6 months ago, or like
+   * it might not happen, still in the talks, it'll give us a little nudge like
+   * is this still happening?"
+   *
+   * Steps 1 and 2 of docs/PROJECTED_CALENDAR_PLAN.md, and deliberately shipped
+   * ahead of the calendar itself, because measured against the live book every
+   * one of the 46 OPEN deals has no expected start — 29 sent, 9 estimating, 8
+   * pre-construction, all empty. The 74 dates that do exist are all on jobs
+   * already underway or finished, because they came from a work order's
+   * StartDate at import. A projected calendar built on that renders an empty
+   * month forever. These two rules are what start filling the column.
+   *
+   * Both are scoped to a deal that is still LIVE and not yet on site. Once the
+   * crew is there the real dates are in Field Ops and an estimate is noise.
+   */
+  const PLANNING_STATUSES = new Set(["estimating", "proposal", "pre_construction"]);
+  const planning = PLANNING_STATUSES.has(i.status);
+  // `undefined` = the caller did not load the column. Saying "nothing planned"
+  // because we did not ask would put a warning on every deal on any surface
+  // that had not been updated to pass it.
+  const askedForStart = i.proposedStartAt !== undefined;
+
+  if (planning && askedForStart && !i.proposedStartAt) {
+    out.push({
+      key: "no_expected_start",
+      title: "No expected start date",
+      consequence:
+        "Nothing to plan crew around. Until this has a date the job cannot appear in any forward view, however close it is to being won.",
+      href: `/commercial/opportunities/${i.oppId}?tab=info`,
+      // Info, not warn: on a bid that has just gone out this is a prompt, not a
+      // problem, and a warning on all 46 open deals at once is wallpaper.
+      tone: "info",
+    });
+  }
+
+  // "Is this still happening?" — the date we set has come and gone and the deal
+  // is still open. Either it slipped, or it quietly died and nobody closed it.
+  const startDaysAgo = daysSince(i.proposedStartAt ?? null, i.todayIso);
+  if (planning && startDaysAgo != null && startDaysAgo > 0) {
+    out.push({
+      key: "expected_start_passed",
+      title:
+        startDaysAgo >= 180
+          ? "Expected start was over six months ago"
+          : `Expected start was ${startDaysAgo} day${startDaysAgo === 1 ? "" : "s"} ago`,
+      consequence:
+        "It is still open, so either the date moved or the job went away. Push the date out, or close it — a stale one skews every forward view it appears in.",
+      href: `/commercial/opportunities/${i.oppId}?tab=info`,
+      tone: "warn",
+    });
+  }
 
   if (won && !i.hasProject) {
     out.push({

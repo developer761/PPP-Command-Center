@@ -1873,6 +1873,11 @@ export default async function OpportunityDetailPage({
     // yes, and a row that is always on is wallpaper.
     decidedAt: opp.decided_at,
     todayIso: etTodayIso(),
+    // Passed EXPLICITLY, because `undefined` means "the caller did not ask" and
+    // switches the two projection rules off. `?? null` makes the answer a real
+    // "nobody has set one" rather than a silence. Without this line the rules
+    // are dead code on the one page that renders them.
+    proposedStartAt: opp.proposed_start_at?.slice(0, 10) ?? null,
   };
   const attentionItems = attentionFor(attentionInput);
   // The latest revision, so "Mark it approved" can open THAT proposal rather
