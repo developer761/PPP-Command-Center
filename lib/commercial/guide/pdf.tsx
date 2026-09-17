@@ -293,35 +293,44 @@ function SurfaceView({ surface, accent }: { surface: Surface; accent: string }) 
     );
   }
   return (
-    <View style={s.task} minPresenceAhead={130}>
+    <View style={s.task}>
       {/*
         A SECTION STARTS ON A PAGE, OR IT STARTS THE NEXT ONE.
 
-        Katie, 2026-09-17: "Labor Payments in Mary's section begins with a few
-        lines at the bottom of the 7th page and then spills over to the 8th. It
-        would be best if the beginning of a section happens at the beginning of
-        a new page, or in the middle of one — if it would create too much dead
-        space in the doc."
+        Katie, 2026-09-17: "Labor Payments begins with a few lines at the bottom
+        of the 7th page and then spills over to the 8th. It would be best if the
+        beginning of a section happens at the beginning of a new page, or in the
+        middle of one — if it would create too much dead space in the doc."
 
-        `minPresenceAhead` is exactly that rule: unless ~130pt remain — enough
-        for the heading, the path, the purpose and the first two steps — the
-        whole block moves to the next page rather than starting a section four
-        lines from the bottom. Measured rather than guessed: 170pt cost four
-        extra pages of white, which is the dead space she warned about in the
-        same breath; 130 costs one. It is a THRESHOLD, not a forced break, which
-        is the second half of what she asked for: a section that does fit lower
-        down still starts there, so the handbook does not grow a blank half-page
-        between every heading.
+        The first attempt was `minPresenceAhead` on this block, and it did not
+        work: Labor payments still opened four lines from the foot of page 7.
+        The threshold only asks whether SOME space remains, and the heading, the
+        tab strip, the purpose line and step one all fit inside it — which is
+        precisely the sliver Katie was pointing at. Raising the number far
+        enough to stop it cost four pages of white, the dead space she warned
+        about in the same breath.
+
+        So the rule is structural instead of numeric: the OPENING of a section —
+        its heading, path, tab strip, purpose and first three steps — is one
+        unbreakable unit. It cannot be split, so it either fits where it is or
+        it moves to the next page whole. No threshold to tune, and a section
+        that genuinely fits lower down still starts there.
       */}
       <View wrap={false}>
         <Text style={s.taskTitle}>{pdfSafe(surface.name)}</Text>
         <Text style={[s.taskPath, { color: accent }]}>{pdfSafe(surface.path)}</Text>
         {surface.strip && <SketchView sketch={surface.strip} />}
         <Text style={s.purpose}>{pdfSafe(surface.purpose)}</Text>
+        {(surface.steps ?? []).slice(0, 3).map((st, i) => (
+          <View key={i} style={s.step}>
+            <Text style={[s.stepNum, { backgroundColor: accent }]}>{i + 1}</Text>
+            <Text style={s.stepText}>{pdfSafe(st)}</Text>
+          </View>
+        ))}
       </View>
-      {surface.steps?.map((st, i) => (
-        <View key={i} style={s.step} wrap={false}>
-          <Text style={[s.stepNum, { backgroundColor: accent }]}>{i + 1}</Text>
+      {(surface.steps ?? []).slice(3).map((st, i) => (
+        <View key={i + 3} style={s.step} wrap={false}>
+          <Text style={[s.stepNum, { backgroundColor: accent }]}>{i + 4}</Text>
           <Text style={s.stepText}>{pdfSafe(st)}</Text>
         </View>
       ))}
