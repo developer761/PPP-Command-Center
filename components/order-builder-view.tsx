@@ -1051,11 +1051,13 @@ export default function OrderBuilderView({
                             // The fallback is NOT "use default" any more: item 14 removed
                             // the job-level default selector, so that phrase pointed at a
                             // control that no longer exists.
-                            placeholder={
-                              currentDraft?.resolvedMaterialTypeOverrides?.[key]
-                                ? `${currentDraft.resolvedMaterialTypeOverrides[key]} (from the job)`
-                                : "— pick a product —"
-                            }
+                            placeholder={(() => {
+                              // Read through the same fallback the value uses,
+                              // or a pre-split draft loses the "(from the job)"
+                              // hint on a bathroom row while the value shows.
+                              const resolved = readForEstimate(currentDraft?.resolvedMaterialTypeOverrides ?? {}, e);
+                              return resolved ? `${resolved} (from the job)` : "— pick a product —";
+                            })()}
                             compact
                             allowClear
                             availableValues={lineMaterialValues}

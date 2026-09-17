@@ -72,6 +72,10 @@ export const COVERAGE_CONFIG = {
   trimMultiRoomMinRooms: 2,
   // Door FACE area (single-sided), added to trim only when door faces are in scope.
   doorFaceSqft: 20,
+  // The painted area of a window — sash, frame and stops — on an ordinary
+  // double-hung. Deliberately NOT deductWindowSqft (the rough opening, glass
+  // included): borrowing that ordered ~3x the paint a window needs.
+  windowSashSqft: 5,
   // ROOM-TYPE DEFAULTS (Karan 2026-09-08). Two rooms where the geometry lies:
   //
   //   Kitchen  — cabinets, appliances and backsplash cover most of the wall the
@@ -253,6 +257,14 @@ export function isWindowSurface(label: string | null | undefined): boolean {
   return l.includes("window");
 }
 
+/** A label naming BOTH openings ("Doors & Windows") is neither on its own:
+ *  pricing it as doors drops the windows. It takes the trim path, which is the
+ *  larger figure — over-ordering a little beats sending a crew back. */
+export function isCombinedOpeningSurface(label: string | null | undefined): boolean {
+  const l = (label ?? "").toLowerCase();
+  return l.includes("door") && l.includes("window");
+}
+
 /** Katie item 7 — an accent wall anywhere in this color's rooms. */
 export function mentionsAccentWall(text: string | null | undefined): boolean {
   return /accent\s*wall/i.test(text ?? "");
@@ -273,6 +285,19 @@ export function classifyRoomType(label: string | null | undefined): "kitchen" | 
   // its first word.
   const cleaned = s.replace(/bath\s*houses?/g, " ");
   if (/\b(bathrooms?|bathrms?|baths?|powder\s*(rooms?|rms?)|en[\s-]?suites?|wc)\b/.test(cleaned)) {
+    // …but only when the bathroom IS the area. PPP types COMBINED areas —
+    // "Master Bedroom & En suite", "Hall + Bath", "Bedroom w/ ensuite" — and
+    // since the split this decides what is BOUGHT: the whole area would be
+    // broken onto its own line and ordered on a bathroom product.
+    //
+    // It takes a CONJUNCTION to make it combined, not merely another room
+    // word: "Hall bath" and "Master bath" are bathrooms named by where they
+    // are, and treating them as halls and bedrooms would undo the split for
+    // most of the bathrooms PPP has. A dash is not a conjunction either —
+    // "Master Bath - 2nd floor" is one room.
+    const joined = /(\band\b|&|\+|\/|,|\bw\/)/.test(cleaned);
+    const otherRoom = /\b(bed|bedrooms?|living|dining|family|hall|hallway|foyer|entry|basement|attic|office|study|den|closets?|laundry|garage|deck|porch|kitchen)\b/.test(cleaned);
+    if (joined && otherRoom) return null;
     return "bathroom";
   }
   return null;
@@ -373,9 +398,11 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   // linear-foot rate, which turned two doors into a gallon. Katie item 6:
   // "door is a quart."
   const doorFacesSqft = Math.max(1, doors) * cfg.doorFaceSqft * coats;
-  /** Sashes, sized like door faces. `deductWindowSqft` is the opening area the
-   *  wall maths already uses for a window, which is the closest figure we hold. */
-  const windowFacesSqft = Math.max(1, windows) * cfg.deductWindowSqft * coats;
+  /** Sashes and frames. NOT `deductWindowSqft` (15), which is the ROUGH
+   *  OPENING the wall maths removes — glass included — and would have bought
+   *  three times the paint a sash needs. `windowSashSqft` is the painted part
+   *  of an ordinary double-hung. */
+  const windowFacesSqft = Math.max(1, windows) * cfg.windowSashSqft * coats;
 
   return {
     ceiling: ceilingSqft, walls: wallSqft, trim: trimSqft, floor: floorSqft,
@@ -491,8 +518,14 @@ export function estimateOrderGallons(
     // splitting TRIM would both invent a line no bathroom product can carry and
     // defeat Jason's "trim through multiple rooms is a gallon" — a bedroom and
     // a bathroom sharing one trim color would become two quarts.
+    // Trim is excluded (a bathroom product is not a trim product) but an
+    // UNSIZED surface — a vanity's Cabinets, an Accent Wall, Shelves — must
+    // follow the room, or it forms a second line in the same color that the
+    // vendor reads as a duplicate, and that phantom line then claims the
+    // pre-split key the real bathroom line needs.
     const isBathroom =
-      classifyRoomType(roomLabel) === "bathroom" && (s.kind === "walls" || s.kind === "ceiling");
+      classifyRoomType(roomLabel) === "bathroom" &&
+      (s.kind === "walls" || s.kind === "ceiling" || s.kind === "unsized");
     const key = quantityKey(s.colorId, s.finish, isBathroom);
     let b = buckets.get(key);
     if (!b) {
@@ -529,7 +562,10 @@ export function estimateOrderGallons(
       // Windows join doors here: both are priced from their own area, so a
       // window-only line must take the quart path rather than the trim floor
       // meant for baseboard through a house.
-      if (!isDoorSurface(s.surfaceLabel) && !isWindowSurface(s.surfaceLabel)) b.doorsOnly = false;
+      if (
+        isCombinedOpeningSurface(s.surfaceLabel) ||
+        (!isDoorSurface(s.surfaceLabel) && !isWindowSurface(s.surfaceLabel))
+      ) b.doorsOnly = false;
       // Accent detection is per ROOM, not per color. An accent wall is its own
       // color, so checking only this bucket's own surfaces flagged the accent
       // line and left the WALLS line — the quantity actually thrown off, since
@@ -557,7 +593,9 @@ export function estimateOrderGallons(
         case "trim":
           // "Door", "Doors", "Front door" — the door, not the casing around it.
           // isDoorSurface already excludes casing/jamb/frame, which stay trim.
-          if (isDoorSurface(s.surfaceLabel)) {
+          if (isCombinedOpeningSurface(s.surfaceLabel)) {
+            sqft = cov.trim; missing = cov.trimMissing;
+          } else if (isDoorSurface(s.surfaceLabel)) {
             sqft = cov.doorFaces;
             // A door count is real data or a default. `false` here claimed
             // every door line was measured, including rooms with no data at
@@ -618,6 +656,12 @@ export function estimateOrderGallons(
       // so a color that paints both is sized on its real area.
       const wallsOnly = b.kinds.size === 1 && b.kinds.has("walls");
       const ceilingOnly = b.kinds.size === 1 && b.kinds.has("ceiling");
+      // A bathroom painted one color top to bottom satisfied NEITHER, so
+      // Katie's bathroom rule quietly did not apply to the commonest bathroom
+      // there is: 5x8 in one color came out a gallon, the same 5x8 split
+      // across two colors came out a gallon AND a quart.
+      const wallsAndCeilingOnly =
+        b.kinds.size === 2 && b.kinds.has("walls") && b.kinds.has("ceiling");
 
       // A shared kitchen contributes half its wall area (Katie 2026-09-08),
       // rather than the all-or-nothing cap that applied before.
@@ -637,24 +681,26 @@ export function estimateOrderGallons(
         unit = "gal";
         defaultedNote = `Kitchen — defaulted to ${cfg.kitchenDefaultGallons} gal because cabinets cover most of the wall. Please review.`;
       } else if (onlyType === "bathroom" && ceilingOnly) {
-        bucketsCount = 0;
-        // A FLOOR, not a cap. This branch used to replace the computed size
-        // outright, which was harmless while it only fired on a color used in
-        // bathrooms and nowhere else. The 2026-09-17 split guarantees exactly
-        // that shape for every bathroom, so an unconditional 1 qt would have
-        // capped a big bathroom ceiling at a quart.
-        // Compared in QUARTS. `cans === 0` only escaped above a full gallon,
-        // so every bathroom ceiling between a quarter and a whole gallon — a
-        // 12x15 bath, or three bathrooms' ceilings now merged onto one line —
-        // was still replaced by a single quart.
+        // A FLOOR, not a cap — but a TOTAL one. This arm is an `else if` in a
+        // chain, so anything it leaves unset falls out of the chain entirely
+        // rather than reaching the generic under-a-gallon rule below. Guarding
+        // it on quarts without answering the other side left a dead band
+        // (a 12x15 bath ceiling, or two small ones on one line) at ZERO —
+        // "⚠️ set qty" on the screen and "TBD" to the vendor, on a room that
+        // is measured. Every path out of here now sets a quantity.
         const quarts = Math.floor(rawGallons * cfg.quartsPerGallon);
+        bucketsCount = 0;
         if (quarts <= cfg.bathroomCeilingQuarts) {
-          bucketsCount = 0;
           cans = cfg.bathroomCeilingQuarts;
           unit = "qt";
           defaultedNote = `Bathroom ceiling — defaulted to ${cfg.bathroomCeilingQuarts} qt. Please review.`;
+        } else if (cans === 0) {
+          // Under a gallon but above the floor: price it honestly, with the
+          // same three-quarts-is-a-gallon rule every other line gets.
+          if (quarts >= cfg.quartsBecomeGallonAt) { cans = 1; unit = "gal"; }
+          else { cans = quarts; unit = "qt"; }
         }
-      } else if (onlyType === "bathroom" && wallsOnly) {
+      } else if (onlyType === "bathroom" && (wallsOnly || wallsAndCeilingOnly)) {
         // WALLS only. Katie named walls and ceilings; a catch-all here also
         // swept up bathroom TRIM and ordered a gallon of it, which is absurd
         // for a few feet of casing — trim falls through to the quart path below.
@@ -961,12 +1007,14 @@ export function addCustomItemsToTotal(
     else if (unit === "bucket") gallons += qty * GALLONS_PER_BUCKET;
     else if (unit === "gal") gallons += qty;
   }
-  // Re-package the gallon side so added cans roll up into buckets the same way
-  // an estimate would ("6 gal" reads as "1 bucket + 1 gal", not "6 gal").
-  const totalGallonUnits = total.buckets * 5 + total.cans + gallons;
+  // NOT re-packaged. Karan 2026-09-09: nothing rolls up into buckets on its
+  // own — `packageGallons` and `packageForUnit` were both changed for that and
+  // this one was missed, so the rows read "6 gal" while the total underneath
+  // them read "1 bucket (x5 gal) + 1 gal" for the same order.
+  const totalGallonUnits = total.buckets * GALLONS_PER_BUCKET + total.cans + gallons;
   return {
-    buckets: Math.floor(totalGallonUnits / 5),
-    cans: totalGallonUnits % 5,
+    buckets: 0,
+    cans: totalGallonUnits,
     quarts,
     sizedColors: total.sizedColors,
     reviewColors: total.reviewColors,

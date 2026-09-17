@@ -43,6 +43,7 @@ export const MAX_COVERAGE_VALUES: Record<string, number> = {
   trimLfPerGallon: 1000,            // realistic 80-150.
   trimMultiRoomMinRooms: 20,
   doorFaceSqft: 200,
+  windowSashSqft: 200,
   bucketSizeGallons: 100,
   bucketThresholdGallons: 100,
 };

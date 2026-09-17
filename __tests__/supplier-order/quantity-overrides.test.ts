@@ -192,9 +192,13 @@ describe("normalizeBuildPayload (#18)", () => {
 describe("addCustomItemsToTotal (#28)", () => {
   const base = { buckets: 0, cans: 0, quarts: 0, sizedColors: 0, reviewColors: 0 };
 
-  it("adds gallon items and re-packages into buckets", () => {
-    // 6 gallons reads as "1 bucket + 1 gal", not "6 gal".
-    expect(addCustomItemsToTotal(base, [{ qty: 6, unit: "gal" }])).toMatchObject({ buckets: 1, cans: 1 });
+  it("adds gallon items WITHOUT rolling them into buckets", () => {
+    // REVERSES "6 gallons reads as 1 bucket + 1 gal". Karan 2026-09-09:
+    // nothing rolls up into buckets on its own. packageGallons and
+    // packageForUnit were both changed for that and this was missed, so the
+    // rows read "6 gal" while the total under them read "1 bucket + 1 gal"
+    // for the same order.
+    expect(addCustomItemsToTotal(base, [{ qty: 6, unit: "gal" }])).toMatchObject({ buckets: 0, cans: 6 });
   });
 
   it("adds quarts to the quart total, never to gallons", () => {
@@ -203,8 +207,10 @@ describe("addCustomItemsToTotal (#28)", () => {
   });
 
   it("combines with the estimate total rather than replacing it", () => {
+    // A stored bucket still counts as its five gallons; it just isn't
+    // re-formed into one. 1 bucket + 2 cans + 2 = 9 gal.
     const withEstimate = { ...base, buckets: 1, cans: 2 };
-    expect(addCustomItemsToTotal(withEstimate, [{ qty: 2, unit: "gal" }])).toMatchObject({ buckets: 1, cans: 4 });
+    expect(addCustomItemsToTotal(withEstimate, [{ qty: 2, unit: "gal" }])).toMatchObject({ buckets: 0, cans: 9 });
   });
 
   it("ignores a unit it can't sum rather than miscounting it as gallons", () => {

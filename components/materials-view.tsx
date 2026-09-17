@@ -73,6 +73,7 @@ import {
   estimateOrderGallons,
   summarizeOrder,
   formatBucketsCans,
+  formatOrderTotal,
   classifySurface,
   COVERAGE_CONFIG,
   type CoverageConfig,
@@ -1809,7 +1810,11 @@ function JobDetailImpl({
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10" />
               </svg>
-              <span className="font-semibold">~{formatBucketsCans(paintEstimate.buckets, paintEstimate.cans)}</span>
+              {/* formatOrderTotal, not formatBucketsCans: the latter drops
+                  QUARTS entirely, so an all-quart job — a bathroom, a door
+                  color, a window sash line — read "~—" here, which looks like
+                  no paint at all. */}
+              <span className="font-semibold">~{formatOrderTotal(paintEstimate)}</span>
               <span className="text-ppp-charcoal-500">est.{paintEstimate.reviewColors > 0 ? ` · ${paintEstimate.reviewColors} to confirm` : ""}</span>
             </div>
           )}

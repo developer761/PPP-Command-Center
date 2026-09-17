@@ -60,7 +60,11 @@ describe("the order screen shows them", () => {
     // now lives: each picker's placeholder names the line the builder resolved
     // for that color, so the screen still cannot show an empty box over an
     // email that carries an answer.
-    expect(V).toMatch(/currentDraft\?\.resolvedMaterialTypeOverrides\?\.\[key\]/);
+    // The exact spelling of that read changed on 2026-09-17 (it goes through
+    // readForEstimate now, so a pre-split draft's bathroom row keeps the hint).
+    // Assert that the screen reads the RESOLVED map and labels it, not the
+    // characters it uses to do so.
+    expect(V).toMatch(/readForEstimate\(currentDraft\?\.resolvedMaterialTypeOverrides/);
     expect(V).toMatch(/\(from the job\)/);
   });
 
@@ -71,13 +75,13 @@ describe("the order screen shows them", () => {
     // its exterior line, against the colors it applies to rather than as a
     // job-wide footnote.
     expect(B).toMatch(/derivedMaterialTypeOverrides\.set\(key, exteriorLine\)/);
-    expect(V).toMatch(/currentDraft\?\.resolvedMaterialTypeOverrides\?\.\[key\]/);
+    expect(V).toMatch(/readForEstimate\(currentDraft\?\.resolvedMaterialTypeOverrides/);
   });
 
   it("names a derived per-color line rather than calling it the default", () => {
     // "— use default —" was wrong twice: it isn't the default, and it hid that
     // the email had an answer the screen didn't.
-    expect(V).toMatch(/resolvedMaterialTypeOverrides\?\.\[key\]/);
+    expect(V).toMatch(/resolvedMaterialTypeOverrides/);
     expect(V).toMatch(/\(from the job\)/);
   });
 });

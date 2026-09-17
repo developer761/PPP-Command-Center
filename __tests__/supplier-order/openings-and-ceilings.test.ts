@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { formatOrderSummaryBlock } from "@/lib/supplier-order/builder";
 import {
   estimateOrderGallons,
   formatOrderQuantity,
@@ -28,13 +29,51 @@ function room(label: string, w: number, l: number, over: Partial<RoomTakeoff> = 
 
 describe("a bathroom ceiling is not always a quart", () => {
   it("a big one is sized honestly", () => {
-    // The guard escaped only ABOVE a gallon, so everything from a quarter to a
-    // whole gallon — a 12x15 bath, or three bathroom ceilings now on one line
-    // — was replaced by a single quart.
+    // This assertion USED to be `expect(e.unit ?? "gal").not.toBe("qt")`,
+    // which passed on the bug it was written for: the line was never sized at
+    // all, so `unit` was undefined and the `?? "gal"` made it green while the
+    // vendor was being emailed "TBD". Assert the artifact instead.
     const [e] = estimateOrderGallons([
       room("Bathroom", 12, 15, { surfaces: [surf("Ceiling", "ceil-white", "ceiling")] }),
     ]);
-    expect(e.unit ?? "gal").not.toBe("qt");
+    expect(e.cans).toBeGreaterThan(0);
+    expect(formatOrderQuantity(e)).not.toMatch(/from stock/);
+    expect(formatOrderSummaryBlock([e], "Regal Select")).not.toContain("TBD");
+  });
+
+  it("every size from a tiny powder room to a huge bath orders SOMETHING", () => {
+    // The dead band was 114-227 sq ft of ceiling — measured rooms, emailed as
+    // "TBD". Walk the whole range rather than the one size somebody picked.
+    for (let side = 4; side <= 24; side++) {
+      const [e] = estimateOrderGallons([
+        room("Bathroom", side, side, { surfaces: [surf("Ceiling", "ceil-white", "ceiling")] }),
+      ]);
+      const printed = formatOrderQuantity(e);
+      expect(e.cans + e.buckets, `${side}x${side} ordered nothing`).toBeGreaterThan(0);
+      expect(printed, `${side}x${side}`).not.toMatch(/from stock|TBD/);
+    }
+  });
+
+  it("a bathroom painted one color top to bottom still gets the rule", () => {
+    // kinds = {walls, ceiling} satisfied neither wallsOnly nor ceilingOnly, so
+    // Katie's bathroom rule quietly skipped the commonest bathroom there is.
+    const [e] = estimateOrderGallons([
+      room("Bathroom", 5, 8, {
+        surfaces: [surf("Walls", "one-white", "walls"), surf("Ceiling", "one-white", "ceiling")],
+      }),
+    ]);
+    expect(formatOrderQuantity(e)).toBe("1 gal");
+  });
+
+  it("a bathroom's cabinets do not become a second line in the same color", () => {
+    // An unsized surface stayed in the plain bucket, so the vendor got the
+    // bathroom's line AND a second "TBD" line in the same color.
+    const out = estimateOrderGallons([
+      room("Bathroom", 5, 8, {
+        surfaces: [surf("Walls", "one-white", "walls"), surf("Cabinets", "one-white", "unsized")],
+      }),
+    ]);
+    expect(out).toHaveLength(1);
   });
 
   it("three bathrooms' ceilings in one color are not one quart between them", () => {
@@ -69,6 +108,17 @@ describe("doors and windows are priced as themselves", () => {
     // The quart rule capped every door line at 1 gal, whatever the count.
     const out = estimateOrderGallons(["A","B","C","D","E","F","G","H","I","J"].map(doorRoom));
     expect(out[0].gallons).toBeGreaterThan(1);
+  });
+
+  it("a window is sized as a sash, not as the hole in the wall", () => {
+    // deductWindowSqft (15) is the ROUGH OPENING the wall maths removes, glass
+    // included. Borrowing it bought about three times the paint a sash needs.
+    const twenty = estimateOrderGallons(
+      Array.from({ length: 20 }, (_, i) =>
+        room(`R${i}`, 10, 12, { windows: 2, surfaces: [surf("Window", "sash-white")] })
+      )
+    )[0];
+    expect(twenty.totalSqft).toBeLessThan(20 * 2 * 15 * 1.5);
   });
 
   it("a window-only color is not charged for the room's baseboard", () => {
@@ -122,8 +172,16 @@ describe("doors and windows are priced as themselves", () => {
 
 describe("the room labels PPP actually types", () => {
   it("shortened bathrooms still count", () => {
-    for (const label of ["En suite", "Powder Rm", "Bathrm", "Half bath", "Bath 2", "WC"]) {
+    for (const label of ["En suite", "Powder Rm", "Bathrm", "Half bath", "Bath 2", "WC",
+                         "Hall bath", "Master Bath - 2nd floor"]) {
       expect(classifyRoomType(label)).toBe("bathroom");
+    }
+  });
+
+  it("a COMBINED area is not a bathroom — it would order the bedroom on bath paint", () => {
+    for (const label of ["Master Bedroom & En suite", "Bedroom w/ ensuite", "Hall + Bath",
+                         "Powder rm + foyer", "Living Room and bath"]) {
+      expect(classifyRoomType(label), label).not.toBe("bathroom");
     }
   });
 });

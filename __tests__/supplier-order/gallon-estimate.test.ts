@@ -328,9 +328,11 @@ describe("buckets on custom color lines", () => {
   it("a bucket counts as five gallons in the order total", () => {
     const base = { buckets: 0, cans: 0, quarts: 0, sizedColors: 0, reviewColors: 0 };
     const t = addCustomItemsToTotal(base, [{ qty: 2, unit: "bucket" }]);
-    // 2 pails = 10 gallons = 2 buckets + 0 cans
-    expect(t.buckets).toBe(2);
-    expect(t.cans).toBe(0);
+    // 2 pails = 10 gallons. Counted in full, and NOT re-formed into buckets —
+    // the rows do not roll up either, and a total that does disagrees with
+    // them (2026-09-17).
+    expect(t.buckets).toBe(0);
+    expect(t.cans).toBe(10);
   });
 
   it("mixes with gallons and quarts without losing either", () => {
