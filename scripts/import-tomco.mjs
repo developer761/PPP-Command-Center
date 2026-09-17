@@ -89,6 +89,25 @@ const SF_WINS = args.includes("--salesforce-wins");
  * through. Run this ONCE after everything is in agreement, and at cutover.
  */
 const REBASELINE = args.includes("--rebaseline");
+/**
+ * Action the Salesforce deletions the reconcile keeps reporting.
+ *
+ * A pull-based import cannot notice a row that is simply no longer there, so a
+ * transaction Tomco entered and then deleted in Salesforce sits on our books for
+ * ever, showing up as us reporting MORE cost than Salesforce. The reconcile
+ * lists them and deliberately does not remove them — a Salesforce query that
+ * failed or came back short looks exactly like a deletion, and quietly deleting
+ * cost records on that basis is not a trade worth making.
+ *
+ * This is the deliberate second step. SOFT delete only (`deleted_at`), which is
+ * what the reconcile already recognises as actioned, and what makes it
+ * reversible: the row stays in the table and can be restored by clearing one
+ * column. Every removal is backed up to scripts/.sf-deletions-backup.json first.
+ *
+ *   node --env-file=.env.local scripts/import-tomco.mjs --action-deletions            # show
+ *   node --env-file=.env.local scripts/import-tomco.mjs --action-deletions --commit   # apply
+ */
+const ACTION_DELETIONS = args.includes("--action-deletions");
 const stageArg = (args.find((a) => a.startsWith("--stage=")) ?? "--stage=all").split("=")[1];
 const wanted = stageArg === "all" ? STAGES : stageArg.split(",");
 
@@ -192,6 +211,11 @@ async function loadMap() {
   console.log(`import map: ${MAP.size} row(s) already imported`);
 }
 const mapped = (entity, sfId) => MAP.get(`${entity}:${sfId}`) ?? null;
+
+/** Cents as money. Module scope because both --reconcile and
+ *  --action-deletions print figures, and a second copy is a second chance to
+ *  format two numbers differently in the same run. */
+const money = (c) => `$${((c ?? 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
 async function remember(entity, sfId, rowId, notes, wroteAt) {
   MAP.set(`${entity}:${sfId}`, rowId);
@@ -1338,7 +1362,6 @@ async function readAll(table, columns, shape = (q) => q) {
 
 async function reconcile() {
   const problems = [];
-  const money = (c) => `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
   let sfContract = 0, sfBalance = 0, sfPaid = 0, ourContract = 0, ourBalance = 0, ourPaid = 0;
   for (const w of SF.wos) {
@@ -1673,6 +1696,89 @@ ${COMMIT ? "Re-baselined" : "Would re-baseline"} ${total} row(s)${skipped ? ` ·
   if (!COMMIT) console.log("Dry run. Re-run with --commit to write.");
 }
 
+/**
+ * Soft-delete the imported rows that no longer exist in Salesforce.
+ *
+ * Deliberately a separate command from `--reconcile`, which only ever reports
+ * them: see the note on ACTION_DELETIONS. Only PURCHASES are actioned — a
+ * payment that vanished changes what a customer has paid, and that is a
+ * conversation with Mary, not a script.
+ */
+async function actionDeletions() {
+  const liveTx = new Set(SF.tx.map((t) => t.Id));
+  const candidates = [];
+  for (const [key, rowId] of MAP) {
+    const i = key.indexOf(":");
+    const [entity, sfId] = [key.slice(0, i), key.slice(i + 1)];
+    if (entity !== "purchase" && entity !== "payment") continue;
+    if (!liveTx.has(sfId)) candidates.push({ entity, sfId, rowId });
+  }
+
+  const payments = candidates.filter((c) => c.entity === "payment");
+  const purchaseIds = candidates.filter((c) => c.entity === "purchase").map((c) => c.rowId);
+  if (purchaseIds.length === 0 && payments.length === 0) {
+    console.log("\n✅ nothing to action — every imported row still exists in Salesforce.");
+    return;
+  }
+
+  const { data: rows } = await sb
+    .from("commercial_project_purchases")
+    .select("id, category, vendor, amount_cents, purchased_at, description, opportunity_id, deleted_at")
+    .in("id", purchaseIds.length ? purchaseIds : ["00000000-0000-0000-0000-000000000000"]);
+  const live = (rows ?? []).filter((r) => !r.deleted_at);
+  const already = (rows ?? []).length - live.length;
+
+  console.log(`\nSalesforce deletions${COMMIT ? "" : "   (DRY RUN)"}`);
+  if (already) console.log(`  already actioned : ${already}`);
+  console.log(`  to remove        : ${live.length}`);
+  let total = 0;
+  for (const r of live) {
+    total += r.amount_cents ?? 0;
+    console.log(
+      `     ${String(r.category).padEnd(10)} ${money(r.amount_cents).padStart(12)}  ${String(r.purchased_at).slice(0, 10)}  ${r.vendor ?? "?"}  ${r.description ?? ""}`
+    );
+  }
+  if (live.length) console.log(`     ${"".padEnd(10)} ${money(total).padStart(12)}  total`);
+  if (payments.length) {
+    console.log(`\n  ⚠️  ${payments.length} PAYMENT(s) are also missing from Salesforce and are NOT touched here.`);
+    console.log(`     A payment that vanished changes what a customer has paid — check with Mary first.`);
+    for (const p of payments.slice(0, 10)) console.log(`     payment ${p.sfId}`);
+  }
+
+  if (live.length === 0) return;
+  if (!COMMIT) {
+    console.log("\nRe-run with --commit to remove them.");
+    return;
+  }
+
+  // Back up BEFORE removing. A soft delete is reversible by clearing one
+  // column, but only if you still know which rows they were.
+  const { writeFileSync } = await import("node:fs");
+  writeFileSync("scripts/.sf-deletions-backup.json", JSON.stringify(live, null, 2));
+  console.log(`\n  backed up ${live.length} row(s) to scripts/.sf-deletions-backup.json`);
+
+  const stamp = new Date().toISOString();
+  const { error } = await sb
+    .from("commercial_project_purchases")
+    .update({ deleted_at: stamp })
+    .in("id", live.map((r) => r.id));
+  if (error) throw new Error(`soft delete: ${error.message}`);
+
+  // Read it back — the point is the state of the ledger, not the success of an
+  // update call.
+  const { data: after } = await sb
+    .from("commercial_project_purchases")
+    .select("id, deleted_at")
+    .in("id", live.map((r) => r.id));
+  const stillLive = (after ?? []).filter((r) => !r.deleted_at);
+  if (stillLive.length) {
+    console.log(`❌ ${stillLive.length} row(s) did not take the delete`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`✅ ${live.length} row(s) removed (${money(total)}). Re-run --reconcile to confirm the totals agree.`);
+}
+
 // ─── go ─────────────────────────────────────────────────────────────────────
 
 const conn = await salesforce();
@@ -1682,7 +1788,9 @@ await loadSalesforce(conn);
 console.log(`Salesforce: ${SF.opps.length} opportunities · ${SF.wos.length} work orders · ${SF.tx.length} transactions · ${SF.attendance.length} attendance rows`);
 console.log(COMMIT ? "MODE: COMMIT — writing to Supabase" : RECONCILE ? "MODE: reconcile only" : "MODE: dry run — nothing will be written");
 
-if (REBASELINE) {
+if (ACTION_DELETIONS) {
+  await actionDeletions();
+} else if (REBASELINE) {
   await rebaseline();
 } else if (RECONCILE) {
   await reconcile();
