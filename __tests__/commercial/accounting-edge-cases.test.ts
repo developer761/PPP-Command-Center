@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { summarizeReceivables, type ReceivableRow } from "@/lib/commercial/reports/receivables";
+import { receivableVerdict, summarizeReceivables, type ReceivableRow } from "@/lib/commercial/reports/receivables";
 import { receivablesCsv } from "@/lib/commercial/reports/receivables-export";
 import { summarizeTransactions, monthLabel, type TxnRow } from "@/lib/commercial/reports/transactions";
 import { transactionsCsv } from "@/lib/commercial/reports/transactions-export";
@@ -113,6 +113,45 @@ describe("day one — nothing in the database", () => {
     expect(html).toContain("$0.00");
     expect(html).not.toContain("NaN");
     expect(text).not.toContain("NaN");
+  });
+});
+
+// ───────────────────── what is owed is what is owed ─────────────────────
+
+describe("uninvoiced work still counts as owed", () => {
+  it("the RULE puts a draft on the list, flagged, and a void nowhere", () => {
+    // The decision itself, not the summary of rows somebody already built —
+    // the bug lived in the building, where the old tests could not reach it.
+    expect(receivableVerdict("draft")).toBe("uninvoiced");
+    expect(receivableVerdict("void")).toBe("skip");
+    for (const s of ["sent", "viewed", "partial", "overdue", "paid"] as const) {
+      expect(receivableVerdict(s)).toBe("invoice");
+    }
+  });
+
+  it("a draft invoice with a balance is in the total", () => {
+    /**
+     * Karan 2026-09-17: "if it's 1.35 million in Salesforce then it should be
+     * the same on ours." It was not. Correcting the invented invoices put 19
+     * back to draft, and the receivables builder skipped drafts outright — so
+     * the platform said $858,070.33 owed while Salesforce said $1,356,856.58.
+     * The money had not moved; it had fallen out of the one list that adds it
+     * up. Salesforce's balance is a work-order figure and does not care whether
+     * a document was raised.
+     */
+    const rows = [
+      receivable({ key: "invoice:1", kind: "invoice", openCents: 100_00, daysOut: 10 }),
+      receivable({ key: "invoice:2", kind: "uninvoiced", openCents: 400_00, daysOut: null }),
+    ];
+    const r = summarizeReceivables(rows);
+    expect(r.totalOpenCents).toBe(500_00);
+  });
+
+  it("but it is never late — there is nothing to be late against", () => {
+    const rows = [receivable({ key: "invoice:2", kind: "uninvoiced", openCents: 400_00, daysOut: null })];
+    const r = summarizeReceivables(rows);
+    expect(r.overdueCents).toBe(0);
+    expect(r.totalOpenCents).toBe(400_00);
   });
 });
 

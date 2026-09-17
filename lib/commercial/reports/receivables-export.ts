@@ -22,6 +22,7 @@ const KIND_LABEL: Record<ReceivableRow["kind"], string> = {
   invoice: "Invoice",
   aia: "AIA",
   retainage: "Retention",
+  uninvoiced: "Not invoiced",
 };
 
 /** How late, in the words the page uses. Retention is never "late". */

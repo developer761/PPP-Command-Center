@@ -57,6 +57,7 @@ const KIND_LABEL: Record<ReceivableRow["kind"], string> = {
   invoice: "Invoice",
   aia: "AIA",
   retainage: "Retention",
+  uninvoiced: "Not invoiced",
 };
 
 function ageCell(r: ReceivableRow): string {

@@ -2,7 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus, DEFAULT_DUE_DAYS } from "@/lib/commercial/invoices/constants";
+import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
 import { aiaDueAtFrom, aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
@@ -32,7 +32,23 @@ import { safeNowMs } from "@/lib/commercial/now";
  * (see aiaBilledCollectedFrom for why that distinction is load-bearing).
  */
 
-export type ReceivableKind = "invoice" | "aia" | "retainage";
+/**
+ * "uninvoiced" — work that is won and owed, with no invoice raised against it.
+ *
+ * Karan 2026-09-17: "if it's 1.35 million in Salesforce then it should be the
+ * same on ours." It was not. The migration had invented an invoice per work
+ * order; correcting that put 19 of them back to draft, and drafts were skipped
+ * here — so the platform said $858,070.33 owed while Salesforce said
+ * $1,356,856.58. The money had not gone anywhere; it had fallen out of the
+ * ONE list that adds it up.
+ *
+ * Salesforce's own balance is a work-order figure and does not care whether a
+ * document was raised, which is exactly what Katie says the Balance Owed report
+ * means. So these rows carry their money like any other, and say plainly that
+ * no invoice exists yet. They never age and are never chased — there is nothing
+ * to chase with until somebody bills it.
+ */
+export type ReceivableKind = "invoice" | "aia" | "retainage" | "uninvoiced";
 
 export type ReceivableRow = {
   kind: ReceivableKind;
@@ -66,6 +82,27 @@ export type ReceivableRow = {
    *  two different places on purpose. Null when there's no deal to open. */
   billingHref: string | null;
 };
+
+/**
+ * Does this invoice belong on the chase list, and as what?
+ *
+ * Pure and exported ON PURPOSE. The rule used to be two words inline —
+ * `if (status === "draft" || status === "void") continue` — and when the draft
+ * half turned out to be wrong, the unit tests could not see it: they exercise
+ * `summarizeReceivables`, which takes rows that have already been built. The
+ * bug lived in the building. A test that cannot reach the decision it is
+ * meant to protect is a test that reports green through the outage.
+ *
+ *   void        — money nobody owes. Not on the list.
+ *   draft       — money somebody owes that has not been billed. On the list,
+ *                 flagged, and never aged: there is nothing to be late against.
+ *   everything else — a raised invoice, chased normally.
+ */
+export function receivableVerdict(status: InvoiceStatus): "skip" | "uninvoiced" | "invoice" {
+  if (status === "void") return "skip";
+  if (status === "draft") return "uninvoiced";
+  return "invoice";
+}
 
 export type ReceivableFilters = {
   /** Billed/issued on or after this ET date. */
@@ -188,8 +225,9 @@ export async function getReceivablesReport(
 
   // ── Invoices ────────────────────────────────────────────────────────────
   for (const inv of invoices) {
-    const status = deriveInvoiceStatus(inv);
-    if (status === "draft" || status === "void") continue;
+    const verdict = receivableVerdict(deriveInvoiceStatus(inv));
+    if (verdict === "skip") continue;
+    const uninvoiced = verdict === "uninvoiced";
     const open = Math.max(0, inv.balance_cents);
     if (open <= 0) continue;
     // An invoice on a deal that was deleted (or whose account was) is gone from
@@ -198,7 +236,7 @@ export async function getReceivablesReport(
     const { job, accountId, account } = jobNameFor(inv.opportunity_id);
     const issued = inv.issued_at ?? null;
     rows.push({
-      kind: "invoice",
+      kind: uninvoiced ? "uninvoiced" : "invoice",
       key: `invoice:${inv.id}`,
       sourceId: inv.id,
       accountId,
@@ -206,12 +244,13 @@ export async function getReceivablesReport(
       opportunityId: inv.opportunity_id ?? null,
       jobName: job,
       openCents: open,
-      reference: [inv.invoice_number, issued ? `sent ${fmtRefDate(issued)}` : null]
-        .filter(Boolean)
-        .join(" · "),
+      reference: uninvoiced
+        ? "Won, not invoiced"
+        : [inv.invoice_number, issued ? `sent ${fmtRefDate(issued)}` : null].filter(Boolean).join(" · "),
       note: inv.notes?.trim() || null,
       issuedIso: issued,
-      daysOut: inv.due_at ? daysPastDue(inv.due_at, nowMs) : null,
+      // Nothing that has not been billed can be late.
+      daysOut: uninvoiced || !inv.due_at ? null : daysPastDue(inv.due_at, nowMs),
       href: `/commercial/invoices/${inv.id}`,
       billingHref: inv.opportunity_id
         ? `/commercial/opportunities/${inv.opportunity_id}?tab=invoices`

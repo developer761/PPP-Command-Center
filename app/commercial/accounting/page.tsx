@@ -45,6 +45,7 @@ import {
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
+import type { ReceivableKind } from "@/lib/commercial/reports/receivables";
 import { joinOtherDetail } from "@/lib/commercial/forms/other-detail";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
@@ -132,11 +133,23 @@ const toneText: Record<Tone, string> = {
   neutral: "text-ppp-charcoal",
 };
 
-const KIND_META: Record<string, { label: string; cls: string }> = {
+/**
+ * Typed to the KIND UNION, not Record<string, …>.
+ *
+ * It was the loose version, and adding a fourth receivable kind took the whole
+ * Overview down: `KIND_META["uninvoiced"]` was undefined, `.cls` threw
+ * mid-stream, and the page returned 200 with the shell and no content. Three
+ * other copies of this map were caught by the compiler in the same edit
+ * because they are typed to the union; this one was invisible.
+ */
+const KIND_META: Record<ReceivableKind, { label: string; cls: string }> = {
   invoice: { label: "Invoice", cls: "bg-ppp-blue-50 text-ppp-blue-800 border-ppp-blue-200" },
   aia: { label: "AIA", cls: "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200" },
   // Grey, never red: retention isn't late, it's held to close-out.
   retainage: { label: "Retention", cls: "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200" },
+  // Amber: owed, but nobody has billed for it. The job is to raise an invoice,
+  // not to chase somebody who has been sent nothing.
+  uninvoiced: { label: "Not invoiced", cls: "bg-amber-50 text-amber-800 border-amber-200" },
 };
 
 /** Admin + account manager. Rep-facing surfaces never show cost or margin. */
