@@ -1715,24 +1715,45 @@ export default async function OpportunityDetailPage({
   // `?back=` becomes an href, so it must never accept an arbitrary URL.
   const cameFrom = resolveToolBack(sp.back);
   const isDeletedDeal = !!opp.deleted_at;
-  const account = await getCommercialAccount(opp.account_id);
+
+  /**
+   * FOUR READS THAT DO NOT NEED EACH OTHER, RUN AS ONE.
+   *
+   * Karan 2026-09-17: "the buttons take like 5 seconds to load and it's
+   * annoying." This is a large part of where that goes. These were four
+   * sequential round trips — the account, the signed-in user, the proposal
+   * total, the proposal list — each waiting on the one before it for no reason
+   * other than the order they were written in. Measured on live data the
+   * loaders on this page run 106–436ms apiece, so a chain of four is most of a
+   * second, on every open of the page AND on every server action, because each
+   * action ends in a revalidate that renders it again.
+   *
+   * Only `opp` is a genuine dependency (its `account_id`), and it has already
+   * been awaited above.
+   *
+   * `canViewReport` stays sequential: it needs the user this block fetches.
+   * It is memoised per request, so it is one call however many times it is
+   * asked.
+   */
+  const [account, pageViewerRes, proposalTotals, dealProposals] = await Promise.all([
+    getCommercialAccount(opp.account_id),
+    createClient().then((c) => c.auth.getUser()),
+    listCurrentProposalTotalByOpp([opp.id]),
+    listProposalsForOpp(opp.id),
+  ]);
   // The Jobs report's per-job page is this deal, read-only, on one printable
   // sheet — the thing people ask for when they want to send "everything about
   // this job" somewhere. Offered only when the viewer can actually open it:
   // reports are shared through folders, and a button that bounces you to a
   // "you don't have access" page is worse than no button. Memoised per request.
-  const pageViewer = (await (await createClient()).auth.getUser()).data.user;
+  const pageViewer = pageViewerRes.data.user;
   const canSeeJobReport = pageViewer
     ? await canViewReport(pageViewer.id, pageViewer.email, "jobs").catch(() => false)
     : false;
   // Bid low/high is gone from the create forms (2026-08); pricing lives on the
   // proposal now. Supply the current proposal total so a bid-less deal's
   // Weighted tile matches the dashboard instead of reading $0.
-  const pageProposalTotal = (
-    await listCurrentProposalTotalByOpp([opp.id])
-  ).get(opp.id);
-  // Every revision, for the Proposals tab (step 3). Cheap — one deal's worth.
-  const dealProposals = await listProposalsForOpp(opp.id);
+  const pageProposalTotal = proposalTotals.get(opp.id);
 
   // ── Status path, attention and stage KPIs (steps 4–5) ────────────────────
   // Reads first, so everything below is derived from ONE set of numbers.
@@ -3977,13 +3998,18 @@ async function OpportunityInvoicesPanel({
                 >
                   Cancel
                 </Link>
-                <button
-                  type="submit"
+                {/* Lives OUTSIDE its form and reaches it by id, so
+                    `useFormStatus` cannot see it — SubmitButton's `form` prop
+                    is the case built for exactly this and tracks the click
+                    locally instead. Without it, "Save details" showed nothing
+                    at all for the whole round trip. */}
+                <SubmitButton
                   form="invoice-edit-sheet-form"
+                  pendingLabel="Saving…"
                   className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
                 >
                   Save details
-                </button>
+                </SubmitButton>
               </footer>
             </FocusTrapAside>
           </div>

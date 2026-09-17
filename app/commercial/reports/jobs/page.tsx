@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { SubmitButton } from "@/components/commercial/submit-button";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { requireReportAccess } from "@/lib/commercial/reports/access";
@@ -211,12 +212,12 @@ export default async function JobsReportPage({ searchParams }: { searchParams: P
               )}
             </div>
 
-            <button
-              type="submit"
+            <SubmitButton
+              pendingLabel="Applying…"
               className="min-h-[44px] shrink-0 rounded-lg bg-cc-brand-600 px-4 text-[13px] font-semibold text-white hover:bg-cc-brand-700 touch-manipulation"
             >
               Apply
-            </button>
+            </SubmitButton>
             {isFiltered && (
               <Link
                 href={base}

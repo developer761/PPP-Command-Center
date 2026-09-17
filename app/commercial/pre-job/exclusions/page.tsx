@@ -245,12 +245,12 @@ export default async function ExclusionsLibraryPage({
           />
           <span className="text-[13px] text-ppp-charcoal-700">Include archived</span>
         </label>
-        <button
-          type="submit"
+        <SubmitButton
+          pendingLabel="Applying…"
           className="inline-flex items-center px-4 py-2 rounded-lg bg-ppp-charcoal-800 text-surface text-sm font-semibold hover:bg-ppp-navy-900 min-h-[44px]"
         >
           Apply
-        </button>
+        </SubmitButton>
       </form>
 
       {/* Add / edit form (admin only) */}
