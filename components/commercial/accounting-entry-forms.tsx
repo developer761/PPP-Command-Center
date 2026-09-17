@@ -75,20 +75,20 @@ export function RecordPaymentForm({
         <p className="text-[12.5px] text-ppp-charcoal-500">Nothing is open — every invoice is paid.</p>
       ) : (
         <>
-          <label className="block">
+          <label data-tour="pay:invoice_id" className="block">
             <span className={LABEL_CLS}>Invoice *</span>
             <SearchableSelect name="invoice_id" options={invoices} required placeholder="Search by job or invoice number…" ariaLabel="Invoice" />
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="block">
+            <label data-tour="pay:amount" className="block">
               <span className={LABEL_CLS}>Amount *</span>
               <input name="amount" required inputMode="decimal" placeholder="0.00" className={INPUT_CLS} />
             </label>
-            <label className="block">
+            <label data-tour="pay:paid_at" className="block">
               <span className={LABEL_CLS}>Date received *</span>
               <input type="date" name="paid_at" required defaultValue={TODAY()} className={INPUT_CLS} />
             </label>
-            <label className="block">
+            <label data-tour="pay:method" className="block">
               <span className={LABEL_CLS}>Method</span>
               <select name="method" defaultValue="check" className={SELECT_CLS} style={SELECT_BG_STYLE}>
                 <option value="check">Check</option>
@@ -99,7 +99,7 @@ export function RecordPaymentForm({
               </select>
             </label>
           </div>
-          <label className="block">
+          <label data-tour="pay:reference" className="block">
             <span className={LABEL_CLS}>Reference</span>
             <input name="reference" placeholder="Check number, wire ref…" className={INPUT_CLS} />
           </label>
@@ -129,32 +129,32 @@ export function RecordLaborPaymentForm({
     >
       {/* Both spend forms post to one action; this is what tells them apart. */}
       <input type="hidden" name="kind" value="labor" />
-      <label className="block">
+      <label data-tour="labor:opportunity_id" className="block">
         <span className={LABEL_CLS}>Job *</span>
         <SearchableSelect name="opportunity_id" options={jobs} required placeholder="Search jobs…" ariaLabel="Job" />
       </label>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <label className="block sm:col-span-1">
+        <label data-tour="labor:vendor" className="block sm:col-span-1">
           <span className={LABEL_CLS}>Paid to *</span>
           {/* Free text allowed: a new labor company should not need setting up
               before Mary can record what she just paid them. */}
           <SearchableSelect name="vendor" options={payees} required allowFreeText placeholder="Crew or labor company…" ariaLabel="Payee" />
         </label>
-        <label className="block">
+        <label data-tour="labor:amount" className="block">
           <span className={LABEL_CLS}>Amount *</span>
           <input name="amount" required inputMode="decimal" placeholder="0.00" className={INPUT_CLS} />
         </label>
-        <label className="block">
+        <label data-tour="labor:purchased_at" className="block">
           <span className={LABEL_CLS}>Date paid *</span>
           <input type="date" name="purchased_at" required defaultValue={TODAY()} className={INPUT_CLS} />
         </label>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block">
+        <label data-tour="labor:hours" className="block">
           <span className={LABEL_CLS}>Hours</span>
           <input name="hours" inputMode="decimal" placeholder="Optional" className={INPUT_CLS} />
         </label>
-        <label className="block">
+        <label data-tour="labor:description" className="block">
           <span className={LABEL_CLS}>Reference</span>
           <input name="description" placeholder="Check number, what it covered…" className={INPUT_CLS} />
         </label>
@@ -182,26 +182,26 @@ export function RecordPurchaseForm({
       pendingLabel="Recording…"
     >
       <input type="hidden" name="kind" value="purchase" />
-      <label className="block">
+      <label data-tour="purchase:opportunity_id" className="block">
         <span className={LABEL_CLS}>Job *</span>
         <SearchableSelect name="opportunity_id" options={jobs} required placeholder="Search jobs…" ariaLabel="Job" />
       </label>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <label className="block">
+        <label data-tour="purchase:vendor" className="block">
           <span className={LABEL_CLS}>Vendor *</span>
           <SearchableSelect name="vendor" options={vendors} required allowFreeText placeholder="Search vendors…" ariaLabel="Vendor" />
         </label>
-        <label className="block">
+        <label data-tour="purchase:amount" className="block">
           <span className={LABEL_CLS}>Amount *</span>
           <input name="amount" required inputMode="decimal" placeholder="0.00" className={INPUT_CLS} />
         </label>
-        <label className="block">
+        <label data-tour="purchase:purchased_at" className="block">
           <span className={LABEL_CLS}>Date *</span>
           <input type="date" name="purchased_at" required defaultValue={TODAY()} className={INPUT_CLS} />
         </label>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block">
+        <label data-tour="purchase:category" className="block">
           <span className={LABEL_CLS}>Category</span>
           {/* Built from the offered list, so this cannot drift from the cost
               tool the way a second hand-written copy would. Labor is excluded
@@ -214,12 +214,12 @@ export function RecordPurchaseForm({
             ))}
           </select>
         </label>
-        <label className="block">
+        <label data-tour="purchase:description" className="block">
           <span className={LABEL_CLS}>Reference</span>
           <input name="description" placeholder="Receipt or invoice number…" className={INPUT_CLS} />
         </label>
       </div>
-      <label className="block">
+      <label data-tour="purchase:reimburse_to" className="block">
         <span className={LABEL_CLS}>Reimburse to</span>
         <input name="reimburse_to" placeholder="Leave blank unless somebody paid out of pocket" className={INPUT_CLS} />
       </label>

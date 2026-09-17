@@ -18,9 +18,18 @@ import { walkthroughRoutes } from "@/lib/commercial/guide/walkthrough";
  * So: every route in the handbook must exist on disk as a real page.
  */
 
-/** `/commercial/accounting?view=purchases` → `app/commercial/accounting/page.tsx` */
+/**
+ * `/commercial/accounting?view=purchases` → `app/commercial/accounting/page.tsx`
+ *
+ * Job-scoped surfaces carry a `:job` / `:wonjob` placeholder, filled at render
+ * time with a real job id (see sample-job.ts). On disk that is the dynamic
+ * segment, so the placeholder maps to `[id]`.
+ */
 function pageFileFor(route: string): string {
-  const path = route.split("?")[0].replace(/^\//, "");
+  const path = route
+    .split("?")[0]
+    .replace(/^\//, "")
+    .replace(/:wonjob|:job\b/, "[id]");
   return join(process.cwd(), "app", path, "page.tsx");
 }
 

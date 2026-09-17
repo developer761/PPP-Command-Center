@@ -1,4 +1,4 @@
-import { surfaceStep, type Surface, type Strip, type Control } from "@/lib/commercial/guide/walkthrough";
+import { surfaceSteps, type Surface, type Strip, type Control } from "@/lib/commercial/guide/walkthrough";
 import { TourButton } from "@/components/commercial/guide-tour-button";
 
 /**
@@ -58,7 +58,7 @@ export function SurfaceCard({ surface }: { surface: Surface }) {
         {/* "Try it out", not "Open it": dropping somebody on the real page with
             no guidance is the situation the guide exists to fix. This walks them
             through it with the app held non-interactive underneath. */}
-        <TourButton steps={[surfaceStep(surface)]} label={surface.name}>
+        <TourButton steps={surfaceSteps(surface)} label={surface.name}>
           Try it out
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M5 12h14 M13 5l7 7-7 7" />

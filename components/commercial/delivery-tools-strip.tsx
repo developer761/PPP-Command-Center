@@ -101,6 +101,9 @@ export function DeliveryToolsStrip({
           <Link
             key={t.key}
             href={withFrom(t.href)}
+            // Hook for the guide's walkthrough — the tile is what a person
+            // actually presses to open a delivery tool.
+            data-tour={`job:tool:${t.key}`}
             className="group min-w-[10rem] flex-1 rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 min-h-[44px] shadow-[0_1px_0_0_rgb(0_0_0/0.04)] hover:border-cc-brand-400 hover:bg-cc-brand-50/60 hover:shadow-[0_2px_6px_-1px_rgb(0_0_0/0.10)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cc-brand-600 active:translate-y-px transition-all"
           >
             <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1 whitespace-nowrap">

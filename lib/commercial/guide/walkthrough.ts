@@ -41,6 +41,15 @@ export type Control = {
   kind?: "button" | "field" | "filter" | "link";
   /** Fields only: is it required to save? */
   required?: boolean;
+  /**
+   * The `data-tour` value on this control, when it has one.
+   *
+   * THIS is what makes the walkthrough a walkthrough. Karan, on the first
+   * version: "it should bring them to individual items, not just bring them to
+   * the page." A step per PAGE tells somebody where to stand; a step per
+   * CONTROL points at the box they type in and the button they press.
+   */
+  tourTarget?: string;
 };
 
 /** A drawn tab strip, showing where on the row this surface sits. */
@@ -93,31 +102,47 @@ export type RoleGuide = {
   chapters: Chapter[];
 };
 
+/** One step of a guided tour. */
+export type Step = { route: string; target?: string; title: string; body: string };
+
 /**
- * One surface, as a step in the guided tour.
+ * A surface, as the steps of a guided tour.
  *
- * The body is the purpose plus the numbered steps, because on the real page
- * there is no room for a control table — the person is looking at the controls
- * themselves. The table stays on the guide page, where it can be read slowly.
+ * ONE STEP PER CONTROL, not one per page. The surface itself is the first step
+ * — arrive, and hear what the page is for — and then every control that
+ * declares a hook gets its own, pointing at the actual box or button.
+ *
+ * A control with no hook is folded into the arrival step's body rather than
+ * given a step of its own: a card that says "press Record payment" while
+ * spotlighting nothing is the failure this replaced.
  */
-export function surfaceStep(su: Surface): {
-  route: string;
-  target?: string;
-  title: string;
-  body: string;
-} {
+export function surfaceSteps(su: Surface): Step[] {
+  const hooked = (su.controls ?? []).filter((c) => c.tourTarget);
   const numbered = (su.steps ?? []).map((t, i) => `${i + 1}. ${t}`).join("  ");
-  return {
+
+  const arrival: Step = {
     route: su.href,
     target: su.tourTarget ? `[data-tour="${su.tourTarget}"]` : undefined,
     title: su.name,
-    body: numbered ? `${su.purpose}\n\n${numbered}` : su.purpose,
+    // When the controls get their own steps, the arrival card does not repeat
+    // them — it says what the page is for and then hands over.
+    body: hooked.length > 0 ? su.purpose : numbered ? `${su.purpose}\n\n${numbered}` : su.purpose,
   };
+
+  return [
+    arrival,
+    ...hooked.map((c) => ({
+      route: su.href,
+      target: `[data-tour="${c.tourTarget}"]`,
+      title: c.label,
+      body: c.required ? `${c.does}\n\nThis one is required.` : c.does,
+    })),
+  ];
 }
 
 /** A whole role's day, in order, as one tour. */
-export function roleTour(role: RoleGuide) {
-  return role.chapters.flatMap((c) => c.surfaces.map(surfaceStep));
+export function roleTour(role: RoleGuide): Step[] {
+  return role.chapters.flatMap((c) => c.surfaces.flatMap(surfaceSteps));
 }
 
 /** Every route the walkthrough points at — for the test that keeps it honest. */

@@ -2826,7 +2826,14 @@ export default async function OpportunityDetailPage({
           itself. Same URL, so links and bookmarks are unaffected; it is the
           CHROME that steps aside, not the routing. */}
       {toolView ? (
-        <div className="flex items-center gap-2.5 border-b border-ppp-charcoal-100 pb-3">
+        <div
+          className="flex items-center gap-2.5 border-b border-ppp-charcoal-100 pb-3"
+          // The guide's walkthrough opens a delivery tool directly and needs
+          // something stable to point at once it lands. The tool's own header
+          // is that thing: it carries the tool's name and survives whatever the
+          // tool renders underneath.
+          data-tour={`job:tool-open:${sub ?? "project"}`}
+        >
           {/* Opened from Accounting — Mary clicks a job on Purchases to reach
               the place she adds one — so the arrow returns to the tab she left
               rather than to the project tools she never saw. One back control,
@@ -2879,6 +2886,9 @@ export default async function OpportunityDetailPage({
                 <Link
                   href={`/commercial/opportunities/${opp.id}?tab=${t.key}`}
                   aria-current={active ? "page" : undefined}
+                  // Stable hook for the walkthrough on /commercial/guide, keyed
+                  // on the tab rather than its label.
+                  data-tour={`job:tab:${t.key}`}
                   className={`inline-flex items-center gap-1.5 px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
                       ? "border-cc-brand-600 text-ppp-charcoal"

@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { ROLES, roleFor } from "@/lib/commercial/guide/roles";
-import { roleTour } from "@/lib/commercial/guide/walkthrough";
+import { roleTour, type RoleGuide } from "@/lib/commercial/guide/walkthrough";
+import { getSampleJob, resolveJobHref } from "@/lib/commercial/guide/sample-job";
 import { SurfaceCard } from "@/components/commercial/guide-surface";
 import { TourButton } from "@/components/commercial/guide-tour-button";
 
@@ -29,6 +30,22 @@ export const dynamic = "force-dynamic";
 
 type SP = Promise<{ as?: string }>;
 
+/** Swap `:job` / `:wonjob` for a real id, dropping what cannot be resolved. */
+function withRealJob(role: RoleGuide, sample: Awaited<ReturnType<typeof getSampleJob>>): RoleGuide {
+  return {
+    ...role,
+    chapters: role.chapters
+      .map((c) => ({
+        ...c,
+        surfaces: c.surfaces.flatMap((su) => {
+          const href = resolveJobHref(su.href, sample);
+          return href ? [{ ...su, href }] : [];
+        }),
+      }))
+      .filter((c) => c.surfaces.length > 0),
+  };
+}
+
 export default async function GuidePage({ searchParams }: { searchParams: SP }) {
   const supabase = await createClient();
   const {
@@ -38,7 +55,17 @@ export default async function GuidePage({ searchParams }: { searchParams: SP }) 
   await assertCommercialAccess(user.id);
 
   const sp = await searchParams;
-  const role = roleFor(sp.as);
+  /**
+   * Job-scoped surfaces carry a `:job` placeholder, resolved here against a real
+   * job so "Try it out" opens an actual Proposals tab rather than the list of
+   * every job — which is what the first version did, on nine surfaces, while
+   * the card said "The job › Proposals".
+   *
+   * A surface whose placeholder cannot be filled (no won job on the book yet)
+   * is dropped rather than shown with a dead link.
+   */
+  const sample = await getSampleJob();
+  const role = withRealJob(roleFor(sp.as), sample);
   const tourLength = roleTour(role).length;
 
   return (

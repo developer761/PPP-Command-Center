@@ -71,24 +71,25 @@ export const BRENDAN: RoleGuide = {
         },
         {
           name: "The job page",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:wonjob",
           path: "Opportunities › any job",
           purpose:
             "Everything about one job, across its tabs. Project and Analytics only appear once the job is won or in delivery, and Debrief appears once it has been decided — so a job still out for bid shows fewer tabs than one on site.",
           strip: { boxes: JOB_TABS, at: 0 },
           controls: [
-            { label: "Overview", does: "The summary, with Info and Team underneath it." },
-            { label: "Where it stands", does: "The stage the job is at, and what moves it on." },
-            { label: "Proposals", does: "The price and the document that goes to the GC." },
-            { label: "Documents", does: "Plans & Specs, Colors & Finishes, and Files." },
-            { label: "Activity", does: "Notes, Tasks, Timeline and the Email Archive." },
-            { label: "Project", does: "The delivery tools. Only once the job is won." },
+            { label: "Overview", tourTarget: "job:tab:overview", does: "The summary, with Info and Team underneath it." },
+            { label: "Where it stands", tourTarget: "job:tab:standing", does: "The stage the job is at, and what moves it on." },
+            { label: "Proposals", tourTarget: "job:tab:proposals", does: "The price and the document that goes to the GC." },
+            { label: "Documents", tourTarget: "job:tab:docs", does: "Plans & Specs, Colors & Finishes, and Files." },
+            { label: "Activity", tourTarget: "job:tab:activity", does: "Notes, Tasks, Timeline and the Email Archive." },
+            { label: "Project", tourTarget: "job:tab:project", does: "The delivery tools. Only once the job is won." },
           ],
         },
         {
           name: "Proposals",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:job?tab=proposals",
           path: "The job › Proposals",
+          tourTarget: "job:tab:proposals",
           purpose:
             "Where the job is priced and the proposal is built. A proposal cannot go straight from draft to the GC — it is approved internally first, on purpose.",
           strip: { boxes: JOB_TABS, at: 2 },
@@ -117,8 +118,9 @@ export const BRENDAN: RoleGuide = {
         },
         {
           name: "Change status",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:job?tab=standing",
           path: "The job › Where it stands",
+          tourTarget: "job:tab:standing",
           purpose:
             "Moving a job along. Most moves happen by themselves as you do the work, so this card is for what the platform cannot see — a verbal yes, or a no-bid.",
           strip: { boxes: JOB_TABS, at: 1 },
@@ -143,8 +145,9 @@ export const BRENDAN: RoleGuide = {
       surfaces: [
         {
           name: "Work Order",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:wonjob?tab=project&sub=work-order",
           path: "The job › Project › Work Order",
+          tourTarget: "job:tool-open:work-order",
           purpose:
             "The sheet the crew works from. Its scope is seeded from the accepted proposal and the finish schedule, so you are editing rather than typing it out.",
           strip: { boxes: PROJECT_TILES, at: 1 },
@@ -233,8 +236,9 @@ export const STEPHANIE: RoleGuide = {
       surfaces: [
         {
           name: "Submittals",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:wonjob?tab=project&sub=submittals",
           path: "The job › Project › Submittals",
+          tourTarget: "job:tool-open:submittals",
           purpose:
             "The product data the GC needs before work starts, put together as a package with a Letter of Transmittal. Packages are numbered SUB-001, SUB-002 and so on.",
           strip: { boxes: PROJECT_TILES, at: 0 },
@@ -262,8 +266,9 @@ export const STEPHANIE: RoleGuide = {
         },
         {
           name: "Change Orders",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:wonjob?tab=project&sub=change-orders",
           path: "The job › Project › Change Orders",
+          tourTarget: "job:tool-open:change-orders",
           purpose:
             "Extra work, priced and put in writing. Raised, sent to the GC for their answer, then recorded — and only then does it count toward the contract.",
           strip: { boxes: PROJECT_TILES, at: 2 },
@@ -288,8 +293,9 @@ export const STEPHANIE: RoleGuide = {
         },
         {
           name: "AIA Billing",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:wonjob?tab=project&sub=aia",
           path: "The job › Project › AIA Billing",
+          tourTarget: "job:tool-open:aia",
           purpose:
             "The G702/G703 payment applications. Each one carries the percentages forward from the last, so you are only entering what changed this month.",
           strip: { boxes: PROJECT_TILES, at: 4 },
@@ -313,8 +319,9 @@ export const STEPHANIE: RoleGuide = {
         },
         {
           name: "Closeout & Warranty",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:wonjob?tab=project&sub=closeout",
           path: "The job › Project › Closeout & Warranty",
+          tourTarget: "job:tool-open:closeout",
           purpose:
             "The pack the GC needs at the end, as a checklist that tells you what is still missing — and the warranty letter, which runs twelve months from substantial completion.",
           strip: { boxes: PROJECT_TILES, at: 6 },
@@ -332,8 +339,9 @@ export const STEPHANIE: RoleGuide = {
         },
         {
           name: "Costs",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:wonjob?tab=project&sub=transactions",
           path: "The job › Project › Costs",
+          tourTarget: "job:tool-open:transactions",
           purpose:
             "Everything spent on the job and what it has made — the tool is headed “Transactions & Job P&L” once you open it. Entries are numbered TRANS-0001 and up.",
           strip: { boxes: PROJECT_TILES, at: 3 },
@@ -354,16 +362,18 @@ export const STEPHANIE: RoleGuide = {
       surfaces: [
         {
           name: "Documents",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:job?tab=docs",
           path: "The job › Documents",
+          tourTarget: "job:tab:docs",
           purpose:
             "Everything filed against the job, in three places: Plans & Specs, Colors & Finishes, and Files.",
           strip: { boxes: JOB_TABS, at: 3 },
         },
         {
           name: "Activity",
-          href: "/commercial/opportunities",
+          href: "/commercial/opportunities/:job?tab=activity",
           path: "The job › Activity",
+          tourTarget: "job:tab:activity",
           purpose:
             "The history of the job — Notes, Tasks, Timeline, and the Email Archive of everything sent and received about it.",
           strip: { boxes: JOB_TABS, at: 4 },

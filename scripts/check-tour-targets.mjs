@@ -47,18 +47,68 @@ const { ROLES } = await import("../lib/commercial/guide/roles.ts").catch(async (
   for (const f of sources) {
     const text = readFileSync(f, "utf8");
     // Pair each tourTarget with the href of the surface it belongs to.
-    const re = /href:\s*"([^"]+)"[\s\S]{0,400}?tourTarget:\s*"([^"]+)"/g;
-    let m;
-    while ((m = re.exec(text)) !== null) surfaces.push({ href: m[1], tourTarget: m[2] });
+    // Walk surface by surface so a control's hook is checked on ITS page.
+    const blocks = text.split(/\n        \{\n          name:/);
+    for (const b of blocks) {
+      const href = /href:\s*"([^"]+)"/.exec(b);
+      if (!href) continue;
+      for (const m of b.matchAll(/tourTarget:\s*"([^"]+)"/g)) {
+        surfaces.push({ href: href[1], tourTarget: m[1] });
+      }
+    }
   }
   return { ROLES: [{ chapters: [{ surfaces }] }] };
 });
 
+// `:job` / `:wonjob` are resolved at render time against a real job. Fill them
+// the same way here, or every job-scoped hook would be checked against a URL
+// that 404s and report a false miss.
+const { getSampleJob, resolveJobHref } = await import("../lib/commercial/guide/sample-job.ts").catch(() => ({}));
+let sample = { wonId: null, anyId: null };
+if (getSampleJob) {
+  sample = await getSampleJob();
+} else {
+  const won = await admin
+    .from("commercial_opportunities")
+    .select("id")
+    .in("status", ["pre_construction", "in_progress", "billing"])
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const any = await admin
+    .from("commercial_opportunities")
+    .select("id")
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  sample = { wonId: won.data?.id ?? null, anyId: any.data?.id ?? null };
+}
+const fill = (href) =>
+  resolveJobHref
+    ? resolveJobHref(href, sample)
+    : href.includes(":wonjob")
+      ? sample.wonId && href.replace(":wonjob", sample.wonId)
+      : href.includes(":job")
+        ? sample.anyId && href.replace(":job", sample.anyId)
+        : href;
+
 const targets = [];
+let unresolved = 0;
 for (const r of ROLES) {
   for (const c of r.chapters) {
     for (const su of c.surfaces) {
-      if (su.tourTarget) targets.push({ target: su.tourTarget, route: su.href });
+      if (!su.tourTarget) continue;
+      const route = fill(su.href);
+      if (!route) {
+        unresolved++;
+        console.log(`  skip  ${su.tourTarget.padEnd(32)} ${su.href} (no job on the book to resolve it)`);
+        continue;
+      }
+      targets.push({ target: su.tourTarget, route });
     }
   }
 }
