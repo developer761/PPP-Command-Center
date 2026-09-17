@@ -162,6 +162,22 @@ export default function OrderFulfillmentView({
   }), [fulfillment, pickupLocation, deliveryAddr, useCustomAddress, instructions, requiredByValue, contactPhone]);
 
   const fulfillmentJson = JSON.stringify(currentFulfillment);
+  // What this state looked like before anybody touched it. `requiredByValue`
+  // folds in `draft.requiredByDate`, so the draft landing ~150ms after mount
+  // CHANGES this string — which spent the "skip the first pass" guard below on
+  // an event that is not an edit. The row was then written on page-open, and
+  // `savedFulfillment.requiredBy` permanently outranked the work order's own
+  // date: move the start date in Salesforce and the vendor kept being told the
+  // old one, silently.
+  const pristineFulfillmentJson = useRef<string | null>(null);
+  useEffect(() => {
+    // Recorded once the draft has landed, since that is when this string stops
+    // moving on its own. Written in an effect, not during render — a ref
+    // assigned while rendering is a different bug.
+    if (pristineFulfillmentJson.current === null && draft) {
+      pristineFulfillmentJson.current = fulfillmentJson;
+    }
+  }, [draft, fulfillmentJson]);
   useEffect(() => {
     // Skip the first pass: mounting with restored (or empty) state is not an
     // edit, and writing on mount would touch every row anyone merely opened.
@@ -169,6 +185,9 @@ export default function OrderFulfillmentView({
       fulfillmentDirty.current = true;
       return;
     }
+    // …and skip anything that still matches the untouched state, however many
+    // renders it took to settle.
+    if (pristineFulfillmentJson.current === fulfillmentJson) return;
     const parsed = JSON.parse(fulfillmentJson) as FulfillmentState;
     if (fulfillmentIsEmpty(parsed)) return;
     const t = setTimeout(() => {
@@ -257,7 +276,14 @@ export default function OrderFulfillmentView({
       } finally {
         if (!cancelled) setLoadingDraft(false);
       }
-    }, 150);
+      // 600ms, not 150. These dependencies include free-text fields — the
+      // fulfilment instructions, the contact phone, every box of the delivery
+      // address — and each pass is a full Salesforce-backed rebuild of the
+      // email. Typing a phone number fired four to six of them, and each one
+      // widens the window where Send would post a body built from the previous
+      // keystroke. The order builder has used 600 for the same reason since
+      // draft-timing.ts.
+    }, 600);
     return () => { cancelled = true; clearTimeout(t); };
   }, [
     workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr,

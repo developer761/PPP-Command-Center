@@ -273,7 +273,12 @@ export async function loadSentOrdersForWorkOrder(workOrderId: string): Promise<P
         const row = r as { status?: string | null; cancelled_at?: string | null; sent_at?: string | null };
         if (row.status === "cancelled" || row.cancelled_at) return false;
         if (row.status === "failed") return false;
-        return !!row.sent_at;
+        // `status === "sent"` counts even without the timestamp. The send
+        // route stamps `sent_at` in a SEPARATE update after Resend confirms,
+        // and returns ok when that update fails — the email is out. Requiring
+        // the stamp meant the one case where the record is incomplete was also
+        // the case where nobody was warned, and the vendor shipped twice.
+        return row.status === "sent" || !!row.sent_at;
       })
       .map((r) => {
         const row = r as { po_number?: string | null; supplier_account_id: string; supplier_name?: string | null; sent_at?: string | null };

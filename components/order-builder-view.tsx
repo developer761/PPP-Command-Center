@@ -187,6 +187,9 @@ export default function OrderBuilderView({
   const [notPersisted, setNotPersisted] = useState(false);
   /** Which vendor the in-memory payload was loaded for. */
   const [loadedFor, setLoadedFor] = useState<string | null>(initialSupplierId);
+  /** Just the id, so effects can depend on it without re-running when the
+   *  vendor's NAME resolves a moment later. */
+  const supplierId = supplier?.accountId ?? null;
 
   /* ── Persist ─────────────────────────────────────────────────────────────
    * Autosave is debounced and fire-and-forget; the commit on "Continue" is
@@ -196,6 +199,12 @@ export default function OrderBuilderView({
    * written during render are a cascading-render trap, and there's no need for
    * them here: every caller already has the current values in scope.
    */
+  /** Monotonic save id. A slow save A and a fast save B can land out of
+   *  order: B writes the row, then A writes the OLDER payload over it and its
+   *  `.then` reports success. The debounce coalesces saves it has not sent
+   *  yet; it does nothing about two in flight. */
+  const saveSeq = useRef(0);
+
   const save = useCallback(
     async (
       supplierAccountId: string,
@@ -229,7 +238,11 @@ export default function OrderBuilderView({
     const accountId = supplier.accountId;
     const snapshot = payload;
     const t = setTimeout(() => {
+      const seq = ++saveSeq.current;
       void save(accountId, snapshot, false).then((r) => {
+        // A response from a save that has since been superseded says nothing
+        // about the row's current state — neither its success nor its failure.
+        if (seq !== saveSeq.current) return;
         if (!r.ok) { setSaveError(r.error); setNotPersisted(false); return; }
         setSaveError(null);
         setNotPersisted(!r.persisted);
@@ -349,7 +362,13 @@ export default function OrderBuilderView({
     // No synchronous setDraft(null) here — clearing state in an effect body
     // cascades a render. `estimates` below reads through `supplier` instead, so
     // a stale draft can't leak into the UI after the vendor is changed.
-    if (!supplier) return;
+    // The ID, not the object: the resume effect replaces `supplier` with an
+    // identical-id object once the vendor's NAME arrives, and depending on the
+    // object cancelled the 0ms first draft and paid for a second full
+    // Salesforce-backed rebuild — undoing the delay fix draft-timing.ts exists
+    // for. Nothing in here needs the name.
+    const accountId = supplierId;
+    if (!accountId) return;
     let cancelled = false;
     // The debounce exists to coalesce typing, but it was also charged to the
     // FIRST load — so opening the builder sat on an empty panel for 600ms
@@ -357,9 +376,9 @@ export default function OrderBuilderView({
     // Karan 2026-09-09: "to pop up the build your order when getting onto this
     // page… takes like 5 seconds." Nothing to coalesce on the first draft for
     // a vendor, so fire it immediately and debounce only the edits after it.
-    const isFirstForSupplier = firstDraftDone.current !== supplier.accountId;
+    const isFirstForSupplier = firstDraftDone.current !== accountId;
     const t = setTimeout(async () => {
-      firstDraftDone.current = supplier.accountId;
+      firstDraftDone.current = accountId;
       setLoadingDraft(true);
       setDraftError(null);
       try {
@@ -368,7 +387,7 @@ export default function OrderBuilderView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             workOrderId,
-            supplierAccountId: supplier.accountId,
+            supplierAccountId: accountId,
             manualSupplier: true,
             fulfillmentMethod: "delivery",
             extras: payload.extras,
@@ -387,7 +406,22 @@ export default function OrderBuilderView({
           setDraftError(data.message ?? data.error ?? `HTTP ${res.status}`);
           setDraft(null);
         } else {
-          setDraft({ forSupplierId: supplier.accountId, data: data.draft as Draft });
+          const built = data.draft as Draft;
+          setDraft({ forSupplierId: accountId, data: built });
+          // Retire keys no line claims any more, now that this vendor's real
+          // line-up is known. Without it the pre-split fallback stops being a
+          // migration and becomes a trap: the hall's color changes, its saved
+          // 4 gal is orphaned but never removed, nothing claims the plain key
+          // — and the BATHROOM starts reading it, quantity and product both.
+          setPayload((cur) =>
+            pruneToLiveKeys(
+              cur,
+              built.gallonEstimates.map((e) => ({
+                key: quantityKey(e.colorId, e.finish, e.isBathroom),
+                legacyKey: e.isBathroom ? quantityKey(e.colorId, e.finish) : null,
+              }))
+            )
+          );
         }
       } catch (err) {
         if (!cancelled) {
@@ -401,7 +435,7 @@ export default function OrderBuilderView({
     return () => { cancelled = true; clearTimeout(t); };
   }, [
     workOrderId,
-    supplier,
+    supplierId,
     payload.extras,
     payload.mainMaterialType,
     payload.materialTypeOverrides,
@@ -412,7 +446,9 @@ export default function OrderBuilderView({
 
   // Only ever the draft built for the CURRENTLY selected vendor.
   const currentDraft = supplier && draft?.forSupplierId === supplier.accountId ? draft.data : null;
-  const rawEstimates = currentDraft?.gallonEstimates ?? [];
+  // Memoised: `?? []` is a NEW array every render, which churns every memo and
+  // effect that depends on it.
+  const rawEstimates = useMemo(() => currentDraft?.gallonEstimates ?? [], [currentDraft]);
 
   /**
    * The buy-list in an order a person can follow.
@@ -471,22 +507,6 @@ export default function OrderBuilderView({
     const names = new Set(Object.values(currentDraft?.colorBrands ?? {}));
     return names.size > 1 ? names : new Set<string>();
   }, [currentDraft]);
-
-  /**
-   * Retire keys no line claims any more, once we have seen this vendor's real
-   * line-up. Without it the pre-split fallback stops being a migration and
-   * becomes a trap: the hall's color changes, its saved 4 gal is orphaned but
-   * never removed, nothing claims the plain key — and the BATHROOM starts
-   * reading it, quantity and product both.
-   */
-  useEffect(() => {
-    if (rawEstimates.length === 0) return;
-    const live = rawEstimates.map((e) => ({
-      key: quantityKey(e.colorId, e.finish, e.isBathroom),
-      legacyKey: e.isBathroom ? quantityKey(e.colorId, e.finish) : null,
-    }));
-    setPayload((cur) => pruneToLiveKeys(cur, live));
-  }, [rawEstimates]);
 
   // Plain keys a non-bathroom line owns on THIS job — see readForEstimate.
   // Derived from the same estimates the rows render from, so the UI and the
@@ -1055,9 +1075,13 @@ export default function OrderBuilderView({
                               if (/door|window|cabinet/i.test(surface)) {
                                 measure = "";
                               } else if (src.perimeterLf > 0) {
-                                measure = `${Math.round(src.perimeterLf).toLocaleString()} lin ft`;
+                                // Labelled: the trim is PRICED on the perimeter
+                                // plus 25% for door and window molding, so an
+                                // unlabelled figure here invites a check
+                                // against the quantity that fails by a quarter.
+                                measure = `${Math.round(src.perimeterLf).toLocaleString()} lin ft perimeter`;
                               } else if (src.sqft > 0) {
-                                measure = `~${Math.round(4 * Math.sqrt(src.sqft))} lin ft (derived)`;
+                                measure = `~${Math.round(4 * Math.sqrt(src.sqft))} lin ft perimeter (derived)`;
                               }
                             }
                             return measure ? { room, surface, measure } : null;
