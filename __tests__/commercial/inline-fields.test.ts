@@ -47,13 +47,36 @@ describe("parseInlineValue", () => {
     expect(parseInlineValue(f("proposal_due_at"), "2026-08-20")).toEqual({ value: "2026-08-20" });
   });
 
-  it("no longer exposes the fields Brendan asked us to drop", () => {
-    // Probability ("I don't use this. Not sure what this is.") and the proposed
-    // start/end dates ("too early to determine at the opportunity level").
-    // Leaving any of them inline-editable would quietly reintroduce a field the
-    // forms just removed.
-    for (const gone of ["probability_pct", "proposed_start_at", "proposed_end_at"]) {
-      expect(inlineField(gone), gone).toBeUndefined();
+  it("no longer exposes probability, which Brendan asked us to drop", () => {
+    // "I don't use this. Not sure what this is." Leaving it inline-editable
+    // would quietly reintroduce a field the forms had just removed.
+    expect(inlineField("probability_pct")).toBeUndefined();
+  });
+
+  it("DOES expose the expected work dates — a deliberate reversal", () => {
+    /**
+     * This assertion used to say the opposite, and flipping it is a decision,
+     * not a tidy-up, so it is recorded rather than quietly edited.
+     *
+     * Brendan, 2026-08-12: proposed_start_at / proposed_end_at are "too early to
+     * determine at the opportunity level", so they came off the forms.
+     * Karan, 2026-09-17: "RFP when we think when this project is gonna happen."
+     *
+     * Two things changed in between. The Salesforce import filled these columns
+     * on 74 and 67 of 132 deals and the job page has displayed them read-only
+     * ever since — a date shown on screen that nobody could correct. And the
+     * projected calendar Karan asked for is a projection of WHEN: without an
+     * expected date on a deal that is not won yet there is nothing to project,
+     * because real dates only arrive with scheduling.
+     *
+     * Brendan's point about certainty stands, and the labels carry it — they
+     * read "Expected start"/"Expected finish" and say plainly that they are a
+     * guess and not the scheduled date. If he disagrees, this is the line to
+     * change back.
+     */
+    for (const present of ["proposed_start_at", "proposed_end_at"]) {
+      expect(inlineField(present), present).toBeDefined();
+      expect(inlineField(present)!.type).toBe("date");
     }
   });
 

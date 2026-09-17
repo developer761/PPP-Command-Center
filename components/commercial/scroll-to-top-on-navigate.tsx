@@ -37,12 +37,36 @@ import { usePathname } from "next/navigation";
 export function ScrollToTopOnNavigate() {
   const pathname = usePathname();
   const first = useRef(true);
+  /**
+   * BACK AND FORWARD MUST NOT BE SCROLLED TO THE TOP.
+   *
+   * `usePathname()` changes identically for a Link click and for the browser's
+   * Back button, so the first version of this undid the very thing it was
+   * written for: scroll halfway down the opportunities list, open a job, press
+   * Back — and land at the top of the list instead of on the row you clicked.
+   *
+   * `popstate` fires before React commits the new pathname, so a flag set there
+   * is readable by the effect below and tells the two cases apart. On a
+   * back/forward the browser restores what it can and we leave it alone.
+   */
+  const popped = useRef(false);
+  useEffect(() => {
+    const onPop = () => {
+      popped.current = true;
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   useEffect(() => {
     // Skip the very first run. On a cold load the browser is restoring its own
     // position, and on a refresh mid-page that restore is correct.
     if (first.current) {
       first.current = false;
+      return;
+    }
+    if (popped.current) {
+      popped.current = false;
       return;
     }
     if (window.location.hash) return;

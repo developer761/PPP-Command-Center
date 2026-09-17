@@ -4201,7 +4201,7 @@ async function InfoTab({
           reliably scroll after a soft navigation — so the click looked like it
           did nothing, twice, which is exactly what Karan reported. Rendering it
           FIRST removes the dependence on scrolling entirely. */}
-      {focusStatus && (
+      {focusStatus && !opp.deleted_at && (
         <div className="lg:col-span-2 rounded-xl ring-2 ring-cc-brand-400 ring-offset-2 ring-offset-surface-sunken">
           <ChangeStatusCard
             opp={opp}
@@ -4256,8 +4256,16 @@ async function InfoTab({
           A COMPLETED job was worse still: no Reopen button at all, and the
           reopen action refuses it with "use Change status" — the card this
           guard was hiding. The instruction pointed at something that was not
-          on the page. */}
-      {!focusStatus && (
+          on the page.
+
+          STILL GATED ON DELETED, though. The old `!isTerminal` condition was
+          accidentally doing that job too, and dropping it left this as the one
+          write surface on a soft-deleted deal with no guard — every neighbour
+          on this page is gated, and all ~123 inline fields carry
+          `canEdit={!opp.deleted_at}`. `changeOpportunityStatus` filters on
+          `deleted_at is null`, so the write would fail anyway; the difference
+          is a generic redirect error versus a control never offered. */}
+      {!focusStatus && !opp.deleted_at && (
         <ChangeStatusCard
           opp={opp}
           nextStatuses={nextStatuses}
@@ -4286,6 +4294,10 @@ async function InfoTab({
             controlled input — a field with two writers is a field that loses
             what you typed, which this codebase has already been bitten by. */}
         {inlineRow("title", opp.title)}
+        {/* The end client, when it differs from the GC. Allowlisted for editing
+            since it was written and never given a control — it fed
+            `derivedOppName` and appeared nowhere you could change it. */}
+        {inlineRow("client_name", opp.client_name ?? "")}
         <Field label="Status" value={oppStatusDisplayLabel(opp.status, opp.sub_status)} />
         <Field
           label="Source"
@@ -4443,16 +4455,17 @@ async function InfoTab({
             />
           </>
         )}
-        <Field
-          label="Proposed start"
-          value={opp.proposed_start_at?.slice(0, 10) ?? "—"}
-          tooltip="Target kickoff date we're quoting to the customer. Internal estimate — feeds the project setup phase later."
-        />
-        <Field
-          label="Proposed end"
-          value={opp.proposed_end_at?.slice(0, 10) ?? "—"}
-          tooltip="Target completion date we're quoting. Internal estimate — informs scheduling once the bid is won."
-        />
+        {/* EDITABLE, not just displayed. Karan 2026-09-17: "RFP when we think
+            when this project is gonna happen."
+
+            These were read-only <Field>s over columns the Salesforce import had
+            already filled on 74 of 132 deals — a date shown on the page that
+            nobody could correct. Adding them to INLINE_FIELDS is NOT enough on
+            its own: every row here is called explicitly, so the allowlist would
+            have granted the capability and the page would still have rendered
+            plain text. */}
+        {inlineRow("proposed_start_at", opp.proposed_start_at?.slice(0, 10) ?? "")}
+        {inlineRow("proposed_end_at", opp.proposed_end_at?.slice(0, 10) ?? "")}
       </Card>
       <Card
         title="Property / project address"
@@ -4464,7 +4477,7 @@ async function InfoTab({
           </svg>
         }
       >
-        <OppPropertyAddress opp={opp} account={account} />
+        <OppPropertyAddress opp={opp} account={account} inlineRow={inlineRow} />
 
         {/* Sales tax sits with the address deliberately: the ZIP picks the
             jurisdiction, and the exemption is the other half of the same
@@ -4689,22 +4702,26 @@ async function InfoTab({
           </p>
         )}
       </Card>
-      {opp.description && (
-        <Card
-          title="Description"
-          tone="neutral"
-          className="lg:col-span-2"
-          icon={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M4 6h16 M4 12h16 M4 18h10" />
-            </svg>
-          }
-        >
-          <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
-            {opp.description}
-          </p>
-        </Card>
-      )}
+      {/* EDITABLE, and rendered even when empty.
+          `description` has been in INLINE_FIELDS — the allowlist
+          `updateOpportunityField` checks — since it was written, but the Info
+          tab only ever printed it as text, and the whole Card was gated on
+          `opp.description` being non-empty. So a deal with no description had
+          no way to gain one, and a deal with a wrong one had no way to fix it,
+          while the write was permitted the entire time. An allowlist entry with
+          no control is a capability that exists only in theory. */}
+      <Card
+        title="Description"
+        tone="neutral"
+        className="lg:col-span-2"
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M4 6h16 M4 12h16 M4 18h10" />
+          </svg>
+        }
+      >
+        {inlineRow("description", opp.description ?? "")}
+      </Card>
 
       {/* Migration 067 (Phase G Q3) — archive/unarchive row above delete.
           Archive hides the deal from active pipeline but keeps
@@ -6750,9 +6767,15 @@ function Card({
 function OppPropertyAddress({
   opp,
   account,
+  inlineRow,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
+  /** The Info tab's row renderer, passed in because the four address columns
+   *  are on the INLINE_FIELDS allowlist and had no control anywhere — the
+   *  write was permitted and the page only ever printed them. This component
+   *  cannot build its own (the editor state and hrefs live on the tab). */
+  inlineRow: (name: string, raw: string) => React.ReactNode;
 }) {
   // Prefer opp-level property address (migration 035). Fall back to the
   // account's site address (or billing as a last resort) when blank —
@@ -6769,10 +6792,13 @@ function OppPropertyAddress({
     const line2Full = [line2, opp.property_zip].filter(Boolean).join(" ");
     return (
       <>
-        <Field label="Street" value={opp.property_street ?? "—"} />
-        <Field label="City / State / ZIP" value={line2Full || "—"} />
+        {inlineRow("property_street", opp.property_street ?? "")}
+        {inlineRow("property_city", opp.property_city ?? "")}
+        {inlineRow("property_state", opp.property_state ?? "")}
+        {inlineRow("property_zip", opp.property_zip ?? "")}
         <p className="text-[11px] text-ppp-charcoal-500 mt-1">
           Per-opp address — overrides the account&apos;s site address for this bid.
+          Reads {line2Full || "—"}.
         </p>
       </>
     );
@@ -6784,23 +6810,37 @@ function OppPropertyAddress({
   const acctZip = account?.site_zip || account?.billing_zip || null;
   const hasFallback = Boolean(acctStreet || acctCity || acctState || acctZip);
 
+  /* BOTH fallbacks now offer the fields instead of naming somewhere else.
+     They read "Add one when editing the deal" and "Edit the opp to set a
+     per-bid project address" — pointing at a form, from a page where the
+     columns are on the edit allowlist and simply had no control. The rows are
+     the same ones the has-an-address branch renders, so setting any of them
+     creates the per-opp override in place. */
   if (!hasFallback) {
     return (
-      <p className="text-[12px] text-ppp-charcoal-500 italic">
-        No project address set. Add one when editing the deal, or set the
-        account&apos;s site address.
-      </p>
+      <>
+        {inlineRow("property_street", opp.property_street ?? "")}
+        {inlineRow("property_city", opp.property_city ?? "")}
+        {inlineRow("property_state", opp.property_state ?? "")}
+        {inlineRow("property_zip", opp.property_zip ?? "")}
+        <p className="text-[12px] text-ppp-charcoal-500 mt-1 italic">
+          No project address yet, and the account has none to fall back on.
+        </p>
+      </>
     );
   }
   const fallbackLine2 = [acctCity, acctState].filter(Boolean).join(", ");
   const fallbackLine2Full = [fallbackLine2, acctZip].filter(Boolean).join(" ");
   return (
     <>
-      <Field label="Street" value={acctStreet ?? "—"} />
-      <Field label="City / State / ZIP" value={fallbackLine2Full || "—"} />
+      {inlineRow("property_street", opp.property_street ?? "")}
+      {inlineRow("property_city", opp.property_city ?? "")}
+      {inlineRow("property_state", opp.property_state ?? "")}
+      {inlineRow("property_zip", opp.property_zip ?? "")}
       <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-        Pulled from the account&apos;s {account?.site_street ? "site" : "billing"} address.
-        Edit the opp to set a per-bid project address.
+        Blank rows inherit the account&apos;s {account?.site_street ? "site" : "billing"} address —
+        currently {acctStreet ?? "—"}{fallbackLine2Full ? `, ${fallbackLine2Full}` : ""}. Fill any in
+        to override it for this bid.
       </p>
     </>
   );

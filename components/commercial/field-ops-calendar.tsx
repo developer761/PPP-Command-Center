@@ -132,8 +132,25 @@ function weekLabel(startIso: string): string {
       ...(withMonth ? { month: "short" } : {}),
     });
   const sameMonth = startIso.slice(0, 7) === end.slice(0, 7);
-  const year = end.slice(0, 4);
-  return `${f(startIso, !sameMonth)} \u2013 ${f(end, true)} ${year}`;
+  // Both years when the week crosses one — "27 Dec 2026 – 2 Jan 2027". Taking
+  // the year from `end` alone printed the last week of December as
+  // "27 Dec – 2 Jan 2027", with 2026 nowhere on it.
+  const sameYear = startIso.slice(0, 4) === end.slice(0, 4);
+  return sameYear
+    ? `${f(startIso, !sameMonth)} \u2013 ${f(end, true)} ${end.slice(0, 4)}`
+    : `${f(startIso, true)} ${startIso.slice(0, 4)} \u2013 ${f(end, true)} ${end.slice(0, 4)}`;
+}
+
+/**
+ * Monday of the week containing `iso`. Mirrors `mondayOf` in
+ * lib/commercial/field-ops/schedule.ts, which is server-only and cannot be
+ * imported here — kept identical on purpose, including the Sunday case going
+ * BACK six days rather than forward one.
+ */
+function mondayOfIso(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sun
+  return addDays(iso, dow === 0 ? -6 : 1 - dow);
 }
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -214,7 +231,15 @@ export function FieldOpsCalendar({
     setMsg(null);
     // Anchor on a day that is genuinely inside the current view, so switching
     // from a month to a week lands in that month rather than on today.
-    const anchor = grid.find((d) => d.date === todayIso)?.date ?? grid.find((d) => d.inMonth)?.date ?? monthStart;
+    // Today if it is on screen; otherwise the MIDDLE of what is on screen.
+    // Taking the first in-period day meant switching Month → Week from August
+    // 2026 (the 1st is a Saturday) landed on Sun 26 Jul - Sat 1 Aug: six of
+    // seven days in the month you just left.
+    const inPeriod = grid.filter((d) => d.inMonth);
+    const anchor =
+      grid.find((d) => d.date === todayIso)?.date ??
+      inPeriod[Math.floor(inPeriod.length / 2)]?.date ??
+      monthStart;
     router.push(
       next === "week"
         ? `/commercial/field-ops/calendar?view=week&week=${anchor}`
@@ -694,10 +719,38 @@ function DayPanel({
   onOpenPerson: (id: string, name: string) => void;
 }) {
   const [mode, setMode] = useState<"schedule" | "off">("schedule");
-  // Who the Schedule form is currently pointed at, so the time fields can show
-  // that person's existing shift rather than the default day.
+  /**
+   * WHICH SHIFT the time fields are describing — keyed on PERSON *AND* JOB.
+   *
+   * An assignment is unique on `(job_id, employee_id, work_date)` (migration
+   * 112), so one person can hold several shifts in a day, one per work order.
+   * Matching on the person alone picked whichever sorted first — the earliest
+   * start, untimed last — which is a different row from the one being edited.
+   *
+   * Concretely, and this form EMAILS THE CREW: Bob is 07:00-11:00 on job A and
+   * 12:00-15:00 on job B. Pick Bob and job B, and the form filled in 07:00-11:00
+   * under a line reading "Already on this day — these are their current times",
+   * then wrote the morning times onto the afternoon job and told Bob to arrive
+   * at 7. It was wrong for a NEW job too: Bob on job A 06:00-14:00, schedule him
+   * onto a brand-new job B, and it offered 06:00-14:00 from an unrelated work
+   * order while claiming it was moving a shift it was actually creating.
+   *
+   * Both halves are required for a match. Neither picked → the 7-3 default.
+   */
   const [pickedEmployee, setPickedEmployee] = useState<string>("");
-  const existingShift = pickedEmployee ? (crew.find((c) => c.employee_id === pickedEmployee) ?? null) : null;
+  const [pickedJob, setPickedJob] = useState<string>("");
+  const existingShift =
+    pickedEmployee && pickedJob
+      ? (crew.find((c) => c.employee_id === pickedEmployee && c.job_id === pickedJob) ?? null)
+      : null;
+  // The form is REMOUNTED on a successful save (`key={`sch-${formKey}`}`), which
+  // clears its pickers — but this state lives outside the form and would not
+  // clear with it, so the next blank form showed the previous person's times and
+  // still called them "their current times".
+  useEffect(() => {
+    setPickedEmployee("");
+    setPickedJob("");
+  }, [formKey, date]);
   const totalHours = crew.reduce((s, c) => s + c.hours, 0);
   // Warn (never block) if you try to schedule someone already marked off today.
   // Match by employee_id, not display name — two crew sharing a name (common on
@@ -798,7 +851,13 @@ function DayPanel({
                   />
                 </label>
                 <label className="block"><span className={LABEL_CLS}>Work order</span>
-                  <SearchableSelect name="job_id" options={jobOptions} placeholder="Search work orders…" ariaLabel="Work order" />
+                  <SearchableSelect
+                    name="job_id"
+                    options={jobOptions}
+                    placeholder="Search work orders…"
+                    ariaLabel="Work order"
+                    onChange={(c) => setPickedJob(c.value)}
+                  />
                 </label>
                 {/* DEFAULT 7:00–3:00, unless this person already has a shift.
                     Karan 2026-09-17: "for field scheduling have times auto
@@ -818,10 +877,10 @@ function DayPanel({
                     picker changes. */}
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block"><span className={LABEL_CLS}>Start time</span>
-                    <TimeSelect key={`s-${pickedEmployee}`} name="start_time" ariaLabel="Start time" placeholder="e.g. 7:00 AM" defaultValue={existingShift?.start?.slice(0, 5) ?? DEFAULT_SHIFT_START} />
+                    <TimeSelect key={`s-${pickedEmployee}-${pickedJob}`} name="start_time" ariaLabel="Start time" placeholder="e.g. 7:00 AM" defaultValue={existingShift?.start?.slice(0, 5) ?? DEFAULT_SHIFT_START} />
                   </label>
                   <label className="block"><span className={LABEL_CLS}>End time</span>
-                    <TimeSelect key={`e-${pickedEmployee}`} name="end_time" ariaLabel="End time" placeholder="e.g. 3:30 PM" defaultValue={existingShift?.end?.slice(0, 5) ?? DEFAULT_SHIFT_END} />
+                    <TimeSelect key={`e-${pickedEmployee}-${pickedJob}`} name="end_time" ariaLabel="End time" placeholder="e.g. 3:30 PM" defaultValue={existingShift?.end?.slice(0, 5) ?? DEFAULT_SHIFT_END} />
                   </label>
                 </div>
                 <p className="text-[11px] text-ppp-charcoal-400 -mt-1">
@@ -872,7 +931,21 @@ function CopyWeekModal({ monthStart, busy, msg, onCopy, onClose, confirm, onTogg
   onConfirm: () => void;
   onCancelConfirm: () => void;
 }) {
-  const [srcDate, setSrcDate] = useState(monthStart);
+  /**
+   * Seed the SOURCE WEEK as a Monday, because that is what the server means.
+   *
+   * `copyWeekForward` runs `mondayOf(sourceMondayIso)` and copies Mon–Sun. The
+   * calendar's week view is SUNDAY-start (it has to line up under the Sun…Sat
+   * column header), so seeding this input with the week's own start date handed
+   * the server a Sunday — and `mondayOf(Sunday)` goes BACK six days.
+   *
+   * Looking at Sun 13 – Sat 19 Sep and pressing Copy therefore copied Mon 7 –
+   * Sun 13 Sep into the week you were already looking at: none of the source
+   * days on screen, and a button reading "Copy to next week" back-filling the
+   * current one. Snapping to the Monday of the visible week makes the input
+   * mean what the label says.
+   */
+  const [srcDate, setSrcDate] = useState(() => mondayOfIso(monthStart));
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-ppp-charcoal-900/30" onClick={onClose} aria-hidden />

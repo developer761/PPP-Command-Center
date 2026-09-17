@@ -476,7 +476,17 @@ export default async function CommercialOpportunitiesPage({
    * pass-through, and the filtering happens in the DB rather than after the
    * fetch.
    */
-  const accountFilter = pickFirst(sp.account) ?? null;
+  // `pickFirst` returns "" for a present-but-empty param ("Every GC" submits
+  // `?account=`), so `?? null` never fires and the declared `string | null`
+  // would be a lie about the runtime value. Everything downstream happens to
+  // treat "" as falsy today — including `db.ts` doing `if (filters.accountId)` —
+  // but that is a coincidence, and one `!== undefined` away from sending an
+  // empty string into a uuid column, which errors rather than returning nothing.
+  const accountRaw = pickFirst(sp.account)?.trim() || null;
+  // Whitelist-checked like `status` and `sort` are. Without this a hand-typed
+  // `?account=foo` reaches `.eq("account_id", "foo")` and returns a PostgREST
+  // uuid cast error — a 500 where an empty list was meant.
+  const accountFilter = accountRaw && UUID_RE.test(accountRaw) ? accountRaw : null;
   // `?status=` now names a KANBAN COLUMN, not a raw status — that's what
   // the snapshot pills show and what the board is organised by, so a pill
   // labelled "Request for Proposal" has to filter to the same set of cards
@@ -784,6 +794,13 @@ export default async function CommercialOpportunitiesPage({
   // of money is the kind of small lie that costs somebody an afternoon.
   const viewParams: Record<string, string | undefined> = {
     q: search || undefined,
+    // `account` belongs HERE, not just in baseParams. `viewHref` can only carry
+    // through what is in this record, so without it picking a saved view from
+    // the picker dropped the GC filter and went back to all 132 deals — the
+    // eighth place this filter can fall out of, and the same audit-D4 class the
+    // other seven were fixed for. `activeViewKey` and `filterChips` read it too,
+    // so the picker also stopped claiming "All open" while showing 35 of 132.
+    account: accountFilter || undefined,
     status: statusFilter || undefined,
     lane: laneFilter || undefined,
     mine: mineFilter ? "1" : undefined,

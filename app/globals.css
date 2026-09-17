@@ -190,10 +190,24 @@ body {
  *
  * `!important` because Tailwind utilities land in the same layer and would
  * otherwise win on specificity order alone. */
-[data-cc-root][data-width="wide"] .max-w-4xl,
-[data-cc-root][data-width="wide"] .max-w-5xl,
-[data-cc-root][data-width="wide"] .max-w-6xl {
-  max-width: 1600px !important;
+@media screen {
+  [data-cc-root][data-width="wide"] .max-w-4xl,
+  [data-cc-root][data-width="wide"] .max-w-5xl,
+  [data-cc-root][data-width="wide"] .max-w-6xl {
+    max-width: 1600px !important;
+  }
+
+  /* A SHELL INSIDE A SHELL keeps its own, narrower cap.
+     Field Ops wraps its pages in `max-w-6xl` and four of them then set
+     `max-w-4xl` on purpose, because a payroll or approvals list is a column of
+     rows and is deliberately narrower than the section around it. Lifting both
+     to 1600px made the inner cap a no-op and stretched those four from 896px to
+     1600px — a 78% jump against 39% everywhere else, on exactly the pages that
+     had opted out. The descendant selector re-narrows them. */
+  [data-cc-root][data-width="wide"] .max-w-5xl .max-w-4xl,
+  [data-cc-root][data-width="wide"] .max-w-6xl .max-w-4xl {
+    max-width: 72rem !important;
+  }
 }
 /* color-scheme tells the browser to render NATIVE controls (inputs, selects,
    checkboxes, date pickers, scrollbars, autofill) dark — without it those stay

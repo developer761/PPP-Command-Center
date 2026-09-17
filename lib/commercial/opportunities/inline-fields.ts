@@ -54,9 +54,32 @@ export const INLINE_FIELDS: InlineField[] = [
   // was asking for. Editable in place now, so Fix can open this row directly.
   { name: "follow_up_at", label: "Follow-up", type: "date",
     hint: "When to chase the GC. The Follow-up warning links straight here." },
-  // proposed_start_at / proposed_end_at are absent too — Brendan 2026-08-12:
-  // "too early to determine at the opportunity level". Dates for the WORK live
-  // on the project once there is one.
+  /**
+   * WHEN WE THINK THE WORK HAPPENS — editable from the RFP stage on.
+   *
+   * Karan 2026-09-17: "RFP when we think when this project is gonna happen."
+   *
+   * This REVERSES a call Brendan made on 2026-08-12 ("too early to determine at
+   * the opportunity level"), so it is worth saying why rather than quietly
+   * flipping it. Two things changed:
+   *
+   *   · The columns are already there and already FULL — the Salesforce import
+   *     put a start on 74 of 132 deals and an end on 67, and the job page has
+   *     been displaying them read-only ever since. The date was being shown and
+   *     could not be corrected, which is the worst of both.
+   *   · The projected calendar Karan asked for is a projection of WHEN. Without
+   *     an expected date on a deal that has not been won yet, there is nothing
+   *     to project — a job only gets real dates once it is scheduled, by which
+   *     point it is not a projection.
+   *
+   * Brendan's point still stands about certainty, so the label and hint say
+   * plainly that it is a guess. It is not the scheduled date: that lives on the
+   * work order and Field Ops, and nothing here writes to those.
+   */
+  { name: "proposed_start_at", label: "Expected start", type: "date",
+    hint: "Your best guess at when work begins — not the scheduled date, which comes from the work order." },
+  { name: "proposed_end_at", label: "Expected finish", type: "date",
+    hint: "Roughly how long it runs. Used for forecasting crew load, not for scheduling." },
   { name: "property_street", label: "Street", type: "text", maxLength: 200 },
   { name: "property_city", label: "City", type: "text", maxLength: 120 },
   { name: "property_state", label: "State", type: "text", maxLength: 2 },
