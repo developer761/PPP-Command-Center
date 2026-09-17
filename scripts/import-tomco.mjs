@@ -1185,6 +1185,14 @@ async function stageFiles() {
     linked += 1;
   }
   r.notes.push(`receipts attached to their cost line: ${linked}`);
+  // Attaching a receipt UPDATES the purchase, which fires its updated_at
+  // trigger — so on the next run the guard reads those rows as edited by a
+  // person and refuses Salesforce's changes to them. Exactly what the payments
+  // stage does to invoices. Re-stamp what this stage's own writes touched.
+  if (linked) {
+    const restamped = await restampEntity("purchase");
+    if (restamped) r.notes.push(`re-stamped ${restamped} purchase(s) the receipt links touched`);
+  }
   return r;
 }
 
