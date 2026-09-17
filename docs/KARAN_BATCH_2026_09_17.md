@@ -40,11 +40,11 @@ Status: `TODO` · `WIP` · `DONE` (with commit) · `DEFERRED` (with why) · `ASK
 | 5 | Wider "monitor" view toggle, next to light/dark | **DONE** `4eaa8ef9` | |
 | 6 | Stage vs Status — what is the difference? | **DONE** `7223ae28` | Answer first; may be a naming fix rather than a feature |
 | 7 | Delivery buttons need to be properly clickable | **DONE** `4eaa8ef9` | Third time asked — see the delivery-UI memory |
-| 8 | Buttons take ~5s to respond | WIP | Data layer is 300-460ms, so not queries. 22 files run server actions with NO pending feedback — the action lands in ~1s and the UI says nothing, which reads as frozen |
+| 8 | Buttons take ~5s to respond | **PARTIAL** `f91103b4` | My first measurement was wrong (grepped files, not controls). Real count was 3, now 0, with `npm run` check to hold it. Deal page's 4 sequential reads parallelised: 186ms → 78ms. **Remaining:** every server action does createClient + getUser + assertCommercialAccess before any work, then revalidates a 4,000-line page. Bigger change, not for go-live day |
 | 9 | Field scheduling: default times 7am–3pm | **DONE** `3ea21f93` | |
-| 10 | Field Ops "mark off" — what is it, make it simpler | TODO | |
+| 10 | Field Ops "mark off" — what is it, make it simpler | **DONE** `efc99e85` | |
 | 11 | Labor costs should appear under an opportunity's Costs | **DONE** `3ea21f93` | Careful: hours ≠ money, never sum (see labor report) |
-| 12 | Calendar week view | TODO | |
+| 12 | Calendar week view | **DONE** `efc99e85` | |
 | 14 | AR sheet date filters (30 / 90 days) | **DONE** `bec55d75` | **Trap:** carried-over rows have `issuedYmd = null` and would vanish |
 | 15 | Notifications | TODO | Needs scoping — ask what is wrong with them today |
 | 16 | Add due dates | TODO | Needs scoping — due dates on what? |
