@@ -109,7 +109,6 @@ export default function OrderFulfillmentView({
   const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">(savedFulfillment.method);
   // Treat a restored non-default method as an explicit choice, or the auto-pick
   // logic would immediately overwrite what the admin had already selected.
-  const adminTouchedFulfillment = useRef(savedFulfillment.method === "pickup");
   const [pickupLocation, setPickupLocation] = useState(savedFulfillment.pickupLocation);
   const [deliveryAddr, setDeliveryAddr] = useState(savedFulfillment.deliveryAddr);
   const [useCustomAddress, setUseCustomAddress] = useState(savedFulfillment.useCustomAddress);
@@ -491,16 +490,10 @@ export default function OrderFulfillmentView({
       {/* Fulfilment method */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
         <h2 className="text-sm font-semibold text-ppp-charcoal mb-2">Delivery or pickup</h2>
-        {isNycDelivery && fulfillment === "pickup" && (
-          <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ppp-blue-50 border border-ppp-blue-100 text-[11px] font-medium text-ppp-blue-700">
-            <span aria-hidden>🗽</span>
-            NYC address — defaulted to pickup (delivery often unavailable in the city)
-          </div>
-        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <FulfillmentChoice
             selected={fulfillment === "delivery"}
-            onSelect={() => { adminTouchedFulfillment.current = true; setFulfillment("delivery"); }}
+            onSelect={() => setFulfillment("delivery")}
             title="Deliver to customer"
             description={
               draft?.deliveryAddress
@@ -515,7 +508,7 @@ export default function OrderFulfillmentView({
           />
           <FulfillmentChoice
             selected={fulfillment === "pickup"}
-            onSelect={() => { adminTouchedFulfillment.current = true; setFulfillment("pickup"); }}
+            onSelect={() => setFulfillment("pickup")}
             title="Pickup at supplier"
             description={
               suggestPickup

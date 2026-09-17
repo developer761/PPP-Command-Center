@@ -846,21 +846,6 @@ function formatAddressBlock(address: DeliveryAddress): string {
  *  `${colorId}::${finish ?? ""}` — same shape as the modal's +/- override map.
  *  When set, the line shows the override as a tag prefix; the job-level header
  *  is dropped if NOT every color shares the same value (mixed-product job). */
-/** " — Living Room, Bathroom · Walls" for one order line (Kate round-3 #25).
- *  Rooms are capped so a color used in a dozen rooms doesn't blow the line
- *  width; the count keeps it honest rather than silently truncating. */
-function formatPlacementSuffix(rooms: string[], surfaces: string[]): string {
-  const cleanRooms = rooms.map((r) => r.trim()).filter(Boolean);
-  const cleanSurfaces = surfaces.map((s) => s.trim()).filter(Boolean);
-  if (cleanRooms.length === 0 && cleanSurfaces.length === 0) return "";
-  const MAX_ROOMS = 4;
-  const roomText =
-    cleanRooms.length > MAX_ROOMS
-      ? `${cleanRooms.slice(0, MAX_ROOMS).join(", ")} +${cleanRooms.length - MAX_ROOMS} more`
-      : cleanRooms.join(", ");
-  const parts = [roomText, cleanSurfaces.join(", ")].filter(Boolean);
-  return ` — ${parts.join(" · ")}`;
-}
 
 /** Exported for tests: this is the exact paint block a vendor reads. */
 export function formatOrderSummaryBlock(

@@ -1373,7 +1373,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                                 pre-computed per-WO in woChipFlags useMemo so
                                 this render loop is a cheap Map lookup. */}
                             {woChipFlags.get(j.wo.id)?.manualQty && (
-                              <Pill tone="orange" title="One or more rooms are missing square footage in Salesforce. The supplier order will show '___ (PPP to confirm)' for those colors — type in the gallons before sending.">
+                              <Pill tone="orange" title="One or more rooms are missing square footage in Salesforce. The supplier order will show 'TBD' for those colors — type in the gallons before sending.">
                                 ⚠ Manual qty
                               </Pill>
                             )}
@@ -1859,7 +1859,7 @@ function JobDetailImpl({
               className="mt-3 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2 flex items-start gap-2 text-[12px] text-ppp-orange-700"
               title={noEstimate
                 ? "You'll need to fill in the gallons yourself when you order materials. The system won't auto-suggest a quantity."
-                : "Some rooms are missing measurements. The unsized ones show \"___ (PPP to confirm)\" in the supplier modal — fill them in before sending."}
+                : "Some rooms are missing measurements. The unsized ones show \"TBD\" on the supplier order — fill them in before sending."}
             >
               <span aria-hidden>⚠</span>
               <span className="leading-snug">
@@ -2364,7 +2364,7 @@ function LineItemRow({
               number once: it persists in the Command Center
               (wo_li_sqft_overrides, migration 073), the gallon estimator
               recomputes live, and the supplier order carries a real quantity
-              instead of "___ (PPP to confirm)". It does NOT write back to
+              instead of "TBD". It does NOT write back to
               Salesforce — Sq_Footage__c is a formula field and the write
               always failed (round-2 #17). Empty / cleared input falls back to
               the SF raw value. Wall-area-only rows (no floor sqft but have
