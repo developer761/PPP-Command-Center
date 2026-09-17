@@ -4,7 +4,7 @@ import { Document, Page, View, Text, Image, StyleSheet, Font, Svg, Polygon, rend
 import * as React from "react";
 
 import { ROLES, JOURNEY, LOOKUP } from "./roles";
-import type { Chapter, Surface, Strip } from "./walkthrough";
+import type { RoleGuide, Surface, Strip } from "./walkthrough";
 
 /**
  * "Running Commercial Work" — the handbook, printed.
@@ -115,6 +115,19 @@ const s = StyleSheet.create({
   stepNum: { width: 16, height: 16, borderRadius: 8, backgroundColor: NAVY, color: "#ffffff", fontSize: 8.5, fontFamily: "Helvetica-Bold", textAlign: "center", lineHeight: 1, paddingTop: 4, marginRight: 8 },
   stepText: { flex: 1, fontSize: 10, lineHeight: 1.45, paddingTop: 1 },
   purpose: { fontSize: 9.5, color: "#374151", lineHeight: 1.45, marginBottom: 6 },
+  roleHead: { marginBottom: 14 },
+  roleIntro: { fontSize: 10, color: GREY, lineHeight: 1.5, marginTop: 5 },
+  h2: { fontSize: 13.5, fontFamily: "Helvetica-Bold", color: NAVY },
+  chapterHead: { marginTop: 8, marginBottom: 10, borderTopWidth: 2, borderTopColor: ORANGE, paddingTop: 7 },
+  chapterBlurb: { fontSize: 9.5, color: GREY, lineHeight: 1.45, marginTop: 2 },
+  ctrlHead: { fontSize: 7.5, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.6, color: "#9ca3af", marginBottom: 3 },
+  refRow: { flexDirection: "row", paddingVertical: 5, borderBottomWidth: 0.5, borderBottomColor: RULE },
+  refName: { fontSize: 10, fontFamily: "Helvetica-Bold", color: INK },
+  refPath: { fontSize: 7.5, color: ORANGE, fontFamily: "Helvetica-Bold", marginTop: 1 },
+  refPurpose: { flex: 1, fontSize: 9, color: "#374151", lineHeight: 1.4 },
+  tocRow: { flexDirection: "row", paddingVertical: 3.4, borderBottomWidth: 0.5, borderBottomColor: RULE },
+  tocWho: { width: "26%", fontSize: 10, fontFamily: "Helvetica-Bold", color: NAVY },
+  tocWhat: { flex: 1, fontSize: 9.5, color: "#374151" },
   ctrlRow: { flexDirection: "row", paddingVertical: 2.6, borderBottomWidth: 0.5, borderBottomColor: RULE },
   ctrlLabel: { width: "34%", paddingRight: 8, fontSize: 9, fontFamily: "Helvetica-Bold", color: NAVY, lineHeight: 1.35 },
   ctrlDoes: { flex: 1, fontSize: 9, color: "#374151", lineHeight: 1.35 },
@@ -226,30 +239,52 @@ function SketchView({ sketch }: { sketch: Strip }) {
 }
 
 function SurfaceView({ surface }: { surface: Surface }) {
+  const hasDetail = (surface.steps?.length ?? 0) > 0 || (surface.controls?.length ?? 0) > 0;
+  // A surface with nothing but a purpose is a REFERENCE line, not a procedure.
+  // Given the full block treatment it ate a third of a page to say one sentence.
+  if (!hasDetail && !surface.watchOut) {
+    return (
+      <View style={s.refRow} wrap={false}>
+        <View style={{ width: "32%", paddingRight: 10 }}>
+          <Text style={s.refName}>{pdfSafe(surface.name)}</Text>
+          <Text style={s.refPath}>{pdfSafe(surface.path)}</Text>
+        </View>
+        <Text style={s.refPurpose}>{pdfSafe(surface.purpose)}</Text>
+      </View>
+    );
+  }
   return (
-    <View style={s.task} wrap={false}>
-      <Text style={s.taskTitle}>{pdfSafe(surface.name)}</Text>
-      <Text style={s.taskPath}>{pdfSafe(surface.path)}</Text>
-      {surface.strip && <SketchView sketch={surface.strip} />}
-      <Text style={s.purpose}>{pdfSafe(surface.purpose)}</Text>
+    <View style={s.task}>
+      {/* Header and purpose stay together — a title stranded at the foot of a
+          page with its steps overleaf is the one break that must never happen. */}
+      <View wrap={false}>
+        <Text style={s.taskTitle}>{pdfSafe(surface.name)}</Text>
+        <Text style={s.taskPath}>{pdfSafe(surface.path)}</Text>
+        {surface.strip && <SketchView sketch={surface.strip} />}
+        <Text style={s.purpose}>{pdfSafe(surface.purpose)}</Text>
+      </View>
       {surface.steps?.map((st, i) => (
-        <View key={i} style={s.step}>
+        <View key={i} style={s.step} wrap={false}>
           <Text style={s.stepNum}>{i + 1}</Text>
           <Text style={s.stepText}>{pdfSafe(st)}</Text>
         </View>
       ))}
       {surface.controls && surface.controls.length > 0 && (
-        <View style={{ marginTop: 6 }}>
+        <View style={{ marginTop: 7 }}>
+          <Text style={s.ctrlHead} wrap={false}>What each thing does</Text>
           {surface.controls.map((c) => (
-            <View key={c.label} style={s.ctrlRow}>
-              <Text style={s.ctrlLabel}>{pdfSafe(c.label)}</Text>
+            <View key={c.label} style={s.ctrlRow} wrap={false}>
+              <Text style={s.ctrlLabel}>
+                {pdfSafe(c.label)}
+                {c.required ? "  (required)" : ""}
+              </Text>
               <Text style={s.ctrlDoes}>{pdfSafe(c.does)}</Text>
             </View>
           ))}
         </View>
       )}
       {surface.watchOut && (
-        <View style={s.watchBox}>
+        <View style={s.watchBox} wrap={false}>
           <View style={{ flex: 1 }}>
             <Text style={s.watchLabel}>Watch out</Text>
             <Text style={s.watchText}>{pdfSafe(surface.watchOut)}</Text>
@@ -260,17 +295,34 @@ function SurfaceView({ surface }: { surface: Surface }) {
   );
 }
 
-function ChapterPage({ chapter, who, company }: { chapter: Chapter; who: string; company: string }) {
+/**
+ * A person's whole walkthrough, flowing.
+ *
+ * Deliberately ONE <Page> per role, not one per chapter. The first version gave
+ * every chapter its own page and marked each surface `wrap={false}`, which
+ * produced pages carrying a single three-line entry and three inches of white
+ * under it — a sheet of paper for "Crew: adding a crew member". react-pdf
+ * paginates a long page by itself; what it needs from us is small
+ * keep-together units, not one enormous one.
+ */
+function RolePages({ role, company }: { role: RoleGuide; company: string }) {
   return (
     <Page size="LETTER" style={s.page}>
-      <RunningHeader company={company} title={chapter.title} />
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Text style={s.h1}>{pdfSafe(chapter.title)}</Text>
-        <Text style={s.whoChip}>{pdfSafe(who)}</Text>
+      <RunningHeader company={company} title={role.label} />
+      <View style={s.roleHead} wrap={false}>
+        <Text style={s.h1}>{pdfSafe(role.label === "Everything" ? "The whole platform" : `${role.label}'s work`)}</Text>
+        <Text style={s.roleIntro}>{pdfSafe(role.intro)}</Text>
       </View>
-      <Text style={s.intro}>{pdfSafe(chapter.blurb)}</Text>
-      {chapter.surfaces.map((su, i) => (
-        <SurfaceView key={i} surface={su} />
+      {role.chapters.map((c) => (
+        <View key={c.id}>
+          <View style={s.chapterHead} wrap={false}>
+            <Text style={s.h2}>{pdfSafe(c.title)}</Text>
+            <Text style={s.chapterBlurb}>{pdfSafe(c.blurb)}</Text>
+          </View>
+          {c.surfaces.map((su, i) => (
+            <SurfaceView key={i} surface={su} />
+          ))}
+        </View>
       ))}
       <Footer company={company} />
     </Page>
@@ -289,6 +341,41 @@ function GuideDoc({ company, logo }: { company: string; logo: Buffer | null }) {
         </Text>
         <View style={s.coverRule} />
         <Text style={s.coverMeta}>{fmtToday().toUpperCase()}</Text>
+      </Page>
+
+      {/* ── Contents ──
+          Twenty pages without one is a document people flick through and give
+          up on. Whose section, and what is in it. */}
+      <Page size="LETTER" style={s.page}>
+        <RunningHeader company={company} title="Contents" />
+        <Text style={s.h1}>What is in here</Text>
+        <Text style={s.intro}>
+          Find your name. Each section covers only the pages that person uses, and what every button on them does.
+        </Text>
+        {ROLES.map((r) => (
+          <View key={r.key} style={{ marginBottom: 12 }} wrap={false}>
+            <View style={s.tocRow}>
+              <Text style={s.tocWho}>{pdfSafe(r.label === "Everything" ? "Everyone" : r.label)}</Text>
+              <Text style={s.tocWhat}>{pdfSafe(r.tagline)}</Text>
+            </View>
+            {r.chapters.map((c) => (
+              <View key={c.id} style={s.tocRow}>
+                <Text style={[s.tocWho, { fontFamily: "Helvetica", color: GREY, fontSize: 9 }]}> </Text>
+                <Text style={[s.tocWhat, { color: GREY }]}>
+                  {/* "screens", not "pages": this document has its own page
+                      numbers at the foot, and "Every day — 4 pages" read as
+                      four sheets of paper rather than four places in the app. */}
+                  {pdfSafe(c.title)} — {c.surfaces.length} {c.surfaces.length === 1 ? "screen" : "screens"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ))}
+        <Text style={s.footnote}>
+          The last sheet is a &quot;Where do I…&quot; list — the quickest way in when you know the job but not the page.
+          Pin that one up.
+        </Text>
+        <Footer company={company} />
       </Page>
 
       {/* ── The map ── */}
@@ -334,11 +421,9 @@ function GuideDoc({ company, logo }: { company: string; logo: Buffer | null }) {
       {/* ── One page per section ── */}
       {/* One page per chapter, per person. The overview role is the map page
           above, so it is not repeated here. */}
-      {ROLES.filter((r) => r.key !== "overview").flatMap((r) =>
-        r.chapters.map((c) => (
-          <ChapterPage key={`${r.key}:${c.id}`} chapter={c} who={r.label} company={company} />
-        ))
-      )}
+      {ROLES.filter((r) => r.key !== "overview").map((r) => (
+        <RolePages key={r.key} role={r} company={company} />
+      ))}
 
       {/* ── The index ── */}
       <Page size="LETTER" style={s.page}>
