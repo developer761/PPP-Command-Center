@@ -62,6 +62,16 @@ export type Surface = {
   controls?: Control[];
   /** The thing that bites. */
   watchOut?: string;
+  /**
+   * What the walkthrough spotlights on the real page — the value of a
+   * `data-tour` attribute, without the selector syntax.
+   *
+   * Optional on purpose. A surface with no hook still gets a walkthrough step:
+   * it navigates there and explains the page with a centred card. Requiring a
+   * hook everywhere would mean either touching every page in the platform
+   * before any of this shipped, or quietly dropping the surfaces that had none.
+   */
+  tourTarget?: string;
 };
 
 export type Chapter = {
@@ -82,6 +92,33 @@ export type RoleGuide = {
   intro: string;
   chapters: Chapter[];
 };
+
+/**
+ * One surface, as a step in the guided tour.
+ *
+ * The body is the purpose plus the numbered steps, because on the real page
+ * there is no room for a control table — the person is looking at the controls
+ * themselves. The table stays on the guide page, where it can be read slowly.
+ */
+export function surfaceStep(su: Surface): {
+  route: string;
+  target?: string;
+  title: string;
+  body: string;
+} {
+  const numbered = (su.steps ?? []).map((t, i) => `${i + 1}. ${t}`).join("  ");
+  return {
+    route: su.href,
+    target: su.tourTarget ? `[data-tour="${su.tourTarget}"]` : undefined,
+    title: su.name,
+    body: numbered ? `${su.purpose}\n\n${numbered}` : su.purpose,
+  };
+}
+
+/** A whole role's day, in order, as one tour. */
+export function roleTour(role: RoleGuide) {
+  return role.chapters.flatMap((c) => c.surfaces.map(surfaceStep));
+}
 
 /** Every route the walkthrough points at — for the test that keeps it honest. */
 export function walkthroughRoutes(roles: RoleGuide[]): string[] {

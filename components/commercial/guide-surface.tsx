@@ -1,6 +1,5 @@
-import Link from "next/link";
-
-import type { Surface, Strip, Control } from "@/lib/commercial/guide/walkthrough";
+import { surfaceStep, type Surface, type Strip, type Control } from "@/lib/commercial/guide/walkthrough";
+import { TourButton } from "@/components/commercial/guide-tour-button";
 
 /**
  * One surface in the walkthrough: what the page is for, where it sits, the
@@ -56,15 +55,15 @@ export function SurfaceCard({ surface }: { surface: Surface }) {
           <h3 className="text-[16px] font-bold text-ppp-charcoal leading-tight">{surface.name}</h3>
           <p className="text-[11.5px] font-semibold text-cc-brand-700 mt-0.5">{surface.path}</p>
         </div>
-        <Link
-          href={surface.href}
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface px-3 min-h-[38px] text-[12.5px] font-semibold text-cc-brand-700 hover:bg-ppp-charcoal-50 hover:border-cc-brand-300"
-        >
-          Open it
+        {/* "Try it out", not "Open it": dropping somebody on the real page with
+            no guidance is the situation the guide exists to fix. This walks them
+            through it with the app held non-interactive underneath. */}
+        <TourButton steps={[surfaceStep(surface)]} label={surface.name}>
+          Try it out
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M5 12h14 M13 5l7 7-7 7" />
           </svg>
-        </Link>
+        </TourButton>
       </div>
 
       <p className="text-[13px] text-ppp-charcoal-600 leading-relaxed mt-2.5">{surface.purpose}</p>

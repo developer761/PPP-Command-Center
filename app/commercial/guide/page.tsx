@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { ROLES, roleFor } from "@/lib/commercial/guide/roles";
+import { roleTour } from "@/lib/commercial/guide/walkthrough";
 import { SurfaceCard } from "@/components/commercial/guide-surface";
+import { TourButton } from "@/components/commercial/guide-tour-button";
 
 /**
  * `/commercial/guide` — "How it works", the walkthrough, on screen.
@@ -37,6 +39,7 @@ export default async function GuidePage({ searchParams }: { searchParams: SP }) 
 
   const sp = await searchParams;
   const role = roleFor(sp.as);
+  const tourLength = roleTour(role).length;
 
   return (
     <div className="max-w-5xl mx-auto px-3 sm:px-6 py-6 space-y-5">
@@ -82,27 +85,28 @@ export default async function GuidePage({ searchParams }: { searchParams: SP }) 
         })}
       </nav>
 
-      <p className="text-[13px] text-ppp-charcoal-700 leading-relaxed rounded-xl border border-ppp-charcoal-100 bg-surface px-4 py-3">
-        {role.intro}
-      </p>
-
-      {/* ── Contents ── */}
-      {role.chapters.length > 1 && (
-        <nav aria-label="Contents" className="flex flex-wrap gap-1.5">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-1 self-center">
-            On this page
-          </span>
-          {role.chapters.map((c) => (
-            <a
-              key={c.id}
-              href={`#${c.id}`}
-              className="inline-flex items-center rounded-lg border border-ppp-charcoal-200 bg-surface px-2.5 min-h-[34px] text-[12px] font-semibold text-ppp-charcoal-600 hover:border-cc-brand-300 hover:text-cc-brand-800"
-            >
-              {c.title}
-            </a>
-          ))}
-        </nav>
-      )}
+      {/* ── The whole thing, start to finish ──
+          One button that walks every surface in this role's list, in the order
+          they meet them on a normal day. The per-surface buttons below are for
+          somebody who already knows what they are looking for; this is for the
+          first morning, where the useful thing is the ORDER. */}
+      <div className="rounded-xl border border-cc-brand-300 bg-cc-brand-50 px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 max-w-xl">
+          <p className="text-[13px] text-cc-brand-900 leading-relaxed">{role.intro}</p>
+          <p className="text-[11.5px] text-cc-brand-800 mt-1.5">
+            {role.key === "overview"
+              ? `${tourLength} stops around the platform.`
+              : `${tourLength} stops through ${role.label}'s day, in order.`}{" "}
+            Nothing can be changed while it runs.
+          </p>
+        </div>
+        <TourButton steps={roleTour(role)} label={role.key === "overview" ? "The platform" : `${role.label}'s day`} variant="primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 3l14 9-14 9z" />
+          </svg>
+          {role.key === "overview" ? "Walk me round the platform" : `Walk me through ${role.label}'s day`}
+        </TourButton>
+      </div>
 
       {/* ── The walkthrough ── */}
       {role.chapters.map((c) => (

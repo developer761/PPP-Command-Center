@@ -147,6 +147,7 @@ const MARY: RoleGuide = {
           name: "Receivables",
           href: "/commercial/accounting?view=receivables",
           path: "Accounting › Receivables",
+          tourTarget: "accounting:record-payment",
           purpose:
             "Every job with money still out, and the form for recording a payment when it comes in. Each row carries a note so anyone can see what has been chased and when.",
           strip: { boxes: ACCOUNTING_BAR, at: 1 },
@@ -178,6 +179,7 @@ const MARY: RoleGuide = {
           name: "Purchases",
           href: "/commercial/accounting?view=purchases",
           path: "Accounting › Purchases",
+          tourTarget: "accounting:record-purchase",
           purpose:
             "Record what was bought against a job, and see everything bought grouped by vendor, by job or by month.",
           strip: { boxes: ACCOUNTING_BAR, at: 3 },
@@ -205,6 +207,7 @@ const MARY: RoleGuide = {
           name: "Labor payments",
           href: "/commercial/accounting?view=labor-out",
           path: "Accounting › Labor payments",
+          tourTarget: "accounting:record-labor",
           purpose: "Record what was paid out to a crew or labor company, and see what each has been paid.",
           strip: { boxes: ACCOUNTING_BAR, at: 4 },
           steps: [
@@ -229,6 +232,7 @@ const MARY: RoleGuide = {
           name: "Deposits",
           href: "/commercial/accounting?view=deposits",
           path: "Accounting › Deposits",
+          tourTarget: "accounting:deposits",
           purpose:
             "Money in, grouped by the day it landed — the view you read with the bank statement next to you. Job names link to where that payment was recorded.",
           strip: { boxes: ACCOUNTING_BAR, at: 5 },
@@ -246,6 +250,7 @@ const MARY: RoleGuide = {
           name: "AR sheet",
           href: "/commercial/accounting?view=ar",
           path: "Accounting › AR sheet",
+          tourTarget: "accounting:ar",
           purpose:
             "The sheet you send on, headed \u201cAccounts Receivable\u201d. It builds itself from the AIA applications that have been raised — you do not type it up. Retention sits on its own line, and every line groups under its job with a subtotal.",
           strip: { boxes: ACCOUNTING_BAR, at: 2 },
@@ -263,6 +268,7 @@ const MARY: RoleGuide = {
           name: "Any tab › Print / PDF",
           href: "/commercial/accounting",
           path: "Accounting › any tab › Print / PDF",
+          tourTarget: "accounting:print",
           purpose:
             "A clean sheet for the bookkeeper. What prints is the report and its figures — the tab strip, the filter bars and the entry forms are all left off, and the page is headed with the company name, the tab and the date it was run.",
           steps: [
@@ -282,24 +288,28 @@ const MARY: RoleGuide = {
           name: "AR aging",
           href: "/commercial/accounting?view=aging",
           path: "Accounting › More › AR aging",
+          tourTarget: "accounting:aging",
           purpose: "What is owed by how late it is — 30, 60, 90 days and beyond, per GC. The answer to “how bad is it”.",
         },
         {
           name: "Cash flow",
           href: "/commercial/accounting?view=cash",
           path: "Accounting › More › Cash flow",
+          tourTarget: "accounting:cash",
           purpose: "Collected against billed by month, and how long each GC actually takes to pay.",
         },
         {
           name: "Job costs",
           href: "/commercial/accounting?view=costs",
           path: "Accounting › More › Job costs",
+          tourTarget: "accounting:costs",
           purpose: "What each job has cost and what is left on it. Clicking a job opens its costs tool.",
         },
         {
           name: "Sales tax",
           href: "/commercial/accounting?view=tax",
           path: "Accounting › More › Sales tax",
+          tourTarget: "accounting:tax",
           purpose: "Tax collected by rate, ready to file — and the invoices that carried no tax and have no exemption on file.",
           controls: [
             { label: "Issued", kind: "filter", does: "Narrows to invoices issued in a period — this quarter, this year, and so on." },
@@ -311,6 +321,7 @@ const MARY: RoleGuide = {
           name: "Transactions",
           href: "/commercial/accounting?view=transactions",
           path: "Accounting › More › Transactions",
+          tourTarget: "accounting:transactions",
           purpose:
             "The full ledger: everything in and out, newest month first, with a subtotal per month. This is also where you tick payments off against the bank.",
           controls: [
@@ -324,6 +335,7 @@ const MARY: RoleGuide = {
           name: "Balance owed",
           href: "/commercial/accounting?view=owed",
           path: "Accounting › More › Balance owed",
+          tourTarget: "accounting:owed",
           purpose:
             "Jobs that are finished or on hold with money still out — Tomco's own Balance Owed report, the same records to the cent.",
         },
@@ -331,6 +343,7 @@ const MARY: RoleGuide = {
           name: "Reimbursements",
           href: "/commercial/accounting?view=reimbursements",
           path: "Accounting › More › Reimbursements",
+          tourTarget: "accounting:reimbursements",
           purpose: "Who is owed money back out of pocket. A purchase reaches this tab when somebody filled in Reimburse to.",
           controls: [
             { label: "Mark paid", does: "Moves a line from Still owed to Paid back. One click." },

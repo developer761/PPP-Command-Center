@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage",
     "smoke": "node scripts/smoke-pages.mjs",
     "check:enums": "node scripts/check-db-enums.mjs",
+    "check:tour-targets": "node scripts/check-tour-targets.mjs",
     "check:schema": "node scripts/check-schema-drift.mjs",
     "verify:messaging": "node --experimental-strip-types --import ./scripts/ts-resolve-register.mjs scripts/verify-messaging-e2e.mjs",
     "verify": "node scripts/verify.mjs && npm run verify:inbound && npm run verify:workspace && npm run verify:drafts && npm run verify:workflow && npm run verify:campaign-edit",

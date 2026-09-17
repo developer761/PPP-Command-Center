@@ -28,14 +28,17 @@ import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 const LS_KEY = "cc_onboarding_seen_v1";
 const SS_STEP = "cc_onboarding_step_v1";
 
-type TourStep = {
+export type TourStep = {
   route?: string;
   target?: string; // CSS selector of the real element to spotlight
   title: string;
   body: string;
 };
 
-const STEPS: TourStep[] = [
+/** What a caller hands `cc:start-tour` to run something other than onboarding. */
+export type StartTourDetail = { steps: TourStep[]; label?: string };
+
+const ONBOARDING_STEPS: TourStep[] = [
   {
     route: "/commercial",
     title: "Welcome to the Commercial Command Center",
@@ -114,6 +117,19 @@ export function OnboardingWalkthrough({
   const pathname = usePathname();
   const [active, setActive] = useState(false);
   const [i, setI] = useState(0);
+  /**
+   * The tour currently running.
+   *
+   * Onboarding is just the default one. Karan 2026-09-16 asked for "Try it out"
+   * on the guide to "literally take you through each platform… no changes can
+   * be made, but it shows you how to do stuff and where" — which is this engine
+   * with different steps, not a second engine. The overlay already makes the
+   * app non-interactive, so a tour cannot change anything by construction.
+   */
+  const [steps, setSteps] = useState<TourStep[]>(ONBOARDING_STEPS);
+  /** True only for the first-run tour, which is the one that marks itself seen. */
+  const [isOnboarding, setIsOnboarding] = useState(true);
+  const [label, setLabel] = useState<string | null>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const targetElRef = useRef<HTMLElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -135,7 +151,7 @@ export function OnboardingWalkthrough({
       const saved = sessionStorage.getItem(SS_STEP);
       if (saved) {
         const n = parseInt(saved, 10);
-        if (Number.isFinite(n) && n >= 0 && n < STEPS.length) setI(n);
+        if (Number.isFinite(n) && n >= 0 && n < ONBOARDING_STEPS.length) setI(n);
       }
     } catch {
       /* private mode — DB flag still governs */
@@ -145,7 +161,17 @@ export function OnboardingWalkthrough({
 
   // Replay on demand — a "Take the tour" button dispatches this.
   useEffect(() => {
-    const start = () => {
+    const start = (e: Event) => {
+      const detail = (e as CustomEvent<StartTourDetail | undefined>).detail;
+      if (detail?.steps?.length) {
+        setSteps(detail.steps);
+        setIsOnboarding(false);
+        setLabel(detail.label ?? null);
+      } else {
+        setSteps(ONBOARDING_STEPS);
+        setIsOnboarding(true);
+        setLabel(null);
+      }
       setI(0);
       setRect(null);
       setActive(true);
@@ -156,6 +182,10 @@ export function OnboardingWalkthrough({
 
   const finish = useCallback(() => {
     setActive(false);
+    // A walkthrough replayed from the guide must NOT mark onboarding as seen —
+    // somebody reading "how do I record a payment" in week one would silently
+    // lose the first-run tour they had not had yet.
+    if (!isOnboarding) return;
     try {
       localStorage.setItem(LS_KEY, "1");
       sessionStorage.removeItem(SS_STEP);
@@ -163,14 +193,14 @@ export function OnboardingWalkthrough({
       /* ignore */
     }
     void fetch("/api/commercial/onboarding/seen", { method: "POST" }).catch(() => undefined);
-  }, []);
+  }, [isOnboarding]);
 
   // Drive the current step: navigate if needed, then find + spotlight the target.
   // Re-runs when pathname settles after a push, so the element is found once the
   // destination has rendered.
   useEffect(() => {
     if (!active) return;
-    const step = STEPS[i];
+    const step = steps[i];
     try {
       sessionStorage.setItem(SS_STEP, String(i));
     } catch {
@@ -206,7 +236,7 @@ export function OnboardingWalkthrough({
     };
     poll();
     return () => cancelAnimationFrame(raf);
-  }, [i, active, pathname, router]);
+  }, [i, active, pathname, router, steps]);
 
   // Keep the spotlight glued to its element on scroll/resize.
   useEffect(() => {
@@ -223,8 +253,8 @@ export function OnboardingWalkthrough({
   }, [active]);
 
   const go = useCallback(
-    (dir: 1 | -1) => setI((n) => Math.max(0, Math.min(STEPS.length - 1, n + dir))),
-    []
+    (dir: 1 | -1) => setI((n) => Math.max(0, Math.min(steps.length - 1, n + dir))),
+    [steps.length]
   );
 
   useEffect(() => {
@@ -243,10 +273,10 @@ export function OnboardingWalkthrough({
 
   if (!active) return null;
 
-  const step = STEPS[i];
-  const isLast = i === STEPS.length - 1;
+  const step = steps[i];
+  const isLast = i === steps.length - 1;
   const isFirst = i === 0;
-  const title = isFirst && firstName ? `Welcome, ${firstName}` : step.title;
+  const title = isOnboarding && isFirst && firstName ? `Welcome, ${firstName}` : step.title;
 
   // Tooltip placement: to the RIGHT of the spotlight (the sidebar is on the
   // left, so there's always room); drop BELOW if the right would overflow.
@@ -294,14 +324,14 @@ export function OnboardingWalkthrough({
     >
       <div className="flex items-center justify-between px-5 pt-4">
         <span className="text-[11px] font-semibold uppercase tracking-widest text-ppp-charcoal-400">
-          {i + 1} of {STEPS.length}
+          {label ? `${label} · ` : ""}{i + 1} of {steps.length}
         </span>
         <button
           type="button"
           onClick={finish}
           className="text-[12.5px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal px-2 py-1 min-h-[36px]"
         >
-          Skip tour
+          {isOnboarding ? "Skip tour" : "Close"}
         </button>
       </div>
       <div className="px-5 pb-1 pt-2">
@@ -309,9 +339,22 @@ export function OnboardingWalkthrough({
           {title}
         </h2>
         <p className="text-[13px] leading-relaxed text-ppp-charcoal-500 mt-1.5">{step.body}</p>
+        {!isOnboarding && (
+          // The first thing anyone asks of a walkthrough that sits on the real
+          // page is whether they are about to break something. The overlay
+          // blocks every click underneath it, so the answer is no — and saying
+          // so is what makes people willing to press Next.
+          <p className="text-[11.5px] text-ppp-charcoal-400 mt-2 flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            Looking only — nothing here can be changed or saved.
+          </p>
+        )}
       </div>
       <div className="flex items-center justify-center gap-1.5 py-3.5">
-        {STEPS.map((_, n) => (
+        {steps.map((_, n) => (
           <span
             key={n}
             className={`h-1.5 rounded-full transition-all ${n === i ? "w-5 bg-cc-brand-500" : "w-1.5 bg-ppp-charcoal-200"}`}
@@ -333,7 +376,7 @@ export function OnboardingWalkthrough({
           onClick={() => (isLast ? finish() : go(1))}
           className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-cc-brand-600 text-white text-[14px] font-semibold min-h-[44px] shadow-sm hover:bg-cc-brand-700"
         >
-          {isLast ? "Get started" : "Next"}
+          {isLast ? (isOnboarding ? "Get started" : "Done") : "Next"}
           {!isLast && (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14M13 6l6 6-6 6" /></svg>
           )}

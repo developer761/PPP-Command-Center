@@ -740,7 +740,9 @@ export default async function AccountingPage({
           {/* Print sits beside Export because they answer the same question
               — "get this off the screen and send it" — and Mary's bookkeeper
               wants the sheet, not a CSV. */}
-          <PrintButton />
+          <span data-tour="accounting:print">
+            <PrintButton />
+          </span>
           <ExportCsvLink
             href={
               view === "transactions"
@@ -933,6 +935,10 @@ export default async function AccountingPage({
                 key={v.key}
                 href={href(v.key)}
                 aria-current={active ? "page" : undefined}
+                // Stable hook for the walkthrough on /commercial/guide. Keyed on
+                // the view, not the label, so renaming a tab does not silently
+                // leave the tour pointing at nothing.
+                data-tour={`accounting:${v.key}`}
                 className={`shrink-0 px-3.5 py-2 text-[13.5px] font-bold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${
                   active
                     ? "border-cc-brand-600 text-ppp-charcoal"
@@ -965,6 +971,10 @@ export default async function AccountingPage({
                 key={v.key}
                 href={href(v.key)}
                 aria-current={active ? "page" : undefined}
+                // Same hook as the tabs on the bar. The first pass only tagged
+                // the six primaries, so the walkthrough's seven More steps dimmed
+                // the screen and pointed at nothing.
+                data-tour={`accounting:${v.key}`}
                 className={`shrink-0 px-3 rounded-lg border text-[12.5px] font-semibold min-h-[38px] inline-flex items-center ${
                   active
                     ? "border-cc-brand-300 bg-cc-brand-50 text-cc-brand-800"
@@ -1220,7 +1230,7 @@ export default async function AccountingPage({
             certified and is actually being chased is on the <Link href={href("ar")} className="font-semibold text-cc-brand-700 hover:underline">AR sheet</Link> tab.
           </p>
           {/* Entry forms are for the screen. On paper they are empty boxes. */}
-          <div data-print-hide>
+          <div data-print-hide data-tour="accounting:record-payment">
             <RecordPaymentForm action={recordPaymentAction} invoices={entry.openInvoices} />
           </div>
         </>
@@ -2067,7 +2077,7 @@ export default async function AccountingPage({
       )}
 
       {view === "purchases" && entry && (
-        <div data-print-hide>
+        <div data-print-hide data-tour="accounting:record-purchase">
           <RecordPurchaseForm action={recordSpendAction} jobs={entry.jobs} vendors={entry.vendors} />
         </div>
       )}
@@ -2084,7 +2094,7 @@ export default async function AccountingPage({
       )}
 
       {view === "labor-out" && entry && (
-        <div data-print-hide>
+        <div data-print-hide data-tour="accounting:record-labor">
           <RecordLaborPaymentForm action={recordSpendAction} jobs={entry.jobs} payees={entry.payees} />
         </div>
       )}
