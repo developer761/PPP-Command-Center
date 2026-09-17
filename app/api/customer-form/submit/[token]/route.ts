@@ -580,8 +580,22 @@ export async function POST(
   // equivalent (Ben, Mooreglo, Mooregard, Moore Life) were dropped rather than
   // guessed at. Worse, it holds ONE value, so a mixed job's exterior line could
   // not be recorded at all. A plain text field has neither limit.
-  const interiorLine = typeof body.materialType === "string" ? body.materialType.trim() : "";
-  const exteriorLine = typeof body.materialTypeExterior === "string" ? body.materialTypeExterior.trim() : "";
+  // …but it still has to be a paint line PPP sells. This endpoint is public —
+  // it takes a token, not a login — and when the write moved from the
+  // restricted MaterialType__c picklist to plain text, the last thing checking
+  // the value went with it. Anything typed into the payload reached
+  // Product_Lines__c on a real work order AND the vendor email as the product
+  // to mix, because paintLineFromValue passes an unknown value through
+  // verbatim. An off-list value is dropped and reported, the same way an
+  // off-list finish is.
+  const rawInterior = typeof body.materialType === "string" ? body.materialType.trim() : "";
+  const rawExterior = typeof body.materialTypeExterior === "string" ? body.materialTypeExterior.trim() : "";
+  const interiorLine = !rawInterior || VALID_MATERIAL_TYPES.has(rawInterior) ? rawInterior : "";
+  const exteriorLine = !rawExterior || VALID_MATERIAL_TYPES.has(rawExterior) ? rawExterior : "";
+  const droppedMaterialTypes = [
+    ...(rawInterior && !interiorLine ? [rawInterior] : []),
+    ...(rawExterior && !exteriorLine ? [rawExterior] : []),
+  ];
   const productLines = formatProductLines({ interior: interiorLine, exterior: exteriorLine });
   if (productLines) {
     attempts.push({
@@ -590,10 +604,11 @@ export async function POST(
       fields: { Product_Lines__c: productLines },
     });
   }
-  // Nothing is dropped any more — both sides fit, and there is no vocabulary to
-  // fail against. Kept in the response because the form and the staff-facing
-  // write-failure banner still read it; it is now always false.
-  const materialTypeDropped = false;
+  // True when a paint line the payload carried was not one we sell, so the
+  // staff-facing banner can say the pick did not save rather than letting it
+  // look stored. (The customer-facing note stays removed — Kate R4.2: a
+  // homeowner should not be asked to resolve our picklist.)
+  const materialTypeDropped = droppedMaterialTypes.length > 0;
 
   // "Colors Received" — the flag PPP actually runs on.
   //
@@ -832,7 +847,7 @@ export async function POST(
   if (writesFailedInfo) {
     const roomLabelById = new Map<string, string>();
     for (const li of fresh.lineItems) {
-      if (li.id) roomLabelById.set(li.id, roomLabelFrom(li.areaLabel, li.productName, "Unnamed area"));
+      if (li.id) roomLabelById.set(li.id, roomLabelFrom(li.areaLabel, li.productName));
     }
     // AWAITED, unlike the routine notifications below. A floating promise can
     // be torn down when the serverless response returns, and this is the one

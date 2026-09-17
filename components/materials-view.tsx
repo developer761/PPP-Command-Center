@@ -1602,7 +1602,14 @@ function JobDetailImpl({
       if (surfaces.length > 0) {
         rooms.push({
           woliId: li.raw.id,
-          roomLabel: li.raw.areaLabel ?? "Area",
+          // roomLabelFrom, not the raw field: Area__c is null on many work
+          // orders, and the ORDER page recovers the room from ProductName__c
+          // ("Interior Painting: Bathroom"). Reading the raw field here meant
+          // this estimate never saw a kitchen or a bathroom, so the kitchen
+          // gallon default, the bathroom defaults and the bathroom line split
+          // all failed to fire — and the card said "~3 gal" over an order page
+          // and a vendor email that both said 1 gal.
+          roomLabel: roomLabelFrom(li.raw.areaLabel, li.raw.productName),
           // Override-aware: if the worker typed a sqft on JobDetail, the
           // estimator uses THAT number (not the stale SF zero).
           floorAreaSqft: effectiveSqft(li.raw.id, li.raw.sqFootage),
@@ -1939,7 +1946,7 @@ function JobDetailImpl({
                           ? "1 room has no surfaces set in Salesforce"
                           : `${roomsWithoutSurfaces.length} rooms have no surfaces set in Salesforce`}
                       </strong>{" "}
-                      — {roomsWithoutSurfaces.slice(0, 3).map((li) => roomLabelFrom(li.raw.areaLabel, li.raw.productName, "unnamed room")).join(", ")}
+                      — {roomsWithoutSurfaces.slice(0, 3).map((li) => roomLabelFrom(li.raw.areaLabel, li.raw.productName)).join(", ")}
                       {roomsWithoutSurfaces.length > 3 ? ` +${roomsWithoutSurfaces.length - 3} more` : ""}. The customer
                       will see nothing to pick there. You can still send the form.
                     </div>
@@ -2330,7 +2337,7 @@ function LineItemRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-semibold text-ppp-charcoal text-sm">
-              {roomLabelFrom(item.raw.areaLabel, item.raw.productName, "Area")}
+              {roomLabelFrom(item.raw.areaLabel, item.raw.productName)}
             </span>
             {item.raw.changeOrderRelated && (
               <Pill tone="orange">Change order</Pill>

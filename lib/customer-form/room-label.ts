@@ -24,6 +24,14 @@
 /** Families that are scope descriptions, never room names. */
 const FAMILY_WORDS = /^(interior|exterior)\s+painting$/i;
 
+/**
+ * ONE fallback, everywhere. It used to be passed per call site — "Unnamed
+ * area", "Untitled area", "unnamed room", "Area" — and the order page matches
+ * its buy-list rows to its source lines by room NAME: two spellings of the
+ * same nameless room meant the lookup missed, so the dimensions and the "lin
+ * ft" line silently disappeared for exactly the rooms with the worst data,
+ * and the same room read differently in two panels of one screen.
+ */
 export function roomLabelFrom(
   areaLabel: string | null | undefined,
   productName: string | null | undefined,

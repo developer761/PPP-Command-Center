@@ -126,7 +126,7 @@ export async function POST(request: Request) {
         const s = saved.get(li.raw.id);
         return {
           woliId: li.raw.id,
-          label: roomLabelFrom(li.raw.areaLabel, li.raw.productName, "Unnamed area"),
+          label: roomLabelFrom(li.raw.areaLabel, li.raw.productName),
           sfSqft: li.raw.sqFootage || 0,
           savedSqft: s ? Number(s.sqft) || null : null,
           savedSource: (s?.source as string) ?? null,

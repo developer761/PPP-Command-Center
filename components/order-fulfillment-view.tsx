@@ -605,6 +605,30 @@ export default function OrderFulfillmentView({
                 />
               </div>
             </div>
+            {/* The builder needs street + city + (state or ZIP) before it will
+                use a typed address; anything less was silently dropped and the
+                paint went to the customer's own house with nothing said. Say
+                it here, where the missing box is. */}
+            {(() => {
+              const street = deliveryAddr.street.trim();
+              const city = deliveryAddr.city.trim();
+              const state = deliveryAddr.state.trim();
+              const zip = deliveryAddr.postalCode.trim();
+              const started = !!(street || city || state || zip);
+              const usable = !!(street && city && (state || zip));
+              if (!started || usable) return null;
+              const missing = [
+                !street ? "a street" : "",
+                !city ? "a city" : "",
+                !state && !zip ? "a state or ZIP" : "",
+              ].filter(Boolean);
+              return (
+                <p role="alert" className="mt-2 text-[11px] text-ppp-orange-700">
+                  This address still needs {missing.join(" and ")} — until then the order goes to the
+                  address on the customer&apos;s account instead.
+                </p>
+              );
+            })()}
           </div>
         )}
       </section>

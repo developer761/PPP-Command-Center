@@ -57,7 +57,7 @@ export async function loadOrderPageData(
   const sqftOverrides = await loadSqftOverridesFor(job.lineItems.map((li) => li.raw.id));
 
   for (const li of job.lineItems) {
-    const room = roomLabelFrom(li.raw.areaLabel, li.raw.productName, "Unnamed area");
+    const room = roomLabelFrom(li.raw.areaLabel, li.raw.productName);
     const selected = (li.raw.surfaces ?? "")
       .split(";")
       .map((s) => s.trim())

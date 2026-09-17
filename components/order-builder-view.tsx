@@ -12,6 +12,7 @@ import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pic
 import {
   claimedPlainKeys,
   formatOrderQuantity,
+  formatBucketsCans,
   classifySurface,
   formatOrderTotal,
   summarizeOrder,
@@ -1014,7 +1015,21 @@ export default function OrderBuilderView({
                                 : "text-ppp-charcoal"
                           }`}
                         >
-                          {isPlaceholder ? "⚠️ set qty" : formatOrderQuantity(e)}
+                          {/* The estimator's OWN number the moment they press
+                              +/−, not the server's echo of it. `total` was
+                              already computed from the local override for
+                              exactly this reason, and then only the disabled
+                              states used it — so the button reacted instantly
+                              while the number beside it sat stale for the
+                              600ms debounce plus a Salesforce-backed round
+                              trip. Once an override exists the line is no
+                              longer a placeholder either: a typed answer is an
+                              answer. */}
+                          {override
+                            ? formatBucketsCans(override.buckets, override.cans, unit)
+                            : isPlaceholder
+                              ? "⚠️ set qty"
+                              : formatOrderQuantity(e)}
                         </span>
                         <button
                           type="button"

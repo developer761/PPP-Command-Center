@@ -1262,6 +1262,9 @@ export async function buildSupplierOrderDraft(
     wo_number: input.workOrder.workOrderNumber ?? "",
     required_by_date: readableDate(requiredByDate),
     fulfillment_method: input.fulfillmentMethod,
+    // Drives the "Deliver on:" / "Needed by:" pair in the template. A string,
+    // because that is the only thing render() understands as truthy.
+    is_delivery: input.fulfillmentMethod === "delivery" ? "yes" : "",
     // Kate #19: vendor's own address (SF billing) as the pickup fallback, else a
     // configured pickup branch — so "PICKUP at" is never blank.
     fulfillment_block: formatFulfillmentBlock(

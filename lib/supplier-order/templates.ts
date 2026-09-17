@@ -71,7 +71,12 @@ export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
     // supplier who does need it can have it added back per-template in
     // Settings without a code change.
     "PO Number: {{po_number}}\n" +
-    "Deliver on: {{required_by_date}}, by {{delivery_time}}\n" +
+    // "Deliver on" only when we are asking them to DELIVER. It printed
+    // unconditionally, directly above "Fulfillment: PICKUP at …", so every
+    // pickup order told the vendor to deliver and then told them not to.
+    // A pickup still needs its date, so it gets one in its own words.
+    "{{#is_delivery}}Deliver on: {{required_by_date}}, by {{delivery_time}}\n{{/is_delivery}}" +
+    "{{^is_delivery}}Needed by: {{required_by_date}}\n{{/is_delivery}}" +
     "Fulfillment: {{fulfillment_block}}\n" +
     "{{#customer_name}}\nThis order is for {{customer_name}}.\n{{/customer_name}}",
   // R4.28: "All replies route to our Command Center inbox." removed — it's an
@@ -188,7 +193,19 @@ export function render(template: string, vars: Record<string, string | null | un
       return "";
     }
   );
-  return withSectionsResolved.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (full, key) => {
+  // INVERTED sections — `{{^key}}…{{/key}}` renders when the variable is
+  // empty. Needed for the pair "Deliver on:" / "Needed by:": a pickup order
+  // printed "Deliver on …" directly above "Fulfillment: PICKUP at …", telling
+  // the vendor to deliver and then not to. Without this a template can only
+  // ADD text for a condition, never choose between two.
+  const withInverted = withSectionsResolved.replace(
+    /\{\{\^\s*([a-z_][a-z0-9_]*)\s*\}\}([\s\S]*?)\{\{\/\s*\1\s*\}\}/gi,
+    (_full, key, inner) => {
+      const v = vars[key];
+      return typeof v === "string" && v.trim().length > 0 ? "" : inner;
+    }
+  );
+  return withInverted.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (full, key) => {
     const v = vars[key];
     if (v === undefined) return full; // keep literal {{key}} for QA visibility
     return v === null ? "" : v;
