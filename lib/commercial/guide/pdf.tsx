@@ -293,9 +293,26 @@ function SurfaceView({ surface, accent }: { surface: Surface; accent: string }) 
     );
   }
   return (
-    <View style={s.task}>
-      {/* Header and purpose stay together — a title stranded at the foot of a
-          page with its steps overleaf is the one break that must never happen. */}
+    <View style={s.task} minPresenceAhead={130}>
+      {/*
+        A SECTION STARTS ON A PAGE, OR IT STARTS THE NEXT ONE.
+
+        Katie, 2026-09-17: "Labor Payments in Mary's section begins with a few
+        lines at the bottom of the 7th page and then spills over to the 8th. It
+        would be best if the beginning of a section happens at the beginning of
+        a new page, or in the middle of one — if it would create too much dead
+        space in the doc."
+
+        `minPresenceAhead` is exactly that rule: unless ~130pt remain — enough
+        for the heading, the path, the purpose and the first two steps — the
+        whole block moves to the next page rather than starting a section four
+        lines from the bottom. Measured rather than guessed: 170pt cost four
+        extra pages of white, which is the dead space she warned about in the
+        same breath; 130 costs one. It is a THRESHOLD, not a forced break, which
+        is the second half of what she asked for: a section that does fit lower
+        down still starts there, so the handbook does not grow a blank half-page
+        between every heading.
+      */}
       <View wrap={false}>
         <Text style={s.taskTitle}>{pdfSafe(surface.name)}</Text>
         <Text style={[s.taskPath, { color: accent }]}>{pdfSafe(surface.path)}</Text>

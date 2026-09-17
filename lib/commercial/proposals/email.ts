@@ -120,7 +120,21 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
   // From = operating company display-name over the commercial sending address;
   // reply-to = the company's inbox (or the sender) so the GC reaches a person.
   const oc = await getOperatingCompany();
-  const fromAddr = process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS;
+  /**
+   * WHO IT COMES FROM — estimating@, per Katie (2026-09-17). That is Kim
+   * Laude's inbox, and a proposal should come from the person who priced it.
+   *
+   * Env-driven, falling back to the verified sender: Resend will only send
+   * from a domain verified in the PPP account, which today is the
+   * precisionpaintingplus.net sending domain and NOT tomcopainting.com.
+   * Hard-coding estimating@tomcopainting.com would break every send on the day
+   * it shipped. Point COMMERCIAL_PROPOSAL_FROM_ADDRESS at it once the domain
+   * is verified.
+   */
+  const fromAddr =
+    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS ||
+    process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
+    process.env.RESEND_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   // Replies from the GC go to Brendan (approver) + the ops inbox; fall back to
   // the company/actor address only if the copy list is somehow empty.

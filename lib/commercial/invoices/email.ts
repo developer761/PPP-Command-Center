@@ -24,10 +24,16 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Internal copies on every invoice sent to a GC (same list as proposals —
  *  Brendan runs approvals + the ops inbox keeps a copy). Env-overridable. */
+/**
+ * Katie, 2026-09-17: "Invoices sent from finance@ ; cc: mary@tomcopainting.com.
+ * Proposals sent from estimating@tomcopainting.com ; cc: Brendan."
+ *
+ * So the two documents no longer share a copy list — money goes to Mary,
+ * pricing goes to Brendan.
+ */
 const INVOICE_COPY_EMAILS = (
   process.env.COMMERCIAL_INVOICE_COPY_EMAILS ||
-  process.env.COMMERCIAL_PROPOSAL_COPY_EMAILS ||
-  "brendan@tomcopainting.com,developer@precisionpaintingplus.net"
+  "mary@tomcopainting.com,developer@precisionpaintingplus.net"
 )
   .split(",")
   .map((e) => e.trim().toLowerCase())
@@ -135,7 +141,23 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
   // From = operating-company name over the commercial sending address; replies +
   // silent BCC go to Brendan + ops (skip an address that's already visible).
   const oc = await getOperatingCompany();
-  const fromAddr = process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS;
+  /**
+   * WHO IT COMES FROM — finance@, per Katie.
+   *
+   * Env-driven with the verified sender as the fallback, and that fallback is
+   * the important half: Resend will only send from a domain verified in the
+   * PPP account. Today that is the precisionpaintingplus.net sending domain,
+   * NOT tomcopainting.com. Hard-coding finance@tomcopainting.com here would
+   * make every invoice fail to send the moment it shipped.
+   *
+   * So the address is a setting. Point COMMERCIAL_INVOICE_FROM_ADDRESS at
+   * finance@tomcopainting.com once that domain is verified in Resend, and this
+   * starts sending from it with no code change.
+   */
+  const fromAddr =
+    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS ||
+    process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
+    process.env.RESEND_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = INVOICE_COPY_EMAILS.length > 0 ? INVOICE_COPY_EMAILS : oc.email || undefined;
   const bcc = INVOICE_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail);
